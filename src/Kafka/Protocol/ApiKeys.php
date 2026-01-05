@@ -49,14 +49,6 @@ class ApiKeys
     public const REQUEST_HEADER_FORMAT = "napiKey/napiVersion/NcorrelationId/ZclientId";
 
     /**
-     * Format of kafka ressponse header for unpacking in PHP
-     *
-     * Response Header => correlation_id
-     *   correlation_id => INT32
-     */
-    public const RESPONSE_HEADER_FORMAT = "NcorrelationId";
-
-    /**
      * The following are the numeric codes that the ApiKey in the request can take for each of the below request types.
      */
     public const PRODUCE             = 0;

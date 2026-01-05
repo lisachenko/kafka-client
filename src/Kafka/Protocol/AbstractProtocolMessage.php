@@ -107,7 +107,7 @@ class AbstractProtocolMessage implements \Stringable
      *
      * NB: Default implementation will be always called
      *
-     * @param AbstractProtocolMessage $self Instance of current frame
+     * @param AbstractProtocolMessage|static $self Instance of current frame
      * @param string $data Binary data
      */
     protected static function unpackPayload(AbstractProtocolMessage $self, $data)
