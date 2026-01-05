@@ -26,8 +26,14 @@ use Protocol\Kafka\Protocol\ApiKeys;
 abstract class AbstractRequest extends AbstractProtocolMessage
 {
     /**
+     * The version of the API. (INT16)
+     *
+     * @var integer
+     */
+    protected $apiVersion = ApiKeys::VERSION;
+
+    /**
      * @param int $apiKey
-     * @param int $apiVersion
      * @param int $correlationId
      * @param string $clientId
      */
@@ -35,9 +41,6 @@ abstract class AbstractRequest extends AbstractProtocolMessage
      * The id of the request type. (INT16)
      */
         protected $apiKey, /**
-     * The version of the API. (INT16)
-     */
-        protected $apiVersion = 0, /**
      * A user-supplied integer value that will be passed back with the response (INT32)
      */
         protected $correlationId = 0, /**

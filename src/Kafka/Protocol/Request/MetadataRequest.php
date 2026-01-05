@@ -44,11 +44,10 @@ class MetadataRequest extends AbstractRequest
      * An array of topics to fetch metadata for. If no topics are specified fetch metadata for all topics.
      */
         protected array $topics = [],
-        $apiVersion = 0,
         $correlationId = 0,
         $clientId = ''
     ) {
-        parent::__construct(ApiKeys::METADATA, $apiVersion, $correlationId, $clientId);
+        parent::__construct(ApiKeys::METADATA, $correlationId, $clientId);
     }
 
     /**
