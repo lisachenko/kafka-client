@@ -66,9 +66,7 @@ class AbstractProtocolMessage implements \Stringable
     final public function __toString(): string
     {
         $headerPacket  = pack("N", $this->messageSize);
-        $payloadPacket = $this->packPayload();
-
-        return $headerPacket . $payloadPacket;
+        return $headerPacket . $this->messageData;
     }
 
     /**
