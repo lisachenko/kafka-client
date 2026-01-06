@@ -62,12 +62,29 @@ class RecordBatch implements \Stringable
         return $messageSet;
     }
 
+    /**
+     * Unpacks the DTO from the binary buffer
+     *
+     * @param string $binaryStreamBuffer Binary buffer
+     *
+     * @return static
+     */
+    public static function unpack(&$binaryStreamBuffer): static
+    {
+        $messageSet = new static();
+        [$messageSet->offset, $messageSet->messageSize] = array_values(unpack('Joffset/NmessageSize', $binaryStreamBuffer));
+        $binaryStreamBuffer  = substr($binaryStreamBuffer, 12);
+        $messageSet->message = Record::unpack($binaryStreamBuffer);
+
+        return $messageSet;
+    }
+
     public function __toString(): string
     {
         $message = (string) $this->message;
-        $payload = (PHP_INT_SIZE === 8) ? pack('J', $this->offset) : pack('NN', 0, $this->offset);
-        $payload .= pack(
-            "Na{$this->messageSize}",
+        $payload = pack(
+            "JNa{$this->messageSize}",
+            $this->offset,
             $this->messageSize,
             $message
         );

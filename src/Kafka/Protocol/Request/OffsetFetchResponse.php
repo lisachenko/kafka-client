@@ -74,18 +74,8 @@ class OffsetFetchResponse extends AbstractResponse
     private static function unpackTopicPartitionInfo(string &$binaryStreamBuffer): OffsetFetchResponsePartition
     {
         $partition = new OffsetFetchResponsePartition();
-        [
-            $partition->partition,
-        ] = array_values(unpack("Npartition", $binaryStreamBuffer));
-        $binaryStreamBuffer = substr($binaryStreamBuffer, 4);
-        if (PHP_INT_SIZE === 8) {
-            $partition->offset = reset(unpack('J', $binaryStreamBuffer));
-        } else {
-            [, $partition->offset] = array_values(unpack('NlowWord/NhighWord', $binaryStreamBuffer));
-        }
-        $binaryStreamBuffer = substr($binaryStreamBuffer, 8);
-        [$metadataLength] = array_values(unpack('nmetadataLength', $binaryStreamBuffer));
-        $binaryStreamBuffer = substr($binaryStreamBuffer, 2);
+        [$partition->partition, $partition->offset, $metadataLength] = array_values(unpack("Npartition/Joffset/nmetadataLength", $binaryStreamBuffer));
+        $binaryStreamBuffer = substr($binaryStreamBuffer, 14);
         $metadataLength     = $metadataLength < 0x8000 ? $metadataLength : 0;
         [$partition->metadata, $partition->errorCode] = array_values(unpack("a{$metadataLength}metadata/nerrorCode", $binaryStreamBuffer));
         $binaryStreamBuffer = substr($binaryStreamBuffer, $metadataLength + 2);
