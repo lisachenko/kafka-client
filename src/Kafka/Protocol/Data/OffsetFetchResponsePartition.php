@@ -20,9 +20,9 @@ namespace Protocol\Kafka\Protocol\Data;
 use Protocol\Kafka\IO\Stream;
 
 /**
- * OffsetFetch response DTO
+ * OffsetFetch/OffsetCommit DTO
  */
-class OffsetFetchResponsePartition
+class OffsetFetchResponsePartition implements \Stringable
 {
     /**
      * The partition this response entry corresponds to.
@@ -70,5 +70,29 @@ class OffsetFetchResponsePartition
         [$partition->metadata, $partition->errorCode] = array_values($stream->read("a{$metadataLength}metadata/nerrorCode"));
 
         return $partition;
+    }
+
+    public function __toString(): string
+    {
+        $metadataLength = strlen($this->metadata);
+        $payload        = pack(
+            "NJna{$metadataLength}",
+            $this->partition,
+            $this->offset,
+            $metadataLength ?: -1,
+            $this->metadata
+        );
+
+        return $payload;
+    }
+
+    public static function fromPartitionOffset($partition, $offset, $metadata = null): static
+    {
+        $instance = new static();
+        $instance->partition = $partition;
+        $instance->offset    = $offset;
+        $instance->metadata  = $metadata;
+
+        return $instance;
     }
 }
