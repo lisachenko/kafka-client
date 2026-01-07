@@ -41,7 +41,7 @@ class OffsetFetchRequest extends AbstractRequest
         $correlationId = 0,
         $clientId = ''
     ) {
-        parent::__construct(ApiKeys::OFFSET_FETCH, $correlationId, $clientId);
+        parent::__construct(ApiKeys::OFFSET_FETCH, $correlationId, $clientId, ApiKeys::VERSION_1);
     }
 
     /**

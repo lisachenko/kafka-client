@@ -25,6 +25,11 @@ class ApiKeys
     public const VERSION_0 = 0;
 
     /**
+     * Protocol version 1 implementation
+     */
+    public const VERSION_1 = 1;
+
+    /**
      * Protocol version implementation
      */
     public const VERSION = 2;

@@ -47,7 +47,7 @@ class MetadataRequest extends AbstractRequest
         $correlationId = 0,
         $clientId = ''
     ) {
-        parent::__construct(ApiKeys::METADATA, $correlationId, $clientId);
+        parent::__construct(ApiKeys::METADATA, $correlationId, $clientId, ApiKeys::VERSION_1);
     }
 
     /**
