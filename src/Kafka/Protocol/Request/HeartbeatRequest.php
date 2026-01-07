@@ -46,7 +46,7 @@ class HeartbeatRequest extends AbstractRequest
         $correlationId = 0,
         $clientId = ''
     ) {
-        parent::__construct(ApiKeys::HEARTBEAT, $correlationId, $clientId);
+        parent::__construct(ApiKeys::HEARTBEAT, $correlationId, $clientId, ApiKeys::VERSION_0);
     }
 
     /**

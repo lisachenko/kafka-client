@@ -42,7 +42,7 @@ class LeaveGroupRequest extends AbstractRequest
         $correlationId = 0,
         $clientId = ''
     ) {
-        parent::__construct(ApiKeys::LEAVE_GROUP, $correlationId, $clientId);
+        parent::__construct(ApiKeys::LEAVE_GROUP, $correlationId, $clientId, ApiKeys::VERSION_0);
     }
 
     /**
