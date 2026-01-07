@@ -41,10 +41,14 @@ class OffsetCommitRequest extends AbstractRequest
         private $consumerGroup,
         /**
          * The generation of the group.
+         *
+         * @since Version 1 of protocol
          */
         private $generationId,
         /**
          * The member id assigned by the group coordinator.
+         *
+         * @since Version 1 of protocol
          */
         private $memberName,
         private readonly array $topicPartitions,
