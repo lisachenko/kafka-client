@@ -22,7 +22,7 @@ class ApiKeys
     /**
      * Protocol version implementation
      */
-    public const VERSION = 0;
+    public const VERSION = 1;
 
     /**
      * Number of bytes in a kafka header
