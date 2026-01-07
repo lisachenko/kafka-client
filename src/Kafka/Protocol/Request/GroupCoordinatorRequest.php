@@ -37,7 +37,7 @@ class GroupCoordinatorRequest extends AbstractRequest
         $correlationId = 0,
         $clientId = ''
     ) {
-        parent::__construct(ApiKeys::GROUP_COORDINATOR, $correlationId, $clientId);
+        parent::__construct(ApiKeys::GROUP_COORDINATOR, $correlationId, $clientId, ApiKeys::VERSION_0);
     }
 
     /**
