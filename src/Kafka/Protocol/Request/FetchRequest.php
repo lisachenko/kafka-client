@@ -48,6 +48,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @param int $maxWaitTime
      * @param int $minBytes
+     * @param int $maxBytes
      * @param int $replicaId
      */
     public function __construct(
@@ -69,6 +70,10 @@ class FetchRequest extends AbstractRequest
          * wait up to 100ms to try to accumulate 64k of data before responding).
          */
         private $minBytes,
+        /**
+         * The maximum bytes to include in the message set for this partition. This helps bound the size of the response.
+         */
+        private $maxBytes,
         /**
          * The replica id indicates the node id of the replica initiating this request. Normal client consumers should
          * always specify this as -1 as they have no node id. Other brokers set this to be their own node id. The value -2
@@ -93,8 +98,8 @@ class FetchRequest extends AbstractRequest
         foreach ($this->topicPartitions as $topic => $partitions) {
             $topicLength = strlen($topic);
             $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            foreach ($partitions as $partitionId => $partitionData) {
-                $payload .= pack('NJN', $partitionId, $partitionData[0], $partitionData[1]);
+            foreach ($partitions as $partitionId => $offset) {
+                $payload .= pack('NJN', $partitionId, $offset, $this->maxBytes);
             }
         }
 
