@@ -10,13 +10,14 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2014
  */
 
 namespace Protocol\Kafka\Common;
+
+use Protocol\Kafka\IO\Stream;
 
 /**
  * Partition metadata DTO
@@ -57,4 +58,24 @@ class PartitionMetadata
      * @var array|integer[]
      */
     public $isr = [];
+
+    /**
+     * Unpacks the DTO from the binary buffer
+     *
+     * @param Stream $stream Binary buffer
+     *
+     * @return static
+     */
+    public static function unpack(Stream $stream): static
+    {
+        $partitionMetadata = new static();
+        [$partitionMetadata->partitionErrorCode, $partitionMetadata->partitionId, $partitionMetadata->leader, $numberOfReplicas] = array_values($stream->read('npartitionErrorCode/NpartitionId/Nleader/NnumberOfReplicas'));
+
+        $partitionMetadata->replicas = array_values($stream->read("N{$numberOfReplicas}"));
+
+        $numberOfIsr = $stream->read('NnumberOfIsr')['numberOfIsr'];
+        $partitionMetadata->isr = array_values($stream->read("N{$numberOfIsr}"));
+
+        return $partitionMetadata;
+    }
 }

@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Record;
 
+use Protocol\Kafka\IO\Stream;
+
 /**
  * A message in kafka is a key-value pair with a small amount of associated metadata.
  */
@@ -94,28 +96,25 @@ class Record implements \Stringable
     /**
      * Unpacks the DTO from the binary buffer
      *
-     * @param string $binaryStreamBuffer Binary buffer
+     * @param Stream $stream Binary buffer
      *
      * @return static
      */
-    public static function unpack(&$binaryStreamBuffer): static
+    public static function unpack(Stream $stream): static
     {
         $message = new static();
-        [$message->crc, $message->magicByte, $message->attributes, $keyLength] = array_values(unpack('Ncrc32/cmagicByte/cattributes/NkeyLength', $binaryStreamBuffer));
-        $binaryStreamBuffer = substr($binaryStreamBuffer, 10);
+        [$message->crc, $message->magicByte, $message->attributes, $keyLength] = array_values($stream->read('Ncrc32/cmagicByte/cattributes/NkeyLength'));
 
         if ($keyLength === 0xFFFFFFFF) {
             $keyLength = 0;
         }
 
-        [$message->key, $valueLength] = array_values(unpack("a{$keyLength}/NvalueLength", $binaryStreamBuffer));
-        $binaryStreamBuffer = substr($binaryStreamBuffer, $keyLength + 4);
+        [$message->key, $valueLength] = array_values($stream->read("a{$keyLength}/NvalueLength"));
 
         if ($valueLength === 0xFFFFFFFF) {
             $valueLength = 0;
         }
-        [$message->value] = array_values(unpack("a{$valueLength}", $binaryStreamBuffer));
-        $binaryStreamBuffer   = substr($binaryStreamBuffer, $valueLength);
+        $message->value = $stream->read("a{$valueLength}value")['value'];
 
         return $message;
     }
