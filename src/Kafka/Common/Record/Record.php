@@ -40,7 +40,7 @@ class Record implements \Stringable
      *
      * @var integer
      */
-    public $magicByte = 1;
+    public $magicByte = 0;
 
     /**
      * This byte holds metadata attributes about the message.
