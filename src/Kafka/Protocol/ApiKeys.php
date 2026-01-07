@@ -53,7 +53,7 @@ class ApiKeys
      */
     public const PRODUCE             = 0;
     public const FETCH               = 1;
-    public const OFFSETS             = 1;
+    public const OFFSETS             = 2;
     public const METADATA            = 3;
     public const LEADER_AND_ISR      = 4;
     public const STOP_REPLICA        = 5;
