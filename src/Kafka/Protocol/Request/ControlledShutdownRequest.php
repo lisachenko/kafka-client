@@ -35,7 +35,7 @@ class ControlledShutdownRequest extends AbstractRequest
         $correlationId = 0,
         $clientId = ''
     ) {
-        parent::__construct(ApiKeys::CONTROLLED_SHUTDOWN, $correlationId, $clientId);
+        parent::__construct(ApiKeys::CONTROLLED_SHUTDOWN, $correlationId, $clientId, ApiKeys::VERSION_1);
     }
 
     /**
