@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 
 /**
@@ -41,21 +42,18 @@ class SaslHandshakeResponse extends AbstractResponse
     /**
      * Method to unpack the payload for the record
      *
-     * @param AbstractProtocolMessage|static $self Instance of current frame
-     * @param string $data Binary data
+     * @param AbstractProtocolMessage|static $self   Instance of current frame
+     * @param Stream $stream Binary data
      *
      * @return AbstractProtocolMessage
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, $data): AbstractProtocolMessage
+    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
     {
-        [$self->correlationId, $self->errorCode, $mechanismsNumber] = array_values(unpack("NcorrelationId/nerrorCode/NmechanismsNumber", $data));
-        $data = substr($data, 10);
+        [$self->correlationId, $self->errorCode, $mechanismsNumber] = array_values($stream->read('NcorrelationId/nerrorCode/NmechanismsNumber'));
 
         for ($i = 0; $i < $mechanismsNumber; $i++) {
-            [$mechanismLength] = array_values(unpack("nmechanismLength", $data));
-            $data = substr($data, 2);
-            [$mechanism] = array_values(unpack("a{$mechanismLength}mechanism", $data));
-            $data = substr($data, $mechanismLength);
+            $mechanismLength = $stream->read('nmechanismLength')['mechanismLength'];
+            $mechanism       = $stream->read("a{$mechanismLength}mechanism")['mechanism'];
 
             $self->enabledMechanisms[] = $mechanism;
         }

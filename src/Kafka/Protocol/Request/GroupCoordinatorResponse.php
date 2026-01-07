@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
 
@@ -42,18 +43,19 @@ class GroupCoordinatorResponse extends AbstractResponse
     /**
      * Method to unpack the payload for the record
      *
-     * @param AbstractProtocolMessage|static $self Instance of current frame
-     * @param string $data Binary data
+     * @param AbstractProtocolMessage|static $self   Instance of current frame
+     * @param Stream $stream Binary data
      *
      * @return AbstractProtocolMessage
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, $data): AbstractProtocolMessage
+    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
     {
-        $coordinatorMetadata = new GroupCoordinatorResponseMetadata();
-        [$self->correlationId, $self->errorCode, $coordinatorMetadata->nodeId, $hostLength] = array_values(unpack("NcorrelationId/nerrorCode/NnodeId/nhostLength", $data));
-        $data = substr($data, 12);
-        [$coordinatorMetadata->host, $coordinatorMetadata->port] = array_values(unpack("a{$hostLength}host/Nport", $data));
-        $self->coordinator = $coordinatorMetadata;
+        [
+            $self->correlationId,
+            $self->errorCode,
+        ] = array_values($stream->read("NcorrelationId/nerrorCode"));
+
+        $self->coordinator = GroupCoordinatorResponseMetadata::unpack($stream);
 
         return $self;
     }

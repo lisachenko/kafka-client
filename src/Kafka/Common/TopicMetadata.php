@@ -10,13 +10,14 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2014
  */
 
 namespace Protocol\Kafka\Common;
+
+use Protocol\Kafka\IO\Stream;
 
 /**
  * Topic metadata DTO
@@ -43,4 +44,26 @@ class TopicMetadata
      * @var PartitionMetadata[]|array
      */
     public $partitions = [];
+
+    /**
+     * Unpacks the DTO from the binary buffer
+     *
+     * @param Stream $stream Binary buffer
+     *
+     * @return static
+     */
+    public static function unpack(Stream $stream): static
+    {
+        $topic = new static();
+        [$topic->topicErrorCode, $topicLength] = array_values($stream->read('ntopicErrorCode/ntopicLength'));
+        [$topic->topic, $numberOfPartitions] = array_values($stream->read("a{$topicLength}topic/NnumberOfPartition"));
+
+        for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
+            $partitionMetadata = PartitionMetadata::unpack($stream);
+
+            $topic->partitions[$partitionMetadata->partitionId] = $partitionMetadata;
+        }
+
+        return $topic;
+    }
 }

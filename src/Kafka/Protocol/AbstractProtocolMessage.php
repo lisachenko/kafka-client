@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol;
 
+
+use Protocol\Kafka\IO\Stream;
 /**
  * ApiKeys record class
  */
@@ -40,19 +42,16 @@ class AbstractProtocolMessage implements \Stringable
     /**
      * Unpacks the message from the binary data buffer
      *
-     * @param string $data Binary buffer with raw data
+     * @param Stream $stream Binary stream buffer
      *
      * @return static
      */
-    final public static function unpack($data): static
+    final public static function unpack(Stream $stream): static
     {
         $self = new static();
-        [$self->messageSize] = array_values(unpack(ApiKeys::HEADER_FORMAT, $data));
-
-        $payload = substr($data, ApiKeys::HEADER_LEN);
-        self::unpackPayload($self, $payload);
-        if (static::class !== self::class && $self->messageSize > 0) {
-            static::unpackPayload($self, $self->messageData);
+        $self->messageSize = $stream->read(ApiKeys::HEADER_FORMAT)['size'];
+        if ($self->messageSize > 0) {
+            static::unpackPayload($self, $stream);
         }
 
         return $self;
@@ -105,21 +104,11 @@ class AbstractProtocolMessage implements \Stringable
      *
      * NB: Default implementation will be always called
      *
-     * @param AbstractProtocolMessage|static $self Instance of current frame
-     * @param string $data Binary data
+     * @param AbstractProtocolMessage|static $self   Instance of current frame
+     * @param Stream $stream Binary data
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, $data)
+    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream)
     {
-        [$self->messageData] = array_values(unpack("a{$self->messageSize}contentData", $data));
-    }
-
-    /**
-     * Implementation of packing the payload
-     *
-     * @return string
-     */
-    protected function packPayload(): string
-    {
-        return pack("a{$this->messageSize}", $this->messageData);
+        // nothing here
     }
 }

@@ -18,8 +18,8 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Common\Node;
-use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\TopicMetadata;
+use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 
 /**
@@ -44,99 +44,27 @@ class MetadataResponse extends AbstractResponse
     /**
      * Method to unpack the payload for the record
      *
-     * @param AbstractProtocolMessage|static $self Instance of current frame
-     * @param string $data Binary data
+     * @param AbstractProtocolMessage|static $self   Instance of current frame
+     * @param Stream $stream Binary data
      *
      * @return AbstractProtocolMessage
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, $data): AbstractProtocolMessage
+    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
     {
-        [$self->correlationId, $numberOfBrokers] = array_values(unpack("NcorrelationId/NnumberOfBrokers", $data));
-        $data = substr($data, 8);
+        [$self->correlationId, $numberOfBrokers] = array_values($stream->read('NcorrelationId/NnumberOfBrokers'));
 
         for ($broker = 0; $broker < $numberOfBrokers; $broker++) {
-            $brokerMetadata = self::unpackBrokerInfo($data);
+            $brokerMetadata = Node::unpack($stream);
 
             $self->brokers[$brokerMetadata->nodeId] = $brokerMetadata;
         }
-        [$numberOfTopics] = array_values(unpack("NnumberOfTopics", $data));
-        $data = substr($data, 4);
+        $numberOfTopics = $stream->read('NnumberOfTopics')['numberOfTopics'];
 
         for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicMetadata = self::unpackTopicInfo($data);
+            $topicMetadata = TopicMetadata::unpack($stream);
 
             $self->topics[$topicMetadata->topic] = $topicMetadata;
         }
         return $self;
-    }
-
-    /**
-     * Unpacks the information about broker
-     *
-     * @param AbstractProtocolMessage|static $self Instance of current frame
-     * @param string $binaryStreamBuffer Binary buffer
-     *
-     * @return Node
-     */
-    private static function unpackBrokerInfo(string &$binaryStreamBuffer): Node
-    {
-        $brokerMetadata = new Node();
-        [$brokerMetadata->nodeId, $hostLength] = array_values(unpack("NnodeId/nhostLength", $binaryStreamBuffer));
-        $binaryStreamBuffer = substr($binaryStreamBuffer, 6);
-        [$brokerMetadata->host, $brokerMetadata->port] = array_values(unpack("a{$hostLength}host/Nport", $binaryStreamBuffer));
-
-        $binaryStreamBuffer = substr($binaryStreamBuffer, $hostLength + 4);
-
-        return $brokerMetadata;
-    }
-
-    /**
-     * Unpacks the information about topic
-     *
-     * @param string $binaryStreamBuffer Binary buffer
-     *
-     * @return TopicMetadata
-     */
-    private static function unpackTopicInfo(string &$binaryStreamBuffer): TopicMetadata
-    {
-        $topic = new TopicMetadata();
-        [$topic->topicErrorCode, $topicLength] = array_values(unpack("ntopicErrorCode/ntopicLength", $binaryStreamBuffer));
-
-        $binaryStreamBuffer = substr($binaryStreamBuffer, 4);
-        [$topic->topic, $numberOfPartitions] = array_values(unpack("a{$topicLength}topic/NnumberOfPartition", $binaryStreamBuffer));
-        $binaryStreamBuffer = substr($binaryStreamBuffer, $topicLength + 4);
-
-        for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-            $partitionMetadata = self::unpackPartitionInfo($binaryStreamBuffer);
-
-            $topic->partitions[$partitionMetadata->partitionId] = $partitionMetadata;
-        }
-
-        return $topic;
-    }
-
-    /**
-     * Unpacks the information about partition
-     *
-     * @param string $binaryStreamBuffer Binary buffer
-     *
-     * @return PartitionMetadata
-     */
-    private static function unpackPartitionInfo(string &$binaryStreamBuffer): PartitionMetadata
-    {
-        $partitionMetadata = new PartitionMetadata();
-        [$partitionMetadata->partitionErrorCode, $partitionMetadata->partitionId, $partitionMetadata->leader, $numberOfReplicas] = array_values(unpack("npartitionErrorCode/NpartitionId/Nleader/NnumberOfReplicas", $binaryStreamBuffer));
-        $binaryStreamBuffer = substr($binaryStreamBuffer, 14);
-
-        $partitionMetadata->replicas = array_values(unpack("N{$numberOfReplicas}", $binaryStreamBuffer));
-        $binaryStreamBuffer          = substr($binaryStreamBuffer, 4 * $numberOfReplicas);
-
-        [$numberOfIsr] = array_values(unpack("NnumberOfIsr", $binaryStreamBuffer));
-        $binaryStreamBuffer = substr($binaryStreamBuffer, 4);
-
-        $partitionMetadata->isr = array_values(unpack("N{$numberOfIsr}", $binaryStreamBuffer));
-        $binaryStreamBuffer     = substr($binaryStreamBuffer, 4 * $numberOfIsr);
-
-        return $partitionMetadata;
     }
 }

@@ -10,13 +10,15 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2014
  */
 
 namespace Protocol\Kafka\Protocol\Data;
+
+use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Common\Record\RecordBatch;
 
 /**
  * Fetch response DTO
@@ -52,4 +54,24 @@ class FetchResponsePartition
      * @var array|RecordBatch[]
      */
     public $messageSet = [];
+
+    /**
+     * Unpacks the DTO from the binary buffer
+     *
+     * @param Stream $stream Binary buffer
+     *
+     * @return static
+     */
+    public static function unpack(Stream $stream): static
+    {
+        $partition = new static();
+        [$partition->partition, $partition->errorCode, $partition->highwaterMarkOffset, $messageSetSize] = array_values($stream->read('Npartition/nerrorCode/JhighwaterMarkOffset/NmessageSetSize'));
+
+        for ($received = 0; $received < $messageSetSize; $received += ($messageSet->messageSize + 12)) {
+            $messageSet = RecordBatch::unpack($stream);
+            $partition->messageSet[] = $messageSet;
+        }
+
+        return $partition;
+    }
 }

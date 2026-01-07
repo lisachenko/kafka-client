@@ -10,13 +10,14 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2014
  */
 
 namespace Protocol\Kafka\Protocol\Data;
+
+use Protocol\Kafka\IO\Stream;
 
 /**
  * OffsetFetch response DTO
@@ -53,4 +54,21 @@ class OffsetFetchResponsePartition
      * @var integer
      */
     public $errorCode;
+
+    /**
+     * Unpacks the DTO from the binary buffer
+     *
+     * @param Stream $stream Binary buffer
+     *
+     * @return static
+     */
+    public static function unpack(Stream $stream): static
+    {
+        $partition = new static();
+        [$partition->partition, $partition->offset, $metadataLength] = array_values($stream->read('Npartition/Joffset/nmetadataLength'));
+        $metadataLength = $metadataLength < 0x8000 ? $metadataLength : 0;
+        [$partition->metadata, $partition->errorCode] = array_values($stream->read("a{$metadataLength}metadata/nerrorCode"));
+
+        return $partition;
+    }
 }

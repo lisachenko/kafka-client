@@ -17,7 +17,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 
@@ -45,55 +45,29 @@ class FetchResponse extends AbstractResponse
     /**
      * Method to unpack the payload for the record
      *
-     * @param AbstractProtocolMessage|static $self Instance of current frame
-     * @param string $data Binary data
+     * @param AbstractProtocolMessage|static $self   Instance of current frame
+     * @param Stream $stream Binary data
      *
      * @return AbstractProtocolMessage
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, $data): AbstractProtocolMessage
+    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
     {
         [
             $self->correlationId,
             $self->throttleTimeMs,
             $numberOfTopics,
-        ] = array_values(unpack("NcorrelationId/NthrottleTimeMs/NnumberOfTopics", $data));
-        $data = substr($data, 12);
+        ] = array_values($stream->read('NcorrelationId/NthrottleTimeMs/NnumberOfTopics'));
 
         for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            [$topicLength] = array_values(unpack('ntopicLength', $data));
-            $data = substr($data, 2);
-            [$topicName, $numberOfPartitions] = array_values(unpack("a{$topicLength}/NnumberOfPartitions", $data));
-            $data = substr($data, $topicLength + 4);
+            $topicLength = $stream->read('ntopicLength')['topicLength'];
+            [$topicName, $numberOfPartitions] = array_values($stream->read("a{$topicLength}/NnumberOfPartitions"));
 
             for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-                $topicMetadata = self::unpackTopicPartitionInfo($data);
+                $topicMetadata = FetchResponsePartition::unpack($stream);
                 $self->topics[$topicName][$topicMetadata->partition] = $topicMetadata;
             }
-
         }
 
         return $self;
-    }
-
-    /**
-     * Unpacks the information about topic partition
-     *
-     * @param string $binaryStreamBuffer Binary buffer
-     *
-     * @return FetchResponsePartition
-     */
-    private static function unpackTopicPartitionInfo(string &$binaryStreamBuffer): FetchResponsePartition
-    {
-        $partition = new FetchResponsePartition();
-        [$partition->partition, $partition->errorCode, $partition->highwaterMarkOffset, $messageSetSize] = array_values(unpack("Npartition/nerrorCode/JhighwaterMarkOffset/NmessageSetSize", $binaryStreamBuffer));
-        $messageSetBuffer   = substr($binaryStreamBuffer, 18, $messageSetSize);
-        $binaryStreamBuffer = substr($binaryStreamBuffer, 18 + $messageSetSize);
-
-        while (!empty($messageSetBuffer)) {
-            $messageSet = RecordBatch::unpack($messageSetBuffer);
-            $partition->messageSet[] = $messageSet;
-        }
-
-        return $partition;
     }
 }

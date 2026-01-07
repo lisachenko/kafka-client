@@ -10,13 +10,14 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2014
  */
 
 namespace Protocol\Kafka\Protocol\Data;
+
+use Protocol\Kafka\IO\Stream;
 
 /**
  * GroupCoordinator response data
@@ -43,4 +44,21 @@ class GroupCoordinatorResponseMetadata
      * @var integer
      */
     public $port;
+
+    /**
+     * Unpacks the DTO from the binary buffer
+     *
+     * @param Stream $stream Binary buffer
+     *
+     * @return static
+     */
+    public static function unpack(Stream $stream): static
+    {
+        $coordinatorMetadata = new static();
+        [$coordinatorMetadata->nodeId, $hostLength] = array_values($stream->read("NnodeId/nhostLength"));
+
+        [$coordinatorMetadata->host, $coordinatorMetadata->port] = array_values($stream->read("a{$hostLength}host/Nport"));
+
+        return $coordinatorMetadata;
+    }
 }
