@@ -18,7 +18,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
-use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 
 /**
  * OffsetCommit
@@ -31,16 +31,28 @@ class OffsetCommitRequest extends AbstractRequest
 {
     /**
      * @param string $consumerGroup
+     * @param int $generationId
+     * @param string $memberName
      */
-    public function __construct(/**
-     * The consumer group id.
-     */
+    public function __construct(
+        /**
+         * The consumer group id.
+         */
         private $consumerGroup,
+        /**
+         * The generation of the group.
+         */
+        private $generationId,
+        /**
+         * The member id assigned by the group coordinator.
+         */
+        private $memberName,
         private readonly array $topicPartitions,
         $correlationId = 0,
         $clientId = ''
     ) {
         parent::__construct(ApiKeys::OFFSET_COMMIT, $correlationId, $clientId);
+
     }
 
     /**
@@ -48,15 +60,25 @@ class OffsetCommitRequest extends AbstractRequest
      */
     protected function packPayload(): string
     {
-        $payload     = parent::packPayload();
-        $groupLength = strlen($this->consumerGroup);
-        $totalTopics = count($this->topicPartitions);
+        $payload      = parent::packPayload();
+        $groupLength  = strlen($this->consumerGroup);
+        $memberLength = strlen($this->memberName);
+        $totalTopics  = count($this->topicPartitions);
 
-        $payload .= pack("na{$groupLength}N", $groupLength, $this->consumerGroup, $totalTopics);
+        $payload .= pack(
+            "na{$groupLength}Nna{$memberLength}N",
+            $groupLength,
+            $this->consumerGroup,
+            $this->generationId,
+            $memberLength,
+            $this->memberName,
+            $totalTopics
+        );
+
         foreach ($this->topicPartitions as $topic => $partitions) {
             $topicLength = strlen($topic);
-            $payload    .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            /** @var OffsetFetchResponsePartition $partition */
+            $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
+            /** @var OffsetCommitResponsePartition $partition */
             foreach ($partitions as $partition) {
                 $payload .= (string) $partition;
             }
