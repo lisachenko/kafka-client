@@ -34,6 +34,14 @@ class ProduceResponse extends AbstractResponse
     public $topics;
 
     /**
+     * Duration in milliseconds for which the request was throttled due to quota violation. (Zero if the request did not violate any quota).
+     *
+     * @var integer
+     * @since Version 1 of protocol
+     */
+    public $throttleTime;
+
+    /**
      * Method to unpack the payload for the record
      *
      * @param AbstractProtocolMessage|static $self   Instance of current frame
@@ -58,6 +66,8 @@ class ProduceResponse extends AbstractResponse
             }
 
         }
+        $self->throttleTime = $stream->read('NthrottleTime')['throttleTime'];
+
         return $self;
     }
 }
