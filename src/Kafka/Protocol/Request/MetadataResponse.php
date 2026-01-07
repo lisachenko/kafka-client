@@ -54,9 +54,9 @@ class MetadataResponse extends AbstractResponse
         [$self->correlationId, $numberOfBrokers] = array_values($stream->read('NcorrelationId/NnumberOfBrokers'));
 
         for ($broker = 0; $broker < $numberOfBrokers; $broker++) {
-            $brokerMetadata = Node::unpack($stream);
+            $brokerNode = Node::unpack($stream);
 
-            $self->brokers[$brokerMetadata->nodeId] = $brokerMetadata;
+            $self->brokers[$brokerNode->nodeId] = $brokerNode;
         }
         $numberOfTopics = $stream->read('NnumberOfTopics')['numberOfTopics'];
 
