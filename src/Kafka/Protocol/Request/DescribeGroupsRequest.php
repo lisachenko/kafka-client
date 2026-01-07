@@ -37,7 +37,7 @@ class DescribeGroupsRequest extends AbstractRequest
         $correlationId = 0,
         $clientId = ''
     ) {
-        parent::__construct(ApiKeys::DESCRIBE_GROUPS, $correlationId, $clientId);
+        parent::__construct(ApiKeys::DESCRIBE_GROUPS, $correlationId, $clientId, ApiKeys::VERSION_0);
     }
 
     /**

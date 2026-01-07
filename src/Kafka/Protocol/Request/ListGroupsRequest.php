@@ -33,6 +33,6 @@ class ListGroupsRequest extends AbstractRequest
      */
     public function __construct($correlationId = 0, $clientId = '')
     {
-        parent::__construct(ApiKeys::LIST_GROUPS, $correlationId, $clientId);
+        parent::__construct(ApiKeys::LIST_GROUPS, $correlationId, $clientId, ApiKeys::VERSION_0);
     }
 }
