@@ -46,6 +46,14 @@ class Node
     public $port;
 
     /**
+     * The rack of the broker.
+     *
+     * @var string
+     * @since Version 1 of protocol
+     */
+    public $rack;
+
+    /**
      * Unpacks the DTO from the binary buffer
      *
      * @param Stream $stream Binary buffer
@@ -57,6 +65,8 @@ class Node
         $brokerMetadata = new static();
         [$brokerMetadata->nodeId, $hostLength] = array_values($stream->read('NnodeId/nhostLength'));
         [$brokerMetadata->host, $brokerMetadata->port] = array_values($stream->read("a{$hostLength}host/Nport"));
+
+        $brokerMetadata->rack = $stream->readString();
 
         return $brokerMetadata;
     }

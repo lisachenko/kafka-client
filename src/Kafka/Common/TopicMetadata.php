@@ -39,6 +39,14 @@ class TopicMetadata
     public $topic;
 
     /**
+     * Indicates if the topic is considered a ApiKeys internal topic
+     *
+     * @var boolean
+     * @since Version 1 of protocol
+     */
+    public $isInternal;
+
+    /**
      * Metadata for each partition of the topic.
      *
      * @var PartitionMetadata[]|array
@@ -56,7 +64,7 @@ class TopicMetadata
     {
         $topic = new static();
         [$topic->topicErrorCode, $topicLength] = array_values($stream->read('ntopicErrorCode/ntopicLength'));
-        [$topic->topic, $numberOfPartitions] = array_values($stream->read("a{$topicLength}topic/NnumberOfPartition"));
+        [$topic->topic, $topic->isInternal, $numberOfPartitions] = array_values($stream->read("a{$topicLength}topic/cisInternal/NnumberOfPartition"));
 
         for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
             $partitionMetadata = PartitionMetadata::unpack($stream);
