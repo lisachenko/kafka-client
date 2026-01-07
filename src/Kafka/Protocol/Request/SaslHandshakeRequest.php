@@ -34,7 +34,7 @@ class SaslHandshakeRequest extends AbstractRequest
         $correlationId = 0,
         $clientId = ''
     ) {
-        parent::__construct(ApiKeys::SASL_HANDSHAKE, $correlationId, $clientId);
+        parent::__construct(ApiKeys::SASL_HANDSHAKE, $correlationId, $clientId, ApiKeys::VERSION_0);
     }
 
     /**

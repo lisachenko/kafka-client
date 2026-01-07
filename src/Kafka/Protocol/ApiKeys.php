@@ -20,6 +20,11 @@ namespace Protocol\Kafka\Protocol;
 class ApiKeys
 {
     /**
+     * Protocol version 0 implementation
+     */
+    public const VERSION_0 = 0;
+
+    /**
      * Protocol version implementation
      */
     public const VERSION = 1;
