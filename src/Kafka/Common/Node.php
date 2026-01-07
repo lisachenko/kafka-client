@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Common;
 use Protocol\Kafka\IO\Stream;
 
 /**
- * Broker metadata DTO
+ * Information about a ApiKeys node
  */
 class Node
 {
