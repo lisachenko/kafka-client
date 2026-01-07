@@ -33,6 +33,7 @@ class OffsetCommitRequest extends AbstractRequest
      * @param string $consumerGroup
      * @param int $generationId
      * @param string $memberName
+     * @param int $retentionTime
      */
     public function __construct(
         /**
@@ -51,12 +52,17 @@ class OffsetCommitRequest extends AbstractRequest
          * @since Version 1 of protocol
          */
         private $memberName,
+        /**
+         * Time period in ms to retain the offset.
+         *
+         * @since Version 2 of protocol
+         */
+        private $retentionTime,
         private readonly array $topicPartitions,
         $correlationId = 0,
         $clientId = ''
     ) {
         parent::__construct(ApiKeys::OFFSET_COMMIT, $correlationId, $clientId);
-
     }
 
     /**
@@ -70,12 +76,13 @@ class OffsetCommitRequest extends AbstractRequest
         $totalTopics  = count($this->topicPartitions);
 
         $payload .= pack(
-            "na{$groupLength}Nna{$memberLength}N",
+            "na{$groupLength}Nna{$memberLength}JN",
             $groupLength,
             $this->consumerGroup,
             $this->generationId,
             $memberLength,
             $this->memberName,
+            $this->retentionTime,
             $totalTopics
         );
 

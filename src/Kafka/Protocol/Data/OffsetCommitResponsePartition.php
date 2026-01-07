@@ -39,13 +39,6 @@ class OffsetCommitResponsePartition implements \Stringable
     public $offset;
 
     /**
-     * Timestamp of the commit
-     *
-     * @var integer
-     */
-    public $timestamp;
-
-    /**
      * Any associated metadata the client wants to keep.
      *
      * @var string
@@ -72,7 +65,7 @@ class OffsetCommitResponsePartition implements \Stringable
     public static function unpack(Stream $stream): static
     {
         $partition = new static();
-        [$partition->partition, $partition->offset, $partition->timestamp, $metadataLength] = array_values($stream->read('Npartition/Joffset/Jtimestamp/nmetadataLength'));
+        [$partition->partition, $partition->offset, $metadataLength] = array_values($stream->read('Npartition/Joffset/nmetadataLength'));
         $metadataLength = $metadataLength < 0x8000 ? $metadataLength : 0;
         [$partition->metadata, $partition->errorCode] = array_values($stream->read("a{$metadataLength}metadata/nerrorCode"));
 
@@ -83,10 +76,9 @@ class OffsetCommitResponsePartition implements \Stringable
     {
         $metadataLength = strlen($this->metadata);
         $payload        = pack(
-            "NJJna{$metadataLength}",
+            "NJna{$metadataLength}",
             $this->partition,
             $this->offset,
-            $this->timestamp,
             $metadataLength ?: -1,
             $this->metadata
         );
