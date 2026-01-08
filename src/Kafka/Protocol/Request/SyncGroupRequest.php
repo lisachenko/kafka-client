@@ -50,10 +50,10 @@ class SyncGroupRequest extends AbstractRequest
          * List of group member assignments
          */
         private readonly array $groupAssignments = [],
-        $correlationId = 0,
-        $clientId = ''
+        $clientId = '',
+        $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::SYNC_GROUP, $correlationId, $clientId, ApiKeys::VERSION_0);
+        parent::__construct(ApiKeys::SYNC_GROUP, $clientId, $correlationId, ApiKeys::VERSION_0);
     }
 
     /**

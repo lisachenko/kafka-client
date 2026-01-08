@@ -38,10 +38,10 @@ class OffsetFetchRequest extends AbstractRequest
      */
         private $consumerGroup,
         private readonly array $topicPartitions,
-        $correlationId = 0,
-        $clientId = ''
+        $clientId = '',
+        $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::OFFSET_FETCH, $correlationId, $clientId);
+        parent::__construct(ApiKeys::OFFSET_FETCH, $clientId, $correlationId);
     }
 
     /**

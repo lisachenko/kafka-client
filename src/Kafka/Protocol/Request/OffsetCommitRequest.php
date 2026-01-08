@@ -52,11 +52,11 @@ class OffsetCommitRequest extends AbstractRequest
          */
         private $memberName,
         private readonly array $topicPartitions,
-        $correlationId = 0,
-        $clientId = ''
+        $clientId = '',
+        $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::OFFSET_COMMIT, $correlationId, $clientId);
 
+        parent::__construct(ApiKeys::OFFSET_COMMIT, $clientId, $correlationId);
     }
 
     /**

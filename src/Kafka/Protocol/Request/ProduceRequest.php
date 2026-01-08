@@ -35,9 +35,9 @@ class ProduceRequest extends AbstractRequest
      * @param int $requiredAcks
      * @param int $timeout
      */
-    public function __construct(private readonly array $topicMessages, private $requiredAcks = 1, private $timeout = 0, $correlationId = 0, $clientId = '')
+    public function __construct(private readonly array $topicMessages, private $requiredAcks = 1, private $timeout = 0, $clientId = '', $correlationId = 0)
     {
-        parent::__construct(ApiKeys::PRODUCE, $correlationId, $clientId);
+        parent::__construct(ApiKeys::PRODUCE, $clientId, $correlationId);
     }
 
     /**
