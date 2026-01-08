@@ -34,10 +34,10 @@ class DescribeGroupsRequest extends AbstractRequest
      * List of groups to describe
      */
         private readonly array $groups,
-        $correlationId = 0,
-        $clientId = ''
+        $clientId = '',
+        $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::DESCRIBE_GROUPS, $correlationId, $clientId);
+        parent::__construct(ApiKeys::DESCRIBE_GROUPS, $clientId, $correlationId);
     }
 
     /**

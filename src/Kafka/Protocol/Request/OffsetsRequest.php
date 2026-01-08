@@ -57,10 +57,10 @@ class OffsetsRequest extends AbstractRequest
          * is accepted to allow a non-broker to issue fetch requests as if it were a replica broker for debugging purposes.
          */
         private $replicaId = -1,
-        $correlationId = 0,
-        $clientId = ''
+        $clientId = '',
+        $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::OFFSETS, $correlationId, $clientId);
+        parent::__construct(ApiKeys::OFFSETS, $clientId, $correlationId);
     }
 
     /**

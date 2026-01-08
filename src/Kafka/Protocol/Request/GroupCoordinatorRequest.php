@@ -34,10 +34,10 @@ class GroupCoordinatorRequest extends AbstractRequest
      * The consumer group id.
      */
         private $consumerGroup,
-        $correlationId = 0,
-        $clientId = ''
+        $clientId = '',
+        $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::GROUP_COORDINATOR, $correlationId, $clientId);
+        parent::__construct(ApiKeys::GROUP_COORDINATOR, $clientId, $correlationId);
     }
 
     /**

@@ -43,10 +43,10 @@ class HeartbeatRequest extends AbstractRequest
      * The member id assigned by the group coordinator.
      */
         private $memberId,
-        $correlationId = 0,
-        $clientId = ''
+        $clientId = '',
+        $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::HEARTBEAT, $correlationId, $clientId);
+        parent::__construct(ApiKeys::HEARTBEAT, $clientId, $correlationId);
     }
 
     /**
