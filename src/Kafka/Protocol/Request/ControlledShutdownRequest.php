@@ -32,10 +32,10 @@ class ControlledShutdownRequest extends AbstractRequest
      * Broker identifier to shutdown
      */
         private $brokerId,
-        $correlationId = 0,
-        $clientId = ''
+        $clientId = '',
+        $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::CONTROLLED_SHUTDOWN, $correlationId, $clientId, ApiKeys::VERSION_1);
+        parent::__construct(ApiKeys::CONTROLLED_SHUTDOWN, $clientId, $correlationId, ApiKeys::VERSION_1);
     }
 
     /**

@@ -26,27 +26,38 @@ use Protocol\Kafka\Protocol\ApiKeys;
 abstract class AbstractRequest extends AbstractProtocolMessage
 {
     /**
+     * A user-supplied integer value that will be passed back with the response (INT32)
+     *
+     * @var integer
+     */
+    protected $correlationId;
+
+    /**
+     * Global request counter, ideally this should be stored somewhere in the shared config to survive between requests
+     */
+    private static int $counter = 0;
+
+    /**
      * @param int $apiKey
      * @param int $apiVersion
-     * @param int $correlationId
      * @param string $clientId
      */
     public function __construct(/**
      * The id of the request type. (INT16)
      */
         protected $apiKey, /**
-     * A user-supplied integer value that will be passed back with the response (INT32)
-     */
-        protected $correlationId = 0, /**
      * A user specified identifier for the client making the request.
      */
-        protected $clientId = '', /**
+        protected $clientId = '',
+        $correlationId = 0, /**
      * The version of the API. (INT16)
      *
      * @see ApiKeys::VERSION constant value
      */
         protected $apiVersion = ApiKeys::VERSION
     ) {
+        $this->correlationId = $correlationId ?: self::$counter++;
+
         $this->setMessageData($this->packPayload());
     }
 

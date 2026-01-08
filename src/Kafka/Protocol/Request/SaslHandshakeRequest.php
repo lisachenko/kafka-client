@@ -31,10 +31,10 @@ class SaslHandshakeRequest extends AbstractRequest
      * SASL Mechanism chosen by the client.
      */
         private $mechanism,
-        $correlationId = 0,
-        $clientId = ''
+        $clientId = '',
+        $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::SASL_HANDSHAKE, $correlationId, $clientId, ApiKeys::VERSION_0);
+        parent::__construct(ApiKeys::SASL_HANDSHAKE, $clientId, $correlationId, ApiKeys::VERSION_0);
     }
 
     /**
