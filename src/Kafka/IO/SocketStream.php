@@ -19,19 +19,55 @@ namespace Protocol\Kafka\IO;
 
 use Protocol\Kafka\Common\Errors\NetworkException;
 
+/**
+ * Implementation of simple socket stream
+ */
 class SocketStream extends AbstractStream
 {
     /**
-     * Socket stream constructor.
+     * Internal socket
      *
-     * @param string $streamSocket Socket resource
+     * @var resource
      */
-    public function __construct(
-        /**
-         * Internal socket
-         */
-        private $streamSocket
-    ) {}
+    protected $streamSocket;
+
+    /**
+     * Host name
+     */
+    protected string $host;
+
+    /**
+     * Port number
+     *
+     * @var integer
+     */
+    protected $port;
+
+    /**
+     * Timeout for connection
+     *
+     * @var integer
+     */
+    protected $timeout;
+
+    /**
+     * Socket stream constructor
+     *
+     * @param string $tcpAddress Tcp address for connection
+     * @param integer|null $connectionTimeout Connection timeout in seconds or null for using the default value
+     */
+    public function __construct($tcpAddress, $connectionTimeout = 1)
+    {
+        $tcpInfo = parse_url($tcpAddress);
+        if ($tcpInfo === false || !isset($tcpInfo['host'])) {
+            throw new NetworkException("Malformed tcp address: {$tcpAddress}, please check your configuration");
+        }
+        $this->host    = $tcpInfo['host'];
+        $this->port    = $tcpInfo['port'] ?? 9092;
+        $this->timeout = $connectionTimeout ?? ini_get("default_socket_timeout");
+
+        $this->connect();
+    }
 
     /**
      * Writes arguments to the stream
@@ -79,5 +115,36 @@ class SocketStream extends AbstractStream
         $arguments = unpack($format, $streamBuffer);
 
         return $arguments;
+    }
+
+    /**
+     * Automatic resource clean up
+     */
+    final public function __destruct()
+    {
+        $this->disconnect();
+    }
+
+    /**
+     * Performs connection to the specified socket address
+     */
+    protected function connect()
+    {
+        $streamSocket = @fsockopen($this->host, $this->port, $errorNumber, $errorString, $this->timeout);
+        if (!$streamSocket) {
+            throw new NetworkException("Socket error {$errorNumber}: {$errorString}");
+        }
+
+        $this->streamSocket = $streamSocket;
+    }
+
+    /**
+     * Performs the disconnect operation
+     */
+    protected function disconnect()
+    {
+        if (is_resource($this->streamSocket)) {
+            fclose($this->streamSocket);
+        }
     }
 }
