@@ -110,6 +110,11 @@ class KafkaConsumer
     private $lastHearbeatMs;
 
     /**
+     * Last commit time in ms
+     */
+    private ?int $lastAutoCommitMs = null;
+
+    /**
      * Default configuration for producer
      */
     private static array $defaultConfiguration = [
@@ -126,6 +131,7 @@ class KafkaConsumer
         ConsumerConfig::REQUEST_TIMEOUT_MS            => 2000,
         ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 2000,
         ConsumerConfig::ENABLE_AUTO_COMMIT            => true,
+        ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
 
         ConsumerConfig::SSL_KEY_PASSWORD          => null,
         ConsumerConfig::SSL_KEYSTORE_LOCATION     => null,
@@ -255,7 +261,10 @@ class KafkaConsumer
         $this->topicPartitionOffsets = array_replace_recursive($this->topicPartitionOffsets, $resultOffsets);
 
         if ($this->configuration[ConsumerConfig::ENABLE_AUTO_COMMIT]) {
-            $this->commitSync();
+            if (($milliSeconds - $this->lastAutoCommitMs) > $this->configuration[ConsumerConfig::AUTO_COMMIT_INTERVAL_MS]) {
+                $this->commitSync();
+                $this->lastAutoCommitMs = $milliSeconds;
+            }
         }
 
         return $result;
