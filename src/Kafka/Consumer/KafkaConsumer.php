@@ -24,6 +24,7 @@ use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
@@ -109,6 +110,11 @@ class KafkaConsumer
     private $lastHearbeatMs;
 
     /**
+     * Last commit time in ms
+     */
+    private ?int $lastAutoCommitMs = null;
+
+    /**
      * Default configuration for producer
      */
     private static array $defaultConfiguration = [
@@ -123,8 +129,9 @@ class KafkaConsumer
         ConsumerConfig::MAX_PARTITION_FETCH_BYTES     => 65536,
         ConsumerConfig::AUTO_OFFSET_RESET             => OffsetResetStrategy::LATEST,
         ConsumerConfig::REQUEST_TIMEOUT_MS            => 2000,
-        ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 1000,
-
+        ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 2000,
+        ConsumerConfig::ENABLE_AUTO_COMMIT            => true,
+        ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
 
         ConsumerConfig::SSL_KEY_PASSWORD          => null,
         ConsumerConfig::SSL_KEYSTORE_LOCATION     => null,
@@ -162,12 +169,11 @@ class KafkaConsumer
     {
         $unknownTopics = array_diff($this->subscription->topics, array_keys($topicPartitions));
         if ($unknownTopics !== []) {
-            $unknownTopics = implode(', ', $unknownTopics);
-            throw new UnknownTopicOrPartitionException("Can not set partitions for non-subscribed topics: {$unknownTopics}");
+            throw new UnknownTopicOrPartitionException(['unknownTopics' => $unknownTopics]);
         }
         $this->assignedTopicPartitions = $topicPartitions;
 
-        $topicPartitionOffsets = $this->client->fetchOffsets(
+        $topicPartitionOffsets = $this->client->fetchGroupOffsets(
             $this->coordinator,
             $this->configuration[ConsumerConfig::GROUP_ID],
             $topicPartitions
@@ -194,13 +200,13 @@ class KafkaConsumer
     {
         $topicPartitionOffsets ??= $this->topicPartitionOffsets;
 
-        $this->client->commitOffsets(
+        $this->client->commitGroupOffsets(
             $this->coordinator,
             $this->configuration[ConsumerConfig::GROUP_ID],
             $topicPartitionOffsets
         );
 
-        // TODO: update current value of $this->topicPartitionOffsets
+        $this->topicPartitionOffsets = $topicPartitionOffsets;
     }
 
     /**
@@ -246,9 +252,20 @@ class KafkaConsumer
 
         $activeTopicPartitionOffsets = $this->topicPartitionOffsets;
         foreach ($this->pausedTopicPartitions as $topic => $partitions) {
+            // This can be optimized in pause()/resume methods
             $activeTopicPartitionOffsets[$topic] = array_diff($activeTopicPartitionOffsets[$topic], $partitions);
         }
         $result = $this->client->fetch($activeTopicPartitionOffsets, $timeout);
+
+        $resultOffsets = $this->fetchResultOffsets($result);
+        $this->topicPartitionOffsets = array_replace_recursive($this->topicPartitionOffsets, $resultOffsets);
+
+        if ($this->configuration[ConsumerConfig::ENABLE_AUTO_COMMIT]) {
+            if (($milliSeconds - $this->lastAutoCommitMs) > $this->configuration[ConsumerConfig::AUTO_COMMIT_INTERVAL_MS]) {
+                $this->commitSync();
+                $this->lastAutoCommitMs = $milliSeconds;
+            }
+        }
 
         return $result;
     }
@@ -264,7 +281,7 @@ class KafkaConsumer
     public function position($topic, $partition): int|float
     {
         if (!isset($this->assignedTopicPartitions[$topic][$partition])) {
-            throw new UnknownTopicOrPartitionException("Consumer was not assigned to the {$topic}:{$partition}");
+            throw new UnknownTopicOrPartitionException(['topic' => $topic, 'partition' => $partition]);
         }
 
         return $this->topicPartitionOffsets[$topic][$partition] + 1;
@@ -294,7 +311,7 @@ class KafkaConsumer
     public function seek($topic, $partition, $offset): void
     {
         if (!isset($this->assignedTopicPartitions[$topic][$partition])) {
-            throw new UnknownTopicOrPartitionException("Consumer was not assigned to the {$topic}:{$partition}");
+            throw new UnknownTopicOrPartitionException(['topic' => $topic, 'partition' => $partition]);
         }
         $this->topicPartitionOffsets[$topic][$partition] = $offset;
     }
@@ -387,14 +404,25 @@ class KafkaConsumer
      */
     public function unsubscribe(): void
     {
-        $result = $this->client->leaveGroup(
-            $this->coordinator,
-            $this->configuration[ConsumerConfig::GROUP_ID],
-            $this->memberId
-        );
-        unset($this->subscription);
+        if (!empty($this->subscription)) {
+            $this->client->leaveGroup(
+                $this->coordinator,
+                $this->configuration[ConsumerConfig::GROUP_ID],
+                $this->memberId
+            );
+            unset($this->subscription);
+        }
+
         $this->assignedTopicPartitions = [];
         $this->topicPartitionOffsets   = [];
+    }
+
+    /**
+     * Automatic consumer destruction should invoke unsubscription process
+     */
+    public function __destruct()
+    {
+        $this->unsubscribe();
     }
 
     /**
@@ -425,8 +453,10 @@ class KafkaConsumer
      *
      * @return array Existing or adjusted offsets (reloaded from the Kafka)
      */
-    protected function autoResetOffsets(array $topicPartitionOffsets)
+    protected function autoResetOffsets(array $topicPartitionOffsets): array
     {
+        $result = $topicPartitionOffsets;
+
         $unknownTopicPartitions = [];
         foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
             $unknownPartitionOffsets = array_keys($partitionOffsets, -1, true);
@@ -435,13 +465,15 @@ class KafkaConsumer
             }
         }
         if ($unknownTopicPartitions === []) {
-            return $this->topicPartitionOffsets;
+            return $result;
         }
-        return match ($this->configuration[ConsumerConfig::AUTO_OFFSET_RESET]) {
-            'latest' => $this->fetchOffsetAndSeek($unknownTopicPartitions, OffsetsRequest::LATEST),
-            'earliest' => $this->fetchOffsetAndSeek($unknownTopicPartitions, OffsetsRequest::EARLIEST),
-            default => throw new OffsetOutOfRangeException("Can not reliable determine consumer partition offsets"),
+        $fetchedOffsets = match ($this->configuration[ConsumerConfig::AUTO_OFFSET_RESET]) {
+            OffsetResetStrategy::LATEST => $this->fetchOffsetAndSeek($unknownTopicPartitions, OffsetsRequest::LATEST),
+            OffsetResetStrategy::EARLIEST => $this->fetchOffsetAndSeek($unknownTopicPartitions, OffsetsRequest::EARLIEST),
+            default => throw new OffsetOutOfRangeException(['unknownTopicPartitions' => $unknownTopicPartitions]),
         };
+
+        return array_replace_recursive($topicPartitionOffsets, $fetchedOffsets);
     }
 
     /**
@@ -452,25 +484,48 @@ class KafkaConsumer
      *
      * @return array
      */
-    protected function fetchOffsetAndSeek(array $topicPartitions, $requestType): array
+    protected function fetchOffsetAndSeek(array $topicPartitions, $requestType)
     {
         $topicPartitionOffsetsRequest = [];
 
         $unknownTopics = array_diff_key($topicPartitions, $this->assignedTopicPartitions);
         if ($unknownTopics !== []) {
-            $unknownTopics = implode(', ', $unknownTopics);
-            throw new UnknownTopicOrPartitionException('Consumer was not assigned to the ' . $unknownTopics . ' topics');
+            throw new UnknownTopicOrPartitionException(['unknownTopics' => $unknownTopics]);
         }
         foreach ($topicPartitions as $topic => $partitions) {
             $unknownPartitions = array_diff($partitions, $this->assignedTopicPartitions[$topic]);
             if ($unknownPartitions !== []) {
-                $partitionsString = implode(', ', $unknownPartitions);
-                throw new UnknownTopicOrPartitionException("Consumer was not assigned to the {$topic}:{$partitionsString}");
+                throw new UnknownTopicOrPartitionException(['topic' => $topic, 'unknownPartitions' => $unknownPartitions]);
             }
             $topicPartitionOffsetsRequest[$topic] = array_fill_keys($partitions, $requestType);
         }
-        $topicPartitionOffsets = $this->client->offsets($topicPartitionOffsetsRequest);
+        $topicPartitionOffsets = $this->client->fetchTopicPartitionOffsets($topicPartitionOffsetsRequest);
 
-        return array_replace_recursive($this->topicPartitionOffsets, $topicPartitionOffsets);
+        return $topicPartitionOffsets;
+    }
+
+    /**
+     * This methods looks for the offsets in the returned MessageSets and returns them incremented
+     *
+     * @param array $fetchResult Result from FetchResponse->topics
+     *
+     * @return array Last offsets, returned from the poll()
+     */
+    protected function fetchResultOffsets(array $fetchResult): array
+    {
+        $result = [];
+
+        foreach ($fetchResult as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $messageSet) {
+                if (empty($messageSet)) {
+                    continue;
+                }
+                /** @var RecordBatch $lastMessage */
+                $lastMessage = end($messageSet);
+                $result[$topic][$partitionId] = $lastMessage->offset + 1;
+            }
+        }
+
+        return $result;
     }
 }

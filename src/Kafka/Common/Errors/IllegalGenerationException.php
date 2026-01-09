@@ -20,5 +20,5 @@ use Exception;
  */
 class IllegalGenerationException extends KafkaException
 {
-    public function __construct($message, ?Exception $previous = null) {}
+    public function __construct(array $context, ?Exception $previous = null) {}
 }
