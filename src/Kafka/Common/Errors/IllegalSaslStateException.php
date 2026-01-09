@@ -18,7 +18,7 @@ use Exception;
 /**
  * Request is not valid given the current SASL state.
  */
-class IllegalSaslStateException extends \RuntimeException implements KafkaException
+class IllegalSaslStateException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

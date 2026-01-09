@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Common\Errors;
  * These can be translated by the client into exceptions or whatever the appropriate error handling mechanism in the
  * client language.
  */
-interface KafkaException
+class KafkaException extends \RuntimeException
 {
     public const UNKNOWN = -1;
 
@@ -58,4 +58,67 @@ interface KafkaException
     public const UNSUPPORTED_SASL_MECHANISM       = 33;
     public const ILLEGAL_SASL_STATE               = 34;
     public const UNSUPPORTED_VERSION              = 35;
+
+    /**
+     * Mapping from the codes to class names
+     *
+     * @var array
+     */
+    private static $codeToClassMap = [
+        self::OFFSET_OUT_OF_RANGE              => OffsetOutOfRangeException::class,
+        self::CORRUPT_MESSAGE                  => CorruptMessageException::class,
+        self::UNKNOWN_TOPIC_OR_PARTITION       => UnknownTopicOrPartitionException::class,
+        self::INVALID_FETCH_SIZE               => InvalidFetchSizeException::class,
+        self::LEADER_NOT_AVAILABLE             => LeaderNotAvailableException::class,
+        self::NOT_LEADER_FOR_PARTITION         => NotLeaderForPartitionException::class,
+        self::REQUEST_TIMED_OUT                => RequestTimedOutException::class,
+        self::BROKER_NOT_AVAILABLE             => BrokerNotAvailableException::class,
+        self::REPLICA_NOT_AVAILABLE            => ReplicaNotAvailableException::class,
+        self::MESSAGE_TOO_LARGE                => MessageTooLargeException::class,
+        self::STALE_CONTROLLER_EPOCH           => StaleControllerEpochException::class,
+        self::OFFSET_METADATA_TOO_LARGE        => OffsetMetadataTooLargeException::class,
+        self::NETWORK_EXCEPTION                => NetworkException::class,
+        self::GROUP_LOAD_IN_PROGRESS           => GroupLoadInProgressException::class,
+        self::GROUP_COORDINATOR_NOT_AVAILABLE  => GroupCoordinatorNotAvailableException::class,
+        self::NOT_COORDINATOR_FOR_GROUP        => NotCoordinatorForGroupException::class,
+        self::INVALID_TOPIC_EXCEPTION          => InvalidTopicException::class,
+        self::RECORD_LIST_TOO_LARGE            => RecordListTooLargeException::class,
+        self::NOT_ENOUGH_REPLICAS              => NotEnoughReplicasException::class,
+        self::NOT_ENOUGH_REPLICAS_AFTER_APPEND => NotEnoughReplicasAfterAppendException::class,
+        self::INVALID_REQUIRED_ACKS            => InvalidRequiredAcksException::class,
+        self::ILLEGAL_GENERATION               => IllegalGenerationException::class,
+        self::INCONSISTENT_GROUP_PROTOCOL      => InconsistentGroupProtocolException::class,
+        self::INVALID_GROUP_ID                 => InvalidGroupIdException::class,
+        self::UNKNOWN_MEMBER_ID                => UnknownMemberIdException::class,
+        self::INVALID_SESSION_TIMEOUT          => InvalidSessionTimeoutException::class,
+        self::REBALANCE_IN_PROGRESS            => RebalanceInProgressException::class,
+        self::INVALID_COMMIT_OFFSET_SIZE       => InvalidCommitOffsetSizeException::class,
+        self::TOPIC_AUTHORIZATION_FAILED       => TopicAuthorizationFailedException::class,
+        self::GROUP_AUTHORIZATION_FAILED       => GroupAuthorizationFailedException::class,
+        self::CLUSTER_AUTHORIZATION_FAILED     => ClusterAuthorizationFailedException::class,
+        self::INVALID_TIMESTAMP                => InvalidTimestampException::class,
+        self::UNSUPPORTED_SASL_MECHANISM       => UnsupportedSaslMechanismException::class,
+        self::ILLEGAL_SASL_STATE               => IllegalSaslStateException::class,
+        self::UNSUPPORTED_VERSION              => UnsupportedVersionException::class,
+    ];
+
+    /**
+     * Creates an instance of exception by error code
+     *
+     * @param integer $errorCode Error code from the Kafka
+     * @param string $message Exception message
+     * @param \Exception|null $previous
+     *
+     * @return KafkaException
+     */
+    final public static function fromCode($errorCode, $message = '', ?\Exception $previous = null)
+    {
+        if (!isset(self::$codeToClassMap[$errorCode])) {
+            return new self("Unknown error code type: {$errorCode}. Information: {$message}", $errorCode, $previous);
+        }
+
+        $exceptionClass = self::$codeToClassMap[$errorCode];
+
+        return new $exceptionClass($message, $previous);
+    }
 }

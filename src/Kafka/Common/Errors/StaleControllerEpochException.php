@@ -18,7 +18,7 @@ use Exception;
 /**
  * The controller moved to another broker.
  */
-class StaleControllerEpochException extends \RuntimeException implements KafkaException
+class StaleControllerEpochException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null)
     {
