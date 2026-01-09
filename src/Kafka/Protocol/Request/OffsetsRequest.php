@@ -39,7 +39,7 @@ class OffsetsRequest extends AbstractRequest
     /**
      * Special value for receiving the earliest available offset
      */
-    public const EARLIEST = -1;
+    public const EARLIEST = -2;
 
     /**
      * @param int $replicaId
