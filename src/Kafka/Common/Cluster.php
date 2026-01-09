@@ -12,7 +12,7 @@
 declare(strict_types=1);
 /**
  * @author Alexander.Lisachenko
- * @date   29.07.2014
+ * @date   29.07.2016
  */
 
 namespace Protocol\Kafka\Common;
