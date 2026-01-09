@@ -18,7 +18,7 @@ use Exception;
 /**
  * The coordinator is not aware of this member.
  */
-class UnknownMemberIdException extends \RuntimeException implements KafkaException
+class UnknownMemberIdException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

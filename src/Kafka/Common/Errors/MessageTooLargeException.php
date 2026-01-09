@@ -18,7 +18,7 @@ use Exception;
 /**
  * The request included a message larger than the max message size the server will accept.
  */
-class MessageTooLargeException extends \RuntimeException implements KafkaException
+class MessageTooLargeException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null)
     {

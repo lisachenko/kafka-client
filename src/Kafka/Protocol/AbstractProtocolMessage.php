@@ -83,7 +83,7 @@ class AbstractProtocolMessage implements \Stringable
      *
      * @param $data
      */
-    public function setMessageData($data): void
+    final protected function setMessageData($data)
     {
         $this->messageData = $data;
         $this->messageSize = strlen($this->messageData);
@@ -94,7 +94,7 @@ class AbstractProtocolMessage implements \Stringable
      *
      * @return string
      */
-    public function getMessageData()
+    final protected function getMessageData()
     {
         return $this->messageData;
     }
@@ -104,7 +104,7 @@ class AbstractProtocolMessage implements \Stringable
      *
      * @return int
      */
-    final public function getMessageSize()
+    final protected function getMessageSize()
     {
         return $this->messageSize;
     }

@@ -18,7 +18,7 @@ use Exception;
 /**
  * The configured groupId is invalid
  */
-class InvalidGroupIdException extends \RuntimeException implements KafkaException
+class InvalidGroupIdException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

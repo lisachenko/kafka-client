@@ -18,7 +18,7 @@ use Exception;
 /**
  * Messages are rejected since there are fewer in-sync replicas than required.
  */
-class NotEnoughReplicasException extends \RuntimeException implements KafkaException, RetriableException
+class NotEnoughReplicasException extends KafkaException implements RetriableException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

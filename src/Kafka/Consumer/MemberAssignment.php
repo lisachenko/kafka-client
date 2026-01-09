@@ -109,6 +109,6 @@ class MemberAssignment implements \Stringable
         $payload .= pack('N', strlen($this->userData));
         $payload .= $this->userData;
 
-        return pack('N', crc32($payload)) . $payload;
+        return $payload;
     }
 }

@@ -18,7 +18,7 @@ use Exception;
 /**
  * The coordinator is loading and hence can't process requests for this group.
  */
-class GroupLoadInProgressException extends \RuntimeException implements KafkaException, RetriableException
+class GroupLoadInProgressException extends KafkaException implements RetriableException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

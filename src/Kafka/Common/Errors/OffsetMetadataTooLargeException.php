@@ -18,7 +18,7 @@ use Exception;
 /**
  * The metadata field of the offset request was too large.
  */
-class OffsetMetadataTooLargeException extends \RuntimeException implements KafkaException
+class OffsetMetadataTooLargeException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }
