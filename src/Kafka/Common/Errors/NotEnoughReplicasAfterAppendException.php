@@ -18,7 +18,7 @@ use Exception;
 /**
  * Messages are written to the log, but to fewer in-sync replicas than required.
  */
-class NotEnoughReplicasAfterAppendException extends \RuntimeException implements KafkaException, RetriableException
+class NotEnoughReplicasAfterAppendException extends KafkaException implements RetriableException
 {
     public function __construct($message, ?Exception $previous = null)
     {

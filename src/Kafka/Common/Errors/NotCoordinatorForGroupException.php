@@ -18,7 +18,7 @@ use Exception;
 /**
  * This is not the correct coordinator for this group.
  */
-class NotCoordinatorForGroupException extends \RuntimeException implements KafkaException, RetriableException
+class NotCoordinatorForGroupException extends KafkaException implements RetriableException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

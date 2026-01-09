@@ -18,7 +18,7 @@ use Exception;
 /**
  * The version of API is not supported.
  */
-class UnsupportedVersionException extends \RuntimeException implements KafkaException
+class UnsupportedVersionException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

@@ -18,7 +18,7 @@ use Exception;
 /**
  * Produce request specified an invalid value for required acks.
  */
-class InvalidRequiredAcksException extends \RuntimeException implements KafkaException
+class InvalidRequiredAcksException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null)
     {

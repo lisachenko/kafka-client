@@ -20,7 +20,7 @@ use Exception;
  *
  * as configured by group.min.session.timeout.ms and group.max.session.timeout.ms
  */
-class InvalidSessionTimeoutException extends \RuntimeException implements KafkaException
+class InvalidSessionTimeoutException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

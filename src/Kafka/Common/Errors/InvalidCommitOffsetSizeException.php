@@ -18,7 +18,7 @@ use Exception;
 /**
  * The committing offset data size is not valid
  */
-class InvalidCommitOffsetSizeException extends \RuntimeException implements KafkaException
+class InvalidCommitOffsetSizeException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

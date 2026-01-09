@@ -18,7 +18,7 @@ use Exception;
 /**
  * The timestamp of the message is out of acceptable range.
  */
-class InvalidTimestampException extends \RuntimeException implements KafkaException
+class InvalidTimestampException extends KafkaException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

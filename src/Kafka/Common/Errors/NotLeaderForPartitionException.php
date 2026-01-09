@@ -18,7 +18,7 @@ use Exception;
 /**
  * This server is not the leader for that topic-partition.
  */
-class NotLeaderForPartitionException extends \RuntimeException implements KafkaException, RetriableException
+class NotLeaderForPartitionException extends KafkaException implements RetriableException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }

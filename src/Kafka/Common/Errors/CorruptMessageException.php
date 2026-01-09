@@ -18,7 +18,7 @@ use Exception;
 /**
  * This message has failed its CRC checksum, exceeds the valid size, or is otherwise corrupt.
  */
-class CorruptMessageException extends \RuntimeException implements KafkaException, RetriableException
+class CorruptMessageException extends KafkaException implements RetriableException
 {
     public function __construct($message, ?Exception $previous = null) {}
 }
