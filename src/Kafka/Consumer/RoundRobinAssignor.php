@@ -39,6 +39,7 @@ class RoundRobinAssignor implements PartitionAssignorInterface
 {
     /**
      * Perform the group assignment given the member subscriptions and current cluster metadata.
+     *
      * @param Cluster $metadata Current topic/broker metadata known by consumer
      * @param array $subscriptions Subscriptions from all members
      *

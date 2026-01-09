@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Consumer;
 use Protocol\Kafka\IO\Stream;
 
 /**
- * A message in kafka is a key-value pair with a small amount of associated metadata.
+ * Subscription information that is used for the synchronization between consumers
  */
 class Subscription implements \Stringable
 {
