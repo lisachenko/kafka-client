@@ -16,9 +16,9 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * Not authorized to access topics: [Topic authorization failed.]
+ * Not authorized to access topics
  */
 class TopicAuthorizationFailedException extends KafkaException
 {
-    public function __construct($message, ?Exception $previous = null) {}
+    public function __construct(array $context, ?Exception $previous = null) {}
 }

@@ -20,5 +20,5 @@ use Exception;
  */
 class NotEnoughReplicasException extends KafkaException implements RetriableException
 {
-    public function __construct($message, ?Exception $previous = null) {}
+    public function __construct(array $context, ?Exception $previous = null) {}
 }

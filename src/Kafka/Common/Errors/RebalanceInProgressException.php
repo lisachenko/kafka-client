@@ -20,8 +20,8 @@ use Exception;
  */
 class RebalanceInProgressException extends KafkaException
 {
-    public function __construct($message, ?Exception $previous = null)
+    public function __construct(array $context, ?Exception $previous = null)
     {
-        parent::__construct($message, self::REBALANCE_IN_PROGRESS, $previous);
+        parent::__construct($context, self::REBALANCE_IN_PROGRESS, $previous);
     }
 }

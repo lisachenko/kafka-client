@@ -162,8 +162,7 @@ class KafkaConsumer
     {
         $unknownTopics = array_diff($this->subscription->topics, array_keys($topicPartitions));
         if ($unknownTopics !== []) {
-            $unknownTopics = implode(', ', $unknownTopics);
-            throw new UnknownTopicOrPartitionException("Can not set partitions for non-subscribed topics: {$unknownTopics}");
+            throw new UnknownTopicOrPartitionException(['unknownTopics' => $unknownTopics]);
         }
         $this->assignedTopicPartitions = $topicPartitions;
 
@@ -264,7 +263,7 @@ class KafkaConsumer
     public function position($topic, $partition): int|float
     {
         if (!isset($this->assignedTopicPartitions[$topic][$partition])) {
-            throw new UnknownTopicOrPartitionException("Consumer was not assigned to the {$topic}:{$partition}");
+            throw new UnknownTopicOrPartitionException(['topic' => $topic, 'partition' => $partition]);
         }
 
         return $this->topicPartitionOffsets[$topic][$partition] + 1;
@@ -294,7 +293,7 @@ class KafkaConsumer
     public function seek($topic, $partition, $offset): void
     {
         if (!isset($this->assignedTopicPartitions[$topic][$partition])) {
-            throw new UnknownTopicOrPartitionException("Consumer was not assigned to the {$topic}:{$partition}");
+            throw new UnknownTopicOrPartitionException(['topic' => $topic, 'partition' => $partition]);
         }
         $this->topicPartitionOffsets[$topic][$partition] = $offset;
     }
@@ -451,7 +450,7 @@ class KafkaConsumer
         return match ($this->configuration[ConsumerConfig::AUTO_OFFSET_RESET]) {
             'latest' => $this->fetchOffsetAndSeek($unknownTopicPartitions, OffsetsRequest::LATEST),
             'earliest' => $this->fetchOffsetAndSeek($unknownTopicPartitions, OffsetsRequest::EARLIEST),
-            default => throw new OffsetOutOfRangeException("Can not reliable determine consumer partition offsets"),
+            default => throw new OffsetOutOfRangeException(['unknownTopicPartitions' => $unknownTopicPartitions]),
         };
     }
 
