@@ -101,6 +101,6 @@ class Subscription implements \Stringable
         $payload .= pack('N', $userDataLength);
         $payload .= $this->userData;
 
-        return pack('N', crc32($payload)) . $payload;
+        return $payload;
     }
 }
