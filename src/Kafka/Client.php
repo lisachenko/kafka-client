@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka;
 
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\IO\PersistentSocketStream;
@@ -215,7 +216,22 @@ class Client
         return $response;
     }
 
-    public function heartbeat(Node $coordinatorNode, $groupId, $memberId, $generationId)
+    /**
+     * Performs a heartbeat request for the current group
+     *
+     * @param Node    $coordinatorNode Current group coordinator for $groupId
+     * @param string  $groupId Name of the group
+     * @param string  $memberId Name of the group member
+     * @param integer $generationId Current group generation
+     *
+     * @throws ApiKeys\Error\GroupCoordinatorNotAvailable
+     * @throws ApiKeys\Error\NotCoordinatorForGroup
+     * @throws ApiKeys\Error\IllegalGeneration
+     * @throws ApiKeys\Error\UnknownMemberId
+     * @throws ApiKeys\Error\RebalanceInProgress
+     * @throws ApiKeys\Error\GroupAuthorizationFailed
+     */
+    public function heartbeat(Node $coordinatorNode, $groupId, $memberId, $generationId): void
     {
         $stream = $this->connections[$coordinatorNode->nodeId];
 
@@ -227,8 +243,9 @@ class Client
         );
         $request->writeTo($stream);
         $response = HeartbeatResponse::unpack($stream);
-
-        return $response;
+        if ($response->errorCode !== 0) {
+            throw KafkaException::fromCode($response->errorCode);
+        }
     }
 
     public function getGroupCoordinator($groupId)

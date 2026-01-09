@@ -19,6 +19,7 @@ namespace Protocol\Kafka\Consumer;
 
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
@@ -162,7 +163,7 @@ class KafkaConsumer
         $unknownTopics = array_diff($this->subscription->topics, array_keys($topicPartitions));
         if ($unknownTopics !== []) {
             $unknownTopics = implode(', ', $unknownTopics);
-            throw new UnknownTopicOrPartitionException("Can not set partitions for non-subscribed topics: ", $unknownTopics);
+            throw new UnknownTopicOrPartitionException("Can not set partitions for non-subscribed topics: {$unknownTopics}");
         }
         $this->assignedTopicPartitions = $topicPartitions;
 
@@ -397,18 +398,23 @@ class KafkaConsumer
     }
 
     /**
-     * Performs a hearbeat for the group
+     * Performs a heartbeat for the group
      *
      * @param int $heartBeatTimeMs timestamp in ms (microtime(true) * 100)
      */
     protected function heartbeat($heartBeatTimeMs)
     {
-        $this->client->heartbeat(
-            $this->coordinator,
-            $this->configuration[ConsumerConfig::GROUP_ID],
-            $this->memberId,
-            $this->generationId
-        );
+        try {
+            $this->client->heartbeat(
+                $this->coordinator,
+                $this->configuration[ConsumerConfig::GROUP_ID],
+                $this->memberId,
+                $this->generationId
+            );
+        } catch (KafkaException) {
+            // Re-subscribe to the group in the case of failed heartbeat
+            $this->subscribe($this->subscription->topics);
+        }
         $this->lastHearbeatMs = $heartBeatTimeMs; // Expect 64-bit platform PHP
     }
 
