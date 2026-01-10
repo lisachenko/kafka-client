@@ -134,6 +134,7 @@ class KafkaConsumer
         ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
         ConsumerConfig::STREAM_PERSISTENT_CONNECTION  => false,
         ConsumerConfig::STREAM_ASYNC_CONNECT          => false,
+        ConsumerConfig::METADATA_MAX_AGE_MS           => 300000,
 
         ConsumerConfig::SSL_KEY_PASSWORD          => null,
         ConsumerConfig::SSL_KEYSTORE_LOCATION     => null,
@@ -144,7 +145,6 @@ class KafkaConsumer
         ConsumerConfig::SASL_MECHANISM            => 'GSSAPI',
         ConsumerConfig::SECURITY_PROTOCOL         => 'plaintext',
         ConsumerConfig::SEND_BUFFER_BYTES         => 131072,
-        ConsumerConfig::METADATA_MAX_AGE_MS       => 300000,
         ConsumerConfig::RECONNECT_BACKOFF_MS      => 50,
         ConsumerConfig::RETRY_BACKOFF_MS          => 100,
     ];

@@ -64,6 +64,7 @@ class KafkaProducer
         ProducerConfig::CLIENT_ID                    => 'PHP/Kafka',
         ProducerConfig::STREAM_PERSISTENT_CONNECTION => false,
         ProducerConfig::STREAM_ASYNC_CONNECT         => false,
+        ProducerConfig::METADATA_MAX_AGE_MS          => 300000,
 
         ProducerConfig::KEY_SERIALIZER            => null,
         ProducerConfig::VALUE_SERIALIZER          => null,
