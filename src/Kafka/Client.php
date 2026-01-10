@@ -80,7 +80,7 @@ class Client
             );
 
             return $request;
-        }, ProduceResponse::class, function (array $result, ProduceResponse $response): void {
+        }, ProduceResponse::class, function (array $result, ProduceResponse $response): array {
             /** @var ApiKeys\DTO\ProduceResponsePartition[] $partitions */
             foreach ($response->topics as $topic => $partitions) {
                 foreach ($partitions as $partitionId => $partitionInfo) {
@@ -90,7 +90,7 @@ class Client
                     $result[$topic][$partitionId] = $partitionInfo;
                 }
             }
-
+            return $result;
         });
 
         return $result;

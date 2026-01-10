@@ -115,6 +115,39 @@ class KafkaProducer
     }
 
     /**
+     * Invoking this method makes all buffered records immediately available to send and blocks on the completion of
+     * the requests associated with these records.
+     */
+    public function flush()
+    {
+        $result           = null;
+        $this->currentTry = 0;
+
+        while ($this->currentTry <= $this->configuration[ProducerConfig::RETRIES]) {
+            try {
+                $result = $this->client->produce($this->topicPartitionMessages);
+                // TODO: resolve futures or store result for analysis
+                $this->batchSize = 0;
+
+                $this->topicPartitionMessages = [];
+                break;
+            } catch (NotLeaderForPartitionException) {
+                // We just need to reconfigure the cluster, possible current leader is changed
+                $this->cluster->reload();
+            } catch (RetriableException) {
+                $this->cluster->reload();
+                $this->currentTry++;
+            }
+        }
+
+        if ($this->currentTry > $this->configuration[ProducerConfig::RETRIES]) {
+            throw new \RuntimeException("Can not deliver messages to the broker");
+        }
+
+        return $result;
+    }
+
+    /**
      * Gets the partition metadata for the given topic.
      *
      * @param string $topic
@@ -135,11 +168,10 @@ class KafkaProducer
      * @param Record $message Record to send
      * @param integer|null    $concretePartition Optional partition for sending message
      *
-     * @return void
+     * @return array
      */
-    public function send(string $topic, Record $message, $concretePartition = null): void
+    public function send(string $topic, Record $message, $concretePartition = null)
     {
-        $this->currentTry = 0;
         if (isset($concretePartition)) {
             $partition = $concretePartition;
         } else {
@@ -150,28 +182,20 @@ class KafkaProducer
         $this->batchSize++;
 
         if ($this->batchSize < $this->configuration[ProducerConfig::BATCH_SIZE]) {
-            return;
+            // Return nothing, however it would be nice to return a Promise
+            return [];
         }
 
-        while ($this->currentTry <= $this->configuration[ProducerConfig::RETRIES]) {
-            try {
-                $this->client->produce($this->topicPartitionMessages);
-                // TODO: resolve futures or store result for analysis
-                $this->batchSize = 0;
+        return $this->flush();
+    }
 
-                $this->topicPartitionMessages = [];
-                break;
-            } catch (NotLeaderForPartitionException) {
-                // We just need to reconfigure the cluster, possible current leader is changed
-                $this->cluster->reload();
-            } catch (RetriableException) {
-                $this->cluster->reload();
-                $this->currentTry++;
-            }
-        }
-
-        if ($this->currentTry > $this->configuration[ProducerConfig::RETRIES]) {
-            throw new \RuntimeException("Can not deliver messages to the broker");
+    /**
+     * Automatic flushing of all waiting messages, to use async flush, just call fastcgi_finish_request() before
+     */
+    public function __destruct()
+    {
+        if ($this->topicPartitionMessages !== []) {
+            $this->flush();
         }
     }
 }
