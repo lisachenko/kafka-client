@@ -141,7 +141,6 @@ class KafkaConsumer
         ConsumerConfig::SSL_KEYSTORE_PASSWORD     => null,
         ConsumerConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
         ConsumerConfig::RECEIVE_BUFFER_BYTES      => 32768,
-        ConsumerConfig::REQUEST_TIMEOUT_MS        => 30000,
         ConsumerConfig::SASL_MECHANISM            => 'GSSAPI',
         ConsumerConfig::SECURITY_PROTOCOL         => 'plaintext',
         ConsumerConfig::SEND_BUFFER_BYTES         => 131072,
