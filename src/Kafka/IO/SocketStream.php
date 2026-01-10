@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\IO;
 
+use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Errors\NetworkException;
 
 /**
@@ -53,18 +54,19 @@ class SocketStream extends AbstractStream
     /**
      * Socket stream constructor
      *
-     * @param string $tcpAddress Tcp address for connection
-     * @param integer|null $connectionTimeout Connection timeout in seconds or null for using the default value
+     * @param string  $tcpAddress        Tcp address for connection
+     * @param array   $configuration     Configuration options
+     * @param integer $connectionTimeout Timeout for connection
      */
-    public function __construct($tcpAddress, $connectionTimeout = 1)
+    public function __construct($tcpAddress, protected array $configuration, $connectionTimeout = null)
     {
         $tcpInfo = parse_url($tcpAddress);
         if ($tcpInfo === false || !isset($tcpInfo['host'])) {
             throw new NetworkException(['error' => "Malformed tcp address: {$tcpAddress}"]);
         }
-        $this->host    = $tcpInfo['host'];
-        $this->port    = $tcpInfo['port'] ?? 9092;
-        $this->timeout = $connectionTimeout ?? ini_get("default_socket_timeout");
+        $this->host          = $tcpInfo['host'];
+        $this->port          = $tcpInfo['port'] ?? 9092;
+        $this->timeout       = $connectionTimeout ?? ini_get("default_socket_timeout");
 
         $this->connect();
     }
@@ -130,7 +132,20 @@ class SocketStream extends AbstractStream
      */
     protected function connect()
     {
-        $streamSocket = @fsockopen($this->host, $this->port, $errorNumber, $errorString, $this->timeout);
+        $socketFlags  = STREAM_CLIENT_CONNECT;
+        if (!empty($this->configuration[ClientConfig::STREAM_ASYNC_CONNECT])) {
+            $socketFlags |= STREAM_CLIENT_ASYNC_CONNECT;
+        }
+        if (!empty($this->configuration[ClientConfig::STREAM_PERSISTENT_CONNECTION])) {
+            $socketFlags |= STREAM_CLIENT_PERSISTENT;
+        }
+        $streamSocket = @stream_socket_client(
+            "tcp://{$this->host}:{$this->port}",
+            $errorNumber,
+            $errorString,
+            $this->timeout,
+            $socketFlags
+        );
         if (!$streamSocket) {
             throw new NetworkException(['errorNumber' => $errorNumber, 'errorString' => $errorString]);
         }
@@ -143,7 +158,7 @@ class SocketStream extends AbstractStream
      */
     protected function disconnect()
     {
-        if (is_resource($this->streamSocket)) {
+        if (is_resource($this->streamSocket) && empty($this->configuration[ClientConfig::STREAM_PERSISTENT_CONNECTION])) {
             fclose($this->streamSocket);
         }
     }

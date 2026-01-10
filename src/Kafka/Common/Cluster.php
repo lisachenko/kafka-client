@@ -21,7 +21,6 @@ use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\IO\PersistentSocketStream;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -69,17 +68,20 @@ final class Cluster
     /**
      * Creates a "bootstrap" cluster using the given list of host/ports
      *
-     * @param array $brokerAddresses List of broker addresses for bootstraping
-     * @param bool  $usePersistent Flag to enable the usage of persistent sockets for connections
+     * @param array $configuration Broker client configuration
      *
      * @return Cluster
      */
-    public static function bootstrap(array $brokerAddresses, $usePersistent = true): Cluster
+    public static function bootstrap(array $configuration): Cluster
     {
-        $streamClass = $usePersistent ? PersistentSocketStream::class : SocketStream::class;
+        $brokerAddresses = [];
+        if (isset($configuration[ClientConfig::BOOTSTRAP_SERVERS])) {
+            $brokerAddresses = $configuration[ClientConfig::BOOTSTRAP_SERVERS];
+        };
+
         foreach ($brokerAddresses as $address) {
             try {
-                $stream = new $streamClass($address);
+                $stream = new SocketStream($address, $configuration);
                 break;
             } catch (NetworkException) {
                 // we ignore all network errors and just try the next one address
