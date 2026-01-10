@@ -57,11 +57,13 @@ class KafkaProducer
      */
     private static array $defaultConfiguration = [
         /* Used configs */
-        ProducerConfig::BOOTSTRAP_SERVERS         => [],
-        ProducerConfig::PARTITIONER_CLASS         => DefaultPartitioner::class,
-        ProducerConfig::ACKS                      => 1,
-        ProducerConfig::TIMEOUT_MS                => 2000,
-        ProducerConfig::CLIENT_ID                 => 'PHP/Kafka',
+        ProducerConfig::BOOTSTRAP_SERVERS            => [],
+        ProducerConfig::PARTITIONER_CLASS            => DefaultPartitioner::class,
+        ProducerConfig::ACKS                         => 1,
+        ProducerConfig::TIMEOUT_MS                   => 2000,
+        ProducerConfig::CLIENT_ID                    => 'PHP/Kafka',
+        ProducerConfig::STREAM_PERSISTENT_CONNECTION => false,
+        ProducerConfig::STREAM_ASYNC_CONNECT         => false,
 
         ProducerConfig::KEY_SERIALIZER            => null,
         ProducerConfig::VALUE_SERIALIZER          => null,
@@ -89,7 +91,7 @@ class KafkaProducer
     public function __construct(array $configuration = [])
     {
         $this->configuration = ($configuration + self::$defaultConfiguration);
-        $this->cluster       = Cluster::bootstrap($this->configuration[ProducerConfig::BOOTSTRAP_SERVERS]);
+        $this->cluster       = Cluster::bootstrap($this->configuration);
         $partitioner         = $this->configuration[ProducerConfig::PARTITIONER_CLASS];
 
         if (!is_subclass_of($partitioner, PartitionerInterface::class)) {
