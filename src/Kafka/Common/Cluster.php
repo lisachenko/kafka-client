@@ -20,7 +20,6 @@ namespace Protocol\Kafka\Common;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
-use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -72,7 +71,7 @@ final class Cluster
      *
      * @return Cluster
      */
-    public static function bootstrap(array $configuration): Cluster
+    public static function bootstrap(array $configuration): self
     {
         $brokerAddresses = [];
         if (isset($configuration[ClientConfig::BOOTSTRAP_SERVERS])) {
@@ -81,20 +80,17 @@ final class Cluster
 
         foreach ($brokerAddresses as $address) {
             try {
-                $stream = new SocketStream($address, $configuration);
-                break;
+                $metadata = self::loadOrFetchMetadata($address, $configuration);
+                $cluster  = new Cluster($metadata->brokers, $metadata->topics);
+
+                return $cluster;
             } catch (NetworkException) {
                 // we ignore all network errors and just try the next one address
                 continue;
             }
         }
-        if (!isset($stream)) {
-            throw new NetworkException(['brokerAddresses' => $brokerAddresses]);
-        }
-        $metadata = self::fetchMetadata($stream);
-        $cluster  = new Cluster($metadata->brokers, $metadata->topics);
-
-        return $cluster;
+        // If we here, we can't access any broker node, terminate
+        throw new NetworkException(['brokerAddresses' => $brokerAddresses]);
     }
 
     /**
@@ -188,17 +184,48 @@ final class Cluster
     }
 
     /**
-     * Queries metadata from the broker
+     * Queries metadata from the broker or loads this information from the cache file
      *
-     * @param Stream $stream
+     * @param string $address Concrete broker address
+     * @param array $configuration
      *
      * @return AbstractProtocolMessage\MetadataResponse
      */
-    private static function fetchMetadata(Stream $stream)
+    private static function loadOrFetchMetadata($address, array $configuration)
     {
-        $request = new MetadataRequest();
-        $request->writeTo($stream);
+        $milliSeconds   = (int) (microtime(true) * 1e3);
+        $isCacheEnabled = !empty($configuration[ClientConfig::METADATA_CACHE_FILE]);
+        $metadata       = null;
 
-        return MetadataResponse::unpack($stream);
+        if ($isCacheEnabled) {
+            $cacheFile = $configuration[ClientConfig::METADATA_CACHE_FILE];
+            if (is_readable($cacheFile)) {
+                [$cachePutTimeMs, $metadata] = include $cacheFile;
+            } else {
+                $cachePutTimeMs = $milliSeconds;
+            }
+            if (($milliSeconds - $cachePutTimeMs) > $configuration[ClientConfig::METADATA_MAX_AGE_MS]) {
+                $metadata = null;
+            }
+        }
+
+        if (empty($metadata)) {
+            $stream  = new SocketStream($address, $configuration);
+            $request = new MetadataRequest();
+            $request->writeTo($stream);
+
+            $metadata = MetadataResponse::unpack($stream);
+        }
+
+        if ($isCacheEnabled && isset($stream)) {
+            $content   = '<?php return ' . var_export([$milliSeconds, $metadata], true) . ';';
+            $cacheFile = $configuration[ClientConfig::METADATA_CACHE_FILE];
+            file_put_contents($cacheFile, $content);
+            if (function_exists('opcache_invalidate')) {
+                opcache_invalidate($cacheFile, true);
+            }
+        }
+
+        return $metadata;
     }
 }

@@ -24,6 +24,8 @@ use Protocol\Kafka\IO\Stream;
  */
 class TopicMetadata
 {
+    use RestorableTrait;
+
     /**
      * The error code for the given topic.
      *

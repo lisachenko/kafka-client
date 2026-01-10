@@ -58,6 +58,13 @@ class ClientConfig
      */
     public const STREAM_ASYNC_CONNECT = 'stream.async.connect';
 
+    /**
+     * File name that stores the metadata, this file will be effectively cached by the Opcode cache in production
+     *
+     * (PHP Only option)
+     */
+    public const METADATA_CACHE_FILE = 'metadata.cache.file';
+
     public const SSL_KEY_PASSWORD              = 'ssl.key.password';
     public const SSL_KEYSTORE_LOCATION         = 'ssl.keystore.location';
     public const SSL_KEYSTORE_PASSWORD         = 'ssl.keystore.password';
