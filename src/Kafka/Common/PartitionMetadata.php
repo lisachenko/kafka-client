@@ -24,6 +24,8 @@ use Protocol\Kafka\IO\Stream;
  */
 class PartitionMetadata
 {
+    use RestorableTrait;
+
     /**
      * The error code for the partition, if any.
      *

@@ -58,6 +58,21 @@ class ClientConfig
      */
     public const STREAM_ASYNC_CONNECT = 'stream.async.connect';
 
+    /**
+     * File name that stores the metadata, this file will be effectively cached by the Opcode cache in production
+     *
+     * (PHP Only option)
+     */
+    public const METADATA_CACHE_FILE = 'metadata.cache.file';
+
+    /**
+     * The period of time in milliseconds after which we force a refresh of metadata even if we haven't seen any
+     * partition leadership changes to proactively discover any new brokers or partitions.
+     *
+     * Applied only if the metadata.cache.file is configured
+     */
+    public const METADATA_MAX_AGE_MS = 'metadata.max.age.ms';
+
     public const SSL_KEY_PASSWORD              = 'ssl.key.password';
     public const SSL_KEYSTORE_LOCATION         = 'ssl.keystore.location';
     public const SSL_KEYSTORE_PASSWORD         = 'ssl.keystore.password';
@@ -67,7 +82,6 @@ class ClientConfig
     public const SEND_BUFFER_BYTES             = 'send.buffer.bytes';
     public const SSL_ENABLED_PROTOCOLS         = 'ssl.enabled.protocols';
     public const SSL_PROTOCOL                  = 'ssl.protocol';
-    public const METADATA_MAX_AGE_MS           = 'metadata.max.age.ms';
     public const RECONNECT_BACKOFF_MS          = 'reconnect.backoff.ms';
     public const RETRY_BACKOFF_MS              = 'retry.backoff.ms';
 }

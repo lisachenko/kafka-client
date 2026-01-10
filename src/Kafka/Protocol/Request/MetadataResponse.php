@@ -21,12 +21,15 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Common\RestorableTrait;
 
 /**
  * Metadata response object
  */
 class MetadataResponse extends AbstractResponse
 {
+    use RestorableTrait;
+
     /**
      * List of broker metadata info
      *
