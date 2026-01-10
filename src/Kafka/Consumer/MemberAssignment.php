@@ -36,7 +36,7 @@ class MemberAssignment implements \Stringable
      *
      * @var array
      */
-    public $topicPartitions;
+    public $topicPartitions = [];
 
     /**
      * The UserData field can be used by custom partition assignment strategies.
