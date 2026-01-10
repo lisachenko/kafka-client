@@ -134,17 +134,16 @@ class KafkaConsumer
         ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
         ConsumerConfig::STREAM_PERSISTENT_CONNECTION  => false,
         ConsumerConfig::STREAM_ASYNC_CONNECT          => false,
+        ConsumerConfig::METADATA_MAX_AGE_MS           => 300000,
 
         ConsumerConfig::SSL_KEY_PASSWORD          => null,
         ConsumerConfig::SSL_KEYSTORE_LOCATION     => null,
         ConsumerConfig::SSL_KEYSTORE_PASSWORD     => null,
         ConsumerConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
         ConsumerConfig::RECEIVE_BUFFER_BYTES      => 32768,
-        ConsumerConfig::REQUEST_TIMEOUT_MS        => 30000,
         ConsumerConfig::SASL_MECHANISM            => 'GSSAPI',
         ConsumerConfig::SECURITY_PROTOCOL         => 'plaintext',
         ConsumerConfig::SEND_BUFFER_BYTES         => 131072,
-        ConsumerConfig::METADATA_MAX_AGE_MS       => 300000,
         ConsumerConfig::RECONNECT_BACKOFF_MS      => 50,
         ConsumerConfig::RETRY_BACKOFF_MS          => 100,
     ];
@@ -157,7 +156,7 @@ class KafkaConsumer
         $assignorStrategy    = $this->configuration[ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY];
 
         if (!is_subclass_of($assignorStrategy, PartitionAssignorInterface::class)) {
-            throw new \InvalidArgumentException("Partition strategy class should implement PartitionAssignorInterface");
+            throw new \InvalidArgumentException('Partition strategy class should implement PartitionAssignorInterface');
         }
         $this->assignorStrategy = new $assignorStrategy();
     }
@@ -169,6 +168,12 @@ class KafkaConsumer
      */
     public function assign(array $topicPartitions): void
     {
+        if ($topicPartitions === []) {
+            throw new \InvalidArgumentException(
+                'Can not assign empty list of topic partitions to the consumer.' .
+                'Probably, not enough partitions for this topic.'
+            );
+        }
         $unknownTopics = array_diff(array_keys($topicPartitions), $this->subscription->topics);
         if ($unknownTopics !== []) {
             throw new UnknownTopicOrPartitionException(['unknownTopics' => $unknownTopics]);

@@ -24,6 +24,7 @@ use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
@@ -50,25 +51,16 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  */
 class Client
 {
-    /**
-     * List of streams for each node
-     *
-     * @var Stream[]
-     */
-    private $connections;
-
-    public function __construct(/**
-     * Cluster configuration
-     */
-        private readonly Cluster $cluster, /**
-     * Client configuration
-     */
+    public function __construct(
+        /**
+         * Cluster configuration
+         */
+        private readonly Cluster $cluster,
+        /**
+         * Client configuration
+         */
         private array $configuration = []
-    ) {
-        foreach ($this->cluster->nodes() as $node) {
-            $this->connections[$node->nodeId] = new SocketStream("tcp://{$node->host}:{$node->port}", $this->configuration);
-        }
-    }
+    ) {}
 
     /**
      * Produce messages to the specific topic partition
@@ -81,9 +73,7 @@ class Client
      */
     public function produce($topic, $partition, array $topicMessages)
     {
-        $leader = $this->cluster->leaderFor($topic, $partition);
-        $stream = $this->connections[$leader->nodeId];
-
+        $stream  = $this->cluster->leaderFor($topic, $partition)->getConnection($this->configuration);
         $request = new ProduceRequest(
             [$topic => [$partition => $topicMessages]],
             $this->configuration[ProducerConfig::ACKS],
@@ -131,7 +121,7 @@ class Client
         $generationId,
         array $topicPartitionOffsets
     ): void {
-        $stream  = $this->connections[$coordinatorNode->nodeId];
+        $stream  = $coordinatorNode->getConnection($this->configuration);
         $request = new OffsetCommitRequest(
             $groupId,
             $generationId,
@@ -170,7 +160,7 @@ class Client
      */
     public function fetchGroupOffsets(Node $coordinatorNode, $groupId, array $topicPartitions): array
     {
-        $stream = $this->connections[$coordinatorNode->nodeId];
+        $stream = $coordinatorNode->getConnection($this->configuration);
 
         $request = new OffsetFetchRequest(
             $groupId,
@@ -216,7 +206,7 @@ class Client
      */
     public function joinGroup(Node $coordinatorNode, $groupId, $memberId, $protocolType, array $groupProtocols)
     {
-        $stream = $this->connections[$coordinatorNode->nodeId];
+        $stream = $coordinatorNode->getConnection($this->configuration);
 
         $request = new JoinGroupRequest(
             $groupId,
@@ -251,7 +241,7 @@ class Client
      */
     public function leaveGroup(Node $coordinatorNode, $groupId, $memberId): void
     {
-        $stream = $this->connections[$coordinatorNode->nodeId];
+        $stream = $coordinatorNode->getConnection($this->configuration);
 
         $request = new LeaveGroupRequest(
             $groupId,
@@ -286,7 +276,7 @@ class Client
      */
     public function syncGroup(Node $coordinatorNode, $groupId, $memberId, $generationId, array $groupAssignments = [])
     {
-        $stream = $this->connections[$coordinatorNode->nodeId];
+        $stream = $coordinatorNode->getConnection($this->configuration);
 
         $request = new SyncGroupRequest(
             $groupId,
@@ -322,7 +312,7 @@ class Client
      */
     public function heartbeat(Node $coordinatorNode, $groupId, $memberId, $generationId): void
     {
-        $stream = $this->connections[$coordinatorNode->nodeId];
+        $stream = $coordinatorNode->getConnection($this->configuration);
 
         $request = new HeartbeatRequest(
             $groupId,
@@ -351,7 +341,10 @@ class Client
     public function getGroupCoordinator($groupId)
     {
         // TODO: iterate over connections and wrap logic into the try..catch block
-        $stream = reset($this->connections);
+        /** @var Node $firstNode */
+        $clusterNodes = $this->cluster->nodes();
+        $firstNode    = reset($clusterNodes);
+        $stream       = $firstNode->getConnection($this->configuration);
 
         $request = new GroupCoordinatorRequest(
             $groupId,
@@ -363,7 +356,12 @@ class Client
             throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
         }
 
-        return $this->cluster->nodeById($response->coordinator->nodeId);
+        $coordinator = $this->cluster->nodeById($response->coordinator->nodeId);
+        if (!isset($coordinator)) {
+            throw new GroupCoordinatorNotAvailableException(['groupId' => $groupId]);
+        }
+
+        return $coordinator;
     }
 
     /**
@@ -469,14 +467,20 @@ class Client
         }
 
         // TODO: Implement StreamGroup(Stream[] $connections) and Stream->joinGroup(StreamGroup $group)
-        $socketAccessor = (fn(SocketStream $socket) => $socket->streamSocket);
+        $socketAccessor = function (SocketStream $socket) {
+            if (!$socket->isConnected) {
+                $socket->connect();
+            }
+
+            return $socket->streamSocket;
+        };
         $socketAccessor  = $socketAccessor->bindTo(null, SocketStream::class);
         $readNodeSockets = [];
 
         foreach ($requestByNode as $nodeId => $nodeTopicPartitions) {
             /** @var AbstractProtocolMessage $request */
             $request = $nodeRequest($nodeTopicPartitions);
-            $stream  = $this->connections[$nodeId];
+            $stream  = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
 
             $readNodeSockets[$nodeId] = $socketAccessor($stream);
             $request->writeTo($stream);
@@ -490,8 +494,9 @@ class Client
             $writeSelect = $exceptSelect = null;
             if (stream_select($readSelect, $writeSelect, $exceptSelect, intdiv($timeout, 1000), $timeout % 1000) > 0) {
                 foreach ($readSelect as $resourceToRead) {
-                    $nodeId = array_search($resourceToRead, $readNodeSockets);
-                    $responses[$nodeId] = $responseClass::unpack($this->connections[$nodeId]);
+                    $nodeId             = array_search($resourceToRead, $readNodeSockets);
+                    $connection         = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
+                    $responses[$nodeId] = $responseClass::unpack($connection);
                 }
                 $incompleteReads = array_diff($incompleteReads, $readSelect);
             }

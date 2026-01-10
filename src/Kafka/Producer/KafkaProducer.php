@@ -19,6 +19,8 @@ namespace Protocol\Kafka\Producer;
 
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
+use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
@@ -52,6 +54,8 @@ class KafkaProducer
      */
     private readonly PartitionerInterface $partitioner;
 
+    private int $currentTry = 0;
+
     /**
      * Default configuration for producer
      */
@@ -64,6 +68,7 @@ class KafkaProducer
         ProducerConfig::CLIENT_ID                    => 'PHP/Kafka',
         ProducerConfig::STREAM_PERSISTENT_CONNECTION => false,
         ProducerConfig::STREAM_ASYNC_CONNECT         => false,
+        ProducerConfig::METADATA_MAX_AGE_MS          => 300000,
 
         ProducerConfig::KEY_SERIALIZER            => null,
         ProducerConfig::VALUE_SERIALIZER          => null,
@@ -83,7 +88,6 @@ class KafkaProducer
         ProducerConfig::SECURITY_PROTOCOL         => 'plaintext',
         ProducerConfig::SEND_BUFFER_BYTES         => 131072,
         ProducerConfig::METADATA_FETCH_TIMEOUT_MS => 60000,
-        ProducerConfig::METADATA_MAX_AGE_MS       => 300000,
         ProducerConfig::RECONNECT_BACKOFF_MS      => 50,
         ProducerConfig::RETRY_BACKOFF_MS          => 100,
     ];
@@ -124,6 +128,7 @@ class KafkaProducer
      */
     public function send(string $topic, $message, $concretePartition = null)
     {
+        $this->currentTry = 0;
         if (isset($concretePartition)) {
             $partition = $concretePartition;
         } else {
@@ -131,7 +136,22 @@ class KafkaProducer
         }
 
         $topicMessages = ($message instanceof Record) ? [$message] : (array) $message;
-        $response      = $this->client->produce($topic, $partition, $topicMessages);
+        while ($this->currentTry <= $this->configuration[ProducerConfig::RETRIES]) {
+            try {
+                $response = $this->client->produce($topic, $partition, $topicMessages);
+                break;
+            } catch (NotLeaderForPartitionException) {
+                // We just need to reconfigure the cluster, possible current leader is changed
+                $this->cluster->reload();
+            } catch (RetriableException) {
+                $this->cluster->reload();
+                $this->currentTry++;
+            }
+        }
+
+        if ($this->currentTry > $this->configuration[ProducerConfig::RETRIES]) {
+            throw new \RuntimeException("Can not deliver the message");
+        }
 
         return $response;
     }
