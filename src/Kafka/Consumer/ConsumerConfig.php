@@ -116,6 +116,5 @@ final class ConsumerConfig extends GeneralConfig
     public const string VALUE_DESERIALIZER            = 'value.deserializer';
     public const string EXCLUDE_INTERNAL_TOPICS       = 'exclude.internal.topics';
     public const string MAX_POLL_RECORDS              = 'max.poll.records';
-    public const string RECEIVE_BUFFER_BYTES          = 'receive.buffer.bytes';
     public const string CHECK_CRCS                    = 'check.crcs';
 }

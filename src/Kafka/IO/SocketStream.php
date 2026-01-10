@@ -95,8 +95,8 @@ class SocketStream extends AbstractStream
         $packedData = pack($format, ...$arguments);
 
         for ($written = 0; $written < strlen($packedData); $written += $result) {
-            $result = fwrite($this->streamSocket, substr($packedData, $written));
-            if ($result === false) {
+            $result = @fwrite($this->streamSocket, substr($packedData, $written));
+            if ($result === false || feof($this->streamSocket)) {
                 throw new NetworkException(['error' => 'Can not write to the stream']);
             }
         }
@@ -162,6 +162,8 @@ class SocketStream extends AbstractStream
         if (!$streamSocket) {
             throw new NetworkException(['errorNumber' => $errorNumber, 'errorString' => $errorString]);
         }
+        stream_set_write_buffer($streamSocket, $this->configuration[ClientConfig::SEND_BUFFER_BYTES]);
+        stream_set_read_buffer($streamSocket, $this->configuration[ClientConfig::RECEIVE_BUFFER_BYTES]);
 
         $this->streamSocket = $streamSocket;
         $this->isConnected  = true;
