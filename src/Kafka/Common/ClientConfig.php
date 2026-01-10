@@ -66,6 +66,12 @@ class ClientConfig
     public const METADATA_CACHE_FILE = 'metadata.cache.file';
 
     /**
+     * The first time data is sent to the broker we must fetch metadata about that topic to know which servers host the
+     * topic's partitions. This fetch to succeed before throwing an exception back to the client.
+     */
+    public const METADATA_FETCH_TIMEOUT_MS = 'metadata.fetch.timeout.ms';
+
+    /**
      * The period of time in milliseconds after which we force a refresh of metadata even if we haven't seen any
      * partition leadership changes to proactively discover any new brokers or partitions.
      *
@@ -73,13 +79,22 @@ class ClientConfig
      */
     public const METADATA_MAX_AGE_MS = 'metadata.max.age.ms';
 
+    /**
+     * The size of the TCP send buffer (SO_SNDBUF) to use when sending data.
+     */
+    public const SEND_BUFFER_BYTES = 'send.buffer.bytes';
+
+    /**
+     * The size of the TCP receive buffer (SO_RCVBUF) to use when reading data.
+     */
+    public const RECEIVE_BUFFER_BYTES = 'receive.buffer.bytes';
+
     public const SSL_KEY_PASSWORD              = 'ssl.key.password';
     public const SSL_KEYSTORE_LOCATION         = 'ssl.keystore.location';
     public const SSL_KEYSTORE_PASSWORD         = 'ssl.keystore.password';
     public const CONNECTIONS_MAX_IDLE_MS       = 'connections.max.idle.ms';
     public const SASL_MECHANISM                = 'sasl.mechanism';
     public const SECURITY_PROTOCOL             = 'security.protocol';
-    public const SEND_BUFFER_BYTES             = 'send.buffer.bytes';
     public const SSL_ENABLED_PROTOCOLS         = 'ssl.enabled.protocols';
     public const SSL_PROTOCOL                  = 'ssl.protocol';
     public const RECONNECT_BACKOFF_MS          = 'reconnect.backoff.ms';

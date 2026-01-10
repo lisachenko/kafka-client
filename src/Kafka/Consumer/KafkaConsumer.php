@@ -135,15 +135,15 @@ class KafkaConsumer
         ConsumerConfig::STREAM_PERSISTENT_CONNECTION  => false,
         ConsumerConfig::STREAM_ASYNC_CONNECT          => false,
         ConsumerConfig::METADATA_MAX_AGE_MS           => 300000,
+        ConsumerConfig::RECEIVE_BUFFER_BYTES          => 65536,
+        ConsumerConfig::SEND_BUFFER_BYTES             => 131072,
 
         ConsumerConfig::SSL_KEY_PASSWORD          => null,
         ConsumerConfig::SSL_KEYSTORE_LOCATION     => null,
         ConsumerConfig::SSL_KEYSTORE_PASSWORD     => null,
         ConsumerConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
-        ConsumerConfig::RECEIVE_BUFFER_BYTES      => 32768,
         ConsumerConfig::SASL_MECHANISM            => 'GSSAPI',
         ConsumerConfig::SECURITY_PROTOCOL         => 'plaintext',
-        ConsumerConfig::SEND_BUFFER_BYTES         => 131072,
         ConsumerConfig::RECONNECT_BACKOFF_MS      => 50,
         ConsumerConfig::RETRY_BACKOFF_MS          => 100,
     ];

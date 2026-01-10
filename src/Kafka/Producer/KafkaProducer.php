@@ -23,7 +23,6 @@ use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
 
 /**
  * A Kafka client that publishes records to the Kafka cluster.
@@ -54,7 +53,20 @@ class KafkaProducer
      */
     private readonly PartitionerInterface $partitioner;
 
+    /**
+     * Current iteration of sending data
+     */
     private int $currentTry = 0;
+
+    /**
+     * Size of the batch
+     */
+    private int $batchSize = 0;
+
+    /**
+     * Buffer for storing topic-partition-messages
+     */
+    private array $topicPartitionMessages = [];
 
     /**
      * Default configuration for producer
@@ -69,24 +81,21 @@ class KafkaProducer
         ProducerConfig::STREAM_PERSISTENT_CONNECTION => false,
         ProducerConfig::STREAM_ASYNC_CONNECT         => false,
         ProducerConfig::METADATA_MAX_AGE_MS          => 300000,
+        ProducerConfig::RECEIVE_BUFFER_BYTES         => 32768,
+        ProducerConfig::SEND_BUFFER_BYTES            => 131072,
+        ProducerConfig::RETRIES                      => 0,
+        ProducerConfig::BATCH_SIZE                   => 0,
 
-        ProducerConfig::KEY_SERIALIZER            => null,
-        ProducerConfig::VALUE_SERIALIZER          => null,
-        ProducerConfig::BUFFER_MEMORY             => 33554432,
         ProducerConfig::COMPRESSION_TYPE          => 'none',
-        ProducerConfig::RETRIES                   => 0,
         ProducerConfig::SSL_KEY_PASSWORD          => null,
         ProducerConfig::SSL_KEYSTORE_LOCATION     => null,
         ProducerConfig::SSL_KEYSTORE_PASSWORD     => null,
-        ProducerConfig::BATCH_SIZE                => 0,
         ProducerConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
         ProducerConfig::LINGER_MS                 => 0,
         ProducerConfig::MAX_REQUEST_SIZE          => 1048576,
-        ProducerConfig::RECEIVE_BUFFER_BYTES      => 32768,
         ProducerConfig::REQUEST_TIMEOUT_MS        => 30000,
         ProducerConfig::SASL_MECHANISM            => 'GSSAPI',
         ProducerConfig::SECURITY_PROTOCOL         => 'plaintext',
-        ProducerConfig::SEND_BUFFER_BYTES         => 131072,
         ProducerConfig::METADATA_FETCH_TIMEOUT_MS => 60000,
         ProducerConfig::RECONNECT_BACKOFF_MS      => 50,
         ProducerConfig::RETRY_BACKOFF_MS          => 100,
@@ -120,13 +129,15 @@ class KafkaProducer
     /**
      * Sends a message to the topic
      *
+     * @todo Use futures instead of void result
+     *
      * @param string  $topic   Name of the topic
-     * @param Record|Record[] $message Record or array of messages to send
+     * @param Record $message Record to send
      * @param integer|null    $concretePartition Optional partition for sending message
      *
-     * @return ProduceResponse
+     * @return void
      */
-    public function send(string $topic, $message, $concretePartition = null)
+    public function send(string $topic, Record $message, $concretePartition = null): void
     {
         $this->currentTry = 0;
         if (isset($concretePartition)) {
@@ -135,10 +146,20 @@ class KafkaProducer
             $partition = $this->partitioner->partition($topic, $message->key, $message->value, $this->cluster);
         }
 
-        $topicMessages = ($message instanceof Record) ? [$message] : (array) $message;
+        $this->topicPartitionMessages[$topic][$partition][] = $message;
+        $this->batchSize++;
+
+        if ($this->batchSize < $this->configuration[ProducerConfig::BATCH_SIZE]) {
+            return;
+        }
+
         while ($this->currentTry <= $this->configuration[ProducerConfig::RETRIES]) {
             try {
-                $response = $this->client->produce($topic, $partition, $topicMessages);
+                $this->client->produce($this->topicPartitionMessages);
+                // TODO: resolve futures or store result for analysis
+                $this->batchSize = 0;
+
+                $this->topicPartitionMessages = [];
                 break;
             } catch (NotLeaderForPartitionException) {
                 // We just need to reconfigure the cluster, possible current leader is changed
@@ -150,9 +171,7 @@ class KafkaProducer
         }
 
         if ($this->currentTry > $this->configuration[ProducerConfig::RETRIES]) {
-            throw new \RuntimeException("Can not deliver the message");
+            throw new \RuntimeException("Can not deliver messages to the broker");
         }
-
-        return $response;
     }
 }
