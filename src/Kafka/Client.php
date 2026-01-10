@@ -21,7 +21,6 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
-use Protocol\Kafka\IO\PersistentSocketStream;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\ApiKeys;
@@ -67,8 +66,7 @@ class Client
         private array $configuration = []
     ) {
         foreach ($this->cluster->nodes() as $node) {
-            // TODO: connection settings should be used as well, make async connect
-            $this->connections[$node->nodeId] = new PersistentSocketStream("tcp://{$node->host}:{$node->port}");
+            $this->connections[$node->nodeId] = new SocketStream("tcp://{$node->host}:{$node->port}", $this->configuration);
         }
     }
 
