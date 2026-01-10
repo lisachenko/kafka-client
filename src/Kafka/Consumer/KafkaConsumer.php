@@ -203,6 +203,8 @@ class KafkaConsumer
         $this->client->commitGroupOffsets(
             $this->coordinator,
             $this->configuration[ConsumerConfig::GROUP_ID],
+            $this->memberId,
+            $this->generationId,
             $topicPartitionOffsets
         );
 

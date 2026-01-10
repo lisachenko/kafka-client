@@ -109,9 +109,11 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * @param Node   $coordinatorNode       Current group coordinator for $groupId
-     * @param string $groupId               Name of the group
-     * @param array  $topicPartitionOffsets List of topic => partitions for fetching information
+     * @param Node    $coordinatorNode       Current group coordinator for $groupId
+     * @param string  $groupId               Name of the group
+     * @param string  $memberId              Name of the group member
+     * @param integer $generationId          Current generation of consumer
+     * @param array   $topicPartitionOffsets List of topic => partitions for fetching information
      *
      * @throws ApiKeys\Error\OffsetMetadataTooLarge
      * @throws ApiKeys\Error\GroupLoadInProgress
@@ -124,11 +126,18 @@ class Client
      * @throws ApiKeys\Error\TopicAuthorizationFailed
      * @throws ApiKeys\Error\GroupAuthorizationFailed
      */
-    public function commitGroupOffsets(Node $coordinatorNode, $groupId, array $topicPartitionOffsets): void
-    {
+    public function commitGroupOffsets(
+        Node $coordinatorNode,
+        $groupId,
+        $memberId,
+        $generationId,
+        array $topicPartitionOffsets
+    ): void {
         $stream  = $this->connections[$coordinatorNode->nodeId];
         $request = new OffsetCommitRequest(
             $groupId,
+            $generationId,
+            $memberId,
             $topicPartitionOffsets,
             $this->configuration[ConsumerConfig::CLIENT_ID]
         );
