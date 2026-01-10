@@ -132,6 +132,7 @@ class KafkaConsumer
         ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 2000,
         ConsumerConfig::ENABLE_AUTO_COMMIT            => true,
         ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
+        ConsumerConfig::OFFSET_RETENTION_MS           => -1, // Use broker retention time for offsets
 
         ConsumerConfig::SSL_KEY_PASSWORD          => null,
         ConsumerConfig::SSL_KEYSTORE_LOCATION     => null,
@@ -205,7 +206,8 @@ class KafkaConsumer
             $this->configuration[ConsumerConfig::GROUP_ID],
             $this->memberId,
             $this->generationId,
-            $topicPartitionOffsets
+            $topicPartitionOffsets,
+            $this->configuration[ConsumerConfig::OFFSET_RETENTION_MS]
         );
 
         $this->topicPartitionOffsets = $topicPartitionOffsets;

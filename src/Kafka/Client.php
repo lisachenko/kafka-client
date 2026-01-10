@@ -114,6 +114,7 @@ class Client
      * @param string  $memberId              Name of the group member
      * @param integer $generationId          Current generation of consumer
      * @param array   $topicPartitionOffsets List of topic => partitions for fetching information
+     * @param integer $retentionTimeMs       Retention time for this offset, -1 = use broker time
      *
      * @throws ApiKeys\Error\OffsetMetadataTooLarge
      * @throws ApiKeys\Error\GroupLoadInProgress
@@ -131,13 +132,15 @@ class Client
         $groupId,
         $memberId,
         $generationId,
-        array $topicPartitionOffsets
+        array $topicPartitionOffsets,
+        $retentionTimeMs
     ): void {
         $stream  = $this->connections[$coordinatorNode->nodeId];
         $request = new OffsetCommitRequest(
             $groupId,
             $generationId,
             $memberId,
+            $retentionTimeMs,
             $topicPartitionOffsets,
             $this->configuration[ConsumerConfig::CLIENT_ID]
         );

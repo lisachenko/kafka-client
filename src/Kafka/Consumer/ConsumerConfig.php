@@ -130,6 +130,11 @@ final class ConsumerConfig
      */
     public const string AUTO_COMMIT_INTERVAL_MS = 'auto.commit.interval.ms';
 
+    /**
+     * This option controls the retention time for topic offset storage, set to -1 to use broker retention time setting
+     */
+    public const string OFFSET_RETENTION_MS = 'offset.retention.ms';
+
 
     public const string KEY_DESERIALIZER              = 'key.deserializer';
     public const string VALUE_DESERIALIZER            = 'value.deserializer';
