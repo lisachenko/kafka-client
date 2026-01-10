@@ -19,6 +19,8 @@ namespace Protocol\Kafka\Producer;
 
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
+use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
@@ -51,6 +53,8 @@ class KafkaProducer
      * Instance of partitioner
      */
     private readonly PartitionerInterface $partitioner;
+
+    private int $currentTry = 0;
 
     /**
      * Default configuration for producer
@@ -125,6 +129,7 @@ class KafkaProducer
      */
     public function send(string $topic, $message, $concretePartition = null)
     {
+        $this->currentTry = 0;
         if (isset($concretePartition)) {
             $partition = $concretePartition;
         } else {
@@ -132,7 +137,22 @@ class KafkaProducer
         }
 
         $topicMessages = ($message instanceof Record) ? [$message] : (array) $message;
-        $response      = $this->client->produce($topic, $partition, $topicMessages);
+        while ($this->currentTry <= $this->configuration[ProducerConfig::RETRIES]) {
+            try {
+                $response = $this->client->produce($topic, $partition, $topicMessages);
+                break;
+            } catch (NotLeaderForPartitionException) {
+                // We just need to reconfigure the cluster, possible current leader is changed
+                $this->cluster->reload();
+            } catch (RetriableException) {
+                $this->cluster->reload();
+                $this->currentTry++;
+            }
+        }
+
+        if ($this->currentTry > $this->configuration[ProducerConfig::RETRIES]) {
+            throw new \RuntimeException("Can not deliver the message");
+        }
 
         return $response;
     }

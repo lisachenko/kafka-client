@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Common;
 
 use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\IO\SocketStream;
 
 /**
  * Information about a ApiKeys node
@@ -48,6 +49,11 @@ class Node
     public $port;
 
     /**
+     * Cached list of connections
+     */
+    private static array $nodeConnections = [];
+
+    /**
      * Unpacks the DTO from the binary buffer
      *
      * @param Stream $stream Binary buffer
@@ -61,5 +67,23 @@ class Node
         [$brokerMetadata->host, $brokerMetadata->port] = array_values($stream->read("a{$hostLength}host/Nport"));
 
         return $brokerMetadata;
+    }
+
+    /**
+     * Returns a connection to this node.
+     *
+     * @param array $configuration Client configuration
+     *
+     * @return Stream
+     */
+    public function getConnection(array $configuration)
+    {
+        if (!isset(self::$nodeConnections[$this->host][$this->port])) {
+            $connection = new SocketStream("tcp://{$this->host}:{$this->port}", $configuration);
+
+            self::$nodeConnections[$this->host][$this->port] = $connection;
+        }
+
+        return self::$nodeConnections[$this->host][$this->port];
     }
 }
