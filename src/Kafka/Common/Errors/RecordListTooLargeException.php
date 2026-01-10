@@ -20,8 +20,8 @@ use Exception;
  */
 class RecordListTooLargeException extends KafkaException
 {
-    public function __construct($message, ?Exception $previous = null)
+    public function __construct(array $context, ?Exception $previous = null)
     {
-        parent::__construct($message, self::RECORD_LIST_TOO_LARGE, $previous);
+        parent::__construct($context, self::RECORD_LIST_TOO_LARGE, $previous);
     }
 }

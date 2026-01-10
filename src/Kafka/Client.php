@@ -87,39 +87,90 @@ class Client
         $stream = $this->connections[$leader->nodeId];
 
         $request = new ProduceRequest(
-            $topicMessages,
+            [$topic => [$partition => $topicMessages]],
             $this->configuration[ProducerConfig::ACKS],
             $this->configuration[ProducerConfig::TIMEOUT_MS],
             $this->configuration[ProducerConfig::CLIENT_ID]
         );
         $request->writeTo($stream);
         $response = ProduceResponse::unpack($stream);
-
-        return $response;
-    }
-
-    public function commitOffsets(Node $coordinatorNode, $groupId, array $topicPartitionOffsets)
-    {
-        $stream  = $this->connections[$coordinatorNode->nodeId];
-        $request = new OffsetCommitRequest(
-            $groupId,
-            $topicPartitionOffsets,
-            $this->configuration[ConsumerConfig::CLIENT_ID]
-        );
-        $request->writeTo($stream);
-        $response = OffsetCommitResponse::unpack($stream);
+        /** @var ApiKeys\DTO\ProduceResponsePartition[] $partitions */
+        foreach ($response->topics as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $partitionInfo) {
+                if ($partitionInfo->errorCode !== 0) {
+                    throw KafkaException::fromCode($partitionInfo->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
+                }
+            }
+        }
 
         return $response;
     }
 
     /**
-     * @param Node  $coordinatorNode
-     * @param       $groupId
-     * @param array $topicPartitions
+     * Commits the offsets for topic partitions for the concrete consumer group
+     *
+     * @param Node    $coordinatorNode       Current group coordinator for $groupId
+     * @param string  $groupId               Name of the group
+     * @param string  $memberId              Name of the group member
+     * @param integer $generationId          Current generation of consumer
+     * @param array   $topicPartitionOffsets List of topic => partitions for fetching information
+     *
+     * @throws ApiKeys\Error\OffsetMetadataTooLarge
+     * @throws ApiKeys\Error\GroupLoadInProgress
+     * @throws ApiKeys\Error\GroupCoordinatorNotAvailable
+     * @throws ApiKeys\Error\NotCoordinatorForGroup
+     * @throws ApiKeys\Error\IllegalGeneration
+     * @throws ApiKeys\Error\UnknownMemberId
+     * @throws ApiKeys\Error\RebalanceInProgress
+     * @throws ApiKeys\Error\InvalidCommitOffsetSize
+     * @throws ApiKeys\Error\TopicAuthorizationFailed
+     * @throws ApiKeys\Error\GroupAuthorizationFailed
+     */
+    public function commitGroupOffsets(
+        Node $coordinatorNode,
+        $groupId,
+        $memberId,
+        $generationId,
+        array $topicPartitionOffsets
+    ): void {
+        $stream  = $this->connections[$coordinatorNode->nodeId];
+        $request = new OffsetCommitRequest(
+            $groupId,
+            $generationId,
+            $memberId,
+            $topicPartitionOffsets,
+            $this->configuration[ConsumerConfig::CLIENT_ID]
+        );
+        $request->writeTo($stream);
+        $response = OffsetCommitResponse::unpack($stream);
+        foreach ($response->topics as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $errorCode) {
+                if ($errorCode !== 0) {
+                    throw KafkaException::fromCode($errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetches the offsets for topic partition for the concrete consumer group
+     *
+     * @param Node   $coordinatorNode Current group coordinator for $groupId
+     * @param string $groupId         Name of the group
+     * @param array $topicPartitions  List of topic => partitions for fetching information
      *
      * @return array
+     *
+     * Exception UnknownTopicOrPartition is ignored and silenced, offset -1 will be returned
+     *
+     * @throws ApiKeys\Error\GroupLoadInProgress
+     * @throws ApiKeys\Error\NotCoordinatorForGroup
+     * @throws ApiKeys\Error\IllegalGeneration
+     * @throws ApiKeys\Error\UnknownMemberId
+     * @throws ApiKeys\Error\TopicAuthorizationFailed
+     * @throws ApiKeys\Error\GroupAuthorizationFailed
      */
-    public function fetchOffsets(Node $coordinatorNode, $groupId, array $topicPartitions): array
+    public function fetchGroupOffsets(Node $coordinatorNode, $groupId, array $topicPartitions): array
     {
         $stream = $this->connections[$coordinatorNode->nodeId];
 
@@ -133,8 +184,12 @@ class Client
 
         $result = [];
         foreach ($response->topics as $topic => $partitions) {
-            /** @var ApiKeys\DTO\OffsetFetchPartition $partition */
+            /** @var ApiKeys\DTO\OffsetFetchPartition[] $partitions */
             foreach ($partitions as $partitionId => $partition) {
+                $isUnknownTopicPartition = $partition->errorCode === KafkaException::UNKNOWN_TOPIC_OR_PARTITION;
+                if ($partition->errorCode !== 0 && !$isUnknownTopicPartition) {
+                    throw KafkaException::fromCode($partition->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
+                }
                 $result[$topic][$partitionId] = $partition->offset;
             }
         }
@@ -143,13 +198,23 @@ class Client
     }
 
     /**
-     * @param Node  $coordinatorNode
-     * @param       $groupId
-     * @param       $memberId
-     * @param       $protocolType
-     * @param array $groupProtocols
+     * Joins the group with specified protocol and member information
+     *
+     * @param Node   $coordinatorNode Current group coordinator for $groupId
+     * @param string $groupId         Name of the group
+     * @param string $memberId        Name of the group member
+     * @param string $protocolType    Type of protocol to use for joining
+     * @param array  $groupProtocols  Configuration of group protocols
      *
      * @return JoinGroupResponse
+     *
+     * @throws ApiKeys\Error\GroupLoadInProgress
+     * @throws ApiKeys\Error\GroupCoordinatorNotAvailable
+     * @throws ApiKeys\Error\NotCoordinatorForGroup
+     * @throws ApiKeys\Error\InconsistentGroupProtocol
+     * @throws ApiKeys\Error\UnknownMemberId
+     * @throws ApiKeys\Error\InvalidSessionTimeout
+     * @throws ApiKeys\Error\GroupAuthorizationFailed
      */
     public function joinGroup(Node $coordinatorNode, $groupId, $memberId, $protocolType, array $groupProtocols)
     {
@@ -165,18 +230,28 @@ class Client
         );
         $request->writeTo($stream);
         $response = JoinGroupResponse::unpack($stream);
+        if ($response->errorCode !== 0) {
+            $context = ['coordinatorNode' => $coordinatorNode, 'groupId' => $groupId, 'memberId' => $memberId, 'protocolType' => $protocolType];
+            throw KafkaException::fromCode($response->errorCode, $context);
+        }
 
         return $response;
     }
 
     /**
-     * @param Node $coordinatorNode
-     * @param      $groupId
-     * @param      $memberId
+     * Removes the group member from the current group
      *
-     * @return LeaveGroupResponse
+     * @param Node   $coordinatorNode Current group coordinator for $groupId
+     * @param string $groupId         Name of the group
+     * @param string $memberId        Name of the group member
+     *
+     * @throws ApiKeys\Error\GroupLoadInProgress
+     * @throws ApiKeys\Error\GroupCoordinatorNotAvailable
+     * @throws ApiKeys\Error\NotCoordinatorForGroup
+     * @throws ApiKeys\Error\UnknownMemberId
+     * @throws ApiKeys\Error\GroupAuthorizationFailed
      */
-    public function leaveGroup(Node $coordinatorNode, $groupId, $memberId)
+    public function leaveGroup(Node $coordinatorNode, $groupId, $memberId): void
     {
         $stream = $this->connections[$coordinatorNode->nodeId];
 
@@ -187,17 +262,29 @@ class Client
         );
         $request->writeTo($stream);
         $response = LeaveGroupResponse::unpack($stream);
-
-        return $response;
+        if ($response->errorCode !== 0) {
+            $context = ['coordinatorNode' => $coordinatorNode, 'groupId' => $groupId, 'memberId' => $memberId];
+            throw KafkaException::fromCode($response->errorCode, $context);
+        }
     }
 
     /**
-     * @param Node  $coordinatorNode
-     * @param       $memberId
-     * @param       $generationId
-     * @param array $groupAssignments
+     * Synchronizes group member with the group
+     *
+     * @param Node    $coordinatorNode  Current group coordinator for $groupId
+     * @param string  $groupId          Name of the group
+     * @param string  $memberId         Name of the group member
+     * @param integer $generationId     Current generation of consumer
+     * @param array   $groupAssignments Group assignments
      *
      * @return SyncGroupResponse
+     *
+     * @throws ApiKeys\Error\GroupCoordinatorNotAvailable
+     * @throws ApiKeys\Error\NotCoordinatorForGroup
+     * @throws ApiKeys\Error\IllegalGeneration
+     * @throws ApiKeys\Error\UnknownMemberId
+     * @throws ApiKeys\Error\RebalanceInProgress
+     * @throws ApiKeys\Error\GroupAuthorizationFailed
      */
     public function syncGroup(Node $coordinatorNode, $groupId, $memberId, $generationId, array $groupAssignments = [])
     {
@@ -212,6 +299,10 @@ class Client
         );
         $request->writeTo($stream);
         $response = SyncGroupResponse::unpack($stream);
+        if ($response->errorCode !== 0) {
+            $context = ['coordinatorNode' => $coordinatorNode, 'groupId' => $groupId, 'memberId' => $memberId, 'generationId' => $generationId, 'groupAssignments' => $groupAssignments];
+            throw KafkaException::fromCode($response->errorCode, $context);
+        }
 
         return $response;
     }
@@ -244,10 +335,21 @@ class Client
         $request->writeTo($stream);
         $response = HeartbeatResponse::unpack($stream);
         if ($response->errorCode !== 0) {
-            throw KafkaException::fromCode($response->errorCode);
+            $context = ['coordinatorNode' => $coordinatorNode, 'groupId' => $groupId, 'memberId' => $memberId, 'generationId' => $generationId];
+            throw KafkaException::fromCode($response->errorCode, $context);
         }
     }
 
+    /**
+     * Discovers the group coordinator node for the group
+     *
+     * @param string $groupId Name of the group
+     *
+     * @return Node
+     *
+     * @throws ApiKeys\Error\GroupCoordinatorNotAvailable
+     * @throws ApiKeys\Error\GroupAuthorizationFailed
+     */
     public function getGroupCoordinator($groupId)
     {
         // TODO: iterate over connections and wrap logic into the try..catch block
@@ -258,12 +360,28 @@ class Client
             $this->configuration[ConsumerConfig::CLIENT_ID]
         );
         $request->writeTo($stream);
-        $reponse = GroupCoordinatorResponse::unpack($stream);
-        // TODO: error handling
+        $response = GroupCoordinatorResponse::unpack($stream);
+        if ($response->errorCode !== 0) {
+            throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
+        }
 
-        return $this->cluster->nodeById($reponse->coordinator->nodeId);
+        return $this->cluster->nodeById($response->coordinator->nodeId);
     }
 
+    /**
+     * Fetches messages from the specified topic and partitions
+     *
+     * @param array   $topicPartitionOffsets List of topic partition offsets as start point for fetching
+     * @param integer $timeout               Timeout in ms to wait for fetching
+     *
+     * @return array
+     *
+     * @throws ApiKeys\Error\OffsetOutOfRange
+     * @throws ApiKeys\Error\UnknownTopicOrPartition
+     * @throws ApiKeys\Error\NotLeaderForPartition
+     * @throws ApiKeys\Error\ReplicaNotAvailable
+     * @throws ApiKeys\Error\UnknownError
+     */
     public function fetch(array $topicPartitionOffsets, $timeout)
     {
         $timeout = min($this->configuration[ConsumerConfig::FETCH_MAX_WAIT_MS], $timeout);
@@ -281,9 +399,12 @@ class Client
             return $request;
         }, FetchResponse::class, function (array $result, FetchResponse $response): array {
             foreach ($response->topics as $topic => $partitions) {
-                foreach ($partitions as $partitionId => $fetchResponsePartition) {
-                    /** @var ApiKeys\DTO\FetchResponsePartition $fetchResponsePartition */
-                    $result[$topic][$partitionId] = $fetchResponsePartition->messageSet;
+                foreach ($partitions as $partitionId => $responsePartition) {
+                    /** @var ApiKeys\DTO\FetchResponsePartition $responsePartition */
+                    if ($responsePartition->errorCode !== 0) {
+                        throw KafkaException::fromCode($responsePartition->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
+                    }
+                    $result[$topic][$partitionId] = $responsePartition->messageSet;
                 }
             }
 
@@ -293,7 +414,19 @@ class Client
         return $result;
     }
 
-    public function offsets(array $topicPartitions)
+    /**
+     * Requests all offsets for the list of topic partitions
+     *
+     * This query will be made over the current cluster by checking the metadata for each topic partition
+     * @param array $topicPartitions List of topic partitions
+     *
+     * @return array Array in the form: [topic => [partition => offset]]
+     *
+     * @throws ApiKeys\Error\UnknownTopicOrPartition
+     * @throws ApiKeys\Error\NotLeaderForPartition
+     * @throws ApiKeys\Error\UnknownError
+     */
+    public function fetchTopicPartitionOffsets(array $topicPartitions)
     {
         $result = $this->clusterRequest($topicPartitions, function (array $nodeTopicRequest): OffsetsRequest {
             $request = new OffsetsRequest(
@@ -306,7 +439,11 @@ class Client
             return $request;
         }, OffsetsResponse::class, function (array $result, OffsetsResponse $response): array {
             foreach ($response->topics as $topic => $partitions) {
+                /** @var ApiKeys\DTO\OffsetsPartition[] $partitions */
                 foreach ($partitions as $partitionId => $partitionMetadata) {
+                    if ($partitionMetadata->errorCode !== 0) {
+                        throw KafkaException::fromCode($partitionMetadata->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
+                    }
                     $result[$topic][$partitionId] = reset($partitionMetadata->offsets);
                 }
             }

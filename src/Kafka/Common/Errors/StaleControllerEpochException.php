@@ -20,8 +20,8 @@ use Exception;
  */
 class StaleControllerEpochException extends KafkaException
 {
-    public function __construct($message, ?Exception $previous = null)
+    public function __construct(array $context, ?Exception $previous = null)
     {
-        parent::__construct($message, self::STALE_CONTROLLER_EPOCH, $previous);
+        parent::__construct($context, self::STALE_CONTROLLER_EPOCH, $previous);
     }
 }

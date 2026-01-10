@@ -12,14 +12,14 @@
 declare(strict_types=1);
 /**
  * @author Alexander.Lisachenko
- * @date   29.07.2014
+ * @date   29.07.2016
  */
 
 namespace Protocol\Kafka\Common;
 
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\NetworkException;
-use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
+use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\IO\PersistentSocketStream;
 use Protocol\Kafka\IO\SocketStream;
@@ -60,7 +60,7 @@ final class Cluster
     public function availablePartitionsForTopic($topic)
     {
         if (!isset($this->topicPartitions[$topic])) {
-            throw new InvalidTopicException("Topic {$topic} was not found");
+            throw new InvalidTopicException(['topic' => $topic]);
         }
 
         return $this->topicPartitions[$topic]->partitions;
@@ -87,7 +87,7 @@ final class Cluster
             }
         }
         if (!isset($stream)) {
-            throw new NetworkException("There are no available brokers for bootstraping");
+            throw new NetworkException(['brokerAddresses' => $brokerAddresses]);
         }
         $metadata = self::fetchMetadata($stream);
         $cluster  = new Cluster($metadata->brokers, $metadata->topics);
@@ -107,7 +107,7 @@ final class Cluster
     {
         $partitions = $this->partitionsForTopic($topic);
         if (!isset($partitions[$partition])) {
-            throw new OffsetOutOfRangeException("Partition {$partition} is out of range for topic {$topic}");
+            throw new UnknownTopicOrPartitionException(['topic' => $topic, 'partition' => $partition]);
         }
 
         $leaderId = $partitions[$partition]->leader;
@@ -153,7 +153,7 @@ final class Cluster
     {
         $partitions = $this->partitionsForTopic($topic);
         if (!isset($partitions[$partition])) {
-            throw new OffsetOutOfRangeException("Partition {$partition} is out of range for topic {$topic}");
+            throw new UnknownTopicOrPartitionException(['topic' => $topic, 'partition' => $partition]);
         }
 
         return $partitions[$partition];
@@ -169,7 +169,7 @@ final class Cluster
     public function partitionsForTopic($topic)
     {
         if (!isset($this->topicPartitions[$topic])) {
-            throw new InvalidTopicException("Topic {$topic} was not found");
+            throw new InvalidTopicException(['topic' => $topic]);
         }
 
         return $this->topicPartitions[$topic]->partitions;

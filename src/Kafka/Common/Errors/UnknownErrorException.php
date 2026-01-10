@@ -20,8 +20,8 @@ use Exception;
  */
 class UnknownErrorException extends KafkaException
 {
-    public function __construct($message, ?Exception $previous = null)
+    public function __construct(array $context, ?Exception $previous = null)
     {
-        parent::__construct($message, self::UNKNOWN, $previous);
+        parent::__construct($context, self::UNKNOWN, $previous);
     }
 }
