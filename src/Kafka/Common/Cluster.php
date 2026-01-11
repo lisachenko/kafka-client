@@ -124,10 +124,10 @@ final class Cluster
      *
      * @return null|Node
      */
-    public function nodeById($nodeId): ?Node
+    public function nodeById($nodeId)
     {
         if (!isset($this->nodes[$nodeId])) {
-            return null;
+            throw new UnknownErrorException(['nodeId' => $nodeId] + ['error' => 'Node was not found']);
         }
 
         return $this->nodes[$nodeId];
