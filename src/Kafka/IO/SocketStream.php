@@ -19,6 +19,7 @@ namespace Protocol\Kafka\IO;
 
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Protocol\Request\StreamGroupRequest;
 
 /**
  * Implementation of simple socket stream
@@ -74,6 +75,18 @@ class SocketStream extends AbstractStream
         $this->host          = $tcpInfo['host'];
         $this->port          = $tcpInfo['port'] ?? 9092;
         $this->timeout       = $connectionTimeout ?? ini_get("default_socket_timeout");
+    }
+
+    /**
+     * Joins current stream to the group (for stream_select)
+     *
+     * @param StreamGroupRequest $group Instance of group
+     *
+     * @return void
+     */
+    public function joinGroup(StreamGroupRequest $group): void
+    {
+        $group->registerHandle($this, $this->streamSocket);
     }
 
     /**
