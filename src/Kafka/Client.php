@@ -215,6 +215,7 @@ class Client
         $request = new JoinGroupRequest(
             $groupId,
             $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS],
+            $this->configuration[ConsumerConfig::REBALANCE_TIMEOUT_MS],
             $memberId,
             $protocolType,
             $groupProtocols,
@@ -428,7 +429,6 @@ class Client
         $result = $this->clusterRequest($topicPartitions, function (array $nodeTopicRequest): OffsetsRequest {
             $request = new OffsetsRequest(
                 $nodeTopicRequest,
-                1,
                 -1,
                 $this->configuration[ConsumerConfig::CLIENT_ID]
             );
@@ -441,7 +441,7 @@ class Client
                     if ($partitionMetadata->errorCode !== 0) {
                         throw KafkaException::fromCode($partitionMetadata->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
                     }
-                    $result[$topic][$partitionId] = reset($partitionMetadata->offsets);
+                    $result[$topic][$partitionId] = $partitionMetadata->offset;
                 }
             }
 

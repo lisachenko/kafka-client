@@ -48,7 +48,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritDoc
      */
-    public const VERSION = 2;
+    public const VERSION = 3;
 
     /**
      * @param int $maxWaitTime
@@ -76,7 +76,14 @@ class FetchRequest extends AbstractRequest
          */
         private $minBytes,
         /**
-         * The maximum bytes to include in the message set for this partition. This helps bound the size of the response.
+         * Maximum bytes to accumulate in the response.
+         *
+         * Note that this is not an absolute maximum, if the first message in the first non-empty partition of the
+         * fetch is larger than this value, the message will still be returned to ensure that progress can be made.
+         *
+         * This value previously was only in partition.max_bytes property, now it packed into own field too
+         *
+         * @since 0.10.1.0
          */
         private $maxBytes,
         /**
@@ -99,7 +106,14 @@ class FetchRequest extends AbstractRequest
         $payload     = parent::packPayload();
         $totalTopics = count($this->topicPartitions);
 
-        $payload .= pack('NNNN', $this->replicaId, $this->maxWaitTime, $this->minBytes, $totalTopics);
+        $payload .= pack(
+            'NNNNN',
+            $this->replicaId,
+            $this->maxWaitTime,
+            $this->minBytes,
+            $this->maxBytes,
+            $totalTopics
+        );
         foreach ($this->topicPartitions as $topic => $partitions) {
             $topicLength = strlen($topic);
             $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
