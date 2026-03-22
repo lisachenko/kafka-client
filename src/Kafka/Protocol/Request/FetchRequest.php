@@ -48,7 +48,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritDoc
      */
-    public const VERSION = 1;
+    public const VERSION = 2;
 
     /**
      * @param int $maxWaitTime
