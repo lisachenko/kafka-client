@@ -33,6 +33,7 @@ final class ConsumerConfig extends GeneralConfig
         ConsumerConfig::GROUP_ID                      => '',
         ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => RoundRobinAssignor::class,
         ConsumerConfig::SESSION_TIMEOUT_MS            => 30000,
+        ConsumerConfig::REBALANCE_TIMEOUT_MS          => 60000,
         ConsumerConfig::FETCH_MIN_BYTES               => 1,
         ConsumerConfig::FETCH_MAX_WAIT_MS             => 500,
         ConsumerConfig::MAX_PARTITION_FETCH_BYTES     => 65536,
@@ -70,6 +71,15 @@ final class ConsumerConfig extends GeneralConfig
      * group.max.session.timeout.ms
      */
     public const string SESSION_TIMEOUT_MS = 'session.timeout.ms';
+
+    /**
+     * The maximum allowed time for each worker to join the group once a rebalance has begun.
+     *
+     * This is basically a limit on the amount of time needed for all tasks to flush any pending data and commit
+     * offsets. If the timeout is exceeded, then the worker will be removed from the group, which will cause offset
+     * commit failures.
+     */
+    public const string REBALANCE_TIMEOUT_MS = 'rebalance.timeout.ms';
 
     /**
      * The minimum amount of data the server should return for a fetch request.
