@@ -30,6 +30,11 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 class OffsetCommitRequest extends AbstractRequest
 {
     /**
+     * @inheritDoc
+     */
+    public const VERSION = 2;
+
+    /**
      * @param string $consumerGroup
      * @param int $generationId
      * @param string $memberName

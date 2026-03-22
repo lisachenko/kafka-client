@@ -53,7 +53,7 @@ class SyncGroupRequest extends AbstractRequest
         $clientId = '',
         $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::SYNC_GROUP, $clientId, $correlationId, ApiKeys::VERSION_0);
+        parent::__construct(ApiKeys::SYNC_GROUP, $clientId, $correlationId);
     }
 
     /**

@@ -46,6 +46,11 @@ use Protocol\Kafka\Protocol\ApiKeys;
 class FetchRequest extends AbstractRequest
 {
     /**
+     * @inheritDoc
+     */
+    public const VERSION = 1;
+
+    /**
      * @param int $maxWaitTime
      * @param int $minBytes
      * @param int $maxBytes

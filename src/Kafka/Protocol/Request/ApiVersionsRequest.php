@@ -27,6 +27,6 @@ class ApiVersionsRequest extends AbstractRequest
 {
     public function __construct($clientId = '', $correlationId = 0)
     {
-        parent::__construct(ApiKeys::API_VERSIONS, $clientId, $correlationId, ApiKeys::VERSION_0);
+        parent::__construct(ApiKeys::API_VERSIONS, $clientId, $correlationId);
     }
 }
