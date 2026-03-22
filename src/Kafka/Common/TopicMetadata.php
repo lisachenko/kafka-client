@@ -41,7 +41,7 @@ class TopicMetadata
     public $topic;
 
     /**
-     * Indicates if the topic is considered a ApiKeys internal topic
+     * Indicates if the topic is considered a Kafka internal topic
      *
      * @var boolean
      * @since Version 1 of protocol

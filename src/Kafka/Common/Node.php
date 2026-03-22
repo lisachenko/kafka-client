@@ -21,7 +21,7 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\IO\SocketStream;
 
 /**
- * Information about a ApiKeys node
+ * Information about a Kafka node
  */
 class Node
 {

@@ -24,7 +24,6 @@ use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\ApiKeys;
-use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
@@ -359,9 +358,6 @@ class Client
         }
 
         $coordinator = $this->cluster->nodeById($response->coordinator->nodeId);
-        if (!isset($coordinator)) {
-            throw new GroupCoordinatorNotAvailableException(['groupId' => $groupId]);
-        }
 
         return $coordinator;
     }
