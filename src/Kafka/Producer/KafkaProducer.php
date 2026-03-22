@@ -68,42 +68,9 @@ class KafkaProducer
      */
     private array $topicPartitionMessages = [];
 
-    /**
-     * Default configuration for producer
-     */
-    private static array $defaultConfiguration = [
-        /* Used configs */
-        ProducerConfig::BOOTSTRAP_SERVERS            => [],
-        ProducerConfig::PARTITIONER_CLASS            => DefaultPartitioner::class,
-        ProducerConfig::ACKS                         => 1,
-        ProducerConfig::TIMEOUT_MS                   => 2000,
-        ProducerConfig::CLIENT_ID                    => 'PHP/Kafka',
-        ProducerConfig::STREAM_PERSISTENT_CONNECTION => false,
-        ProducerConfig::STREAM_ASYNC_CONNECT         => false,
-        ProducerConfig::METADATA_MAX_AGE_MS          => 300000,
-        ProducerConfig::RECEIVE_BUFFER_BYTES         => 32768,
-        ProducerConfig::SEND_BUFFER_BYTES            => 131072,
-        ProducerConfig::RETRIES                      => 0,
-        ProducerConfig::BATCH_SIZE                   => 0,
-
-        ProducerConfig::COMPRESSION_TYPE          => 'none',
-        ProducerConfig::SSL_KEY_PASSWORD          => null,
-        ProducerConfig::SSL_KEYSTORE_LOCATION     => null,
-        ProducerConfig::SSL_KEYSTORE_PASSWORD     => null,
-        ProducerConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
-        ProducerConfig::LINGER_MS                 => 0,
-        ProducerConfig::MAX_REQUEST_SIZE          => 1048576,
-        ProducerConfig::REQUEST_TIMEOUT_MS        => 30000,
-        ProducerConfig::SASL_MECHANISM            => 'GSSAPI',
-        ProducerConfig::SECURITY_PROTOCOL         => 'plaintext',
-        ProducerConfig::METADATA_FETCH_TIMEOUT_MS => 60000,
-        ProducerConfig::RECONNECT_BACKOFF_MS      => 50,
-        ProducerConfig::RETRY_BACKOFF_MS          => 100,
-    ];
-
     public function __construct(array $configuration = [])
     {
-        $this->configuration = ($configuration + self::$defaultConfiguration);
+        $this->configuration = ($configuration + ProducerConfig::getDefaultConfiguration());
         $this->cluster       = Cluster::bootstrap($this->configuration);
         $partitioner         = $this->configuration[ProducerConfig::PARTITIONER_CLASS];
 

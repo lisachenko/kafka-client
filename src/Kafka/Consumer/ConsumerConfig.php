@@ -26,6 +26,24 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
 final class ConsumerConfig extends GeneralConfig
 {
     /**
+     * Default configuration for consumer
+     */
+    private static array $consumerConfiguration = [
+        /* Used configs */
+        ConsumerConfig::GROUP_ID                      => '',
+        ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => RoundRobinAssignor::class,
+        ConsumerConfig::SESSION_TIMEOUT_MS            => 30000,
+        ConsumerConfig::FETCH_MIN_BYTES               => 1,
+        ConsumerConfig::FETCH_MAX_WAIT_MS             => 500,
+        ConsumerConfig::MAX_PARTITION_FETCH_BYTES     => 65536,
+        ConsumerConfig::AUTO_OFFSET_RESET             => OffsetResetStrategy::LATEST,
+        ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 2000,
+        ConsumerConfig::ENABLE_AUTO_COMMIT            => true,
+        ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
+        ConsumerConfig::OFFSET_RETENTION_MS           => -1, // Use broker retention time for offsets
+    ];
+
+    /**
      * A unique string that identifies the consumer group this consumer belongs to.
      *
      * This property is required if the consumer uses either the group management functionality by using
@@ -122,4 +140,14 @@ final class ConsumerConfig extends GeneralConfig
     public const string EXCLUDE_INTERNAL_TOPICS       = 'exclude.internal.topics';
     public const string MAX_POLL_RECORDS              = 'max.poll.records';
     public const string CHECK_CRCS                    = 'check.crcs';
+
+    /**
+     * Returns default configuration for consumer
+     *
+     * @return array
+     */
+    public static function getDefaultConfiguration()
+    {
+        return self::$consumerConfiguration + parent::$generalConfiguration;
+    }
 }
