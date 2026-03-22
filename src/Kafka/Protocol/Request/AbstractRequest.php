@@ -18,13 +18,24 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Protocol\ApiKeys;
 
 /**
  * Basic class for all requests
  */
 abstract class AbstractRequest extends AbstractProtocolMessage
 {
+    /**
+     * Version of API request, could be overridden in children classes
+     *
+     * @var int
+     */
+    public const VERSION = 0;
+
+    /**
+     * The version of the API. (INT16)
+     */
+    protected int $apiVersion;
+
     /**
      * A user-supplied integer value that will be passed back with the response (INT32)
      *
@@ -39,7 +50,6 @@ abstract class AbstractRequest extends AbstractProtocolMessage
 
     /**
      * @param int $apiKey
-     * @param int $apiVersion
      * @param string $clientId
      */
     public function __construct(/**
@@ -49,14 +59,10 @@ abstract class AbstractRequest extends AbstractProtocolMessage
      * A user specified identifier for the client making the request.
      */
         protected $clientId = '',
-        $correlationId = 0, /**
-     * The version of the API. (INT16)
-     *
-     * @see ApiKeys::VERSION constant value
-     */
-        protected $apiVersion = ApiKeys::VERSION
+        $correlationId = 0
     ) {
         $this->correlationId = $correlationId ?: self::$counter++;
+        $this->apiVersion    = static::VERSION;
 
         $this->setMessageData($this->packPayload());
     }

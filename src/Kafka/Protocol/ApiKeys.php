@@ -20,11 +20,6 @@ namespace Protocol\Kafka\Protocol;
 class ApiKeys
 {
     /**
-     * Protocol version implementation
-     */
-    public const VERSION = 0;
-
-    /**
      * Number of bytes in a kafka header
      */
     public const HEADER_LEN = 4;
