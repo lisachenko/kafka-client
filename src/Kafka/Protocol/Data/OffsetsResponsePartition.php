@@ -60,11 +60,11 @@ class OffsetsResponsePartition
     public $timestamp;
 
     /**
-     * List of offsets in the partition
+     * Found offset
      *
-     * @var integer[]|array
+     * @var integer
      */
-    public $offsets;
+    public $offset;
 
     /**
      * Unpacks the DTO from the binary buffer
@@ -76,9 +76,7 @@ class OffsetsResponsePartition
     public static function unpack(Stream $stream): static
     {
         $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->timestamp, $offsetsNumber] = array_values($stream->read('Npartition/nerrorCode/Jtimestamp/NoffsetsNumber'));
-
-        $partition->offsets = array_values($stream->read("J{$offsetsNumber}metadata"));
+        [$partition->partition, $partition->errorCode, $partition->timestamp, $partition->offset] = array_values($stream->read('Npartition/nerrorCode/Jtimestamp/Joffset'));
 
         return $partition;
     }
