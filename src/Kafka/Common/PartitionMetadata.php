@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Common;
 use Protocol\Kafka\IO\Stream;
 
 /**
- * Information about a topic-partition.
+ * Information about a topic-partition metadata.
  */
 class PartitionMetadata
 {
