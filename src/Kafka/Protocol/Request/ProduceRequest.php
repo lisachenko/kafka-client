@@ -56,7 +56,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritDoc
      *
-     * ProduceRequest => RequiredAcks Timeout [TopicName [Partition MessageSetSize RecordBatch]]
+     * ProduceRequest => RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
      *   RequiredAcks => int16
      *   Timeout => int32
      *   Partition => int32
@@ -71,14 +71,14 @@ class ProduceRequest extends AbstractRequest
         foreach ($this->topicMessages as $topic => $partitions) {
             $topicLength = strlen($topic);
             $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            foreach ($partitions as $partition => $messages) {
-                $messageSetPayload = '';
-                foreach ($messages as $message) {
-                    $messageSet = RecordBatch::fromMessage($message);
-                    $messageSetPayload .= $messageSet;
+            foreach ($partitions as $partition => $recordBatch) {
+                $recordBatchPayload = '';
+                foreach ($recordBatch as $message) {
+                    $recordBatch        = RecordBatch::fromRecord($message);
+                    $recordBatchPayload .= $recordBatch;
                 }
-                $payload .= pack('NN', $partition, strlen($messageSetPayload));
-                $payload .= $messageSetPayload;
+                $payload .= pack('NN', $partition, strlen($recordBatchPayload));
+                $payload .= $recordBatchPayload;
             }
         }
 

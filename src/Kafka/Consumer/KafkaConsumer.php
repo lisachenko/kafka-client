@@ -494,13 +494,13 @@ class KafkaConsumer
         $result = [];
 
         foreach ($fetchResult as $topic => $partitions) {
-            foreach ($partitions as $partitionId => $messageSet) {
-                if (empty($messageSet)) {
+            foreach ($partitions as $partitionId => $recordBatch) {
+                if (empty($recordBatch)) {
                     continue;
                 }
-                /** @var RecordBatch $lastMessage */
-                $lastMessage = end($messageSet);
-                $result[$topic][$partitionId] = $lastMessage->offset + 1;
+                /** @var RecordBatch $lastRecord */
+                $lastRecord = end($recordBatch);
+                $result[$topic][$partitionId] = $lastRecord->offset + 1;
             }
         }
 

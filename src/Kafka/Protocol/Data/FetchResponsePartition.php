@@ -53,7 +53,7 @@ class FetchResponsePartition
     /**
      * @var array|RecordBatch[]
      */
-    public $messageSet = [];
+    public $recordBatch = [];
 
     /**
      * Unpacks the DTO from the binary buffer
@@ -65,11 +65,11 @@ class FetchResponsePartition
     public static function unpack(Stream $stream): static
     {
         $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->highwaterMarkOffset, $messageSetSize] = array_values($stream->read('Npartition/nerrorCode/JhighwaterMarkOffset/NmessageSetSize'));
+        [$partition->partition, $partition->errorCode, $partition->highwaterMarkOffset, $batchSize] = array_values($stream->read('Npartition/nerrorCode/JhighwaterMarkOffset/NmessageSetSize'));
 
-        for ($received = 0; $received < $messageSetSize; $received += ($messageSet->messageSize + 12)) {
-            $messageSet = RecordBatch::unpack($stream);
-            $partition->messageSet[] = $messageSet;
+        for ($received = 0; $received < $batchSize; $received += ($recordBatch->messageSize + 12)) {
+            $recordBatch              = RecordBatch::unpack($stream);
+            $partition->recordBatch[] = $recordBatch;
         }
 
         return $partition;

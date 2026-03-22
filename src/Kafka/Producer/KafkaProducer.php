@@ -131,9 +131,9 @@ class KafkaProducer
      *
      * @todo Use futures instead of void result
      *
-     * @param string  $topic   Name of the topic
-     * @param Record $message Record to send
-     * @param integer|null    $concretePartition Optional partition for sending message
+     * @param string       $topic             Name of the topic
+     * @param Record       $message           Message to send
+     * @param integer|null $concretePartition Optional partition for sending message
      *
      * @return array
      */

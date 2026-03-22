@@ -401,7 +401,7 @@ class Client
                     if ($responsePartition->errorCode !== 0) {
                         throw KafkaException::fromCode($responsePartition->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
                     }
-                    $result[$topic][$partitionId] = $responsePartition->messageSet;
+                    $result[$topic][$partitionId] = $responsePartition->recordBatch;
                 }
             }
 

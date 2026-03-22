@@ -20,7 +20,9 @@ namespace Protocol\Kafka\Common\Record;
 use Protocol\Kafka\IO\Stream;
 
 /**
- * A message in kafka is a key-value pair with a small amount of associated metadata.
+ * A record in kafka is a key-value pair with a small amount of associated metadata.
+ *
+ * @since 0.11.0
  */
 class Record implements \Stringable
 {
