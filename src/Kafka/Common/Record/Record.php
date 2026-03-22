@@ -75,7 +75,7 @@ class Record implements \Stringable
     /**
      * The value is the actual message contents as an opaque byte array.
      *
-     * ApiKeys supports recursive messages in which case this may itself contain a message set. The message can be null.
+     * Kafka supports recursive messages in which case this may itself contain a message set. The message can be null.
      *
      * @var string
      */
