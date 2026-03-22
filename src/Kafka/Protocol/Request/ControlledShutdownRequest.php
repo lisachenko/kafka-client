@@ -26,6 +26,11 @@ use Protocol\Kafka\Protocol\ApiKeys;
 class ControlledShutdownRequest extends AbstractRequest
 {
     /**
+     * @inheritDoc
+     */
+    public const VERSION = 1;
+
+    /**
      * @param int $brokerId
      */
     public function __construct(/**

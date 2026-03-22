@@ -32,6 +32,11 @@ use Protocol\Kafka\Protocol\ApiKeys;
 class ProduceRequest extends AbstractRequest
 {
     /**
+     * @inheritDoc
+     */
+    public const VERSION = 1;
+
+    /**
      * ProduceRequest constructor.
      *
      * @param array  $topicMessages List of messages in format: topic => [partition => [messages]]
