@@ -21,6 +21,15 @@ use Protocol\Kafka\IO\Stream;
 
 /**
  * Offsets response DTO
+ *
+ * Offsets Response (Version: 1) => [responses]
+ *   responses => topic [partition_responses]
+ *     topic => STRING
+ *     partition_responses => partition error_code timestamp offset
+ *       partition => INT32
+ *       error_code => INT16
+ *       timestamp => INT64
+ *       offset => INT64
  */
 class OffsetsResponsePartition
 {
@@ -42,11 +51,20 @@ class OffsetsResponsePartition
     public $errorCode;
 
     /**
-     * List of offsets in the partition
+     * The timestamp associated with the returned offset
      *
-     * @var integer[]|array
+     * @since 0.10.1
+     *
+     * @var integer
      */
-    public $offsets;
+    public $timestamp;
+
+    /**
+     * Found offset
+     *
+     * @var integer
+     */
+    public $offset;
 
     /**
      * Unpacks the DTO from the binary buffer
@@ -58,9 +76,7 @@ class OffsetsResponsePartition
     public static function unpack(Stream $stream): static
     {
         $partition = new static();
-        [$partition->partition, $partition->errorCode, $offsetsNumber] = array_values($stream->read('Npartition/nerrorCode/NoffsetsNumber'));
-
-        $partition->offsets = array_values($stream->read("J{$offsetsNumber}metadata"));
+        [$partition->partition, $partition->errorCode, $partition->timestamp, $partition->offset] = array_values($stream->read('Npartition/nerrorCode/Jtimestamp/Joffset'));
 
         return $partition;
     }

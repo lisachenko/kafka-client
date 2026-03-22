@@ -30,8 +30,14 @@ use Protocol\Kafka\Protocol\ApiKeys;
 class JoinGroupRequest extends AbstractRequest
 {
     /**
+     * @inheritDoc
+     */
+    public const VERSION = 1;
+
+    /**
      * @param string $consumerGroup
      * @param int $sessionTimeout
+     * @param int $rebalanceTimeout
      * @param string $memberId
      * @param string $protocolType
      */
@@ -44,6 +50,10 @@ class JoinGroupRequest extends AbstractRequest
          * The coordinator considers the consumer dead if it receives no heartbeat after this timeout in ms.
          */
         private $sessionTimeout,
+        /**
+         * The maximum time that the coordinator will wait for each member to rejoin when rebalancing the group
+         */
+        private $rebalanceTimeout,
         /**
          * The member id assigned by the group coordinator.
          */
@@ -68,6 +78,7 @@ class JoinGroupRequest extends AbstractRequest
      * JoinGroup Request (Version: 0) => group_id session_timeout member_id protocol_type [group_protocols]
      *   group_id => STRING
      *   session_timeout => INT32
+     *   rebalance_timeout => INT32
      *   member_id => STRING
      *   protocol_type => STRING
      *   group_protocols => protocol_name protocol_metadata
@@ -82,10 +93,11 @@ class JoinGroupRequest extends AbstractRequest
         $protocolLength = strlen($this->protocolType);
 
         $payload .= pack(
-            "na{$groupLength}Nna{$memberLength}na{$protocolLength}N",
+            "na{$groupLength}NNna{$memberLength}na{$protocolLength}N",
             $groupLength,
             $this->consumerGroup,
             $this->sessionTimeout,
+            $this->rebalanceTimeout,
             $memberLength,
             $this->memberId,
             $protocolLength,
