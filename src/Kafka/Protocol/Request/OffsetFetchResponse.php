@@ -22,7 +22,17 @@ use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 
 /**
- * Produce response object
+ * OffsetFetch response object
+ *
+ * OffsetFetch Response (Version: 2) => [responses] error_code
+ *   responses => topic [partition_responses]
+ *     topic => STRING
+ *     partition_responses => partition offset metadata error_code
+ *     partition => INT32
+ *     offset => INT64
+ *     metadata => NULLABLE_STRING
+ *     error_code => INT16
+ *   error_code => INT16
  */
 class OffsetFetchResponse extends AbstractResponse
 {
@@ -32,6 +42,15 @@ class OffsetFetchResponse extends AbstractResponse
      * @var array|OffsetFetchResponsePartition[]
      */
     public $topics = [];
+
+    /**
+     * Error code returned by the coordinator
+     *
+     * @since Version 2 of protocol
+     *
+     * @var integer
+     */
+    public $errorCode;
 
     /**
      * Method to unpack the payload for the record
@@ -57,6 +76,7 @@ class OffsetFetchResponse extends AbstractResponse
                 $self->topics[$topicName][$topicMetadata->partition] = $topicMetadata;
             }
         }
+        $self->errorCode = $stream->read('nerrorCode')['errorCode'];
 
         return $self;
     }
