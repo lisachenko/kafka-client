@@ -477,8 +477,9 @@ class Client
 
         $incompleteReads = $readNodeSockets;
         $timeout ??= $this->configuration[ConsumerConfig::REQUEST_TIMEOUT_MS];
-        $responses = [];
-        while ($incompleteReads !== []) {
+        $responses  = [];
+        $finishTime = microtime(true) + ($timeout / 1000);
+        do {
             $readSelect  = $incompleteReads;
             $writeSelect = $exceptSelect = null;
             if (stream_select($readSelect, $writeSelect, $exceptSelect, intdiv($timeout, 1000), $timeout % 1000) > 0) {
@@ -489,7 +490,9 @@ class Client
                 }
                 $incompleteReads = array_diff($incompleteReads, $readSelect);
             }
-        }
+            $canWaitMoreTime = microtime(true) < $finishTime;
+        } while ($incompleteReads !== [] && $canWaitMoreTime);
+
         $result = array_reduce($responses, $responseAggregator, []);
 
         return $result;
