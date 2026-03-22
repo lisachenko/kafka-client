@@ -32,6 +32,11 @@ use Protocol\Kafka\Protocol\ApiKeys;
 class OffsetsRequest extends AbstractRequest
 {
     /**
+     * @inheritDoc
+     */
+    public const VERSION = 1;
+
+    /**
      * Special value for the offset of the next coming message
      */
     public const LATEST = -1;
@@ -43,14 +48,9 @@ class OffsetsRequest extends AbstractRequest
 
     /**
      * @param int $replicaId
-     * @param int $maxOffsets
      */
     public function __construct(
         private readonly array $topicPartitions,
-        /**
-         * Maximum number of offsets to return
-         */
-        private $maxOffsets = 1,
         /**
          * The replica id indicates the node id of the replica initiating this request. Normal client consumers should
          * always specify this as -1 as they have no node id. Other brokers set this to be their own node id. The value -2
@@ -76,7 +76,7 @@ class OffsetsRequest extends AbstractRequest
             $topicLength = strlen($topic);
             $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
             foreach ($partitions as $partitionId => $timeOffset) {
-                $payload .= pack('NJN', $partitionId, $timeOffset, $this->maxOffsets);
+                $payload .= pack('NJ', $partitionId, $timeOffset);
             }
         }
 
