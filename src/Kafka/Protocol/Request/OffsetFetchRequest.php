@@ -31,6 +31,11 @@ use Protocol\Kafka\Protocol\ApiKeys;
 class OffsetFetchRequest extends AbstractRequest
 {
     /**
+     * @inheritDoc
+     */
+    public const VERSION = 1;
+
+    /**
      * @param string $consumerGroup
      */
     public function __construct(/**
@@ -41,7 +46,7 @@ class OffsetFetchRequest extends AbstractRequest
         $clientId = '',
         $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::OFFSET_FETCH, $clientId, $correlationId, ApiKeys::VERSION_1);
+        parent::__construct(ApiKeys::OFFSET_FETCH, $clientId, $correlationId);
     }
 
     /**
