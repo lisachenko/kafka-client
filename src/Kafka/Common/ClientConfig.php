@@ -23,6 +23,27 @@ namespace Protocol\Kafka\Common;
  */
 class ClientConfig
 {
+    protected static $generalConfiguration = [
+        ClientConfig::BOOTSTRAP_SERVERS            => [],
+        ClientConfig::CLIENT_ID                    => 'PHP/Kafka',
+        ClientConfig::STREAM_PERSISTENT_CONNECTION => false,
+        ClientConfig::STREAM_ASYNC_CONNECT         => false,
+        ClientConfig::METADATA_MAX_AGE_MS          => 300000,
+        ClientConfig::RECEIVE_BUFFER_BYTES         => 32768,
+        ClientConfig::SEND_BUFFER_BYTES            => 131072,
+
+        ClientConfig::SSL_KEY_PASSWORD          => null,
+        ClientConfig::SSL_KEYSTORE_LOCATION     => null,
+        ClientConfig::SSL_KEYSTORE_PASSWORD     => null,
+        ClientConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
+        ClientConfig::REQUEST_TIMEOUT_MS        => 30000,
+        ClientConfig::SASL_MECHANISM            => 'GSSAPI',
+        ClientConfig::SECURITY_PROTOCOL         => 'plaintext',
+        ClientConfig::METADATA_FETCH_TIMEOUT_MS => 60000,
+        ClientConfig::RECONNECT_BACKOFF_MS      => 50,
+        ClientConfig::RETRY_BACKOFF_MS          => 100,
+    ];
+
     /**
      * A list of host/port pairs to use for establishing the initial connection to the Kafka cluster.
      */
@@ -99,4 +120,14 @@ class ClientConfig
     public const SSL_PROTOCOL                  = 'ssl.protocol';
     public const RECONNECT_BACKOFF_MS          = 'reconnect.backoff.ms';
     public const RETRY_BACKOFF_MS              = 'retry.backoff.ms';
+
+    /**
+     * Returns default configuration
+     *
+     * @return array
+     */
+    public static function getDefaultConfiguration()
+    {
+        return self::$generalConfiguration;
+    }
 }

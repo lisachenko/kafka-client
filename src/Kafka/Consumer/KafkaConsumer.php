@@ -114,43 +114,9 @@ class KafkaConsumer
      */
     private ?int $lastAutoCommitMs = null;
 
-    /**
-     * Default configuration for producer
-     */
-    private static array $defaultConfiguration = [
-        /* Used configs */
-        ConsumerConfig::BOOTSTRAP_SERVERS             => [],
-        ConsumerConfig::CLIENT_ID                     => 'PHP/Kafka',
-        ConsumerConfig::GROUP_ID                      => '',
-        ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => RoundRobinAssignor::class,
-        ConsumerConfig::SESSION_TIMEOUT_MS            => 30000,
-        ConsumerConfig::FETCH_MIN_BYTES               => 1,
-        ConsumerConfig::FETCH_MAX_WAIT_MS             => 500,
-        ConsumerConfig::MAX_PARTITION_FETCH_BYTES     => 65536,
-        ConsumerConfig::AUTO_OFFSET_RESET             => OffsetResetStrategy::LATEST,
-        ConsumerConfig::REQUEST_TIMEOUT_MS            => 2000,
-        ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 2000,
-        ConsumerConfig::ENABLE_AUTO_COMMIT            => true,
-        ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
-        ConsumerConfig::STREAM_PERSISTENT_CONNECTION  => false,
-        ConsumerConfig::STREAM_ASYNC_CONNECT          => false,
-        ConsumerConfig::METADATA_MAX_AGE_MS           => 300000,
-        ConsumerConfig::RECEIVE_BUFFER_BYTES          => 65536,
-        ConsumerConfig::SEND_BUFFER_BYTES             => 131072,
-
-        ConsumerConfig::SSL_KEY_PASSWORD          => null,
-        ConsumerConfig::SSL_KEYSTORE_LOCATION     => null,
-        ConsumerConfig::SSL_KEYSTORE_PASSWORD     => null,
-        ConsumerConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
-        ConsumerConfig::SASL_MECHANISM            => 'GSSAPI',
-        ConsumerConfig::SECURITY_PROTOCOL         => 'plaintext',
-        ConsumerConfig::RECONNECT_BACKOFF_MS      => 50,
-        ConsumerConfig::RETRY_BACKOFF_MS          => 100,
-    ];
-
     public function __construct(array $configuration = [])
     {
-        $this->configuration = $configuration + self::$defaultConfiguration;
+        $this->configuration = $configuration + ConsumerConfig::getDefaultConfiguration();
         $this->cluster       = Cluster::bootstrap($this->configuration);
         $this->client        = new Client($this->cluster, $this->configuration);
         $assignorStrategy    = $this->configuration[ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY];
