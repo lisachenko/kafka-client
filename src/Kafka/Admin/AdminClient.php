@@ -26,6 +26,7 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
@@ -37,6 +38,8 @@ use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 
 /**
  * Kafka low-level administrative client
@@ -195,6 +198,28 @@ class AdminClient
         }
 
         return $response->groups;
+    }
+
+    /**
+     * List all group topic partition offsets for specified groupID
+     *
+     * @param string $groupId Identifier of group
+     *
+     * @return OffsetFetchResponsePartition[]
+     */
+    public function listGroupOffsets($groupId)
+    {
+        $coordinator = $this->findCoordinator($groupId);
+        $request     = new OffsetFetchRequest($groupId, [], $this->configuration[ClientConfig::CLIENT_ID]);
+        $stream      = $coordinator->getConnection($this->configuration);
+        $request->writeTo($stream);
+        $response = OffsetFetchResponse::unpack($stream);
+        if ($response->errorCode !== 0) {
+            $context = ['groupId' => $groupId];
+            throw KafkaException::fromCode($response->errorCode, $context);
+        }
+
+        return $response->topics;
     }
 
     /**
