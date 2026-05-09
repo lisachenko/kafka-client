@@ -42,17 +42,47 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * moved to the server side and accessed more conveniently. A simple consumer client can be implemented by simply
  * requiring that the partitions be specified in config, though this will not allow dynamic reassignment of partitions
  * should that consumer fail. We hope to address this gap in the next major release.
+ *
+ * Fetch Request (Version: 4) => replica_id max_wait_time min_bytes max_bytes isolation_level [topics]
+ *   replica_id => INT32
+ *   max_wait_time => INT32
+ *   min_bytes => INT32
+ *   max_bytes => INT32
+ *   isolation_level => INT8
+ *   topics => topic [partitions]
+ *     topic => STRING
+ *     partitions => partition fetch_offset max_bytes
+ *       partition => INT32
+ *       fetch_offset => INT64
+ *       max_bytes => INT32
+ *
+ * @deprecated since 0.11.0.0
  */
 class FetchRequest extends AbstractRequest
 {
     /**
      * @inheritDoc
      */
-    public const VERSION = 3;
+    public const VERSION = 4;
+
+    /**
+     * With READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED transactional records are visible.
+     *
+     * @see $isolationLevel
+     */
+    public const READ_COMMITTED = 1;
+
+    /**
+     * Using READ_UNCOMMITTED (isolation_level = 0) makes all records visible.
+     *
+     * @see $isolationLevel
+     */
+    public const READ_UNCOMMITTED = 0;
 
     /**
      * @param int $maxWaitTime
      * @param int $minBytes
+     * @param int $isolationLevel
      * @param int $maxBytes
      * @param int $replicaId
      */
@@ -87,6 +117,19 @@ class FetchRequest extends AbstractRequest
          */
         private $maxBytes,
         /**
+         * This setting controls the visibility of transactional records.
+         *
+         * Using READ_UNCOMMITTED (isolation_level = 0) makes all records visible.
+         * With READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED transactional records are visible.
+         *
+         * To be more concrete, READ_COMMITTED returns all data from offsets smaller than the current LSO (last stable
+         * offset), and enables the inclusion of the list of aborted transactions in the result, which allows consumers to
+         * discard ABORTED transactional records
+         *
+         * @since 0.11.0.0
+         */
+        private $isolationLevel = self::READ_UNCOMMITTED,
+        /**
          * The replica id indicates the node id of the replica initiating this request. Normal client consumers should
          * always specify this as -1 as they have no node id. Other brokers set this to be their own node id. The value -2
          * is accepted to allow a non-broker to issue fetch requests as if it were a replica broker for debugging purposes.
@@ -107,11 +150,12 @@ class FetchRequest extends AbstractRequest
         $totalTopics = count($this->topicPartitions);
 
         $payload .= pack(
-            'NNNNN',
+            'NNNNcN',
             $this->replicaId,
             $this->maxWaitTime,
             $this->minBytes,
             $this->maxBytes,
+            $this->isolationLevel,
             $totalTopics
         );
         foreach ($this->topicPartitions as $topic => $partitions) {
