@@ -21,7 +21,16 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Common\Record\RecordBatch;
 
 /**
- * Fetch response DTO
+ * Fetch response partition header
+ *
+ * partition_header => partition error_code high_watermark last_stable_offset [aborted_transactions]
+ *   partition => INT32
+ *   error_code => INT16
+ *   high_watermark => INT64
+ *   last_stable_offset => INT64
+ *   aborted_transactions => producer_id first_offset
+ *     producer_id => INT64
+ *     first_offset => INT64
  */
 class FetchResponsePartition
 {
@@ -48,12 +57,33 @@ class FetchResponsePartition
      *
      * @var integer
      */
-    public $highwaterMarkOffset;
+    public $highWaterMarkOffset;
 
     /**
-     * @var array|RecordBatch[]
+     * The last stable offset (or LSO) of the partition.
+     *
+     * This is the last offset such that the state of all transactional records prior to this offset have been decided
+     * (ABORTED or COMMITTED)
+     *
+     * @since version 4
+     *
+     * @var integer
      */
-    public $recordBatch = [];
+    public $lastStableOffset;
+
+    /**
+     * List of aborted transactions
+     *
+     * @since version 4
+     *
+     * @var array Array where key is producer_id and value is the first offset in the aborted transaction
+     */
+    public $abortedTransactions = [];
+
+    /**
+     * @var RecordBatch
+     */
+    public $recordBatch;
 
     /**
      * Unpacks the DTO from the binary buffer
@@ -65,12 +95,24 @@ class FetchResponsePartition
     public static function unpack(Stream $stream): static
     {
         $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->highwaterMarkOffset, $batchSize] = array_values($stream->read('Npartition/nerrorCode/JhighwaterMarkOffset/NmessageSetSize'));
+        [$partition->partition, $partition->errorCode, $partition->highWaterMarkOffset, $partition->lastStableOffset, $numberOfAbortedTransactions] = array_values($stream->read(
+            'Npartition/' .
+            'nerrorCode/' .
+            'JhighWaterMarkOffset/' .
+            'JlastStableOffset/' .
+            'labortedTransactions' // Nullable array could contain -1 as value
+        ));
 
-        for ($received = 0; $received < $batchSize; $received += ($recordBatch->messageSize + 12)) {
-            $recordBatch              = RecordBatch::unpack($stream);
-            $partition->recordBatch[] = $recordBatch;
+        for ($abortedTransaction = 0; $abortedTransaction < $numberOfAbortedTransactions; $abortedTransaction++) {
+            [$producerId, $firstOffset] = array_values($stream->read('JproducerId/JfirstOffset'));
+            $partition->abortedTransactions[$producerId] = $firstOffset;
         }
+
+        // What to do with this size?
+        $batchSize = $stream->read('NnumberOfRecords')['numberOfRecords'];
+
+        $recordBatch            = RecordBatch::unpack($stream);
+        $partition->recordBatch = $recordBatch;
 
         return $partition;
     }

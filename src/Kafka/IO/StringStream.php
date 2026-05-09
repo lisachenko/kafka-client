@@ -20,19 +20,16 @@ namespace Protocol\Kafka\IO;
 class StringStream extends AbstractStream
 {
     /**
-     * Internal binary buffer
-     */
-    private ?string $buffer = null;
-
-    /**
      * String stream constructor.
      *
-     * @param string $stringBuffer Buffer to write to or read from
+     * @param string $buffer Optional buffer to write to or read from
      */
-    public function __construct(&$stringBuffer)
-    {
-        $this->buffer = &$stringBuffer;
-    }
+    public function __construct(
+        /**
+         * Internal binary buffer
+         */
+        private $buffer = null
+    ) {}
 
     /**
      * Writes arguments to the stream
@@ -71,5 +68,15 @@ class StringStream extends AbstractStream
     public function isConnected(): bool
     {
         return true;
+    }
+
+    /**
+     * Returns the current buffer, useful for write opertaions
+     *
+     * @return string
+     */
+    public function getBuffer()
+    {
+        return $this->buffer;
     }
 }
