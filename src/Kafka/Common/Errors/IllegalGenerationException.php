@@ -18,7 +18,7 @@ use Exception;
 /**
  * Specified group generation id is not valid.
  */
-class IllegalGenerationException extends KafkaException
+class IllegalGenerationException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context, ?Exception $previous = null) {}
 }

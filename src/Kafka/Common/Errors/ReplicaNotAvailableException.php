@@ -18,7 +18,7 @@ use Exception;
 /**
  * The replica is not available for the requested topic-partition
  */
-class ReplicaNotAvailableException extends KafkaException
+class ReplicaNotAvailableException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context, ?Exception $previous = null) {}
 }

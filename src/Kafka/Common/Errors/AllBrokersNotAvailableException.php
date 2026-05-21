@@ -13,12 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Errors;
 
-use Exception;
-
 /**
- * The coordinator is not aware of this member.
+ * No more brokers available in kafka cluster.
  */
-class UnknownMemberIdException extends KafkaException implements ServerExceptionInterface
-{
-    public function __construct(array $context, ?Exception $previous = null) {}
-}
+class AllBrokersNotAvailableException extends KafkaException implements ClientExceptionInterface {}

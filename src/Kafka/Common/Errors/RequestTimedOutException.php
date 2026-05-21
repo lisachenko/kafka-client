@@ -18,7 +18,7 @@ use Exception;
 /**
  * The request timed out.
  */
-class RequestTimedOutException extends KafkaException implements RetriableException
+class RequestTimedOutException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
     public function __construct(array $context, ?Exception $previous = null) {}
 }

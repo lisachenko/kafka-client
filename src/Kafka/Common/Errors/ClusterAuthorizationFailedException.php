@@ -18,7 +18,7 @@ use Exception;
 /**
  * Cluster authorization failed.
  */
-class ClusterAuthorizationFailedException extends KafkaException
+class ClusterAuthorizationFailedException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context, ?Exception $previous = null) {}
 }
