@@ -117,8 +117,6 @@ class KafkaConsumer
     public function __construct(array $configuration = [])
     {
         $this->configuration = $configuration + ConsumerConfig::getDefaultConfiguration();
-        $this->cluster       = Cluster::bootstrap($this->configuration);
-        $this->client        = new Client($this->cluster, $this->configuration);
         $assignorStrategy    = $this->configuration[ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY];
 
         if (!is_subclass_of($assignorStrategy, PartitionAssignorInterface::class)) {
@@ -146,7 +144,7 @@ class KafkaConsumer
         }
         $this->assignedTopicPartitions = $topicPartitions;
 
-        $topicPartitionOffsets = $this->client->fetchGroupOffsets(
+        $topicPartitionOffsets = $this->getClient()->fetchGroupOffsets(
             $this->coordinator,
             $this->configuration[ConsumerConfig::GROUP_ID],
             $topicPartitions
@@ -173,7 +171,7 @@ class KafkaConsumer
     {
         $topicPartitionOffsets ??= $this->topicPartitionOffsets;
 
-        $this->client->commitGroupOffsets(
+        $this->getClient()->commitGroupOffsets(
             $this->coordinator,
             $this->configuration[ConsumerConfig::GROUP_ID],
             $this->memberId,
@@ -194,7 +192,7 @@ class KafkaConsumer
      */
     public function partitionsFor($topic)
     {
-        return $this->cluster->partitionsForTopic($topic);
+        return $this->getCluster()->partitionsForTopic($topic);
     }
 
     /**
@@ -231,7 +229,7 @@ class KafkaConsumer
             // This can be optimized in pause()/resume methods
             $activeTopicPartitionOffsets[$topic] = array_diff($activeTopicPartitionOffsets[$topic], $partitions);
         }
-        $result = $this->client->fetch($activeTopicPartitionOffsets, $timeout);
+        $result = $this->getClient()->fetch($activeTopicPartitionOffsets, $timeout);
 
         $resultOffsets = $this->fetchResultOffsets($result);
         if ($resultOffsets) {
@@ -322,10 +320,10 @@ class KafkaConsumer
     public function subscribe(array $topics): void
     {
         $groupId           = $this->configuration[ConsumerConfig::GROUP_ID];
-        $this->coordinator = $this->client->getGroupCoordinator($groupId);
+        $this->coordinator = $this->getClient()->getGroupCoordinator($groupId);
 
         $subscription = Subscription::fromSubscription($topics);
-        $joinResult   = $this->client->joinGroup(
+        $joinResult   = $this->getClient()->joinGroup(
             $this->coordinator,
             $this->configuration[ConsumerConfig::GROUP_ID],
             $this->memberId,
@@ -339,8 +337,8 @@ class KafkaConsumer
         $isLeader = $joinResult->memberId === $joinResult->leaderId;
 
         if ($isLeader) {
-            $groupAssignments = $this->assignorStrategy->assign($this->cluster, $joinResult->members);
-            $syncResult       = $this->client->syncGroup(
+            $groupAssignments = $this->assignorStrategy->assign($this->getCluster(), $joinResult->members);
+            $syncResult       = $this->getClient()->syncGroup(
                 $this->coordinator,
                 $this->configuration[ConsumerConfig::GROUP_ID],
                 $this->memberId,
@@ -349,7 +347,7 @@ class KafkaConsumer
             );
             $topicPartitions = $groupAssignments[$this->memberId]->topicPartitions;
         } else {
-            $syncResult = $this->client->syncGroup(
+            $syncResult = $this->getClient()->syncGroup(
                 $this->coordinator,
                 $this->configuration[ConsumerConfig::GROUP_ID],
                 $this->memberId,
@@ -383,7 +381,7 @@ class KafkaConsumer
     public function unsubscribe(): void
     {
         if (!empty($this->subscription)) {
-            $this->client->leaveGroup(
+            $this->getClient()->leaveGroup(
                 $this->coordinator,
                 $this->configuration[ConsumerConfig::GROUP_ID],
                 $this->memberId
@@ -411,7 +409,7 @@ class KafkaConsumer
     protected function heartbeat($heartBeatTimeMs)
     {
         try {
-            $this->client->heartbeat(
+            $this->getClient()->heartbeat(
                 $this->coordinator,
                 $this->configuration[ConsumerConfig::GROUP_ID],
                 $this->memberId,
@@ -477,7 +475,7 @@ class KafkaConsumer
             }
             $topicPartitionOffsetsRequest[$topic] = array_fill_keys($partitions, $requestType);
         }
-        $topicPartitionOffsets = $this->client->fetchTopicPartitionOffsets($topicPartitionOffsetsRequest);
+        $topicPartitionOffsets = $this->getClient()->fetchTopicPartitionOffsets($topicPartitionOffsetsRequest);
 
         return $topicPartitionOffsets;
     }
@@ -505,5 +503,33 @@ class KafkaConsumer
         }
 
         return $result;
+    }
+
+    /**
+     * Cluster lazy-loading
+     *
+     * @return Cluster
+     */
+    private function getCluster()
+    {
+        if (!$this->cluster) {
+            $this->cluster = Cluster::bootstrap($this->configuration);
+        }
+
+        return $this->cluster;
+    }
+
+    /**
+     * Lazy-loading for kafka client
+     *
+     * @return Client
+     */
+    private function getClient()
+    {
+        if (!$this->client) {
+            $this->client = new Client($this->getCluster(), $this->configuration);
+        }
+
+        return $this->client;
     }
 }
