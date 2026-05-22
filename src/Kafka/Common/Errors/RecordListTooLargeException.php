@@ -18,7 +18,7 @@ use Exception;
 /**
  * The request included message batch larger than the configured segment size on the server.
  */
-class RecordListTooLargeException extends KafkaException
+class RecordListTooLargeException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context, ?Exception $previous = null)
     {

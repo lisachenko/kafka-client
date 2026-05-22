@@ -18,7 +18,7 @@ use Exception;
 /**
  * The server experienced an unexpected error when processing the request
  */
-class UnknownErrorException extends KafkaException
+class UnknownErrorException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context, ?Exception $previous = null)
     {

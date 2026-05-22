@@ -13,12 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Errors;
 
-use Exception;
-
 /**
- * The coordinator is not aware of this member.
+ * Interface ClientExceptionInterface. These kind of exceptions came from this library, not from a broker
  */
-class UnknownMemberIdException extends KafkaException implements ServerExceptionInterface
-{
-    public function __construct(array $context, ?Exception $previous = null) {}
-}
+interface ClientExceptionInterface {}

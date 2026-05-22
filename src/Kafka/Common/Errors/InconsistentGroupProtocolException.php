@@ -18,7 +18,7 @@ use Exception;
 /**
  * The group member's supported protocols are incompatible with those of existing members.
  */
-class InconsistentGroupProtocolException extends KafkaException
+class InconsistentGroupProtocolException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context, ?Exception $previous = null) {}
 }

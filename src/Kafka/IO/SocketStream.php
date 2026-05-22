@@ -88,7 +88,7 @@ class SocketStream extends AbstractStream
      */
     public function write($format, ...$arguments): void
     {
-        if (!$this->isConnected) {
+        if (!$this->isConnected()) {
             $this->connect();
         }
 
@@ -97,7 +97,12 @@ class SocketStream extends AbstractStream
         for ($written = 0; $written < strlen($packedData); $written += $result) {
             $result = @fwrite($this->streamSocket, substr($packedData, $written));
             if ($result === false || feof($this->streamSocket)) {
-                throw new NetworkException(['error' => 'Can not write to the stream']);
+                if (!$this->isConnected()) {
+                    $this->connect();
+                    $result = 0; // try to write once again the same data
+                } else {
+                    throw new NetworkException(['error' => 'Can not write to the stream']);
+                }
             }
         }
     }
@@ -112,7 +117,7 @@ class SocketStream extends AbstractStream
      */
     public function read($format): array|false
     {
-        if (!$this->isConnected) {
+        if (!$this->isConnected()) {
             $this->connect();
         }
 
@@ -122,7 +127,12 @@ class SocketStream extends AbstractStream
         for ($received = 0; $received < $packetSize; $received += strlen($result)) {
             $result = fread($this->streamSocket, $packetSize);
             if ($result === false || feof($this->streamSocket)) {
-                throw new NetworkException(['error' => 'Can not read from the stream']);
+                if (!$this->isConnected()) {
+                    $this->connect();
+                    $result = '';
+                } else {
+                    throw new NetworkException(['error' => 'Can not read from the stream']);
+                }
             }
             $streamBuffer .= $result;
         }
@@ -178,5 +188,14 @@ class SocketStream extends AbstractStream
             fclose($this->streamSocket);
         }
         $this->isConnected = false;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function isConnected(): bool
+    {
+        return is_resource($this->streamSocket) &&
+            stream_socket_get_name($this->streamSocket, true);
     }
 }

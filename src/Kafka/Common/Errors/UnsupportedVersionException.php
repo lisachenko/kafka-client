@@ -18,7 +18,7 @@ use Exception;
 /**
  * The version of API is not supported.
  */
-class UnsupportedVersionException extends KafkaException
+class UnsupportedVersionException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context, ?Exception $previous = null) {}
 }

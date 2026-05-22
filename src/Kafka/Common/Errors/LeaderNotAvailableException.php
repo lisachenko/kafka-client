@@ -18,7 +18,7 @@ use Exception;
 /**
  * There is no leader for this topic-partition as we are in the middle of a leadership election.
  */
-class LeaderNotAvailableException extends KafkaException implements RetriableException
+class LeaderNotAvailableException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
     public function __construct(array $context, ?Exception $previous = null) {}
 }

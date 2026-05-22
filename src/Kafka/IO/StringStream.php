@@ -64,4 +64,12 @@ class StringStream extends AbstractStream
 
         return $arguments;
     }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function isConnected(): bool
+    {
+        return true;
+    }
 }
