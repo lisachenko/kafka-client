@@ -71,14 +71,12 @@ class KafkaProducer
     public function __construct(array $configuration = [])
     {
         $this->configuration = ($configuration + ProducerConfig::getDefaultConfiguration());
-        $this->cluster       = Cluster::bootstrap($this->configuration);
         $partitioner         = $this->configuration[ProducerConfig::PARTITIONER_CLASS];
 
         if (!is_subclass_of($partitioner, PartitionerInterface::class)) {
             throw new \InvalidArgumentException("Partitioner class should implement PartitionInterface");
         }
         $this->partitioner = new $partitioner();
-        $this->client      = new Client($this->cluster, $this->configuration);
     }
 
     /**
@@ -92,7 +90,7 @@ class KafkaProducer
 
         while ($this->currentTry <= $this->configuration[ProducerConfig::RETRIES]) {
             try {
-                $result = $this->client->produce($this->topicPartitionMessages);
+                $result = $this->getClient()->produce($this->topicPartitionMessages);
                 // TODO: resolve futures or store result for analysis
                 $this->batchSize = 0;
 
@@ -100,9 +98,9 @@ class KafkaProducer
                 break;
             } catch (NotLeaderForPartitionException) {
                 // We just need to reconfigure the cluster, possible current leader is changed
-                $this->cluster->reload();
+                $this->getCluster()->reload();
             } catch (RetriableException) {
-                $this->cluster->reload();
+                $this->getCluster()->reload();
                 $this->currentTry++;
             }
         }
@@ -123,7 +121,7 @@ class KafkaProducer
      */
     public function partitionsFor($topic)
     {
-        return $this->cluster->partitionsForTopic($topic);
+        return $this->getCluster()->partitionsForTopic($topic);
     }
 
     /**
@@ -142,7 +140,7 @@ class KafkaProducer
         if (isset($concretePartition)) {
             $partition = $concretePartition;
         } else {
-            $partition = $this->partitioner->partition($topic, $message->key, $message->value, $this->cluster);
+            $partition = $this->partitioner->partition($topic, $message->key, $message->value, $this->getCluster());
         }
 
         $this->topicPartitionMessages[$topic][$partition][] = $message;
@@ -164,5 +162,33 @@ class KafkaProducer
         if ($this->topicPartitionMessages !== []) {
             $this->flush();
         }
+    }
+
+    /**
+     * Cluster lazy-loading
+     *
+     * @return Cluster
+     */
+    private function getCluster()
+    {
+        if (!$this->cluster) {
+            $this->cluster = Cluster::bootstrap($this->configuration);
+        }
+
+        return $this->cluster;
+    }
+
+    /**
+     * Lazy-loading for kafka client
+     *
+     * @return Client
+     */
+    private function getClient()
+    {
+        if (!$this->client) {
+            $this->client = new Client($this->getCluster(), $this->configuration);
+        }
+
+        return $this->client;
     }
 }
