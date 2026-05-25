@@ -18,7 +18,10 @@ declare(strict_types=1);
 namespace Protocol\Kafka\IO;
 
 use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Security\SecurityProtocol;
+use Protocol\Kafka\Common\Security\SslProtocol;
 
 /**
  * Implementation of simple socket stream
@@ -69,7 +72,7 @@ class SocketStream extends AbstractStream
     {
         $tcpInfo = parse_url($tcpAddress);
         if ($tcpInfo === false || !isset($tcpInfo['host'])) {
-            throw new NetworkException(['error' => "Malformed tcp address: {$tcpAddress}"]);
+            throw new InvalidConfigurationException("Malformed tcp address: {$tcpAddress}");
         }
         $this->host          = $tcpInfo['host'];
         $this->port          = $tcpInfo['port'] ?? 9092;
@@ -94,7 +97,8 @@ class SocketStream extends AbstractStream
 
         $packedData = pack($format, ...$arguments);
 
-        for ($written = 0; $written < strlen($packedData); $written += $result) {
+        $packedDataLength = strlen($packedData);
+        for ($written = 0; $written < $packedDataLength; $written += $result) {
             $result = @fwrite($this->streamSocket, substr($packedData, $written));
             if ($result === false || feof($this->streamSocket)) {
                 if (!$this->isConnected()) {
@@ -155,25 +159,32 @@ class SocketStream extends AbstractStream
      */
     protected function connect()
     {
-        $socketFlags  = STREAM_CLIENT_CONNECT;
+        $socketFlags = STREAM_CLIENT_CONNECT;
         if (!empty($this->configuration[ClientConfig::STREAM_ASYNC_CONNECT])) {
             $socketFlags |= STREAM_CLIENT_ASYNC_CONNECT;
         }
         if (!empty($this->configuration[ClientConfig::STREAM_PERSISTENT_CONNECTION])) {
             $socketFlags |= STREAM_CLIENT_PERSISTENT;
         }
-        $streamSocket = @stream_socket_client(
+
+        $streamContext = $this->createStreamContext();
+        $streamSocket  = @stream_socket_client(
             "tcp://{$this->host}:{$this->port}",
             $errorNumber,
             $errorString,
             $this->timeout,
-            $socketFlags
+            $socketFlags,
+            $streamContext
         );
+
         if (!$streamSocket) {
             throw new NetworkException(['errorNumber' => $errorNumber, 'errorString' => $errorString]);
         }
         stream_set_write_buffer($streamSocket, $this->configuration[ClientConfig::SEND_BUFFER_BYTES]);
         stream_set_read_buffer($streamSocket, $this->configuration[ClientConfig::RECEIVE_BUFFER_BYTES]);
+        if ($this->configuration[ClientConfig::SECURITY_PROTOCOL] === SecurityProtocol::SSL) {
+            $this->encryptChannel($streamSocket);
+        }
 
         $this->streamSocket = $streamSocket;
         $this->isConnected  = true;
@@ -197,5 +208,115 @@ class SocketStream extends AbstractStream
     {
         return is_resource($this->streamSocket) &&
             stream_socket_get_name($this->streamSocket, true);
+    }
+
+    /**
+     * Creates context for underlying socket from configuration
+     *
+     * @return resource
+     */
+    private function createStreamContext()
+    {
+        $contextOptions = [];
+
+        if (!empty($this->configuration[ClientConfig::SSL_CA_CERT_LOCATION])) {
+            $contextOptions['ssl']['cafile'] = $this->ensureValidFile(
+                $this->configuration[ClientConfig::SSL_CA_CERT_LOCATION],
+                "CA file {file} is not accessible."
+            );
+        }
+
+        if (!empty($this->configuration[ClientConfig::SSL_CLIENT_CERT_LOCATION])) {
+            $contextOptions['ssl']['local_cert'] = $this->ensureValidFile(
+                $this->configuration[ClientConfig::SSL_CLIENT_CERT_LOCATION],
+                "Client certificate file {file} is not accessible."
+            );
+        }
+
+        if (!empty($this->configuration[ClientConfig::SSL_KEY_LOCATION])) {
+            $contextOptions['ssl']['local_pk'] = $this->ensureValidFile(
+                $this->configuration[ClientConfig::SSL_KEY_LOCATION],
+                "Key file {file} is not accessible."
+            );
+        }
+
+        if (!empty($this->configuration[ClientConfig::SSL_KEY_PASSWORD])) {
+            $contextOptions['ssl']['passphrase'] = $this->configuration[ClientConfig::SSL_KEY_PASSWORD];
+        }
+
+        return stream_context_create($contextOptions);
+    }
+
+    /**
+     * Validates given file name and return it as a result
+     *
+     * @param string $fileName Absolute file name to validate
+     * @param string $errorMessage Message to show if file is not accessible
+     *
+     * @return string Given file name
+     */
+    private function ensureValidFile($fileName, string $errorMessage): string
+    {
+        if (!is_readable($fileName)) {
+            throw new InvalidConfigurationException(
+                strtr(
+                    $errorMessage,
+                    [
+                        '{file}' => $fileName,
+                    ]
+                )
+            );
+        }
+
+        return $fileName;
+    }
+
+    /**
+     * Encrypts channel between client and server
+     *
+     * @param resource $streamSocket Underlying socket
+     *
+     * @return void
+     */
+    private function encryptChannel($streamSocket): void
+    {
+        static $cipherMap = [
+            SslProtocol::TLS     => STREAM_CRYPTO_METHOD_TLS_CLIENT,
+            SslProtocol::TLSv1_1 => STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT,
+            SslProtocol::TLSv1_2 => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
+            SslProtocol::SSL     => STREAM_CRYPTO_METHOD_SSLv23_CLIENT,
+            SslProtocol::SSLv2   => STREAM_CRYPTO_METHOD_SSLv2_CLIENT,
+            SslProtocol::SSLv3   => STREAM_CRYPTO_METHOD_SSLv3_CLIENT,
+        ];
+
+        $sslProtocol = $this->configuration[ClientConfig::SSL_PROTOCOL];
+        if (!isset($cipherMap[$sslProtocol])) {
+            throw new InvalidConfigurationException(
+                "SSL protocol {$sslProtocol} is not implemented."
+            );
+        }
+
+        $errorMessage = null;
+        set_error_handler(function ($code, $message) use (&$errorMessage): void {
+            $errorMessage = trim(str_replace('stream_socket_enable_crypto():', '', $message));
+        });
+
+        try {
+            $isCryptoEnabled = stream_socket_enable_crypto(
+                $streamSocket,
+                true,
+                $cipherMap[$sslProtocol]
+            );
+        } finally {
+            restore_error_handler();
+        }
+
+        if ($isCryptoEnabled === false) {
+            throw new NetworkException(
+                [
+                    'error' => "Failed to initialize encryption via {$sslProtocol} protocol: {$errorMessage}.",
+                ]
+            );
+        }
     }
 }
