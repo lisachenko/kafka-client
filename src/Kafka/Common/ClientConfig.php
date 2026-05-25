@@ -36,10 +36,10 @@ class ClientConfig
         ClientConfig::SEND_BUFFER_BYTES            => 131072,
         ClientConfig::SECURITY_PROTOCOL            => SecurityProtocol::PLAINTEXT,
         ClientConfig::SSL_PROTOCOL                 => SslProtocol::TLS,
+        ClientConfig::SSL_CLIENT_CERT_LOCATION     => null,
+        ClientConfig::SSL_KEY_PASSWORD             => null,
+        ClientConfig::SSL_KEY_LOCATION             => null,
 
-        ClientConfig::SSL_KEY_PASSWORD          => null,
-        ClientConfig::SSL_KEYSTORE_LOCATION     => null,
-        ClientConfig::SSL_KEYSTORE_PASSWORD     => null,
         ClientConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
         ClientConfig::REQUEST_TIMEOUT_MS        => 30000,
         ClientConfig::SASL_MECHANISM            => 'GSSAPI',
@@ -118,7 +118,7 @@ class ClientConfig
      * Location of Certificate Authority file on local filesystem which should be used to authenticate
      * the identity of the remote peer.
      */
-    public const SSL_CAFILE_LOCATION           = 'ssl.cafile.location';
+    public const SSL_CA_CERT_LOCATION           = 'ssl.ca.cert.location';
 
     /**
      * Protocol used to communicate with brokers. Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
@@ -134,9 +134,26 @@ class ClientConfig
      */
     public const SSL_PROTOCOL                  = 'ssl.protocol';
 
+    /**
+     * Path to local certificate file on filesystem. It must be a PEM encoded file which contains your
+     * certificate and private key. It can optionally contain the certificate chain of issuers.
+     * The private key also may be contained in a separate file specified by SSL_KEY_LOCATION.
+     *
+     * (PHP Only option)
+     */
+    public const SSL_CLIENT_CERT_LOCATION      = 'ssl.client.cert.location';
+
+    /**
+     * The location of the private key file. This is optional for client and can be used for two-way
+     * authentication for client.
+     */
+    public const SSL_KEY_LOCATION              = 'ssl.key.location';
+
+    /**
+     * The password of the private key. This is optional for client.
+     */
     public const SSL_KEY_PASSWORD              = 'ssl.key.password';
-    public const SSL_KEYSTORE_LOCATION         = 'ssl.keystore.location';
-    public const SSL_KEYSTORE_PASSWORD         = 'ssl.keystore.password';
+
     public const CONNECTIONS_MAX_IDLE_MS       = 'connections.max.idle.ms';
     public const SASL_MECHANISM                = 'sasl.mechanism';
     public const SSL_ENABLED_PROTOCOLS         = 'ssl.enabled.protocols';

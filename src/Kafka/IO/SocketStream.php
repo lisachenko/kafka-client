@@ -97,7 +97,8 @@ class SocketStream extends AbstractStream
 
         $packedData = pack($format, ...$arguments);
 
-        for ($written = 0; $written < strlen($packedData); $written += $result) {
+        $packedDataLength = strlen($packedData);
+        for ($written = 0; $written < $packedDataLength; $written += $result) {
             $result = @fwrite($this->streamSocket, substr($packedData, $written));
             if ($result === false || feof($this->streamSocket)) {
                 if (!$this->isConnected()) {
@@ -218,17 +219,56 @@ class SocketStream extends AbstractStream
     {
         $contextOptions = [];
 
-        if (!empty($this->configuration[ClientConfig::SSL_CAFILE_LOCATION])) {
-            if (!is_readable($this->configuration[ClientConfig::SSL_CAFILE_LOCATION])) {
-                throw new InvalidConfigurationException(
-                    "CA file {$this->configuration[ClientConfig::SSL_CAFILE_LOCATION]} is not accessible!"
-                );
-            }
+        if (!empty($this->configuration[ClientConfig::SSL_CA_CERT_LOCATION])) {
+            $contextOptions['ssl']['cafile'] = $this->ensureValidFile(
+                $this->configuration[ClientConfig::SSL_CA_CERT_LOCATION],
+                "CA file {file} is not accessible."
+            );
+        }
 
-            $contextOptions['ssl']['cafile'] = $this->configuration[ClientConfig::SSL_CAFILE_LOCATION];
+        if (!empty($this->configuration[ClientConfig::SSL_CLIENT_CERT_LOCATION])) {
+            $contextOptions['ssl']['local_cert'] = $this->ensureValidFile(
+                $this->configuration[ClientConfig::SSL_CLIENT_CERT_LOCATION],
+                "Client certificate file {file} is not accessible."
+            );
+        }
+
+        if (!empty($this->configuration[ClientConfig::SSL_KEY_LOCATION])) {
+            $contextOptions['ssl']['local_pk'] = $this->ensureValidFile(
+                $this->configuration[ClientConfig::SSL_KEY_LOCATION],
+                "Key file {file} is not accessible."
+            );
+        }
+
+        if (!empty($this->configuration[ClientConfig::SSL_KEY_PASSWORD])) {
+            $contextOptions['ssl']['passphrase'] = $this->configuration[ClientConfig::SSL_KEY_PASSWORD];
         }
 
         return stream_context_create($contextOptions);
+    }
+
+    /**
+     * Validates given file name and return it as a result
+     *
+     * @param string $fileName Absolute file name to validate
+     * @param string $errorMessage Message to show if file is not accessible
+     *
+     * @return string Given file name
+     */
+    private function ensureValidFile($fileName, string $errorMessage): string
+    {
+        if (!is_readable($fileName)) {
+            throw new InvalidConfigurationException(
+                strtr(
+                    $errorMessage,
+                    [
+                        '{file}' => $fileName,
+                    ]
+                )
+            );
+        }
+
+        return $fileName;
     }
 
     /**
@@ -258,8 +298,9 @@ class SocketStream extends AbstractStream
 
         $errorMessage = null;
         set_error_handler(function ($code, $message) use (&$errorMessage): void {
-            $errorMessage = $message;
+            $errorMessage = trim(str_replace('stream_socket_enable_crypto():', '', $message));
         });
+
         try {
             $isCryptoEnabled = stream_socket_enable_crypto(
                 $streamSocket,
