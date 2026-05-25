@@ -187,8 +187,9 @@ final class Cluster
         $brokerAddresses = [];
         if (isset($this->configuration[ClientConfig::BOOTSTRAP_SERVERS])) {
             $brokerAddresses = $this->configuration[ClientConfig::BOOTSTRAP_SERVERS];
-        };
+        }
 
+        $cause = [];
         foreach ($brokerAddresses as $address) {
             try {
                 $stream  = new SocketStream($address, $this->configuration);
@@ -197,13 +198,19 @@ final class Cluster
 
                 $metadata = MetadataResponse::unpack($stream);
                 break;
-            } catch (NetworkException) {
+            } catch (NetworkException $e) {
                 // we ignore all network errors and just try the next one address
+                $cause[$address] = $e->getMessage();
                 continue;
             }
         }
         if (empty($metadata)) {
-            throw new UnknownErrorException(['error' => 'Can not fetch information about cluster metadata']);
+            throw new UnknownErrorException(
+                [
+                    'error' => 'Can not fetch information about cluster metadata',
+                    'cause' => $cause,
+                ]
+            );
         }
 
         $isCacheEnabled = !empty($this->configuration[ClientConfig::METADATA_CACHE_FILE]);

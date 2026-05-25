@@ -18,6 +18,9 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common;
 
+use Protocol\Kafka\Common\Security\SecurityProtocol;
+use Protocol\Kafka\Common\Security\SslProtocol;
+
 /**
  * General config, suitable for both producer and consumer
  */
@@ -31,6 +34,8 @@ class ClientConfig
         ClientConfig::METADATA_MAX_AGE_MS          => 300000,
         ClientConfig::RECEIVE_BUFFER_BYTES         => 32768,
         ClientConfig::SEND_BUFFER_BYTES            => 131072,
+        ClientConfig::SECURITY_PROTOCOL            => SecurityProtocol::PLAINTEXT,
+        ClientConfig::SSL_PROTOCOL                 => SslProtocol::TLS,
 
         ClientConfig::SSL_KEY_PASSWORD          => null,
         ClientConfig::SSL_KEYSTORE_LOCATION     => null,
@@ -38,7 +43,6 @@ class ClientConfig
         ClientConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
         ClientConfig::REQUEST_TIMEOUT_MS        => 30000,
         ClientConfig::SASL_MECHANISM            => 'GSSAPI',
-        ClientConfig::SECURITY_PROTOCOL         => 'plaintext',
         ClientConfig::METADATA_FETCH_TIMEOUT_MS => 60000,
         ClientConfig::RECONNECT_BACKOFF_MS      => 50,
         ClientConfig::RETRY_BACKOFF_MS          => 100,
@@ -110,14 +114,32 @@ class ClientConfig
      */
     public const RECEIVE_BUFFER_BYTES = 'receive.buffer.bytes';
 
+    /**
+     * Location of Certificate Authority file on local filesystem which should be used to authenticate
+     * the identity of the remote peer.
+     */
+    public const SSL_CAFILE_LOCATION           = 'ssl.cafile.location';
+
+    /**
+     * Protocol used to communicate with brokers. Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
+     *
+     * Implemented values: PLAINTEXT, SSL
+     */
+    public const SECURITY_PROTOCOL             = 'security.protocol';
+
+    /**
+     * The SSL protocol used to generate the SSLContext. Default setting is TLS, which is fine for most cases.
+     * Allowed values are TLS, TLSv1.1 and TLSv1.2. SSL, SSLv2 and SSLv3, but their usage is discouraged due
+     * to known security vulnerabilities.
+     */
+    public const SSL_PROTOCOL                  = 'ssl.protocol';
+
     public const SSL_KEY_PASSWORD              = 'ssl.key.password';
     public const SSL_KEYSTORE_LOCATION         = 'ssl.keystore.location';
     public const SSL_KEYSTORE_PASSWORD         = 'ssl.keystore.password';
     public const CONNECTIONS_MAX_IDLE_MS       = 'connections.max.idle.ms';
     public const SASL_MECHANISM                = 'sasl.mechanism';
-    public const SECURITY_PROTOCOL             = 'security.protocol';
     public const SSL_ENABLED_PROTOCOLS         = 'ssl.enabled.protocols';
-    public const SSL_PROTOCOL                  = 'ssl.protocol';
     public const RECONNECT_BACKOFF_MS          = 'reconnect.backoff.ms';
     public const RETRY_BACKOFF_MS              = 'retry.backoff.ms';
 
