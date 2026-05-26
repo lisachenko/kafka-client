@@ -129,7 +129,7 @@ class SocketStream extends AbstractStream
         $streamBuffer = '';
 
         for ($received = 0; $received < $packetSize; $received += strlen($result)) {
-            $result = fread($this->streamSocket, $packetSize);
+            $result = fread($this->streamSocket, $packetSize - $received);
             if ($result === false || feof($this->streamSocket)) {
                 if (!$this->isConnected()) {
                     $this->connect();
