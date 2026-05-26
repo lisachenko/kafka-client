@@ -68,7 +68,10 @@ final class Cluster
     public function availablePartitionsForTopic($topic)
     {
         if (!isset($this->topicPartitions[$topic])) {
-            throw new InvalidTopicException(['topic' => $topic]);
+            $this->reload();
+            if (!isset($this->topicPartitions[$topic])) {
+                throw new InvalidTopicException(['topic' => $topic]);
+            }
         }
 
         return $this->topicPartitions[$topic]->partitions;
@@ -127,7 +130,10 @@ final class Cluster
     public function nodeById($nodeId)
     {
         if (!isset($this->nodes[$nodeId])) {
-            throw new UnknownErrorException(['nodeId' => $nodeId] + ['error' => 'Node was not found']);
+            $this->reload();
+            if (!isset($this->nodes[$nodeId])) {
+                throw new UnknownErrorException(['nodeId' => $nodeId] + ['error' => 'Node was not found']);
+            }
         }
 
         return $this->nodes[$nodeId];
@@ -171,7 +177,10 @@ final class Cluster
     public function partitionsForTopic($topic)
     {
         if (!isset($this->topicPartitions[$topic])) {
-            throw new InvalidTopicException(['topic' => $topic]);
+            $this->reload();
+            if (!isset($this->topicPartitions[$topic])) {
+                throw new InvalidTopicException(['topic' => $topic]);
+            }
         }
 
         return $this->topicPartitions[$topic]->partitions;

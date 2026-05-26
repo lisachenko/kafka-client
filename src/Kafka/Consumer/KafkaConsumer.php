@@ -21,6 +21,7 @@ use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
+use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
@@ -229,7 +230,8 @@ class KafkaConsumer
             // This can be optimized in pause()/resume methods
             $activeTopicPartitionOffsets[$topic] = array_diff($activeTopicPartitionOffsets[$topic], $partitions);
         }
-        $result = $this->getClient()->fetch($activeTopicPartitionOffsets, $timeout);
+
+        $result = $this->fetchMessages($activeTopicPartitionOffsets, $timeout);
 
         $resultOffsets = $this->fetchResultOffsets($result);
         if ($resultOffsets) {
@@ -433,16 +435,11 @@ class KafkaConsumer
     {
         $result = $topicPartitionOffsets;
 
-        $unknownTopicPartitions = [];
-        foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
-            $unknownPartitionOffsets = array_keys($partitionOffsets, -1, true);
-            if ($unknownPartitionOffsets !== []) {
-                $unknownTopicPartitions[$topic] = $unknownPartitionOffsets;
-            }
-        }
-        if ($unknownTopicPartitions === []) {
+        $unknownTopicPartitions = $this->findUnknownTopicPartitions($topicPartitionOffsets);
+        if (empty($unknownTopicPartitions)) {
             return $result;
         }
+
         $fetchedOffsets = match ($this->configuration[ConsumerConfig::AUTO_OFFSET_RESET]) {
             OffsetResetStrategy::LATEST => $this->fetchOffsetAndSeek($unknownTopicPartitions, OffsetsRequest::LATEST),
             OffsetResetStrategy::EARLIEST => $this->fetchOffsetAndSeek($unknownTopicPartitions, OffsetsRequest::EARLIEST),
@@ -531,5 +528,84 @@ class KafkaConsumer
         }
 
         return $this->client;
+    }
+
+    /**
+     * Updates consumer offsets in case of retention expiration
+     *
+     * @param array $activeTopicPartitionOffsets Current assignment state [topic][partition] => offsets
+     * @param int   $timeout                     The time, in milliseconds, spent waiting in poll if data is not available.
+     *                                           If 0, returns immediately with any records that are available now.
+     *
+     * @return array
+     */
+    private function fetchMessages(array $activeTopicPartitionOffsets, $timeout)
+    {
+        $exception = null;
+        $result    = [];
+
+        try {
+            $result = $this->getClient()->fetch($activeTopicPartitionOffsets, $timeout);
+        } catch (TopicPartitionRequestException $e) {
+            $exception = $e;
+            $result    = $e->getPartialResult();
+        }
+
+        if ($exception instanceof TopicPartitionRequestException) {
+            $exceptions      = $exception->getExceptions();
+            $topicPartitions = [];
+            foreach ($exceptions as $topic => $partitions) {
+                foreach ($partitions as $partitionId => $e) {
+                    if ($e instanceof OffsetOutOfRangeException) {
+                        $topicPartitions[$topic][$partitionId] = $partitionId;
+                        unset($exceptions[$topic][$partitionId]);
+                    }
+                }
+
+                if (empty($exceptions[$topic])) {
+                    unset($exceptions[$topic]);
+                }
+            }
+
+            if ($topicPartitions !== []) {
+                $actualOffsets = $this->getClient()->fetchTopicPartitionOffsets($topicPartitions);
+                $unknownTopicPartitions = $this->findUnknownTopicPartitions($actualOffsets);
+                if (!empty($unknownTopicPartitions)) {
+                    $fetchedPositions = $this->fetchOffsetAndSeek($unknownTopicPartitions, OffsetsRequest::EARLIEST);
+                    $actualOffsets    = array_replace_recursive($actualOffsets, $fetchedPositions);
+                }
+
+                $this->commitSync($actualOffsets);
+
+                $fetchResult = $this->getClient()->fetch($actualOffsets, $timeout);
+                $result      = array_replace_recursive($result, $fetchResult);
+            }
+        }
+
+        if (!empty($exceptions)) {
+            throw new TopicPartitionRequestException($result, $exceptions);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Look for topic and partioions without assigned offset
+     *
+     * @param array $topicPartitionOffsets Array of [topic][partition] => offset
+     *
+     * @return array
+     */
+    protected function findUnknownTopicPartitions(array $topicPartitionOffsets): array
+    {
+        $unknownTopicPartitions = [];
+        foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
+            $unknownPartitionOffsets = array_keys($partitionOffsets, -1, true);
+            if ($unknownPartitionOffsets !== []) {
+                $unknownTopicPartitions[$topic] = $unknownPartitionOffsets;
+            }
+        }
+
+        return $unknownTopicPartitions;
     }
 }
