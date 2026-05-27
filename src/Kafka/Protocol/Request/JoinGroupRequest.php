@@ -35,6 +35,11 @@ class JoinGroupRequest extends AbstractRequest
     public const VERSION = 1;
 
     /**
+     * Member id for self-assigned consumer
+     */
+    public const DEFAULT_MEMBER_ID = "";
+
+    /**
      * @param string $consumerGroup
      * @param int $sessionTimeout
      * @param int $rebalanceTimeout

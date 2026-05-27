@@ -35,6 +35,11 @@ class OffsetCommitRequest extends AbstractRequest
     public const VERSION = 2;
 
     /**
+     * Generation id for unsubscribed consumer
+     */
+    public const DEFAULT_GENERATION_ID = -1;
+
+    /**
      * @param string $consumerGroup
      * @param int $generationId
      * @param string $memberName
