@@ -375,7 +375,7 @@ class Client
             }
         }
 
-        throw new AllBrokersNotAvailableException($failures);
+        throw new AllBrokersNotAvailableException($failures, KafkaException::BROKER_NOT_AVAILABLE);
     }
 
     /**
@@ -513,9 +513,11 @@ class Client
 
         $incompleteReads = $readNodeSockets;
         $timeout ??= $this->configuration[ConsumerConfig::REQUEST_TIMEOUT_MS];
-        $responses  = [];
-        $finishTime = microtime(true) + 2 * ($timeout / 1000);
-        do {
+
+        $responses       = [];
+        $finishTime      = microtime(true) + 2 * ($timeout / 1000);
+        $canWaitMoreTime = true;
+        while ($incompleteReads !== [] && $canWaitMoreTime) {
             $readSelect  = $incompleteReads;
             $writeSelect = $exceptSelect = null;
             if (stream_select($readSelect, $writeSelect, $exceptSelect, intdiv($timeout, 1000), $timeout % 1000) > 0) {
@@ -527,7 +529,7 @@ class Client
                 $incompleteReads = array_diff($incompleteReads, $readSelect);
             }
             $canWaitMoreTime = microtime(true) < $finishTime;
-        } while ($incompleteReads !== [] && $canWaitMoreTime);
+        }
 
         $result = array_reduce($responses, $responseAggregator, []);
 
