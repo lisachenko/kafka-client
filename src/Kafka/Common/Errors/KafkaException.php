@@ -25,6 +25,8 @@ abstract class KafkaException extends \RuntimeException
 {
     public const UNKNOWN = -1;
 
+    public const NO_ERROR = 0;
+
     public const OFFSET_OUT_OF_RANGE              = 1;
     public const CORRUPT_MESSAGE                  = 2;
     public const UNKNOWN_TOPIC_OR_PARTITION       = 3;
