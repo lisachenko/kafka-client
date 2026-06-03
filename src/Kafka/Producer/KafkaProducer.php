@@ -88,6 +88,7 @@ class KafkaProducer
         $result           = null;
         $this->currentTry = 0;
 
+        $exceptions = [];
         while ($this->currentTry <= $this->configuration[ProducerConfig::RETRIES]) {
             try {
                 $result = $this->getClient()->produce($this->topicPartitionMessages);
@@ -99,14 +100,23 @@ class KafkaProducer
             } catch (NotLeaderForPartitionException) {
                 // We just need to reconfigure the cluster, possible current leader is changed
                 $this->getCluster()->reload();
-            } catch (RetriableException) {
+            } catch (RetriableException $exception) {
                 $this->getCluster()->reload();
                 $this->currentTry++;
+                $message              = $exception->getMessage();
+                $exceptions[$message] = isset($exceptions[$message]) ? $exceptions[$message] + 1 : 1;
             }
         }
 
         if ($this->currentTry > $this->configuration[ProducerConfig::RETRIES]) {
-            throw new \RuntimeException("Can not deliver messages to the broker");
+            $message         = '';
+            $totalExceptions = array_sum($exceptions);
+            $index           = 1;
+            foreach ($exceptions as $msg => $count) {
+                $message .= "$index. $msg ($count / $totalExceptions)\n";
+                $index   += 1;
+            }
+            throw new \RuntimeException("Can not deliver messages to the broker:\n$message");
         }
 
         return $result;
