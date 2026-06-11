@@ -10,14 +10,18 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
- * @date 14.07.2016
+ * @date   14.07.2016
  */
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 
 /**
  * Fetch API
@@ -43,7 +47,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * requiring that the partitions be specified in config, though this will not allow dynamic reassignment of partitions
  * should that consumer fail. We hope to address this gap in the next major release.
  *
- * Fetch Request (Version: 4) => replica_id max_wait_time min_bytes max_bytes isolation_level [topics]
+ * Fetch Request (Version: 5) => replica_id max_wait_time min_bytes max_bytes isolation_level [topics]
  *   replica_id => INT32
  *   max_wait_time => INT32
  *   min_bytes => INT32
@@ -51,9 +55,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
  *   isolation_level => INT8
  *   topics => topic [partitions]
  *     topic => STRING
- *     partitions => partition fetch_offset max_bytes
+ *     partitions => partition fetch_offset log_start_offset max_bytes
  *       partition => INT32
  *       fetch_offset => INT64
+ *       log_start_offset => INT64
  *       max_bytes => INT32
  *
  * @deprecated since 0.11.0.0
@@ -63,7 +68,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritDoc
      */
-    public const VERSION = 4;
+    public const VERSION = 5;
 
     /**
      * With READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED transactional records are visible.
@@ -79,15 +84,28 @@ class FetchRequest extends AbstractRequest
      */
     public const READ_UNCOMMITTED = 0;
 
+    private ?array $topicPartitions = null;
+
+    /**
+     * Maximum bytes to accumulate in the response.
+     *
+     * Note that this is not an absolute maximum, if the first message in the first non-empty partition of the
+     * fetch is larger than this value, the message will still be returned to ensure that progress can be made.
+     *
+     * This value previously was only in partition.max_bytes property, now it packed into own field too
+     *
+     * @since 0.10.1.0
+     */
+    private readonly int $maxBytes;
+
     /**
      * @param int $maxWaitTime
      * @param int $minBytes
      * @param int $isolationLevel
-     * @param int $maxBytes
      * @param int $replicaId
      */
     public function __construct(
-        private readonly array $topicPartitions,
+        array $topicPartitions,
         /**
          * The max wait time is the maximum amount of time in milliseconds to block waiting if insufficient data is
          * available at the time the request is issued.
@@ -105,17 +123,7 @@ class FetchRequest extends AbstractRequest
          * wait up to 100ms to try to accumulate 64k of data before responding).
          */
         private $minBytes,
-        /**
-         * Maximum bytes to accumulate in the response.
-         *
-         * Note that this is not an absolute maximum, if the first message in the first non-empty partition of the
-         * fetch is larger than this value, the message will still be returned to ensure that progress can be made.
-         *
-         * This value previously was only in partition.max_bytes property, now it packed into own field too
-         *
-         * @since 0.10.1.0
-         */
-        private $maxBytes,
+        $maxBytes,
         /**
          * This setting controls the visibility of transactional records.
          *
@@ -138,34 +146,29 @@ class FetchRequest extends AbstractRequest
         $clientId = '',
         $correlationId = 0
     ) {
+        foreach ($topicPartitions as $topic => $partitionOffset) {
+            $partitions = [];
+            foreach ($partitionOffset as $partition => $offset) {
+                $partitions[$partition] = new FetchRequestTopicPartition($partition, $offset, $maxBytes);
+            }
+            $this->topicPartitions[$topic] = new FetchRequestTopic($topic, $partitions);
+        }
+        $this->maxBytes        = $maxBytes;
+
         parent::__construct(ApiKeys::FETCH, $clientId, $correlationId);
     }
 
-    /**
-     * @inheritDoc
-     */
-    protected function packPayload(): string
+    public static function getScheme()
     {
-        $payload     = parent::packPayload();
-        $totalTopics = count($this->topicPartitions);
+        $header = null;
 
-        $payload .= pack(
-            'NNNNcN',
-            $this->replicaId,
-            $this->maxWaitTime,
-            $this->minBytes,
-            $this->maxBytes,
-            $this->isolationLevel,
-            $totalTopics
-        );
-        foreach ($this->topicPartitions as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            foreach ($partitions as $partitionId => $offset) {
-                $payload .= pack('NJN', $partitionId, $offset, $this->maxBytes);
-            }
-        }
-
-        return $payload;
+        return $header + [
+            'replicaId'       => BinarySchema::TYPE_INT32,
+            'maxWaitTime'     => BinarySchema::TYPE_INT32,
+            'minBytes'        => BinarySchema::TYPE_INT32,
+            'maxBytes'        => BinarySchema::TYPE_INT32,
+            'isolationLevel'  => BinarySchema::TYPE_INT8,
+            'topicPartitions' => ['topic' => FetchRequestTopic::class],
+        ];
     }
 }

@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -17,22 +18,15 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 
 /**
  * Api versions response
  */
-class ApiVersionsResponse extends AbstractResponse
+class ApiVersionsResponse extends AbstractResponse implements BinarySchemaInterface
 {
-    /**
-     * API versions supported by the broker.
-     *
-     * @var array|ApiVersionsResponseMetadata[]
-     */
-    public $apiVersions = [];
-
     /**
      * Error code.
      *
@@ -41,23 +35,17 @@ class ApiVersionsResponse extends AbstractResponse
     public $errorCode;
 
     /**
-     * Method to unpack the payload for the record
+     * API versions supported by the broker.
      *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
+     * @var ApiVersionsResponseMetadata[]
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public $apiVersions = [];
+
+    public static function getScheme(): array
     {
-        [$self->correlationId, $self->errorCode, $versionsNumber] = array_values($stream->read('NcorrelationId/nerrorCode/NapiVersionsNumber'));
-
-        for ($i = 0; $i < $versionsNumber; $i++) {
-            $apiVersionMetadata = ApiVersionsResponseMetadata::unpack($stream);
-
-            $self->apiVersions[$apiVersionMetadata->apiKey] = $apiVersionMetadata;
-        }
-
-        return $self;
+        return parent::getScheme() + [
+            'errorCode'   => BinarySchema::TYPE_INT16,
+            'apiVersions' => ['apiKey' => ApiVersionsResponseMetadata::class],
+        ];
     }
 }

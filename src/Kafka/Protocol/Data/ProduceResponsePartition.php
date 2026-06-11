@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -17,12 +18,19 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * Produce response DTO
+ * Produce response partition DTO
+ *
+ * ProduceResponsePartition => partition error_code base_offset log_append_time
+ *   partition => INT32
+ *   error_code => INT16
+ *   base_offset => INT64
+ *   log_append_time => INT64
  */
-class ProduceResponsePartition
+class ProduceResponsePartition implements BinarySchemaInterface
 {
     /**
      * The partition this response entry corresponds to.
@@ -63,17 +71,17 @@ class ProduceResponsePartition
     public $logAppendTime;
 
     /**
-     * Unpacks the DTO from the binary buffer
+     * Returns definition of binary packet for the class or object
      *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @return array
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->baseOffset, $partition->logAppendTime] = array_values($stream->read('Npartition/nerrorCode/JbaseOffset/JlogAppendTime'));
-
-        return $partition;
+        return [
+            'partition'     => BinarySchema::TYPE_INT32,
+            'errorCode'     => BinarySchema::TYPE_INT16,
+            'baseOffset'    => BinarySchema::TYPE_INT64,
+            'logAppendTime' => BinarySchema::TYPE_INT64,
+        ];
     }
 }

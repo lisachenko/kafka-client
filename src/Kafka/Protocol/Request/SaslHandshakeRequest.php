@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -18,6 +19,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * This request queries the supported SASL mechanisms on the broker
@@ -37,16 +39,12 @@ class SaslHandshakeRequest extends AbstractRequest
         parent::__construct(ApiKeys::SASL_HANDSHAKE, $clientId, $correlationId);
     }
 
-    /**
-     * @inheritDoc
-     */
-    protected function packPayload(): string
+    public static function getScheme()
     {
-        $payload         = parent::packPayload();
-        $mechanismLength = strlen($this->mechanism);
+        $header = null;
 
-        $payload .= pack("na{$mechanismLength}", $mechanismLength, $this->mechanism);
-
-        return $payload;
+        return $header + [
+            'mechanism' => BinarySchema::TYPE_STRING,
+        ];
     }
 }

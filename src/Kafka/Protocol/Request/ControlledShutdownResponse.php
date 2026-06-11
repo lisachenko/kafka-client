@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2014
@@ -17,13 +18,20 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 
 /**
  * Controlled shutdown response
+ *
+ * ControlledShutdown Response (Version: 0) => error_code [partitions_remaining]
+ *   error_code => INT16
+ *   partitions_remaining => topic partition
+ *     topic => STRING
+ *     partition => INT32
  */
-class ControlledShutdownResponse extends AbstractResponse
+class ControlledShutdownResponse extends AbstractResponse implements BinarySchemaInterface
 {
     /**
      * Error code.
@@ -35,29 +43,17 @@ class ControlledShutdownResponse extends AbstractResponse
     /**
      * The topic partitions that the broker still leads.
      *
-     * @var array|string[]
+     * @var ControlledShutdownResponsePartition[]
      */
     public $remainingTopicPartitions = [];
 
-    /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
-     */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $self->errorCode, $topicPartitionsNumber] = array_values($stream->read('NcorrelationId/nerrorCode/NtopicNumber'));
+        $header = parent::getScheme();
 
-        for ($i = 0; $i < $topicPartitionsNumber; $i++) {
-            $topic     = $stream->readString();
-            $partition = $stream->read('Npartition')['partition'];
-
-            $self->remainingTopicPartitions[$topic][] = $partition;
-        }
-
-        return $self;
+        return $header + [
+            'errorCode'                => BinarySchema::TYPE_INT16,
+            'remainingTopicPartitions' => [ControlledShutdownResponsePartition::class],
+        ];
     }
 }

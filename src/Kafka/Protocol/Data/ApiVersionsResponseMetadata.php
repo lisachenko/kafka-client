@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -17,12 +18,13 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * ApiVersions response data
  */
-class ApiVersionsResponseMetadata
+class ApiVersionsResponseMetadata implements BinarySchemaInterface
 {
     /**
      * Numerical code of API
@@ -45,18 +47,12 @@ class ApiVersionsResponseMetadata
      */
     public $maxVersion;
 
-    /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $apiVersionMetadata = new static();
-        [$apiVersionMetadata->apiKey, $apiVersionMetadata->minVersion, $apiVersionMetadata->maxVersion] = array_values($stream->read('napiKey/nminVersion/nmaxVersion'));
-
-        return $apiVersionMetadata;
+        return [
+            'apiKey'     => BinarySchema::TYPE_INT16,
+            'minVersion' => BinarySchema::TYPE_INT16,
+            'maxVersion' => BinarySchema::TYPE_INT16,
+        ];
     }
 }

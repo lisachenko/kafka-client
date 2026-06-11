@@ -97,4 +97,11 @@ interface Stream
      * @param string $buffer
      */
     public function writeBuffer($buffer);
+
+    /**
+     * Checks if stream is empty
+     *
+     * @return bool
+     */
+    public function isEmpty();
 }

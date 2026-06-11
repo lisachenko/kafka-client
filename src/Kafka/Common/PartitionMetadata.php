@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -17,12 +18,13 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Information about a topic-partition metadata.
  */
-class PartitionMetadata
+class PartitionMetadata implements BinarySchemaInterface
 {
     use RestorableTrait;
 
@@ -61,23 +63,14 @@ class PartitionMetadata
      */
     public $isr = [];
 
-    /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partitionMetadata = new static();
-        [$partitionMetadata->partitionErrorCode, $partitionMetadata->partitionId, $partitionMetadata->leader, $numberOfReplicas] = array_values($stream->read('npartitionErrorCode/NpartitionId/Nleader/NnumberOfReplicas'));
-
-        $partitionMetadata->replicas = array_values($stream->read("N{$numberOfReplicas}"));
-
-        $numberOfIsr = $stream->read('NnumberOfIsr')['numberOfIsr'];
-        $partitionMetadata->isr = array_values($stream->read("N{$numberOfIsr}"));
-
-        return $partitionMetadata;
+        return [
+            'partitionErrorCode' => BinarySchema::TYPE_INT16,
+            'partitionId'        => BinarySchema::TYPE_INT32,
+            'leader'             => BinarySchema::TYPE_INT32,
+            'replicas'           => [BinarySchema::TYPE_INT32],
+            'isr'                => [BinarySchema::TYPE_INT32],
+        ];
     }
 }

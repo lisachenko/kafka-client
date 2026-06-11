@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -18,6 +19,8 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
  * This API describes the valid offset range available for a set of topic-partitions.
@@ -28,7 +31,15 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * The response contains the starting offset of each segment for the requested partition as well as the "log end
  * offset" i.e. the offset of the next message that would be appended to the given partition.
  *
- * Since v2 if no topics (null input for list of topics) are provided, the offset information of all topics (or topic partitions) associated with the group is returned
+ * Since v2 if no topics (null input for list of topics) are provided, the offset information of all topics (or topic
+ * partitions) associated with the group is returned
+ *
+ * OffsetFetch Request (Version: 2) => group_id [topics]
+ *   group_id => STRING
+ *   topics => topic [partitions]
+ *     topic => STRING
+ *     partitions => partition
+ *       partition => INT32
  */
 class OffsetFetchRequest extends AbstractRequest
 {
@@ -38,37 +49,31 @@ class OffsetFetchRequest extends AbstractRequest
     public const VERSION = 2;
 
     /**
-     * @param string $consumerGroup
+     * OffsetFetchRequest constructor.
+     *
+     * @param string            $consumerGroup   Name of the consumer group
+     * @param PartitionsForTopic[] $topicPartitions List of topic => partitions to fetch
+     * @param string            $clientId        Unique client identifier
+     * @param int               $correlationId   Correlated request ID
      */
     public function __construct(/**
      * The consumer group id.
      */
-        private $consumerGroup,
-        private readonly array $topicPartitions = [],
+        protected $consumerGroup,
+        protected ?array $topicPartitions = null,
         $clientId = '',
         $correlationId = 0
     ) {
         parent::__construct(ApiKeys::OFFSET_FETCH, $clientId, $correlationId);
     }
 
-    /**
-     * @inheritDoc
-     */
-    protected function packPayload(): string
+    public static function getScheme()
     {
-        $payload     = parent::packPayload();
-        $groupLength = strlen($this->consumerGroup);
-        $totalTopics = count($this->topicPartitions) ?: -1;
+        $header = null;
 
-        $payload .= pack("na{$groupLength}N", $groupLength, $this->consumerGroup, $totalTopics);
-        foreach ($this->topicPartitions as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            $packArgs = $partitions;
-            array_unshift($packArgs, 'N*');
-            $payload .= call_user_func_array(pack(...), $packArgs);
-        }
-
-        return $payload;
+        return $header + [
+            'consumerGroup'   => BinarySchema::TYPE_STRING,
+            'topicPartitions' => ['topic' => PartitionsForTopic::class, BinarySchema::FLAG_NULLABLE => true],
+        ];
     }
 }

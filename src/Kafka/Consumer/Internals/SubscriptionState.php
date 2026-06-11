@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Consumer\Internals;
 
 use InvalidArgumentException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
  * Class SubscriptionState
@@ -62,10 +63,8 @@ final class SubscriptionState
 
     /**
      * Type of this subscription, one of TYPE_* constant
-     *
-     * @var int
      */
-    private $subscriptionType = self::TYPE_NONE;
+    private int $subscriptionType = self::TYPE_NONE;
 
     /**
      * Return type of this subscription
@@ -80,7 +79,7 @@ final class SubscriptionState
     /**
      * Assigns partitions manually
      *
-     * @param array $topicPartitions Array in form string => int[], where key is topic name and value is array of partitions
+     * @param PartitionsForTopic[]|array $topicPartitions Array where key is topic name and value DTO with partitions
      *
      * @return void
      */
@@ -106,7 +105,7 @@ final class SubscriptionState
     /**
      * Assigns topic-partitions from data, received from group-coordinator
      *
-     * @param array $assignments Array where key is the topic name, and value is array of partitions
+     * @param PartitionsForTopic[]|array $assignments Array where key is the topic name and value DTO with partitions
      *
      * @return void
      */
@@ -118,12 +117,12 @@ final class SubscriptionState
 
         if ($this->subscribedPattern !== null) {
             $topicPartitionMessage = '';
-            foreach ($assignments as $topic => $partitions) {
+            foreach ($assignments as $topic => $topicPartitions) {
                 if (!preg_match($this->subscribedPattern, $topic)) {
                     $topicPartitionMessage .= sprintf(
                         "topic \"%s\", partitions: %s\n",
                         $topic,
-                        implode(', ', $partitions)
+                        implode(', ', $topicPartitions->partitions)
                     );
                 }
             }
@@ -138,14 +137,15 @@ final class SubscriptionState
                 );
             }
         } else {
+            /** @var PartitionsForTopic[] $unknownTopics */
             $unknownTopics = array_diff_key($assignments, $this->subscription);
-            if ($unknownTopics !== []) {
+            if (!empty($unknownTopics)) {
                 $topicPartitionMessage = '';
-                foreach ($unknownTopics as $topic => $partitions) {
+                foreach ($unknownTopics as $topic => $topicPartitions) {
                     $topicPartitionMessage .= sprintf(
                         "topic \"%s\", partitions: %s\n",
                         $topic,
-                        implode(', ', $partitions)
+                        implode(', ', $topicPartitions->partitions)
                     );
                 }
                 throw new InvalidArgumentException(
@@ -348,15 +348,15 @@ final class SubscriptionState
     /**
      * Sets assignment for this subscription
      *
-     * @param array $assignment Assignment in form [topic name:string][partition:int] -> state
+     * @var PartitionsForTopic[]|array $assignment Array where key is topic name and value DTO with partitions
      *
      * @return void
      */
     private function setAssignment(array $assignment): void
     {
         $targetAssignment = [];
-        foreach ($assignment as $topic => $partitions) {
-            foreach ($partitions as $partitionId => $noMatter) {
+        foreach ($assignment as $topic => $topicPartitions) {
+            foreach ($topicPartitions->partitions as $partitionId) {
                 $targetAssignment[$topic][$partitionId] = $this->assignment[$topic][$partitionId] ?? ['position' => null, 'isPaused' => false];
             }
         }

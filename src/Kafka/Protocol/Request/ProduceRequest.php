@@ -18,10 +18,10 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Common\Record\RecordBatch;
-use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
-
-use function strlen;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
+use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
  * The produce API
@@ -50,6 +50,11 @@ class ProduceRequest extends AbstractRequest
     public const VERSION = 3;
 
     /**
+     * @var ProduceRequestTopic[]
+     */
+    public $topicMessages;
+
+    /**
      * ProduceRequest constructor.
      *
      * @param array  $topicMessages   List of messages in format: topic => [partition => [messages]]
@@ -68,7 +73,7 @@ class ProduceRequest extends AbstractRequest
      * @param int    $correlationId   Correlation request ID (will be returned in the response)
      */
     public function __construct(
-        private readonly array $topicMessages,
+        array $topicMessages = [],
         /**
          * The number of acknowledgments the producer requires the leader to have received before considering a request
          * complete. Allowed values: 0 for no acknowledgments, 1 for only the leader and -1 for the full ISR.
@@ -87,42 +92,30 @@ class ProduceRequest extends AbstractRequest
         $clientId = '',
         $correlationId = 0
     ) {
+
+        foreach ($topicMessages as $topic => $partitionMessages) {
+            $partitions = [];
+            foreach ($partitionMessages as $partition => $records) {
+                $recordBatch            = new RecordBatch($records);
+                $partitions[$partition] = new ProduceRequestPartition($partition, $recordBatch);
+            }
+
+            $this->topicMessages[$topic] = new ProduceRequestTopic($topic, $partitions);
+
+        }
+
         parent::__construct(ApiKeys::PRODUCE, $clientId, $correlationId);
     }
 
-    /**
-     * @inheritDoc
-     */
-    protected function packPayload(): string
+    public static function getScheme()
     {
-        $payload = parent::packPayload();
+        $header = null;
 
-        $totalTopics         = count($this->topicMessages);
-        $transactionIdLength = property_exists($this, 'transactionalId') && $this->transactionalId !== null ? strlen($this->transactionalId) : -1;
-        $transactionIdStrlen = property_exists($this, 'transactionalId') && $this->transactionalId !== null ? strlen($this->transactionalId) : 0;
-        $payload .= pack(
-            "na{$transactionIdStrlen}nNN",
-            $transactionIdLength,
-            $this->transactionalId ?: '',
-            $this->requiredAcks,
-            $this->timeout,
-            $totalTopics
-        );
-        foreach ($this->topicMessages as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            foreach ($partitions as $partition => $records) {
-                $recordBatch       = new RecordBatch($records);
-                $recordBatchStream = new StringStream();
-                $recordBatch->pack($recordBatchStream);
-
-                $recordBatchPayload = $recordBatchStream->getBuffer();
-
-                $payload .= pack('NN', $partition, strlen($recordBatchPayload));
-                $payload .= $recordBatchPayload;
-            }
-        }
-
-        return $payload;
+        return $header + [
+            'transactionalId' => BinarySchema::TYPE_NULLABLE_STRING,
+            'requiredAcks'    => BinarySchema::TYPE_INT16,
+            'timeout'         => BinarySchema::TYPE_INT32,
+            'topicMessages'   => ['topic' => ProduceRequestTopic::class],
+        ];
     }
 }

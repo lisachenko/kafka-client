@@ -17,10 +17,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Record;
 
-use Protocol\Kafka\Common\Utils\ByteUtils;
-use Protocol\Kafka\IO\Stream;
-
-use function strlen;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * A record in kafka is a key-value pair with a small amount of associated metadata.
@@ -51,25 +49,21 @@ use function strlen;
  *
  * @since 0.11.0
  */
-class Record
+class Record implements BinarySchemaInterface
 {
-    /**
-     * @var float
-     */
-    public $timestamp;
     /**
      * Length of this message
      *
      * @var integer
      */
-    public $length;
+    public $length = 0;
 
     /**
      * Record level attributes are presently unused.
      *
      * @var integer
      */
-    public $attributes;
+    public $attributes = 0;
 
     /**
      * The timestamp delta of the record in the batch.
@@ -79,7 +73,7 @@ class Record
      * @var integer
      * @since Version 2 of Record structure
      */
-    public $timestampDelta;
+    public $timestampDelta = 0;
 
     /**
      * The offset delta of the record in the batch.
@@ -90,7 +84,7 @@ class Record
      *
      * @since Version 2 of Record (Record) structure
      */
-    public $offsetDelta;
+    public $offsetDelta = 0;
 
     /**
      * The key is an optional message key that was used for partition assignment. The key can be null.
@@ -114,7 +108,7 @@ class Record
      * @since Version 2 of Record (Record) structure
      * @see https://cwiki.apache.org/confluence/display/KAFKA/KIP-82+-+Add+Record+Headers
      *
-     * @var array
+     * @var Header[]
      */
     public $headers = [];
 
@@ -124,117 +118,23 @@ class Record
 
         $message->value          = $value;
         $message->timestampDelta = (int) (microtime(true) * 1000 - $_SERVER['REQUEST_TIME_FLOAT'] * 1000);
-        $message->length         = self::sizeOfBodyInBytes(
-            $message->offsetDelta,
-            $message->timestampDelta,
-            $message->key,
-            $message->value,
-            $message->headers
-        );
         $message->attributes     = $attributes;
+        $message->length         = BinarySchema::getObjectTypeSize($message) - 1;
+        /* Varint 0 length always equal to 1 */;
 
         return $message;
     }
 
-    public static function fromKeyValue($key, $value, $attributes = 0): static
+    public static function getScheme(): array
     {
-        $message = new static();
-
-        $message->key        = $key;
-        $message->value      = $value;
-        $message->timestamp  = microtime(true) * 1000;
-        $message->attributes = $attributes;
-
-        return $message;
-    }
-
-    /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     */
-    public static function unpack(Stream $stream): static
-    {
-        $record                 = new static();
-        $record->length         = $stream->readVarint();
-        $record->attributes     = $stream->read('cattributes')['attributes'];
-        $record->timestampDelta = $stream->readVarint();
-        $record->offsetDelta    = $stream->readVarint();
-        $keyLength              = $stream->readVarint();
-        $record->key            = $stream->read("a{$keyLength}key")['key'];
-        $valueLength            = $stream->readVarint();
-        $record->value          = $stream->read("a{$valueLength}value")['value'];
-        $headersNumber          = $stream->readVarint();
-        for ($index = 0; $index < $headersNumber; $index++) {
-            [$headerKey, $headerValue] = Header::unpack($stream);
-            $record->headers[$headerKey] = $headerValue;
-        }
-
-        return $record;
-    }
-
-
-    public function pack(Stream $stream): void
-    {
-        $stream->writeVarint($this->length);
-        $stream->write('c', $this->attributes);
-        $stream->writeVarint($this->timestampDelta);
-        $stream->writeVarint($this->offsetDelta);
-        $keyLength = $this->key !== null ? strlen($this->key) : 0;
-        $stream->writeVarint($keyLength);
-        $stream->write("a{$keyLength}", $this->key);
-        $valueLength = $this->value !== null ? strlen($this->value) : 0;
-        $stream->writeVarint($valueLength);
-        $stream->write("a{$valueLength}", $this->value);
-        $stream->writeVarint(count($this->headers));
-        foreach ($this->headers as $key => $value) {
-            Header::pack($stream, $key, $value);
-        }
-    }
-
-    public static function sizeInBytes(
-        $offsetDelta,
-        $timestampDelta,
-        $key,
-        $value,
-        array $headers
-    ): int|float {
-        $bodySize = self::sizeOfBodyInBytes($offsetDelta, $timestampDelta, $key, $value, $headers);
-
-        return ByteUtils::sizeOfVarint($bodySize) + $bodySize;
-    }
-
-    private static function sizeOfBodyInBytes(
-        int $offsetDelta,
-        int $timestampDelta,
-        $key,
-        $value,
-        array $headers
-    ): int {
-        $bodySize = 1; // always one byte for attributes
-        $bodySize += ByteUtils::sizeOfVarint($offsetDelta);
-        $bodySize += ByteUtils::sizeOfVarlong($timestampDelta);
-
-        $keyLength = strlen($key);
-        $bodySize  += ByteUtils::sizeOfVarint($keyLength) + $keyLength;
-
-        $valueLength = strlen($value);
-        $bodySize    += ByteUtils::sizeOfVarint($valueLength) + $valueLength;
-
-        $bodySize += ByteUtils::sizeOfVarint(count($headers));
-        foreach ($headers as $headerKey => $headerValue) {
-            $headerLength = strlen($headerKey);
-            $bodySize     += ByteUtils::sizeOfVarint($headerLength) + $headerLength;
-            if ($headerValue === null) {
-                $bodySize += ByteUtils::sizeOfVarint(-1);
-            } else {
-                $valueLength = strlen($headerValue);
-                $bodySize    += ByteUtils::sizeOfVarint($valueLength) + $valueLength;
-            }
-        }
-
-        return $bodySize;
+        return [
+            'length'         => BinarySchema::TYPE_VARINT_ZIGZAG,
+            'attributes'     => BinarySchema::TYPE_INT8,
+            'timestampDelta' => BinarySchema::TYPE_VARLONG_ZIGZAG,
+            'offsetDelta'    => BinarySchema::TYPE_VARINT_ZIGZAG,
+            'key'            => BinarySchema::TYPE_VARCHAR_ZIGZAG,
+            'value'          => BinarySchema::TYPE_VARCHAR_ZIGZAG,
+            'headers'        => ['key' => Header::class, BinarySchema::FLAG_VARARRAY => true],
+        ];
     }
 }

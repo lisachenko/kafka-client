@@ -17,22 +17,25 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\IO\StringStream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Common\Record\RecordBatch;
 
 /**
- * Fetch response partition header
+ * Fetch response topic partition header
  *
- * partition_header => partition error_code high_watermark last_stable_offset [aborted_transactions]
+ * partition_header => partition error_code high_watermark last_stable_offset log_start_offset [aborted_transactions]
  *   partition => INT32
  *   error_code => INT16
  *   high_watermark => INT64
  *   last_stable_offset => INT64
+ *   log_start_offset => INT64
  *   aborted_transactions => producer_id first_offset
  *     producer_id => INT64
  *     first_offset => INT64
  */
-class FetchResponsePartition
+class FetchResponsePartition implements BinarySchemaInterface
 {
     /**
      * The id of the partition this response is for.
@@ -72,48 +75,62 @@ class FetchResponsePartition
     public $lastStableOffset;
 
     /**
+     * Earliest available offset.
+     *
+     * @since version 5
+     *
+     * @var integer
+     */
+    public $logStartOffset;
+
+    /**
      * List of aborted transactions
      *
      * @since version 4
      *
-     * @var array Array where key is producer_id and value is the first offset in the aborted transaction
+     * @var FetchResponseAbortedTransaction[]
      */
     public $abortedTransactions = [];
 
     /**
-     * @var RecordBatch
+     * @var string
      */
-    public $recordBatch;
+    public $recordBatchBuffer;
 
     /**
-     * Unpacks the DTO from the binary buffer
+     * Returns definition of binary packet for the class or object
      *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @return array
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->highWaterMarkOffset, $partition->lastStableOffset, $numberOfAbortedTransactions] = array_values($stream->read(
-            'Npartition/' .
-            'nerrorCode/' .
-            'JhighWaterMarkOffset/' .
-            'JlastStableOffset/' .
-            'labortedTransactions' // Nullable array could contain -1 as value
-        ));
+        return [
+            'partition'           => BinarySchema::TYPE_INT32,
+            'errorCode'           => BinarySchema::TYPE_INT16,
+            'highWaterMarkOffset' => BinarySchema::TYPE_INT64,
+            'lastStableOffset'    => BinarySchema::TYPE_INT64,
+            'logStartOffset'      => BinarySchema::TYPE_INT64,
+            'abortedTransactions' => ['producerId' => FetchResponseAbortedTransaction::class],
+            // TODO: this should be actualy dynamic array of RecordBatch::class entities
+            'recordBatchBuffer'   => BinarySchema::TYPE_BYTEARRAY,
+        ];
+    }
 
-        for ($abortedTransaction = 0; $abortedTransaction < $numberOfAbortedTransactions; $abortedTransaction++) {
-            [$producerId, $firstOffset] = array_values($stream->read('JproducerId/JfirstOffset'));
-            $partition->abortedTransactions[$producerId] = $firstOffset;
+    /**
+     * Returns collection of RecordBatches
+     *
+     * TODO: is this possible somehow to do this on BinarySchema level?
+     * @return RecordBatch[]
+     */
+    public function getRecordBatches(): array
+    {
+        $recordBatches = [];
+        // TODO: Avoid creation of temporary string buffer, this should be implemented in reader directly
+        $buffer = new StringStream($this->recordBatchBuffer);
+        while (!$buffer->isEmpty()) {
+            $recordBatches[] = BinarySchema::readObjectFromStream(RecordBatch::class, $buffer);
         }
 
-        // What to do with this size?
-        $batchSize = $stream->read('NnumberOfRecords')['numberOfRecords'];
-
-        $recordBatch            = RecordBatch::unpack($stream);
-        $partition->recordBatch = $recordBatch;
-
-        return $partition;
+        return $recordBatches;
     }
 }

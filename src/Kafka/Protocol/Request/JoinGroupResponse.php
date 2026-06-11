@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -17,13 +18,24 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 
 /**
  * Join group response
+ *
+ * JoinGroup Response (Version: 0) => error_code generation_id group_protocol leader_id member_id [members]
+ *   error_code => INT16
+ *   generation_id => INT32
+ *   group_protocol => STRING
+ *   leader_id => STRING
+ *   member_id => STRING
+ *   members => member_id member_metadata
+ *     member_id => STRING
+ *     member_metadata => BYTES
  */
-class JoinGroupResponse extends AbstractResponse
+class JoinGroupResponse extends AbstractResponse implements BinarySchemaInterface
 {
     /**
      * Error code.
@@ -67,39 +79,17 @@ class JoinGroupResponse extends AbstractResponse
      */
     public $members = [];
 
-    /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * JoinGroup Response (Version: 0) => error_code generation_id group_protocol leader_id member_id [members]
-     *   error_code => INT16
-     *   generation_id => INT32
-     *   group_protocol => STRING
-     *   leader_id => STRING
-     *   member_id => STRING
-     *   members => member_id member_metadata
-     *     member_id => STRING
-     *     member_metadata => BYTES
-     *
-     * @return AbstractProtocolMessage
-     */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $self->errorCode, $self->generationId] = array_values($stream->read('NcorrelationId/nerrorCode/NgenerationId'));
+        $header = parent::getScheme();
 
-        $self->groupProtocol = $stream->readString();
-        $self->leaderId      = $stream->readString();
-        $self->memberId      = $stream->readString();
-
-        $membersCount = $stream->read('NmembersCount')['membersCount'];
-        for ($memberIndex = 0; $memberIndex < $membersCount; $memberIndex++) {
-            $memberId   = $stream->readString();
-            $memberData = $stream->readByteArray();
-            $self->members[$memberId] = $memberData;
-        }
-
-        return $self;
+        return $header + [
+            'errorCode'     => BinarySchema::TYPE_INT16,
+            'generationId'  => BinarySchema::TYPE_INT32,
+            'groupProtocol' => BinarySchema::TYPE_STRING,
+            'leaderId'      => BinarySchema::TYPE_STRING,
+            'memberId'      => BinarySchema::TYPE_STRING,
+            'members'       => ['memberId' => JoinGroupResponseMember::class],
+        ];
     }
 }

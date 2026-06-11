@@ -26,7 +26,7 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
-use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
@@ -205,12 +205,12 @@ class AdminClient
      *
      * @param string $groupId Identifier of group
      *
-     * @return OffsetFetchResponsePartition[]
+     * @return OffsetFetchResponseTopic[]
      */
     public function listGroupOffsets($groupId)
     {
         $coordinator = $this->findCoordinator($groupId);
-        $request     = new OffsetFetchRequest($groupId, [], $this->configuration[ClientConfig::CLIENT_ID]);
+        $request     = new OffsetFetchRequest($groupId, null, $this->configuration[ClientConfig::CLIENT_ID]);
         $stream      = $coordinator->getConnection($this->configuration);
         $request->writeTo($stream);
         $response = OffsetFetchResponse::unpack($stream);

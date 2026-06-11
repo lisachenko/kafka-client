@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 15.07.2016
@@ -17,46 +18,34 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
 
 /**
  * Offset commit response object
+ *
+ * OffsetCommit Response (Version: 2) => [responses]
+ *   responses => topic [partition_responses]
+ *     topic => STRING
+ *     partition_responses => partition error_code
+ *       partition => INT32
+ *       error_code => INT16
  */
-class OffsetCommitResponse extends AbstractResponse
+class OffsetCommitResponse extends AbstractResponse implements BinarySchemaInterface
 {
     /**
      * List of topics with partition result
      *
-     * @var array
+     * @var OffsetCommitResponseTopic[]
      */
     public $topics = [];
 
-    /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
-     */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [
-            $self->correlationId,
-            $numberOfTopics,
-        ] = array_values($stream->read('NcorrelationId/NnumberOfTopics'));
+        $header = parent::getScheme();
 
-        for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicLength = $stream->read('ntopicLength')['topicLength'];
-            [$topicName, $numberOfPartitions] = array_values($stream->read("a{$topicLength}/NnumberOfPartitions"));
-
-            for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-                [$partitionId, $partitionErrorCode] = array_values($stream->read('Npartition/nErrorCode'));
-                $self->topics[$topicName][$partitionId] = $partitionErrorCode;
-            }
-        }
-
-        return $self;
+        return $header + [
+            'topics' => ['topic' => OffsetCommitResponseTopic::class],
+        ];
     }
 }

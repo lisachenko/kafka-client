@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 28.07.2016
@@ -17,13 +18,20 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 
 /**
  * List groups response
+ *
+ * ListGroups Response (Version: 0) => error_code [groups]
+ *   error_code => INT16
+ *   groups => group_id protocol_type
+ *     group_id => STRING
+ *     protocol_type => STRING
  */
-class ListGroupsResponse extends AbstractResponse
+class ListGroupsResponse extends AbstractResponse implements BinarySchemaInterface
 {
     /**
      * Error code.
@@ -39,25 +47,13 @@ class ListGroupsResponse extends AbstractResponse
      */
     public $groups = [];
 
-    /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
-     */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $self->errorCode, $groupNumber] = array_values($stream->read('NcorrelationId/nerrorCode/NgroupNumber'));
+        $header = parent::getScheme();
 
-        for ($groupIndex = 0; $groupIndex < $groupNumber; $groupIndex++) {
-            $groupId  = $stream->readString();
-            $protocol = $stream->readString();
-
-            $self->groups[$groupId] = $protocol;
-        }
-
-        return $self;
+        return $header + [
+            'errorCode' => BinarySchema::TYPE_INT16,
+            'groups'    => ['groupId' => ListGroupResponseProtocol::class],
+        ];
     }
 }

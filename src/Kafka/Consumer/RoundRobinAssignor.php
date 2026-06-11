@@ -19,6 +19,7 @@ namespace Protocol\Kafka\Consumer;
 
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\IO\StringStream;
+use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 
 /**
  * The roundrobin assignor lays out all the available partitions and all the available consumers.
@@ -41,7 +42,7 @@ class RoundRobinAssignor implements PartitionAssignorInterface
      * Perform the group assignment given the member subscriptions and current cluster metadata.
      *
      * @param Cluster $metadata Current topic/broker metadata known by consumer
-     * @param array $subscriptions Subscriptions from all members
+     * @param JoinGroupResponseMember[] $subscriptions Subscriptions from all members
      *
      * @return array|MemberAssignment[] A map from the members to their respective assignment. This should have one entry
      *         for all members who in the input subscription map.
@@ -52,7 +53,7 @@ class RoundRobinAssignor implements PartitionAssignorInterface
         $partitionAssignments = [];
 
         foreach ($subscriptions as $memberId => $subscriptionData) {
-            $subscriptionMetadata = Subscription::unpack(new StringStream($subscriptionData));
+            $subscriptionMetadata = Subscription::unpack(new StringStream($subscriptionData->metadata));
             foreach ($subscriptionMetadata->topics as $topic) {
                 $topicMembers[$topic][] = $memberId;
             }
@@ -71,11 +72,11 @@ class RoundRobinAssignor implements PartitionAssignorInterface
 
         $result = [];
         foreach ($partitionAssignments as $memberId => $partitionAssignment) {
-            $result[$memberId] = MemberAssignment::fromTopicPartitions($partitionAssignment);
+            $result[$memberId] = new MemberAssignment($partitionAssignment);
         }
         $unassignedMembers = array_diff_key($subscriptions, $result);
         foreach (array_keys($unassignedMembers) as $unassignedMemberId) {
-            $result[$unassignedMemberId] = MemberAssignment::fromTopicPartitions([]);
+            $result[$unassignedMemberId] = new MemberAssignment();
         }
 
         return $result;

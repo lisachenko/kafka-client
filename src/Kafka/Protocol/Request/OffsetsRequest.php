@@ -18,6 +18,8 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\OffsetsRequestTopic;
 
 /**
  * Offsets API
@@ -28,6 +30,14 @@ use Protocol\Kafka\Protocol\ApiKeys;
  *
  * The response contains the starting offset of each segment for the requested partition as well as the "log end
  * offset" i.e. the offset of the next message that would be appended to the given partition.
+ *
+ * ListOffsets Request (Version: 1) => replica_id [topics]
+ *   replica_id => INT32
+ *   topics => topic [partitions]
+ *     topic => STRING
+ *     partitions => partition timestamp
+ *       partition => INT32
+ *       timestamp => INT64
  */
 class OffsetsRequest extends AbstractRequest
 {
@@ -46,11 +56,13 @@ class OffsetsRequest extends AbstractRequest
      */
     public const EARLIEST = -2;
 
+    private readonly array $topicPartitions;
+
     /**
      * @param int $replicaId
      */
     public function __construct(
-        private readonly array $topicPartitions,
+        array $topicPartitions,
         /**
          * The replica id indicates the node id of the replica initiating this request. Normal client consumers should
          * always specify this as -1 as they have no node id. Other brokers set this to be their own node id. The value -2
@@ -60,26 +72,22 @@ class OffsetsRequest extends AbstractRequest
         $clientId = '',
         $correlationId = 0
     ) {
+        $packedTopicPartitions = [];
+        foreach ($topicPartitions as $topic => $partitions) {
+            $packedTopicPartitions[$topic] = new OffsetsRequestTopic($topic, $partitions);
+        }
+        $this->topicPartitions = $packedTopicPartitions;
+
         parent::__construct(ApiKeys::OFFSETS, $clientId, $correlationId);
     }
 
-    /**
-     * @inheritDoc
-     */
-    protected function packPayload(): string
+    public static function getScheme()
     {
-        $payload     = parent::packPayload();
-        $totalTopics = count($this->topicPartitions);
+        $header = null;
 
-        $payload .= pack('NN', $this->replicaId, $totalTopics);
-        foreach ($this->topicPartitions as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            foreach ($partitions as $partitionId => $timeOffset) {
-                $payload .= pack('NJ', $partitionId, $timeOffset);
-            }
-        }
-
-        return $payload;
+        return $header + [
+            'replicaId'       => BinarySchema::TYPE_INT32,
+            'topicPartitions' => ['topic' => OffsetsRequestTopic::class],
+        ];
     }
 }

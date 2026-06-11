@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 28.07.2016
@@ -18,12 +19,16 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * DescribeGroups Request
  *
  * This API can be used to describe the current groups managed by a broker. To get a list of all groups in the cluster, you
  * must send DescribeGroups to all brokers.
+ *
+ * DescribeGroups Request (Version: 0) => [group_ids]
+ *   group_ids => STRING
  */
 class DescribeGroupsRequest extends AbstractRequest
 {
@@ -40,21 +45,12 @@ class DescribeGroupsRequest extends AbstractRequest
         parent::__construct(ApiKeys::DESCRIBE_GROUPS, $clientId, $correlationId);
     }
 
-    /**
-     * @inheritDoc
-     * DescribeGroupsRequest => [GroupId]
-     *   GroupId => string
-     */
-    protected function packPayload(): string
+    public static function getScheme()
     {
-        $payload      = parent::packPayload();
-        $payload .= pack('N', count($this->groups));
+        $header = null;
 
-        foreach ($this->groups as $group) {
-            $groupLength = strlen($group);
-            $payload .= pack("na{$groupLength}", $groupLength, $group);
-        }
-
-        return $payload;
+        return $header + [
+            'groups' => [BinarySchema::TYPE_STRING],
+        ];
     }
 }

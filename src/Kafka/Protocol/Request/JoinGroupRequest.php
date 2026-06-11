@@ -18,6 +18,8 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 
 /**
  * Join Group Request
@@ -38,6 +40,11 @@ class JoinGroupRequest extends AbstractRequest
      * Member id for self-assigned consumer
      */
     public const DEFAULT_MEMBER_ID = "";
+
+    /**
+     * List of protocols that the member supports as key=>value pairs, where value is metadata
+     */
+    private readonly array $groupProtocols;
 
     /**
      * @param string $consumerGroup
@@ -67,56 +74,31 @@ class JoinGroupRequest extends AbstractRequest
          * Unique name for class of protocols implemented by group
          */
         private $protocolType,
-        /**
-         * List of protocols that the member supports as key=>value pairs, where value is metadata
-         */
-        private readonly array $groupProtocols,
+        array $groupProtocols,
         $clientId = '',
         $correlationId = 0
     ) {
+        $packedProtocols        = [];
+        foreach ($groupProtocols as $protocolName => $protocolMetadata) {
+            $packedProtocols[$protocolName] = new JoinGroupRequestProtocol($protocolName, $protocolMetadata);
+        }
+
+        $this->groupProtocols = $packedProtocols;
+
         parent::__construct(ApiKeys::JOIN_GROUP, $clientId, $correlationId);
     }
 
-    /**
-     * @inheritDoc
-     *
-     * JoinGroup Request (Version: 0) => group_id session_timeout member_id protocol_type [group_protocols]
-     *   group_id => STRING
-     *   session_timeout => INT32
-     *   rebalance_timeout => INT32
-     *   member_id => STRING
-     *   protocol_type => STRING
-     *   group_protocols => protocol_name protocol_metadata
-     *     protocol_name => STRING
-     *     protocol_metadata => BYTES
-     */
-    protected function packPayload(): string
+    public static function getScheme()
     {
-        $payload        = parent::packPayload();
-        $groupLength    = strlen($this->consumerGroup);
-        $memberLength   = strlen($this->memberId);
-        $protocolLength = strlen($this->protocolType);
+        $header = null;
 
-        $payload .= pack(
-            "na{$groupLength}NNna{$memberLength}na{$protocolLength}N",
-            $groupLength,
-            $this->consumerGroup,
-            $this->sessionTimeout,
-            $this->rebalanceTimeout,
-            $memberLength,
-            $this->memberId,
-            $protocolLength,
-            $this->protocolType,
-            count($this->groupProtocols)
-        );
-
-        foreach ($this->groupProtocols as $protocolName => $protocolMetadata) {
-            $protocolNameLength = strlen($protocolName);
-            $protocolMetaLength = strlen($protocolMetadata);
-            $payload .= pack("na{$protocolNameLength}N", $protocolNameLength, $protocolName, $protocolMetaLength);
-            $payload .= $protocolMetadata;
-        }
-
-        return $payload;
+        return $header + [
+            'consumerGroup'    => BinarySchema::TYPE_STRING,
+            'sessionTimeout'   => BinarySchema::TYPE_INT32,
+            'rebalanceTimeout' => BinarySchema::TYPE_INT32,
+            'memberId'         => BinarySchema::TYPE_STRING,
+            'protocolType'     => BinarySchema::TYPE_STRING,
+            'groupProtocols'   => ['protocolName' => JoinGroupRequestProtocol::class],
+        ];
     }
 }

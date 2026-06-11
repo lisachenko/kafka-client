@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 15.07.2016
@@ -17,29 +18,30 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 
 /**
  * Fetch response object
  *
- * Fetch Response (Version: 4) => throttle_time_ms [responses]
+ * Fetch Response (Version: 5) => throttle_time_ms [responses]
  *   throttle_time_ms => INT32
  *   responses => topic [partition_responses]
  *     topic => STRING
  *     partition_responses => partition_header record_set
- *       partition_header => partition error_code high_watermark last_stable_offset [aborted_transactions]
+ *       partition_header => partition error_code high_watermark last_stable_offset log_start_offset [aborted_transactions]
  *         partition => INT32
  *         error_code => INT16
  *         high_watermark => INT64
  *         last_stable_offset => INT64
+ *         log_start_offset => INT64
  *         aborted_transactions => producer_id first_offset
  *           producer_id => INT64
  *           first_offset => INT64
  *     record_set => RECORDS
  */
-class FetchResponse extends AbstractResponse
+class FetchResponse extends AbstractResponse implements BinarySchemaInterface
 {
     /**
      * Duration in milliseconds for which the request was throttled due to quota violation.
@@ -53,36 +55,15 @@ class FetchResponse extends AbstractResponse
     /**
      * List of fetch responses
      *
-     * @var array|FetchResponsePartition[]
+     * @var FetchResponseTopic[]
      */
     public $topics = [];
 
-    /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
-     */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [
-            $self->correlationId,
-            $self->throttleTimeMs,
-            $numberOfTopics,
-        ] = array_values($stream->read('NcorrelationId/NthrottleTimeMs/NnumberOfTopics'));
-
-        for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicLength = $stream->read('ntopicLength')['topicLength'];
-            [$topicName, $numberOfPartitions] = array_values($stream->read("a{$topicLength}/NnumberOfPartitions"));
-
-            for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-                $topicMetadata = FetchResponsePartition::unpack($stream);
-                $self->topics[$topicName][$topicMetadata->partition] = $topicMetadata;
-            }
-        }
-
-        return $self;
+        return parent::getScheme() + [
+            'throttleTimeMs' => BinarySchema::TYPE_INT32,
+            'topics'         => ['topic' => FetchResponseTopic::class],
+        ];
     }
 }

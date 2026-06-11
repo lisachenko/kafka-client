@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -19,14 +20,14 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\TopicMetadata;
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Common\RestorableTrait;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Metadata response object
  */
-class MetadataResponse extends AbstractResponse
+class MetadataResponse extends AbstractResponse implements BinarySchemaInterface
 {
     use RestorableTrait;
 
@@ -61,32 +62,15 @@ class MetadataResponse extends AbstractResponse
      */
     public $topics = [];
 
-    /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
-     */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $numberOfBrokers] = array_values($stream->read('NcorrelationId/NnumberOfBrokers'));
+        $header = parent::getScheme();
 
-        for ($broker = 0; $broker < $numberOfBrokers; $broker++) {
-            $brokerNode = Node::unpack($stream);
-
-            $self->brokers[$brokerNode->nodeId] = $brokerNode;
-        }
-        $self->clusterId    = $stream->readString();
-        $self->controllerId = $stream->read('NcontrollerId')['controllerId'];
-        $numberOfTopics     = $stream->read('NnumberOfTopics')['numberOfTopics'];
-
-        for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicMetadata = TopicMetadata::unpack($stream);
-
-            $self->topics[$topicMetadata->topic] = $topicMetadata;
-        }
-        return $self;
+        return $header + [
+            'brokers'      => [Node::class],
+            'clusterId'    => BinarySchema::TYPE_NULLABLE_STRING,
+            'controllerId' => BinarySchema::TYPE_INT32,
+            'topics'       => ['topic' => TopicMetadata::class],
+        ];
     }
 }

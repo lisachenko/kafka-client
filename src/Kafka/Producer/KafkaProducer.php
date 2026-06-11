@@ -23,6 +23,7 @@ use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
  * A Kafka client that publishes records to the Kafka cluster.
@@ -65,6 +66,8 @@ class KafkaProducer
 
     /**
      * Buffer for storing topic-partition-messages
+     *
+     * @var ProduceRequestTopic[]
      */
     private array $topicPartitionMessages = [];
 
@@ -87,6 +90,7 @@ class KafkaProducer
     {
         $result           = null;
         $this->currentTry = 0;
+        $exception        = null;
 
         $exceptions = [];
         while ($this->currentTry <= $this->configuration[ProducerConfig::RETRIES]) {

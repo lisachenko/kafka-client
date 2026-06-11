@@ -31,6 +31,8 @@ use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\IO\StringStream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -128,7 +130,7 @@ class KafkaConsumer
      * If auto-commit is enabled, an async commit (based on the old assignment) will be triggered before the new
      * assignment replaces the old one.
      *
-     * @param array $topicPartitions Key is topic and value is array of assigned partitions
+     * @param PartitionsForTopic[] $topicPartitions Key is topic and value is DTO with list of assigned partitions
      *
      * @return void
      */
@@ -326,39 +328,31 @@ class KafkaConsumer
             $this->configuration[ConsumerConfig::GROUP_ID],
             $this->memberId,
             'consumer',
-            [
-                'range' => Subscription::fromSubscription($topics),
-            ]
+            ['range' => Subscription::fromSubscription($topics)]
         );
 
         $this->memberId     = $joinResult->memberId;
         $this->generationId = $joinResult->generationId;
 
-        $isLeader = $joinResult->memberId === $joinResult->leaderId;
-
+        $isLeader    = $joinResult->memberId === $joinResult->leaderId;
+        $assignments = [];
         if ($isLeader) {
-            $groupAssignments = $this->assignorStrategy->assign($this->getCluster(), $joinResult->members);
-            $syncResult       = $this->getClient()->syncGroup(
-                $coordinator,
-                $this->configuration[ConsumerConfig::GROUP_ID],
-                $this->memberId,
-                $this->generationId,
-                $groupAssignments
-            );
-            $topicPartitions = $groupAssignments[$this->memberId]->topicPartitions;
-        } else {
-            $syncResult = $this->getClient()->syncGroup(
-                $coordinator,
-                $this->configuration[ConsumerConfig::GROUP_ID],
-                $this->memberId,
-                $this->generationId
-            );
-
-            $assignments = MemberAssignment::unpack(new StringStream($syncResult->memberAssignment));
-
-            // TODO: Use $assignments->userData; $assignments->version;
-            $topicPartitions = $assignments->topicPartitions;
+            $assignments = $this->assignorStrategy->assign($this->getCluster(), $joinResult->members);
         }
+        $syncResult = $this->getClient()->syncGroup(
+            $coordinator,
+            $this->configuration[ConsumerConfig::GROUP_ID],
+            $this->memberId,
+            $this->generationId,
+            $assignments
+        );
+
+        // TODO: Unpacking should be on scheme-level, instead of bytearray
+        $assignmentData = new StringStream($syncResult->memberAssignment);
+        $assignment     = BinarySchema::readObjectFromStream(MemberAssignment::class, $assignmentData);
+
+        // TODO: Use $assignments->userData; $assignments->version
+        $topicPartitions = $assignment->topicPartitions;
 
         if (empty($topicPartitions)) {
             throw new EmptyAssignmentException($topics);
@@ -492,26 +486,24 @@ class KafkaConsumer
     }
 
     /**
-     * This methods looks for the offsets in the returned MessageSets and returns them incremented
+     * This methods looks for the offsets in the returned RecordBatches and adjusts subscription state offsets
      *
-     * @param array $fetchResult Result from FetchResponse->topics
+     * @param RecordBatch[][][] $fetchResult Result from FetchResponse->topics
      *
      * @return void
      */
     protected function updateFetchPositions(array $fetchResult)
     {
         foreach ($fetchResult as $topic => $partitions) {
-            foreach ($partitions as $partitionId => $recordBatch) {
-                if (empty($recordBatch)) {
+            foreach ($partitions as $partitionId => $recordBatches) {
+                if (count($recordBatches) === 0) {
                     continue;
                 }
-                //TODO: Use new RecordBatch format for offset calculation
-
-                /** @var RecordBatch $lastRecord */
-                $lastRecord = end($recordBatch);
+                $lastRecordBatch = end($recordBatches);
+                $lastOffset      = $lastRecordBatch->firstOffset + $lastRecordBatch->lastOffsetDelta;
 
                 // original client uses position() method here
-                $this->subscriptionState->seek($topic, $partitionId, $lastRecord->offset + 1);
+                $this->subscriptionState->seek($topic, $partitionId, $lastOffset + 1);
             }
         }
     }
@@ -641,7 +633,7 @@ class KafkaConsumer
     /**
      * Reads topic-partition offsets and stores them into internal data
      *
-     * @param array $topicPartitions Topic partitions in from [topic name:string][partition: int] -> no matter
+     * @param PartitionsForTopic[] $topicPartitions List of Topic => PartitionsForTopic
      *
      * @return void
      */

@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -17,19 +18,29 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 
 /**
  * Produce response object
+ *
+ * Produce Response (Version: 3) => [responses] throttle_time_ms
+ *   responses => topic [partition_responses]
+ *     topic => STRING
+ *     partition_responses => partition error_code base_offset log_append_time
+ *       partition => INT32
+ *       error_code => INT16
+ *       base_offset => INT64
+ *       log_append_time => INT64
+ *   throttle_time_ms => INT32
  */
-class ProduceResponse extends AbstractResponse
+class ProduceResponse extends AbstractResponse implements BinarySchemaInterface
 {
     /**
      * List of broker metadata info
      *
-     * @var array|ProduceResponsePartition[]
+     * @var ProduceResponseTopic[]
      */
     public $topics;
 
@@ -41,33 +52,13 @@ class ProduceResponse extends AbstractResponse
      */
     public $throttleTime;
 
-    /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
-     */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [
-            $self->correlationId,
-            $numberOfTopics,
-        ] = array_values($stream->read('NcorrelationId/NnumberOfTopics'));
+        $header = parent::getScheme();
 
-        for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicLength = $stream->read('ntopicLength')['topicLength'];
-            [$topicName, $numberOfPartitions] = array_values($stream->read("a{$topicLength}/NnumberOfPartitions"));
-
-            for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-                $topicMetadata = ProduceResponsePartition::unpack($stream);
-                $self->topics[$topicName][$topicMetadata->partition] = $topicMetadata;
-            }
-
-        }
-        $self->throttleTime = $stream->read('NthrottleTime')['throttleTime'];
-
-        return $self;
+        return $header + [
+            'topics'       => ['topic' => ProduceResponseTopic::class],
+            'throttleTime' => BinarySchema::TYPE_INT32,
+        ];
     }
 }
