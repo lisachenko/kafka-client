@@ -9,13 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * Copyright
- *
- * @author Alexander.Lisachenko
- * @date   21.05.2018
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Common\Utils;
 

@@ -9,11 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-
-/**
- * @author Alexander.Lisachenko
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol;
 
