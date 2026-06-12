@@ -35,6 +35,9 @@ class ProduceResponseTopic implements BinarySchemaInterface
      */
     public $partitions = [];
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

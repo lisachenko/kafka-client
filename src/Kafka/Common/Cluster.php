@@ -24,20 +24,22 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
 
 /**
  * A representation of a subset of the nodes, topics, and partitions in the Kafka cluster.
+ *
+ * @TODO loadFromCache() method contains unsfafe file inclusion, possible vector for attack
  */
 final class Cluster
 {
     /**
      * List of broker nodes
      *
-     * @var Node[]|array
+     * @var Node[]
      */
     private $nodes = [];
 
     /**
      * Topic partitions
      *
-     * @var TopicMetadata[]|array
+     * @var TopicMetadata[]
      */
     private $topicPartitions = [];
 
@@ -46,12 +48,7 @@ final class Cluster
      *
      * @param array $configuration Client configuration
      */
-    private function __construct(
-        /**
-         * Client configuration
-         */
-        private array $configuration
-    ) {}
+    private function __construct(private array $configuration) {}
 
     /**
      * Creates a "bootstrap" cluster using the given list of host/ports
@@ -79,12 +76,9 @@ final class Cluster
     /**
      * Gets the current leader for the given topic-partition
      *
-     * @param string  $topic     Name of the topic
-     * @param integer $partition Number of the partition
-     *
-     * @return Node
+     * @throws UnknownTopicOrPartitionException If topic-partition was not found
      */
-    public function leaderFor($topic, $partition)
+    public function leaderFor(string $topic, int $partition): Node
     {
         $partitions = $this->partitionsForTopic($topic);
         if (!isset($partitions[$partition])) {
@@ -115,21 +109,16 @@ final class Cluster
 
     /**
      * Gets the node by the node id (or null if no such node exists)
-     *
-     * @param integer $nodeId Node identifier
-     *
-     * @return null|Node
      */
-    public function nodeById($nodeId)
+    public function nodeById(int $nodeId): ?Node
     {
         if (!isset($this->nodes[$nodeId])) {
+            // Try to reload cluster in the case if configuration was changed
             $this->reload();
-            if (!isset($this->nodes[$nodeId])) {
-                throw new UnknownErrorException(['nodeId' => $nodeId] + ['error' => 'Node was not found']);
-            }
         }
 
-        return $this->nodes[$nodeId];
+        // Either we have a node (maybe after reload) or just return null
+        return $this->nodes[$nodeId] ?? null;
     }
 
     /**
@@ -137,20 +126,15 @@ final class Cluster
      *
      * @return Node[]
      */
-    public function nodes()
+    public function nodes(): array
     {
         return $this->nodes;
     }
 
     /**
      * Gets the metadata for the specified partition
-     *
-     * @param string  $topic     Name of the topic
-     * @param integer $partition Number of the partition
-     *
-     * @return PartitionMetadata
      */
-    public function partition($topic, $partition)
+    public function partition(string $topic, int $partition): PartitionMetadata
     {
         $partitions = $this->partitionsForTopic($topic);
         if (!isset($partitions[$partition])) {
@@ -161,13 +145,11 @@ final class Cluster
     }
 
     /**
-     * Gets the list of partitions for this topic
-     *
-     * @param string $topic Name of the topic
+     * Gets the list of partitions for specified topic
      *
      * @return PartitionMetadata[]
      */
-    public function partitionsForTopic($topic)
+    public function partitionsForTopic(string $topic): array
     {
         if (!isset($this->topicPartitions[$topic])) {
             $this->reload();

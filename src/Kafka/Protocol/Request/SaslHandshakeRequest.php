@@ -21,19 +21,19 @@ use Protocol\Kafka\Protocol\BinarySchema;
  */
 class SaslHandshakeRequest extends AbstractRequest
 {
-    /**
-     * @param string $mechanism
-     */
     public function __construct(/**
      * SASL Mechanism chosen by the client.
      */
-        private $mechanism,
-        $clientId = '',
-        $correlationId = 0
+        private readonly string $mechanism,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::SASL_HANDSHAKE, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

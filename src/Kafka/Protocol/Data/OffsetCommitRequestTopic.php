@@ -29,29 +29,31 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class OffsetCommitRequestTopic implements BinarySchemaInterface
 {
     /**
+     * Name of the topic
+     * @var string
+     */
+    public $topic;
+
+    /**
      * Partitions to commit offset.
      *
      * @var OffsetCommitRequestPartition[]
      */
     public $partitions;
 
-    /**
-     * @inheritDoc
-     * @param string $topic
-     */
-    public function __construct(/**
-     * Name of the topic
-     */
-        public $topic,
-        array $partitions
-    ) {
+    public function __construct(string $topic, array $partitions)
+    {
         $packedPartitions = [];
+        $this->topic      = $topic;
         foreach ($partitions as $partition => $timestamp) {
             $packedPartitions[$partition] = new OffsetCommitRequestPartition($partition, $timestamp);
         }
         $this->partitions = $packedPartitions;
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

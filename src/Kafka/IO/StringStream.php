@@ -16,16 +16,19 @@ namespace Protocol\Kafka\IO;
 class StringStream extends AbstractStream
 {
     /**
+     * Internal binary buffer
+     */
+    private string $buffer;
+
+    /**
      * String stream constructor.
      *
-     * @param string $buffer Optional buffer to write to or read from
+     * @param string $stringBuffer Optional buffer to read from
      */
-    public function __construct(
-        /**
-         * Internal binary buffer
-         */
-        private $buffer = null
-    ) {}
+    public function __construct(?string $stringBuffer = null)
+    {
+        $this->buffer = $stringBuffer ?? '';
+    }
 
     /**
      * Writes arguments to the stream
@@ -33,11 +36,11 @@ class StringStream extends AbstractStream
      * @param string $format       Format for packing arguments
      * @param array  ...$arguments List of arguments for packing
      *
+     * @return void
      * @see pack() manual for format
      *
-     * @return void
      */
-    public function write($format, ...$arguments): void
+    public function write(string $format, ...$arguments): void
     {
         $this->buffer .= pack($format, ...$arguments);
     }
@@ -46,11 +49,12 @@ class StringStream extends AbstractStream
      * Reads information from the stream, advanced internal pointer
      *
      * @param string $format Format for unpacking arguments
-     * @see unpack() manual for format
      *
      * @return array List of unpacked arguments
+     * @see unpack() manual for format
+     *
      */
-    public function read($format): array|false
+    public function read(string $format): array
     {
         $arguments    = unpack($format, $this->buffer);
         $this->buffer = substr($this->buffer, self::packetSize($format));
@@ -67,23 +71,18 @@ class StringStream extends AbstractStream
     }
 
     /**
-     * Returns the current buffer, useful for write opertaions
-     *
-     * @return string
+     * Returns the current buffer, useful for write operations
      */
-    public function getBuffer()
+    public function getBuffer(): string
     {
         return $this->buffer;
     }
 
-
     /**
      * Checks if stream is empty
-     *
-     * @return bool
      */
     public function isEmpty(): bool
     {
-        return (string) $this->buffer === '';
+        return $this->buffer === '';
     }
 }

@@ -28,9 +28,16 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class SyncGroupRequestMember implements BinarySchemaInterface
 {
     /**
+     * Name of the group member
+     * @var string
+     */
+    public $memberId;
+
+    /**
      * Member-specific assignment
      *
-     * @var string This field should be MemberAssignment instance
+     * @var string
+     * @todo This field should be MemberAssignment instance in scheme
      */
     public $assignment;
 
@@ -40,18 +47,18 @@ class SyncGroupRequestMember implements BinarySchemaInterface
      * @param string $memberId Member identifier
      * @param MemberAssignment $assignment Received assignment
      */
-    public function __construct(/**
-     * Name of the group member
-     */
-        public $memberId,
-        MemberAssignment $assignment
-    ) {
+    public function __construct(string $memberId, MemberAssignment $assignment)
+    {
+        $this->memberId = $memberId;
         // TODO: This should be done on scheme-level
         $stringBuffer = new StringStream();
         BinarySchema::writeObjectToStream($assignment, $stringBuffer);
         $this->assignment = $stringBuffer->getBuffer();
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

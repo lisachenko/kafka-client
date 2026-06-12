@@ -28,51 +28,44 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 class JoinGroupRequest extends AbstractRequest
 {
     /**
-     * @inheritDoc
-     */
-    public const VERSION = 1;
-
-    /**
      * Member id for self-assigned consumer
      */
-    public const DEFAULT_MEMBER_ID = "";
+    public const DEFAULT_MEMBER_ID = '';
+
+    /**
+     * @inheritDoc
+     */
+    protected const VERSION = 1;
 
     /**
      * List of protocols that the member supports as key=>value pairs, where value is metadata
      */
     private readonly array $groupProtocols;
 
-    /**
-     * @param string $consumerGroup
-     * @param int $sessionTimeout
-     * @param int $rebalanceTimeout
-     * @param string $memberId
-     * @param string $protocolType
-     */
     public function __construct(
         /**
          * The consumer group id.
          */
-        private $consumerGroup,
+        private readonly string $consumerGroup,
         /**
          * The coordinator considers the consumer dead if it receives no heartbeat after this timeout in ms.
          */
-        private $sessionTimeout,
+        private readonly int $sessionTimeout,
         /**
          * The maximum time that the coordinator will wait for each member to rejoin when rebalancing the group
          */
-        private $rebalanceTimeout,
+        private readonly int $rebalanceTimeout,
         /**
          * The member id assigned by the group coordinator.
          */
-        private $memberId,
+        private readonly string $memberId,
         /**
          * Unique name for class of protocols implemented by group
          */
-        private $protocolType,
+        private readonly string $protocolType,
         array $groupProtocols,
-        $clientId = '',
-        $correlationId = 0
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         $packedProtocols        = [];
         foreach ($groupProtocols as $protocolName => $protocolMetadata) {
@@ -84,6 +77,9 @@ class JoinGroupRequest extends AbstractRequest
         parent::__construct(ApiKeys::JOIN_GROUP, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

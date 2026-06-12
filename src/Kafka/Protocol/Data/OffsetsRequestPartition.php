@@ -26,26 +26,31 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class OffsetsRequestPartition implements BinarySchemaInterface
 {
     /**
-     * Default constructor
-     *
-     * @param integer $partition
-     * @param integer $timestamp
+     * Topic partition id
+     * @var int
      */
-    public function __construct(
-        /**
-         * Topic partition id
-         */
-        public $partition,
-        /**
-         * The target timestamp for the partition.
-         */
-        public $timestamp
-    ) {}
+    public $partition;
 
     /**
-     * Returns definition of binary packet for the class or object
+     * The target timestamp for the partition.
+     * @var int
+     */
+    public $timestamp;
+
+    /**
+     * OffsetsRequestPartition constructor.
      *
-     * @return array
+     * @param int $partition Topic partition id
+     * @param int $timestamp The target timestamp for the partition.
+     */
+    public function __construct(int $partition, int $timestamp)
+    {
+        $this->partition = $partition;
+        $this->timestamp = $timestamp;
+    }
+
+    /**
+     * @inheritdoc
      */
     public static function getScheme(): array
     {

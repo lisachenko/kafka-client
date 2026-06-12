@@ -39,52 +39,46 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
 class OffsetCommitRequest extends AbstractRequest
 {
     /**
-     * @inheritDoc
-     */
-    public const VERSION = 2;
-
-    /**
      * Generation id for unsubscribed consumer
      */
     public const DEFAULT_GENERATION_ID = -1;
+
+    /**
+     * @inheritDoc
+     */
+    protected const VERSION = 2;
 
     /**
      * @var OffsetCommitRequestTopic[]
      */
     private readonly array $topicPartitions;
 
-    /**
-     * @param string $consumerGroup
-     * @param int $generationId
-     * @param string $memberName
-     * @param int $retentionTime
-     */
     public function __construct(
         /**
          * The consumer group id.
          */
-        private $consumerGroup,
+        private readonly string $consumerGroup,
         /**
          * The generation of the group.
          *
          * @since Version 1 of protocol
          */
-        private $generationId,
+        private readonly int $generationId,
         /**
          * The member id assigned by the group coordinator.
          *
          * @since Version 1 of protocol
          */
-        private $memberName,
+        private readonly string $memberName,
         /**
          * Time period in ms to retain the offset.
          *
          * @since Version 2 of protocol
          */
-        private $retentionTime,
+        private readonly int $retentionTime,
         array $topicPartitions,
-        $clientId = '',
-        $correlationId = 0
+        string $clientId = '',
+        int $correlationId = 0
     ) {
 
         $packedTopicPartitions = [];
@@ -96,6 +90,9 @@ class OffsetCommitRequest extends AbstractRequest
         parent::__construct(ApiKeys::OFFSET_COMMIT, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

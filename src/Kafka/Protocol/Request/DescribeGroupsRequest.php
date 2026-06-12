@@ -27,19 +27,19 @@ use Protocol\Kafka\Protocol\BinarySchema;
  */
 class DescribeGroupsRequest extends AbstractRequest
 {
-    /**
-     * {@inheritdoc}
-     */
     public function __construct(/**
      * List of groups to describe
      */
         private readonly array $groups,
-        $clientId = '',
-        $correlationId = 0
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::DESCRIBE_GROUPS, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

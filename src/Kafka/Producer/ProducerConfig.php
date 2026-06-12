@@ -22,8 +22,6 @@ final class ProducerConfig extends GeneralConfig
 {
     /**
      * Default configuration for producer (should be applied on top of default config)
-     *
-     * @var array
      */
     protected static $producerConfiguration = [
         ProducerConfig::PARTITIONER_CLASS => DefaultPartitioner::class,
@@ -107,16 +105,14 @@ final class ProducerConfig extends GeneralConfig
      */
     public const string TRANSACTIONAL_ID = 'transactional.id';
 
-    public const string COMPRESSION_TYPE          = 'compression.type';
-    public const string LINGER_MS                 = 'linger.ms';
-    public const string MAX_REQUEST_SIZE          = 'max.request.size';
+    public const string COMPRESSION_TYPE = 'compression.type';
+    public const string LINGER_MS        = 'linger.ms';
+    public const string MAX_REQUEST_SIZE = 'max.request.size';
 
     /**
      * Returns default configuration for producer
-     *
-     * @return array
      */
-    public static function getDefaultConfiguration(): float|int|array
+    public static function getDefaultConfiguration(): array
     {
         return self::$producerConfiguration + parent::$generalConfiguration;
     }

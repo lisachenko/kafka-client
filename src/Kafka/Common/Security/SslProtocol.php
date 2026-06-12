@@ -13,6 +13,9 @@ declare (strict_types=1);
 
 namespace Protocol\Kafka\Common\Security;
 
+/**
+ * Possible values for ssl.protocol configuration parameter
+ */
 final class SslProtocol
 {
     public const string TLS = 'TLS';

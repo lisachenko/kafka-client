@@ -22,12 +22,8 @@ use Protocol\Kafka\Protocol\BinarySchema;
 abstract class AbstractResponse extends AbstractProtocolMessage
 {
     /**
-     * A user-supplied integer value that will be passed back with the response (INT32)
-     *
-     * @var integer
+     * @inheritdoc
      */
-    public $correlationId;
-
     public static function getScheme(): array
     {
         return [

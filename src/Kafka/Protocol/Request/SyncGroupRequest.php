@@ -38,10 +38,12 @@ class SyncGroupRequest extends AbstractRequest
     /**
      * @inheritDoc
      */
-    public const VERSION = 1;
+    protected const VERSION = 1;
 
     /**
      * List of group member assignments
+     *
+     * @var SyncGroupRequestMember[]
      */
     private readonly array $groupAssignments;
 
@@ -56,31 +58,25 @@ class SyncGroupRequest extends AbstractRequest
      * @param int                $correlationId    Correlated request ID
      */
     public function __construct(
-        /**
-         * The consumer group id.
-         */
-        private $consumerGroup,
-        /**
-         * The generation of the group.
-         */
-        private $generationId,
-        /**
-         * The member id assigned by the group coordinator.
-         */
-        private $memberId = null,
+        private readonly string $consumerGroup,
+        private readonly int $generationId,
+        private readonly ?string $memberId = null,
         array $groupAssignments = [],
-        $clientId = '',
-        $correlationId = 0
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         $packedGroupAssignments = [];
-        foreach ($groupAssignments as $this->memberId => $memberAssignment) {
-            $packedGroupAssignments[$this->memberId] = new SyncGroupRequestMember($this->memberId, $memberAssignment);
+        foreach ($groupAssignments as $groupMemberId => $memberAssignment) {
+            $packedGroupAssignments[$groupMemberId] = new SyncGroupRequestMember($groupMemberId, $memberAssignment);
         }
         $this->groupAssignments = $packedGroupAssignments;
 
         parent::__construct(ApiKeys::SYNC_GROUP, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

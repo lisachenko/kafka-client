@@ -42,6 +42,9 @@ class GroupCoordinatorResponseMetadata implements BinarySchemaInterface
      */
     public $port;
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

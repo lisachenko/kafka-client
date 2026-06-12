@@ -28,29 +28,31 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class OffsetsRequestTopic implements BinarySchemaInterface
 {
     /**
+     * Name of the topic
+     * @var string
+     */
+    public $topic;
+
+    /**
      * Partitions to list offset.
      *
      * @var OffsetsRequestPartition[]
      */
     public $partitions;
 
-    /**
-     * @inheritDoc
-     * @param string $topic
-     */
-    public function __construct(/**
-     * Name of the topic
-     */
-        public $topic,
-        array $partitions
-    ) {
+    public function __construct(string $topic, array $partitions)
+    {
         $packedPartitions = [];
+        $this->topic      = $topic;
         foreach ($partitions as $partition => $timestamp) {
             $packedPartitions[$partition] = new OffsetsRequestPartition($partition, $timestamp);
         }
         $this->partitions = $packedPartitions;
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

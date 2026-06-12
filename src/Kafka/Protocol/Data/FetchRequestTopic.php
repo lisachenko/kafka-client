@@ -29,25 +29,27 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class FetchRequestTopic implements BinarySchemaInterface
 {
     /**
+     * Name of the topic for fetching
+     * @var string
+     */
+    public $topic;
+
+    /**
      * Details about fetching for each topic's partition
      *
      * @var FetchRequestTopicPartition[]
      */
     public $partitions;
 
-    /**
-     * @inheritDoc
-     * @param string $topic
-     */
-    public function __construct(/**
-     * Name of the topic for fetching
-     */
-        public $topic,
-        array $partitions = []
-    ) {
+    public function __construct(string $topic, array $partitions = [])
+    {
+        $this->topic      = $topic;
         $this->partitions = $partitions;
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

@@ -27,21 +27,21 @@ class ControlledShutdownRequest extends AbstractRequest
     /**
      * @inheritDoc
      */
-    public const VERSION = 1;
+    protected const VERSION = 1;
 
-    /**
-     * @param int $brokerId
-     */
     public function __construct(/**
      * Broker identifier to shutdown
      */
-        private $brokerId,
-        $clientId = '',
-        $correlationId = 0
+        private readonly int $brokerId,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::CONTROLLED_SHUTDOWN, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

@@ -41,6 +41,9 @@ class FetchResponseAbortedTransaction implements BinarySchemaInterface
      */
     public $firstOffset;
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

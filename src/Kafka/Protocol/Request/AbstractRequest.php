@@ -29,10 +29,8 @@ abstract class AbstractRequest extends AbstractProtocolMessage
 {
     /**
      * Version of API request, could be overridden in children classes
-     *
-     * @var int
      */
-    public const VERSION = 0;
+    protected const VERSION = 0;
 
     /**
      * The version of the API. (INT16)
@@ -40,35 +38,27 @@ abstract class AbstractRequest extends AbstractProtocolMessage
     protected int $apiVersion;
 
     /**
-     * A user-supplied integer value that will be passed back with the response (INT32)
-     *
-     * @var integer
-     */
-    protected $correlationId;
-
-    /**
      * Global request counter, ideally this should be stored somewhere in the shared config to survive between requests
      */
     private static int $counter = 0;
 
-    /**
-     * @param int $apiKey
-     * @param string $clientId
-     */
     public function __construct(/**
      * The id of the request type. (INT16)
      */
-        protected $apiKey, /**
+        protected int $apiKey, /**
      * A user specified identifier for the client making the request.
      */
-        protected $clientId = '',
-        $correlationId = 0
+        protected string $clientId = '',
+        int $correlationId = 0
     ) {
         $this->correlationId = $correlationId ?: self::$counter++;
         $this->apiVersion    = static::VERSION;
         $this->messageSize   = BinarySchema::getObjectTypeSize($this) - 4 /* INT32 MessageSize */;
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

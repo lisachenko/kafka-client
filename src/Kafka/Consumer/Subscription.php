@@ -28,32 +28,37 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class Subscription implements BinarySchemaInterface
 {
     /**
+     * This is a version id.
+     * @var int
+     */
+    public $version;
+
+    /**
      * This property holds all the topics for the consumer.
-     *
-     * @var array
+     * @var string[]
      */
     public $topics;
 
     /**
-     * Subscription constructor.
-     *
-     * @param string[] $topics   List of topics
-     * @param int      $version
-     * @param string   $userData Additional user data
-     */
-    public function __construct(array $topics, /**
-     * This is a version id.
-     */
-        public $version = 0, /**
      * The UserData field can be used by custom partition assignment strategies.
      *
      * For example, in a sticky partitioning implementation, this field can contain the assignment from the previous
      * generation. In a resource-based assignment strategy, it could include the number of cpus on the machine hosting
      * each consumer instance.
+     * @var string
      */
-        public $userData = '')
+    public $userData;
+
+    /**
+     * Subscription constructor.
+     *
+     * @param string[] $topics List of topics
+     */
+    public function __construct(array $topics, int $version = 0, string $userData = '')
     {
         $this->topics   = $topics;
+        $this->version  = $version;
+        $this->userData = $userData;
     }
 
     /**

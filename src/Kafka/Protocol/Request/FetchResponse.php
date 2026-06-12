@@ -53,6 +53,9 @@ class FetchResponse extends AbstractResponse
      */
     public $topics = [];
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return parent::getScheme() + [

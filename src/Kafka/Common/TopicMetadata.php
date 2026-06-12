@@ -48,7 +48,7 @@ class TopicMetadata implements BinarySchemaInterface
     /**
      * Metadata for each partition of the topic.
      *
-     * @var PartitionMetadata[]|array
+     * @var PartitionMetadata[]
      */
     public $partitions = [];
 

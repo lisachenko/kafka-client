@@ -30,27 +30,28 @@ use Protocol\Kafka\Protocol\BinarySchema;
  */
 class HeartbeatRequest extends AbstractRequest
 {
-    /**
-     * @param string $consumerGroup
-     * @param int $generationId
-     * @param string $memberId
-     */
-    public function __construct(/**
-     * The consumer group id.
-     */
-        private $consumerGroup, /**
-     * The generation of the group.
-     */
-        private $generationId, /**
-     * The member id assigned by the group coordinator.
-     */
-        private $memberId,
-        $clientId = '',
-        $correlationId = 0
+    public function __construct(
+        /**
+         * The consumer group id.
+         */
+        private readonly string $consumerGroup,
+        /**
+         * The generation of the group.
+         */
+        private readonly int $generationId,
+        /**
+         * The member id assigned by the group coordinator.
+         */
+        private readonly string $memberId,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::HEARTBEAT, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

@@ -28,34 +28,44 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class FetchRequestTopicPartition implements BinarySchemaInterface
 {
     /**
-     * @param int $partition
-     * @param int $fetchOffset
-     * @param int $logStartOffset
-     * @param int $maxBytes
+     * Topic partition id
+     * @var int
      */
-    public function __construct(
-        /**
-         * Topic partition id
-         */
-        public $partition,
-        /**
-         * Record offset.
-         */
-        public $fetchOffset,
-        /**
-         * Maximum bytes to fetch.
-         */
-        public $maxBytes,
-        /**
-         * Earliest available offset of the follower replica.
-         *
-         * The field is only used when request is sent by follower.
-         *
-         * @since 0.11.0.0 Kafka
-         */
-        public $logStartOffset = -1
-    ) {}
+    public $partition;
 
+    /**
+     * Record offset.
+     * @var int
+     */
+    public $fetchOffset;
+
+    /**
+     * Earliest available offset of the follower replica.
+     *
+     * The field is only used when request is sent by follower.
+     *
+     * @since 0.11.0.0 Kafka
+     * @var int
+     */
+    public $logStartOffset;
+
+    /**
+     * Maximum bytes to fetch.
+     * @var int
+     */
+    public $maxBytes;
+
+    public function __construct(int $partition, int $fetchOffset, int $maxBytes, int $logStartOffset = -1)
+    {
+        $this->partition      = $partition;
+        $this->fetchOffset    = $fetchOffset;
+        $this->logStartOffset = $logStartOffset;
+        $this->maxBytes       = $maxBytes;
+    }
+
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

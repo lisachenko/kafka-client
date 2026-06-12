@@ -29,23 +29,22 @@ use Protocol\Kafka\Protocol\BinarySchema;
  */
 class LeaveGroupRequest extends AbstractRequest
 {
-    /**
-     * @param string $consumerGroup
-     * @param string $memberId
-     */
     public function __construct(/**
      * The consumer group id.
      */
-        private $consumerGroup, /**
+        private readonly string $consumerGroup, /**
      * The member id assigned by the group coordinator.
      */
-        private $memberId,
-        $clientId = '',
-        $correlationId = 0
+        private readonly string $memberId,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::LEAVE_GROUP, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

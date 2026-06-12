@@ -73,10 +73,11 @@ class Node implements BinarySchemaInterface
      * Returns a connection to this node.
      *
      * @param array $configuration Client configuration
+     * @todo Move this method outside this class
      *
      * @return Stream
      */
-    public function getConnection(array $configuration)
+    public function getConnection(array $configuration): Stream
     {
         if (!isset(self::$nodeConnections[$this->host][$this->port])) {
             $connection = new SocketStream("tcp://{$this->host}:{$this->port}", $configuration);

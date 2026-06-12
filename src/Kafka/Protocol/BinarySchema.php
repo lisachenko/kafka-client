@@ -30,20 +30,20 @@ use function strlen;
  */
 class BinarySchema
 {
-    public const TYPE_INT8            =  1;
-    public const TYPE_INT16           =  2;
-    public const TYPE_INT32           =  3;
-    public const TYPE_INT64           =  4;
-    public const TYPE_VARINT          =  5;
-    public const TYPE_VARLONG         =  6;
-    public const TYPE_VARCHAR         =  7; // Varint-encoded length + string itself
-    public const TYPE_STRING          =  8; // INT16-encoded length and then bytes of chars
-    public const TYPE_BYTEARRAY       = 10; // INT32 size of data, then bytes of data
-    public const TYPE_VARINT_ZIGZAG   = 11; // Varint + ZigZag encoding
-    public const TYPE_VARLONG_ZIGZAG  = 12; // Varlong + ZigZag encoding
-    public const TYPE_VARCHAR_ZIGZAG  = 13; // Varint-zigzag-encoded length + string itself
-    public const FLAG_VARARRAY        = 14; // Array, which size is VARINT-encoded
-    public const FLAG_NULLABLE        = 128; // Use -1 as null array/string
+    public const TYPE_INT8           =  1;
+    public const TYPE_INT16          =  2;
+    public const TYPE_INT32          =  3;
+    public const TYPE_INT64          =  4;
+    public const TYPE_VARINT         =  5;
+    public const TYPE_VARLONG        =  6;
+    public const TYPE_VARCHAR        =  7; // Varint-encoded length + string itself
+    public const TYPE_STRING         =  8; // INT16-encoded length and then bytes of chars
+    public const TYPE_BYTEARRAY      = 10; // INT32 size of data, then bytes of data
+    public const TYPE_VARINT_ZIGZAG  = 11; // Varint + ZigZag encoding
+    public const TYPE_VARLONG_ZIGZAG = 12; // Varlong + ZigZag encoding
+    public const TYPE_VARCHAR_ZIGZAG = 13; // Varint-zigzag-encoded length + string itself
+    public const FLAG_VARARRAY       = 14; // Array, which size is VARINT-encoded
+    public const FLAG_NULLABLE       = 128; // Use -1 as null array/string
 
     /**
      *  INT16-encoded length and then bytes of chars, -1 as size means null value
@@ -58,7 +58,7 @@ class BinarySchema
      *
      * @return int
      */
-    public static function getSingleTypeSize($schemeType, $value = null)
+    public static function getSingleTypeSize($schemeType, $value = null): int
     {
         // Let's check for the complex type mapping
         if (is_array($schemeType)) {
@@ -114,19 +114,19 @@ class BinarySchema
      * Calculates the size of array in bytes
      *
      * @param array $schemeType Special notation for array
-     * @param array $value Array of items or null for nullable arrays
+     * @param array|null $value Array of items or null for nullable arrays
      *
      * @return int
      */
-    public static function getArrayTypeSize(array $schemeType, ?array $value = null)
+    public static function getArrayTypeSize(array $schemeType, ?array $value = null): int
     {
-        $isVarArray    = !empty($schemeType[BinarySchema::FLAG_VARARRAY]);
-        $isNullable    = !empty($schemeType[BinarySchema::FLAG_NULLABLE]);
-        $sizeType      = $isVarArray ? BinarySchema::TYPE_VARINT : BinarySchema::TYPE_INT32;
+        $isVarArray    = !empty($schemeType[self::FLAG_VARARRAY]);
+        $isNullable    = !empty($schemeType[self::FLAG_NULLABLE]);
+        $sizeType      = $isVarArray ? self::TYPE_VARINT : self::TYPE_INT32;
         $arrayItemType = current($schemeType);
         if ($value === null) {
             if (!$isNullable) {
-                throw new \UnexpectedValueException("Received null value for not nullable array");
+                throw new \UnexpectedValueException('Received null value for not nullable array');
             }
             $itemCount = -1;
             $value     = []; // To continue with foreach loop
@@ -148,15 +148,11 @@ class BinarySchema
 
     /**
      * Calculates the size of object in bytes
-     *
-     * @param BinarySchemaInterface $object
-     *
-     * @return mixed
      */
     public static function getObjectTypeSize(BinarySchemaInterface $object): int
     {
         $objectScheme = $object->getScheme();
-        $sizeCalculator = function (array $objectScheme) use ($object): int|float {
+        $sizeCalculator = function (array $objectScheme) use ($object): int {
             $objectSize = 0;
             // TODO: add support for fixed-size objects and DTOs
             foreach ($objectScheme as $fieldKey => $schemeType) {
@@ -169,7 +165,7 @@ class BinarySchema
         return $sizeCalculator->call($object, $objectScheme);
     }
 
-    public static function readObjectFromStream($recordClass, Stream $stream, $path = '')
+    public static function readObjectFromStream(string $recordClass, Stream $stream, $path = '')
     {
         $scheme           = $recordClass::getScheme();
         $recordReflection = new ReflectionClass($recordClass);
@@ -196,7 +192,7 @@ class BinarySchema
         $writer->call($record, $scheme);
     }
 
-    public static function readSingleType($schemeType, Stream $stream, $path = '')
+    public static function readSingleType($schemeType, Stream $stream, string $path = '')
     {
         // Let's check for the complex type mapping
         if (is_array($schemeType)) {
@@ -290,6 +286,7 @@ class BinarySchema
                 return null;
 
             case self::TYPE_BYTEARRAY:
+                // TODO: Support nullable byte arrays
                 return $stream->readByteArray();
         }
 
@@ -312,6 +309,7 @@ class BinarySchema
                 self::writeSingleType($sizeType, -1, $stream);
                 return;
             }
+
             if (is_array($value)) {
                 $itemCount = count($value);
                 self::writeSingleType($sizeType, $itemCount, $stream);

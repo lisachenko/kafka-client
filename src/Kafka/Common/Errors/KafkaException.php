@@ -14,6 +14,8 @@ declare (strict_types=1);
 namespace Protocol\Kafka\Common\Errors;
 
 use Exception;
+use ReflectionObject;
+use RuntimeException;
 
 /**
  * Kafka uses numeric codes to indicate what problem occurred on the server.
@@ -21,7 +23,7 @@ use Exception;
  * These can be translated by the client into exceptions or whatever the appropriate error handling mechanism in the
  * client language.
  */
-abstract class KafkaException extends \RuntimeException
+abstract class KafkaException extends RuntimeException
 {
     public const UNKNOWN = -1;
 
@@ -123,7 +125,7 @@ abstract class KafkaException extends \RuntimeException
      *
      * @return KafkaException
      */
-    final public static function fromCode($errorCode, array $context, ?Exception $previous = null)
+    final public static function fromCode(int $errorCode, array $context, ?Exception $previous = null): KafkaException
     {
         if (!isset(self::$codeToClassMap[$errorCode])) {
             return new UnknownErrorException(['errorCode' => $errorCode] + $context, $previous);
@@ -136,22 +138,20 @@ abstract class KafkaException extends \RuntimeException
     /**
      * @inheritDoc
      */
-    public function __construct(array $context = [], $code = null, ?Exception $previous = null)
+    public function __construct(array $context, int $code, ?Exception $previous = null)
     {
         $this->context = $context;
-        $docBlock = new \ReflectionObject($this)->getDocComment();
+        $docBlock = new ReflectionObject($this)->getDocComment();
         $docBlock = preg_replace('/^\s*\/?\*+\/?/m', '', $docBlock);
         $docBlock = preg_replace('/\s{2,}/', '', $docBlock);
 
-        $message = $docBlock . PHP_EOL . "Context: " . json_encode($context);
+        $message = $docBlock . PHP_EOL . 'Context: ' . json_encode($context);
     }
 
     /**
      * Returns the context for this exception
-     *
-     * @return array
      */
-    public function getContext()
+    public function getContext(): array
     {
         return $this->context;
     }

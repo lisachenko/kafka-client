@@ -40,18 +40,21 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritDoc
      */
-    public const VERSION = 2;
+    protected const VERSION = 2;
 
     public function __construct(/**
      * An array of topics to fetch metadata for. If no topics are specified fetch metadata for all topics.
      */
         protected ?array $topics = null,
-        $clientId = '',
-        $correlationId = 0
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::METADATA, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

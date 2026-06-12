@@ -22,6 +22,12 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class ProduceRequestTopic implements BinarySchemaInterface
 {
     /**
+     * The name of the topic to produce to
+     * @var string
+     */
+    public $topic;
+
+    /**
      * Data for all partitions in the topic
      *
      * @var ProduceRequestPartition[]
@@ -30,17 +36,16 @@ class ProduceRequestTopic implements BinarySchemaInterface
 
     /**
      * @inheritDoc
-     * @param string $topic
      */
-    public function __construct(/**
-     * The name of the topic to produce to
-     */
-        public $topic = '',
-        array $partitionData = []
-    ) {
+    public function __construct(string $topic, array $partitionData)
+    {
+        $this->topic      = $topic;
         $this->partitions = $partitionData;
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

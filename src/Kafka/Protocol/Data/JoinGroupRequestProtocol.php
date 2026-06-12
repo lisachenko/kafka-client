@@ -28,28 +28,33 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class JoinGroupRequestProtocol implements BinarySchemaInterface
 {
     /**
+     * Name of the protocol
+     *
+     * @var string
+     */
+    public $name;
+
+    /**
      * Protocol-specific metadata
      *
+     * @todo Update scheme to use Subscription instance directly
      * @var string
      */
     public $metadata;
 
-    /**
-     * Default initializer
-     * @param string $name
-     */
-    public function __construct(/**
-     * Name of the protocol
-     */
-        public $name,
-        Subscription $subscription
-    ) {
+    public function __construct(string $name, Subscription $subscription)
+    {
         // TODO: This should be on scheme-level
         $stringStream = new StringStream();
         BinarySchema::writeObjectToStream($subscription, $stringStream);
+
+        $this->name     = $name;
         $this->metadata = $stringStream->getBuffer();
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

@@ -26,21 +26,26 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class JoinGroupResponseMember implements BinarySchemaInterface
 {
     /**
-     * Default initializer
-     * @param string $memberId
-     * @param string $metadata
+     * Name of the group member
+     * @var string
      */
-    public function __construct(
-        /**
-         * Name of the group member
-         */
-        public $memberId,
-        /**
-         * Member-specific metadata
-         */
-        public $metadata
-    ) {}
+    public $memberId;
 
+    /**
+     * Member-specific metadata
+     * @var string
+     */
+    public $metadata;
+
+    public function __construct(string $memberId, string $metadata)
+    {
+        $this->memberId = $memberId;
+        $this->metadata = $metadata;
+    }
+
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

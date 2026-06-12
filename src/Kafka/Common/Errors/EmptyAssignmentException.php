@@ -41,7 +41,7 @@ class EmptyAssignmentException extends RuntimeException implements ClientExcepti
      *
      * @return string[]
      */
-    public function getRequestedTopics()
+    public function getRequestedTopics(): array
     {
         return $this->requestedTopics;
     }

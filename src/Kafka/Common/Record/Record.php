@@ -49,15 +49,12 @@ class Record implements BinarySchemaInterface
 {
     /**
      * Length of this message
-     *
-     * @var integer
      */
     public $length = 0;
 
     /**
      * Record level attributes are presently unused.
-     *
-     * @var integer
+     * @var int
      */
     public $attributes = 0;
 
@@ -66,8 +63,8 @@ class Record implements BinarySchemaInterface
      *
      * The timestamp of each Record in the RecordBatch is its 'TimestampDelta' + 'FirstTimestamp'.
      *
-     * @var integer
      * @since Version 2 of Record structure
+     * @var int
      */
     public $timestampDelta = 0;
 
@@ -76,24 +73,19 @@ class Record implements BinarySchemaInterface
      *
      * The offset of each Record in the Batch is its 'OffsetDelta' + 'FirstOffset'.
      *
-     * @var integer
-     *
      * @since Version 2 of Record (Record) structure
+     * @var int
      */
     public $offsetDelta = 0;
 
     /**
      * The key is an optional message key that was used for partition assignment. The key can be null.
-     *
-     * @var string
+     * @var null|string
      */
     public $key;
 
     /**
      * The value is the actual message contents as an opaque byte array.
-     *
-     * Kafka supports recursive messages in which case this may itself contain a message set. The message can be null.
-     *
      * @var string
      */
     public $value;
@@ -108,19 +100,31 @@ class Record implements BinarySchemaInterface
      */
     public $headers = [];
 
-    public static function fromValue($value, $attributes = 0): static
-    {
-        $message = new static();
+    /**
+     * Record constructor
+     */
+    public function __construct(
+        string $value,
+        ?string $key = null,
+        array $headers = [],
+        int $attributes = 0,
+        int $timestampDelta = 0,
+        int $offsetDelta = 0
+    ) {
+        $this->value          = $value;
+        $this->key            = $key;
+        $this->headers        = $headers;
+        $this->attributes     = $attributes;
+        $this->timestampDelta = $timestampDelta;
+        $this->offsetDelta    = $offsetDelta;
 
-        $message->value          = $value;
-        $message->timestampDelta = (int) (microtime(true) * 1000 - $_SERVER['REQUEST_TIME_FLOAT'] * 1000);
-        $message->attributes     = $attributes;
-        $message->length         = BinarySchema::getObjectTypeSize($message) - 1;
+        $this->length = BinarySchema::getObjectTypeSize($this) - 1;
         /* Varint 0 length always equal to 1 */;
-
-        return $message;
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

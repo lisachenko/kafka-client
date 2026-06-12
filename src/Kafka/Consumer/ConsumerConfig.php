@@ -159,18 +159,16 @@ final class ConsumerConfig extends GeneralConfig
      */
     public const string ISOLATION_LEVEL = 'isolation.level';
 
-    public const string KEY_DESERIALIZER              = 'key.deserializer';
-    public const string VALUE_DESERIALIZER            = 'value.deserializer';
-    public const string EXCLUDE_INTERNAL_TOPICS       = 'exclude.internal.topics';
-    public const string MAX_POLL_RECORDS              = 'max.poll.records';
-    public const string CHECK_CRCS                    = 'check.crcs';
+    public const string KEY_DESERIALIZER        = 'key.deserializer';
+    public const string VALUE_DESERIALIZER      = 'value.deserializer';
+    public const string EXCLUDE_INTERNAL_TOPICS = 'exclude.internal.topics';
+    public const string MAX_POLL_RECORDS        = 'max.poll.records';
+    public const string CHECK_CRCS              = 'check.crcs';
 
     /**
      * Returns default configuration for consumer
-     *
-     * @return array
      */
-    public static function getDefaultConfiguration()
+    public static function getDefaultConfiguration(): array
     {
         return self::$consumerConfiguration + parent::$generalConfiguration;
     }

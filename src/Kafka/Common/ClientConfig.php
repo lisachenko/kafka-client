@@ -113,21 +113,21 @@ class ClientConfig
      * Location of Certificate Authority file on local filesystem which should be used to authenticate
      * the identity of the remote peer.
      */
-    public const SSL_CA_CERT_LOCATION           = 'ssl.ca.cert.location';
+    public const SSL_CA_CERT_LOCATION = 'ssl.ca.cert.location';
 
     /**
      * Protocol used to communicate with brokers. Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
      *
      * Implemented values: PLAINTEXT, SSL
      */
-    public const SECURITY_PROTOCOL             = 'security.protocol';
+    public const SECURITY_PROTOCOL = 'security.protocol';
 
     /**
      * The SSL protocol used to generate the SSLContext. Default setting is TLS, which is fine for most cases.
      * Allowed values are TLS, TLSv1.1 and TLSv1.2. SSL, SSLv2 and SSLv3, but their usage is discouraged due
      * to known security vulnerabilities.
      */
-    public const SSL_PROTOCOL                  = 'ssl.protocol';
+    public const SSL_PROTOCOL = 'ssl.protocol';
 
     /**
      * Path to local certificate file on filesystem. It must be a PEM encoded file which contains your
@@ -136,31 +136,29 @@ class ClientConfig
      *
      * (PHP Only option)
      */
-    public const SSL_CLIENT_CERT_LOCATION      = 'ssl.client.cert.location';
+    public const SSL_CLIENT_CERT_LOCATION = 'ssl.client.cert.location';
 
     /**
      * The location of the private key file. This is optional for client and can be used for two-way
      * authentication for client.
      */
-    public const SSL_KEY_LOCATION              = 'ssl.key.location';
+    public const SSL_KEY_LOCATION = 'ssl.key.location';
 
     /**
      * The password of the private key. This is optional for client.
      */
-    public const SSL_KEY_PASSWORD              = 'ssl.key.password';
+    public const SSL_KEY_PASSWORD = 'ssl.key.password';
 
-    public const CONNECTIONS_MAX_IDLE_MS       = 'connections.max.idle.ms';
-    public const SASL_MECHANISM                = 'sasl.mechanism';
-    public const SSL_ENABLED_PROTOCOLS         = 'ssl.enabled.protocols';
-    public const RECONNECT_BACKOFF_MS          = 'reconnect.backoff.ms';
-    public const RETRY_BACKOFF_MS              = 'retry.backoff.ms';
+    public const CONNECTIONS_MAX_IDLE_MS = 'connections.max.idle.ms';
+    public const SASL_MECHANISM          = 'sasl.mechanism';
+    public const SSL_ENABLED_PROTOCOLS   = 'ssl.enabled.protocols';
+    public const RECONNECT_BACKOFF_MS    = 'reconnect.backoff.ms';
+    public const RETRY_BACKOFF_MS        = 'retry.backoff.ms';
 
     /**
      * Returns default configuration
-     *
-     * @return array
      */
-    public static function getDefaultConfiguration()
+    public static function getDefaultConfiguration(): array
     {
         return self::$generalConfiguration;
     }

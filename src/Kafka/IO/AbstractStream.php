@@ -17,14 +17,12 @@ abstract class AbstractStream implements Stream
 {
     /**
      * Reads a string from the stream
-     *
-     * @return string
      */
-    public function readString()
+    public function readString(): string
     {
         $stringLength = $this->read('nlength')['length'];
         if ($stringLength === 0xFFFF) {
-            throw new \UnexpectedValueException("Received -1 length for not nullable string");
+            throw new \UnexpectedValueException('Received -1 length for not nullable string');
         }
 
         return $this->read("a{$stringLength}string")['string'];
@@ -32,10 +30,8 @@ abstract class AbstractStream implements Stream
 
     /**
      * Writes the string to the stream
-     *
-     * @param $string
      */
-    public function writeString($string)
+    public function writeString(string $string): void
     {
         $stringLength = strlen($string);
         $this->write("na{$stringLength}", $stringLength, $string);
@@ -44,13 +40,13 @@ abstract class AbstractStream implements Stream
     /**
      * Reads a byte array from the stream
      *
-     * @return string
+     * @return string|null
      */
-    public function readByteArray()
+    public function readByteArray(): ?string
     {
         $dataLength = $this->read('Nlength')['length'];
         if ($dataLength === 0xFFFFFFFF) {
-            return null;
+            throw new \UnexpectedValueException('Received -1 length for not nullable byte array');
         }
 
         return $this->read("a{$dataLength}data")['data'];
@@ -59,9 +55,9 @@ abstract class AbstractStream implements Stream
     /**
      * Writes the string to the stream
      *
-     * @param string $data Binary data
+     * @param string|null $data
      */
-    public function writeByteArray($data)
+    public function writeByteArray(?string $data): void
     {
         $dataLength = strlen($data);
         $this->write("Na{$dataLength}", $dataLength, $data);
@@ -69,10 +65,8 @@ abstract class AbstractStream implements Stream
 
     /**
      * Reads varint from the stream
-     *
-     * @return integer
      */
-    public function readVarint()
+    public function readVarint(): int
     {
         $value  = 0;
         $offset = 0;
@@ -86,11 +80,9 @@ abstract class AbstractStream implements Stream
     }
 
     /**
-     * Writes a varint value from the stream
-     *
-     * @param integer $value
+     * Writes a varint value to the stream
      */
-    public function writeVarint($value)
+    public function writeVarint(int $value): void
     {
         do {
             $byte  = $value & 0x7f;
@@ -103,9 +95,9 @@ abstract class AbstractStream implements Stream
     /**
      * Writes the raw buffer into the stream as-is
      *
-     * @param string $buffer
+     * @param string|null $buffer
      */
-    public function writeBuffer($buffer)
+    public function writeBuffer(?string $buffer): void
     {
         $bufferLength = $buffer ? strlen($buffer) : 0;
         $this->write("a{$bufferLength}", $buffer);
@@ -113,12 +105,8 @@ abstract class AbstractStream implements Stream
 
     /**
      * Calculates the format size for unpack() operation
-     *
-     * @param string $format
-     *
-     * @return int
      */
-    protected static function packetSize($format)
+    protected static function packetSize(string $format): int
     {
         static $tableSize = [
             'a' => 1,

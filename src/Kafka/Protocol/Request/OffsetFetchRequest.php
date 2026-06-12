@@ -41,27 +41,28 @@ class OffsetFetchRequest extends AbstractRequest
     /**
      * @inheritDoc
      */
-    public const VERSION = 2;
+    protected const VERSION = 2;
 
     /**
      * OffsetFetchRequest constructor.
      *
-     * @param string            $consumerGroup   Name of the consumer group
-     * @param PartitionsForTopic[] $topicPartitions List of topic => partitions to fetch
-     * @param string            $clientId        Unique client identifier
-     * @param int               $correlationId   Correlated request ID
+     * @param string                 $consumerGroup   Name of the consumer group
+     * @param PartitionsForTopic[]|null $topicPartitions List of topic => partitions to fetch or null for all topics
+     * @param string                 $clientId        Unique client identifier
+     * @param int                    $correlationId   Correlated request ID
      */
-    public function __construct(/**
-     * The consumer group id.
-     */
-        protected $consumerGroup,
+    public function __construct(
+        protected string $consumerGroup,
         protected ?array $topicPartitions = null,
-        $clientId = '',
-        $correlationId = 0
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::OFFSET_FETCH, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

@@ -31,20 +31,32 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class Header implements BinarySchemaInterface
 {
     /**
-     * @param string $key
-     * @param string $value
+     * Item key name
+     * @var string
      */
-    public function __construct(
-        /**
-         * Item key name
-         */
-        public $key = '',
-        /**
-         * Item arbitrary data
-         */
-        public $value = ''
-    ) {}
+    public $key;
 
+    /**
+     * Item arbitrary data
+     * @var string
+     */
+    public $value;
+
+    /**
+     * Header constructor.
+     *
+     * @param string $key   Item key name
+     * @param string $value Item arbitrary data
+     */
+    public function __construct(string $key = '', string $value = '')
+    {
+        $this->key   = $key;
+        $this->value = $value;
+    }
+
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

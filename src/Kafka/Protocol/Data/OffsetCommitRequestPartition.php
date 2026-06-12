@@ -27,29 +27,32 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class OffsetCommitRequestPartition implements BinarySchemaInterface
 {
     /**
-     * @param int $partition
-     * @param int $offset
-     * @param string $metadata
+     * The partition this request entry corresponds to.
+     * @var int
      */
-    public function __construct(
-        /**
-         * The partition this request entry corresponds to.
-         */
-        public $partition,
-        /**
-         * The offset assigned to the first message in the message set appended to this partition.
-         */
-        public $offset,
-        /**
-         * Any associated metadata the client wants to keep.
-         */
-        public $metadata = null
-    ) {}
+    public $partition;
 
     /**
-     * Returns definition of binary packet for the class or object
-     *
-     * @return array
+     * The offset assigned to the first message in the message set appended to this partition.
+     * @var int
+     */
+    public $offset;
+
+    /**
+     * Any associated metadata the client wants to keep.
+     * @var null|string
+     */
+    public $metadata;
+
+    public function __construct(int $partition, int $offset, ?string $metadata = null)
+    {
+        $this->partition = $partition;
+        $this->offset    = $offset;
+        $this->metadata  = $metadata;
+    }
+
+    /**
+     * @inheritdoc
      */
     public static function getScheme(): array
     {

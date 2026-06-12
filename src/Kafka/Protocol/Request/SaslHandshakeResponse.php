@@ -24,7 +24,7 @@ class SaslHandshakeResponse extends AbstractResponse implements BinarySchemaInte
     /**
      * Array of mechanisms enabled in the server.
      *
-     * @var array|string[]
+     * @var string[]
      */
     public $enabledMechanisms = [];
 
@@ -35,6 +35,9 @@ class SaslHandshakeResponse extends AbstractResponse implements BinarySchemaInte
      */
     public $errorCode;
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = parent::getScheme();

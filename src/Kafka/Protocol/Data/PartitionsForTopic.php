@@ -26,29 +26,29 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class PartitionsForTopic implements BinarySchemaInterface
 {
     /**
+     * Name of the topic to assign
+     * @var string
+     */
+    public $topic;
+
+    /**
      * List of partitions from the topic to assign
      *
-     * @var array
+     * @var integer[]
      */
     public $partitions = [];
 
     /**
      * @inheritDoc
-     * @param string $topic
      */
-    public function __construct(/**
-     * Name of the topic to assign
-     */
-        public $topic,
-        array $partitions
-    ) {
+    public function __construct(string $topic, array $partitions)
+    {
+        $this->topic      = $topic;
         $this->partitions = $partitions;
     }
 
     /**
-     * Returns definition of binary packet for the class or object
-     *
-     * @return array
+     * @inheritdoc
      */
     public static function getScheme(): array
     {

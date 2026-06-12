@@ -30,11 +30,27 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 class MemberAssignment implements BinarySchemaInterface
 {
     /**
+     * This is a version id.
+     * @var int
+     */
+    public $version;
+
+    /**
      * This property holds assignments of topic partitions for member.
      *
      * @var PartitionsForTopic[]
      */
     public $topicPartitions = [];
+
+    /**
+     * The UserData field can be used by custom partition assignment strategies.
+     *
+     * For example, in a sticky partitioning implementation, this field can contain the assignment from the previous
+     * generation. In a resource-based assignment strategy, it could include the number of cpus on the machine hosting
+     * each consumer instance.
+     * @var string
+     */
+    public $userData;
 
     /**
      * MemberAssignment constructor.
@@ -43,17 +59,7 @@ class MemberAssignment implements BinarySchemaInterface
      * @param int           $version         Optional version
      * @param string        $userData        Additional user data
      */
-    public function __construct(array $topicPartitions = [], /**
-     * This is a version id.
-     */
-        public $version = 0, /**
-     * The UserData field can be used by custom partition assignment strategies.
-     *
-     * For example, in a sticky partitioning implementation, this field can contain the assignment from the previous
-     * generation. In a resource-based assignment strategy, it could include the number of cpus on the machine hosting
-     * each consumer instance.
-     */
-        public $userData = '')
+    public function __construct(array $topicPartitions = [], int $version = 0, string $userData = '')
     {
         $packedTopicAssignment = [];
         foreach ($topicPartitions as $topic => $partitions) {
@@ -61,6 +67,8 @@ class MemberAssignment implements BinarySchemaInterface
         }
 
         $this->topicPartitions = $packedTopicAssignment;
+        $this->version         = $version;
+        $this->userData        = $userData;
     }
 
     /**

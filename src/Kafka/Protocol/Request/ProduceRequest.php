@@ -43,7 +43,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritDoc
      */
-    public const VERSION = 3;
+    protected const VERSION = 3;
 
     /**
      * @var ProduceRequestTopic[]
@@ -70,23 +70,17 @@ class ProduceRequest extends AbstractRequest
      */
     public function __construct(
         array $topicMessages = [],
-        /**
-         * The number of acknowledgments the producer requires the leader to have received before considering a request
-         * complete. Allowed values: 0 for no acknowledgments, 1 for only the leader and -1 for the full ISR.
-         */
-        private $requiredAcks = 1,
+        private readonly int $requiredAcks = 1,
         /**
          * The transactional ID of the producer.
          *
-         * This is used to authorize transaction produce requests. This can be null for non-transactional producers.
+         * This is used to authorize transaction produce requests.
+         * This can be null for non-transactional producers.
          */
-        private $transactionalId = null,
-        /**
-         * The time to await a response in ms.
-         */
-        private $timeout = 0,
-        $clientId = '',
-        $correlationId = 0
+        private readonly ?string $transactionalId = null,
+        private readonly int $timeout = 0,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
 
         foreach ($topicMessages as $topic => $partitionMessages) {
@@ -103,6 +97,9 @@ class ProduceRequest extends AbstractRequest
         parent::__construct(ApiKeys::PRODUCE, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

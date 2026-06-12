@@ -13,7 +13,6 @@ declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
@@ -45,10 +44,14 @@ class SyncGroupResponse extends AbstractResponse
     /**
      * Assigned data to the member
      *
-     * @var MemberAssignment
+     * @todo This should be implemented on scheme-level as MemberAssignment
+     * @var string
      */
     public $memberAssignment;
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = parent::getScheme();

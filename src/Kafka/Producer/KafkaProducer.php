@@ -73,7 +73,7 @@ class KafkaProducer
         $partitioner         = $this->configuration[ProducerConfig::PARTITIONER_CLASS];
 
         if (!is_subclass_of($partitioner, PartitionerInterface::class)) {
-            throw new \InvalidArgumentException("Partitioner class should implement PartitionInterface");
+            throw new \InvalidArgumentException('Partitioner class should implement PartitionInterface');
         }
         $this->partitioner = new $partitioner();
     }
@@ -125,11 +125,9 @@ class KafkaProducer
     /**
      * Gets the partition metadata for the given topic.
      *
-     * @param string $topic
-     *
      * @return PartitionMetadata[]
      */
-    public function partitionsFor($topic)
+    public function partitionsFor(string $topic): array
     {
         return $this->getCluster()->partitionsForTopic($topic);
     }
@@ -143,9 +141,9 @@ class KafkaProducer
      * @param Record       $message           Message to send
      * @param integer|null $concretePartition Optional partition for sending message
      *
-     * @return array
+     * @return mixed To be changed to the Promise and async processing
      */
-    public function send(string $topic, Record $message, $concretePartition = null)
+    public function send(string $topic, Record $message, ?int $concretePartition = null)
     {
         if (isset($concretePartition)) {
             $partition = $concretePartition;
@@ -176,10 +174,8 @@ class KafkaProducer
 
     /**
      * Cluster lazy-loading
-     *
-     * @return Cluster
      */
-    private function getCluster()
+    private function getCluster(): Cluster
     {
         if (!$this->cluster) {
             $this->cluster = Cluster::bootstrap($this->configuration);
@@ -190,10 +186,8 @@ class KafkaProducer
 
     /**
      * Lazy-loading for kafka client
-     *
-     * @return Client
      */
-    private function getClient()
+    private function getClient(): Client
     {
         if (!$this->client) {
             $this->client = new Client($this->getCluster(), $this->configuration);

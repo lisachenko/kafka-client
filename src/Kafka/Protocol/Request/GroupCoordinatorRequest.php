@@ -24,19 +24,19 @@ use Protocol\Kafka\Protocol\BinarySchema;
  */
 class GroupCoordinatorRequest extends AbstractRequest
 {
-    /**
-     * @param string $consumerGroup
-     */
     public function __construct(/**
      * The consumer group id.
      */
-        private $consumerGroup,
-        $clientId = '',
-        $correlationId = 0
+        private readonly string $consumerGroup,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::GROUP_COORDINATOR, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

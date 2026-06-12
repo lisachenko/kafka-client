@@ -61,11 +61,6 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 class FetchRequest extends AbstractRequest
 {
     /**
-     * @inheritDoc
-     */
-    public const VERSION = 5;
-
-    /**
      * With READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED transactional records are visible.
      *
      * @see $isolationLevel
@@ -78,6 +73,11 @@ class FetchRequest extends AbstractRequest
      * @see $isolationLevel
      */
     public const READ_UNCOMMITTED = 0;
+
+    /**
+     * @inheritDoc
+     */
+    protected const VERSION = 5;
 
     private ?array $topicPartitions = null;
 
@@ -93,19 +93,13 @@ class FetchRequest extends AbstractRequest
      */
     private readonly int $maxBytes;
 
-    /**
-     * @param int $maxWaitTime
-     * @param int $minBytes
-     * @param int $isolationLevel
-     * @param int $replicaId
-     */
     public function __construct(
         array $topicPartitions,
         /**
          * The max wait time is the maximum amount of time in milliseconds to block waiting if insufficient data is
          * available at the time the request is issued.
          */
-        private $maxWaitTime,
+        private readonly int $maxWaitTime,
         /**
          * This is the minimum number of bytes of messages that must be available to give a response.
          *
@@ -117,8 +111,8 @@ class FetchRequest extends AbstractRequest
          * large chunks of data (e.g. setting MaxWaitTime to 100 ms and setting MinBytes to 64k would allow the server to
          * wait up to 100ms to try to accumulate 64k of data before responding).
          */
-        private $minBytes,
-        $maxBytes,
+        private readonly int $minBytes,
+        int $maxBytes,
         /**
          * This setting controls the visibility of transactional records.
          *
@@ -131,15 +125,15 @@ class FetchRequest extends AbstractRequest
          *
          * @since 0.11.0.0
          */
-        private $isolationLevel = self::READ_UNCOMMITTED,
+        private readonly int $isolationLevel = self::READ_UNCOMMITTED,
         /**
          * The replica id indicates the node id of the replica initiating this request. Normal client consumers should
          * always specify this as -1 as they have no node id. Other brokers set this to be their own node id. The value -2
          * is accepted to allow a non-broker to issue fetch requests as if it were a replica broker for debugging purposes.
          */
-        private $replicaId = -1,
-        $clientId = '',
-        $correlationId = 0
+        private readonly int $replicaId = -1,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         foreach ($topicPartitions as $topic => $partitionOffset) {
             $partitions = [];
@@ -148,11 +142,14 @@ class FetchRequest extends AbstractRequest
             }
             $this->topicPartitions[$topic] = new FetchRequestTopic($topic, $partitions);
         }
-        $this->maxBytes        = $maxBytes;
+        $this->maxBytes       = $maxBytes;
 
         parent::__construct(ApiKeys::FETCH, $clientId, $correlationId);
     }
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         $header = null;

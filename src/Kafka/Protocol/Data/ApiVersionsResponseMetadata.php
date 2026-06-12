@@ -42,6 +42,9 @@ class ApiVersionsResponseMetadata implements BinarySchemaInterface
      */
     public $maxVersion;
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [
