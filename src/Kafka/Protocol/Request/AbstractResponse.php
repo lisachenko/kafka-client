@@ -33,7 +33,7 @@ abstract class AbstractResponse extends AbstractProtocolMessage
      */
     public $correlationId;
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         return [
             'messageSize'   => BinarySchema::TYPE_INT32,

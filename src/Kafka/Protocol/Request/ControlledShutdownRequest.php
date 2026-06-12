@@ -10,7 +10,6 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date 27.07.2014
@@ -47,7 +46,7 @@ class ControlledShutdownRequest extends AbstractRequest
         parent::__construct(ApiKeys::CONTROLLED_SHUTDOWN, $clientId, $correlationId);
     }
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         $header = null;
 

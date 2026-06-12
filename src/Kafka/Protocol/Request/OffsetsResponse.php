@@ -18,7 +18,6 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
 
 /**
@@ -33,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
  *       timestamp => INT64
  *       offset => INT64
  */
-class OffsetsResponse extends AbstractResponse implements BinarySchemaInterface
+class OffsetsResponse extends AbstractResponse
 {
     /**
      * List of broker metadata info

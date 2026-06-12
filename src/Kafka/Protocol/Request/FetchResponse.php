@@ -19,7 +19,6 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 
 /**
@@ -41,7 +40,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
  *           first_offset => INT64
  *     record_set => RECORDS
  */
-class FetchResponse extends AbstractResponse implements BinarySchemaInterface
+class FetchResponse extends AbstractResponse
 {
     /**
      * Duration in milliseconds for which the request was throttled due to quota violation.

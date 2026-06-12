@@ -10,7 +10,6 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date   14.07.2016
@@ -158,7 +157,7 @@ class FetchRequest extends AbstractRequest
         parent::__construct(ApiKeys::FETCH, $clientId, $correlationId);
     }
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         $header = null;
 

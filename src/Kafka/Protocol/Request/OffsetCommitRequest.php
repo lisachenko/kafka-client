@@ -100,7 +100,7 @@ class OffsetCommitRequest extends AbstractRequest
         parent::__construct(ApiKeys::OFFSET_COMMIT, $clientId, $correlationId);
     }
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         $header = null;
 

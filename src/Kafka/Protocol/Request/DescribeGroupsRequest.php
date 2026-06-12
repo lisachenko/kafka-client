@@ -10,7 +10,6 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date 28.07.2016
@@ -45,7 +44,7 @@ class DescribeGroupsRequest extends AbstractRequest
         parent::__construct(ApiKeys::DESCRIBE_GROUPS, $clientId, $correlationId);
     }
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         $header = null;
 

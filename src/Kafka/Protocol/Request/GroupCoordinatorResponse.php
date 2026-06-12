@@ -19,13 +19,12 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
 
 /**
  * Group coordinator response
  */
-class GroupCoordinatorResponse extends AbstractResponse implements BinarySchemaInterface
+class GroupCoordinatorResponse extends AbstractResponse
 {
     /**
      * Error code.

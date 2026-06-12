@@ -20,7 +20,6 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Sync group response
@@ -30,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *   error_code => INT16
  *   member_assignment => BYTES
  */
-class SyncGroupResponse extends AbstractResponse implements BinarySchemaInterface
+class SyncGroupResponse extends AbstractResponse
 {
     /**
      * Duration in milliseconds for which the request was throttled due to quota violation

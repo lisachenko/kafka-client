@@ -19,7 +19,6 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 
 /**
@@ -35,7 +34,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
  *     member_id => STRING
  *     member_metadata => BYTES
  */
-class JoinGroupResponse extends AbstractResponse implements BinarySchemaInterface
+class JoinGroupResponse extends AbstractResponse
 {
     /**
      * Error code.

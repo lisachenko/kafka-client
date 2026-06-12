@@ -19,7 +19,6 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 
 /**
@@ -35,7 +34,7 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
  *       log_append_time => INT64
  *   throttle_time_ms => INT32
  */
-class ProduceResponse extends AbstractResponse implements BinarySchemaInterface
+class ProduceResponse extends AbstractResponse
 {
     /**
      * List of broker metadata info

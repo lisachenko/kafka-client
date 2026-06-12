@@ -22,12 +22,11 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\RestorableTrait;
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Metadata response object
  */
-class MetadataResponse extends AbstractResponse implements BinarySchemaInterface
+class MetadataResponse extends AbstractResponse
 {
     use RestorableTrait;
 

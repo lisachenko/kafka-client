@@ -81,7 +81,7 @@ class OffsetsRequest extends AbstractRequest
         parent::__construct(ApiKeys::OFFSETS, $clientId, $correlationId);
     }
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         $header = null;
 

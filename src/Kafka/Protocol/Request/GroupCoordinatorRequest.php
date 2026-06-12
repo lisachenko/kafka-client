@@ -10,7 +10,6 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -42,7 +41,7 @@ class GroupCoordinatorRequest extends AbstractRequest
         parent::__construct(ApiKeys::GROUP_COORDINATOR, $clientId, $correlationId);
     }
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         $header = null;
 

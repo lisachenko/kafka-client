@@ -19,7 +19,6 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 
 /**
@@ -35,7 +34,7 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
  *     error_code => INT16
  *   error_code => INT16
  */
-class OffsetFetchResponse extends AbstractResponse implements BinarySchemaInterface
+class OffsetFetchResponse extends AbstractResponse
 {
     /**
      * List of topic responses

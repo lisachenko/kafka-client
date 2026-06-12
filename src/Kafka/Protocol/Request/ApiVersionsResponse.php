@@ -19,13 +19,12 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 
 /**
  * Api versions response
  */
-class ApiVersionsResponse extends AbstractResponse implements BinarySchemaInterface
+class ApiVersionsResponse extends AbstractResponse
 {
     /**
      * Error code.

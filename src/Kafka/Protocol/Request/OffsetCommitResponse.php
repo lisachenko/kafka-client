@@ -18,7 +18,6 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
 
 /**
@@ -31,7 +30,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
  *       partition => INT32
  *       error_code => INT16
  */
-class OffsetCommitResponse extends AbstractResponse implements BinarySchemaInterface
+class OffsetCommitResponse extends AbstractResponse
 {
     /**
      * List of topics with partition result

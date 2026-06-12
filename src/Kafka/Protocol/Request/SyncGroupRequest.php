@@ -85,7 +85,7 @@ class SyncGroupRequest extends AbstractRequest
         parent::__construct(ApiKeys::SYNC_GROUP, $clientId, $correlationId);
     }
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         $header = null;
 

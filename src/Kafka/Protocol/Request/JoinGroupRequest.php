@@ -88,7 +88,7 @@ class JoinGroupRequest extends AbstractRequest
         parent::__construct(ApiKeys::JOIN_GROUP, $clientId, $correlationId);
     }
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         $header = null;
 

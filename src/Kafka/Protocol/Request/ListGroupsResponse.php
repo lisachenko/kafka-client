@@ -19,7 +19,6 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 
 /**
@@ -31,7 +30,7 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
  *     group_id => STRING
  *     protocol_type => STRING
  */
-class ListGroupsResponse extends AbstractResponse implements BinarySchemaInterface
+class ListGroupsResponse extends AbstractResponse
 {
     /**
      * Error code.

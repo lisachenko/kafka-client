@@ -10,7 +10,6 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -18,15 +17,12 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol;
 
-use function is_a;
 
-use RuntimeException;
 use Protocol\Kafka\IO\Stream;
-
 /**
- * ApiKeys record class
+ * Kafka record class
  */
-class AbstractProtocolMessage
+abstract class AbstractProtocolMessage implements BinarySchemaInterface
 {
     /**
      * The message_size field gives the size of the subsequent request or response message in bytes.
@@ -47,11 +43,7 @@ class AbstractProtocolMessage
      */
     final public static function unpack(Stream $stream)
     {
-        if (is_a(static::class, BinarySchemaInterface::class, true)) {
-            return BinarySchema::readObjectFromStream(static::class, $stream);
-        }
-
-        throw new RuntimeException('Implement BinarySchemaInterface for you class ' . static::class);
+        return BinarySchema::readObjectFromStream(static::class, $stream);
     }
 
     /**
@@ -59,14 +51,8 @@ class AbstractProtocolMessage
      *
      * @param Stream $stream Binary stream buffer
      */
-    final public function writeTo(Stream $stream): void
+    final public function writeTo(Stream $stream)
     {
-        if ($this instanceof BinarySchemaInterface) {
-            BinarySchema::writeObjectToStream($this, $stream);
-
-            return;
-        }
-
-        throw new RuntimeException('Implement BinarySchemaInterface for you class');
+        BinarySchema::writeObjectToStream($this, $stream);
     }
 }

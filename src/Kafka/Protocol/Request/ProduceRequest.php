@@ -107,7 +107,7 @@ class ProduceRequest extends AbstractRequest
         parent::__construct(ApiKeys::PRODUCE, $clientId, $correlationId);
     }
 
-    public static function getScheme()
+    public static function getScheme(): array
     {
         $header = null;
 
