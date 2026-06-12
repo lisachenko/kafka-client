@@ -201,8 +201,7 @@ class SocketStream extends AbstractStream
      */
     public function isConnected(): bool
     {
-        return is_resource($this->streamSocket) &&
-            stream_socket_get_name($this->streamSocket, true);
+        return is_resource($this->streamSocket) && stream_socket_get_name($this->streamSocket, true);
     }
 
     /**

@@ -81,6 +81,8 @@ class ClientConfig
     /**
      * File name that stores the metadata, this file will be effectively cached by the Opcode cache in production
      *
+     * Note: always use absolute paths, because cwd could change in destructors during batch flush!
+     *
      * (PHP Only option)
      */
     public const METADATA_CACHE_FILE = 'metadata.cache.file';
