@@ -114,7 +114,7 @@ abstract class KafkaException extends RuntimeException
      *
      * @var array
      */
-    private $context = [];
+    private $context;
 
     /**
      * Creates an instance of exception by error code

@@ -70,10 +70,8 @@ final class SubscriptionState
 
     /**
      * Return type of this subscription
-     *
-     * @return int
      */
-    public function getSubscriptionType()
+    public function getSubscriptionType(): int
     {
         return $this->subscriptionType;
     }
@@ -108,7 +106,7 @@ final class SubscriptionState
     public function assignFromSubscribed(array $assignments): void
     {
         if (!$this->partitionsAutoAssigned()) {
-            throw new InvalidArgumentException("Attempt to dynamically assign partitions while manual assignment in use");
+            throw new InvalidArgumentException('Attempt to dynamically assign partitions while manual assignment in use');
         }
 
         if ($this->subscribedPattern !== null) {
@@ -314,7 +312,7 @@ final class SubscriptionState
 
         if ($this->subscriptionType !== $type) {
             throw new InvalidArgumentException(
-                "Subscription to topics, partitions and pattern are mutually exclusive"
+                'Subscription to topics, partitions and pattern are mutually exclusive'
             );
         }
     }
@@ -346,7 +344,7 @@ final class SubscriptionState
         $result = '';
         foreach ($this->assignment as $topic => $partitions) {
             foreach ($partitions as $partition => $state) {
-                $result .= sprintf("%s:%s%s", $topic, $partition, $separator);
+                $result .= sprintf('%s:%s%s', $topic, $partition, $separator);
             }
         }
 

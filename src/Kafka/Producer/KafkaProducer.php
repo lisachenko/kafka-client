@@ -114,7 +114,7 @@ class KafkaProducer
             $index           = 1;
             foreach ($exceptions as $msg => $count) {
                 $message .= "$index. $msg ($count / $totalExceptions)\n";
-                $index   += 1;
+                ++$index;
             }
             throw new \RuntimeException("Can not deliver messages to the broker:\n$message");
         }

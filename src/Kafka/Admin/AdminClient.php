@@ -108,8 +108,9 @@ class AdminClient
 
 
     /**
-     * @return array|
-     * @return mixed[][]
+     * Lists all available groups
+     *
+     * @return array|ListGroupResponseProtocol[]
      */
     public function listAllGroups(): array
     {

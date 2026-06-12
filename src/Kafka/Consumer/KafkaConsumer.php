@@ -232,7 +232,8 @@ class KafkaConsumer
         $this->updateFetchPositions($result);
 
         if ($this->configuration[ConsumerConfig::ENABLE_AUTO_COMMIT]) {
-            if (($milliSeconds - $this->lastAutoCommitMs) > $this->configuration[ConsumerConfig::AUTO_COMMIT_INTERVAL_MS]) {
+            $elapsedInterval = $milliSeconds - $this->lastAutoCommitMs;
+            if ($elapsedInterval > $this->configuration[ConsumerConfig::AUTO_COMMIT_INTERVAL_MS]) {
                 $this->commitSync();
                 $this->lastAutoCommitMs = $milliSeconds;
             }

@@ -14,12 +14,11 @@ declare (strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * SASL handshake response
  */
-class SaslHandshakeResponse extends AbstractResponse implements BinarySchemaInterface
+class SaslHandshakeResponse extends AbstractResponse
 {
     /**
      * Array of mechanisms enabled in the server.

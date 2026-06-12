@@ -34,7 +34,7 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
     public $partition;
 
     /**
-     * Record offset.
+     * Message offset.
      * @var int
      */
     public $fetchOffset;

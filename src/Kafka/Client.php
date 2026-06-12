@@ -525,7 +525,7 @@ class Client
             $writeSelect = $exceptSelect = null;
             if (stream_select($readSelect, $writeSelect, $exceptSelect, intdiv($timeout, 1000), $timeout % 1000) > 0) {
                 foreach ($readSelect as $resourceToRead) {
-                    $nodeId             = array_search($resourceToRead, $readNodeSockets);
+                    $nodeId             = array_search($resourceToRead, $readNodeSockets, true);
                     $connection         = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
                     $responses[$nodeId] = $responseClass::unpack($connection);
                 }

@@ -63,7 +63,7 @@ class Record implements BinarySchemaInterface
      *
      * The timestamp of each Record in the RecordBatch is its 'TimestampDelta' + 'FirstTimestamp'.
      *
-     * @since Version 2 of Record structure
+     * @since Version 2 of Message structure
      * @var int
      */
     public $timestampDelta = 0;
@@ -73,7 +73,7 @@ class Record implements BinarySchemaInterface
      *
      * The offset of each Record in the Batch is its 'OffsetDelta' + 'FirstOffset'.
      *
-     * @since Version 2 of Record (Record) structure
+     * @since Version 2 of Message (Record) structure
      * @var int
      */
     public $offsetDelta = 0;
@@ -93,7 +93,7 @@ class Record implements BinarySchemaInterface
     /**
      * Application level record level headers.
      *
-     * @since Version 2 of Record (Record) structure
+     * @since Version 2 of Message (Record) structure
      * @see https://cwiki.apache.org/confluence/display/KAFKA/KIP-82+-+Add+Record+Headers
      *
      * @var Header[]
@@ -118,8 +118,7 @@ class Record implements BinarySchemaInterface
         $this->timestampDelta = $timestampDelta;
         $this->offsetDelta    = $offsetDelta;
 
-        $this->length = BinarySchema::getObjectTypeSize($this) - 1;
-        /* Varint 0 length always equal to 1 */;
+        $this->length = BinarySchema::getObjectTypeSize($this) - 1; /* Varint 0 length always equal to 1 */
     }
 
     /**
