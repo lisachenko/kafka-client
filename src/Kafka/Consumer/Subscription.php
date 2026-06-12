@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -17,20 +18,20 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Consumer;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Subscription information that is used for the synchronization between consumers
+ *
+ * ProtocolMetadata => Version Subscription UserData
+ *   Version => int16
+ *   Subscription => [Topic]
+ *     Topic => string
+ *   UserData => bytes
  */
-class Subscription implements \Stringable
+class Subscription implements BinarySchemaInterface
 {
-    /**
-     * This is a version id.
-     *
-     * @var integer
-     */
-    public $version;
-
     /**
      * This property holds all the topics for the consumer.
      *
@@ -39,68 +40,38 @@ class Subscription implements \Stringable
     public $topics;
 
     /**
+     * Subscription constructor.
+     *
+     * @param string[] $topics   List of topics
+     * @param int      $version
+     * @param string   $userData Additional user data
+     */
+    public function __construct(array $topics, /**
+     * This is a version id.
+     */
+        public $version = 0, /**
      * The UserData field can be used by custom partition assignment strategies.
      *
      * For example, in a sticky partitioning implementation, this field can contain the assignment from the previous
      * generation. In a resource-based assignment strategy, it could include the number of cpus on the machine hosting
      * each consumer instance.
-     *
-     * @var string
      */
-    public $userData;
-
-    public static function fromSubscription(array $topics, $version = 0, $userData = ''): static
+        public $userData = '')
     {
-        $message = new static();
-
-        $message->topics   = $topics;
-        $message->version  = $version;
-        $message->userData = $userData;
-
-        return $message;
+        $this->topics   = $topics;
     }
 
     /**
-     * Unpacks the DTO from the binary buffer
+     * Returns definition of binary packet for the class or object
      *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @return array
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $message = new static();
-
-        [$message->version, $topicNumber] = array_values($stream->read('nversion/NtopicNumber'));
-
-        for ($topicIndex = 0; $topicIndex < $topicNumber; $topicIndex++) {
-            $message->topics[] = $stream->readString();
-        }
-        $message->userData = $stream->readByteArray();
-
-        return $message;
-    }
-
-    /**
-     * @return string
-     *
-     * ProtocolMetadata => Version Subscription UserData
-     *   Version => int16
-     *   Subscription => [Topic]
-     *     Topic => string
-     *   UserData => bytes
-     */
-    public function __toString(): string
-    {
-        $payload = pack('nN', $this->version, count($this->topics));
-        foreach ($this->topics as $topic) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}", $topicLength, $topic);
-        }
-        $userDataLength = strlen($this->userData);
-        $payload .= pack('N', $userDataLength);
-        $payload .= $this->userData;
-
-        return $payload;
+        return [
+            'version'  => BinarySchema::TYPE_INT16,
+            'topics'   => [BinarySchema::TYPE_STRING],
+            'userData' => BinarySchema::TYPE_BYTEARRAY,
+        ];
     }
 }

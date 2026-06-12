@@ -328,7 +328,7 @@ class KafkaConsumer
             $this->configuration[ConsumerConfig::GROUP_ID],
             $this->memberId,
             'consumer',
-            ['range' => Subscription::fromSubscription($topics)]
+            ['range' => new Subscription($topics)]
         );
 
         $this->memberId     = $joinResult->memberId;
@@ -367,7 +367,7 @@ class KafkaConsumer
      *
      * @return string
      */
-    public function subscription(): array
+    public function subscription()
     {
         return $this->subscriptionState->getSubscription();
     }

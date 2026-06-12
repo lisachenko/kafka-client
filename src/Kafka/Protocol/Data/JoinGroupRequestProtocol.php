@@ -10,7 +10,6 @@
  */
 
 declare(strict_types=1);
-
 /**
  * @author Alexander.Lisachenko
  * @date   14.07.2016
@@ -18,6 +17,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
+use Protocol\Kafka\Consumer\Subscription;
+use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
@@ -31,20 +32,27 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 class JoinGroupRequestProtocol implements BinarySchemaInterface
 {
     /**
+     * Protocol-specific metadata
+     *
+     * @var string
+     */
+    public $metadata;
+
+    /**
      * Default initializer
      * @param string $name
-     * @param string $metadata
      */
-    public function __construct(
-        /**
-         * Name of the protocol
-         */
+    public function __construct(/**
+     * Name of the protocol
+     */
         public $name,
-        /**
-         * Protocol-specific metadata
-         */
-        public $metadata
-    ) {}
+        Subscription $subscription
+    ) {
+        // TODO: This should be on scheme-level
+        $stringStream = new StringStream();
+        BinarySchema::writeObjectToStream($subscription, $stringStream);
+        $this->metadata = $stringStream->getBuffer();
+    }
 
     public static function getScheme(): array
     {

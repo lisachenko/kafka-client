@@ -19,6 +19,7 @@ namespace Protocol\Kafka\Consumer;
 
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\IO\StringStream;
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 
 /**
@@ -53,7 +54,8 @@ class RoundRobinAssignor implements PartitionAssignorInterface
         $partitionAssignments = [];
 
         foreach ($subscriptions as $memberId => $subscriptionData) {
-            $subscriptionMetadata = Subscription::unpack(new StringStream($subscriptionData->metadata));
+            $stringMetadata       = new StringStream($subscriptionData->metadata);
+            $subscriptionMetadata = BinarySchema::readObjectFromStream(Subscription::class, $stringMetadata);
             foreach ($subscriptionMetadata->topics as $topic) {
                 $topicMembers[$topic][] = $memberId;
             }
