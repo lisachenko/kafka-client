@@ -18,9 +18,9 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
-use Protocol\Kafka\Common\Record\MetadataRequest;
-use Protocol\Kafka\Common\Record\MetadataResponse;
 use Protocol\Kafka\IO\SocketStream;
+use Protocol\Kafka\Protocol\Request\MetadataRequest;
+use Protocol\Kafka\Protocol\Request\MetadataResponse;
 
 /**
  * A representation of a subset of the nodes, topics, and partitions in the Kafka cluster.
@@ -252,7 +252,7 @@ final class Cluster
         $milliSeconds = (int) (microtime(true) * 1e3);
         $cacheFile    = $this->configuration[ClientConfig::METADATA_CACHE_FILE];
         if (is_readable($cacheFile)) {
-            /** @var Record\MetadataResponse $metadata */
+            /** @var MetadataResponse $metadata */
             [$cachePutTimeMs, $metadata] = include $cacheFile;
             if (($milliSeconds - $cachePutTimeMs) < $this->configuration[ClientConfig::METADATA_MAX_AGE_MS]) {
                 $this->nodes           = $metadata->brokers;

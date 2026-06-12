@@ -107,7 +107,7 @@ abstract class AbstractStream implements Stream
      */
     public function writeBuffer($buffer)
     {
-        $bufferLength = strlen($buffer);
+        $bufferLength = $buffer ? strlen($buffer) : 0;
         $this->write("a{$bufferLength}", $buffer);
     }
 
