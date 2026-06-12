@@ -499,11 +499,16 @@ class Client
         ?int $timeout = null
     ) {
         $requestByNode = [];
+        $exceptions    = [];
 
         foreach ($topicPartitionsRequest as $topic => $partitions) {
-            foreach ($partitions as $partition => $partitionData) {
-                $leaderNode = $this->cluster->leaderFor($topic, $partition);
-                $requestByNode[$leaderNode->nodeId][$topic][$partition] = $partitionData;
+            foreach ($partitions as $partitionId => $partitionData) {
+                try {
+                    $leaderNode = $this->cluster->leaderFor($topic, $partitionId);
+                    $requestByNode[$leaderNode->nodeId][$topic][$partitionId] = $partitionData;
+                } catch (\Exception $exception) {
+                    $exceptions[$topic][$partitionId] = $exception;
+                }
             }
         }
 
@@ -519,12 +524,20 @@ class Client
         $readNodeSockets = [];
 
         foreach ($requestByNode as $nodeId => $nodeTopicPartitions) {
-            /** @var AbstractProtocolMessage $request */
-            $request = $nodeRequest($nodeTopicPartitions);
-            $stream  = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
+            try {
+                /** @var AbstractProtocolMessage $request */
+                $request = $nodeRequest($nodeTopicPartitions);
+                $stream  = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
 
-            $readNodeSockets[$nodeId] = $socketAccessor($stream);
-            $request->writeTo($stream);
+                $readNodeSockets[$nodeId] = $socketAccessor($stream);
+                $request->writeTo($stream);
+            } catch (\Exception $exception) {
+                foreach ($nodeTopicPartitions as $topic => $partitions) {
+                    foreach (array_keys($partitions) as $partitionId) {
+                        $exceptions[$topic][$partitionId] = $exception;
+                    }
+                }
+            }
         }
 
         $incompleteReads = $readNodeSockets;
@@ -538,9 +551,17 @@ class Client
             $writeSelect = $exceptSelect = null;
             if (stream_select($readSelect, $writeSelect, $exceptSelect, intdiv($timeout, 1000), $timeout % 1000) > 0) {
                 foreach ($readSelect as $resourceToRead) {
-                    $nodeId             = array_search($resourceToRead, $readNodeSockets, true);
-                    $connection         = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
-                    $responses[$nodeId] = $responseClass::unpack($connection);
+                    $nodeId = array_search($resourceToRead, $readNodeSockets, true);
+                    try {
+                        $connection         = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
+                        $responses[$nodeId] = $responseClass::unpack($connection);
+                    } catch (\Exception $exception) {
+                        foreach ($requestByNode[$nodeId] as $topic => $partitions) {
+                            foreach (array_keys($partitions) as $partitionId) {
+                                $exceptions[$topic][$partitionId] = $exception;
+                            }
+                        }
+                    }
                 }
                 $incompleteReads = array_diff($incompleteReads, $readSelect);
             }
@@ -548,6 +569,10 @@ class Client
         }
 
         $result = array_reduce($responses, $responseAggregator, []);
+
+        if ($exceptions !== []) {
+            throw new TopicPartitionRequestException($result, $exceptions);
+        }
 
         return $result;
     }
