@@ -196,10 +196,7 @@ final class Cluster
      */
     public function reload(): void
     {
-        $brokerAddresses = [];
-        if (isset($this->configuration[ClientConfig::BOOTSTRAP_SERVERS])) {
-            $brokerAddresses = $this->configuration[ClientConfig::BOOTSTRAP_SERVERS];
-        }
+        $brokerAddresses = $this->configuration[ClientConfig::BOOTSTRAP_SERVERS] ?? [];
 
         $cause = [];
         foreach ($brokerAddresses as $address) {

@@ -63,8 +63,10 @@ final class SubscriptionState
 
     /**
      * Type of this subscription, one of TYPE_* constant
+     *
+     * @var int
      */
-    private int $subscriptionType = self::TYPE_NONE;
+    private $subscriptionType = self::TYPE_NONE;
 
     /**
      * Return type of this subscription
@@ -357,7 +359,9 @@ final class SubscriptionState
         $targetAssignment = [];
         foreach ($assignment as $topic => $topicPartitions) {
             foreach ($topicPartitions->partitions as $partitionId) {
-                $targetAssignment[$topic][$partitionId] = $this->assignment[$topic][$partitionId] ?? ['position' => null, 'isPaused' => false];
+                $assignment = $this->assignment[$topic][$partitionId] ?? ['position' => null, 'isPaused' => false];
+
+                $targetAssignment[$topic][$partitionId] = $assignment;
             }
         }
 

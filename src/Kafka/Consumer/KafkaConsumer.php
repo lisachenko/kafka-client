@@ -367,7 +367,7 @@ class KafkaConsumer
      *
      * @return string
      */
-    public function subscription()
+    public function subscription(): array
     {
         return $this->subscriptionState->getSubscription();
     }
