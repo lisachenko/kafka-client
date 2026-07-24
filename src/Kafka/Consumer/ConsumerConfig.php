@@ -9,16 +9,12 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-
-/**
- * @author Alexander.Lisachenko
- * @date   01.08.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Consumer;
 
 use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 
 /**
  * Consumer config enumeration class
@@ -42,6 +38,7 @@ final class ConsumerConfig extends GeneralConfig
         ConsumerConfig::ENABLE_AUTO_COMMIT            => true,
         ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
         ConsumerConfig::OFFSET_RETENTION_MS           => -1, // Use broker retention time for offsets
+        ConsumerConfig::ISOLATION_LEVEL               => FetchRequest::READ_UNCOMMITTED,
     ];
 
     /**
@@ -144,19 +141,34 @@ final class ConsumerConfig extends GeneralConfig
      */
     public const string OFFSET_RETENTION_MS = 'offset.retention.ms';
 
+    /**
+     *Controls how to read messages written transactionally.
+     *
+     * If set to read_committed, Consumer->poll() will only return transactional messages which have been committed.
+     *
+     * If set to read_uncommitted' (the default), Consumer->poll() will return all messages, even transactional
+     * messages which have been aborted. Non-transactional messages will be returned unconditionally in either mode.
+     *
+     * Messages will always be returned in offset order. Hence, in read_committed mode, Consumer->poll() will only
+     * return messages up to the last stable offset (LSO), which is the one less than the offset of the first open
+     * transaction. In particular any messages appearing after messages belonging to ongoing transactions will be
+     * withheld until the relevant transaction has been completed. As a result, read_committed consumers will not be
+     * able to read up to the high watermark when there are in flight transactions.
+     *
+     * Further, when in read_committed the seekToEnd method will return the LSO
+     */
+    public const string ISOLATION_LEVEL = 'isolation.level';
 
-    public const string KEY_DESERIALIZER              = 'key.deserializer';
-    public const string VALUE_DESERIALIZER            = 'value.deserializer';
-    public const string EXCLUDE_INTERNAL_TOPICS       = 'exclude.internal.topics';
-    public const string MAX_POLL_RECORDS              = 'max.poll.records';
-    public const string CHECK_CRCS                    = 'check.crcs';
+    public const string KEY_DESERIALIZER        = 'key.deserializer';
+    public const string VALUE_DESERIALIZER      = 'value.deserializer';
+    public const string EXCLUDE_INTERNAL_TOPICS = 'exclude.internal.topics';
+    public const string MAX_POLL_RECORDS        = 'max.poll.records';
+    public const string CHECK_CRCS              = 'check.crcs';
 
     /**
      * Returns default configuration for consumer
-     *
-     * @return array
      */
-    public static function getDefaultConfiguration()
+    public static function getDefaultConfiguration(): array
     {
         return self::$consumerConfiguration + parent::$generalConfiguration;
     }

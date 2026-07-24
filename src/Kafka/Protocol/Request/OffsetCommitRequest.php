@@ -9,16 +9,13 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
-use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
 
 /**
  * OffsetCommit
@@ -26,90 +23,86 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
  * This api saves out the consumer's position in the stream for one or more partitions. In the scala API this happens
  * when the consumer calls commit() or in the background if "autocommit" is enabled. This is the position the consumer
  * will pick up from if it crashes before its next commit().
+ *
+ * OffsetCommit Request (Version: 2) => group_id generation_id member_id retention_time [topics]
+ *   group_id => STRING
+ *   generation_id => INT32
+ *   member_id => STRING
+ *   retention_time => INT64
+ *   topics => topic [partitions]
+ *     topic => STRING
+ *     partitions => partition offset metadata
+ *       partition => INT32
+ *       offset => INT64
+ *       metadata => NULLABLE_STRING
  */
 class OffsetCommitRequest extends AbstractRequest
 {
-    /**
-     * @inheritDoc
-     */
-    public const VERSION = 2;
-
     /**
      * Generation id for unsubscribed consumer
      */
     public const DEFAULT_GENERATION_ID = -1;
 
     /**
-     * @param string $consumerGroup
-     * @param int $generationId
-     * @param string $memberName
-     * @param int $retentionTime
+     * @inheritDoc
      */
+    protected const VERSION = 2;
+
+    /**
+     * @var OffsetCommitRequestTopic[]
+     */
+    private readonly array $topicPartitions;
+
     public function __construct(
         /**
          * The consumer group id.
          */
-        private $consumerGroup,
+        private readonly string $consumerGroup,
         /**
          * The generation of the group.
          *
          * @since Version 1 of protocol
          */
-        private $generationId,
+        private readonly int $generationId,
         /**
          * The member id assigned by the group coordinator.
          *
          * @since Version 1 of protocol
          */
-        private $memberName,
+        private readonly string $memberName,
         /**
          * Time period in ms to retain the offset.
          *
          * @since Version 2 of protocol
          */
-        private $retentionTime,
-        private readonly array $topicPartitions,
-        $clientId = '',
-        $correlationId = 0
+        private readonly int $retentionTime,
+        array $topicPartitions,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
+
+        $packedTopicPartitions = [];
+        foreach ($topicPartitions as $topic => $partitions) {
+            $packedTopicPartitions[$topic] = new OffsetCommitRequestTopic($topic, $partitions);
+        }
+        $this->topicPartitions = $packedTopicPartitions;
 
         parent::__construct(ApiKeys::OFFSET_COMMIT, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload      = parent::packPayload();
-        $groupLength  = strlen($this->consumerGroup);
-        $memberLength = strlen($this->memberName);
-        $totalTopics  = count($this->topicPartitions);
+        $header = null;
 
-        $payload .= pack(
-            "na{$groupLength}Nna{$memberLength}JN",
-            $groupLength,
-            $this->consumerGroup,
-            $this->generationId,
-            $memberLength,
-            $this->memberName,
-            $this->retentionTime,
-            $totalTopics
-        );
-
-        foreach ($this->topicPartitions as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload    .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            /** @var OffsetCommitResponsePartition $partition */
-            foreach ($partitions as $partitionId => $partition) {
-                if (!is_object($partition)) {
-                    // short-cut to store only offsetst, in this case $partition is offset
-                    $partition = OffsetCommitResponsePartition::fromPartitionOffset($partitionId, $partition);
-                }
-                $payload .= (string) $partition;
-            }
-        }
-
-        return $payload;
+        return $header + [
+            'consumerGroup'   => BinarySchema::TYPE_STRING,
+            'generationId'    => BinarySchema::TYPE_INT32,
+            'memberName'      => BinarySchema::TYPE_STRING,
+            'retentionTime'   => BinarySchema::TYPE_INT64,
+            'topicPartitions' => ['topic' => OffsetCommitRequestTopic::class],
+        ];
     }
 }

@@ -9,11 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date   26.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\IO;
 
@@ -68,7 +64,7 @@ class SocketStream extends AbstractStream
      * @param array   $configuration     Configuration options
      * @param integer $connectionTimeout Timeout for connection
      */
-    public function __construct($tcpAddress, protected array $configuration, $connectionTimeout = null)
+    public function __construct(string $tcpAddress, protected array $configuration, ?int $connectionTimeout = null)
     {
         $tcpInfo = parse_url($tcpAddress);
         if ($tcpInfo === false || !isset($tcpInfo['host'])) {
@@ -76,7 +72,7 @@ class SocketStream extends AbstractStream
         }
         $this->host          = $tcpInfo['host'];
         $this->port          = $tcpInfo['port'] ?? 9092;
-        $this->timeout       = $connectionTimeout ?? ini_get("default_socket_timeout");
+        $this->timeout       = $connectionTimeout ?? 1.0 * ini_get('default_socket_timeout');
     }
 
     /**
@@ -87,9 +83,8 @@ class SocketStream extends AbstractStream
      *
      * @see pack() manual for format
      *
-     * @return void
      */
-    public function write($format, ...$arguments): void
+    public function write(string $format, ...$arguments): void
     {
         if (!$this->isConnected()) {
             $this->connect();
@@ -115,11 +110,11 @@ class SocketStream extends AbstractStream
      * Reads information from the stream, advanced internal pointer
      *
      * @param string $format Format for unpacking arguments
-     * @see unpack() manual for format
      *
      * @return array List of unpacked arguments
+     * @see unpack() manual for format
      */
-    public function read($format): array|false
+    public function read(string $format): array
     {
         if (!$this->isConnected()) {
             $this->connect();
@@ -157,7 +152,7 @@ class SocketStream extends AbstractStream
     /**
      * Performs connection to the specified socket address
      */
-    protected function connect()
+    protected function connect(): void
     {
         $socketFlags = STREAM_CLIENT_CONNECT;
         if (!empty($this->configuration[ClientConfig::STREAM_ASYNC_CONNECT])) {
@@ -193,7 +188,7 @@ class SocketStream extends AbstractStream
     /**
      * Performs the disconnect operation
      */
-    protected function disconnect()
+    protected function disconnect(): void
     {
         if (is_resource($this->streamSocket) && empty($this->configuration[ClientConfig::STREAM_PERSISTENT_CONNECTION])) {
             fclose($this->streamSocket);
@@ -206,8 +201,7 @@ class SocketStream extends AbstractStream
      */
     public function isConnected(): bool
     {
-        return is_resource($this->streamSocket) &&
-            stream_socket_get_name($this->streamSocket, true);
+        return is_resource($this->streamSocket) && stream_socket_get_name($this->streamSocket, true);
     }
 
     /**
@@ -222,21 +216,21 @@ class SocketStream extends AbstractStream
         if (!empty($this->configuration[ClientConfig::SSL_CA_CERT_LOCATION])) {
             $contextOptions['ssl']['cafile'] = $this->ensureValidFile(
                 $this->configuration[ClientConfig::SSL_CA_CERT_LOCATION],
-                "CA file {file} is not accessible."
+                'CA file {file} is not accessible.'
             );
         }
 
         if (!empty($this->configuration[ClientConfig::SSL_CLIENT_CERT_LOCATION])) {
             $contextOptions['ssl']['local_cert'] = $this->ensureValidFile(
                 $this->configuration[ClientConfig::SSL_CLIENT_CERT_LOCATION],
-                "Client certificate file {file} is not accessible."
+                'Client certificate file {file} is not accessible.'
             );
         }
 
         if (!empty($this->configuration[ClientConfig::SSL_KEY_LOCATION])) {
             $contextOptions['ssl']['local_pk'] = $this->ensureValidFile(
                 $this->configuration[ClientConfig::SSL_KEY_LOCATION],
-                "Key file {file} is not accessible."
+                'Key file {file} is not accessible.'
             );
         }
 
@@ -255,17 +249,10 @@ class SocketStream extends AbstractStream
      *
      * @return string Given file name
      */
-    private function ensureValidFile($fileName, string $errorMessage): string
+    private function ensureValidFile(string $fileName, string $errorMessage): string
     {
         if (!is_readable($fileName)) {
-            throw new InvalidConfigurationException(
-                strtr(
-                    $errorMessage,
-                    [
-                        '{file}' => $fileName,
-                    ]
-                )
-            );
+            throw new InvalidConfigurationException(strtr($errorMessage, ['{file}' => $fileName]));
         }
 
         return $fileName;
@@ -291,9 +278,7 @@ class SocketStream extends AbstractStream
 
         $sslProtocol = $this->configuration[ClientConfig::SSL_PROTOCOL];
         if (!isset($cipherMap[$sslProtocol])) {
-            throw new InvalidConfigurationException(
-                "SSL protocol {$sslProtocol} is not implemented."
-            );
+            throw new InvalidConfigurationException("SSL protocol {$sslProtocol} is not implemented.");
         }
 
         $errorMessage = null;
@@ -302,21 +287,35 @@ class SocketStream extends AbstractStream
         });
 
         try {
-            $isCryptoEnabled = stream_socket_enable_crypto(
-                $streamSocket,
-                true,
-                $cipherMap[$sslProtocol]
-            );
+            $isCryptoEnabled = stream_socket_enable_crypto($streamSocket, true, $cipherMap[$sslProtocol]);
+            assert($isCryptoEnabled !== 0, 'There isn\'t enough data for async connect');
         } finally {
             restore_error_handler();
         }
 
         if ($isCryptoEnabled === false) {
-            throw new NetworkException(
-                [
-                    'error' => "Failed to initialize encryption via {$sslProtocol} protocol: {$errorMessage}.",
-                ]
-            );
+            throw new NetworkException([
+                'error' => "Failed to initialize encryption via {$sslProtocol} protocol: {$errorMessage}.",
+            ]);
         }
+    }
+
+    /**
+     * Checks if stream is empty
+     */
+    public function isEmpty(): bool
+    {
+        return feof($this->streamSocket);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function __debugInfo()
+    {
+        return [
+            'host' => $this->host,
+            'port' => $this->port,
+        ];
     }
 }

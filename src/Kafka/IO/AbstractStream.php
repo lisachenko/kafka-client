@@ -9,11 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date   26.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\IO;
 
@@ -21,14 +17,12 @@ abstract class AbstractStream implements Stream
 {
     /**
      * Reads a string from the stream
-     *
-     * @return string
      */
-    public function readString()
+    public function readString(): string
     {
         $stringLength = $this->read('nlength')['length'];
         if ($stringLength === 0xFFFF) {
-            return null;
+            throw new \UnexpectedValueException('Received -1 length for not nullable string');
         }
 
         return $this->read("a{$stringLength}string")['string'];
@@ -36,12 +30,8 @@ abstract class AbstractStream implements Stream
 
     /**
      * Writes the string to the stream
-     *
-     * @param $string
-     *
-     * @return mixed
      */
-    public function writeString($string)
+    public function writeString(string $string): void
     {
         $stringLength = strlen($string);
         $this->write("na{$stringLength}", $stringLength, $string);
@@ -50,13 +40,13 @@ abstract class AbstractStream implements Stream
     /**
      * Reads a byte array from the stream
      *
-     * @return string
+     * @return string|null
      */
-    public function readByteArray()
+    public function readByteArray(): ?string
     {
         $dataLength = $this->read('Nlength')['length'];
         if ($dataLength === 0xFFFFFFFF) {
-            return null;
+            throw new \UnexpectedValueException('Received -1 length for not nullable byte array');
         }
 
         return $this->read("a{$dataLength}data")['data'];
@@ -65,24 +55,58 @@ abstract class AbstractStream implements Stream
     /**
      * Writes the string to the stream
      *
-     * @param string $data Binary data
-     *
-     * @return mixed
+     * @param string|null $data
      */
-    public function writeByteArray($data)
+    public function writeByteArray(?string $data): void
     {
         $dataLength = strlen($data);
         $this->write("Na{$dataLength}", $dataLength, $data);
     }
 
     /**
-     * Calculates the format size for unpack() operation
-     *
-     * @param string $format
-     *
-     * @return int
+     * Reads varint from the stream
      */
-    protected static function packetSize($format)
+    public function readVarint(): int
+    {
+        $value  = 0;
+        $offset = 0;
+        do {
+            $byte   = $this->read('Cbyte')['byte'];
+            $value  += ($byte & 0x7f) << $offset;
+            $offset += 7;
+        } while (($byte & 0x80) !== 0);
+
+        return $value;
+    }
+
+    /**
+     * Writes a varint value to the stream
+     */
+    public function writeVarint(int $value): void
+    {
+        do {
+            $byte  = $value & 0x7f;
+            $value >>= 7;
+            $byte  = $value > 0 ? ($byte | 0x80) : $byte;
+            $this->write('C', $byte);
+        } while ($value > 0);
+    }
+
+    /**
+     * Writes the raw buffer into the stream as-is
+     *
+     * @param string|null $buffer
+     */
+    public function writeBuffer(?string $buffer): void
+    {
+        $bufferLength = $buffer ? strlen($buffer) : 0;
+        $this->write("a{$bufferLength}", $buffer);
+    }
+
+    /**
+     * Calculates the format size for unpack() operation
+     */
+    protected static function packetSize(string $format): int
     {
         static $tableSize = [
             'a' => 1,
@@ -111,7 +135,7 @@ abstract class AbstractStream implements Stream
         $numMatches = preg_match_all('/(?:\/|^)(\w)(\d*)/', $format, $matches);
         if (empty($numMatches)) {
             throw new \InvalidArgumentException("Unknown format specified: {$format}");
-        };
+        }
         $size = 0;
         for ($matchIndex = 0; $matchIndex < $numMatches; $matchIndex++) {
             [$modifier, $repitition] = [$matches[1][$matchIndex], $matches[2][$matchIndex]];

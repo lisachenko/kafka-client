@@ -9,20 +9,17 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Common;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Topic metadata DTO
  */
-class TopicMetadata
+class TopicMetadata implements BinarySchemaInterface
 {
     use RestorableTrait;
 
@@ -51,29 +48,17 @@ class TopicMetadata
     /**
      * Metadata for each partition of the topic.
      *
-     * @var PartitionMetadata[]|array
+     * @var PartitionMetadata[]
      */
     public $partitions = [];
 
-    /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $topic = new static();
-        [$topic->topicErrorCode, $topicLength] = array_values($stream->read('ntopicErrorCode/ntopicLength'));
-        [$topic->topic, $topic->isInternal, $numberOfPartitions] = array_values($stream->read("a{$topicLength}topic/cisInternal/NnumberOfPartition"));
-
-        for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-            $partitionMetadata = PartitionMetadata::unpack($stream);
-
-            $topic->partitions[$partitionMetadata->partitionId] = $partitionMetadata;
-        }
-
-        return $topic;
+        return [
+            'topicErrorCode' => BinarySchema::TYPE_INT16,
+            'topic'          => BinarySchema::TYPE_STRING,
+            'isInternal'     => BinarySchema::TYPE_INT8,
+            'partitions'     => [PartitionMetadata::class],
+        ];
     }
 }

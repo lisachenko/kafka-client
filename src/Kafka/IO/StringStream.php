@@ -9,11 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date   26.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\IO;
 
@@ -22,16 +18,16 @@ class StringStream extends AbstractStream
     /**
      * Internal binary buffer
      */
-    private ?string $buffer = null;
+    private string $buffer;
 
     /**
      * String stream constructor.
      *
-     * @param string $stringBuffer Buffer to write to or read from
+     * @param string $stringBuffer Optional buffer to read from
      */
-    public function __construct(&$stringBuffer)
+    public function __construct(?string $stringBuffer = null)
     {
-        $this->buffer = &$stringBuffer;
+        $this->buffer = $stringBuffer ?? '';
     }
 
     /**
@@ -40,11 +36,11 @@ class StringStream extends AbstractStream
      * @param string $format       Format for packing arguments
      * @param array  ...$arguments List of arguments for packing
      *
+     * @return void
      * @see pack() manual for format
      *
-     * @return void
      */
-    public function write($format, ...$arguments): void
+    public function write(string $format, ...$arguments): void
     {
         $this->buffer .= pack($format, ...$arguments);
     }
@@ -53,11 +49,12 @@ class StringStream extends AbstractStream
      * Reads information from the stream, advanced internal pointer
      *
      * @param string $format Format for unpacking arguments
-     * @see unpack() manual for format
      *
      * @return array List of unpacked arguments
+     * @see unpack() manual for format
+     *
      */
-    public function read($format): array|false
+    public function read(string $format): array
     {
         $arguments    = unpack($format, $this->buffer);
         $this->buffer = substr($this->buffer, self::packetSize($format));
@@ -71,5 +68,21 @@ class StringStream extends AbstractStream
     public function isConnected(): bool
     {
         return true;
+    }
+
+    /**
+     * Returns the current buffer, useful for write operations
+     */
+    public function getBuffer(): string
+    {
+        return $this->buffer;
+    }
+
+    /**
+     * Checks if stream is empty
+     */
+    public function isEmpty(): bool
+    {
+        return $this->buffer === '';
     }
 }

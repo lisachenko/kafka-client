@@ -9,11 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 13.09.2017
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Admin;
 
@@ -21,12 +17,13 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\RequestTimedOutException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
-use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
@@ -59,12 +56,8 @@ class AdminClient
 
     /**
      * Describes group of consumers by name
-     *
-     * @param string $groupId Identifier of group
-     *
-     * @return DescribeGroupResponseMetadata
      */
-    public function describeGroup($groupId)
+    public function describeGroup(string $groupId): DescribeGroupResponseMetadata
     {
         $coordinator = $this->findCoordinator($groupId);
         $request     = new DescribeGroupsRequest([$groupId], $this->configuration[ClientConfig::CLIENT_ID]);
@@ -83,13 +76,9 @@ class AdminClient
     }
 
     /**
-     * Performs an API Versions request
-     *
-     * @param Node $node Node for querying versions
-     *
-     * @return ApiVersionsResponseMetadata[]
+     * Performs an API Versions request on given cluster node
      */
-    public function getApiVersions(Node $node)
+    public function getApiVersions(Node $node): array
     {
         $stream  = $node->getConnection($this->configuration);
         $request = new ApiVersionsRequest($this->configuration[ClientConfig::CLIENT_ID]);
@@ -106,9 +95,9 @@ class AdminClient
     /**
      * Returns all broker nodes
      *
-     * @return array|Node[]
+     * @return Node[]
      */
-    public function findAllBrokers()
+    public function findAllBrokers(): array
     {
         $request  = new MetadataRequest();
         /** @var MetadataResponse $response */
@@ -119,8 +108,9 @@ class AdminClient
 
 
     /**
-     * @return array|
-     * @return mixed[]
+     * Lists all available groups
+     *
+     * @return array|ListGroupResponseProtocol[]
      */
     public function listAllGroups(): array
     {
@@ -145,10 +135,11 @@ class AdminClient
      * @param string $groupId   Name of the group
      * @param int    $timeoutMs Timeout for looking coordinator
      *
-     * @return null|Node
-     * @throws RequestTimedOutException
+     * @throws RequestTimedOutException If command was timed out
+     *
+     * @return Node
      */
-    public function findCoordinator($groupId, $timeoutMs = 0)
+    public function findCoordinator(string $groupId, int $timeoutMs = 0): Node
     {
         $request = new GroupCoordinatorRequest($groupId, $this->configuration[ClientConfig::CLIENT_ID]);
 
@@ -172,10 +163,17 @@ class AdminClient
         if ($isNegativeResponse) {
             throw new RequestTimedOutException([
                 'error' => 'The consumer group command timed out while waiting for group to initialize',
-            ], $e ?? null);
+            ], $internalException ?? null);
         }
 
-        return $this->cluster->nodeById($response->coordinator->nodeId);
+        $node = $this->cluster->nodeById($response->coordinator->nodeId);
+        if ($node === null) {
+            throw new NotCoordinatorForGroupException([
+                'error' => "No coordinator for the group {$groupId}",
+            ]);
+        }
+
+        return $node;
     }
 
     /**
@@ -183,10 +181,11 @@ class AdminClient
      *
      * @param Node $node
      *
-     * @return array
      * @throws KafkaException
+     *
+     * @return ListGroupResponseProtocol[]
      */
-    public function listGroups(Node $node)
+    public function listGroups(Node $node): array
     {
         $stream  = $node->getConnection($this->configuration);
         $request = new ListGroupsRequest($this->configuration[ClientConfig::CLIENT_ID]);
@@ -205,12 +204,12 @@ class AdminClient
      *
      * @param string $groupId Identifier of group
      *
-     * @return OffsetFetchResponsePartition[]
+     * @return OffsetFetchResponseTopic[]
      */
-    public function listGroupOffsets($groupId)
+    public function listGroupOffsets(string $groupId): array
     {
         $coordinator = $this->findCoordinator($groupId);
-        $request     = new OffsetFetchRequest($groupId, [], $this->configuration[ClientConfig::CLIENT_ID]);
+        $request     = new OffsetFetchRequest($groupId, null, $this->configuration[ClientConfig::CLIENT_ID]);
         $stream      = $coordinator->getConnection($this->configuration);
         $request->writeTo($stream);
         $response = OffsetFetchResponse::unpack($stream);
@@ -231,7 +230,7 @@ class AdminClient
      * @return AbstractProtocolMessage
      * @throws \RuntimeException
      */
-    private function sendAnyNode(AbstractRequest $request, string $responseClass)
+    private function sendAnyNode(AbstractRequest $request, string $responseClass): AbstractProtocolMessage
     {
         foreach ($this->cluster->nodes() as $node) {
             try {

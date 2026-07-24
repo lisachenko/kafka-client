@@ -9,16 +9,15 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
+use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
  * The produce API
@@ -28,65 +27,88 @@ use Protocol\Kafka\Protocol\ApiKeys;
  *
  * The produce API uses the generic message set format, but since no offset has been assigned to the messages at the
  * time of the send the producer is free to fill in that field in any way it likes.
+ *
+ * Produce Request (Version: 3) => transactional_id acks timeout [topic_data]
+ *   transactional_id => NULLABLE_STRING
+ *   acks => INT16
+ *   timeout => INT32
+ *   topic_data => topic [data]
+ *     topic => STRING
+ *     data => partition record_set
+ *       partition => INT32
+ *       record_set => RECORDS
  */
 class ProduceRequest extends AbstractRequest
 {
     /**
      * @inheritDoc
      */
-    public const VERSION = 2;
+    protected const VERSION = 3;
+
+    /**
+     * @var ProduceRequestTopic[]
+     */
+    public $topicMessages;
 
     /**
      * ProduceRequest constructor.
      *
-     * @param array  $topicMessages List of messages in format: topic => [partition => [messages]]
-     * @param int    $requiredAcks  This field indicates how many acknowledgements the servers should receive before
-     *                              responding to the request.
-     *                              If it is 0 the server will not send any response
-     *                              (this is the only case where the server will not reply to a request).
-     *                              If it is 1, the server will wait the data is written to the local log before sending
-     *                              a response.
-     *                              If it is -1 the server will block until the message is committed by all in sync
-     *                              replicas before sending a response.
-     * @param int    $timeout       This provides a maximum time in milliseconds the server can await the receipt of the
-     *                              number of acknowledgements in RequiredAcks.
-     * @param string $clientId      ApiKeys client identifier
-     * @param int    $correlationId Correlation request ID (will be returned in the response)
+     * @param array  $topicMessages   List of messages in format: topic => [partition => [messages]]
+     * @param int    $requiredAcks    This field indicates how many acknowledgements the servers should receive before
+     *                                responding to the request.
+     *                                If it is 0 the server will not send any response
+     *                                (this is the only case where the server will not reply to a request).
+     *                                If it is 1, the server will wait the data is written to the local log before
+     *                                sending a response. If it is -1 the server will block until the message is
+     *                                committed by all in sync replicas before sending a response.
+     * @param string $transactionalId The transactional ID of the producer. This is used to authorize transaction
+     *                                produce requests. This can be null for non-transactional producers.
+     * @param int    $timeout         This provides a maximum time in milliseconds the server can await the receipt of
+     *                                the number of acknowledgements in RequiredAcks.
+     * @param string $clientId        ApiKeys client identifier
+     * @param int    $correlationId   Correlation request ID (will be returned in the response)
      */
-    public function __construct(private readonly array $topicMessages, private $requiredAcks = 1, private $timeout = 0, $clientId = '', $correlationId = 0)
-    {
+    public function __construct(
+        array $topicMessages = [],
+        private readonly int $requiredAcks = 1,
+        /**
+         * The transactional ID of the producer.
+         *
+         * This is used to authorize transaction produce requests.
+         * This can be null for non-transactional producers.
+         */
+        private readonly ?string $transactionalId = null,
+        private readonly int $timeout = 0,
+        string $clientId = '',
+        int $correlationId = 0
+    ) {
+
+        foreach ($topicMessages as $topic => $partitionMessages) {
+            $partitions = [];
+            foreach ($partitionMessages as $partition => $records) {
+                $recordBatch            = new RecordBatch($records);
+                $partitions[$partition] = new ProduceRequestPartition($partition, $recordBatch);
+            }
+
+            $this->topicMessages[$topic] = new ProduceRequestTopic($topic, $partitions);
+
+        }
+
         parent::__construct(ApiKeys::PRODUCE, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
-     *
-     * ProduceRequest => RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
-     *   RequiredAcks => int16
-     *   Timeout => int32
-     *   Partition => int32
-     *   MessageSetSize => int32
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload = parent::packPayload();
+        $header = null;
 
-        $totalTopics = count($this->topicMessages);
-        $payload .= pack('nNN', $this->requiredAcks, $this->timeout, $totalTopics);
-        foreach ($this->topicMessages as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            foreach ($partitions as $partition => $recordBatch) {
-                $recordBatchPayload = '';
-                foreach ($recordBatch as $message) {
-                    $recordBatch        = RecordBatch::fromRecord($message);
-                    $recordBatchPayload .= $recordBatch;
-                }
-                $payload .= pack('NN', $partition, strlen($recordBatchPayload));
-                $payload .= $recordBatchPayload;
-            }
-        }
-
-        return $payload;
+        return $header + [
+            'transactionalId' => BinarySchema::TYPE_NULLABLE_STRING,
+            'requiredAcks'    => BinarySchema::TYPE_INT16,
+            'timeout'         => BinarySchema::TYPE_INT32,
+            'topicMessages'   => ['topic' => ProduceRequestTopic::class],
+        ];
     }
 }

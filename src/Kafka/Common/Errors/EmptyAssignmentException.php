@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Common\Errors;
 
@@ -41,7 +41,7 @@ class EmptyAssignmentException extends RuntimeException implements ClientExcepti
      *
      * @return string[]
      */
-    public function getRequestedTopics()
+    public function getRequestedTopics(): array
     {
         return $this->requestedTopics;
     }

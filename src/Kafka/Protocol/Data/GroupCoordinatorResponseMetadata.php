@@ -9,20 +9,17 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * GroupCoordinator response data
  */
-class GroupCoordinatorResponseMetadata
+class GroupCoordinatorResponseMetadata implements BinarySchemaInterface
 {
     /**
      * The broker id.
@@ -46,19 +43,14 @@ class GroupCoordinatorResponseMetadata
     public $port;
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $coordinatorMetadata = new static();
-        [$coordinatorMetadata->nodeId, $hostLength] = array_values($stream->read("NnodeId/nhostLength"));
-
-        [$coordinatorMetadata->host, $coordinatorMetadata->port] = array_values($stream->read("a{$hostLength}host/Nport"));
-
-        return $coordinatorMetadata;
+        return [
+            'nodeId' => BinarySchema::TYPE_INT32,
+            'host'   => BinarySchema::TYPE_STRING,
+            'port'   => BinarySchema::TYPE_INT32,
+        ];
     }
 }

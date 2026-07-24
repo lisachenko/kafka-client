@@ -9,22 +9,31 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * Sync group response
+ *
+ * SyncGroup Response (Version: 1) => throttle_time_ms error_code member_assignment
+ *   throttle_time_ms => INT32
+ *   error_code => INT16
+ *   member_assignment => BYTES
  */
 class SyncGroupResponse extends AbstractResponse
 {
+    /**
+     * Duration in milliseconds for which the request was throttled due to quota violation
+     *
+     * (Zero if the request did not violate any quota)
+     *
+     * @var integer
+     */
+    public $throttleTimeMs;
+
     /**
      * Error code.
      *
@@ -35,28 +44,22 @@ class SyncGroupResponse extends AbstractResponse
     /**
      * Assigned data to the member
      *
+     * @todo This should be implemented on scheme-level as MemberAssignment
      * @var string
      */
     public $memberAssignment;
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * SyncGroupResponse => ErrorCode MemberAssignment
-     *   ErrorCode => int16
-     *   MemberAssignment => bytes
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $self->errorCode] = array_values($stream->read('NcorrelationId/nerrorCode'));
+        $header = parent::getScheme();
 
-        $self->memberAssignment = $stream->readByteArray();
-
-        return $self;
+        return $header + [
+            'throttleTimeMs'   => BinarySchema::TYPE_INT32,
+            'errorCode'        => BinarySchema::TYPE_INT16,
+            'memberAssignment' => BinarySchema::TYPE_BYTEARRAY,
+        ];
     }
 }

@@ -9,20 +9,23 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * OffsetFetch/OffsetCommit DTO
+ * OffsetFetchResponsePartition DTO
+ *
+ * OffsetFetchResponsePartition => partition offset metadata error_code
+ *   partition => INT32
+ *   offset => INT64
+ *   metadata => NULLABLE_STRING
+ *   error_code => INT16
  */
-class OffsetFetchResponsePartition implements \Stringable
+class OffsetFetchResponsePartition implements BinarySchemaInterface
 {
     /**
      * The partition this response entry corresponds to.
@@ -56,43 +59,15 @@ class OffsetFetchResponsePartition implements \Stringable
     public $errorCode;
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->offset, $metadataLength] = array_values($stream->read('Npartition/Joffset/nmetadataLength'));
-        $metadataLength = $metadataLength < 0x8000 ? $metadataLength : 0;
-        [$partition->metadata, $partition->errorCode] = array_values($stream->read("a{$metadataLength}metadata/nerrorCode"));
-
-        return $partition;
-    }
-
-    public function __toString(): string
-    {
-        $metadataLength = strlen($this->metadata);
-        $payload        = pack(
-            "NJna{$metadataLength}",
-            $this->partition,
-            $this->offset,
-            $metadataLength ?: -1,
-            $this->metadata
-        );
-
-        return $payload;
-    }
-
-    public static function fromPartitionOffset($partition, $offset, $metadata = null): static
-    {
-        $instance = new static();
-        $instance->partition = $partition;
-        $instance->offset    = $offset;
-        $instance->metadata  = $metadata;
-
-        return $instance;
+        return [
+            'partition' => BinarySchema::TYPE_INT32,
+            'offset'    => BinarySchema::TYPE_INT64,
+            'metadata'  => BinarySchema::TYPE_NULLABLE_STRING,
+            'errorCode' => BinarySchema::TYPE_INT16,
+        ];
     }
 }

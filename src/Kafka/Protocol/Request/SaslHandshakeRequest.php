@@ -9,44 +9,37 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * This request queries the supported SASL mechanisms on the broker
  */
 class SaslHandshakeRequest extends AbstractRequest
 {
-    /**
-     * @param string $mechanism
-     */
     public function __construct(/**
      * SASL Mechanism chosen by the client.
      */
-        private $mechanism,
-        $clientId = '',
-        $correlationId = 0
+        private readonly string $mechanism,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::SASL_HANDSHAKE, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload         = parent::packPayload();
-        $mechanismLength = strlen($this->mechanism);
+        $header = null;
 
-        $payload .= pack("na{$mechanismLength}", $mechanismLength, $this->mechanism);
-
-        return $payload;
+        return $header + [
+            'mechanism' => BinarySchema::TYPE_STRING,
+        ];
     }
 }

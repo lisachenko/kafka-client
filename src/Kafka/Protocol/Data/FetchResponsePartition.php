@@ -9,21 +9,29 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\IO\StringStream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Common\Record\RecordBatch;
 
 /**
- * Fetch response DTO
+ * Fetch response topic partition header
+ *
+ * partition_header => partition error_code high_watermark last_stable_offset log_start_offset [aborted_transactions]
+ *   partition => INT32
+ *   error_code => INT16
+ *   high_watermark => INT64
+ *   last_stable_offset => INT64
+ *   log_start_offset => INT64
+ *   aborted_transactions => producer_id first_offset
+ *     producer_id => INT64
+ *     first_offset => INT64
  */
-class FetchResponsePartition
+class FetchResponsePartition implements BinarySchemaInterface
 {
     /**
      * The id of the partition this response is for.
@@ -48,30 +56,75 @@ class FetchResponsePartition
      *
      * @var integer
      */
-    public $highwaterMarkOffset;
+    public $highWaterMarkOffset;
 
     /**
-     * @var array|RecordBatch[]
+     * The last stable offset (or LSO) of the partition.
+     *
+     * This is the last offset such that the state of all transactional records prior to this offset have been decided
+     * (ABORTED or COMMITTED)
+     *
+     * @since version 4
+     *
+     * @var integer
      */
-    public $recordBatch = [];
+    public $lastStableOffset;
 
     /**
-     * Unpacks the DTO from the binary buffer
+     * Earliest available offset.
      *
-     * @param Stream $stream Binary buffer
+     * @since version 5
      *
-     * @return static
+     * @var integer
      */
-    public static function unpack(Stream $stream): static
+    public $logStartOffset;
+
+    /**
+     * List of aborted transactions
+     *
+     * @since version 4
+     *
+     * @var FetchResponseAbortedTransaction[]
+     */
+    public $abortedTransactions = [];
+
+    /**
+     * @var string
+     */
+    public $recordBatchBuffer;
+
+    /**
+     * @inheritdoc
+     */
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->highwaterMarkOffset, $batchSize] = array_values($stream->read('Npartition/nerrorCode/JhighwaterMarkOffset/NmessageSetSize'));
+        return [
+            'partition'           => BinarySchema::TYPE_INT32,
+            'errorCode'           => BinarySchema::TYPE_INT16,
+            'highWaterMarkOffset' => BinarySchema::TYPE_INT64,
+            'lastStableOffset'    => BinarySchema::TYPE_INT64,
+            'logStartOffset'      => BinarySchema::TYPE_INT64,
+            'abortedTransactions' => ['producerId' => FetchResponseAbortedTransaction::class],
+            // TODO: this should be actualy dynamic array of RecordBatch::class entities
+            'recordBatchBuffer'   => BinarySchema::TYPE_BYTEARRAY,
+        ];
+    }
 
-        for ($received = 0; $received < $batchSize; $received += ($recordBatch->messageSize + 12)) {
-            $recordBatch              = RecordBatch::unpack($stream);
-            $partition->recordBatch[] = $recordBatch;
+    /**
+     * Returns collection of RecordBatches
+     *
+     * TODO: is this possible somehow to do this on BinarySchema level?
+     * @return RecordBatch[]
+     */
+    public function getRecordBatches(): array
+    {
+        $recordBatches = [];
+        // TODO: Avoid creation of temporary string buffer, this should be implemented in reader directly
+        $buffer = new StringStream($this->recordBatchBuffer);
+        while (!$buffer->isEmpty()) {
+            $recordBatches[] = BinarySchema::readObjectFromStream(RecordBatch::class, $buffer);
         }
 
-        return $partition;
+        return $recordBatches;
     }
 }

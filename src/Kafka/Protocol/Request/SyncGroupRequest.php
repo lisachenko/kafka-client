@@ -9,15 +9,14 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date   28.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
 
 /**
  * SyncGroup Request
@@ -25,78 +24,68 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * The sync group request is used by the group leader to assign state (e.g. partition assignments) to all members of
  * the current generation. All members send SyncGroup immediately after joining the group, but only the leader provides
  * the group's assignment.
+ *
+ * SyncGroupRequest => GroupId GenerationId MemberId GroupAssignment
+ *   GroupId => string
+ *   GenerationId => int32
+ *   MemberId => string
+ *   GroupAssignment => [MemberId MemberAssignment]
+ *     MemberId => string
+ *     MemberAssignment => bytes
  */
 class SyncGroupRequest extends AbstractRequest
 {
     /**
-     * @param string $consumerGroup
-     * @param int $generationId
-     * @param string $memberId
+     * @inheritDoc
+     */
+    protected const VERSION = 1;
+
+    /**
+     * List of group member assignments
+     *
+     * @var SyncGroupRequestMember[]
+     */
+    private readonly array $groupAssignments;
+
+    /**
+     * SyncGroupRequest constructor.
+     *
+     * @param string             $consumerGroup    The consumer group id
+     * @param int                $generationId     The generation of the group
+     * @param string|null        $memberId         The member id assigned by the group coordinator
+     * @param MemberAssignment[] $groupAssignments List of group member assignments
+     * @param string             $clientId         Client identifier
+     * @param int                $correlationId    Correlated request ID
      */
     public function __construct(
-        /**
-         * The consumer group id.
-         */
-        private $consumerGroup,
-        /**
-         * The generation of the group.
-         */
-        private $generationId,
-        /**
-         * The member id assigned by the group coordinator.
-         */
-        private $memberId,
-        /**
-         * List of group member assignments
-         */
-        private readonly array $groupAssignments = [],
-        $clientId = '',
-        $correlationId = 0
+        private readonly string $consumerGroup,
+        private readonly int $generationId,
+        private readonly ?string $memberId = null,
+        array $groupAssignments = [],
+        string $clientId = '',
+        int $correlationId = 0
     ) {
+        $packedGroupAssignments = [];
+        foreach ($groupAssignments as $groupMemberId => $memberAssignment) {
+            $packedGroupAssignments[$groupMemberId] = new SyncGroupRequestMember($groupMemberId, $memberAssignment);
+        }
+        $this->groupAssignments = $packedGroupAssignments;
+
         parent::__construct(ApiKeys::SYNC_GROUP, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
-     *
-     * SyncGroupRequest => GroupId GenerationId MemberId GroupAssignment
-     *   GroupId => string
-     *   GenerationId => int32
-     *   MemberId => string
-     *   GroupAssignment => [MemberId MemberAssignment]
-     *     MemberId => string
-     *     MemberAssignment => bytes
-
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload      = parent::packPayload();
-        $groupLength  = strlen($this->consumerGroup);
-        $memberLength = strlen($this->memberId);
+        $header = null;
 
-        $payload .= pack(
-            "na{$groupLength}Nna{$memberLength}N",
-            $groupLength,
-            $this->consumerGroup,
-            $this->generationId,
-            $memberLength,
-            $this->memberId,
-            count($this->groupAssignments)
-        );
-
-        foreach ($this->groupAssignments as $memberId => $memberAssignment) {
-            $memberAssignment       = (string) $memberAssignment;
-            $memberLength           = strlen($memberId);
-            $memberAssignmentLength = strlen($memberAssignment);
-            $payload .= pack(
-                "na{$memberLength}N",
-                $memberLength,
-                $memberId,
-                $memberAssignmentLength
-            );
-            $payload .= $memberAssignment;
-        }
-
-        return $payload;
+        return $header + [
+            'consumerGroup'    => BinarySchema::TYPE_STRING,
+            'generationId'     => BinarySchema::TYPE_INT32,
+            'memberId'         => BinarySchema::TYPE_NULLABLE_STRING,
+            'groupAssignments' => ['memberId' => SyncGroupRequestMember::class],
+        ];
     }
 }

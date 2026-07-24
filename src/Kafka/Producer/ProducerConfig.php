@@ -9,12 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-
-/**
- * @author Alexander.Lisachenko
- * @date   29.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Producer;
 
@@ -27,8 +22,6 @@ final class ProducerConfig extends GeneralConfig
 {
     /**
      * Default configuration for producer (should be applied on top of default config)
-     *
-     * @var array
      */
     protected static $producerConfiguration = [
         ProducerConfig::PARTITIONER_CLASS => DefaultPartitioner::class,
@@ -36,6 +29,7 @@ final class ProducerConfig extends GeneralConfig
         ProducerConfig::TIMEOUT_MS        => 2000,
         ProducerConfig::RETRIES           => 0,
         ProducerConfig::BATCH_SIZE        => 0,
+        ProducerConfig::TRANSACTIONAL_ID  => null,
 
         ProducerConfig::COMPRESSION_TYPE => 'none',
         ProducerConfig::LINGER_MS        => 0,
@@ -100,16 +94,25 @@ final class ProducerConfig extends GeneralConfig
      */
     public const string TIMEOUT_MS = 'timeout.ms';
 
-    public const string COMPRESSION_TYPE          = 'compression.type';
-    public const string LINGER_MS                 = 'linger.ms';
-    public const string MAX_REQUEST_SIZE          = 'max.request.size';
+    /**
+     * The TransactionalId to use for transactional delivery.
+     *
+     * This enables reliability semantics which span multiple producer sessions since it allows the client to guarantee
+     * that transactions using the same TransactionalId have been completed prior to starting any new transactions. If
+     * no TransactionalId is provided, then the producer is limited to idempotent delivery. Note that
+     * enable.idempotence must be enabled if a TransactionalId is configured. The default is empty, which means
+     * transactions cannot be used.
+     */
+    public const string TRANSACTIONAL_ID = 'transactional.id';
+
+    public const string COMPRESSION_TYPE = 'compression.type';
+    public const string LINGER_MS        = 'linger.ms';
+    public const string MAX_REQUEST_SIZE = 'max.request.size';
 
     /**
      * Returns default configuration for producer
-     *
-     * @return array
      */
-    public static function getDefaultConfiguration(): float|int|array
+    public static function getDefaultConfiguration(): array
     {
         return self::$producerConfiguration + parent::$generalConfiguration;
     }

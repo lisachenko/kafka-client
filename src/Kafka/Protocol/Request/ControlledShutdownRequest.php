@@ -9,49 +9,45 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-
-/**
- * @author Alexander.Lisachenko
- * @date 27.07.2014
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * This request asks for the controlled shutdown of specific broker
+ *
+ * ControlledShutdown Request (Version: 0) => broker_id
+ *   broker_id => INT32
  */
 class ControlledShutdownRequest extends AbstractRequest
 {
     /**
      * @inheritDoc
      */
-    public const VERSION = 1;
+    protected const VERSION = 1;
 
-    /**
-     * @param int $brokerId
-     */
     public function __construct(/**
      * Broker identifier to shutdown
      */
-        private $brokerId,
-        $clientId = '',
-        $correlationId = 0
+        private readonly int $brokerId,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::CONTROLLED_SHUTDOWN, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload = parent::packPayload();
+        $header = null;
 
-        $payload .= pack('N', $this->brokerId);
-
-        return $payload;
+        return $header + [
+            'brokerId' => BinarySchema::TYPE_INT32,
+        ];
     }
 }

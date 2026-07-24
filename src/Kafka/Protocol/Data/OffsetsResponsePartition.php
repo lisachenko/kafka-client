@@ -9,29 +9,23 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Offsets response DTO
  *
- * Offsets Response (Version: 1) => [responses]
- *   responses => topic [partition_responses]
- *     topic => STRING
- *     partition_responses => partition error_code timestamp offset
- *       partition => INT32
- *       error_code => INT16
- *       timestamp => INT64
- *       offset => INT64
+ * OffsetsResponsePartition => partition error_code timestamp offset
+ *   partition => INT32
+ *   error_code => INT16
+ *   timestamp => INT64
+ *   offset => INT64
  */
-class OffsetsResponsePartition
+class OffsetsResponsePartition implements BinarySchemaInterface
 {
     /**
      * The partition this response entry corresponds to.
@@ -67,17 +61,15 @@ class OffsetsResponsePartition
     public $offset;
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->timestamp, $partition->offset] = array_values($stream->read('Npartition/nerrorCode/Jtimestamp/Joffset'));
-
-        return $partition;
+        return [
+            'partition' => BinarySchema::TYPE_INT32,
+            'errorCode' => BinarySchema::TYPE_INT16,
+            'timestamp' => BinarySchema::TYPE_INT64,
+            'offset'    => BinarySchema::TYPE_INT64,
+        ];
     }
 }

@@ -9,12 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -25,7 +20,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
  */
 class ApiVersionsRequest extends AbstractRequest
 {
-    public function __construct($clientId = '', $correlationId = 0)
+    public function __construct(string $clientId = '', int $correlationId = 0)
     {
         parent::__construct(ApiKeys::API_VERSIONS, $clientId, $correlationId);
     }

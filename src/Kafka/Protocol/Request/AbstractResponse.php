@@ -9,16 +9,12 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * Basic class for all responses
@@ -26,9 +22,13 @@ use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 abstract class AbstractResponse extends AbstractProtocolMessage
 {
     /**
-     * A user-supplied integer value that will be passed back with the response (INT32)
-     *
-     * @var integer
+     * @inheritdoc
      */
-    public $correlationId;
+    public static function getScheme(): array
+    {
+        return [
+            'messageSize'   => BinarySchema::TYPE_INT32,
+            'correlationId' => BinarySchema::TYPE_INT32,
+        ];
+    }
 }

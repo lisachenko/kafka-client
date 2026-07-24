@@ -9,16 +9,11 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
 
 /**
@@ -41,22 +36,15 @@ class GroupCoordinatorResponse extends AbstractResponse
     public $coordinator;
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [
-            $self->correlationId,
-            $self->errorCode,
-        ] = array_values($stream->read("NcorrelationId/nerrorCode"));
+        $header = parent::getScheme();
 
-        $self->coordinator = GroupCoordinatorResponseMetadata::unpack($stream);
-
-        return $self;
+        return $header + [
+            'errorCode'   => BinarySchema::TYPE_INT16,
+            'coordinator' => GroupCoordinatorResponseMetadata::class,
+        ];
     }
 }

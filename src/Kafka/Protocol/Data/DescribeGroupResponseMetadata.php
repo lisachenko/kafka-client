@@ -9,20 +9,25 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 28.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * DescribeGroup metadata DTO
+ *
+ * DescibeGroupMetadata => error_code group_id state protocol_type protocol [members]
+ *   error_code => INT16
+ *   group_id => STRING
+ *   state => STRING
+ *   protocol_type => STRING
+ *   protocol => STRING
+ *   members => member_id client_id client_host member_metadata member_assignment
  */
-class DescribeGroupResponseMetadata
+class DescribeGroupResponseMetadata implements BinarySchemaInterface
 {
     /**
      * Error code for the group
@@ -63,41 +68,22 @@ class DescribeGroupResponseMetadata
     /**
      * Current group members (only provided if the group is not Dead)
      *
-     * @var array
+     * @var DescribeGroupResponseMember[]
      */
     public $members = [];
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     *
-     * DescibeGroupMetadata => error_code group_id state protocol_type protocol [members]
-     *   error_code => INT16
-     *   group_id => STRING
-     *   state => STRING
-     *   protocol_type => STRING
-     *   protocol => STRING
-     *   members => member_id client_id client_host member_metadata member_assignment
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $groupMetadata = new static();
-
-        $groupMetadata->errorCode    = $stream->read('nerrorCode')['errorCode'];
-        $groupMetadata->groupId      = $stream->readString();
-        $groupMetadata->state        = $stream->readString();
-        $groupMetadata->protocolType = $stream->readString();
-        $groupMetadata->protocol     = $stream->readString();
-
-        $membersCount = $stream->read('NmembersCount')['membersCount'];
-        for ($memberIndex = 0; $memberIndex < $membersCount; $memberIndex++) {
-            $member = DescribeGroupResponseMember::unpack($stream);
-            $groupMetadata->members[$member->memberId] = $member;
-        }
-
-        return $groupMetadata;
+        return [
+            'errorCode'    => BinarySchema::TYPE_INT16,
+            'groupId'      => BinarySchema::TYPE_STRING,
+            'state'        => BinarySchema::TYPE_STRING,
+            'protocolType' => BinarySchema::TYPE_STRING,
+            'protocol'     => BinarySchema::TYPE_STRING,
+            'members'      => ['memberId' => DescribeGroupResponseMember::class],
+        ];
     }
 }

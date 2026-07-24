@@ -9,12 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-
-/**
- * @author Alexander.Lisachenko
- * @date   26.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\IO;
 
@@ -27,57 +22,69 @@ interface Stream
      * @param array  ...$arguments List of arguments for packing
      *
      * @see pack() manual for format
-     *
-     * @return void
      */
-    public function write($format, ...$arguments);
+    public function write(string $format, ...$arguments): void;
 
     /**
-     * Reads information from the stream, advanced internal pointer
-     *
-     * @param string $format Format for unpacking arguments
-     * @see unpack() manual for format
+     * Reads information from the stream, advance internal stream pointer
      *
      * @return array List of unpacked arguments
+     * @see unpack() manual for format
      */
-    public function read($format);
+    public function read(string $format): array;
 
     /**
      * Reads a string from the stream
-     *
-     * @return string
      */
-    public function readString();
+    public function readString(): string;
 
     /**
      * Reads a byte array from the stream
      *
-     * @return string
+     * @return string|null
      */
-    public function readByteArray();
+    public function readByteArray(): ?string;
+
+    /**
+     * Reads a varint value from the stream
+     */
+    public function readVarint(): int;
 
     /**
      * Writes the string to the stream
      *
      * @param string $string
-     *
-     * @return mixed
      */
-    public function writeString($string);
+    public function writeString(string $string): void;
 
     /**
-     * Writes the string to the stream
+     * Writes the byte array to the stream
      *
      * @param string $data Binary data
-     *
-     * @return mixed
      */
-    public function writeByteArray($data);
+    public function writeByteArray(?string $data): void;
 
     /**
      * Checks whether we are actually connected to server
-     *
-     * @return bool
      */
-    public function isConnected();
+    public function isConnected(): bool;
+
+    /**
+     * Writes the varint value to the stream
+     *
+     * @param int $value
+     */
+    public function writeVarint(int $value): void;
+
+    /**
+     * Writes the raw buffer into the stream as-is
+     *
+     * @param string|null $buffer
+     */
+    public function writeBuffer(?string $buffer): void;
+
+    /**
+     * Checks if stream is empty
+     */
+    public function isEmpty(): bool;
 }

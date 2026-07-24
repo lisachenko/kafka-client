@@ -9,15 +9,12 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * LeaveGroup Request
@@ -25,43 +22,36 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * To explicitly leave a group, the client can send a leave group request. This is preferred over letting the session
  * timeout expire since it allows the group to rebalance faster, which for the consumer means that less time will
  * elapse before partitions can be reassigned to an active member.
+ *
+ * LeaveGroup Request (Version: 0) => group_id member_id
+ *   group_id => STRING
+ *   member_id => STRING
  */
 class LeaveGroupRequest extends AbstractRequest
 {
-    /**
-     * @param string $consumerGroup
-     * @param string $memberId
-     */
     public function __construct(/**
      * The consumer group id.
      */
-        private $consumerGroup, /**
+        private readonly string $consumerGroup, /**
      * The member id assigned by the group coordinator.
      */
-        private $memberId,
-        $clientId = '',
-        $correlationId = 0
+        private readonly string $memberId,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::LEAVE_GROUP, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload      = parent::packPayload();
-        $groupLength  = strlen($this->consumerGroup);
-        $memberLength = strlen($this->memberId);
+        $header = null;
 
-        $payload .= pack(
-            "na{$groupLength}na{$memberLength}",
-            $groupLength,
-            $this->consumerGroup,
-            $memberLength,
-            $this->memberId
-        );
-
-        return $payload;
+        return $header + [
+            'consumerGroup' => BinarySchema::TYPE_STRING,
+            'memberId'      => BinarySchema::TYPE_STRING,
+        ];
     }
 }

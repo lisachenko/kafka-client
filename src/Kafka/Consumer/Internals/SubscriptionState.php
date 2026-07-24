@@ -9,12 +9,13 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Consumer\Internals;
 
 use InvalidArgumentException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
  * Class SubscriptionState
@@ -69,10 +70,8 @@ final class SubscriptionState
 
     /**
      * Return type of this subscription
-     *
-     * @return int
      */
-    public function getSubscriptionType()
+    public function getSubscriptionType(): int
     {
         return $this->subscriptionType;
     }
@@ -80,9 +79,7 @@ final class SubscriptionState
     /**
      * Assigns partitions manually
      *
-     * @param array $topicPartitions Array in form string => int[], where key is topic name and value is array of partitions
-     *
-     * @return void
+     * @param PartitionsForTopic[] $topicPartitions Array where key is topic name and value DTO with partitions
      */
     public function assignFromUser(array $topicPartitions): void
     {
@@ -94,8 +91,6 @@ final class SubscriptionState
      * Subscribes to list of given topics
      *
      * @param string[] $topics List of topics to subscribe
-     *
-     * @return void
      */
     public function subscribeByTopics(array $topics): void
     {
@@ -106,24 +101,22 @@ final class SubscriptionState
     /**
      * Assigns topic-partitions from data, received from group-coordinator
      *
-     * @param array $assignments Array where key is the topic name, and value is array of partitions
-     *
-     * @return void
+     * @param PartitionsForTopic[] $assignments Array where key is the topic name and value DTO with partitions
      */
     public function assignFromSubscribed(array $assignments): void
     {
         if (!$this->partitionsAutoAssigned()) {
-            throw new InvalidArgumentException("Attempt to dynamically assign partitions while manual assignment in use");
+            throw new InvalidArgumentException('Attempt to dynamically assign partitions while manual assignment in use');
         }
 
         if ($this->subscribedPattern !== null) {
             $topicPartitionMessage = '';
-            foreach ($assignments as $topic => $partitions) {
+            foreach ($assignments as $topic => $topicPartitions) {
                 if (!preg_match($this->subscribedPattern, $topic)) {
                     $topicPartitionMessage .= sprintf(
                         "topic \"%s\", partitions: %s\n",
                         $topic,
-                        implode(', ', $partitions)
+                        implode(', ', $topicPartitions->partitions)
                     );
                 }
             }
@@ -138,14 +131,15 @@ final class SubscriptionState
                 );
             }
         } else {
+            /** @var PartitionsForTopic[] $unknownTopics */
             $unknownTopics = array_diff_key($assignments, $this->subscription);
-            if ($unknownTopics !== []) {
+            if (!empty($unknownTopics)) {
                 $topicPartitionMessage = '';
-                foreach ($unknownTopics as $topic => $partitions) {
+                foreach ($unknownTopics as $topic => $topicPartitions) {
                     $topicPartitionMessage .= sprintf(
                         "topic \"%s\", partitions: %s\n",
                         $topic,
-                        implode(', ', $partitions)
+                        implode(', ', $topicPartitions->partitions)
                     );
                 }
                 throw new InvalidArgumentException(
@@ -173,28 +167,22 @@ final class SubscriptionState
 
     /**
      * Return array indexed by topic name and value with assigned partitions, if this is manual subscription
-     *
-     * @return array
      */
-    public function getAssignment()
+    public function getAssignment(): array
     {
         return $this->assignment;
     }
 
     /**
-     * Return pattern regex for subscribed topics in case if consumer is subscribed by pattern
-     *
-     * @return string|null
+     * Return pattern regex for subscribed topics in case if consumer is subscribed by pattern or null if no pattern
      */
-    public function getSubscribedPattern()
+    public function getSubscribedPattern(): ?string
     {
         return $this->subscribedPattern;
     }
 
     /**
      * Unsubscribe from all previous settings
-     *
-     * @return void
      */
     public function unsubscribe(): void
     {
@@ -206,26 +194,21 @@ final class SubscriptionState
 
     /**
      * Test if given topic-partition is assigned to this subscription
-     *
-     * @param string $topic     Topic name
-     * @param int    $partition Partition within given topic
-     *
-     * @return bool
      */
-    public function isAssigned($topic, $partition): bool
+    public function isAssigned(string $topic, int $partition): bool
     {
         return isset($this->assignment[$topic][$partition]);
     }
 
     /**
      * Return true if this is an auto-assigned subscription, false otherwise
-     *
-     * @return bool
      */
     public function partitionsAutoAssigned(): bool
     {
-        return $this->subscriptionType === self::TYPE_AUTO_PATTERN ||
-            $this->subscriptionType === self::TYPE_AUTO_TOPICS;
+        $isAutoPattern = $this->subscriptionType === self::TYPE_AUTO_PATTERN;
+        $isAutoTopics  = $this->subscriptionType === self::TYPE_AUTO_TOPICS;
+
+        return $isAutoPattern || $isAutoTopics;
     }
 
     /**
@@ -267,7 +250,7 @@ final class SubscriptionState
     }
 
     /**
-     * Overrides the fetch offsets that the consumer will use on the next poll(timeout).
+     * Overrides the fetch offsets that the consumer will use on the next poll().
      *
      * @param string  $topic     Name of the topic
      * @param integer $partition Id of partition
@@ -275,7 +258,7 @@ final class SubscriptionState
      *
      * @return void
      */
-    public function seek($topic, $partition, $offset): void
+    public function seek(string $topic, int $partition, int $offset): void
     {
         if (!$this->isAssigned($topic, $partition)) {
             throw new UnknownTopicOrPartitionException(['topic' => $topic, 'partition' => $partition]);
@@ -286,13 +269,8 @@ final class SubscriptionState
 
     /**
      * Get the offset of the next record that will be fetched (if a record with that offset exists).
-     *
-     * @param string $topic Name of the topic
-     * @param integer $partition Id of partition
-     *
-     * @return integer
      */
-    public function position($topic, $partition)
+    public function position(string $topic, int $partition): int
     {
         if (!$this->isAssigned($topic, $partition)) {
             throw new UnknownTopicOrPartitionException(['topic' => $topic, 'partition' => $partition]);
@@ -305,8 +283,6 @@ final class SubscriptionState
      * Pause consumption for given topic and partition
      *
      * @param array $topicPartitions Array of topic-partitions to pause
-     *
-     * @return void
      */
     public function pause(array $topicPartitions): void
     {
@@ -317,8 +293,6 @@ final class SubscriptionState
      * Resume consumption for given topic and partition
      *
      * @param array $topicPartitions Array of topic-partitions to resume
-     *
-     * @return void
      */
     public function resume(array $topicPartitions): void
     {
@@ -329,8 +303,6 @@ final class SubscriptionState
      * Changes type of this state
      *
      * @param int $type New type, must be one of self::TYPE_* constants
-     *
-     * @return void
      */
     private function setSubscriptionType(int $type): void
     {
@@ -340,7 +312,7 @@ final class SubscriptionState
 
         if ($this->subscriptionType !== $type) {
             throw new InvalidArgumentException(
-                "Subscription to topics, partitions and pattern are mutually exclusive"
+                'Subscription to topics, partitions and pattern are mutually exclusive'
             );
         }
     }
@@ -348,16 +320,16 @@ final class SubscriptionState
     /**
      * Sets assignment for this subscription
      *
-     * @param array $assignment Assignment in form [topic name:string][partition:int] -> state
-     *
-     * @return void
+     * @var PartitionsForTopic[] $assignment Array where key is topic name and value DTO with partitions
      */
     private function setAssignment(array $assignment): void
     {
         $targetAssignment = [];
-        foreach ($assignment as $topic => $partitions) {
-            foreach ($partitions as $partitionId => $noMatter) {
-                $targetAssignment[$topic][$partitionId] = $this->assignment[$topic][$partitionId] ?? ['position' => null, 'isPaused' => false];
+        foreach ($assignment as $topic => $topicPartitions) {
+            foreach ($topicPartitions->partitions as $partitionId) {
+                $assignment = $this->assignment[$topic][$partitionId] ?? ['position' => null, 'isPaused' => false];
+
+                $targetAssignment[$topic][$partitionId] = $assignment;
             }
         }
 
@@ -366,17 +338,13 @@ final class SubscriptionState
 
     /**
      * Return string containing all current assignments
-     *
-     * @param string $separator Separator between assignments
-     *
-     * @return string
      */
-    private function formatAssignment($separator = ', '): string
+    private function formatAssignment(string $separator = ', '): string
     {
         $result = '';
         foreach ($this->assignment as $topic => $partitions) {
             foreach ($partitions as $partition => $state) {
-                $result .= sprintf("%s:%s%s", $topic, $partition, $separator);
+                $result .= sprintf('%s:%s%s', $topic, $partition, $separator);
             }
         }
 
@@ -388,8 +356,6 @@ final class SubscriptionState
      *
      * @param array $topicPartitions Array of topic-partitions to pause/resume
      * @param bool  $isPaused        Flag whether we want to pause (true) or resume (false) consumption
-     *
-     * @return void
      */
     private function pauseConsumption(array $topicPartitions, bool $isPaused): void
     {

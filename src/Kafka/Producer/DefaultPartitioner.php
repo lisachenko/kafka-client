@@ -9,11 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date   29.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Producer;
 
@@ -40,7 +36,7 @@ class DefaultPartitioner implements PartitionerInterface
      *
      * @return integer
      */
-    public function partition($topic, $key, $value, Cluster $cluster): int
+    public function partition(string $topic, ?string $key, ?string $value, Cluster $cluster): int
     {
         $partitions      = $cluster->partitionsForTopic($topic);
         $totalPartitions = count($partitions);

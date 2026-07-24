@@ -9,15 +9,14 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 
 /**
  * Fetch API
@@ -42,27 +41,65 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * moved to the server side and accessed more conveniently. A simple consumer client can be implemented by simply
  * requiring that the partitions be specified in config, though this will not allow dynamic reassignment of partitions
  * should that consumer fail. We hope to address this gap in the next major release.
+ *
+ * Fetch Request (Version: 5) => replica_id max_wait_time min_bytes max_bytes isolation_level [topics]
+ *   replica_id => INT32
+ *   max_wait_time => INT32
+ *   min_bytes => INT32
+ *   max_bytes => INT32
+ *   isolation_level => INT8
+ *   topics => topic [partitions]
+ *     topic => STRING
+ *     partitions => partition fetch_offset log_start_offset max_bytes
+ *       partition => INT32
+ *       fetch_offset => INT64
+ *       log_start_offset => INT64
+ *       max_bytes => INT32
+ *
+ * @deprecated since 0.11.0.0
  */
 class FetchRequest extends AbstractRequest
 {
     /**
-     * @inheritDoc
+     * With READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED transactional records are visible.
+     *
+     * @see $isolationLevel
      */
-    public const VERSION = 3;
+    public const READ_COMMITTED = 1;
 
     /**
-     * @param int $maxWaitTime
-     * @param int $minBytes
-     * @param int $maxBytes
-     * @param int $replicaId
+     * Using READ_UNCOMMITTED (isolation_level = 0) makes all records visible.
+     *
+     * @see $isolationLevel
      */
+    public const READ_UNCOMMITTED = 0;
+
+    /**
+     * @inheritDoc
+     */
+    protected const VERSION = 5;
+
+    private ?array $topicPartitions = null;
+
+    /**
+     * Maximum bytes to accumulate in the response.
+     *
+     * Note that this is not an absolute maximum, if the first message in the first non-empty partition of the
+     * fetch is larger than this value, the message will still be returned to ensure that progress can be made.
+     *
+     * This value previously was only in partition.max_bytes property, now it packed into own field too
+     *
+     * @since 0.10.1.0
+     */
+    private readonly int $maxBytes;
+
     public function __construct(
-        private readonly array $topicPartitions,
+        array $topicPartitions,
         /**
          * The max wait time is the maximum amount of time in milliseconds to block waiting if insufficient data is
          * available at the time the request is issued.
          */
-        private $maxWaitTime,
+        private readonly int $maxWaitTime,
         /**
          * This is the minimum number of bytes of messages that must be available to give a response.
          *
@@ -74,54 +111,56 @@ class FetchRequest extends AbstractRequest
          * large chunks of data (e.g. setting MaxWaitTime to 100 ms and setting MinBytes to 64k would allow the server to
          * wait up to 100ms to try to accumulate 64k of data before responding).
          */
-        private $minBytes,
+        private readonly int $minBytes,
+        int $maxBytes,
         /**
-         * Maximum bytes to accumulate in the response.
+         * This setting controls the visibility of transactional records.
          *
-         * Note that this is not an absolute maximum, if the first message in the first non-empty partition of the
-         * fetch is larger than this value, the message will still be returned to ensure that progress can be made.
+         * Using READ_UNCOMMITTED (isolation_level = 0) makes all records visible.
+         * With READ_COMMITTED (isolation_level = 1), non-transactional and COMMITTED transactional records are visible.
          *
-         * This value previously was only in partition.max_bytes property, now it packed into own field too
+         * To be more concrete, READ_COMMITTED returns all data from offsets smaller than the current LSO (last stable
+         * offset), and enables the inclusion of the list of aborted transactions in the result, which allows consumers to
+         * discard ABORTED transactional records
          *
-         * @since 0.10.1.0
+         * @since 0.11.0.0
          */
-        private $maxBytes,
+        private readonly int $isolationLevel = self::READ_UNCOMMITTED,
         /**
          * The replica id indicates the node id of the replica initiating this request. Normal client consumers should
          * always specify this as -1 as they have no node id. Other brokers set this to be their own node id. The value -2
          * is accepted to allow a non-broker to issue fetch requests as if it were a replica broker for debugging purposes.
          */
-        private $replicaId = -1,
-        $clientId = '',
-        $correlationId = 0
+        private readonly int $replicaId = -1,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
+        foreach ($topicPartitions as $topic => $partitionOffset) {
+            $partitions = [];
+            foreach ($partitionOffset as $partition => $offset) {
+                $partitions[$partition] = new FetchRequestTopicPartition($partition, $offset, $maxBytes);
+            }
+            $this->topicPartitions[$topic] = new FetchRequestTopic($topic, $partitions);
+        }
+        $this->maxBytes       = $maxBytes;
+
         parent::__construct(ApiKeys::FETCH, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload     = parent::packPayload();
-        $totalTopics = count($this->topicPartitions);
+        $header = null;
 
-        $payload .= pack(
-            'NNNNN',
-            $this->replicaId,
-            $this->maxWaitTime,
-            $this->minBytes,
-            $this->maxBytes,
-            $totalTopics
-        );
-        foreach ($this->topicPartitions as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            foreach ($partitions as $partitionId => $offset) {
-                $payload .= pack('NJN', $partitionId, $offset, $this->maxBytes);
-            }
-        }
-
-        return $payload;
+        return $header + [
+            'replicaId'       => BinarySchema::TYPE_INT32,
+            'maxWaitTime'     => BinarySchema::TYPE_INT32,
+            'minBytes'        => BinarySchema::TYPE_INT32,
+            'maxBytes'        => BinarySchema::TYPE_INT32,
+            'isolationLevel'  => BinarySchema::TYPE_INT8,
+            'topicPartitions' => ['topic' => FetchRequestTopic::class],
+        ];
     }
 }

@@ -9,15 +9,12 @@
  * file that was distributed with this source code.
  */
 
-declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
+declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * This API answers the following questions:
@@ -43,43 +40,27 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritDoc
      */
-    public const VERSION = 2;
+    protected const VERSION = 2;
 
     public function __construct(/**
      * An array of topics to fetch metadata for. If no topics are specified fetch metadata for all topics.
      */
-        protected array $topics = [],
-        $clientId = '',
-        $correlationId = 0
+        protected ?array $topics = null,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::METADATA, $clientId, $correlationId);
     }
 
     /**
-     * @return array
+     * @inheritdoc
      */
-    public function getTopics(): array
+    public static function getScheme(): array
     {
-        return explode(' ', $this->topics);
-    }
+        $header = null;
 
-    /**
-     * @inheritDoc
-     */
-    protected function packPayload(): string
-    {
-        $payload = parent::packPayload();
-
-        $totalTopics = count($this->topics);
-        if ($totalTopics === 0) {
-            $totalTopics = -1; // Since v1 we should use null for special value
-        }
-        $payload .= pack('N', $totalTopics);
-        foreach ($this->topics as $topic) {
-            $length = strlen($topic);
-            $payload .= pack("na{$length}", $length, $topic);
-        }
-
-        return $payload;
+        return $header + [
+            'topics' => [BinarySchema::TYPE_STRING, BinarySchema::FLAG_NULLABLE => true],
+        ];
     }
 }
