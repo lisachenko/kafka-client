@@ -20,54 +20,51 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\RestorableTrait;
 use Protocol\Kafka\Common\TopicMetadata;
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 
 /**
  * Metadata response object
+ *
+ * <pre>
+ *   MetadataResponse => [Broker][TopicMetadata]
+ * </pre>
+ *
+ * Version 0 has neither a `ClusterId` (added in 0.10.1) nor a `ControllerId` (added in version 1 of this API).
+ *
+ * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
+ * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
+ *
+ * @see docs/protocol/0.8.2.md, sections "Metadata API (key 3, v0)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
     use RestorableTrait;
 
     /**
-     * List of broker metadata info
+     * List of broker metadata info, indexed by the node id
      *
-     * @var array|Node[]
+     * @var array<int, Node>
      */
-    public $brokers = [];
+    public array $brokers = [];
 
     /**
-     * List of topics
+     * List of topics, indexed by the topic name
      *
-     * @var array|TopicMetadata[]
+     * @var array<string, TopicMetadata>
      */
-    public $topics = [];
+    public array $topics = [];
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $numberOfBrokers] = array_values($stream->read('NcorrelationId/NnumberOfBrokers'));
+        $header = parent::getScheme();
 
-        for ($broker = 0; $broker < $numberOfBrokers; $broker++) {
-            $brokerNode = Node::unpack($stream);
-
-            $self->brokers[$brokerNode->nodeId] = $brokerNode;
-        }
-        $numberOfTopics = $stream->read('NnumberOfTopics')['numberOfTopics'];
-
-        for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicMetadata = TopicMetadata::unpack($stream);
-
-            $self->topics[$topicMetadata->topic] = $topicMetadata;
-        }
-        return $self;
+        return $header + [
+            // Both arrays are indexed by the field the cluster looks an entry up by: Cluster::nodeById() resolves a
+            // partition leader by its broker id and Cluster::partitionsForTopic() a topic by its name
+            'brokers' => ['nodeId' => Node::class],
+            'topics'  => ['topic' => TopicMetadata::class],
+        ];
     }
 }

@@ -20,6 +20,7 @@ namespace Protocol\Kafka;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
@@ -65,22 +66,56 @@ class Client
      *
      * @param array $topicPartitionMessages List of messages for each topic and partition
      *
-     * @return ProduceResponse
+     * @return array Accepted partitions in the form [topic => [partition => ProduceResponsePartition]], empty for
+     *               a fire-and-forget request (acks = 0), which the broker never answers
      */
     public function produce(array $topicPartitionMessages)
     {
-        $result = $this->clusterRequest($topicPartitionMessages, function (array $nodeTopicPartitionMessages): ProduceRequest {
-            $request = new ProduceRequest(
-                $nodeTopicPartitionMessages,
-                $this->configuration[ProducerConfig::ACKS],
-                $this->configuration[ProducerConfig::TIMEOUT_MS],
-                $this->configuration[ProducerConfig::CLIENT_ID]
-            );
+        $requiredAcks = (int) $this->configuration[ProducerConfig::ACKS];
 
-            return $request;
-        }, ProduceResponse::class, function (array $result, ProduceResponse $response): array {
-            /** @var ProduceResponsePartition[] $partitions */
-            foreach ($response->topics as $topic => $partitions) {
+        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.8.2.md
+        // TODO: build it with Common\Record\MessageSet::fromRecords() once the message set of T3 (#4) is merged
+        $topicPartitionMessageSets = [];
+        foreach ($topicPartitionMessages as $topic => $partitionMessages) {
+            foreach ($partitionMessages as $partition => $messages) {
+                $messageSetBuffer = '';
+                foreach ($messages as $message) {
+                    $messageSetBuffer .= RecordBatch::fromMessage($message);
+                }
+                $topicPartitionMessageSets[$topic][$partition] = $messageSetBuffer;
+            }
+        }
+
+        $createRequest = fn(array $nodeTopicPartitionMessageSets): ProduceRequest => new ProduceRequest(
+            $nodeTopicPartitionMessageSets,
+            $requiredAcks,
+            $this->configuration[ProducerConfig::TIMEOUT_MS],
+            $this->configuration[ProducerConfig::CLIENT_ID]
+        );
+
+        // acks = 0 is the only request of the protocol that the broker does not answer, so nothing may be read back
+        // from those connections, see ProduceRequest::expectsResponse()
+        if ($requiredAcks === ProduceRequest::ACKS_NONE) {
+            $messageSetsByNode = [];
+            foreach ($topicPartitionMessageSets as $topic => $partitionMessageSets) {
+                foreach ($partitionMessageSets as $partition => $messageSet) {
+                    $leaderNode = $this->cluster->leaderFor($topic, $partition);
+
+                    $messageSetsByNode[$leaderNode->nodeId][$topic][$partition] = $messageSet;
+                }
+            }
+            foreach ($messageSetsByNode as $nodeId => $nodeTopicPartitionMessageSets) {
+                $stream = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
+                $createRequest($nodeTopicPartitionMessageSets)->writeTo($stream);
+            }
+
+            return [];
+        }
+
+        $result = $this->clusterRequest($topicPartitionMessageSets, $createRequest, ProduceResponse::class, function (array $result, ProduceResponse $response): array {
+            foreach ($response->topics as $topic => $topicResult) {
+                /** @var ProduceResponsePartition[] $partitions */
+                $partitions = $topicResult->partitions;
                 foreach ($partitions as $partitionId => $partitionInfo) {
                     if ($partitionInfo->errorCode !== 0) {
                         throw KafkaException::fromCode($partitionInfo->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
