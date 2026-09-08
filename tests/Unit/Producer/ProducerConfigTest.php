@@ -81,7 +81,7 @@ final class ProducerConfigTest extends TestCase
     public function testAnUnsupportedCompressionTypeIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);
-        // 0.8.2.2 knows the lz4 codec, but this client neither writes nor reads it
+        // 0.9.0.1 knows the lz4 codec, but this client neither writes nor reads it
         $this->expectExceptionMessage('none, gzip, snappy');
 
         ProducerConfig::compressionCodec('lz4');

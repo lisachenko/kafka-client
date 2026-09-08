@@ -23,9 +23,12 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
+use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
+use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\FetchedPartition;
@@ -50,6 +53,12 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
+use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
+use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
@@ -60,12 +69,16 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
+use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 
 /**
- * Low-level client for the Kafka 0.8.2.2 protocol.
+ * Low-level client for the Kafka 0.9.0.1 protocol.
  *
- * Kafka 0.8 has no broker-side group membership (the API keys 11-14 were only added in 0.9), therefore this client
- * only speaks Produce, Fetch, Offsets, OffsetCommit, OffsetFetch and GroupCoordinator (ConsumerMetadata in 0.8.2).
+ * Every api is sent with the highest version a 0.9.0.1 broker serves: Produce v1 and Fetch v1, whose answers carry
+ * the throttle time of a quota, OffsetCommit v2 with its `retention_time`, and OffsetCommit v0 when the offsets are
+ * stored in ZooKeeper. The version 0 classes of those apis stay usable directly, for a client that has to talk to a
+ * 0.8 broker.
  *
  * Every request that addresses topic-partitions is split by their current leader and sent to all of those brokers
  * at once; the answers are collected with `stream_select()` as they arrive. A topic-partition whose leader answered
@@ -74,7 +87,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/0.8.2.md
+ * @see docs/protocol/0.9.0.md
  */
 class Client
 {
@@ -97,6 +110,9 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
+     * The request goes out as Produce v1, so every accepted partition also carries the `throttleTimeMs` the broker
+     * reported for the answer it arrived in; without a `producer_byte_rate` quota that is always 0.
+     *
      * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
      *        each topic and partition
      *
@@ -116,7 +132,7 @@ class Client
             $this->configuration[ProducerConfig::COMPRESSION_TYPE] ?? ProducerConfig::COMPRESSION_TYPE_NONE
         );
 
-        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.8.2.md
+        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.9.0.md
         $topicPartitionMessageSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
@@ -160,6 +176,10 @@ class Client
                             );
                             continue;
                         }
+                        // Version 1 reports one ThrottleTime for the whole answer, and a batch is split by
+                        // partition leaders, so the value of this answer is carried onto every partition of it
+                        $partitionInfo->throttleTimeMs = $response->throttleTime;
+
                         $result[$topic][$partitionId] = $partitionInfo;
                     }
                 }
@@ -197,8 +217,11 @@ class Client
      *
      * A consumer needs more than the records to drive its fetch loop: the high water mark of a partition tells it
      * how far behind the end of the log it is, and a message that is larger than `max.partition.fetch.bytes` makes
-     * a 0.8.2.2 broker answer without an error and without a single complete message, which would turn a naive
-     * fetch loop into an endless one, see {@see FetchedPartition::isSingleMessageTooLarge()}.
+     * the broker answer without an error and without a single complete message, which would turn a naive fetch loop
+     * into an endless one, see {@see FetchedPartition::isSingleMessageTooLarge()}.
+     *
+     * The request goes out as Fetch v1, so every returned partition also carries the `throttleTimeMs` the broker
+     * reported for the answer it belongs to; without quotas that is always 0.
      *
      * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
      * @param int                            $timeout               Timeout in ms to wait for fetching
@@ -256,7 +279,8 @@ class Client
                             $responsePartition->errorCode,
                             $responsePartition->highWaterMarkOffset,
                             $messageSet,
-                            $responsePartition->isSingleMessageTooLarge($fetchOffset)
+                            $responsePartition->isSingleMessageTooLarge($fetchOffset),
+                            $response->throttleTimeMs
                         );
                     }
                 }
@@ -314,23 +338,40 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option: version 1 stores the offsets in the
+     * The version of the request follows the `offsets.storage` option: version 2 stores the offsets in the
      * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group, version 0 stores
      * them in ZooKeeper and is answered by any broker. An offset may be given as a plain integer or as an
      * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch.
      *
-     * @param Node                                                       $coordinatorNode       Current offset
-     *        coordinator for $groupId
-     * @param string                                                     $groupId               Name of the group
-     * @param array<string, array<int, int|OffsetAndMetadata>>           $topicPartitionOffsets Offsets to commit
+     * `$retentionTimeMs` is the `retention_time` field of the v2 request: with
+     * {@see OffsetCommitRequest::DEFAULT_RETENTION_TIME} the broker keeps the offsets for `offsets.retention.minutes`
+     * counted from its receive time, any other value replaces that retention for this commit. The ZooKeeper version
+     * has no such field and ignores it. A client that is not a member of a group commits with
+     * {@see OffsetCommitRequest::DEFAULT_GENERATION_ID} and {@see OffsetCommitRequest::DEFAULT_MEMBER_NAME}; a member
+     * of a group has to pass the generation and the member id the coordinator assigned to it, otherwise the
+     * coordinator answers with 22 (IllegalGeneration) or 25 (UnknownMemberId).
+     *
+     * @param Node                                             $coordinatorNode       Current offset coordinator for
+     *        $groupId
+     * @param string                                           $groupId               Name of the group
+     * @param string                                           $memberId              Member id inside the group
+     * @param int                                              $generationId          Generation of the group
+     * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
+     * @param int                                              $retentionTimeMs       How long the broker keeps them
      *
      * @throws Common\Errors\OffsetMetadataTooLargeException
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
      */
-    public function commitGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitionOffsets): void
-    {
+    public function commitGroupOffsets(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $generationId,
+        array $topicPartitionOffsets,
+        int $retentionTimeMs
+    ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         $this->coordinatorRequest(
@@ -338,8 +379,9 @@ class Client
             fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
                 ? new OffsetCommitRequest(
                     $groupId,
-                    OffsetCommitRequest::DEFAULT_GENERATION_ID,
-                    OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+                    $generationId,
+                    $memberId,
+                    $retentionTimeMs,
                     $topicPartitionOffsets,
                     $clientId,
                     $correlationId
@@ -365,9 +407,10 @@ class Client
     /**
      * Fetches the offsets for topic partition for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}.
-     * A topic-partition that has never been committed comes back with the offset -1: as the error code 0 from the
-     * `__consumer_offsets` topic (v1), and as the error code 3 from ZooKeeper (v0).
+     * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}
+     * - OffsetFetch itself did not change in 0.9, its v2 is Kafka 0.10.2. A topic-partition that has never been
+     * committed comes back with the offset -1: as the error code 0 from the `__consumer_offsets` topic (v1), and as
+     * the error code 3 from ZooKeeper (v0).
      *
      * @param Node                          $coordinatorNode Current offset coordinator for $groupId
      * @param string                        $groupId         Name of the group
@@ -407,6 +450,211 @@ class Client
                 }
 
                 return $result;
+            }
+        );
+    }
+
+    /**
+     * Joins the group with the specified protocol and member information (ApiKey 11, Kafka 0.9)
+     *
+     * A client that has no member id yet passes {@see JoinGroupRequest::DEFAULT_MEMBER_ID} and receives the id the
+     * coordinator assigned to it; a member that rejoins has to pass the id of the previous generation. The answer
+     * names the generation, the protocol the coordinator picked out of `$groupProtocols` and the leader of the
+     * group - the member whose id equals the `leaderId` of the answer is the one that computes the assignment and
+     * publishes it with {@see self::syncGroup()}; only that member receives the `members` array.
+     *
+     * **The coordinator holds this request until the rebalance is over**, i.e. until every known member of the
+     * group has rejoined or has missed its session timeout. `request.timeout.ms` - the read timeout of the socket -
+     * therefore has to be larger than {@see ConsumerConfig::SESSION_TIMEOUT_MS}, which is where the session timeout
+     * of the request comes from.
+     *
+     * @param Node                  $coordinatorNode Current group coordinator for $groupId
+     * @param string                $groupId         Name of the group
+     * @param string                $memberId        Name of the group member, empty when it has none yet
+     * @param string                $protocolType    Type of protocol to use for joining, e.g. `consumer`
+     * @param array<string, string> $groupProtocols  Metadata of every supported protocol, by protocol name; opaque
+     *        bytes to this api - a `consumer` member sends its `Subscription` here
+     *
+     * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\InconsistentGroupProtocolException
+     * @throws Common\Errors\UnknownMemberIdException
+     * @throws Common\Errors\InvalidSessionTimeoutException
+     * @throws Common\Errors\InvalidGroupIdException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     */
+    public function joinGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        string $protocolType,
+        array $groupProtocols
+    ): JoinGroupResponse {
+        $clientId       = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+        $sessionTimeout = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
+
+        return $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => new JoinGroupRequest(
+                $groupId,
+                $sessionTimeout,
+                $memberId,
+                $protocolType,
+                $groupProtocols,
+                $clientId,
+                $correlationId
+            ),
+            JoinGroupResponse::class,
+            static function (JoinGroupResponse $response) use ($groupId, $memberId, $protocolType): JoinGroupResponse {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['groupId' => $groupId, 'memberId' => $memberId, 'protocolType' => $protocolType]
+                    );
+                }
+
+                return $response;
+            }
+        );
+    }
+
+    /**
+     * Synchronizes a group member with the group and returns its assignment (ApiKey 14, Kafka 0.9)
+     *
+     * Every member sends this request right after it joined, but only the leader of the generation passes an
+     * assignment for each member; every other member passes an empty array and receives its own share in the
+     * answer, which the coordinator holds back until the leader has sent the assignment.
+     *
+     * @param Node                  $coordinatorNode  Current group coordinator for $groupId
+     * @param string                $groupId          Name of the group
+     * @param string                $memberId         Name of the group member
+     * @param int                   $generationId     Current generation of the group
+     * @param array<string, string> $groupAssignments Assignment of every member, by member id, sent by the leader
+     *        only; opaque bytes to this api - a `consumer` leader sends a `MemberAssignment` per member
+     *
+     * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\IllegalGenerationException
+     * @throws Common\Errors\UnknownMemberIdException
+     * @throws Common\Errors\RebalanceInProgressException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     */
+    public function syncGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $generationId,
+        array $groupAssignments = []
+    ): SyncGroupResponse {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        return $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => new SyncGroupRequest(
+                $groupId,
+                $generationId,
+                $memberId,
+                $groupAssignments,
+                $clientId,
+                $correlationId
+            ),
+            SyncGroupResponse::class,
+            static function (SyncGroupResponse $response) use ($groupId, $memberId, $generationId): SyncGroupResponse {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['groupId' => $groupId, 'memberId' => $memberId, 'generationId' => $generationId]
+                    );
+                }
+
+                return $response;
+            }
+        );
+    }
+
+    /**
+     * Sends a heartbeat for the current member of the group (ApiKey 12, Kafka 0.9)
+     *
+     * A successful heartbeat resets the session timeout of the member. The error code of the answer is how the
+     * coordinator tells the member what happened to the group meanwhile, and all three cases are reported as their
+     * exception: 27 RebalanceInProgress - rejoin, 25 UnknownMemberId - the member was dropped and has to join
+     * again without a member id, 22 IllegalGeneration - the generation of the member is over.
+     *
+     * @param Node   $coordinatorNode Current group coordinator for $groupId
+     * @param string $groupId         Name of the group
+     * @param string $memberId        Name of the group member
+     * @param int    $generationId    Current generation of the group
+     *
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\IllegalGenerationException
+     * @throws Common\Errors\UnknownMemberIdException
+     * @throws Common\Errors\RebalanceInProgressException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     */
+    public function heartbeat(Node $coordinatorNode, string $groupId, string $memberId, int $generationId): void
+    {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => new HeartbeatRequest(
+                $groupId,
+                $generationId,
+                $memberId,
+                $clientId,
+                $correlationId
+            ),
+            HeartbeatResponse::class,
+            static function (HeartbeatResponse $response) use ($groupId, $memberId, $generationId): void {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['groupId' => $groupId, 'memberId' => $memberId, 'generationId' => $generationId]
+                    );
+                }
+            }
+        );
+    }
+
+    /**
+     * Removes the group member from its group (ApiKey 13, Kafka 0.9)
+     *
+     * The group rebalances right away instead of waiting for the session timeout of the member to expire, so this
+     * is what a consumer sends when it shuts down in an orderly way.
+     *
+     * @param Node   $coordinatorNode Current group coordinator for $groupId
+     * @param string $groupId         Name of the group
+     * @param string $memberId        Name of the group member
+     *
+     * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\UnknownMemberIdException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     */
+    public function leaveGroup(Node $coordinatorNode, string $groupId, string $memberId): void
+    {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => new LeaveGroupRequest(
+                $groupId,
+                $memberId,
+                $clientId,
+                $correlationId
+            ),
+            LeaveGroupResponse::class,
+            static function (LeaveGroupResponse $response) use ($groupId, $memberId): void {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['groupId' => $groupId, 'memberId' => $memberId]
+                    );
+                }
             }
         );
     }
@@ -467,7 +715,7 @@ class Client
     }
 
     /**
-     * Checks whether the consumer offsets are stored in Kafka itself (v1) instead of ZooKeeper (v0)
+     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v2) instead of ZooKeeper (v0)
      */
     private function isOffsetStorageKafka(): bool
     {
@@ -521,6 +769,54 @@ class Client
 
             return $readResponse($response);
         });
+    }
+
+    /**
+     * Sends one request of the group membership protocol and repeats it while the coordinator is not ready.
+     *
+     * These four apis report the state of the *coordinator* with the same three retriable error codes the
+     * GroupCoordinator lookup uses - 14 GroupLoadInProgress while the coordinator reads the group out of
+     * `__consumer_offsets`, 15 GroupCoordinatorNotAvailable while that topic is being created and 16
+     * NotCoordinatorForGroup after the group moved to another broker - and none of them says anything about the
+     * membership of the caller. They are therefore repeated here with the `retries` and `retry.backoff.ms` of
+     * {@see RetryPolicy}, on top of the dropped-connection retry that {@see self::coordinatorRequest()} does; a
+     * caller that still sees a 15 or a 16 afterwards has to look the coordinator up again.
+     *
+     * Every other error code - 22 IllegalGeneration, 23 InconsistentGroupProtocol, 25 UnknownMemberId, 26
+     * InvalidSessionTimeout, 27 RebalanceInProgress, 30 GroupAuthorizationFailed - is a statement about this member
+     * and is reported to the caller, which is the only one that can react to it.
+     *
+     * @template T
+     *
+     * @param Node                          $coordinatorNode Coordinator to talk to
+     * @param Closure(int): AbstractRequest  $createRequest   Builds the request for a correlation id
+     * @param class-string<AbstractResponse> $responseClass   Class of the expected response
+     * @param Closure(mixed): T             $readResponse    Turns the response into the result
+     *
+     * @return T
+     */
+    private function groupRequest(
+        Node $coordinatorNode,
+        Closure $createRequest,
+        string $responseClass,
+        Closure $readResponse
+    ): mixed {
+        $policy = RetryPolicy::fromConfiguration($this->configuration);
+
+        for ($attempt = 1;; $attempt++) {
+            try {
+                return $this->coordinatorRequest($coordinatorNode, $createRequest, $responseClass, $readResponse);
+            } catch (
+                GroupLoadInProgressException
+                | GroupCoordinatorNotAvailableException
+                | NotCoordinatorForGroupException $error
+            ) {
+                if ($attempt >= $policy->getMaxAttempts()) {
+                    throw $error;
+                }
+                $policy->backoff();
+            }
+        }
     }
 
     /**

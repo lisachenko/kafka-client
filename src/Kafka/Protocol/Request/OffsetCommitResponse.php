@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
  *         error_code => INT16
  * </pre>
  *
- * @see docs/protocol/0.8.2.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitResponse extends AbstractResponse
 {

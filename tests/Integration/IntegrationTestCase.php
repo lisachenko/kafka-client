@@ -20,7 +20,7 @@ use Protocol\Kafka\Tests\Fixture\BrokerRecord;
 use Protocol\Kafka\Tests\Fixture\ClusterReadinessProbe;
 
 /**
- * Base class for the tests that talk to a real Kafka 0.8.2.2 broker.
+ * Base class for the tests that talk to a real Kafka 0.9.0.1 broker.
  *
  * The whole suite is skipped unless the KAFKA_BOOTSTRAP_SERVERS environment variable points at a running broker,
  * e.g. the one started by `docker compose up`:
@@ -33,6 +33,23 @@ abstract class IntegrationTestCase extends TestCase
      * Name of the environment variable that holds a comma-separated list of `host:port` pairs
      */
     public const string BOOTSTRAP_SERVERS_ENV = 'KAFKA_BOOTSTRAP_SERVERS';
+
+    /**
+     * Name of the environment variable that holds the `host:port` of the SSL listener of the same broker
+     *
+     * The broker of `docker/kafka-0.9.0.1` binds `PLAINTEXT://0.0.0.0:9092` and `SSL://0.0.0.0:9093`, so the SSL
+     * endpoint is derived from the default rather than configured separately; the variable only exists for a broker
+     * that publishes its SSL listener somewhere else. The tests that need it are still skipped together with the
+     * rest of the suite, i.e. when KAFKA_BOOTSTRAP_SERVERS is unset.
+     *
+     * @see \Protocol\Kafka\Tests\Integration\SslTransportTest
+     */
+    public const string SSL_BOOTSTRAP_SERVERS_ENV = 'KAFKA_SSL_BOOTSTRAP_SERVERS';
+
+    /**
+     * The SSL listener of the bundled broker, used when SSL_BOOTSTRAP_SERVERS_ENV is not set
+     */
+    private const string DEFAULT_SSL_BOOTSTRAP_SERVER = '127.0.0.1:9093';
 
     /**
      * How long to wait for a booting broker to publish its metadata, in seconds
@@ -121,6 +138,30 @@ abstract class IntegrationTestCase extends TestCase
             ],
             5.0
         );
+    }
+
+    /**
+     * Returns the `host:port` of the SSL listener of the broker under test
+     */
+    final protected static function sslBootstrapServer(): string
+    {
+        $value = getenv(self::SSL_BOOTSTRAP_SERVERS_ENV);
+        if ($value === false || trim($value) === '') {
+            return self::DEFAULT_SSL_BOOTSTRAP_SERVER;
+        }
+
+        return trim(explode(',', $value)[0]);
+    }
+
+    /**
+     * Returns the certificate the broker presents on its SSL listener, to be used as the trust anchor of a client
+     *
+     * It is the self-signed certificate that `docker/kafka-0.9.0.1` puts into the keystore of the broker
+     * (CN=localhost, with `localhost` and `127.0.0.1` as subject alternative names).
+     */
+    final protected static function brokerCertificateFile(): string
+    {
+        return dirname(__DIR__, 2) . '/docker/kafka-0.9.0.1/ssl/broker.crt';
     }
 
     /**

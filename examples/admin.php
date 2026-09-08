@@ -10,7 +10,7 @@
  */
 
 /**
- * Admin API example for the Kafka 0.8.2.2 protocol.
+ * Admin API example for the Kafka 0.9.0.1 protocol.
  *
  * Start the broker of docker-compose.yml and run:
  *
@@ -51,7 +51,7 @@ foreach ($admin->listTopics() as $name) {
 }
 
 // CAVEAT: a topic that does not exist yet is CREATED by this call when the broker runs with
-// auto.create.topics.enable=true. Kafka 0.8 has no CreateTopics api - that arrived in 0.10.1 - so a Metadata
+// auto.create.topics.enable=true. Kafka 0.9 has no CreateTopics api - that arrived in 0.10.1 - so a Metadata
 // request is the only way a client can create a topic at all. The first answer reports the topic error code 5
 // (LeaderNotAvailable) and no partitions until the controller has elected the partition leaders.
 echo "\nPartitions of {$topic}\n";
@@ -79,8 +79,9 @@ foreach ($partitions as $partition) {
     echo "  {$partition}: {$first} .. {$last} (" . ($last - $first) . " messages)\n";
 }
 
-// 0.8 has no "every topic of this group" request - the nullable topic array of OffsetFetch arrived in Kafka 0.9 -
-// so the partitions whose committed offsets are wanted have to be named explicitly.
+// 0.9 has no "every topic of this group" request - the nullable topic array of OffsetFetch is version 2 of that
+// api and arrived with Kafka 0.10.2 - so the partitions whose committed offsets are wanted have to be named
+// explicitly.
 echo "\nCommitted offsets of the group {$groupId}\n";
 echo "  coordinator: node " . $admin->findCoordinator($groupId)->nodeId . "\n";
 foreach ($admin->listGroupOffsets($groupId, [$topic => $partitions]) as $topicOffsets) {
@@ -90,6 +91,29 @@ foreach ($admin->listGroupOffsets($groupId, [$topic => $partitions]) as $topicOf
     }
 }
 
+// Kafka 0.9 moved the consumer groups out of ZooKeeper into the brokers: each of them coordinates a share of the
+// groups and reports only its own, so the list of the cluster is the union of all of their answers.
+echo "\nConsumer groups of the cluster\n";
+$groups = $admin->listAllGroups();
+if ($groups === []) {
+    echo "  not a single group has a member at the moment\n";
+}
+foreach ($groups as $listedGroupId => $listedGroup) {
+    echo "  {$listedGroupId} ({$listedGroup->protocolType})\n";
+}
+
+// DescribeGroups is answered by the coordinator of the group. A group that has no members - because nobody has
+// joined it, or because everybody has left - is reported with the state Dead and the error code 0, not as an error.
+echo "\nDescription of the group {$groupId}\n";
+$description = $admin->describeGroup($groupId);
+echo "  state: {$description->state}\n";
+echo "  protocol type: '{$description->protocolType}', protocol: '{$description->protocol}'\n";
+foreach ($description->members as $memberId => $member) {
+    $assignmentSize = strlen($member->memberAssignment);
+    echo "  member {$memberId} of the client {$member->clientId} at {$member->clientHost}, "
+        . "{$assignmentSize} bytes of assignment\n";
+}
+
 // The remaining admin call, controlledShutdown(), asks the controller to move every leader off a broker. It is what
 // kafka-server-stop.sh triggers, and it really does stop serving that broker - only send it to a broker you want to
-// shut down. Kafka 0.8 has no DescribeGroups, ListGroups or ApiVersions api, so there is nothing else to call here.
+// shut down. There is no ApiVersions api to call here: that is key 18 and arrived with Kafka 0.10.

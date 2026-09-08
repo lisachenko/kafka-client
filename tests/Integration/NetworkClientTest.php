@@ -33,13 +33,13 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Drives the network client against a real Kafka 0.8.2.2 broker.
+ * Drives the network client against a real Kafka 0.9.0.1 broker.
  *
  * The broker is the authority on everything the client does over the wire: it keeps a connection open between two
  * requests, it echoes the correlation id of each request back, and it is the only thing that can tell the client
  * that its cached metadata points at the wrong leader.
  *
- * @see docs/protocol/0.8.2.md
+ * @see docs/protocol/0.9.0.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(Cluster::class)]

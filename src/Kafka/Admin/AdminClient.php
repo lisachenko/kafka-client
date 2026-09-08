@@ -20,6 +20,7 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
+use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\TopicMetadata;
@@ -28,6 +29,8 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
+use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
@@ -35,6 +38,10 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
+use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
+use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
@@ -46,20 +53,21 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 /**
  * Kafka low-level administrative client
  *
- * This is the 0.8.2.2 port of the `AdminClient` of the `main` branch: the methods that a 0.8 broker can serve keep
- * their names and signatures, the ones it cannot serve are absent, and the APIs that only 0.8 has a use for were
- * added next to them.
+ * This is the 0.9.0.1 port of the `AdminClient` of the `main` branch: the methods that a 0.9 broker can serve keep
+ * their names and signatures, the ones it cannot serve are absent, and the APIs that only the older lines have a use
+ * for were added next to them.
  *
- * Absent on this branch, because the api keys do not exist in 0.8.2.2 (the broker closes the connection on them):
+ * Kafka 0.9 moved the consumer groups from ZooKeeper into the broker, so the coordinator of a group can now be asked
+ * about its membership: {@see self::listGroups()} and {@see self::listAllGroups()} name the groups, and
+ * {@see self::describeGroup()} reports the state, the protocol and the members of one of them. The committed offsets
+ * of a group are still read with {@see self::listGroupOffsets()}.
  *
- * | Method of `main`               | Api key                | Arrived in            |
- * |--------------------------------|------------------------|-----------------------|
- * | `describeGroup()`              | 15 (DescribeGroups)    | Kafka 0.9             |
- * | `listGroups()`/`listAllGroups()` | 16 (ListGroups)      | Kafka 0.9             |
- * | `getApiVersions()`             | 18 (ApiVersions)       | Kafka 0.10            |
+ * Absent on this branch, because the api keys do not exist in 0.9.0.1 (the broker drops such a request without an
+ * answer, see the protocol document):
  *
- * Consumer groups are managed through ZooKeeper in 0.8, so the broker has nothing to say about their membership;
- * the only group state it knows is the committed offsets, which {@see self::listGroupOffsets()} reads back.
+ * | Method of `main`   | Api key          | Arrived in |
+ * |--------------------|------------------|------------|
+ * | `getApiVersions()` | 18 (ApiVersions) | Kafka 0.10 |
  *
  * There is no CreateTopics api key either (that is Kafka 0.10.1): a topic is created by writing to ZooKeeper, e.g.
  * with `kafka-topics.sh`, or implicitly by asking for its metadata while `auto.create.topics.enable` is on -
@@ -287,16 +295,150 @@ class AdminClient
     }
 
     /**
+     * Lists the consumer groups that the given broker is the coordinator of
+     *
+     * A broker only knows the groups it coordinates itself, so this is never the list of the whole cluster - use
+     * {@see self::listAllGroups()} for that. The answer holds one entry per group with its protocol type, `consumer`
+     * for the groups of a `KafkaConsumer` and of the Java consumer; an entry says nothing about the state of the
+     * group, {@see self::describeGroup()} does.
+     *
+     * A group appears here as soon as it has a member and stays until the coordinator forgets it, which happens once
+     * the last member is gone and the retention of its committed offsets has expired.
+     *
+     * @param Node $node Broker to ask
+     *
+     * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If the coordinator is shutting down
+     * @throws \Protocol\Kafka\Common\Errors\GroupLoadInProgressException If it is still reading `__consumer_offsets`
+     *
+     * @return array<string, ListGroupResponseProtocol> Groups of that broker, indexed by the group id
+     */
+    public function listGroups(Node $node): array
+    {
+        /** @var ListGroupsResponse $response */
+        $response = $this->sendTo(
+            $node->getConnection($this->configuration),
+            fn(int $correlationId): ListGroupsRequest => new ListGroupsRequest($this->clientId(), $correlationId),
+            ListGroupsResponse::class,
+            ['node' => $node->nodeId]
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['node' => $node->nodeId]);
+        }
+
+        return $response->groups;
+    }
+
+    /**
+     * Lists the consumer groups of the whole cluster
+     *
+     * Every broker of the cluster is asked for the groups it coordinates and the answers are merged. Unlike the
+     * method of the `main` branch, which returns one entry per broker and swallows the error of a broker that did
+     * not answer, this returns the single merged map that the callers of an admin client want and lets the error of
+     * an unreachable broker through - a silently incomplete group list is worse than a failed call. Ask the brokers
+     * one by one with {@see self::listGroups()} when a partial answer is good enough.
+     *
+     * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
+     *
+     * @return array<string, ListGroupResponseProtocol> Groups of the cluster, indexed by the group id
+     */
+    public function listAllGroups(): array
+    {
+        $groups = [];
+        foreach ($this->findAllBrokers() as $node) {
+            $groups += $this->listGroups($node);
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Describes one consumer group: its state, the protocol its members agreed on and the members themselves
+     *
+     * The request goes to the coordinator of the group ({@see self::findCoordinator()}), the only broker that knows
+     * anything about it. The state is one of `PreparingRebalance`, `AwaitingSync`, `Stable` and `Dead`
+     * (`kafka/coordinator/GroupMetadata.scala` @ 0.9.0.1); a group the coordinator has never heard of, or that has
+     * lost its last member, is NOT an error - it is answered with the error code 0, the state `Dead`, an empty
+     * protocol type and no members.
+     *
+     * @param string $groupId Name of the group
+     *
+     * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If the group moved to another coordinator
+     *         between the lookup and this request
+     * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe the group
+     * @throws InvalidGroupIdException If the coordinator answered without an entry for the group
+     */
+    public function describeGroup(string $groupId): DescribeGroupResponseMetadata
+    {
+        return $this->describeGroups([$groupId])[$groupId] ?? throw new InvalidGroupIdException(
+            ['groupId' => $groupId, 'error' => "The coordinator answered with no description of the group {$groupId}"]
+        );
+    }
+
+    /**
+     * Describes several consumer groups at once
+     *
+     * Groups that share a coordinator are described with a single request; the groups of the cluster are spread over
+     * the partitions of `__consumer_offsets` and therefore over its brokers, and a broker answers a group it does not
+     * coordinate with the error code 16 (NotCoordinatorForGroup), so a coordinator is looked up for every group.
+     *
+     * @param list<string> $groupIds Names of the groups, duplicates are collapsed
+     *
+     * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If a group moved to another coordinator
+     * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe a group
+     *
+     * @return array<string, DescribeGroupResponseMetadata> Descriptions, indexed by the group id
+     */
+    public function describeGroups(array $groupIds): array
+    {
+        $coordinators  = [];
+        $groupsPerNode = [];
+        foreach (array_unique($groupIds) as $groupId) {
+            $coordinator                           = $this->findCoordinator($groupId);
+            $coordinators[$coordinator->nodeId]    = $coordinator;
+            $groupsPerNode[$coordinator->nodeId][] = $groupId;
+        }
+
+        $descriptions = [];
+        foreach ($groupsPerNode as $nodeId => $groups) {
+            /** @var DescribeGroupsResponse $response */
+            $response = $this->sendTo(
+                $coordinators[$nodeId]->getConnection($this->configuration),
+                fn(int $correlationId): DescribeGroupsRequest => new DescribeGroupsRequest(
+                    $groups,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DescribeGroupsResponse::class,
+                ['node' => $nodeId, 'groups' => $groups]
+            );
+
+            foreach ($response->groups as $groupId => $description) {
+                if ($description->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode($description->errorCode, ['groupId' => $groupId]);
+                }
+                $descriptions[$groupId] = $description;
+            }
+        }
+
+        return $descriptions;
+    }
+
+    /**
      * Asks the controller to move every leader and every replica off the given broker
      *
      * This is what `kafka-server-stop.sh` triggers through `controlled.shutdown.enable`; a client normally has no
-     * reason to send it. Only the active controller serves the request - and 0.8 metadata does not tell which broker
-     * that is - so it is sent to the brokers of the cluster until one of them answers.
+     * reason to send it. Only the active controller serves the request - and 0.9 metadata does not tell which broker
+     * that is - so it is sent to the brokers of the cluster until one of them answers. The request goes out as
+     * version 1, the version Kafka 0.9 added, which is the first one whose header carries the client id;
+     * {@see \Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0} sends the header-less version 0 of a
+     * 0.8 broker.
      *
      * @param int $brokerId Identifier of the broker to shut down
      *
-     * @throws \Protocol\Kafka\Common\Errors\UnknownErrorException If the controller does not know that broker id -
-     *         0.8.2.2 reports it as the error code -1 instead of 8, see {@see ControlledShutdownRequest}
+     * @throws \Protocol\Kafka\Common\Errors\BrokerNotAvailableException If the controller does not know that
+     *         broker id - a 0.9.0.1 broker answers the error code 8 for it, where 0.8.2.2 answered -1, see
+     *         {@see ControlledShutdownRequest}
      *
      * @return list<ControlledShutdownResponsePartition> Partitions that still live on the broker, empty when it is
      *                                                   safe to stop it
@@ -306,7 +448,7 @@ class AdminClient
         /** @var ControlledShutdownResponse $response */
         $response = $this->sendAnyNode(
             fn(int $correlationId): ControlledShutdownRequest
-                => new ControlledShutdownRequest($brokerId, $correlationId),
+                => new ControlledShutdownRequest($brokerId, $this->clientId(), $correlationId),
             ControlledShutdownResponse::class
         );
 

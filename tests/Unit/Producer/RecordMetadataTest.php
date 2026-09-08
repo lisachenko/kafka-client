@@ -35,6 +35,19 @@ final class RecordMetadataTest extends TestCase
         self::assertNull($metadata->timestamp);
     }
 
+    public function testTheThrottleTimeOfTheBatchIsReported(): void
+    {
+        // Produce v1 reports how long the broker delayed the answer because of a `producer_byte_rate` quota
+        $metadata = new RecordMetadata('orders', 2, 1234, null, 793);
+
+        self::assertSame(793, $metadata->throttleTimeMs);
+    }
+
+    public function testTheThrottleTimeIsZeroWithoutAQuota(): void
+    {
+        self::assertSame(0, new RecordMetadata('orders', 2, 1234)->throttleTimeMs);
+    }
+
     public function testToStringFormat(): void
     {
         self::assertSame('orders-2@1234', (string) new RecordMetadata('orders', 2, 1234));

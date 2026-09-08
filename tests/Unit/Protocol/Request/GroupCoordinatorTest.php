@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 /**
  * Byte-exact tests for the GroupCoordinator API, called ConsumerMetadata in Kafka 0.8.2 (api key 10, v0).
  *
- * @see docs/protocol/0.8.2.md, section "GroupCoordinator API (key 10, v0)"
+ * @see docs/protocol/0.9.0.md, section "GroupCoordinator API (key 10, v0)"
  */
 #[CoversClass(GroupCoordinatorRequest::class)]
 #[CoversClass(GroupCoordinatorResponse::class)]

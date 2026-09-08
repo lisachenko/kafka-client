@@ -22,7 +22,7 @@ use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Snappy;
 
 /**
- * The codecs that the Attributes byte of a message can announce in 0.8.2.2
+ * The codecs that the Attributes byte of a message can announce in 0.9.0.1
  */
 #[CoversClass(CompressionCodec::class)]
 final class CompressionCodecTest extends TestCase

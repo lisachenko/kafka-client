@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Produces a handful of records to a topic of a Kafka 0.8.2.2 cluster.
+ * Produces a handful of records to a topic of a Kafka 0.9.0.1 cluster.
  *
  * Run it against the broker of the development environment:
  *
@@ -103,6 +103,12 @@ foreach ($producer->partitionsFor($topic) as $partitionMetadata) {
 
 $onSuccess = static function (RecordMetadata $metadata): void {
     echo "  stored {$metadata}\n";
+
+    // A broker with a `producer_byte_rate` quota for this client id delays its answer instead of rejecting the
+    // batch, and reports that delay in the Produce v1 response; without a quota this is always 0
+    if ($metadata->throttleTimeMs > 0) {
+        echo "    the broker throttled this batch for {$metadata->throttleTimeMs} ms\n";
+    }
 };
 $onFailure = static function (\Throwable $error): void {
     echo '  failed: ' . $error->getMessage() . "\n";
@@ -133,5 +139,5 @@ try {
 }
 
 echo "Done. Read the records back with the console consumer of the broker container:\n";
-echo "  docker exec kafka08 /opt/kafka/bin/kafka-console-consumer.sh --zookeeper localhost:2181"
+echo "  docker exec kafka-0-9-0-1 /opt/kafka/bin/kafka-console-consumer.sh --zookeeper localhost:2181"
     . " --topic {$topic} --from-beginning --max-messages 12\n";

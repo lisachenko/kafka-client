@@ -20,8 +20,14 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Consumer\MemberAssignment;
+use Protocol\Kafka\Consumer\Subscription;
+use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 
 /**
@@ -103,6 +109,104 @@ final class FakeClient extends Client
      * @var array<string, array<int, bool>>
      */
     public array $oversizedMessages = [];
+
+    /**
+     * Members of the consumer group, member id => the `Subscription` bytes the member sent
+     *
+     * @var array<string, string>
+     */
+    public array $groupMembers = [];
+
+    /**
+     * Member id of the leader of the group, the first member that joined by default
+     */
+    public string $leaderId = '';
+
+    /**
+     * Generation of the group, incremented by every join, exactly as a coordinator does it
+     */
+    public int $generationId = 0;
+
+    /**
+     * Group protocol the members agreed on, the name of the assignor of the last join
+     */
+    public string $groupProtocol = '';
+
+    /**
+     * Assignment of every member as the leader published it, member id => the `MemberAssignment` bytes
+     *
+     * @var array<string, string>
+     */
+    public array $memberAssignments = [];
+
+    /**
+     * Partition ids of the topics the leader of a group assigns, [topic] => list of partition ids
+     *
+     * @var array<string, list<int>>
+     */
+    public array $partitionsPerTopic = [];
+
+    /**
+     * JoinGroup requests the consumer sent, in order
+     *
+     * @var list<array{groupId: string, memberId: string, protocolType: string, protocols: array<string, string>}>
+     */
+    public array $joins = [];
+
+    /**
+     * SyncGroup requests the consumer sent, in order
+     *
+     * @var list<array{groupId: string, memberId: string, generationId: int, assignments: array<string, string>}>
+     */
+    public array $syncs = [];
+
+    /**
+     * Heartbeat requests the consumer sent, in order
+     *
+     * @var list<array{groupId: string, memberId: string, generationId: int}>
+     */
+    public array $heartbeats = [];
+
+    /**
+     * LeaveGroup requests the consumer sent, in order
+     *
+     * @var list<array{groupId: string, memberId: string}>
+     */
+    public array $leaves = [];
+
+    /**
+     * Exceptions to throw on the next group requests, one per call, in order
+     *
+     * @var list<\Throwable|null>
+     */
+    public array $joinFailures = [];
+
+    /**
+     * @var list<\Throwable|null>
+     */
+    public array $syncFailures = [];
+
+    /**
+     * @var list<\Throwable|null>
+     */
+    public array $heartbeatFailures = [];
+
+    /**
+     * @var list<\Throwable|null>
+     */
+    public array $leaveFailures = [];
+
+    /**
+     * Exceptions to throw on the next commits, one per call, in order
+     *
+     * @var list<\Throwable|null>
+     */
+    public array $commitFailures = [];
+
+    /**
+     * Sequence of the member ids this coordinator hands out
+     */
+    private int $memberSequence = 0;
 
     public function __construct() {}
 
@@ -233,9 +337,26 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function commitGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitionOffsets): void
-    {
-        $this->commits[] = ['group' => $groupId, 'offsets' => $topicPartitionOffsets];
+    public function commitGroupOffsets(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $generationId,
+        array $topicPartitionOffsets,
+        int $retentionTimeMs
+    ): void {
+        $failure = array_shift($this->commitFailures);
+        if ($failure !== null) {
+            throw $failure;
+        }
+
+        $this->commits[] = [
+            'group'         => $groupId,
+            'memberId'      => $memberId,
+            'generationId'  => $generationId,
+            'offsets'       => $topicPartitionOffsets,
+            'retentionTime' => $retentionTimeMs,
+        ];
 
         foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
             foreach ($partitionOffsets as $partition => $offset) {
@@ -244,6 +365,146 @@ final class FakeClient extends Client
                     : $offset);
             }
         }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function joinGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        string $protocolType,
+        array $groupProtocols
+    ): JoinGroupResponse {
+        $this->joins[] = [
+            'groupId'      => $groupId,
+            'memberId'     => $memberId,
+            'protocolType' => $protocolType,
+            'protocols'    => $groupProtocols,
+        ];
+
+        $failure = array_shift($this->joinFailures);
+        if ($failure !== null) {
+            throw $failure;
+        }
+
+        if ($memberId === JoinGroupRequest::DEFAULT_MEMBER_ID) {
+            $memberId = 'member-' . ++$this->memberSequence;
+        }
+
+        $this->groupMembers[$memberId] = (string) reset($groupProtocols);
+        $this->groupProtocol           = (string) key($groupProtocols);
+        if (!isset($this->groupMembers[$this->leaderId])) {
+            $this->leaderId = (string) array_key_first($this->groupMembers);
+        }
+        $this->generationId++;
+
+        $response                = new JoinGroupResponse();
+        $response->errorCode     = KafkaException::NO_ERROR;
+        $response->generationId  = $this->generationId;
+        $response->groupProtocol = $this->groupProtocol;
+        $response->leaderId      = $this->leaderId;
+        $response->memberId      = $memberId;
+        $response->members       = [];
+
+        if ($memberId === $this->leaderId) {
+            foreach ($this->groupMembers as $groupMemberId => $metadata) {
+                $response->members[$groupMemberId] = new JoinGroupResponseMember((string) $groupMemberId, $metadata);
+            }
+        }
+
+        return $response;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function syncGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $generationId,
+        array $groupAssignments = []
+    ): SyncGroupResponse {
+        $this->syncs[] = [
+            'groupId'      => $groupId,
+            'memberId'     => $memberId,
+            'generationId' => $generationId,
+            'assignments'  => $groupAssignments,
+        ];
+
+        $failure = array_shift($this->syncFailures);
+        if ($failure !== null) {
+            throw $failure;
+        }
+
+        if ($groupAssignments !== []) {
+            $this->memberAssignments = $groupAssignments;
+        }
+
+        $response                   = new SyncGroupResponse();
+        $response->errorCode        = KafkaException::NO_ERROR;
+        $response->memberAssignment = $this->memberAssignments[$memberId] ?? '';
+
+        return $response;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function heartbeat(Node $coordinatorNode, string $groupId, string $memberId, int $generationId): void
+    {
+        $this->heartbeats[] = [
+            'groupId'      => $groupId,
+            'memberId'     => $memberId,
+            'generationId' => $generationId,
+        ];
+
+        $failure = array_shift($this->heartbeatFailures);
+        if ($failure !== null) {
+            throw $failure;
+        }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function leaveGroup(Node $coordinatorNode, string $groupId, string $memberId): void
+    {
+        $this->leaves[] = ['groupId' => $groupId, 'memberId' => $memberId];
+
+        unset($this->groupMembers[$memberId], $this->memberAssignments[$memberId]);
+
+        $failure = array_shift($this->leaveFailures);
+        if ($failure !== null) {
+            throw $failure;
+        }
+    }
+
+    /**
+     * Adds a member that is already in the group, so that a rebalance has more than this consumer to assign to
+     *
+     * @param list<string> $topics Topics the member subscribed to
+     */
+    public function addGroupMember(string $memberId, array $topics): void
+    {
+        $this->groupMembers[$memberId] = new Subscription($topics)->pack();
+        if ($this->leaderId === '') {
+            $this->leaderId = $memberId;
+        }
+    }
+
+    /**
+     * Returns the assignment the leader published for a member, as the plain partition lists of every topic
+     *
+     * @return array<string, list<int>>
+     */
+    public function assignmentOf(string $memberId): array
+    {
+        $assignment = $this->memberAssignments[$memberId] ?? '';
+
+        return $assignment === '' ? [] : MemberAssignment::unpack($assignment)->partitions();
     }
 
     /**

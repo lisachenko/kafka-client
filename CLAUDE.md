@@ -2,8 +2,8 @@
 
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
-(Kafka 0.9.0.1, **next**) → `0.10.x` (Kafka 0.10.x) → `main` (Kafka 0.11). See `docs/CASCADE.md`
-and, for the current line, `docs/handoff/<branch>.md`.
+(Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.x, **next**) → `main` (Kafka 0.11). See
+`docs/CASCADE.md` and, for the current line, `docs/handoff/<branch>.md`.
 
 ## Hard rules (owner's decisions)
 
@@ -54,11 +54,15 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 - In the remote sandbox the Docker daemon may not be running: `nohup dockerd >/tmp/dockerd.log 2>&1 &`
   and wait for `docker info` to answer. Old Docker Hub images with v1 manifests cannot be pulled;
   build the image from `docker/` (the Kafka tarball comes from archive.apache.org, which is reachable).
+  Behind the sandbox proxy the build's `curl` needs the proxy CA: drop it into `docker/kafka-<version>/ca/`,
+  which the Dockerfile copies to `/usr/local/share/ca-certificates/extra/` before `update-ca-certificates`.
 - A 0.8/0.9 broker answers Metadata with **zero brokers** until a topic exists; use the readiness probe
   in `tests/Integration/IntegrationTestCase.php`. Fresh topics transiently answer 5/6 — helpers must retry.
 - Several agents share one broker: unique topic/group names per test class; never restart it from a subagent.
 - Useful in-container tools: `docker exec <container> /opt/kafka/bin/kafka-topics.sh --zookeeper localhost:2181 --list`,
   `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-run-class.sh kafka.tools.DumpLogSegments`.
+  From 0.9 on, the console consumer joins a *group* only with `--new-consumer --bootstrap-server host:port` and
+  a `--consumer.config <file>` carrying `group.id` (and, if it matters, `partition.assignment.strategy`).
 
 ## Branching and delivery
 

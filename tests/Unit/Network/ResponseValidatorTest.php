@@ -25,7 +25,7 @@ use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 /**
  * Tests that an answer is only accepted when it carries the correlation id of the request it answers.
  *
- * @see docs/protocol/0.8.2.md, section "Responses"
+ * @see docs/protocol/0.9.0.md, section "Responses"
  */
 #[CoversClass(ResponseValidator::class)]
 #[CoversClass(CorrelationIdMismatchException::class)]

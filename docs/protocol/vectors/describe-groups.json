@@ -1,0 +1,104 @@
+{
+    "api": "describe-groups",
+    "apiKey": 15,
+    "section": "DescribeGroups API (key 15, v0)",
+    "description": "Wire vectors of the DescribeGroups API (key 15, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describegroups.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeGroups request v0 asking the coordinator about a single group.",
+            "hex": "00000022000f0000000000160002743400000001001074342d766563746f72732d67726f7570",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 15,
+                "apiVersion": 0,
+                "correlationId": 22,
+                "clientId": "t4",
+                "groups": [
+                    "t4-vectors-group"
+                ]
+            }
+        },
+        {
+            "id": "describegroups.response.v0.stable",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeGroups response v0 for a stable consumer group with one member.",
+            "hex": "000000d500000016000000010000001074342d766563746f72732d67726f75700006537461626c650008636f6e73756d6572000572616e676500000001003674342d766563746f72732d6d656d6265722d62346631356361612d313436662d346533312d616361622d613835663034313633313561001174342d766563746f72732d6d656d626572000b2f3137322e31382e302e3100000016000000000001000a74342d766563746f72730000000000000026000000000001000a74342d766563746f72730000000300000000000000010000000200000000",
+            "fields": {
+                "messageSize": 213,
+                "correlationId": 22,
+                "groups": {
+                    "t4-vectors-group": {
+                        "errorCode": 0,
+                        "groupId": "t4-vectors-group",
+                        "state": "Stable",
+                        "protocolType": "consumer",
+                        "protocol": "range",
+                        "members": {
+                            "t4-vectors-member-b4f15caa-146f-4e31-acab-a85f0416315a": {
+                                "memberId": "t4-vectors-member-b4f15caa-146f-4e31-acab-a85f0416315a",
+                                "clientId": "t4-vectors-member",
+                                "clientHost": "/172.18.0.1",
+                                "memberMetadata": {
+                                    "$bytes": "000000000001000a74342d766563746f727300000000"
+                                },
+                                "memberAssignment": {
+                                    "$bytes": "000000000001000a74342d766563746f72730000000300000000000000010000000200000000"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "describegroups.request.v0.unknown-group",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeGroups request v0 for a group the cluster has never seen.",
+            "hex": "0000002a000f0000000000170002743400000001001874342d766563746f72732d756e6b6e6f776e2d67726f7570",
+            "fields": {
+                "messageSize": 42,
+                "apiKey": 15,
+                "apiVersion": 0,
+                "correlationId": 23,
+                "clientId": "t4",
+                "groups": [
+                    "t4-vectors-unknown-group"
+                ]
+            }
+        },
+        {
+            "id": "describegroups.response.v0.dead",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeGroups response v0 for an unknown group: the error code 0 and the state Dead.",
+            "hex": "0000003200000017000000010000001874342d766563746f72732d756e6b6e6f776e2d67726f75700004446561640000000000000000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 23,
+                "groups": {
+                    "t4-vectors-unknown-group": {
+                        "errorCode": 0,
+                        "groupId": "t4-vectors-unknown-group",
+                        "state": "Dead",
+                        "protocolType": "",
+                        "protocol": "",
+                        "members": []
+                    }
+                }
+            }
+        }
+    ]
+}

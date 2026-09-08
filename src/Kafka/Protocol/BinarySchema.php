@@ -31,7 +31,7 @@ use function strlen;
  * cascade merges upwards stay trivial, but only the types that the 0.8 protocol actually has are implemented.
  * Varints, zigzag encoding and var-arrays arrive with the 0.11 record format and are deliberately absent.
  *
- * @see docs/protocol/0.8.2.md
+ * @see docs/protocol/0.9.0.md
  */
 class BinarySchema
 {

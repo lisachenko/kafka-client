@@ -18,15 +18,16 @@ use Exception;
 /**
  * The server disconnected before a response was received.
  *
- * On the 0.8 protocol line this is a purely client-side condition: error code 13 is StaleLeaderEpochCode in
- * kafka/common/ErrorMapping.scala @ 0.8.2.2, and it only became NetworkException in a later protocol line. The class
- * is therefore never produced by KafkaException::fromCode() here, it is raised by the socket layer. When 0.8.x is
- * merged into 0.9.x, this class regains its NETWORK_EXCEPTION (13) code and the ServerExceptionInterface marker.
+ * Error code 13 was StaleLeaderEpochCode in kafka/common/ErrorMapping.scala @ 0.8.2.2 and was never produced by a
+ * 0.8 broker; from Kafka 0.9 onwards it is NETWORK_EXCEPTION (clients/.../common/protocol/Errors.java @ 0.9.0.1),
+ * which is what this class carries. The Java class extends InvalidMetadataException, hence the retriable marker:
+ * a dropped connection is cured by refreshing the metadata and sending the request again. The socket layer of this
+ * client raises the very same exception for a connection that dies locally.
  */
-class NetworkException extends KafkaException implements RetriableException, ClientExceptionInterface
+class NetworkException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::UNKNOWN, $previous);
+        parent::__construct($context, self::NETWORK_EXCEPTION, $previous);
     }
 }

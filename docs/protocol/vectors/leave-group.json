@@ -1,0 +1,72 @@
+{
+    "api": "leave-group",
+    "apiKey": 13,
+    "section": "LeaveGroup API (key 13, v0)",
+    "description": "Wire vectors of the LeaveGroup API (key 13, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "leavegroup.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "LeaveGroup request v0 of a member that shuts down in an orderly way.",
+            "hex": "00000047000d00000000003000027433001074332d766563746f72732d67726f7570002774332d30363966346231342d363837382d343037652d613730382d613932383863613862323531",
+            "fields": {
+                "messageSize": 71,
+                "apiKey": 13,
+                "apiVersion": 0,
+                "correlationId": 48,
+                "clientId": "t3",
+                "consumerGroup": "t3-vectors-group",
+                "memberId": "t3-069f4b14-6878-407e-a708-a9288ca8b251"
+            }
+        },
+        {
+            "id": "leavegroup.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "LeaveGroup answer of a coordinator that removed the member from the group.",
+            "hex": "00000006000000300000",
+            "fields": {
+                "messageSize": 6,
+                "correlationId": 48,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "leavegroup.request.v0.unknown-member",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "LeaveGroup request v0 with a member id the group does not have.",
+            "hex": "0000002f000d00000000003100027433001074332d766563746f72732d67726f7570000f74332d6e6f742d612d6d656d626572",
+            "fields": {
+                "messageSize": 47,
+                "apiKey": 13,
+                "apiVersion": 0,
+                "correlationId": 49,
+                "clientId": "t3",
+                "consumerGroup": "t3-vectors-group",
+                "memberId": "t3-not-a-member"
+            }
+        },
+        {
+            "id": "leavegroup.response.v0.unknown-member",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "LeaveGroup answer for a member id the group does not have: the error code 25.",
+            "hex": "00000006000000310019",
+            "fields": {
+                "messageSize": 6,
+                "correlationId": 49,
+                "errorCode": 25
+            }
+        }
+    ]
+}

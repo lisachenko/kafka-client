@@ -21,24 +21,33 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 
 /**
- * Byte-exact tests of the Produce API v0.
+ * Byte-exact tests of the Produce API, versions 0 and 1.
  *
  * <pre>
- *   ProduceRequest  => RequiredAcks int16 Timeout int32 [TopicName [Partition int32 MessageSetSize int32 MessageSet]]
- *   ProduceResponse => [TopicName [Partition int32 ErrorCode int16 Offset int64]]
+ *   ProduceRequest     => RequiredAcks int16 Timeout int32 [TopicName [Partition int32 MessageSetSize int32
+ *                                                                      MessageSet]]
+ *   ProduceResponse v0 => [TopicName [Partition int32 ErrorCode int16 Offset int64]]
+ *   ProduceResponse v1 => [TopicName [Partition int32 ErrorCode int16 Offset int64]] ThrottleTime int32
  * </pre>
+ *
+ * The body of the request is the same in both versions, only the answer of version 1 carries the throttle time of
+ * a quota violation at its very end.</pre>
  *
  * The message sets are built by {@see SpecMessageSet} directly from the specification, so that the request classes
  * are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/0.8.2.md, sections "Produce API (key 0, v0)" and "MessageSet and Message"
+ * @see docs/protocol/0.9.0.md, sections "Produce API (key 0, v0)" and "MessageSet and Message"
  */
 #[CoversClass(ProduceRequest::class)]
+#[CoversClass(ProduceRequestV0::class)]
 #[CoversClass(ProduceResponse::class)]
+#[CoversClass(ProduceResponseV0::class)]
 #[CoversClass(ProduceRequestTopic::class)]
 #[CoversClass(ProduceRequestPartition::class)]
 #[CoversClass(ProduceResponseTopic::class)]
@@ -62,10 +71,15 @@ final class ProduceApiTest extends TestCase
      * Header of a produce request for the topic "orders", client id "test", correlation id 5, timeout 1000 ms.
      *
      *   Size          => 00 00 00 4b (75 bytes)
-     *   ApiKey        => 00 00 (Produce), ApiVersion => 00 00
+     *   ApiKey        => 00 00 (Produce), ApiVersion => 00 01
      *   CorrelationId => 00 00 00 05, ClientId => 00 04 "test"
      */
-    private const string REQUEST_HEADER_HEX = '0000004b' . '0000' . '0000' . '00000005' . '0004' . '74657374';
+    private const string REQUEST_HEADER_HEX = '0000004b' . '0000' . '0001' . '00000005' . '0004' . '74657374';
+
+    /**
+     * The same header with the api version 0 in it, the only byte a version 0 request differs in
+     */
+    private const string REQUEST_HEADER_V0_HEX = '0000004b' . '0000' . '0000' . '00000005' . '0004' . '74657374';
 
     /**
      * Everything after RequiredAcks: Timeout, one topic "orders" and its partition 0 with the message set above
@@ -151,7 +165,7 @@ final class ProduceApiTest extends TestCase
         //   Size => 00 00 00 75 (117 bytes), then the header, RequiredAcks 1, Timeout 1000, one topic with the
         //   partitions 0 and 2; the second message set carries the key "key" and the value "world"
         self::assertSame(
-            '00000075' . '0000' . '0000' . '00000005' . '0004' . '74657374'
+            '00000075' . '0000' . '0001' . '00000005' . '0004' . '74657374'
             . '0001' . '000003e8'
             . '00000001' . '0006' . '6f7264657273' . '00000002'
             . '00000000' . '0000001f' . self::HELLO_MESSAGE_SET_HEX
@@ -162,21 +176,38 @@ final class ProduceApiTest extends TestCase
         );
     }
 
-    public function testResponseReportsTheBaseOffsetAndTheErrorOfEveryPartition(): void
+    public function testVersion0RequestOnlyLowersTheApiVersionOfTheHeader(): void
     {
-        //   Size => 00 00 00 30 (48), CorrelationId => 3, one topic "orders" with two partitions:
-        //   partition 0 => no error, base offset 42; partition 1 => error 6 (NotLeaderForPartition), offset -1
+        $request = new ProduceRequestV0(
+            ['orders' => [0 => SpecMessageSet::of([[null, 'hello']])]],
+            1,
+            1000,
+            'test',
+            5
+        );
+
+        self::assertSame(self::REQUEST_HEADER_V0_HEX . '0001' . self::REQUEST_BODY_HEX, bin2hex((string) $request));
+        self::assertSame(0, $request->getApiVersion());
+    }
+
+    public function testResponseReportsTheBaseOffsetTheErrorAndTheThrottleTimeOfEveryPartition(): void
+    {
+        //   Size => 00 00 00 34 (52), CorrelationId => 3, one topic "orders" with two partitions:
+        //   partition 0 => no error, base offset 42; partition 1 => error 6 (NotLeaderForPartition), offset -1,
+        //   then ThrottleTime => 00 00 00 00 (no quota violation), which only version 1 carries
         $frame = hex2bin(
-            '00000030' . '00000003'
+            '00000034' . '00000003'
             . '00000001' . '0006' . '6f7264657273' . '00000002'
             . '00000000' . '0000' . '000000000000002a'
             . '00000001' . '0006' . 'ffffffffffffffff'
+            . '00000000'
         );
 
         $response = ProduceResponse::unpack(new StringStream($frame));
 
         self::assertSame(3, $response->getCorrelationId());
         self::assertSame(['orders'], array_keys($response->topics));
+        self::assertSame(0, $response->throttleTime);
 
         $partitions = $response->topics['orders']->partitions;
         self::assertSame([0, 1], array_keys($partitions));
@@ -184,6 +215,38 @@ final class ProduceApiTest extends TestCase
         self::assertSame(42, $partitions[0]->baseOffset);
         self::assertSame(6, $partitions[1]->errorCode, 'NotLeaderForPartition');
         self::assertSame(-1, $partitions[1]->baseOffset);
+    }
+
+    public function testThrottleTimeOfAQuotaViolationIsReadFromTheEndOfTheResponse(): void
+    {
+        //   The same answer with a single partition and ThrottleTime = 250 ms at its end
+        $frame = hex2bin(
+            '00000026' . '00000003'
+            . '00000001' . '0006' . '6f7264657273' . '00000001'
+            . '00000000' . '0000' . '000000000000002a'
+            . '000000fa'
+        );
+
+        $response = ProduceResponse::unpack(new StringStream($frame));
+
+        self::assertSame(250, $response->throttleTime);
+        self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
+    }
+
+    public function testVersion0ResponseHasNoThrottleTimeAtAll(): void
+    {
+        //   The same answer as the version 1 one above, four bytes shorter: no ThrottleTime
+        $frame = hex2bin(
+            '00000022' . '00000003'
+            . '00000001' . '0006' . '6f7264657273' . '00000001'
+            . '00000000' . '0000' . '000000000000002a'
+        );
+
+        $response = ProduceResponseV0::unpack(new StringStream($frame));
+
+        self::assertArrayNotHasKey('throttleTime', ProduceResponseV0::getScheme());
+        self::assertSame(42, $response->topics['orders']->partitions[0]->baseOffset);
+        self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
     }
 
     private function createRequest(int $requiredAcks): ProduceRequest

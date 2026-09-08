@@ -13,44 +13,54 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Consumer;
 
-use BadMethodCallException;
+use InvalidArgumentException;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
+use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Serialization\Deserializer;
+use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Throwable;
 
 /**
- * A Kafka client that consumes records from a Kafka 0.8.2.2 cluster.
+ * A Kafka client that consumes records from a Kafka 0.9.0.1 cluster.
  *
- * Kafka 0.8 has no broker-side group membership: the coordinator of a group only stores its committed offsets
- * (GroupCoordinator, OffsetCommit, OffsetFetch), while the partition assignment and the rebalancing of the 0.8
- * high-level consumer were done by the consumers themselves through ZooKeeper, which this client does not speak.
- * This consumer is therefore the equivalent of the Java `SimpleConsumer` with broker-stored offsets, behind the
- * API of the later protocol lines: partitions are selected with {@see assign()}, and {@see subscribe()} throws.
+ * Kafka 0.9 moved the coordination of a consumer group out of ZooKeeper into the broker, so this consumer knows
+ * both ways of getting partitions, and they are mutually exclusive, exactly as in the Java client:
  *
- * Usage against a broker on 127.0.0.1:9092, see also examples/consumer.php:
+ * - {@see subscribe()} names the topics and lets the group coordinator hand out the partitions. The membership is
+ *   established on the next {@see poll()} - JoinGroup, the assignor of the leader, SyncGroup - and every further
+ *   poll() keeps it alive with a heartbeat.
+ * - {@see assign()} picks the partitions itself and joins no group at all; the offsets of the configured group are
+ *   still committed to and read from its coordinator, which is what the 0.8 line could do.
+ *
+ * Usage against a broker on 127.0.0.1:9092, see also examples/consumer-group.php:
  *
  * ```php
  * $consumer = new KafkaConsumer([
  *     ConsumerConfig::BOOTSTRAP_SERVERS  => ['tcp://127.0.0.1:9092'],
  *     ConsumerConfig::GROUP_ID           => 'my-group',
  *     ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
- *     ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+ *     ConsumerConfig::SESSION_TIMEOUT_MS => 10000,
+ *     // request.timeout.ms has to be larger, a JoinGroup blocks until the whole rebalance is over
+ *     ClientConfig::REQUEST_TIMEOUT_MS   => 30000,
  * ]);
  *
- * // Partitions are assigned explicitly; assignment() reports them back
- * $consumer->assign(['my-topic' => [0, 1]]);
+ * $consumer->subscribe(['my-topic']);
  *
  * while (true) {
  *     // [topic][partition] => list of records, in offset order
@@ -63,18 +73,26 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  *     }
  *     $consumer->commitSync();
  * }
+ * $consumer->close();
  * ```
  *
- * Where the committed offsets are kept is chosen with `offsets.storage`: `kafka` commits them to the coordinator
- * of the group with the version 1 of the offset APIs, `zookeeper` uses the version 0, which is what the consumers
- * of Kafka 0.8.1 did. The two storages are independent, so a group has one position per storage.
+ * **The heartbeat is sent from poll(), because PHP has no background thread.** A consumer that does not poll for
+ * longer than `session.timeout.ms` is dropped by the coordinator and its partitions are given to another member;
+ * the next poll() notices that from the error code of its heartbeat (25/22/27) and rejoins the group. An
+ * application whose processing of a batch can take longer than the session timeout therefore has to raise
+ * `session.timeout.ms` - within the `group.min.session.timeout.ms`/`group.max.session.timeout.ms` of the broker -
+ * or poll more often. There is no `max.poll.interval.ms` on this line, that is Kafka 0.10.1.
  *
- * The options that only drive the group membership of Kafka 0.9 (session.timeout.ms, heartbeat.interval.ms,
- * rebalance.timeout.ms, partition.assignment.strategy) do not exist on this branch, and neither does the
- * `offset.retention.ms` of the OffsetCommit v2 or the `isolation.level` of the transactional protocol of 0.11.
+ * Where the committed offsets are kept is chosen with `offsets.storage`: `kafka` commits them to the coordinator
+ * of the group with the version 2 of the OffsetCommit api, which carries the member id and the generation of this
+ * consumer, `zookeeper` uses the version 0, which is what the consumers of Kafka 0.8.1 did. The two storages are
+ * independent, so a group has one position per storage.
+ *
+ * What arrived after 0.9.0.1 is absent: `rebalance.timeout.ms` and `max.poll.interval.ms` (JoinGroup v1, Kafka
+ * 0.10.1), the `isolation.level` of the transactional protocol of 0.11 and the message format v1 with timestamps.
  *
  * A message that does not fit into `max.partition.fetch.bytes` is refused with a {@see RecordTooLargeException}
- * rather than silently stalling the partition, because a 0.8.2.2 broker cuts a message set off at that size
+ * rather than silently stalling the partition, because a 0.9.0.1 broker cuts a message set off at that size
  * without guaranteeing that a single message fits into it.
  */
 class KafkaConsumer
@@ -102,9 +120,19 @@ class KafkaConsumer
     private readonly SubscriptionState $subscriptionState;
 
     /**
-     * Offset coordinator node of the configured consumer group
+     * Membership of the configured consumer group, created when the consumer first needs its coordinator
      */
-    private ?Node $coordinator = null;
+    private ?ConsumerCoordinator $groupCoordinator = null;
+
+    /**
+     * Assignor that this consumer offers as the group protocol of its JoinGroup requests
+     */
+    private readonly PartitionAssignorInterface $assignor;
+
+    /**
+     * Callback that observes the partitions this consumer loses and receives with every rebalance
+     */
+    private ?ConsumerRebalanceListener $rebalanceListener = null;
 
     /**
      * Last commit time in ms
@@ -136,6 +164,10 @@ class KafkaConsumer
                 . 'commit off to consume without one.'
             );
         }
+
+        $this->assignor = AbstractPartitionAssignor::fromStrategy(
+            (string) $this->configuration[ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY]
+        );
 
         $this->keyDeserializer   = self::resolveDeserializer($this->configuration[ConsumerConfig::KEY_DESERIALIZER]);
         $this->valueDeserializer = self::resolveDeserializer($this->configuration[ConsumerConfig::VALUE_DESERIALIZER]);
@@ -196,6 +228,13 @@ class KafkaConsumer
      * records that the next poll() would return - the record of the offset that was committed is *not* consumed
      * again by a consumer that resumes from it.
      *
+     * A consumer that is a member of its group commits with the member id and the generation it holds, which the
+     * coordinator refuses once that generation is over (22 IllegalGeneration) or the member was dropped (25
+     * UnknownMemberId); a consumer that picked its partitions with {@see assign()} commits as a "simple consumer",
+     * with the empty member id and the generation -1 of a request that belongs to no generation.
+     * `offset.retention.ms` is passed on as the `retention_time` of the v2 request, with -1 asking the broker for
+     * its own `offsets.retention.minutes`.
+     *
      * @param array<string, array<int, int|OffsetAndMetadata>>|null $topicPartitionOffsets Offsets to commit, or
      *                                                                                     null for the positions
      *                                                                                     of this consumer
@@ -208,10 +247,15 @@ class KafkaConsumer
             return;
         }
 
+        $groupCoordinator = $this->groupCoordinator();
+
         $this->getClient()->commitGroupOffsets(
-            $this->getCoordinator(),
+            $groupCoordinator->getNode(),
             $this->requireGroupId(),
-            $topicPartitionOffsets
+            $groupCoordinator->getMemberId(),
+            $groupCoordinator->getGenerationId(),
+            $topicPartitionOffsets,
+            (int) $this->configuration[ConsumerConfig::OFFSET_RETENTION_MS]
         );
     }
 
@@ -262,12 +306,20 @@ class KafkaConsumer
     }
 
     /**
-     * Fetches data for the partitions specified with the assign() API.
+     * Fetches data for the partitions specified with one of the subscribe/assign APIs.
+     *
+     * A consumer that subscribed to topics keeps its group membership here, because PHP has no background thread:
+     * the first poll() joins the group and receives an assignment, every further one sends a heartbeat as soon as
+     * `heartbeat.interval.ms` has elapsed and rejoins the group when the coordinator reports a rebalance, a
+     * generation that is over or a member id it does not know. At most one heartbeat is sent per poll(), so the
+     * call exceeds the timeout of the caller by at most that single round trip - plus the rebalance itself, whose
+     * JoinGroup the coordinator holds until every member of the group has rejoined.
      *
      * Every assigned partition that is not paused is fetched from its current position; the returned records are
      * the ones the broker had, in offset order, and the position of each partition moves behind its last record,
      * so that the next poll() continues where this one stopped. When `enable.auto.commit` is on, the positions
-     * are committed once `auto.commit.interval.ms` has passed since the last commit.
+     * are committed once `auto.commit.interval.ms` has passed since the last commit, and always right before the
+     * consumer gives its partitions up in a rebalance.
      *
      * @param int $timeout The time, in milliseconds, spent waiting in poll if data is not available. If 0, returns
      *                     immediately with any records that are available now. The broker never waits longer than
@@ -282,6 +334,10 @@ class KafkaConsumer
     public function poll(int $timeout): array
     {
         $milliSeconds = (int) (microtime(true) * 1e3);
+
+        if ($this->subscriptionState->partitionsAutoAssigned()) {
+            $this->ensureActiveGroup($milliSeconds);
+        }
 
         $activeTopicPartitionOffsets = $this->subscriptionState->fetchablePartitions();
         if ($activeTopicPartitionOffsets === []) {
@@ -351,26 +407,51 @@ class KafkaConsumer
     }
 
     /**
-     * Subscribing to topics is not available on the Kafka 0.8 protocol line.
+     * Subscribe to the given list of topics to get dynamically assigned partitions.
      *
-     * Dynamic partition assignment requires the broker-side group membership protocol (API keys 11-14), which was
-     * introduced in Kafka 0.9; a 0.8.2.2 broker either answers those API keys with "Unknown api code" or closes
-     * the connection. Assign the partitions explicitly with {@see assign()} instead.
+     * Topic subscriptions are not incremental, this list replaces the current subscription; an empty list is
+     * treated the same as {@see unsubscribe()}. It is not possible to combine a subscription with the manual
+     * assignment of {@see assign()}, exactly as in the Java client.
      *
-     * @param string[] $topics List of topics to subscribe to
+     * Nothing is sent to the broker here: the group is joined on the next {@see poll()}, which is also where the
+     * consumer notices that the group has to be rebalanced, because
+     *
+     * - a member joined the group or left it,
+     * - an existing member died, i.e. missed its `session.timeout.ms`,
+     * - the leader of the group published a new assignment for another reason.
+     *
+     * The partitions that a rebalance takes away and hands over are reported to the given listener, which is the
+     * place to commit the offsets of the partitions that are being revoked when the automatic commit is off.
+     *
+     * @param list<string>                  $topics   List of topics to subscribe to
+     * @param ConsumerRebalanceListener|null $listener Observer of the rebalances of this consumer, if any
+     *
+     * @throws InvalidConfigurationException when `request.timeout.ms` does not exceed `session.timeout.ms`, which
+     *                                       a JoinGroup that waits for the whole rebalance needs it to
      */
-    public function subscribe(array $topics): void
+    public function subscribe(array $topics, ?ConsumerRebalanceListener $listener = null): void
     {
-        throw new BadMethodCallException(
-            'Kafka 0.8 has no broker-side group membership, so subscribe() can not be supported: the group '
-            . 'membership APIs (keys 11-14) only exist since Kafka 0.9, and a 0.8.2.2 broker either answers them '
-            . 'with "Unknown api code" or closes the connection. Use assign() to select the topic partitions for '
-            . 'this consumer explicitly.'
-        );
+        if ($topics === []) {
+            $this->unsubscribe();
+
+            return;
+        }
+
+        $topicNames = array_values(array_map(strval(...), $topics));
+        if (array_filter($topicNames, static fn(string $topic): bool => trim($topic) === '') !== []) {
+            throw new InvalidArgumentException('The topics to subscribe to can not contain an empty topic name');
+        }
+
+        $this->requireGroupId();
+        $this->requireRequestTimeoutAboveSessionTimeout();
+
+        $this->rebalanceListener = $listener;
+        $this->subscriptionState->subscribeByTopics($topicNames);
+        $this->groupCoordinator()->requestRejoin();
     }
 
     /**
-     * Get the current subscription, which is always empty because {@see subscribe()} does not exist in 0.8.
+     * Get the topics this consumer subscribed to, which is empty for a manual assignment
      *
      * @return list<string>
      */
@@ -380,24 +461,94 @@ class KafkaConsumer
     }
 
     /**
-     * Clears the partitions assigned through assign(array $topicPartitions).
+     * Unsubscribe from the topics of subscribe(array $topics) and clear the assignment of assign().
      *
-     * Nothing is sent to the broker: without group membership there is no group to leave, and the committed
-     * offsets of the group stay where they are.
+     * A member of a group leaves it with a LeaveGroup request, so that the coordinator rebalances the group right
+     * away instead of waiting for the session timeout of a member that simply stopped answering. Nothing else is
+     * sent to the broker, and the committed offsets of the group stay where they are.
      */
     public function unsubscribe(): void
     {
+        if ($this->subscriptionState->partitionsAutoAssigned() && $this->groupCoordinator !== null) {
+            $this->groupCoordinator->leaveGroup();
+        }
+
         $this->subscriptionState->unsubscribe();
 
-        $this->coordinator = null;
+        $this->groupCoordinator  = null;
+        $this->rebalanceListener = null;
     }
 
     /**
-     * Return the coordinator node that keeps the committed offsets of the configured group
+     * Commits the current positions and releases the membership of this consumer.
+     *
+     * This is what an application calls when it is done consuming: with `enable.auto.commit` on, the positions of
+     * the assignment are committed once more, and a member of a group leaves it, which starts the rebalance that
+     * hands its partitions to the other members within milliseconds.
+     */
+    public function close(): void
+    {
+        if ($this->isAutoCommitEnabled()) {
+            try {
+                $this->commitSync();
+            } catch (KafkaException) {
+                // A generation that is already over, or a coordinator that is gone, must not fail a shutdown
+            }
+        }
+
+        $this->unsubscribe();
+    }
+
+    /**
+     * A consumer that goes out of scope releases its membership, so that its group does not wait for its session
+     */
+    public function __destruct()
+    {
+        if (!$this->subscriptionState->partitionsAutoAssigned()) {
+            return;
+        }
+
+        try {
+            $this->close();
+        } catch (Throwable) {
+            // The process is shutting down; a broker that is not reachable any more can not be helped here
+        }
+    }
+
+    /**
+     * Return the coordinator node that keeps the committed offsets and the membership of the configured group
      */
     protected function getCoordinator(): Node
     {
-        return $this->coordinator ??= $this->getClient()->getGroupCoordinator($this->requireGroupId());
+        return $this->groupCoordinator()->getNode();
+    }
+
+    /**
+     * Returns the partition ids of the given topics, which the leader of a group hands to its assignor
+     *
+     * A topic the cluster does not know - it was deleted, or it does not exist yet and `auto.create.topics.enable`
+     * is off on the broker - is left out, exactly as the Java leader leaves out a topic its metadata has no
+     * partitions for; the members that subscribed to it simply receive nothing for it in this generation.
+     *
+     * @param list<string> $topics Union of the topics that the members of the group subscribed to
+     *
+     * @return array<string, list<int>> Topic name => partition ids of that topic
+     */
+    protected function partitionsForAssignment(array $topics): array
+    {
+        $partitionsPerTopic = [];
+        foreach ($topics as $topic) {
+            try {
+                $partitionsPerTopic[$topic] = array_values(array_map(
+                    static fn(PartitionMetadata $partition): int => $partition->partitionId,
+                    $this->getCluster()->partitionsForTopic($topic)
+                ));
+            } catch (KafkaException) {
+                // The metadata of this topic is not available, it takes part in the next generation
+            }
+        }
+
+        return $partitionsPerTopic;
     }
 
     /**
@@ -540,7 +691,7 @@ class KafkaConsumer
         $result = [];
         foreach ($fetchedPartitions as $topic => $partitions) {
             foreach ($partitions as $partitionId => $fetchedPartition) {
-                // A 0.8.2.2 broker fills the answer up to MaxBytes without guaranteeing that one message fits, so
+                // A 0.9.0.1 broker fills the answer up to MaxBytes without guaranteeing that one message fits, so
                 // a partition whose next message is bigger would come back empty forever
                 if ($fetchedPartition->isSingleMessageTooLarge()) {
                     throw new RecordTooLargeException(
@@ -728,6 +879,119 @@ class KafkaConsumer
                 $this->subscriptionState->seek((string) $topic, (int) $partition, (int) $offset);
             }
         }
+    }
+
+    /**
+     * Keeps the membership of a subscribed consumer alive, and rebalances the group when that is needed
+     *
+     * @param int $nowMs Moment this poll() started, in milliseconds
+     */
+    private function ensureActiveGroup(int $nowMs): void
+    {
+        $groupCoordinator = $this->groupCoordinator();
+        $groupCoordinator->maybeHeartbeat($nowMs);
+
+        if (!$groupCoordinator->needsRejoin()) {
+            return;
+        }
+
+        // The partitions are about to be given up, so what has been consumed of them is committed while this
+        // member still holds the generation that the coordinator accepts a commit for
+        if ($this->isAutoCommitEnabled()) {
+            $this->commitBeforeRebalance();
+        }
+
+        $revokedPartitions = $this->assignedPartitionLists();
+        if ($revokedPartitions !== []) {
+            $this->rebalanceListener?->onPartitionsRevoked($revokedPartitions);
+        }
+
+        $assignment = self::normalizeAssignment($groupCoordinator->ensureActiveGroup(
+            $this->subscriptionState->getSubscription(),
+            fn(array $topics): array => $this->partitionsForAssignment($topics)
+        ));
+
+        $this->subscriptionState->assignFromSubscribed($assignment);
+        if ($assignment !== []) {
+            $this->refreshTopicPartitionOffsets($assignment);
+        }
+
+        $this->rebalanceListener?->onPartitionsAssigned($this->assignedPartitionLists());
+    }
+
+    /**
+     * Commits the positions of the assignment that a rebalance is about to take away
+     *
+     * The commit is best effort: the coordinator refuses it once this member has lost its generation (22), was
+     * dropped (25) or the group is already rebalancing (27), and none of the three may keep the consumer from
+     * joining the new generation - the records of those partitions are simply consumed again by whoever gets them.
+     */
+    private function commitBeforeRebalance(): void
+    {
+        try {
+            $this->commitSync();
+        } catch (IllegalGenerationException | UnknownMemberIdException | RebalanceInProgressException) {
+            // The generation is over, the offsets of it can not be committed any more
+        }
+    }
+
+    /**
+     * Returns the membership of the configured consumer group, created on the first use
+     */
+    private function groupCoordinator(): ConsumerCoordinator
+    {
+        return $this->groupCoordinator ??= new ConsumerCoordinator(
+            $this->getClient(),
+            $this->requireGroupId(),
+            $this->assignor,
+            (int) $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS],
+            (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100)
+        );
+    }
+
+    /**
+     * Returns the current assignment as plain partition lists, which is what a rebalance listener receives
+     *
+     * @return array<string, list<int>>
+     */
+    private function assignedPartitionLists(): array
+    {
+        $result = [];
+        foreach ($this->subscriptionState->getAssignment() as $topic => $partitions) {
+            $result[$topic] = array_map(intval(...), array_keys($partitions));
+        }
+
+        return $result;
+    }
+
+    /**
+     * Refuses a group membership whose JoinGroup could time out before the rebalance it waits for is over
+     *
+     * The coordinator answers a JoinGroup only once every member of the group has rejoined or has missed its
+     * session timeout, so a socket read timeout - `request.timeout.ms` - that is not larger than
+     * `session.timeout.ms` turns a perfectly normal rebalance into a network error. The Java consumer of 0.9.0.1
+     * refuses that combination in its constructor, and this one refuses it when a group is actually joined.
+     *
+     * @throws InvalidConfigurationException
+     */
+    private function requireRequestTimeoutAboveSessionTimeout(): void
+    {
+        $requestTimeoutMs = (int) $this->configuration[ConsumerConfig::REQUEST_TIMEOUT_MS];
+        $sessionTimeoutMs = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
+        if ($requestTimeoutMs > $sessionTimeoutMs) {
+            return;
+        }
+
+        throw new InvalidConfigurationException(
+            sprintf(
+                '%s (%d) has to be greater than %s (%d): the coordinator answers the JoinGroup request of a '
+                . 'member only once the whole rebalance is over, which can take a full session timeout.',
+                ConsumerConfig::REQUEST_TIMEOUT_MS,
+                $requestTimeoutMs,
+                ConsumerConfig::SESSION_TIMEOUT_MS,
+                $sessionTimeoutMs
+            )
+        );
     }
 
     /**

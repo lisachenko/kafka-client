@@ -52,7 +52,8 @@ use React\Promise\Promise;
  *
  *   $producer->send('my-topic', Record::fromKeyValue('user-42', 'hello'))->then(
  *       function (RecordMetadata $metadata): void {
- *           echo "stored as {$metadata}\n"; // my-topic-1@17
+ *           echo "stored as {$metadata}\n";                        // my-topic-1@17
+ *           echo "throttled for {$metadata->throttleTimeMs} ms\n";   // 0 unless a produce quota was exceeded
  *       },
  *       function (\Throwable $error): void {
  *           echo "not stored: {$error->getMessage()}\n";
@@ -74,7 +75,12 @@ use React\Promise\Promise;
  * partition that the murmur2 hash of the key selects, exactly like the official Java client, see
  * {@see DefaultPartitioner}.
  *
+ * A broker with a `producer_byte_rate` quota for the `client.id` of this producer does not reject anything: it
+ * appends the batch and holds its answer back until the client is inside its quota again. That delay is what
+ * {@see RecordMetadata::$throttleTimeMs} reports, and {@see KafkaProducer::flush()} simply takes that much longer.
+ *
  * @see examples/producer.php for a runnable example
+ * @see docs/protocol/0.9.0.md, section "Quotas and throttle time"
  */
 class KafkaProducer
 {
@@ -338,7 +344,8 @@ class KafkaProducer
     /**
      * Builds the result of a request that the broker does not answer at all, `acks = 0`.
      *
-     * The offset of a record that was never acknowledged is unknown, and the official clients report it as -1.
+     * The offset of a record that was never acknowledged is unknown, and the official clients report it as -1, and
+     * so is the throttle time: a broker that is not allowed to answer can not report the delay it applied either.
      *
      * @return array<string, array<int, ProduceResponsePartition>>
      */
@@ -390,7 +397,14 @@ class KafkaProducer
                 }
                 $deferred = $this->forgetPartition($topic, $partitionId);
 
-                $deferred?->resolve(new RecordMetadata($topic, $partitionId, $partitionResult->baseOffset));
+                // The `timestamp` of a record is the `LogAppendTime` of Produce v2 (Kafka 0.10) and stays null here
+                $deferred?->resolve(new RecordMetadata(
+                    $topic,
+                    $partitionId,
+                    $partitionResult->baseOffset,
+                    null,
+                    $partitionResult->throttleTimeMs
+                ));
             }
         }
     }

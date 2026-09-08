@@ -18,7 +18,7 @@ use Exception;
 /**
  * The coordinator is loading and hence can't process requests for this group.
  *
- * Named OffsetsLoadInProgressCode (14) in kafka/common/ErrorMapping.scala @ 0.8.2.2.
+ * Named OffsetsLoadInProgressCode (14) in kafka/common/ErrorMapping.scala @ 0.9.0.1.
  */
 class GroupLoadInProgressException extends KafkaException implements RetriableException, ServerExceptionInterface
 {

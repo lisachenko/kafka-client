@@ -19,10 +19,16 @@ use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
-use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
+use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
+use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
+use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
+use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
+use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
@@ -35,11 +41,11 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * Tests the way the AdminClient maps the answers of a broker onto its return values.
  *
  * The canned answers are the documented wire vectors of `docs/protocol/vectors`, i.e. frames that a real Kafka
- * 0.8.2.2 broker sent, replayed by a scripted broker connection - so this suite and the compliance suite cannot
+ * broker sent, replayed by a scripted broker connection - so this suite and the compliance suite cannot
  * disagree about what a broker says. The scripted connection echoes the correlation id of each request the way a
  * broker does, which is what the client validates the answer against.
  *
- * @see docs/protocol/0.8.2.md, section "Wire vectors"
+ * @see docs/protocol/0.9.0.md, section "Wire vectors"
  */
 #[CoversClass(AdminClient::class)]
 final class AdminClientTest extends TestCase
@@ -53,6 +59,32 @@ final class AdminClientTest extends TestCase
      * Name of the consumer group the wire vectors were recorded for
      */
     private const string GROUP = 't10-vectors-group';
+
+    /**
+     * Name of the consumer group that the DescribeGroups and ListGroups vectors were recorded for
+     */
+    private const string ADMIN_GROUP = 't4-vectors-group';
+
+    /**
+     * Group of the DescribeGroups vector that no broker of the cluster knows
+     */
+    private const string UNKNOWN_GROUP = 't4-vectors-unknown-group';
+
+    /**
+     * ListGroups answer of a coordinator that is still reading `__consumer_offsets`: error code 14, no groups
+     */
+    private const string LOADING_GROUPS_RESPONSE = '0000000a' . '00000000' . '000e' . '00000000';
+
+    /**
+     * DescribeGroups answer of a broker that is not the coordinator of `t4-vectors-group`: the group error code 16
+     */
+    private const string NOT_COORDINATOR_RESPONSE = '00000026' . '00000000' . '00000001'
+        . '0010' . '0010' . '74342d766563746f72732d67726f7570' . '0000' . '0000' . '0000' . '00000000';
+
+    /**
+     * DescribeGroups answer without an entry for the group that was asked about
+     */
+    private const string EMPTY_GROUPS_RESPONSE = '00000008' . '00000000' . '00000000';
 
     /**
      * Address the cluster is bootstrapped from
@@ -204,18 +236,20 @@ final class AdminClientTest extends TestCase
 
     public function testControlledShutdownThrowsTheErrorCodeOfTheController(): void
     {
-        $broker = $this->scriptBroker(self::vector('controlled-shutdown', 'controlledshutdown.response.v0'));
+        // A 0.9.0.1 controller answers an unknown broker id with the code 8, where 0.8.2.2 answered -1
+        $broker = $this->scriptBroker(self::vector('controlled-shutdown', 'controlledshutdown.response.v1'));
         $admin  = $this->adminClient();
 
         try {
             $admin->controlledShutdown(4242);
             self::fail('An unknown broker id has to be reported as an error');
-        } catch (UnknownErrorException $exception) {
+        } catch (BrokerNotAvailableException $exception) {
             self::assertStringContainsString('4242', $exception->getMessage());
         }
 
+        // The admin client sends version 1, the version whose header carries the client id
         self::assertSame(
-            [self::requestFrame(new ControlledShutdownRequest(4242, $broker->getReceivedCorrelationIds()[0]))],
+            [self::requestFrame(new ControlledShutdownRequest(4242, 't10', $broker->getReceivedCorrelationIds()[0]))],
             $broker->getReceivedFrames()
         );
     }
@@ -232,6 +266,130 @@ final class AdminClientTest extends TestCase
         $this->expectException(AllBrokersNotAvailableException::class);
 
         $this->adminClient()->findAllBrokers();
+    }
+
+    public function testListGroupsReturnsTheGroupsTheBrokerCoordinates(): void
+    {
+        $broker = $this->scriptBroker(
+            self::vector('metadata', 'metadata.response.v0.single-topic'),
+            self::vector('list-groups', 'listgroups.response.v0')
+        );
+        $admin  = $this->adminClient();
+        $node   = $admin->findAllBrokers()[0];
+
+        $groups = $admin->listGroups($node);
+
+        self::assertSame([self::ADMIN_GROUP], array_keys($groups), 'the groups are indexed by their id');
+        self::assertSame('consumer', $groups[self::ADMIN_GROUP]->protocolType);
+        self::assertSame(
+            self::requestFrame(new ListGroupsRequest('t10', $broker->getReceivedCorrelationIds()[1])),
+            $broker->getReceivedFrames()[1],
+            'the request of this api is the header and nothing else'
+        );
+    }
+
+    public function testListGroupsThrowsTheErrorCodeOfTheCoordinator(): void
+    {
+        $this->scriptBroker(
+            self::vector('metadata', 'metadata.response.v0.single-topic'),
+            (string) hex2bin(self::LOADING_GROUPS_RESPONSE)
+        );
+        $admin = $this->adminClient();
+
+        $this->expectException(GroupLoadInProgressException::class);
+
+        $admin->listGroups($admin->findAllBrokers()[0]);
+    }
+
+    public function testListAllGroupsAsksEveryBrokerOfTheCluster(): void
+    {
+        // The metadata vector announces a single broker, which is the only one that has to be asked
+        $broker = $this->scriptBroker(
+            self::vector('metadata', 'metadata.response.v0.single-topic'),
+            self::vector('list-groups', 'listgroups.response.v0')
+        );
+
+        $groups = $this->adminClient()->listAllGroups();
+
+        self::assertSame([self::ADMIN_GROUP], array_keys($groups));
+        self::assertSame(2, $broker->getRequestCount(), 'one Metadata request and one ListGroups request per broker');
+    }
+
+    public function testDescribeGroupAsksTheCoordinatorOfTheGroup(): void
+    {
+        $broker = $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('describe-groups', 'describegroups.response.v0.stable')
+        );
+
+        $group = $this->adminClient()->describeGroup(self::ADMIN_GROUP);
+
+        self::assertSame(self::ADMIN_GROUP, $group->groupId);
+        self::assertSame(DescribeGroupResponseMetadata::STATE_STABLE, $group->state);
+        self::assertSame('consumer', $group->protocolType);
+        self::assertSame('range', $group->protocol);
+        self::assertCount(1, $group->members);
+
+        [$lookupId, $describeId] = $broker->getReceivedCorrelationIds();
+        self::assertSame(
+            [
+                self::requestFrame(new GroupCoordinatorRequest(self::ADMIN_GROUP, 't10', $lookupId)),
+                self::requestFrame(new DescribeGroupsRequest([self::ADMIN_GROUP], 't10', $describeId)),
+            ],
+            $broker->getReceivedFrames(),
+            'the coordinator lookup comes first, the DescribeGroups goes to the coordinator it named'
+        );
+    }
+
+    public function testDescribeGroupReportsAnUnknownGroupAsDead(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('describe-groups', 'describegroups.response.v0.dead')
+        );
+
+        $group = $this->adminClient()->describeGroup(self::UNKNOWN_GROUP);
+
+        self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $group->state, 'this is not an error');
+        self::assertSame(0, $group->errorCode);
+        self::assertSame([], $group->members);
+    }
+
+    public function testDescribeGroupThrowsTheErrorCodeOfTheGroup(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            (string) hex2bin(self::NOT_COORDINATOR_RESPONSE)
+        );
+
+        $this->expectException(NotCoordinatorForGroupException::class);
+
+        $this->adminClient()->describeGroup(self::ADMIN_GROUP);
+    }
+
+    public function testDescribeGroupThrowsWhenTheAnswerHasNoEntryForTheGroup(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            (string) hex2bin(self::EMPTY_GROUPS_RESPONSE)
+        );
+
+        $this->expectException(InvalidGroupIdException::class);
+
+        $this->adminClient()->describeGroup(self::ADMIN_GROUP);
+    }
+
+    public function testDescribeGroupsAsksTheGroupsOfOneCoordinatorWithASingleRequest(): void
+    {
+        $broker = $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('describe-groups', 'describegroups.response.v0.stable')
+        );
+
+        $groups = $this->adminClient()->describeGroups([self::ADMIN_GROUP, self::ADMIN_GROUP]);
+
+        self::assertSame([self::ADMIN_GROUP], array_keys($groups), 'a group is asked about only once');
+        self::assertSame(2, $broker->getRequestCount(), 'one coordinator lookup and one DescribeGroups request');
     }
 
     /**

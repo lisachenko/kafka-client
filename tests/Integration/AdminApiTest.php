@@ -20,15 +20,19 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
+use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0;
+use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises the AdminClient against a real Kafka 0.8.2.2 broker.
+ * Exercises the AdminClient against a real Kafka 0.9.0.1 broker.
  *
- * @see docs/protocol/0.8.2.md
+ * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ControlledShutdownRequest::class)]
+#[CoversClass(ControlledShutdownRequestV0::class)]
+#[CoversClass(ControlledShutdownResponse::class)]
 final class AdminApiTest extends IntegrationTestCase
 {
     /**
@@ -137,12 +141,34 @@ final class AdminApiTest extends IntegrationTestCase
 
     public function testControlledShutdownOfAnUnknownBrokerIsRefused(): void
     {
-        // The controller throws BrokerNotAvailableException, but ControlledShutdownRequest.handleError() maps
-        // e.getCause() - which is null - so the code -1 (Unknown) is what reaches the wire, see the protocol document
+        // The controller throws BrokerNotAvailableException and ControlledShutdownRequest.handleError() @ 0.9.0.1
+        // maps e.getClass(), so the code 8 reaches the wire. A 0.8.2.2 broker mapped e.getCause(), which is null for
+        // a directly thrown exception, and answered -1 (Unknown) instead.
         $this->expectException(KafkaException::class);
-        $this->expectExceptionCode(KafkaException::UNKNOWN);
+        $this->expectExceptionCode(KafkaException::BROKER_NOT_AVAILABLE);
 
         $this->admin->controlledShutdown(self::UNKNOWN_BROKER_ID);
+    }
+
+    public function testBothVersionsOfControlledShutdownAreServedByTheBroker(): void
+    {
+        // The AdminClient sends v1; v0, the version without a client id in its header, is still answered as well,
+        // and both report the very same error code for a broker id the controller does not know
+        $stream = $this->connect();
+
+        new ControlledShutdownRequestV0(self::UNKNOWN_BROKER_ID, 4200)->writeTo($stream);
+        $versionZero = ControlledShutdownResponse::unpack($stream);
+
+        new ControlledShutdownRequest(self::UNKNOWN_BROKER_ID, 't10-admin', 4201)->writeTo($stream);
+        $versionOne = ControlledShutdownResponse::unpack($stream);
+
+        self::assertSame(4200, $versionZero->getCorrelationId());
+        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionZero->errorCode);
+        self::assertSame([], $versionZero->remainingTopicPartitions);
+
+        self::assertSame(4201, $versionOne->getCorrelationId());
+        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionOne->errorCode);
+        self::assertSame([], $versionOne->remainingTopicPartitions);
     }
 
     /**

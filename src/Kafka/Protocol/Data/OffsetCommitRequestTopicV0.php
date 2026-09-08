@@ -16,10 +16,10 @@ namespace Protocol\Kafka\Protocol\Data;
 /**
  * OffsetCommitRequestTopic DTO, version 0 of the OffsetCommit API
  *
- * The topic entry itself is the same in both versions, only its partition entries lose the `timestamp` field, so
- * this class exists solely to lower the version constant that selects the partition class.
+ * The topic entry itself is the same in every version, only its partition entries differ, so this class exists
+ * solely to lower the version constant that selects the partition class.
  *
- * @see docs/protocol/0.8.2.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 final class OffsetCommitRequestTopicV0 extends OffsetCommitRequestTopic
 {

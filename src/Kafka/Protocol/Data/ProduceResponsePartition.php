@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The `LogAppendTime` of the later protocol lines arrived with version 2 of this API (Kafka 0.10.0).
  *
- * @see docs/protocol/0.8.2.md, section "Produce API (key 0, v0)"
+ * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {
@@ -53,6 +53,19 @@ class ProduceResponsePartition implements BinarySchemaInterface
      * The offset assigned to the first message in the message set appended to this partition.
      */
     public int $baseOffset = 0;
+
+    /**
+     * Milliseconds the broker delayed the answer this partition arrived in, because of a produce quota.
+     *
+     * This is **not** a field of the wire format - the Produce API reports its `ThrottleTime` once per response,
+     * behind the topics array - and it is therefore not part of {@see self::getScheme()}. The client copies the
+     * value of an answer onto every partition of it, because a batch is split by partition leaders and each of
+     * those answers carries a throttle time of its own.
+     *
+     * @see \Protocol\Kafka\Producer\RecordMetadata::$throttleTimeMs
+     * @see docs/protocol/0.9.0.md, section "Quotas and throttle time"
+     */
+    public int $throttleTimeMs = 0;
 
     /**
      * @inheritdoc

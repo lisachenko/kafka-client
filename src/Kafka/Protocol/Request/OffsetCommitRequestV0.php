@@ -30,11 +30,12 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
  *         metadata  => NULLABLE_STRING
  * </pre>
  *
- * The version 0 request has neither a generation id nor a consumer id and no per-partition timestamp; the scheme
- * that {@see OffsetCommitRequest::getScheme()} builds follows the version constant below. Unlike version 1, this
- * request does not have to be sent to the coordinator of the group: any broker of the cluster answers it.
+ * The version 0 request has neither a generation id nor a consumer id, no retention time and no per-partition
+ * timestamp; the scheme that {@see OffsetCommitRequest::getScheme()} builds follows the version constant below.
+ * Unlike the later versions, this request does not have to be sent to the coordinator of the group: any broker of
+ * the cluster answers it, because it only writes to ZooKeeper.
  *
- * @see docs/protocol/0.8.2.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 final class OffsetCommitRequestV0 extends OffsetCommitRequest
 {
@@ -59,6 +60,7 @@ final class OffsetCommitRequestV0 extends OffsetCommitRequest
             $consumerGroup,
             self::DEFAULT_GENERATION_ID,
             self::DEFAULT_MEMBER_NAME,
+            self::DEFAULT_RETENTION_TIME,
             $topicPartitions,
             $clientId,
             $correlationId

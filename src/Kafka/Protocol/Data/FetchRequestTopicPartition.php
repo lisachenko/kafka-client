@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * `LogStartOffset` only exists since FetchRequest v5 (Kafka 0.11) and is therefore absent here.
  *
- * @see docs/protocol/0.8.2.md, section "Fetch API (key 1, v0)"
+ * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface
 {
@@ -45,7 +45,7 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
     /**
      * Maximum number of bytes of the message set that the broker may put into the response for this partition.
      *
-     * A 0.8.2.2 broker answers with an empty message set when the first message at `fetchOffset` is bigger than this
+     * A 0.9.0.1 broker answers with an empty message set when the first message at `fetchOffset` is bigger than this
      * limit; the guaranteed progress of the later protocol versions does not exist yet.
      */
     public int $maxBytes;

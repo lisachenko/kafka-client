@@ -25,7 +25,7 @@ use Protocol\Kafka\Tests\Unit\Producer\Fixture\ClusterFixture;
  * Verifies that the default partitioner places a record exactly where the official Java client places it.
  *
  * The expected hashes were produced by `org.apache.kafka.common.utils.Utils.murmur2()` of the
- * `kafka-clients-0.8.2.2.jar` that ships with the broker this suite runs against, so a green run here means that a
+ * `kafka-clients` jar that ships with the broker this suite runs against, so a green run here means that a
  * key written by this client and the same key written by the Java client end up in the same partition.
  */
 #[CoversClass(DefaultPartitioner::class)]

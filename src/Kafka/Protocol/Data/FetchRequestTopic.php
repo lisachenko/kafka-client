@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     TopicName => string
  * </pre>
  *
- * @see docs/protocol/0.8.2.md, section "Fetch API (key 1, v0)"
+ * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
  */
 class FetchRequestTopic implements BinarySchemaInterface
 {

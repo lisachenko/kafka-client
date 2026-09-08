@@ -32,13 +32,13 @@ use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the producer against a real Kafka 0.8.2.2 broker.
+ * Verifies the producer against a real Kafka 0.9.0.1 broker.
  *
  * Every test writes with the producer and reads the partitions back with a raw Fetch request, so that what the
  * broker really stored is checked, not what the client believes it sent: the partition a key was placed in, the
  * offsets that the promises were resolved with, and the compression of a batch.
  *
- * @see docs/protocol/0.8.2.md, section "Produce API (key 0, v0)"
+ * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
  */
 #[CoversClass(KafkaProducer::class)]
 #[CoversClass(DefaultPartitioner::class)]

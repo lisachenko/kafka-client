@@ -1,0 +1,35 @@
+<?php
+
+/*
+ * This file is part of the lisachenko/kafka-client package.
+ *
+ * (c) Alexander Lisachenko <lisachenko.it@gmail.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
+
+namespace Protocol\Kafka\Protocol\Request;
+
+/**
+ * Produce response object, version 0
+ *
+ * <pre>
+ *   ProduceResponse (Version: 0) => [TopicName [Partition ErrorCode Offset]]
+ * </pre>
+ *
+ * The answer of a version 0 request carries no `ThrottleTime`, so this class only lowers the version constant that
+ * {@see ProduceResponse::getScheme()} follows. Reading a version 0 answer with the version 1 class would run past
+ * the end of the frame.
+ *
+ * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
+ */
+final class ProduceResponseV0 extends ProduceResponse
+{
+    /**
+     * @inheritdoc
+     */
+    public const int VERSION = 0;
+}

@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
  * While the broker is still creating the internal `__consumer_offsets` topic the answer is the error code 15
  * (GroupCoordinatorNotAvailable) with the coordinator `-1:"":-1`, so the lookup is worth retrying.
  *
- * @see docs/protocol/0.8.2.md, section "GroupCoordinator API (key 10, v0)"
+ * @see docs/protocol/0.9.0.md, section "GroupCoordinator API (key 10, v0)"
  */
 class GroupCoordinatorResponse extends AbstractResponse
 {

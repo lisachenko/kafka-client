@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API
+ * The produce API, version 1
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -32,14 +32,18 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * time of the send the producer is free to fill in that field in any way it likes.
  *
  * <pre>
- *   ProduceRequest => RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
+ *   ProduceRequest (Version: 1) => RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
  *     RequiredAcks => int16
  *     Timeout      => int32
  * </pre>
  *
+ * `PRODUCE_REQUEST_V1` of Kafka 0.9.0.1 is `PRODUCE_REQUEST_V0`: the body of the request did not change, only the
+ * answer of the broker gained the `ThrottleTime` field, see {@see ProduceResponse}. The version therefore only
+ * selects the layout of the response, and {@see ProduceRequestV0} keeps the version 0 pair available.
+ *
  * The `TransactionalId` of the later protocol lines arrived with version 3 of this API (Kafka 0.11.0).
  *
- * @see docs/protocol/0.8.2.md, section "Produce API (key 0, v0)"
+ * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -51,7 +55,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all
@@ -83,8 +87,8 @@ class ProduceRequest extends AbstractRequest
      */
     public function __construct(
         array $topicMessages = [],
-        private readonly int $requiredAcks = 1,
-        private readonly int $timeout = 0,
+        protected readonly int $requiredAcks = 1,
+        protected readonly int $timeout = 0,
         string $clientId = '',
         int $correlationId = 0
     ) {

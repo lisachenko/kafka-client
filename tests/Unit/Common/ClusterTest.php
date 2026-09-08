@@ -32,7 +32,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 /**
  * Tests the cluster metadata against a scripted broker.
  *
- * @see docs/protocol/0.8.2.md, sections "Metadata API (key 3, v0)" and "Cluster readiness"
+ * @see docs/protocol/0.9.0.md, sections "Metadata API (key 3, v0)" and "Cluster readiness"
  */
 #[CoversClass(Cluster::class)]
 #[CoversClass(AllBrokersNotAvailableException::class)]

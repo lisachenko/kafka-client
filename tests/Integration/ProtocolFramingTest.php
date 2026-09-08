@@ -23,9 +23,11 @@ use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Tests\Fixture\ClusterMetadataResponse;
 
 /**
- * Verifies the request/response framing against a real Kafka 0.8.2.2 broker.
+ * Verifies the request/response framing against a real Kafka 0.9.0.1 broker.
  *
- * A Metadata request is the cheapest round trip that any broker of the cluster answers.
+ * A Metadata request is the cheapest round trip that any broker of the cluster answers. The framing itself did not
+ * change between 0.8.2.2 and 0.9.0.1; which api keys and versions the broker frames an answer for at all is the
+ * subject of {@see ApiVersionProbeTest}.
  */
 #[CoversClass(AbstractProtocolMessage::class)]
 #[CoversClass(AbstractRequest::class)]

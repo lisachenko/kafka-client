@@ -22,11 +22,15 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
+use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
+use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
+use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Record\CompressionCodec;
@@ -35,12 +39,16 @@ use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
+use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
+use Protocol\Kafka\Tests\Compliance\MessageFields;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
 use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
@@ -49,7 +57,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * Tests the low-level client against scripted brokers: the fan-out to the partition leaders, the correlation of the
  * answers, the retries after a metadata refresh and the reporting of a partially failed request.
  *
- * @see docs/protocol/0.8.2.md
+ * @see docs/protocol/0.9.0.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(RetryPolicy::class)]
@@ -111,6 +119,34 @@ final class ClientTest extends TestCase
         self::assertSame(42, $result[self::TOPIC][1]->baseOffset);
         self::assertSame(1, $first->getRequestCount(), 'the partitions of one leader travel in a single request');
         self::assertSame(1, $second->getRequestCount());
+    }
+
+    public function testTheThrottleTimeOfAProduceAnswerReachesEveryPartitionOfIt(): void
+    {
+        // Produce v1 reports the throttle time once per answer, behind the topics, and a batch is split by the
+        // partition leaders, so each of those answers carries the delay of its own broker
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::produce(
+                0,
+                [self::TOPIC => [0 => [0, 17]]],
+                793
+            )))
+            ->on(self::SECOND_LEADER, new BrokerConnection(ResponseFrame::produce(
+                0,
+                [self::TOPIC => [1 => [0, 42]]]
+            )))
+            ->install();
+
+        $result = $this->client()->produce([
+            self::TOPIC => [
+                0 => [new Record('over the quota')],
+                1 => [new Record('inside the quota')],
+            ],
+        ]);
+
+        self::assertSame(793, $result[self::TOPIC][0]->throttleTimeMs);
+        self::assertSame(0, $result[self::TOPIC][1]->throttleTimeMs, 'the other leader did not throttle anything');
     }
 
     public function testEveryRequestCarriesItsOwnCorrelationId(): void
@@ -366,7 +402,7 @@ final class ClientTest extends TestCase
             ->install();
 
         try {
-            // 0.8.2.2 knows the lz4 codec, but this client neither writes nor reads it
+            // 0.9.0.1 knows the lz4 codec, but this client neither writes nor reads it
             $this->client([ProducerConfig::COMPRESSION_TYPE => 'lz4'])
                 ->produce([self::TOPIC => [0 => [new Record('never sent')]]]);
             self::fail('An unsupported compression type has to be rejected');
@@ -463,11 +499,31 @@ final class ClientTest extends TestCase
         self::assertFalse($partition->hasPartialTrailingMessage());
         self::assertFalse($partition->isSingleMessageTooLarge());
         self::assertSame(2, $partition->getNextOffset(), 'the offsets of a produced set count from 0');
+        self::assertSame(0, $partition->throttleTimeMs, 'a broker without quotas never throttles');
+    }
+
+    public function testTheThrottleTimeOfAFetchAnswerReachesEveryPartitionOfIt(): void
+    {
+        // Fetch v1 reports the throttle time once for the whole answer, so every partition of it carries the value
+        $messageSet = MessageSet::fromRecords([new Record('throttled')])->toBuffer();
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::fetch(
+                0,
+                [self::TOPIC => [0 => [0, 1, $messageSet]]],
+                250
+            )))
+            ->install();
+
+        $partition = $this->client()->fetchPartitions([self::TOPIC => [0 => 0]], 200)[self::TOPIC][0];
+
+        self::assertSame(250, $partition->throttleTimeMs);
+        self::assertCount(1, $partition->getRecords());
     }
 
     public function testAMessageThatDoesNotFitIntoTheFetchSizeIsVisibleWithoutASecondRequest(): void
     {
-        // A 0.8.2.2 broker cuts the set off at MaxBytes without guaranteeing progress: the answer carries no
+        // A 0.9.0.1 broker cuts the set off at MaxBytes without guaranteeing progress: the answer carries no
         // complete message at all although the high water mark shows that there is something to read
         $truncated = substr(MessageSet::fromRecords([new Record(str_repeat('x', 512))])->toBuffer(), 0, 40);
         $this->brokers
@@ -556,7 +612,7 @@ final class ClientTest extends TestCase
         }
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionOne(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionTwo(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -577,7 +633,10 @@ final class ClientTest extends TestCase
         $client->commitGroupOffsets(
             $coordinatorNode,
             't7-group',
-            [self::TOPIC => [0 => new OffsetAndMetadata(21, 'by the client')]]
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            [self::TOPIC => [0 => new OffsetAndMetadata(21, 'by the client')]],
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME
         );
         $offsets = $client->fetchGroupOffsets($coordinatorNode, 't7-group', [self::TOPIC => [0]]);
 
@@ -586,9 +645,9 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(1, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks version 1');
+        self::assertSame(2, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 2');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(1, $this->apiVersionOf($frames[1]));
+        self::assertSame(1, $this->apiVersionOf($frames[1]), 'OffsetFetch did not change in Kafka 0.9');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -605,7 +664,7 @@ final class ClientTest extends TestCase
         $client      = $this->client([ClientConfig::OFFSETS_STORAGE => ClientConfig::OFFSETS_STORAGE_ZOOKEEPER]);
         $coordinator = $client->getGroupCoordinator('t7-group');
 
-        $client->commitGroupOffsets($coordinator, 't7-group', [self::TOPIC => [0 => 21]]);
+        $client->commitGroupOffsets($coordinator, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
 
         self::assertSame(0, $this->apiVersionOf($anyNode->getReceivedFrames()[1]));
     }
@@ -624,7 +683,7 @@ final class ClientTest extends TestCase
         $coordinator = $client->getGroupCoordinator('t7-group');
 
         $this->expectException(KafkaException::class);
-        $client->commitGroupOffsets($coordinator, 't7-group', [self::TOPIC => [0 => 21]]);
+        $client->commitGroupOffsets($coordinator, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
     }
 
     public function testANeverCommittedPartitionComesBackWithTheOffsetMinusOne(): void
@@ -644,6 +703,209 @@ final class ClientTest extends TestCase
         self::assertSame(
             [self::TOPIC => [0 => -1]],
             $client->fetchGroupOffsets($client->getGroupCoordinator('t7-group'), 't7-group', [self::TOPIC => [0]])
+        );
+    }
+
+    public function testAGroupIsJoinedThroughTheCoordinatorWithTheConfiguredSessionTimeout(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::joinGroup(0, 0, 1, 'range', 'one-1', 'one-1', ['one-1' => 'metadata'])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client   = $this->client([ConsumerConfig::SESSION_TIMEOUT_MS => 12000]);
+        $response = $client->joinGroup(
+            $client->getGroupCoordinator('t3-group'),
+            't3-group',
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            'consumer',
+            ['range' => 'metadata']
+        );
+
+        self::assertSame(1, $response->generationId);
+        self::assertSame('one-1', $response->memberId);
+        self::assertSame('one-1', $response->leaderId, 'the only member of a fresh group is its leader');
+        self::assertSame(['one-1' => 'metadata'], array_map(
+            static fn($member): string => $member->metadata,
+            $response->members
+        ));
+
+        $frame = $coordinator->getReceivedFrames()[0];
+
+        self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
+        self::assertSame(0, $this->apiVersionOf($frame), 'JoinGroup v1 with its rebalance timeout is Kafka 0.10.1');
+        $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
+
+        self::assertSame(
+            [
+                'consumerGroup'  => 't3-group',
+                'sessionTimeout' => 12000,
+                'memberId'       => '',
+                'protocolType'   => 'consumer',
+            ],
+            array_intersect_key(MessageFields::of($sent), array_flip([
+                'consumerGroup',
+                'sessionTimeout',
+                'memberId',
+                'protocolType',
+            ])),
+            'the session timeout of the request is session.timeout.ms of the configuration'
+        );
+    }
+
+    public function testTheLeaderPublishesItsAssignmentWithSyncGroupAndEveryMemberReadsItsOwn(): void
+    {
+        $coordinator = new BrokerConnection(ResponseFrame::syncGroup(0, 0, 'my-share'));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)
+            ))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client   = $this->client();
+        $response = $client->syncGroup(
+            $client->getGroupCoordinator('t3-group'),
+            't3-group',
+            'one-1',
+            4,
+            ['one-1' => 'my-share', 'two-2' => 'other-share']
+        );
+
+        self::assertSame('my-share', $response->memberAssignment);
+        self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($coordinator->getReceivedFrames()[0]));
+        self::assertSame(0, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
+    }
+
+    public function testAHeartbeatAndALeaveAreSentToTheCoordinatorAndReportNothingWhenTheySucceed(): void
+    {
+        $coordinator = new BrokerConnection(ResponseFrame::heartbeat(0, 0), ResponseFrame::leaveGroup(0, 0));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)
+            ))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client          = $this->client();
+        $coordinatorNode = $client->getGroupCoordinator('t3-group');
+
+        $client->heartbeat($coordinatorNode, 't3-group', 'one-1', 4);
+        $client->leaveGroup($coordinatorNode, 't3-group', 'one-1');
+
+        $frames = $coordinator->getReceivedFrames();
+
+        self::assertSame(ApiKeys::HEARTBEAT, $this->apiKeyOf($frames[0]));
+        self::assertSame(ApiKeys::LEAVE_GROUP, $this->apiKeyOf($frames[1]));
+        self::assertNotSame(
+            $coordinator->getReceivedCorrelationIds()[0],
+            $coordinator->getReceivedCorrelationIds()[1],
+            'every request of the group protocol carries a correlation id of its own'
+        );
+    }
+
+    /**
+     * The error codes of the membership protocol are statements about this member and are reported to the caller,
+     * which is the only one that can react to them: rejoin, reset the member id or give up
+     */
+    public function testAnErrorCodeOfTheMembershipProtocolIsReportedAsItsException(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)
+            ))
+            ->on(self::SECOND_LEADER, new BrokerConnection(
+                ResponseFrame::heartbeat(0, KafkaException::REBALANCE_IN_PROGRESS),
+                ResponseFrame::syncGroup(0, KafkaException::ILLEGAL_GENERATION),
+            ))
+            ->install();
+
+        $client          = $this->client();
+        $coordinatorNode = $client->getGroupCoordinator('t3-group');
+
+        try {
+            $client->heartbeat($coordinatorNode, 't3-group', 'one-1', 4);
+            self::fail('A heartbeat that answers 27 has to be reported');
+        } catch (RebalanceInProgressException $exception) {
+            self::assertSame('t3-group', $exception->getContext()['groupId']);
+        }
+
+        $this->expectException(IllegalGenerationException::class);
+        $client->syncGroup($coordinatorNode, 't3-group', 'one-1', 4);
+    }
+
+    /**
+     * A coordinator that is not ready yet says so with the same codes the coordinator lookup retries - they are
+     * about the coordinator and not about the member, so the request itself is simply sent again
+     */
+    public function testACoordinatorThatIsNotReadyYetIsAskedAgain(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::heartbeat(0, KafkaException::GROUP_LOAD_IN_PROGRESS),
+            ResponseFrame::heartbeat(0, 0)
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)
+            ))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client([ClientConfig::RETRIES => 1]);
+        $client->heartbeat($client->getGroupCoordinator('t3-group'), 't3-group', 'one-1', 4);
+
+        self::assertSame(2, $coordinator->getRequestCount(), 'the heartbeat was sent again after the code 14');
+    }
+
+    public function testACoordinatorThatStaysUnavailableIsGivenUpOnceTheRetriesAreExhausted(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)
+            ))
+            ->on(self::SECOND_LEADER, new BrokerConnection(
+                ResponseFrame::leaveGroup(0, KafkaException::NOT_COORDINATOR_FOR_GROUP),
+                ResponseFrame::leaveGroup(0, KafkaException::NOT_COORDINATOR_FOR_GROUP)
+            ))
+            ->install();
+
+        $client = $this->client([ClientConfig::RETRIES => 1]);
+
+        // The caller has to look the coordinator up again, which is why this is reported and not retried forever
+        $this->expectException(NotCoordinatorForGroupException::class);
+        $client->leaveGroup($client->getGroupCoordinator('t3-group'), 't3-group', 'one-1');
+    }
+
+    public function testAJoinThatIsRefusedWhileTheGroupIsLoadedIsNotReportedAsAJoinFailure(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)
+            ))
+            ->on(self::SECOND_LEADER, new BrokerConnection(
+                ResponseFrame::joinGroup(0, KafkaException::GROUP_LOAD_IN_PROGRESS, -1, '', '', '')
+            ))
+            ->install();
+
+        $client = $this->client([ConsumerConfig::SESSION_TIMEOUT_MS => 12000]);
+
+        $this->expectException(GroupLoadInProgressException::class);
+        $client->joinGroup(
+            $client->getGroupCoordinator('t3-group'),
+            't3-group',
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            'consumer',
+            ['range' => 'metadata']
         );
     }
 

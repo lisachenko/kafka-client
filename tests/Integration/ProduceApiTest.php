@@ -29,20 +29,24 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the Produce API v0 against a real Kafka 0.8.2.2 broker.
+ * Verifies the Produce API against a real Kafka 0.9.0.1 broker.
  *
  * The broker validates the CRC of every message it appends, so a green run here also proves that the message sets
  * built by {@see SpecMessageSet} follow the specification.
  *
- * @see docs/protocol/0.8.2.md, section "Produce API (key 0, v0)"
+ * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
  */
 #[CoversClass(ProduceRequest::class)]
+#[CoversClass(ProduceRequestV0::class)]
 #[CoversClass(ProduceResponse::class)]
+#[CoversClass(ProduceResponseV0::class)]
 #[CoversClass(ProduceRequestTopic::class)]
 #[CoversClass(ProduceRequestPartition::class)]
 #[CoversClass(ProduceResponseTopic::class)]
@@ -165,6 +169,41 @@ final class ProduceApiTest extends IntegrationTestCase
 
         self::assertSame(0, $acknowledged->errorCode);
         self::assertSame(1, $acknowledged->baseOffset, 'the fire-and-forget message occupies the offset 0');
+    }
+
+    public function testVersion1AnswerCarriesAThrottleTimeAndVersion0DoesNot(): void
+    {
+        $stream = $this->connect();
+
+        new ProduceRequest(
+            [$this->topic => [0 => SpecMessageSet::of([[null, 'throttled?']])]],
+            1,
+            self::PRODUCE_TIMEOUT_MS,
+            self::CLIENT_ID,
+            41
+        )->writeTo($stream);
+        $versionOne = ProduceResponse::unpack($stream);
+
+        self::assertSame(41, $versionOne->getCorrelationId());
+        self::assertSame(0, $versionOne->topics[$this->topic]->partitions[0]->errorCode);
+        self::assertSame(0, $versionOne->throttleTime, 'the test broker enforces no producer quota');
+
+        new ProduceRequestV0(
+            [$this->topic => [0 => SpecMessageSet::of([[null, 'not throttled']])]],
+            1,
+            self::PRODUCE_TIMEOUT_MS,
+            self::CLIENT_ID,
+            42
+        )->writeTo($stream);
+        $versionZero = ProduceResponseV0::unpack($stream);
+
+        self::assertSame(42, $versionZero->getCorrelationId());
+        self::assertSame(1, $versionZero->topics[$this->topic]->partitions[0]->baseOffset);
+        self::assertSame(
+            $versionOne->getMessageSize() - 4,
+            $versionZero->getMessageSize(),
+            'the ThrottleTime of version 1 is the only difference between the two answers'
+        );
     }
 
     /**

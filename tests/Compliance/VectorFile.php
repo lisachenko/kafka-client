@@ -18,7 +18,7 @@ use RuntimeException;
 /**
  * Reader of the wire vectors that live next to the protocol document.
  *
- * The vectors in `docs/protocol/vectors/*.json` are the machine-readable half of `docs/protocol/0.8.2.md`: the
+ * The vectors in `docs/protocol/vectors/*.json` are the machine-readable half of `docs/protocol/0.9.0.md`: the
  * document shows every one of them as an annotated hex dump, the JSON files carry the same bytes together with the
  * values that the message decodes into. Both halves are kept in step by {@see DocumentationSyncTest}.
  */
@@ -32,7 +32,7 @@ final class VectorFile
     /**
      * Location of the protocol document that the vectors are documented in
      */
-    public const string PROTOCOL_DOCUMENT = __DIR__ . '/../../docs/protocol/0.8.2.md';
+    public const string PROTOCOL_DOCUMENT = __DIR__ . '/../../docs/protocol/0.9.0.md';
 
     /**
      * Returns the vectors of one api as a PHPUnit data provider, indexed by the vector id
@@ -50,9 +50,38 @@ final class VectorFile
     }
 
     /**
+     * Returns the vectors of the api that a data provider method is named after
+     *
+     * `offsetCommitVectors` reads `offset-commit.json`, `consumerProtocolVectors` reads `consumer-protocol.json`.
+     * Deriving the file from the name of its provider keeps the list of replayed apis out of a shared constant,
+     * which is what two tickets capturing vectors in parallel used to conflict on.
+     *
+     * @param string $method Name of the calling provider method, i.e. `__FUNCTION__`
+     *
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function provideFor(string $method): iterable
+    {
+        return self::provide(self::apiOfProvider($method));
+    }
+
+    /**
+     * Turns the name of a data provider method into the base name of the vector file it reads
+     */
+    public static function apiOfProvider(string $method): string
+    {
+        $api = preg_replace('/Vectors$/', '', $method) ?? $method;
+
+        return strtolower((string) preg_replace('/(?<!^)[A-Z]/', '-$0', $api));
+    }
+
+    /**
      * Returns the whole content of one vector file
      *
-     * @return array{api: string, apiKey: int, section: string, vectors: list<array<string, mixed>>}
+     * The `apiKey` is null for the vectors that belong to no api of their own, i.e. the structures that travel
+     * inside a byte array field of another message.
+     *
+     * @return array{api: string, apiKey: int|null, section: string, vectors: list<array<string, mixed>>}
      */
     public static function read(string $api): array
     {

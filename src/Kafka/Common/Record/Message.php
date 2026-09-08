@@ -34,13 +34,13 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * A compressed message is a regular message whose Value is a complete, compressed {@see MessageSet}; the codec it
  * was compressed with is announced by the three lowest bits of the Attributes byte.
  *
- * @see docs/protocol/0.8.2.md, section "MessageSet and Message"
- * @see kafka/message/Message.scala @ 0.8.2.2
+ * @see docs/protocol/0.9.0.md, section "MessageSet and Message"
+ * @see kafka/message/Message.scala @ 0.9.0.1
  */
 class Message implements BinarySchemaInterface, \Stringable
 {
     /**
-     * The only magic byte that 0.8.2.2 knows: message format v0, without the Timestamp field of v1
+     * The only magic byte that 0.9.0.1 knows: message format v0, without the Timestamp field of v1 (Kafka 0.10.0)
      */
     public const int MAGIC_V0 = 0;
 
@@ -57,7 +57,7 @@ class Message implements BinarySchemaInterface, \Stringable
     public int $crc = 0;
 
     /**
-     * Version id of the message binary format, always 0 in 0.8.2.2
+     * Version id of the message binary format, always 0 in 0.9.0.1
      */
     public int $magicByte = self::MAGIC_V0;
 

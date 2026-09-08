@@ -24,7 +24,9 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
+use Protocol\Kafka\Protocol\Request\FetchRequestV0;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\FetchResponseV0;
 
 /**
  * Byte-exact tests for the Fetch API v0.
@@ -34,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponse;
  *   FetchResponse => [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet]]
  * </pre>
  *
- * @see docs/protocol/0.8.2.md, sections "Fetch API (key 1, v0)" and "MessageSet and Message"
+ * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -45,11 +47,11 @@ use Protocol\Kafka\Protocol\Request\FetchResponse;
 final class FetchApiTest extends TestCase
 {
     /**
-     * Fetch request v0 for one topic and two of its partitions, client id "test", correlation id 1.
+     * Fetch request v1 for one topic and two of its partitions, client id "test", correlation id 1.
      *
      *   Size          => 00 00 00 49 (73 bytes)
      *   ApiKey        => 00 01
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 01
      *   ClientId      => 00 04 "test"
      *   ReplicaId     => ff ff ff ff (-1, an ordinary consumer)
@@ -62,7 +64,7 @@ final class FetchApiTest extends TestCase
      */
     private const string FETCH_REQUEST_HEX = '00000049'
         . '0001'
-        . '0000'
+        . '0001'
         . '00000001'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -122,7 +124,19 @@ final class FetchApiTest extends TestCase
         self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
     }
 
-    public function testRequestSchemeOnlyDeclaresTheFieldsOfVersionZero(): void
+    public function testVersion0RequestOnlyLowersTheApiVersionOfTheHeader(): void
+    {
+        $request = new FetchRequestV0(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1);
+
+        // The very same bytes, with the api version 0 in the header: the body of the request did not change in v1
+        self::assertSame(
+            substr_replace(self::FETCH_REQUEST_HEX, '0000', 12, 4),
+            bin2hex((string) $request)
+        );
+        self::assertSame(0, $request->getApiVersion());
+    }
+
+    public function testRequestSchemeCarriesNoFieldOfALaterVersion(): void
     {
         $scheme = FetchRequest::getScheme();
 
@@ -142,6 +156,7 @@ final class FetchApiTest extends TestCase
         $response = FetchResponse::unpack(new StringStream(self::responseFrame('')));
 
         self::assertSame(1, $response->getCorrelationId());
+        self::assertSame(0, $response->throttleTimeMs, 'a broker without quotas never throttles');
         self::assertSame(['topic'], array_keys($response->topics));
 
         $partition = $response->topics['topic']->partitions[0];
@@ -199,7 +214,7 @@ final class FetchApiTest extends TestCase
 
     public function testMessageSetWithoutASingleCompleteMessageIsReportedAsAnOversizedMessage(): void
     {
-        // What a 0.8.2.2 broker really answers when MaxBytes is smaller than the message: its first bytes only
+        // What a 0.9.0.1 broker really answers when MaxBytes is smaller than the message: its first bytes only
         $firstBytesOnly = substr(self::MESSAGE_SET_HEX, 0, 2 * 20);
 
         $response  = FetchResponse::unpack(new StringStream(self::responseFrame($firstBytesOnly, 0, 0, 2)));
@@ -235,8 +250,33 @@ final class FetchApiTest extends TestCase
         ));
     }
 
+    public function testThrottleTimeOpensTheResponseOfVersionOne(): void
+    {
+        // 250 ms of throttling, in front of the topics array
+        $response = FetchResponse::unpack(new StringStream(self::responseFrame('', 0, 0, 0, 250)));
+
+        self::assertSame(250, $response->throttleTimeMs);
+        self::assertSame(['topic'], array_keys($response->topics));
+    }
+
+    public function testVersion0ResponseHasNoThrottleTimePrefix(): void
+    {
+        $frame = self::responseFrameV0(self::MESSAGE_SET_HEX, 0, 0, 2);
+
+        $response = FetchResponseV0::unpack(new StringStream($frame));
+
+        self::assertArrayNotHasKey('throttleTimeMs', FetchResponseV0::getScheme());
+        self::assertSame(
+            ['messageSize', 'correlationId', 'throttleTimeMs', 'topics'],
+            array_keys(FetchResponse::getScheme()),
+            'version 1 reads the throttle time between the header and the topics'
+        );
+        self::assertSame(self::MESSAGE_SET_HEX, bin2hex((string) $response->topics['topic']->partitions[0]->messageSet));
+        self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
+    }
+
     /**
-     * Builds a Fetch response v0 frame with a single topic "topic" and a single partition
+     * Builds a Fetch response v1 frame with a single topic "topic" and a single partition
      *
      * @param string $messageSetHex Hexadecimal representation of the message set bytes of that partition
      */
@@ -244,10 +284,41 @@ final class FetchApiTest extends TestCase
         string $messageSetHex,
         int $partition = 0,
         int $errorCode = 0,
+        int $highWaterMarkOffset = 0,
+        int $throttleTimeMs = 0
+    ): string {
+        $body = '00000001'                                   // CorrelationId
+            . sprintf('%08x', $throttleTimeMs)               // ThrottleTimeMs, version 1 only
+            . self::responseTopics($messageSetHex, $partition, $errorCode, $highWaterMarkOffset);
+
+        return (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+    }
+
+    /**
+     * Builds the same frame without the `ThrottleTimeMs` prefix, i.e. the answer of a version 0 request
+     */
+    private static function responseFrameV0(
+        string $messageSetHex,
+        int $partition = 0,
+        int $errorCode = 0,
         int $highWaterMarkOffset = 0
     ): string {
         $body = '00000001'                                   // CorrelationId
-            . '00000001'                                     // one topic
+            . self::responseTopics($messageSetHex, $partition, $errorCode, $highWaterMarkOffset);
+
+        return (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+    }
+
+    /**
+     * Builds the topics array of a Fetch response, which is the same in both versions
+     */
+    private static function responseTopics(
+        string $messageSetHex,
+        int $partition,
+        int $errorCode,
+        int $highWaterMarkOffset
+    ): string {
+        return '00000001'                                    // one topic
             . '0005' . '746f706963'                          // TopicName "topic"
             . '00000001'                                     // one partition
             . sprintf('%08x', $partition)
@@ -255,7 +326,5 @@ final class FetchApiTest extends TestCase
             . sprintf('%016x', $highWaterMarkOffset)
             . sprintf('%08x', intdiv(strlen($messageSetHex), 2))
             . $messageSetHex;
-
-        return (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
     }
 }
