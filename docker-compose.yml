@@ -17,13 +17,13 @@ services:
             - "9092:9092"
             - "2181:2181"
         healthcheck:
-            # The broker port accepting TCP is not enough: ZooKeeper must serve the broker registration as well.
-            # Even then a 0.8 broker answers Metadata with an empty broker array until the controller has pushed
-            # UpdateMetadata to it, so clients still have to retry - see tests/Fixture/ClusterReadinessProbe.php.
-            test:
-                - CMD-SHELL
-                - bash -c '</dev/tcp/127.0.0.1/9092' && /opt/kafka/bin/kafka-topics.sh --zookeeper localhost:2181 --list > /dev/null 2>&1
+            # This only reports that the broker accepts connections. It is deliberately not a readiness check:
+            # a 0.8 broker answers Metadata with an EMPTY broker array until the controller has pushed
+            # UpdateMetadata to it, and on a cluster without topics that never happens on its own. Readiness is
+            # therefore a client-side concern - see tests/Fixture/ClusterReadinessProbe.php and the "Cluster
+            # readiness" section of docs/protocol/0.8.2.md.
+            test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9092'"]
             interval: 5s
-            timeout: 20s
+            timeout: 5s
             retries: 30
-            start_period: 10s
+            start_period: 5s
