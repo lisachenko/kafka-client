@@ -17,49 +17,52 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * Produce response DTO
+ * Produce response partition DTO
+ *
+ * <pre>
+ *   Partition ErrorCode Offset
+ *     Partition => int32
+ *     ErrorCode => int16
+ *     Offset    => int64
+ * </pre>
+ *
+ * The `LogAppendTime` of the later protocol lines arrived with version 2 of this API (Kafka 0.10.0).
+ *
+ * @see docs/protocol/0.8.2.md, section "Produce API (key 0, v0)"
  */
-class ProduceResponsePartition
+class ProduceResponsePartition implements BinarySchemaInterface
 {
     /**
      * The partition this response entry corresponds to.
-     *
-     * @var integer
      */
-    public $partition;
+    public int $partition = 0;
 
     /**
      * The error from this partition, if any.
      *
      * Errors are given on a per-partition basis because a given partition may be unavailable or maintained on a
      * different host, while others may have successfully accepted the produce request.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode = 0;
 
     /**
      * The offset assigned to the first message in the message set appended to this partition.
-     *
-     * @var integer
      */
-    public $offset;
+    public int $baseOffset = 0;
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->offset] = array_values($stream->read('Npartition/nerrorCode/Joffset'));
-
-        return $partition;
+        return [
+            'partition'  => BinarySchema::TYPE_INT32,
+            'errorCode'  => BinarySchema::TYPE_INT16,
+            'baseOffset' => BinarySchema::TYPE_INT64,
+        ];
     }
 }

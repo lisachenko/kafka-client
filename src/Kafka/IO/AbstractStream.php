@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date   26.07.2016
@@ -17,75 +18,171 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\IO;
 
+/**
+ * Common implementation of the Kafka protocol primitive types on top of pack()/unpack().
+ *
+ * A concrete stream only has to implement {@see AbstractStream::read()}, {@see AbstractStream::write()},
+ * {@see Stream::isConnected()} and {@see Stream::isEmpty()}.
+ */
 abstract class AbstractStream implements Stream
 {
     /**
-     * Reads a string from the stream
-     *
-     * @return string
+     * Length prefix that encodes a null string (int16 -1)
      */
-    public function readString()
+    public const string NULL_STRING = "\xFF\xFF";
+
+    /**
+     * Length prefix that encodes a null byte array (int32 -1)
+     */
+    public const string NULL_BYTES = "\xFF\xFF\xFF\xFF";
+
+    public function readString(): string
     {
-        $stringLength = $this->read('nlength')['length'];
-        if ($stringLength === 0xFFFF) {
+        $stringLength = $this->readInt16();
+        if ($stringLength < 0) {
+            throw new \UnexpectedValueException('Received -1 length for not nullable string');
+        }
+
+        return $this->readRaw($stringLength);
+    }
+
+    public function writeString(string $string): void
+    {
+        $this->writeInt16(strlen($string));
+        $this->writeBuffer($string);
+    }
+
+    /**
+     * Reads a byte array, honouring the -1 length that the specification defines as null.
+     *
+     * Unlike the implementation on the `main` branch, a null byte array is a valid value here: the "bytes" primitive
+     * of the specification is nullable, and the Key and Value of a Message rely on it.
+     */
+    public function readByteArray(): ?string
+    {
+        $dataLength = $this->readInt32();
+        if ($dataLength < 0) {
             return null;
         }
 
-        return $this->read("a{$stringLength}string")['string'];
+        return $this->readRaw($dataLength);
     }
 
-    /**
-     * Writes the string to the stream
-     *
-     * @param $string
-     *
-     * @return mixed
-     */
-    public function writeString($string)
+    public function writeByteArray(?string $data): void
     {
-        $stringLength = strlen($string);
-        $this->write("na{$stringLength}", $stringLength, $string);
-    }
+        if ($data === null) {
+            $this->writeInt32(-1);
 
-    /**
-     * Reads a byte array from the stream
-     *
-     * @return string
-     */
-    public function readByteArray()
-    {
-        $dataLength = $this->read('Nlength')['length'];
-        if ($dataLength === 0xFFFFFFFF) {
-            return null;
+            return;
         }
 
-        return $this->read("a{$dataLength}data")['data'];
+        $this->writeInt32(strlen($data));
+        $this->writeBuffer($data);
     }
 
-    /**
-     * Writes the string to the stream
-     *
-     * @param string $data Binary data
-     *
-     * @return mixed
-     */
-    public function writeByteArray($data)
+    public function writeBuffer(?string $buffer): void
     {
-        $dataLength = strlen($data);
-        $this->write("Na{$dataLength}", $dataLength, $data);
+        if ($buffer === null || $buffer === '') {
+            return;
+        }
+
+        $this->write('a' . strlen($buffer), $buffer);
     }
 
     /**
-     * Calculates the format size for unpack() operation
-     *
-     * @param string $format
-     *
-     * @return int
+     * Reads exactly the given amount of raw bytes from the stream
      */
-    protected static function packetSize($format)
+    public function readRaw(int $length): string
+    {
+        if ($length < 0) {
+            throw new \InvalidArgumentException("Length should not be negative, {$length} given");
+        }
+        if ($length === 0) {
+            return '';
+        }
+
+        return (string) $this->read("a{$length}data")['data'];
+    }
+
+    /**
+     * Reads a signed 8-bit integer (int8)
+     */
+    public function readInt8(): int
+    {
+        return (int) $this->read('cvalue')['value'];
+    }
+
+    /**
+     * Reads a signed big-endian 16-bit integer (int16)
+     */
+    public function readInt16(): int
+    {
+        $value = (int) $this->read('nvalue')['value'];
+
+        return $value >= 0x8000 ? $value - 0x10000 : $value;
+    }
+
+    /**
+     * Reads a signed big-endian 32-bit integer (int32)
+     */
+    public function readInt32(): int
+    {
+        $value = (int) $this->read('Nvalue')['value'];
+
+        return $value >= 0x80000000 ? $value - 0x100000000 : $value;
+    }
+
+    /**
+     * Reads a signed big-endian 64-bit integer (int64).
+     *
+     * "J" is the unsigned 64-bit format, but a PHP integer is a signed 64-bit value, so the two's complement
+     * representation round-trips as is.
+     */
+    public function readInt64(): int
+    {
+        return (int) $this->read('Jvalue')['value'];
+    }
+
+    /**
+     * Writes a signed 8-bit integer (int8)
+     */
+    public function writeInt8(int $value): void
+    {
+        $this->write('c', $value);
+    }
+
+    /**
+     * Writes a signed big-endian 16-bit integer (int16)
+     */
+    public function writeInt16(int $value): void
+    {
+        $this->write('n', $value);
+    }
+
+    /**
+     * Writes a signed big-endian 32-bit integer (int32)
+     */
+    public function writeInt32(int $value): void
+    {
+        $this->write('N', $value);
+    }
+
+    /**
+     * Writes a signed big-endian 64-bit integer (int64)
+     */
+    public function writeInt64(int $value): void
+    {
+        $this->write('J', $value);
+    }
+
+    /**
+     * Calculates the format size for the unpack() operation
+     */
+    protected static function packetSize(string $format): int
     {
         static $tableSize = [
             'a' => 1,
+            'A' => 1,
             'c' => 1,
             'C' => 1,
             's' => 2,
@@ -111,14 +208,14 @@ abstract class AbstractStream implements Stream
         $numMatches = preg_match_all('/(?:\/|^)(\w)(\d*)/', $format, $matches);
         if (empty($numMatches)) {
             throw new \InvalidArgumentException("Unknown format specified: {$format}");
-        };
+        }
         $size = 0;
         for ($matchIndex = 0; $matchIndex < $numMatches; $matchIndex++) {
-            [$modifier, $repitition] = [$matches[1][$matchIndex], $matches[2][$matchIndex]];
+            [$modifier, $repetition] = [$matches[1][$matchIndex], $matches[2][$matchIndex]];
             if (!isset($tableSize[$modifier])) {
-                throw new \InvalidArgumentException("Unknown modifier specified: $modifier");
+                throw new \InvalidArgumentException("Unknown modifier specified: {$modifier}");
             }
-            $size += $tableSize[$modifier] * ($repitition !== '' ? $repitition : 1);
+            $size += $tableSize[$modifier] * ($repetition !== '' ? (int) $repetition : 1);
         }
 
         $cache[$format] = $size;

@@ -1,0 +1,44 @@
+{
+    "api": "group-coordinator",
+    "apiKey": 10,
+    "section": "GroupCoordinator API (key 10, v0)",
+    "description": "Wire vectors of the GroupCoordinator API (key 10, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "groupcoordinator.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "GroupCoordinator request v0 (ConsumerMetadataRequest in the 0.8.2 sources).",
+            "hex": "00000020000a00000000000f000374313000117431302d766563746f72732d67726f7570",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 10,
+                "apiVersion": 0,
+                "correlationId": 15,
+                "clientId": "t10",
+                "consumerGroup": "t10-vectors-group"
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "GroupCoordinator response v0 naming the broker that holds the offsets of the group.",
+            "hex": "000000190000000f00000000000000093132372e302e302e3100002384",
+            "fields": {
+                "messageSize": 25,
+                "correlationId": 15,
+                "errorCode": 0,
+                "coordinator": {
+                    "nodeId": 0,
+                    "host": "127.0.0.1",
+                    "port": 9092
+                }
+            }
+        }
+    ]
+}

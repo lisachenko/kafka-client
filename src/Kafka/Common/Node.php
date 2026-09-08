@@ -18,82 +18,75 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Common;
 
 use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\IO\SocketStream;
+use Protocol\Kafka\Network\ConnectionFactory;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Information about a Kafka node
+ *
+ * <pre>
+ *   Broker => NodeId Host Port
+ *     NodeId => int32
+ *     Host   => string
+ *     Port   => int32
+ * </pre>
+ *
+ * The `Rack` of a broker only exists from version 1 of the Metadata API (Kafka 0.10.0) onwards.
+ *
+ * @see docs/protocol/0.8.2.md, section "Metadata API (key 3, v0)"
  */
-class Node
+class Node implements BinarySchemaInterface
 {
     use RestorableTrait;
 
     /**
      * The broker id.
-     *
-     * @var integer
      */
-    public $nodeId;
+    public int $nodeId = 0;
 
     /**
      * The hostname of the broker.
-     *
-     * @var string
      */
-    public $host;
+    public string $host = '';
 
     /**
      * The port on which the broker accepts requests.
-     *
-     * @var integer
      */
-    public $port;
+    public int $port = 0;
 
     /**
-     * The rack of the broker.
-     *
-     * @var string
-     * @since Version 1 of protocol
+     * @inheritdoc
      */
-    public $rack;
-
-    /**
-     * Cached list of connections
-     */
-    private static array $nodeConnections = [];
-
-    /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $brokerMetadata = new static();
-        [$brokerMetadata->nodeId, $hostLength] = array_values($stream->read('NnodeId/nhostLength'));
-        [$brokerMetadata->host, $brokerMetadata->port] = array_values($stream->read("a{$hostLength}host/Nport"));
-
-        $brokerMetadata->rack = $stream->readString();
-
-        return $brokerMetadata;
+        return [
+            'nodeId' => BinarySchema::TYPE_INT32,
+            'host'   => BinarySchema::TYPE_STRING,
+            'port'   => BinarySchema::TYPE_INT32,
+        ];
     }
 
     /**
      * Returns a connection to this node.
      *
-     * @param array $configuration Client configuration
+     * The connection is kept open and handed out again for the next request to the same broker, see
+     * {@see ConnectionFactory} for the lifetime of that cache.
      *
-     * @return Stream
+     * @param array<string, mixed> $configuration Client configuration
+     *
+     * @todo Move this method outside this class
      */
-    public function getConnection(array $configuration)
+    public function getConnection(array $configuration): Stream
     {
-        if (!isset(self::$nodeConnections[$this->host][$this->port])) {
-            $connection = new SocketStream("tcp://{$this->host}:{$this->port}", $configuration);
+        return ConnectionFactory::connect($this->host, $this->port, $configuration);
+    }
 
-            self::$nodeConnections[$this->host][$this->port] = $connection;
-        }
-
-        return self::$nodeConnections[$this->host][$this->port];
+    /**
+     * Closes every open broker connection of this process
+     */
+    public static function closeConnections(): void
+    {
+        ConnectionFactory::closeAll();
     }
 }

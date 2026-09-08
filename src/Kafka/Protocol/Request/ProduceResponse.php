@@ -17,57 +17,39 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 
 /**
  * Produce response object
+ *
+ * <pre>
+ *   ProduceResponse => [TopicName [Partition ErrorCode Offset]]
+ * </pre>
+ *
+ * The `ThrottleTime` of the later protocol lines arrived with version 1 of this API (Kafka 0.9.0).
+ *
+ * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
+ *
+ * @see docs/protocol/0.8.2.md, section "Produce API (key 0, v0)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
-     * List of broker metadata info
+     * Result for each topic of the request, indexed by the topic name
      *
-     * @var array|ProduceResponsePartition[]
+     * @var array<string, ProduceResponseTopic>
      */
-    public $topics;
+    public array $topics = [];
 
     /**
-     * Duration in milliseconds for which the request was throttled due to quota violation. (Zero if the request did not violate any quota).
-     *
-     * @var integer
-     * @since Version 1 of protocol
+     * @inheritdoc
      */
-    public $throttleTime;
-
-    /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
-     */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [
-            $self->correlationId,
-            $numberOfTopics,
-        ] = array_values($stream->read('NcorrelationId/NnumberOfTopics'));
+        $header = parent::getScheme();
 
-        for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicLength = $stream->read('ntopicLength')['topicLength'];
-            [$topicName, $numberOfPartitions] = array_values($stream->read("a{$topicLength}/NnumberOfPartitions"));
-
-            for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-                $topicMetadata = ProduceResponsePartition::unpack($stream);
-                $self->topics[$topicName][$topicMetadata->partition] = $topicMetadata;
-            }
-
-        }
-        $self->throttleTime = $stream->read('NthrottleTime')['throttleTime'];
-
-        return $self;
+        return $header + [
+            'topics' => ['topic' => ProduceResponseTopic::class],
+        ];
     }
 }

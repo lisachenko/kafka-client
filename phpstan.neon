@@ -1,0 +1,12 @@
+parameters:
+    level: 0
+    paths:
+        - src
+        - tests
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        # Every protocol DTO and every framed message is restored through a static factory (`unpack()`,
+        # `unpackFrom()`, `__set_state()`) that must return the late static binding, and all of them have a
+        # parameterless constructor by contract.
+        -
+            identifier: new.static

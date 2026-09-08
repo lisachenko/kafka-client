@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [0.8.x]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+      - run: composer validate --strict
+      - run: find src tests examples -name '*.php' -print0 | xargs -0 -n1 php -l
+
+  cs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+      - run: composer install --prefer-dist --no-progress
+      - run: composer cs
+
+  phpstan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+      - run: composer install --prefer-dist --no-progress
+      - run: composer analyze
+
+  phpunit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: xdebug
+      - run: composer install --prefer-dist --no-progress
+      - run: vendor/bin/phpunit --testsuite unit --coverage-clover=coverage.xml
+      - name: Replay the documented wire vectors
+        # The compliance suite needs no broker: it replays docs/protocol/vectors through the protocol classes
+        run: vendor/bin/phpunit --testsuite compliance
+      - uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+      - run: composer install --prefer-dist --no-progress
+      - name: Start Kafka 0.8.2.2
+        run: docker compose up -d --wait
+      - name: Run the integration suite
+        env:
+          KAFKA_BOOTSTRAP_SERVERS: 127.0.0.1:9092
+        run: vendor/bin/phpunit --testsuite integration
+      - name: Broker logs
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop Kafka
+        if: always()
+        run: docker compose down -v
