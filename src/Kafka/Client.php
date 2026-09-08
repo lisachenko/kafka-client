@@ -27,9 +27,11 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\SocketStream;
@@ -165,11 +167,41 @@ class Client
      *
      * @return array<string, array<int, list<Record>>> Records in the form [topic => [partition => Record[]]]
      *
-     * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
+     * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions, the
+     *         partial result of it carries the records of the partitions that did answer
      */
     public function fetch(array $topicPartitionOffsets, int $timeout): array
     {
+        try {
+            return self::toRecordsByPartition($this->fetchPartitions($topicPartitionOffsets, $timeout));
+        } catch (TopicPartitionRequestException $exception) {
+            throw new TopicPartitionRequestException(
+                self::toRecordsByPartition($exception->getPartialResult()),
+                $exception->getExceptions()
+            );
+        }
+    }
+
+    /**
+     * Fetches messages together with the state of each topic-partition they came from.
+     *
+     * A consumer needs more than the records to drive its fetch loop: the high water mark of a partition tells it
+     * how far behind the end of the log it is, and a message that is larger than `max.partition.fetch.bytes` makes
+     * a 0.8.2.2 broker answer without an error and without a single complete message, which would turn a naive
+     * fetch loop into an endless one, see {@see FetchedPartition::isSingleMessageTooLarge()}.
+     *
+     * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
+     * @param int                            $timeout               Timeout in ms to wait for fetching
+     *
+     * @return array<string, array<int, FetchedPartition>> [topic => [partition => FetchedPartition]]
+     *
+     * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
+     */
+    public function fetchPartitions(array $topicPartitionOffsets, int $timeout): array
+    {
         $timeout = (int) min($this->configuration[ConsumerConfig::FETCH_MAX_WAIT_MS], $timeout);
+        // A consumer that trusts its network may skip the checksum of every single message it reads
+        $checkCrcs = (bool) ($this->configuration[ConsumerConfig::CHECK_CRCS] ?? true);
 
         return $this->clusterRequest(
             $topicPartitionOffsets,
@@ -183,7 +215,10 @@ class Client
                 $correlationId
             ),
             FetchResponse::class,
-            static function (array $result, FetchResponse $response, array &$errors): array {
+            static function (array $result, FetchResponse $response, array &$errors) use (
+                $topicPartitionOffsets,
+                $checkCrcs
+            ): array {
                 foreach ($response->topics as $topic => $topicResponse) {
                     /** @var FetchResponsePartition $responsePartition */
                     foreach ($topicResponse->partitions as $partitionId => $responsePartition) {
@@ -194,10 +229,25 @@ class Client
                             );
                             continue;
                         }
-                        // The schema engine hands over the raw bytes of the message set, because the broker is
-                        // allowed to cut its last message short. The record layer decodes them, drops that partial
-                        // trailing message and unwraps a compressed set into the messages it holds.
-                        $result[$topic][$partitionId] = $responsePartition->getMessageSet()->getRecords();
+                        $fetchOffset = (int) ($topicPartitionOffsets[$topic][$partitionId] ?? 0);
+                        try {
+                            // The schema engine hands over the raw bytes of the message set, because the broker is
+                            // allowed to cut its last message short. The record layer decodes them, drops that
+                            // partial trailing message and unwraps a compressed set into the messages it holds.
+                            $messageSet = MessageSet::fromBuffer($responsePartition->messageSet ?? '', $checkCrcs);
+                        } catch (KafkaException $exception) {
+                            // A corrupt message only spoils its own partition, the others are still readable
+                            $errors[$topic][$partitionId] = $exception;
+                            continue;
+                        }
+                        $result[$topic][$partitionId] = new FetchedPartition(
+                            new TopicPartition((string) $topic, (int) $partitionId),
+                            $fetchOffset,
+                            $responsePartition->errorCode,
+                            $responsePartition->highWaterMarkOffset,
+                            $messageSet,
+                            $responsePartition->isSingleMessageTooLarge($fetchOffset)
+                        );
                     }
                 }
 
@@ -365,6 +415,25 @@ class Client
     public function getGroupCoordinator(string $groupId): Node
     {
         return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinator($groupId);
+    }
+
+    /**
+     * Reduces the rich answer of each topic-partition to the records it carried
+     *
+     * @param array<string, array<int, FetchedPartition>> $topicPartitions
+     *
+     * @return array<string, array<int, list<Record>>>
+     */
+    private static function toRecordsByPartition(array $topicPartitions): array
+    {
+        $result = [];
+        foreach ($topicPartitions as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $fetchedPartition) {
+                $result[$topic][$partitionId] = $fetchedPartition->getRecords();
+            }
+        }
+
+        return $result;
     }
 
     /**
