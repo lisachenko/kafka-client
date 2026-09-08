@@ -196,14 +196,7 @@ class AdminClient
         }
 
         $result = [];
-        foreach ($this->groupByLeader($partitionTimes) as $nodeId => $nodePartitionTimes) {
-            $leader = $this->cluster->nodeById($nodeId);
-            if ($leader === null) {
-                throw new AllBrokersNotAvailableException(
-                    ['nodeId' => $nodeId, 'error' => 'The cluster does not know the leader of these partitions']
-                );
-            }
-
+        foreach ($this->groupByLeader($partitionTimes) as [$leader, $nodePartitionTimes]) {
             /** @var OffsetsResponse $response */
             $response = $this->sendTo(
                 $leader->getConnection($this->configuration),
@@ -215,7 +208,7 @@ class AdminClient
                     $correlationId
                 ),
                 OffsetsResponse::class,
-                ['node' => $nodeId]
+                ['node' => $leader->nodeId]
             );
 
             foreach ($response->topics as $topic => $topicResponse) {
@@ -392,22 +385,29 @@ class AdminClient
     /**
      * Groups a topic => partition => value map by the node that leads each partition
      *
+     * The Offsets api is served by the leader of a partition only, so one request goes to each of them.
+     *
      * @param array<string, array<int, mixed>> $topicPartitionValues
      *
-     * @return array<int, array<string, array<int, mixed>>>
+     * @return list<array{0: Node, 1: array<string, array<int, mixed>>}> The leader and the partitions it leads
      */
     private function groupByLeader(array $topicPartitionValues): array
     {
+        $leaders       = [];
         $requestByNode = [];
         foreach ($topicPartitionValues as $topic => $partitionValues) {
             foreach ($partitionValues as $partition => $value) {
                 $leader = $this->cluster->leaderFor($topic, $partition);
 
+                $leaders[$leader->nodeId]                           = $leader;
                 $requestByNode[$leader->nodeId][$topic][$partition] = $value;
             }
         }
 
-        return $requestByNode;
+        return array_map(
+            static fn(int $nodeId): array => [$leaders[$nodeId], $requestByNode[$nodeId]],
+            array_keys($requestByNode)
+        );
     }
 
     /**
