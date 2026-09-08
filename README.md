@@ -1,8 +1,8 @@
-PHP Native Apache Kafka Client — 0.8.x
+PHP Native Apache Kafka Client — 0.9.x
 =======================================
 
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lisachenko/kafka-client/ci.yml?branch=0.8.x)
-[![Code Coverage](https://img.shields.io/codecov/c/github/lisachenko/kafka-client/0.8.x)](https://app.codecov.io/gh/lisachenko/kafka-client)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lisachenko/kafka-client/ci.yml?branch=0.9.x)
+[![Code Coverage](https://img.shields.io/codecov/c/github/lisachenko/kafka-client/0.9.x)](https://app.codecov.io/gh/lisachenko/kafka-client)
 [![Minimum PHP Version](http://img.shields.io/badge/php-%3E%3D%208.4-8892BF.svg)](https://www.php.net/supported-versions.php)
 [![License](https://img.shields.io/packagist/l/lisachenko/kafka-client.svg)](https://packagist.org/packages/lisachenko/kafka-client)
 
@@ -11,9 +11,9 @@ protocol — no `ext-rdkafka` required. It ships a Producer, a Consumer and a lo
 client, designed to stay close in spirit to the official Java client's API while feeling
 natural in PHP.
 
-**This branch speaks the Apache Kafka 0.8.2.2 wire protocol** — the last release of the 0.8
+**This branch speaks the Apache Kafka 0.9.0.1 wire protocol** — the last release of the 0.9
 line — and nothing else. The API of the classes is the one of the `main` branch wherever
-0.8 has the same concept, so code written against `main` mostly compiles here; what the 0.8
+0.9 has the same concept, so code written against `main` mostly compiles here; what the 0.9
 protocol cannot do is simply absent, and [what that is](#supported-kafka-protocol-versions)
 is listed below. The grammar this branch implements is written down, byte for byte, in
 [docs/protocol/0.9.0.md](docs/protocol/0.9.0.md).
@@ -22,7 +22,7 @@ Installation
 ------------
 
 ```bash
-composer require lisachenko/kafka-client:^0.8
+composer require lisachenko/kafka-client:^0.9
 ```
 
 Producer API
@@ -58,13 +58,13 @@ and the broker has acknowledged it. The only required option is
 `Protocol\Kafka\Producer\ProducerConfig` and the [producer configuration] reference.
 
 `ProducerConfig::ACKS` selects the durability of a write: `0` sends fire-and-forget (the
-0.8 broker sends **no response at all** for such a request, so the promise resolves with the
+broker sends **no response at all** for such a request, so the promise resolves with the
 offset `-1`), `1` waits for the leader's log and `-1` for all in-sync replicas. Records are
 collected until they fill `ProducerConfig::BATCH_SIZE` bytes or `ProducerConfig::LINGER_MS`
 has passed, and a batch that fails with a retriable error is sent again `ProducerConfig::RETRIES`
 times — that option is the whole retry budget of a batch and defaults to no retry at all, like
 the Java producer. Compression is set with `ProducerConfig::COMPRESSION_TYPE` and applies to a
-whole batch; 0.8.2.2 supports `gzip` and `snappy` (`lz4` exists in the broker but is not
+whole batch; 0.9.0.1 supports `gzip` and `snappy` (`lz4` exists in the broker but is not
 implemented by this client).
 
 Without a key a record is spread over the partitions that have a leader, with a key it goes to
@@ -92,7 +92,7 @@ $consumer = new KafkaConsumer([
     ConsumerConfig::METADATA_CACHE_FILE => '/tmp/metadata.php',
 ]);
 
-// Kafka 0.8 has no broker-side group membership, so the partitions are assigned by the client
+// Assign the partitions explicitly; broker-side group membership is being implemented, see below
 $consumer->assign([new TopicPartition('test', 0), new TopicPartition('test', 1)]);
 
 for ($i = 0; $i < 100; $i++) {
@@ -108,11 +108,11 @@ for ($i = 0; $i < 100; $i++) {
 `seek()`/`seekToBeginning()`/`seekToEnd()` move the position. The offsets a group committed
 survive the process, so the next `poll()` continues where the last `commitSync()` left off.
 
-**Group membership is a client-side concern on this branch.** The JoinGroup, SyncGroup,
-Heartbeat and LeaveGroup requests only arrived with Kafka 0.9: a 0.8 broker stores the
-*offsets* of a group but never assigns partitions to its members, so two consumers of the same
-group that assign the same partition will both read it. The Kafka 0.8 answer to that is
-ZooKeeper-based coordination, which this client, as a pure broker client, does not do.
+**Group membership is still a client-side concern on this branch.** Kafka 0.9 is the release
+that moved it into the broker — JoinGroup, SyncGroup, Heartbeat and LeaveGroup — and this
+line implements those apis in its second and third wave (`subscribe()`/`unsubscribe()` and the
+rebalance loop land with #32). Until then `assign()` is the way to pick the partitions, and two
+consumers of one group that assign the same partition will both read it.
 
 See the [consumer configuration] reference for the full set of options and
 [examples/consumer.php](examples/consumer.php) for a runnable version.
@@ -120,7 +120,7 @@ See the [consumer configuration] reference for the full set of options and
 Admin API
 ---------
 
-The Admin API exposes the low-level cluster operations a 0.8.2.2 broker can serve:
+The Admin API exposes the low-level cluster operations a 0.9.0.1 broker can serve:
 
 ```php
 use Protocol\Kafka\Admin\AdminClient;
@@ -147,16 +147,14 @@ $committed   = $admin->listGroupOffsets('kafka-daemon', ['test' => [0, 1, 2]]);
 | `listTopics()` / `describeTopics()`          | Metadata v0             | **Creates** an unknown topic when `auto.create.topics.enable` is on   |
 | `listOffsets()`                              | Offsets v0              | Earliest, latest or by segment timestamp; sent to the partition leader |
 | `findCoordinator()`                          | GroupCoordinator v0     | Retries the codes 15 and 14 while the coordinator warms up            |
-| `listGroupOffsets()`                         | OffsetFetch v0/v1       | The partitions are explicit: 0.8 has no "all topics" request          |
+| `listGroupOffsets()`                         | OffsetFetch v0/v1       | The partitions are explicit: 0.9 has no "all topics" request          |
 | `controlledShutdown()`                       | ControlledShutdown v0   | Moves every partition leader off a broker — it really does stop it    |
 
-Three methods of `main`'s `AdminClient` are **not** on this branch, because the api keys do
-not exist in Kafka 0.8.2.2 at all — a broker closes the connection when it receives them:
-`describeGroup()` (DescribeGroups, key 15, Kafka 0.9), `listGroups()`/`listAllGroups()`
-(ListGroups, key 16, Kafka 0.9) and `getApiVersions()` (ApiVersions, key 18, Kafka 0.10).
-Consumer groups are managed through ZooKeeper in 0.8, so a broker has nothing to say about
-their membership — the committed offsets that `listGroupOffsets()` reads are the only group
-state it knows.
+`describeGroup()` (DescribeGroups, key 15) and `listGroups()`/`listAllGroups()` (ListGroups,
+key 16) are apis that Kafka 0.9 does serve and that this line implements in its second wave
+(#29). `getApiVersions()` is **not** on this branch: ApiVersions is key 18 and arrived with
+Kafka 0.10, and a 0.9 broker has no way at all to report which apis it speaks — it does not
+even refuse a request it cannot parse, it drops it silently (see below).
 
 There is no CreateTopics api either (that is Kafka 0.10.1). A topic is created by writing to
 ZooKeeper — `kafka-topics.sh --create` — or implicitly by asking for the metadata of a topic
@@ -215,48 +213,61 @@ OffsetCommit/OffsetFetch apis, which Kafka 0.8.2 introduced and which stores the
 `__consumer_offsets` topic; `zookeeper` uses version 0 of the same apis, which stores them in
 ZooKeeper the way Kafka 0.8.1 did. Nothing else in this client differs between the two.
 
-There is **no transport security at all** in Kafka 0.8: SSL and SASL arrived with 0.9, so this
-branch has no `security.protocol`, no `ssl.*` options and no authentication mechanism. Keep a
-0.8 cluster on a trusted network.
+Kafka 0.9 is the release that added **transport security**: an SSL listener next to the
+PLAINTEXT one, selected with `security.protocol` and configured with the `ssl.*` options. This
+line implements it in its second wave (#30); the test broker of `docker-compose.yml` already
+publishes an SSL listener on 9093. SASL/GSSAPI also exists in Kafka 0.9, but it is negotiated
+outside the protocol — the SaslHandshake request is key 17 and arrived with 0.10 — and is out
+of scope for this branch.
 
 Supported Kafka protocol versions
 ----------------------------------
 
-This branch tracks the **Kafka 0.8.2.2** wire protocol. `main` tracks Kafka 0.11; the frozen
-protocol snapshots of the older lines live on `0.10.x` (Kafka 0.10.0), `0.9.x` (Kafka 0.9.0)
-and this branch, `0.8.x`.
+This branch tracks the **Kafka 0.9.0.1** wire protocol. `main` tracks Kafka 0.11; the frozen
+protocol snapshots of the other lines live on `0.10.x` (Kafka 0.10.0), this branch, `0.9.x`,
+and `0.8.x` (Kafka 0.8.2.2).
 
-| Api key | API                | Versions here | Client-facing | Implemented |
-|---------|--------------------|---------------|---------------|-------------|
-| 0       | Produce            | v0            | yes           | yes         |
-| 1       | Fetch              | v0            | yes           | yes         |
-| 2       | Offsets            | v0            | yes           | yes         |
-| 3       | Metadata           | v0            | yes           | yes         |
-| 4       | LeaderAndIsr       | v0            | broker→broker | no          |
-| 5       | StopReplica        | v0            | broker→broker | no          |
-| 6       | UpdateMetadata     | v0            | broker→broker | no          |
-| 7       | ControlledShutdown | v0            | controller    | yes         |
-| 8       | OffsetCommit       | v0, v1        | yes           | yes         |
-| 9       | OffsetFetch        | v0, v1        | yes           | yes         |
-| 10      | GroupCoordinator   | v0            | yes           | yes         |
+Kafka 0.9 has no ApiVersions request, so the versions below are not something a broker can be
+asked for: they were established by sending a minimal request of every api key and version to
+a real 0.9.0.1 broker (`tests/Integration/ApiVersionProbeTest.php`).
 
-Everything a later Kafka added is therefore missing here, by design:
+| Api key | API                | Versions in 0.9.0.1 | Client-facing | Implemented                |
+|---------|--------------------|---------------------|---------------|----------------------------|
+| 0       | Produce            | v0, v1              | yes           | v0; v1 in wave 1 (#27)     |
+| 1       | Fetch              | v0, v1              | yes           | v0; v1 in wave 1 (#27)     |
+| 2       | Offsets            | v0                  | yes           | yes                        |
+| 3       | Metadata           | v0                  | yes           | yes                        |
+| 4       | LeaderAndIsr       | v0                  | broker→broker | no                         |
+| 5       | StopReplica        | v0                  | broker→broker | no                         |
+| 6       | UpdateMetadata     | v0, v1              | broker→broker | no                         |
+| 7       | ControlledShutdown | v0, v1              | controller    | v0; v1 in wave 1 (#27)     |
+| 8       | OffsetCommit       | v0, v1, v2          | yes           | v0, v1; v2 in wave 1 (#27) |
+| 9       | OffsetFetch        | v0, v1              | yes           | yes                        |
+| 10      | GroupCoordinator   | v0                  | yes           | yes                        |
+| 11      | JoinGroup          | v0                  | yes           | wave 2 (#28)               |
+| 12      | Heartbeat          | v0                  | yes           | wave 2 (#28)               |
+| 13      | LeaveGroup         | v0                  | yes           | wave 2 (#28)               |
+| 14      | SyncGroup          | v0                  | yes           | wave 2 (#28)               |
+| 15      | DescribeGroups     | v0                  | yes           | wave 2 (#29)               |
+| 16      | ListGroups         | v0                  | yes           | wave 2 (#29)               |
+
+Everything a later Kafka added is missing here, by design:
 
 | Feature                                        | Arrived in | On this branch                                   |
 |------------------------------------------------|------------|--------------------------------------------------|
-| Group membership (JoinGroup … LeaveGroup)      | 0.9        | no — assign the partitions yourself               |
-| DescribeGroups / ListGroups                    | 0.9        | no                                                |
-| SSL and SASL                                   | 0.9        | no                                                |
-| `ThrottleTime` in responses, quotas            | 0.9        | no                                                |
-| Nullable topic array of OffsetFetch/Metadata   | 0.9 / 0.10 | no — partitions and topics are always explicit    |
+| SASL authentication (SaslHandshake, key 17)    | 0.10       | no — 0.9 negotiates GSSAPI outside the protocol   |
+| ApiVersions (key 18)                           | 0.10       | no — the api surface is probed, not asked for     |
+| CreateTopics / DeleteTopics                    | 0.10.1     | no — topics are created through ZooKeeper         |
+| Metadata v1 (`ControllerId`, broker `Rack`)    | 0.10       | no — Metadata v0 only                             |
 | Message format v1 with a timestamp, LZ4        | 0.10       | no — message format v0, gzip and snappy only      |
-| ApiVersions, CreateTopics/DeleteTopics         | 0.10       | no — topics are created through ZooKeeper         |
 | Offsets by timestamp (Offsets v1)              | 0.10.1     | no — the segment-based v0 only                    |
+| JoinGroup v1 (`RebalanceTimeout`)              | 0.10.1     | no — JoinGroup v0 only                            |
+| Nullable topic array of OffsetFetch            | 0.10.2     | no — partitions and topics are always explicit    |
 | Record batches v2, idempotence, transactions   | 0.11       | no                                                |
-| Error codes above 20                           | 0.9+       | no — 0.8.2.2 defines -1 … 20                      |
+| Error codes above 31                           | 0.10+      | no — 0.9.0.1 defines -1 … 31                      |
 
-Two properties of a 0.8.2.2 broker regularly surprise clients, and this implementation deals
-with both explicitly:
+Three properties of a 0.9.0.1 broker regularly surprise clients, and this implementation deals
+with all of them explicitly:
 
 * **A broker that has just started answers Metadata with an empty broker array.** The broker
   list comes from a metadata cache that stays empty until the controller pushes an
@@ -270,11 +281,21 @@ with both explicitly:
   reading the offsets of the group out of it. Both are retried with `retry.backoff.ms` until
   `metadata.fetch.timeout.ms` by `Common\CoordinatorLookup`, which
   `AdminClient::findCoordinator()` and `Client::getGroupCoordinator()` use.
+* **An api the broker does not know is dropped, not refused.** A request whose api key or
+  version a 0.9.0.1 broker cannot parse is neither answered nor rejected: the network thread
+  logs `Processor got uncaught exception`, drops the request and keeps the connection open and
+  usable. A client that speaks an api the broker does not have therefore hangs until its own
+  request timeout, and must never take the next response on that connection for the answer.
+  This client only ever sends the api versions of the table above.
 
-A third one only shows up in the Admin API: `controlledShutdown()` for a broker id the
-controller does not know is answered with the error code **-1 (Unknown)** instead of 8
-(BrokerNotAvailable), because the broker maps the *cause* of an exception that has none. The
-real reason is in the broker log. The protocol document has the details.
+Two changes against the 0.8.2.2 line show up in single apis, and both are worth knowing when
+porting code between the branches. **OffsetFetch v1 no longer validates the partition**: asking
+for a partition the cluster does not host answers offset `-1` with the error code `0` —
+"nothing committed" — where 0.8.2.2 answered 3 (UnknownTopicOrPartition), so Metadata is the
+only api that says whether a partition exists. And `controlledShutdown()` for a broker id the
+controller does not know is now answered with **8 (BrokerNotAvailable)**, the code a 0.8.2.2
+broker turned into -1 (Unknown) by mapping the *cause* of an exception that has none. The
+protocol document has the details.
 
 Testing & Contributing
 -----------------------
@@ -290,14 +311,14 @@ The suite is split in three:
 vendor/bin/phpunit --testsuite unit          # pure unit tests, no broker
 vendor/bin/phpunit --testsuite compliance    # replays the documented wire vectors
 
-docker compose up -d                         # Kafka 0.8.2.2, broker on 127.0.0.1:9092
+docker compose up -d                         # Kafka 0.9.0.1, broker on 127.0.0.1:9092
 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 vendor/bin/phpunit --testsuite integration
 ```
 
 The integration suite is skipped unless `KAFKA_BOOTSTRAP_SERVERS` points at a running broker.
 The compliance suite replays every wire vector of
-[docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka 0.8.2.2 broker sent
-or accepted — through the request and response classes and checks that the annotated dumps of
+[docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or
+accepted — through the request and response classes and checks that the annotated dumps of
 [docs/protocol/0.9.0.md](docs/protocol/0.9.0.md) still hold the same bytes, so the document and
 the code cannot drift apart.
 
