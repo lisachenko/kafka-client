@@ -19,101 +19,15 @@ declare(strict_types=1);
 namespace Protocol\Kafka\IO;
 
 /**
- * Binary stream that speaks the Kafka protocol primitive types.
+ * Binary stream that the protocol schema engine reads from and writes to.
  *
- * All numeric types are big-endian and signed, see "Protocol Primitive Types" in docs/protocol/0.8.2.md.
+ * The method set mirrors the one of the `main` branch, minus the varint primitives: variable-length integers only
+ * exist in the 0.11 record format and have no representation in the 0.8 protocol.
+ *
+ * @see \Protocol\Kafka\Protocol\BinarySchema
  */
 interface Stream
 {
-    /**
-     * Reads exactly $length raw bytes from the stream, advancing the internal pointer.
-     *
-     * @throws \Protocol\Kafka\Common\Errors\NetworkException If the requested amount of bytes is not available
-     */
-    public function readRaw(int $length): string;
-
-    /**
-     * Writes raw bytes to the stream as is.
-     */
-    public function writeRaw(string $data): void;
-
-    /**
-     * Reads a signed 8-bit integer (int8).
-     */
-    public function readInt8(): int;
-
-    /**
-     * Reads a signed big-endian 16-bit integer (int16).
-     */
-    public function readInt16(): int;
-
-    /**
-     * Reads a signed big-endian 32-bit integer (int32).
-     */
-    public function readInt32(): int;
-
-    /**
-     * Reads a signed big-endian 64-bit integer (int64).
-     */
-    public function readInt64(): int;
-
-    /**
-     * Writes a signed 8-bit integer (int8).
-     */
-    public function writeInt8(int $value): void;
-
-    /**
-     * Writes a signed big-endian 16-bit integer (int16).
-     */
-    public function writeInt16(int $value): void;
-
-    /**
-     * Writes a signed big-endian 32-bit integer (int32).
-     */
-    public function writeInt32(int $value): void;
-
-    /**
-     * Writes a signed big-endian 64-bit integer (int64).
-     */
-    public function writeInt64(int $value): void;
-
-    /**
-     * Reads a string: int16 length prefix followed by that many bytes, -1 means null.
-     */
-    public function readString(): ?string;
-
-    /**
-     * Writes a string: int16 length prefix followed by the content, null is written as -1.
-     */
-    public function writeString(?string $value): void;
-
-    /**
-     * Reads a byte array: int32 length prefix followed by that many bytes, -1 means null.
-     */
-    public function readBytes(): ?string;
-
-    /**
-     * Writes a byte array: int32 length prefix followed by the content, null is written as -1.
-     */
-    public function writeBytes(?string $data): void;
-
-    /**
-     * Reads an int32-prefixed array of elements, delegating each element to the given reader.
-     *
-     * @param callable(Stream): mixed $elementReader
-     *
-     * @return list<mixed>
-     */
-    public function readArray(callable $elementReader): array;
-
-    /**
-     * Writes an int32-prefixed array of elements, delegating each element to the given writer.
-     *
-     * @param iterable<mixed>               $items
-     * @param callable(Stream, mixed): void $elementWriter
-     */
-    public function writeArray(iterable $items, callable $elementWriter): void;
-
     /**
      * Writes arguments to the stream
      *
@@ -121,34 +35,49 @@ interface Stream
      * @param mixed  ...$arguments List of arguments for packing
      *
      * @see pack() manual for format
-     *
-     * @deprecated Use the typed primitives instead, this is kept for the not-yet-migrated protocol classes.
      */
-    public function write(string $format, mixed ...$arguments): void;
+    public function write(string $format, ...$arguments): void;
 
     /**
-     * Reads information from the stream, advancing the internal pointer
-     *
-     * @param string $format Format for unpacking arguments
-     * @see unpack() manual for format
+     * Reads information from the stream, advancing the internal stream pointer
      *
      * @return array<string|int, mixed> List of unpacked arguments
-     *
-     * @deprecated Use the typed primitives instead, this is kept for the not-yet-migrated protocol classes.
+     * @see unpack() manual for format
      */
     public function read(string $format): array;
 
     /**
-     * Reads a byte array from the stream
-     *
-     * @deprecated Use {@see Stream::readBytes()} instead.
+     * Reads a non-nullable string from the stream: int16 length prefix followed by that many bytes
+     */
+    public function readString(): string;
+
+    /**
+     * Reads a byte array from the stream: int32 length prefix followed by that many bytes, -1 means null
      */
     public function readByteArray(): ?string;
 
     /**
-     * Writes a byte array to the stream
-     *
-     * @deprecated Use {@see Stream::writeBytes()} instead.
+     * Writes a non-nullable string to the stream: int16 length prefix followed by the content
+     */
+    public function writeString(string $string): void;
+
+    /**
+     * Writes a byte array to the stream: int32 length prefix followed by the content, null is written as -1
      */
     public function writeByteArray(?string $data): void;
+
+    /**
+     * Writes the raw buffer into the stream as-is
+     */
+    public function writeBuffer(?string $buffer): void;
+
+    /**
+     * Checks whether we are actually connected to the server
+     */
+    public function isConnected(): bool;
+
+    /**
+     * Checks if the stream is empty
+     */
+    public function isEmpty(): bool;
 }

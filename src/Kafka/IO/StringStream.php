@@ -21,7 +21,7 @@ namespace Protocol\Kafka\IO;
 use Protocol\Kafka\Common\Errors\NetworkException;
 
 /**
- * In-memory implementation of the binary stream, used for framing and for unit tests
+ * In-memory implementation of the binary stream, used for framing and in the unit tests
  */
 class StringStream extends AbstractStream
 {
@@ -33,46 +33,53 @@ class StringStream extends AbstractStream
     /**
      * String stream constructor.
      *
-     * @param string $stringBuffer Buffer to write to or read from, passed by reference to observe the written data
+     * @param string|null $stringBuffer Optional buffer to read from
      */
-    public function __construct(string &$stringBuffer = '')
+    public function __construct(?string $stringBuffer = null)
     {
-        $this->buffer = &$stringBuffer;
+        $this->buffer = $stringBuffer ?? '';
+    }
+
+    public function write(string $format, ...$arguments): void
+    {
+        $this->buffer .= pack($format, ...$arguments);
+    }
+
+    public function read(string $format): array
+    {
+        $packetSize = self::packetSize($format);
+        $available  = strlen($this->buffer);
+        if ($available < $packetSize) {
+            throw new NetworkException(
+                ['error' => "Not enough data in the buffer: {$packetSize} bytes requested, {$available} available"]
+            );
+        }
+
+        $arguments = unpack($format, $this->buffer);
+        if ($arguments === false) {
+            throw new \InvalidArgumentException("Can not unpack the data with the format: {$format}");
+        }
+        $this->buffer = substr($this->buffer, $packetSize);
+
+        return $arguments;
+    }
+
+    public function isConnected(): bool
+    {
+        return true;
+    }
+
+    public function isEmpty(): bool
+    {
+        return $this->buffer === '';
     }
 
     /**
-     * Creates a stream over the copy of the given binary data.
-     *
-     * Use this factory when the source of data is an expression that can not be passed by reference.
+     * Returns the current buffer, useful for write operations
      */
-    public static function fromString(string $data): static
+    public function getBuffer(): string
     {
-        return new static($data);
-    }
-
-    public function readRaw(int $length): string
-    {
-        if ($length < 0) {
-            throw new \InvalidArgumentException("Length should not be negative, {$length} given");
-        }
-        if ($length === 0) {
-            return '';
-        }
-        $available = strlen($this->buffer);
-        if ($available < $length) {
-            throw new NetworkException(
-                ['error' => "Not enough data in the buffer: {$length} bytes requested, {$available} available"]
-            );
-        }
-        $data         = substr($this->buffer, 0, $length);
-        $this->buffer = substr($this->buffer, $length);
-
-        return $data;
-    }
-
-    public function writeRaw(string $data): void
-    {
-        $this->buffer .= $data;
+        return $this->buffer;
     }
 
     /**
@@ -81,21 +88,5 @@ class StringStream extends AbstractStream
     public function remaining(): int
     {
         return strlen($this->buffer);
-    }
-
-    /**
-     * Checks if there is nothing left to read in the buffer
-     */
-    public function isEmpty(): bool
-    {
-        return $this->buffer === '';
-    }
-
-    /**
-     * Returns the content of the underlying buffer without consuming it
-     */
-    public function getBuffer(): string
-    {
-        return $this->buffer;
     }
 }
