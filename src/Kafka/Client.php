@@ -22,11 +22,11 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
-use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\Common\Record\MessageSet;
+use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\SocketStream;
-use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
@@ -79,15 +79,10 @@ class Client
         $requiredAcks = (int) $this->configuration[ProducerConfig::ACKS];
 
         // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.8.2.md
-        // TODO: build it with Common\Record\MessageSet::fromRecords() once the message set of T3 (#4) is merged
         $topicPartitionMessageSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
-                $messageSetBuffer = '';
-                foreach ($messages as $message) {
-                    $messageSetBuffer .= RecordBatch::fromMessage($message);
-                }
-                $topicPartitionMessageSets[$topic][$partition] = $messageSetBuffer;
+                $topicPartitionMessageSets[$topic][$partition] = MessageSet::fromRecords(self::toRecords($messages));
             }
         }
 
@@ -285,19 +280,9 @@ class Client
                         throw KafkaException::fromCode($responsePartition->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
                     }
                     // The schema engine hands over the raw bytes of the message set, because the broker is allowed to
-                    // cut its last message short. Decoding them belongs to the record layer; until it lands the
-                    // legacy reader is used here, dropping a partial trailing message.
-                    $buffer     = $responsePartition->messageSet ?? '';
-                    $bufferSize = strlen($buffer);
-                    $messages   = [];
-                    for ($position = 0; $position + 12 <= $bufferSize; $position += 12 + $messageSize) {
-                        $messageSize = (int) unpack('NmessageSize', $buffer, $position + 8)['messageSize'];
-                        if ($position + 12 + $messageSize > $bufferSize) {
-                            break;
-                        }
-                        $messages[] = RecordBatch::unpack(new StringStream(substr($buffer, $position, 12 + $messageSize)));
-                    }
-                    $result[$topic][$partitionId] = $messages;
+                    // cut its last message short. The record layer decodes them, drops that partial trailing message
+                    // and unwraps a compressed set into the messages it holds.
+                    $result[$topic][$partitionId] = $responsePartition->getMessageSet()->getRecords();
                 }
             }
 
@@ -346,6 +331,26 @@ class Client
         });
 
         return $result;
+    }
+
+    /**
+     * Normalizes the messages of one topic-partition into the records that a message set is built from.
+     *
+     * The producer hands over {@see Record} instances; a plain string is accepted as well and becomes a record
+     * without a key, which is what the callers of the older API pass.
+     *
+     * @param iterable<Record|string|\Stringable> $messages
+     *
+     * @return list<Record>
+     */
+    private static function toRecords(iterable $messages): array
+    {
+        $records = [];
+        foreach ($messages as $message) {
+            $records[] = $message instanceof Record ? $message : new Record((string) $message);
+        }
+
+        return $records;
     }
 
     private function clusterRequest(

@@ -13,9 +13,9 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
+use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
-use Stringable;
 
 /**
  * One partition of a Fetch response v0
@@ -38,16 +38,6 @@ use Stringable;
  */
 class FetchResponsePartition implements BinarySchemaInterface
 {
-    /**
-     * Decoder of the raw message set bytes.
-     *
-     * Resolved by name on purpose: the record layer of the 0.8 line is developed in parallel with the protocol
-     * classes, and this class only depends on its `fromBuffer()` entry point.
-     *
-     * @see \Protocol\Kafka\Common\Record\MessageSet
-     */
-    private const string MESSAGE_SET_CLASS = 'Protocol\Kafka\Common\Record\MessageSet';
-
     /**
      * The id of the partition this response is for.
      */
@@ -79,7 +69,7 @@ class FetchResponsePartition implements BinarySchemaInterface
     /**
      * Lazily decoded message set of this partition
      */
-    private ?Stringable $decodedMessageSet = null;
+    private ?MessageSet $decodedMessageSet = null;
 
     /**
      * @inheritdoc
@@ -97,21 +87,12 @@ class FetchResponsePartition implements BinarySchemaInterface
     /**
      * Decodes the raw bytes of this partition into a message set, dropping a partial trailing message.
      *
-     * @return Stringable The `Protocol\Kafka\Common\Record\MessageSet` of the record layer
+     * The bytes are decoded once and the result is kept, because a fetch loop asks for the messages of a partition
+     * and for their offsets separately.
      */
-    public function getMessageSet(): Stringable
+    public function getMessageSet(): MessageSet
     {
-        if ($this->decodedMessageSet === null) {
-            $messageSetClass = self::MESSAGE_SET_CLASS;
-            if (!class_exists($messageSetClass)) {
-                throw new \LogicException(
-                    "Class {$messageSetClass} is not available, the raw bytes are in the messageSet property"
-                );
-            }
-            $this->decodedMessageSet = $messageSetClass::fromBuffer($this->messageSet ?? '');
-        }
-
-        return $this->decodedMessageSet;
+        return $this->decodedMessageSet ??= MessageSet::fromBuffer($this->messageSet ?? '');
     }
 
     /**
