@@ -20,8 +20,10 @@ namespace Protocol\Kafka;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\IO\SocketStream;
+use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
@@ -231,13 +233,26 @@ class Client
 
             return $request;
         }, FetchResponse::class, function (array $result, FetchResponse $response): array {
-            foreach ($response->topics as $topic => $partitions) {
-                foreach ($partitions as $partitionId => $responsePartition) {
+            foreach ($response->topics as $topic => $topicResponse) {
+                foreach ($topicResponse->partitions as $partitionId => $responsePartition) {
                     /** @var FetchResponsePartition $responsePartition */
                     if ($responsePartition->errorCode !== 0) {
                         throw KafkaException::fromCode($responsePartition->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
                     }
-                    $result[$topic][$partitionId] = $responsePartition->messageSet;
+                    // The schema engine hands over the raw bytes of the message set, because the broker is allowed to
+                    // cut its last message short. Decoding them belongs to the record layer; until it lands the
+                    // legacy reader is used here, dropping a partial trailing message.
+                    $buffer     = $responsePartition->messageSet ?? '';
+                    $bufferSize = strlen($buffer);
+                    $messages   = [];
+                    for ($position = 0; $position + 12 <= $bufferSize; $position += 12 + $messageSize) {
+                        $messageSize = (int) unpack('NmessageSize', $buffer, $position + 8)['messageSize'];
+                        if ($position + 12 + $messageSize > $bufferSize) {
+                            break;
+                        }
+                        $messages[] = RecordBatch::unpack(new StringStream(substr($buffer, $position, 12 + $messageSize)));
+                    }
+                    $result[$topic][$partitionId] = $messages;
                 }
             }
 
@@ -271,13 +286,14 @@ class Client
 
             return $request;
         }, OffsetsResponse::class, function (array $result, OffsetsResponse $response): array {
-            foreach ($response->topics as $topic => $partitions) {
-                /** @var OffsetsResponsePartition[] $partitions */
-                foreach ($partitions as $partitionId => $partitionMetadata) {
+            foreach ($response->topics as $topic => $topicResponse) {
+                /** @var OffsetsResponsePartition $partitionMetadata */
+                foreach ($topicResponse->partitions as $partitionId => $partitionMetadata) {
                     if ($partitionMetadata->errorCode !== 0) {
                         throw KafkaException::fromCode($partitionMetadata->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
                     }
-                    $result[$topic][$partitionId] = reset($partitionMetadata->offsets);
+                    // v0 answers with a list of segment offsets, the newest one first
+                    $result[$topic][$partitionId] = $partitionMetadata->offsets[0] ?? 0;
                 }
             }
 

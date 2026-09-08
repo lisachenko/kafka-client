@@ -10,54 +10,45 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 15.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 
 /**
- * Fetch response object
+ * Fetch response object (key 1, v0)
+ *
+ * <pre>
+ *   FetchResponse => [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet]]
+ *     TopicName           => string
+ *     Partition           => int32
+ *     ErrorCode           => int16
+ *     HighwaterMarkOffset => int64
+ *     MessageSetSize      => int32
+ * </pre>
+ *
+ * The `ThrottleTime` prefix of the response arrived with v1 (Kafka 0.9) and does not exist here.
+ *
+ * @see docs/protocol/0.8.2.md, section "Fetch API (key 1, v0)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
-     * List of fetch responses
+     * Fetch result for each of the requested topics, indexed by the topic name
      *
-     * @var array|FetchResponsePartition[]
+     * @var array<string, FetchResponseTopic>
      */
-    public $topics = [];
+    public array $topics = [];
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [
-            $self->correlationId,
-            $numberOfTopics,
-        ] = array_values($stream->read('NcorrelationId/NnumberOfTopics'));
+        $header = parent::getScheme();
 
-        for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicLength = $stream->read('ntopicLength')['topicLength'];
-            [$topicName, $numberOfPartitions] = array_values($stream->read("a{$topicLength}/NnumberOfPartitions"));
-
-            for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-                $topicMetadata = FetchResponsePartition::unpack($stream);
-                $self->topics[$topicName][$topicMetadata->partition] = $topicMetadata;
-            }
-        }
-
-        return $self;
+        return $header + [
+            'topics' => ['topic' => FetchResponseTopic::class],
+        ];
     }
 }
