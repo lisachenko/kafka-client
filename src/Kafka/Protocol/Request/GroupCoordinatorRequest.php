@@ -20,16 +20,18 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\ApiKeys;
 
 /**
- * The offsets for a given consumer group are maintained by a specific broker called the offset coordinator.
+ * The offsets for a given consumer group are maintained by a specific broker called the group coordinator. i.e., a
+ * consumer needs to issue its offset commit and fetch requests to this specific broker.
  *
- * A consumer needs to issue its offset commit and fetch requests to this specific broker. It can discover the current
- * coordinator by issuing a consumer metadata request (ApiKey 10, v0); this API was renamed to GroupCoordinator only
- * in Kafka 0.9.
+ * It can discover the current coordinator by issuing a group coordinator request.
  *
- * ConsumerMetadataRequest => ConsumerGroup
+ * The API is called ConsumerMetadataRequest in Kafka 0.8.2 (api key 10, v0, kafka/api/ConsumerMetadataRequest.scala);
+ * it was renamed to GroupCoordinator in 0.9 without a change to the wire format.
+ *
+ * GroupCoordinatorRequest => ConsumerGroup
  *   ConsumerGroup => string
  */
-class ConsumerMetadataRequest extends AbstractRequest
+class GroupCoordinatorRequest extends AbstractRequest
 {
     /**
      * @param string $consumerGroup
@@ -41,7 +43,7 @@ class ConsumerMetadataRequest extends AbstractRequest
         $clientId = '',
         $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::CONSUMER_METADATA, $clientId, $correlationId);
+        parent::__construct(ApiKeys::GROUP_COORDINATOR, $clientId, $correlationId);
     }
 
     /**
