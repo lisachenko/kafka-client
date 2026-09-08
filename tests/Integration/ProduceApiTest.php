@@ -21,6 +21,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
+use Protocol\Kafka\Producer\RecordMetadata;
 use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
@@ -127,13 +128,19 @@ final class ProduceApiTest extends IntegrationTestCase
     {
         $producer = new KafkaProducer($this->producerConfiguration(1));
 
-        $first  = $producer->send($this->topic, Record::fromValue('through the producer'), 0);
-        $second = $producer->send($this->topic, Record::fromKeyValue('key', 'and another one'), 0);
+        $acknowledged = [];
+        $collect      = static function (RecordMetadata $metadata) use (&$acknowledged): void {
+            $acknowledged[] = $metadata;
+        };
 
-        self::assertInstanceOf(ProduceResponsePartition::class, $first[$this->topic][0]);
-        self::assertSame(0, $first[$this->topic][0]->errorCode);
-        self::assertSame(0, $first[$this->topic][0]->baseOffset);
-        self::assertSame(1, $second[$this->topic][0]->baseOffset);
+        $producer->send($this->topic, Record::fromValue('through the producer'), 0)->then($collect);
+        $producer->send($this->topic, Record::fromKeyValue('key', 'and another one'), 0)->then($collect);
+
+        // `batch.size` defaults to 0, so every record is sent on its own and both promises are already settled
+        self::assertCount(2, $acknowledged);
+        self::assertSame($this->topic, $acknowledged[0]->topic);
+        self::assertSame(0, $acknowledged[0]->partition);
+        self::assertSame([0, 1], array_column($acknowledged, 'offset'));
         self::assertCount(3, $producer->partitionsFor($this->topic));
     }
 
