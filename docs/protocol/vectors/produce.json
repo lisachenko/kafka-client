@@ -1,13 +1,70 @@
 {
     "api": "produce",
     "apiKey": 0,
-    "section": "Produce API (key 0, v0)",
-    "description": "Wire vectors of the Produce API (key 0, v0), replayed by tests/Compliance.",
+    "section": "Produce API (key 0, v0 and v1)",
+    "description": "Wire vectors of the Produce API (key 0, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
+        {
+            "id": "produce.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "Produce request v1 with RequiredAcks = 1 and a message set of two uncompressed messages, the second one without a key. The body is the one of v0, only the api version of the header differs.",
+            "hex": "0000007f000000010000000b000274320001000005dc00000001000a74322d766563746f727300000001000000000000005100000000000000000000001d7ca88df6000000000001310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32",
+            "fields": {
+                "messageSize": 127,
+                "apiKey": 0,
+                "apiVersion": 1,
+                "correlationId": 11,
+                "clientId": "t2",
+                "requiredAcks": 1,
+                "timeout": 1500,
+                "topicMessages": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000001d7ca88df6000000000001310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Produce response v1: the base offset the message set was appended at, followed by the ThrottleTime that version 1 added at the very end of the answer (0, the broker enforces no producer quota).",
+            "hex": "0000002a0000000b00000001000a74322d766563746f727300000001000000000000000000000000000000000000",
+            "fields": {
+                "messageSize": 42,
+                "correlationId": 11,
+                "topics": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 0
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
+        },
         {
             "id": "produce.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV0",
             "version": 0,
             "source": "broker",
             "description": "Produce request v0 with RequiredAcks = 1 and a message set of two uncompressed messages, the second one without a key.",
@@ -38,10 +95,10 @@
         {
             "id": "produce.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV0",
             "version": 0,
             "source": "broker",
-            "description": "Produce response v0: the base offset the message set was appended at.",
+            "description": "Produce response v0: the base offset the message set was appended at, and no ThrottleTime - that field only exists in v1.",
             "hex": "000000270000000b00000001000b7431302d766563746f7273000000010000000000000000000000000000",
             "fields": {
                 "messageSize": 39,

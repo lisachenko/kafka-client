@@ -20,13 +20,16 @@ use Protocol\Kafka\Common\Record\Record;
  * Everything one partition of a Fetch response says, not only the records it carried.
  *
  * A consumer needs more than the records to drive its fetch loop: the high water mark tells it how far behind the
- * end of the log it is, and a 0.8.2.2 broker can answer without an error and without a single complete message when
- * the message at the fetch offset is larger than the `MaxBytes` that were asked for. Fetching that offset again
- * would spin forever, so {@see FetchedPartition::isSingleMessageTooLarge()} exists to make that state visible
- * without a second round trip to the broker.
+ * end of the log it is, and a broker can answer without an error and without a single complete message when the
+ * message at the fetch offset is larger than the `MaxBytes` that were asked for. Fetching that offset again would
+ * spin forever, so {@see FetchedPartition::isSingleMessageTooLarge()} exists to make that state visible without a
+ * second round trip to the broker.
+ *
+ * Version 1 of the Fetch API (Kafka 0.9) added the throttle time of the answer, which every partition of that answer
+ * carries here; it is 0 unless the client exceeded a fetch quota of the broker.
  *
  * @see \Protocol\Kafka\Client::fetchPartitions()
- * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0)"
+ * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
  */
 final class FetchedPartition
 {
@@ -37,6 +40,7 @@ final class FetchedPartition
      * @param int            $highWaterMarkOffset     Offset at the end of the log of this partition
      * @param MessageSet     $messageSet              Records the broker returned
      * @param bool           $isSingleMessageTooLarge Whether the first message does not fit into the fetch size
+     * @param int            $throttleTimeMs          Milliseconds the broker delayed the answer because of a quota
      */
     public function __construct(
         public readonly TopicPartition $topicPartition,
@@ -44,7 +48,8 @@ final class FetchedPartition
         public readonly int $errorCode,
         public readonly int $highWaterMarkOffset,
         private readonly MessageSet $messageSet,
-        private readonly bool $isSingleMessageTooLarge = false
+        private readonly bool $isSingleMessageTooLarge = false,
+        public readonly int $throttleTimeMs = 0
     ) {}
 
     /**

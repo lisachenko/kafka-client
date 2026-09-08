@@ -41,6 +41,7 @@ use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
 use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
@@ -463,6 +464,26 @@ final class ClientTest extends TestCase
         self::assertFalse($partition->hasPartialTrailingMessage());
         self::assertFalse($partition->isSingleMessageTooLarge());
         self::assertSame(2, $partition->getNextOffset(), 'the offsets of a produced set count from 0');
+        self::assertSame(0, $partition->throttleTimeMs, 'a broker without quotas never throttles');
+    }
+
+    public function testTheThrottleTimeOfAFetchAnswerReachesEveryPartitionOfIt(): void
+    {
+        // Fetch v1 reports the throttle time once for the whole answer, so every partition of it carries the value
+        $messageSet = MessageSet::fromRecords([new Record('throttled')])->toBuffer();
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::fetch(
+                0,
+                [self::TOPIC => [0 => [0, 1, $messageSet]]],
+                250
+            )))
+            ->install();
+
+        $partition = $this->client()->fetchPartitions([self::TOPIC => [0 => 0]], 200)[self::TOPIC][0];
+
+        self::assertSame(250, $partition->throttleTimeMs);
+        self::assertCount(1, $partition->getRecords());
     }
 
     public function testAMessageThatDoesNotFitIntoTheFetchSizeIsVisibleWithoutASecondRequest(): void
@@ -556,7 +577,7 @@ final class ClientTest extends TestCase
         }
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionOne(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionTwo(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -577,7 +598,10 @@ final class ClientTest extends TestCase
         $client->commitGroupOffsets(
             $coordinatorNode,
             't7-group',
-            [self::TOPIC => [0 => new OffsetAndMetadata(21, 'by the client')]]
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            [self::TOPIC => [0 => new OffsetAndMetadata(21, 'by the client')]],
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME
         );
         $offsets = $client->fetchGroupOffsets($coordinatorNode, 't7-group', [self::TOPIC => [0]]);
 
@@ -586,9 +610,9 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(1, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks version 1');
+        self::assertSame(2, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 2');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(1, $this->apiVersionOf($frames[1]));
+        self::assertSame(1, $this->apiVersionOf($frames[1]), 'OffsetFetch did not change in Kafka 0.9');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -605,7 +629,7 @@ final class ClientTest extends TestCase
         $client      = $this->client([ClientConfig::OFFSETS_STORAGE => ClientConfig::OFFSETS_STORAGE_ZOOKEEPER]);
         $coordinator = $client->getGroupCoordinator('t7-group');
 
-        $client->commitGroupOffsets($coordinator, 't7-group', [self::TOPIC => [0 => 21]]);
+        $client->commitGroupOffsets($coordinator, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
 
         self::assertSame(0, $this->apiVersionOf($anyNode->getReceivedFrames()[1]));
     }
@@ -624,7 +648,7 @@ final class ClientTest extends TestCase
         $coordinator = $client->getGroupCoordinator('t7-group');
 
         $this->expectException(KafkaException::class);
-        $client->commitGroupOffsets($coordinator, 't7-group', [self::TOPIC => [0 => 21]]);
+        $client->commitGroupOffsets($coordinator, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
     }
 
     public function testANeverCommittedPartitionComesBackWithTheOffsetMinusOne(): void
