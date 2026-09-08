@@ -122,8 +122,13 @@ class KafkaProducer
                             $exceptions[$topic][$partitionId] // Also clear previous errors if succeeded
                         );
 
-                        // Resolve deferred promise with partition result
-                        $this->deferredTopicPartitionSend[$topic][$partitionId]->resolve($partitionResult);
+                        // Resolve deferred promise with the record metadata acknowledged by the broker
+                        $this->deferredTopicPartitionSend[$topic][$partitionId]->resolve(new RecordMetadata(
+                            $topic,
+                            $partitionResult->partition,
+                            $partitionResult->baseOffset,
+                            $partitionResult->logAppendTime >= 0 ? $partitionResult->logAppendTime : null,
+                        ));
                     }
                 }
                 // If we have any exceptions, then process them
@@ -165,7 +170,7 @@ class KafkaProducer
      * @param Record       $message           Message to send
      * @param integer|null $concretePartition Optional partition for sending message
      *
-     * @return Promise
+     * @return Promise Resolves with a {@see RecordMetadata} once the broker acknowledges the record
      */
     public function send(string $topic, Record $message, ?int $concretePartition = null): Promise
     {
