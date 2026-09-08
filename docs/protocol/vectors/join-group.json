@@ -1,0 +1,109 @@
+{
+    "api": "join-group",
+    "apiKey": 11,
+    "section": "JoinGroup API (key 11, v0)",
+    "description": "Wire vectors of the JoinGroup API (key 11, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "joingroup.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "JoinGroup request v0 of a client that has no member id yet, offering the `range` protocol of the `consumer` protocol type with its subscription as opaque metadata.",
+            "hex": "00000053000b00000000002a00027433001074332d766563746f72732d67726f75700000177000000008636f6e73756d657200000001000572616e676500000016000000000001000a74332d766563746f7273ffffffff",
+            "fields": {
+                "messageSize": 83,
+                "apiKey": 11,
+                "apiVersion": 0,
+                "correlationId": 42,
+                "clientId": "t3",
+                "consumerGroup": "t3-vectors-group",
+                "sessionTimeout": 6000,
+                "memberId": "",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000a74332d766563746f7273ffffffff"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "JoinGroup answer of the first and only member of a group: the assigned member id, the generation 1, the selected protocol and the member itself as the leader, whose answer carries the metadata of every member.",
+            "hex": "000000aa0000002a000000000001000572616e6765002774332d30363966346231342d363837382d343037652d613730382d613932383863613862323531002774332d30363966346231342d363837382d343037652d613730382d61393238386361386232353100000001002774332d30363966346231342d363837382d343037652d613730382d61393238386361386232353100000016000000000001000a74332d766563746f7273ffffffff",
+            "fields": {
+                "messageSize": 170,
+                "correlationId": 42,
+                "errorCode": 0,
+                "generationId": 1,
+                "groupProtocol": "range",
+                "leaderId": "t3-069f4b14-6878-407e-a708-a9288ca8b251",
+                "memberId": "t3-069f4b14-6878-407e-a708-a9288ca8b251",
+                "members": {
+                    "t3-069f4b14-6878-407e-a708-a9288ca8b251": {
+                        "memberId": "t3-069f4b14-6878-407e-a708-a9288ca8b251",
+                        "metadata": {
+                            "$bytes": "000000000001000a74332d766563746f7273ffffffff"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.request.v0.invalid-session-timeout",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "JoinGroup request v0 with a session timeout below group.min.session.timeout.ms of the broker.",
+            "hex": "00000053000b00000000002900027433001074332d766563746f72732d67726f75700000000100000008636f6e73756d657200000001000572616e676500000016000000000001000a74332d766563746f7273ffffffff",
+            "fields": {
+                "messageSize": 83,
+                "apiKey": 11,
+                "apiVersion": 0,
+                "correlationId": 41,
+                "clientId": "t3",
+                "consumerGroup": "t3-vectors-group",
+                "sessionTimeout": 1,
+                "memberId": "",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000a74332d766563746f7273ffffffff"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v0.invalid-session-timeout",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "JoinGroup answer for a session timeout the broker does not allow: the error code 26, generation -1 and empty ids.",
+            "hex": "0000001400000029001a0000000000000000000000000000",
+            "fields": {
+                "messageSize": 20,
+                "correlationId": 41,
+                "errorCode": 26,
+                "generationId": 0,
+                "groupProtocol": "",
+                "leaderId": "",
+                "memberId": "",
+                "members": []
+            }
+        }
+    ]
+}

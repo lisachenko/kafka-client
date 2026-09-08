@@ -47,12 +47,16 @@ final class ProtocolVectorTest extends TestCase
         'describe-groups',
         'fetch',
         'group-coordinator',
+        'heartbeat',
+        'join-group',
+        'leave-group',
         'list-groups',
         'metadata',
         'offset-commit',
         'offset-fetch',
         'offsets',
         'produce',
+        'sync-group',
     ];
 
     /**
@@ -101,6 +105,38 @@ final class ProtocolVectorTest extends TestCase
     public static function groupCoordinatorVectors(): iterable
     {
         return VectorFile::provide('group-coordinator');
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function joinGroupVectors(): iterable
+    {
+        return VectorFile::provide('join-group');
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function syncGroupVectors(): iterable
+    {
+        return VectorFile::provide('sync-group');
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function heartbeatVectors(): iterable
+    {
+        return VectorFile::provide('heartbeat');
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function leaveGroupVectors(): iterable
+    {
+        return VectorFile::provide('leave-group');
     }
 
     /**
@@ -184,6 +220,42 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('groupCoordinatorVectors')]
     public function testGroupCoordinatorApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('joinGroupVectors')]
+    public function testJoinGroupApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('syncGroupVectors')]
+    public function testSyncGroupApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('heartbeatVectors')]
+    public function testHeartbeatApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('leaveGroupVectors')]
+    public function testLeaveGroupApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

@@ -1,0 +1,107 @@
+{
+    "api": "heartbeat",
+    "apiKey": 12,
+    "section": "Heartbeat API (key 12, v0)",
+    "description": "Wire vectors of the Heartbeat API (key 12, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "heartbeat.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "Heartbeat request v0 of a member of a stable group.",
+            "hex": "0000004b000c00000000002c00027433001074332d766563746f72732d67726f757000000001002774332d30363966346231342d363837382d343037652d613730382d613932383863613862323531",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 12,
+                "apiVersion": 0,
+                "correlationId": 44,
+                "clientId": "t3",
+                "consumerGroup": "t3-vectors-group",
+                "generationId": 1,
+                "memberId": "t3-069f4b14-6878-407e-a708-a9288ca8b251"
+            }
+        },
+        {
+            "id": "heartbeat.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Heartbeat answer of a coordinator that accepted the heartbeat and reset the session timeout of the member.",
+            "hex": "000000060000002c0000",
+            "fields": {
+                "messageSize": 6,
+                "correlationId": 44,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "heartbeat.request.v0.unknown-member",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "Heartbeat request v0 with a member id that the group does not have.",
+            "hex": "00000033000c00000000002d00027433001074332d766563746f72732d67726f757000000001000f74332d6e6f742d612d6d656d626572",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 12,
+                "apiVersion": 0,
+                "correlationId": 45,
+                "clientId": "t3",
+                "consumerGroup": "t3-vectors-group",
+                "generationId": 1,
+                "memberId": "t3-not-a-member"
+            }
+        },
+        {
+            "id": "heartbeat.response.v0.unknown-member",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Heartbeat answer for a member id the group does not have: the error code 25.",
+            "hex": "000000060000002d0019",
+            "fields": {
+                "messageSize": 6,
+                "correlationId": 45,
+                "errorCode": 25
+            }
+        },
+        {
+            "id": "heartbeat.request.v0.illegal-generation",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "Heartbeat request v0 that names a generation of the group that is over.",
+            "hex": "0000004b000c00000000002e00027433001074332d766563746f72732d67726f75700000000b002774332d30363966346231342d363837382d343037652d613730382d613932383863613862323531",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 12,
+                "apiVersion": 0,
+                "correlationId": 46,
+                "clientId": "t3",
+                "consumerGroup": "t3-vectors-group",
+                "generationId": 11,
+                "memberId": "t3-069f4b14-6878-407e-a708-a9288ca8b251"
+            }
+        },
+        {
+            "id": "heartbeat.response.v0.illegal-generation",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Heartbeat answer for a generation that is not the current one: the error code 22.",
+            "hex": "000000060000002e0016",
+            "fields": {
+                "messageSize": 6,
+                "correlationId": 46,
+                "errorCode": 22
+            }
+        }
+    ]
+}
