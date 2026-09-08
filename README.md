@@ -139,6 +139,17 @@ $earliest = $admin->listOffsets(['test' => [0]], OffsetsRequest::EARLIEST);
 
 $coordinator = $admin->findCoordinator('kafka-daemon');     // Node that holds the group offsets
 $committed   = $admin->listGroupOffsets('kafka-daemon', ['test' => [0, 1, 2]]);
+
+$groups = $admin->listAllGroups();                          // group id => ListGroupResponseProtocol
+$groups = $admin->listGroups($coordinator);                 // only the groups of that one broker
+
+$group = $admin->describeGroup('kafka-daemon');             // DescribeGroupResponseMetadata
+echo $group->state;                                         // Stable, AwaitingSync, PreparingRebalance or Dead
+echo $group->protocol;                                      // the assignor, only while the group is stable
+foreach ($group->members as $memberId => $member) {
+    echo $memberId, ' ', $member->clientId, ' ', $member->clientHost, PHP_EOL;
+    // $member->memberMetadata and $member->memberAssignment are the opaque bytes of the protocol type
+}
 ```
 
 | Method                                       | Wire API                | Notes                                                                |
@@ -148,13 +159,20 @@ $committed   = $admin->listGroupOffsets('kafka-daemon', ['test' => [0, 1, 2]]);
 | `listOffsets()`                              | Offsets v0              | Earliest, latest or by segment timestamp; sent to the partition leader |
 | `findCoordinator()`                          | GroupCoordinator v0     | Retries the codes 15 and 14 while the coordinator warms up            |
 | `listGroupOffsets()`                         | OffsetFetch v0/v1       | The partitions are explicit: 0.9 has no "all topics" request          |
+| `listGroups()` / `listAllGroups()`           | ListGroups v0           | A broker only knows its own groups; `listAllGroups()` merges them all  |
+| `describeGroup()` / `describeGroups()`       | DescribeGroups v0       | Sent to the coordinator of the group; an unknown group answers `Dead`  |
 | `controlledShutdown()`                       | ControlledShutdown v0   | Moves every partition leader off a broker — it really does stop it    |
 
-`describeGroup()` (DescribeGroups, key 15) and `listGroups()`/`listAllGroups()` (ListGroups,
-key 16) are apis that Kafka 0.9 does serve and that this line implements in its second wave
-(#29). `getApiVersions()` is **not** on this branch: ApiVersions is key 18 and arrived with
-Kafka 0.10, and a 0.9 broker has no way at all to report which apis it speaks — it does not
-even refuse a request it cannot parse, it drops it silently (see below).
+The group apis are what Kafka 0.9 added when it moved the consumer groups out of ZooKeeper: a
+group exists on its coordinator while it has members, so `listGroups()` shows it from the first
+JoinGroup until the last member is gone, and `describeGroup()` reports its state, the assignor
+its members agreed on and one entry per member, with the `Subscription` and `MemberAssignment`
+of the consumer protocol as opaque byte arrays. Asking about a group that does not exist is not
+an error: the coordinator answers the state `Dead` with the error code 0.
+
+`getApiVersions()` is **not** on this branch: ApiVersions is key 18 and arrived with Kafka 0.10,
+and a 0.9 broker has no way at all to report which apis it speaks — it does not even refuse a
+request it cannot parse, it drops it silently (see below).
 
 There is no CreateTopics api either (that is Kafka 0.10.1). A topic is created by writing to
 ZooKeeper — `kafka-topics.sh --create` — or implicitly by asking for the metadata of a topic
@@ -213,12 +231,53 @@ OffsetCommit/OffsetFetch apis, which Kafka 0.8.2 introduced and which stores the
 `__consumer_offsets` topic; `zookeeper` uses version 0 of the same apis, which stores them in
 ZooKeeper the way Kafka 0.8.1 did. Nothing else in this client differs between the two.
 
-Kafka 0.9 is the release that added **transport security**: an SSL listener next to the
-PLAINTEXT one, selected with `security.protocol` and configured with the `ssl.*` options. This
-line implements it in its second wave (#30); the test broker of `docker-compose.yml` already
-publishes an SSL listener on 9093. SASL/GSSAPI also exists in Kafka 0.9, but it is negotiated
-outside the protocol — the SaslHandshake request is key 17 and arrived with 0.10 — and is out
-of scope for this branch.
+Security / SSL
+---------------
+
+Kafka 0.9 is the release that added **transport security**: a broker binds one listener per
+security protocol (`listeners=PLAINTEXT://…,SSL://…`) and every listener answers the identical
+request set, so encryption changes the transport and never a single byte of a request. Point
+`bootstrap.servers` at the SSL listener and set `security.protocol`:
+
+```php
+use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Security\SecurityProtocol;
+use Protocol\Kafka\Producer\KafkaProducer;
+
+$producer = new KafkaProducer([
+    ClientConfig::BOOTSTRAP_SERVERS    => ['tcp://kafka-1.example.com:9093'],
+    ClientConfig::SECURITY_PROTOCOL    => SecurityProtocol::SSL,
+    ClientConfig::SSL_CA_CERT_LOCATION => '/etc/kafka/ca.pem',
+]);
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `security.protocol` | `PLAINTEXT` | `PLAINTEXT` or `SSL`; `SASL_PLAINTEXT`/`SASL_SSL` are rejected, see below |
+| `ssl.protocol` | `TLS` | TLS version to offer: `TLS` (any), `TLSv1_1`, `TLSv1_2`, `SSL`, `SSLv2`, `SSLv3` |
+| `ssl.enabled.protocols` | – | list of the values above; when set it wins over `ssl.protocol` |
+| `ssl.ca.cert.location` | – | PEM file with the certificates the broker certificate is verified against (the `ssl.truststore.location` of the Java client); without it the certificate stores of the system are used |
+| `ssl.client.cert.location` | – | PEM file with the client certificate, for a broker running `ssl.client.auth=required` |
+| `ssl.key.location` | – | private key of that client certificate |
+| `ssl.key.password` | – | passphrase of the private key |
+
+The certificate of the broker is always verified, and its subject has to match the host the
+connection was made to — a self-signed broker certificate therefore needs
+`ssl.ca.cert.location` pointing at it. The handshake happens right after `connect()` and is
+bounded by the connection timeout of the stream, not by `request.timeout.ms`.
+
+**Metadata over SSL.** Version 0 of the Metadata api has room for exactly one host/port per
+broker, and a 0.9 broker fills it with the endpoint of the listener the request arrived on. A
+client that bootstraps over TLS therefore learns the TLS endpoints of the whole cluster and
+keeps talking TLS to every broker it discovers; one that bootstraps in plaintext learns the
+plaintext ones. The two never mix, and there is no way to ask one listener about another.
+
+**SASL is out of scope on this branch.** Kafka 0.9 does have SASL, but only GSSAPI (Kerberos)
+and it is negotiated *outside* the Kafka protocol: the broker expects the raw token exchange on
+a freshly opened connection, with no request to introduce it. The `SaslHandshake` request that
+made the mechanism negotiable is api key 17 and arrived with Kafka 0.10.0, so
+`security.protocol = SASL_PLAINTEXT` and `SASL_SSL` raise an `InvalidConfigurationException`
+that says so.
 
 Supported Kafka protocol versions
 ----------------------------------

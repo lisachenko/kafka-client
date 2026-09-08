@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Network;
 
 use Closure;
 use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Security\SecurityProtocol;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
 
@@ -65,18 +66,19 @@ final class ConnectionFactory
      */
     public static function connect(string $host, int $port, array $configuration = []): Stream
     {
-        $address = "tcp://{$host}:{$port}";
-        $now     = microtime(true);
+        $address  = "tcp://{$host}:{$port}";
+        $cacheKey = self::cacheKey($address, $configuration);
+        $now      = microtime(true);
 
-        if (isset(self::$connections[$address]) && self::isIdleTooLong($address, $configuration, $now)) {
-            self::close($address);
+        if (isset(self::$connections[$cacheKey]) && self::isIdleTooLong($cacheKey, $configuration, $now)) {
+            self::close($cacheKey);
         }
-        if (!isset(self::$connections[$address])) {
-            self::$connections[$address] = self::open($address, $configuration);
+        if (!isset(self::$connections[$cacheKey])) {
+            self::$connections[$cacheKey] = self::open($address, $configuration);
         }
-        self::$lastUsedAt[$address] = $now;
+        self::$lastUsedAt[$cacheKey] = $now;
 
-        return self::$connections[$address];
+        return self::$connections[$cacheKey];
     }
 
     /**
@@ -94,6 +96,9 @@ final class ConnectionFactory
 
     /**
      * Closes and forgets the cached connection to the given address
+     *
+     * The argument is the key the connection is cached under, which is the plain `tcp://host:port` address for a
+     * plaintext connection and `ssl://host:port` for an encrypted one, see {@see self::cacheKey()}.
      */
     public static function close(string $address): void
     {
@@ -140,6 +145,27 @@ final class ConnectionFactory
     {
         self::closeAll();
         self::$streamFactory = $factory;
+    }
+
+    /**
+     * Returns the key a connection to the given address is cached under
+     *
+     * A broker of Kafka 0.9 serves each security protocol on a listener of its own, and the connections to two of
+     * those listeners are not interchangeable: an encrypted stream must never be handed out to a client that asked
+     * for a plaintext one, so the transport is part of the key. `tcp://host:port` stays the key of a plaintext
+     * connection, which is what {@see self::close()} was always called with.
+     *
+     * @param string               $address       Address of the broker, e.g. `tcp://127.0.0.1:9092`
+     * @param array<string, mixed> $configuration Client configuration
+     */
+    private static function cacheKey(string $address, array $configuration): string
+    {
+        $securityProtocol = $configuration[ClientConfig::SECURITY_PROTOCOL] ?? SecurityProtocol::PLAINTEXT;
+        if ($securityProtocol === SecurityProtocol::PLAINTEXT) {
+            return $address;
+        }
+
+        return strtolower((string) $securityProtocol) . '://' . substr($address, strlen('tcp://'));
     }
 
     /**

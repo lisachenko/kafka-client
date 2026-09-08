@@ -15,6 +15,8 @@ namespace Protocol\Kafka\Tests\Compliance;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Consumer\MemberAssignment;
+use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
@@ -40,12 +42,15 @@ final class ProtocolVectorTest extends TestCase
      * Vector files that the data providers of this class replay, in the order {@see VectorFile::names()} returns them
      */
     private const array REPLAYED_APIS = [
+        'consumer-protocol',
         'controlled-shutdown',
+        'describe-groups',
         'fetch',
         'group-coordinator',
         'heartbeat',
         'join-group',
         'leave-group',
+        'list-groups',
         'metadata',
         'offset-commit',
         'offset-fetch',
@@ -53,6 +58,14 @@ final class ProtocolVectorTest extends TestCase
         'produce',
         'sync-group',
     ];
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function consumerProtocolVectors(): iterable
+    {
+        return VectorFile::provide('consumer-protocol');
+    }
 
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
@@ -148,6 +161,22 @@ final class ProtocolVectorTest extends TestCase
     public static function controlledShutdownVectors(): iterable
     {
         return VectorFile::provide('controlled-shutdown');
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeGroupsVectors(): iterable
+    {
+        return VectorFile::provide('describe-groups');
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function listGroupsVectors(): iterable
+    {
+        return VectorFile::provide('list-groups');
     }
 
     /**
@@ -259,6 +288,33 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeGroupsVectors')]
+    public function testDescribeGroupsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('listGroupsVectors')]
+    public function testListGroupsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('consumerProtocolVectors')]
+    public function testConsumerGroupProtocol(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
      * Every vector file has to be replayed by a data provider of this class, so that a new file cannot be forgotten
      */
     public function testEveryVectorFileIsReplayed(): void
@@ -277,6 +333,12 @@ final class ProtocolVectorTest extends TestCase
      */
     private function assertVectorIsReplayed(array $vector): void
     {
+        if ($vector['kind'] === 'structure') {
+            $this->assertStructureIsReplayed($vector);
+
+            return;
+        }
+
         /** @var class-string<AbstractProtocolMessage> $class */
         $class = $vector['class'];
         $frame = hex2bin($vector['hex']);
@@ -308,5 +370,41 @@ final class ProtocolVectorTest extends TestCase
             // vector was replayed through the class of another version of the same api
             self::assertSame($message::VERSION, $message->getApiVersion());
         }
+    }
+
+    /**
+     * Decodes a structure that travels inside a byte array field, compares its fields and encodes it back
+     *
+     * The payloads of the consumer group protocol are not framed messages of their own: they have no Size field, no
+     * header and no api key, and {@see Subscription} and {@see MemberAssignment} read and write them from the plain
+     * bytes of a `member_metadata` or `member_assignment` field.
+     *
+     * @param array<string, mixed> $vector
+     */
+    private function assertStructureIsReplayed(array $vector): void
+    {
+        /** @var class-string<MemberAssignment|Subscription> $class */
+        $class = $vector['class'];
+        $bytes = hex2bin($vector['hex']);
+        self::assertIsString($bytes, "Vector {$vector['id']} does not hold valid hex");
+
+        $structure = $class::unpack($bytes);
+
+        self::assertInstanceOf($class, $structure);
+        self::assertSame(
+            $vector['fields'],
+            MessageFields::of($structure),
+            "Vector {$vector['id']} decodes into different values than the ones it documents"
+        );
+        self::assertSame(
+            $vector['hex'],
+            bin2hex($structure->pack()),
+            "Vector {$vector['id']} does not survive a decode and encode round trip"
+        );
+        self::assertSame(
+            $vector['version'],
+            $structure->version,
+            "Vector {$vector['id']} was recorded with another version of the consumer group protocol"
+        );
     }
 }

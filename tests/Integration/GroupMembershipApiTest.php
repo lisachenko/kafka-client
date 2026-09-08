@@ -23,6 +23,8 @@ use Protocol\Kafka\Common\Errors\InvalidSessionTimeoutException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\MemberAssignment;
+use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
@@ -378,6 +380,46 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         } finally {
             $client->leaveGroup($coordinator, $groupId, $join->memberId);
         }
+    }
+
+    /**
+     * The payloads of the `consumer` protocol travel through these apis untouched.
+     *
+     * The membership apis only ever see opaque bytes; what those bytes mean is decided by the `protocol_type`, and
+     * this is the composition that the consumer of the next ticket builds on: a {@see Subscription} as the metadata
+     * of the member and a {@see MemberAssignment} as its share of the generation.
+     */
+    public function testTheConsumerProtocolPayloadsSurviveTheRoundTripThroughTheseApis(): void
+    {
+        $groupId      = self::uniqueGroupName();
+        $topic        = 't3-consumer-protocol';
+        $client       = new Client($this->cluster(), $this->configuration());
+        $coordinator  = $client->getGroupCoordinator($groupId);
+        $subscription = new Subscription([$topic]);
+
+        $join = $client->joinGroup(
+            $coordinator,
+            $groupId,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            self::PROTOCOL_TYPE,
+            [self::PROTOCOL_NAME => $subscription->pack()]
+        );
+
+        self::assertEquals(
+            $subscription,
+            Subscription::unpack($join->members[$join->memberId]->metadata),
+            'the leader reads the subscription of every member back out of its JoinGroup answer'
+        );
+
+        $assignment = new MemberAssignment([$topic => [0, 1, 2]]);
+        $sync       = $client->syncGroup($coordinator, $groupId, $join->memberId, $join->generationId, [
+            $join->memberId => $assignment->pack(),
+        ]);
+
+        self::assertEquals($assignment, MemberAssignment::unpack($sync->memberAssignment));
+        self::assertSame([$topic => [0, 1, 2]], MemberAssignment::unpack($sync->memberAssignment)->partitions());
+
+        $client->leaveGroup($coordinator, $groupId, $join->memberId);
     }
 
     /**
