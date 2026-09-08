@@ -46,6 +46,7 @@ $producer = new KafkaProducer([
 $producer->send('test', new Record('foo'))->then(
     function (RecordMetadata $metadata): void {
         echo "Written to partition {$metadata->partition} at offset {$metadata->offset}\n";
+        echo "The broker throttled the batch for {$metadata->throttleTimeMs} ms\n";
     }
 );
 $producer->flush();
@@ -70,6 +71,21 @@ implemented by this client).
 Without a key a record is spread over the partitions that have a leader, with a key it goes to
 the partition that the murmur2 hash of the key selects, exactly as with the official Java
 client (`Producer\DefaultPartitioner`); an explicit partition can be passed to `send()`.
+
+`RecordMetadata::$throttleTimeMs` is the `ThrottleTime` that version 1 of the Produce API added
+in Kafka 0.9: the number of milliseconds the broker delayed the answer of that batch because the
+`client.id` exceeded its `producer_byte_rate` quota. Quotas never reject a write — the records
+are appended and only the response is held back — so the field is informational, and it is `0`
+on a broker without quotas as well as for a fire-and-forget batch (`ACKS => 0`), which is never
+answered. The consumer side is the same: every `Common\FetchedPartition` of
+`Client::fetchPartitions()` carries the `throttleTimeMs` of the Fetch v1 answer it came in.
+Quotas are set per client id on a running broker, e.g.
+
+```console
+$ kafka-configs.sh --zookeeper localhost:2181 --alter \
+    --add-config 'producer_byte_rate=1024,consumer_byte_rate=2048' \
+    --entity-type clients --entity-name my-application
+```
 
 A runnable version of this is [examples/producer.php](examples/producer.php).
 
