@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
@@ -21,12 +22,15 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
+use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\FetchedPartition;
+use Protocol\Kafka\Common\Record\CompressionCodec;
+use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Consumer\ConsumerConfig;
@@ -283,6 +287,94 @@ final class ClientTest extends TestCase
         self::assertSame([], $result);
         self::assertSame(1, $leader->getRequestCount(), 'the request is written, only its answer is not awaited');
         self::assertSame(ApiKeys::PRODUCE, $this->apiKeyOf($leader->getReceivedFrames()[0]));
+    }
+
+    /**
+     * Compression type of the client and the codec that the message set of a batch has to announce
+     *
+     * @return \Generator<string, array{0: string, 1: int}>
+     */
+    public static function compressionTypes(): \Generator
+    {
+        yield 'gzip'   => [ProducerConfig::COMPRESSION_TYPE_GZIP, CompressionCodec::GZIP];
+        yield 'snappy' => [ProducerConfig::COMPRESSION_TYPE_SNAPPY, CompressionCodec::SNAPPY];
+    }
+
+    #[DataProvider('compressionTypes')]
+    public function testTheConfiguredCompressionTypeIsAppliedToTheWholeBatch(
+        string $compressionType,
+        int $expectedCodec
+    ): void {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $records = [
+            new Record(str_repeat('a repetitive value ', 32), 'key-0'),
+            new Record(str_repeat('a repetitive value ', 32), 'key-1'),
+            new Record(str_repeat('a repetitive value ', 32)),
+        ];
+
+        $this->client([ProducerConfig::COMPRESSION_TYPE => $compressionType])
+            ->produce([self::TOPIC => [0 => $records]]);
+
+        // A compressed batch travels as a message set of exactly one message, whose value is the whole batch
+        $messageSetBuffer = self::messageSetOf($leader->getReceivedFrames()[0]);
+        $wrapper          = self::firstMessageOf($messageSetBuffer);
+
+        self::assertTrue($wrapper->isCompressed());
+        self::assertSame($expectedCodec, $wrapper->getCompressionCodec());
+        self::assertLessThan(
+            MessageSet::fromRecords($records)->sizeInBytes(),
+            strlen($messageSetBuffer),
+            'the batch that goes over the wire is smaller than the records it holds'
+        );
+
+        // ... and it holds exactly the records it was built from, which is what the broker unwraps on append
+        $sentRecords = MessageSet::fromBuffer($messageSetBuffer)->getRecords();
+
+        self::assertCount(3, $sentRecords);
+        self::assertSame(['key-0', 'key-1', null], array_column($sentRecords, 'key'));
+        self::assertSame($records[0]->value, $sentRecords[0]->value);
+    }
+
+    public function testABatchIsSentAsItIsWithoutACompressionType(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 1]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $this->client()->produce([self::TOPIC => [0 => [new Record('as it is', 'a key')]]]);
+
+        $wrapper = self::firstMessageOf(self::messageSetOf($leader->getReceivedFrames()[0]));
+
+        self::assertFalse($wrapper->isCompressed(), 'compression.type defaults to none');
+        self::assertSame('as it is', $wrapper->value);
+        self::assertSame('a key', $wrapper->key);
+    }
+
+    public function testAnUnsupportedCompressionTypeIsRejectedBeforeAnythingIsSent(): void
+    {
+        $leader = new BrokerConnection();
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        try {
+            // 0.8.2.2 knows the lz4 codec, but this client neither writes nor reads it
+            $this->client([ProducerConfig::COMPRESSION_TYPE => 'lz4'])
+                ->produce([self::TOPIC => [0 => [new Record('never sent')]]]);
+            self::fail('An unsupported compression type has to be rejected');
+        } catch (InvalidConfigurationException $exception) {
+            self::assertStringContainsString('lz4', $exception->getMessage());
+        }
+
+        self::assertSame(0, $leader->getRequestCount());
     }
 
     public function testABrokerThatNeverAnswersIsReportedAsATimeout(): void
@@ -600,6 +692,46 @@ final class ClientTest extends TestCase
                 $exception->getExceptions()[self::TOPIC][0]
             );
         }
+    }
+
+    /**
+     * Returns the message set of the only topic-partition of a produce request frame.
+     *
+     * <pre>
+     *   ApiKey ApiVersion CorrelationId ClientId RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
+     * </pre>
+     */
+    private static function messageSetOf(string $frame): string
+    {
+        /** @var array{clientIdLength: int} $header */
+        $header = unpack('napiKey/napiVersion/NcorrelationId/nclientIdLength', $frame);
+        $offset = 2 + 2 + 4 + 2 + $header['clientIdLength'];
+
+        // requiredAcks, timeout and the number of topics of the request
+        $offset += 2 + 4 + 4;
+
+        /** @var array{topicLength: int} $topic */
+        $topic  = unpack('ntopicLength', $frame, $offset);
+        $offset += 2 + $topic['topicLength'];
+
+        // the number of partitions of the topic and the id of the only one
+        $offset += 4 + 4;
+
+        /** @var array{messageSetSize: int} $partition */
+        $partition = unpack('NmessageSetSize', $frame, $offset);
+
+        return substr($frame, $offset + 4, $partition['messageSetSize']);
+    }
+
+    /**
+     * Reads the first message of a serialized message set, without unwrapping a compressed one
+     */
+    private static function firstMessageOf(string $buffer): Message
+    {
+        /** @var array{messageSize: int} $header */
+        $header = unpack('Joffset/NmessageSize', $buffer);
+
+        return Message::fromBuffer(substr($buffer, MessageSet::ENTRY_OVERHEAD, $header['messageSize']));
     }
 
     /**

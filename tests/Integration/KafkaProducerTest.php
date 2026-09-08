@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Message;
@@ -22,7 +23,6 @@ use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Producer\DefaultPartitioner;
-use Protocol\Kafka\Producer\Internals\CompressingClient;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Producer\RecordMetadata;
@@ -43,7 +43,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(KafkaProducer::class)]
 #[CoversClass(DefaultPartitioner::class)]
 #[CoversClass(ProducerConfig::class)]
-#[CoversClass(CompressingClient::class)]
+#[CoversClass(Client::class)]
 final class KafkaProducerTest extends IntegrationTestCase
 {
     /**

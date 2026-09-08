@@ -26,7 +26,6 @@ use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
-use Protocol\Kafka\Producer\Internals\CompressingClient;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Producer\RecordMetadata;
@@ -299,22 +298,7 @@ final class KafkaProducerTest extends TestCase
         // of the general client configuration, and whatever is configured reaches the client that sends the batches
         self::assertSame(0, ProducerConfig::getDefaultConfiguration()[ClientConfig::RETRIES]);
 
-        $producer = new class ($this->clusterConfiguration + [ProducerConfig::RETRIES => 4]) extends KafkaProducer {
-            /**
-             * @var array<string, mixed>
-             */
-            public array $clientConfiguration = [];
-
-            /**
-             * @inheritdoc
-             */
-            protected function createClient(Cluster $cluster, array $configuration): Client
-            {
-                $this->clientConfiguration = $configuration;
-
-                return new FakeClient($cluster, $configuration);
-            }
-        };
+        $producer = $this->configurationProbe([ProducerConfig::RETRIES => 4]);
 
         $producer->send(self::TOPIC, Record::fromKeyValue('key-0', 'value'));
 
@@ -428,24 +412,15 @@ final class KafkaProducerTest extends TestCase
         new KafkaProducer([ProducerConfig::COMPRESSION_TYPE => 'lz4']);
     }
 
-    public function testTheCompressionTypeSelectsTheClientThatSendsTheBatches(): void
+    public function testTheCompressionTypeIsHandedToTheClientThatSendsTheBatches(): void
     {
-        $plainProducer = $this->clientProbe([ProducerConfig::COMPRESSION_TYPE => 'none']);
-        self::assertNotInstanceOf(
-            CompressingClient::class,
-            $plainProducer->clientFor($this->cluster, $this->clusterConfiguration),
-            'Uncompressed batches take the regular produce path of the client'
-        );
+        // A batch is compressed as a whole by the client that writes the message set of a topic-partition, see
+        // ClientTest::testTheConfiguredCompressionTypeIsAppliedToTheWholeBatch()
+        $producer = $this->configurationProbe([ProducerConfig::COMPRESSION_TYPE => 'snappy']);
 
-        foreach (['gzip', 'snappy'] as $compressionType) {
-            $producer = $this->clientProbe([ProducerConfig::COMPRESSION_TYPE => $compressionType]);
+        $producer->send(self::TOPIC, Record::fromKeyValue('key-0', 'value'));
 
-            self::assertInstanceOf(
-                CompressingClient::class,
-                $producer->clientFor($this->cluster, $this->clusterConfiguration),
-                "The {$compressionType} codec is applied to the whole batch before it is sent"
-            );
-        }
+        self::assertSame('snappy', $producer->clientConfiguration[ProducerConfig::COMPRESSION_TYPE]);
     }
 
     /**
@@ -468,19 +443,28 @@ final class KafkaProducerTest extends TestCase
     }
 
     /**
-     * Builds a producer that hands out the client it would send its batches with
+     * Builds a producer that keeps the configuration it handed to its client
      *
      * @param array<string, mixed> $configuration Producer options on top of the defaults
      */
-    private function clientProbe(array $configuration): KafkaProducer
+    private function configurationProbe(array $configuration): KafkaProducer
     {
         return new class ($configuration + $this->clusterConfiguration) extends KafkaProducer {
             /**
-             * @param array<string, mixed> $configuration
+             * Configuration that this producer built its client with
+             *
+             * @var array<string, mixed>
              */
-            public function clientFor(Cluster $cluster, array $configuration): Client
+            public array $clientConfiguration = [];
+
+            /**
+             * @inheritdoc
+             */
+            protected function createClient(Cluster $cluster, array $configuration): Client
             {
-                return $this->createClient($cluster, $configuration);
+                $this->clientConfiguration = $configuration;
+
+                return new FakeClient($cluster, $configuration);
             }
         };
     }

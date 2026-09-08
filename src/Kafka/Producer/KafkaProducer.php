@@ -25,11 +25,9 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\MessageTooLargeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\PartitionMetadata;
-use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
-use Protocol\Kafka\Producer\Internals\CompressingClient;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use React\Promise\Deferred;
 use React\Promise\Promise;
@@ -103,11 +101,6 @@ class KafkaProducer
     private readonly PartitionerInterface $partitioner;
 
     /**
-     * Compression codec that every batch of this producer is compressed with
-     */
-    private readonly int $compressionCodec;
-
-    /**
      * Size of the buffered batch in bytes, as it will be serialized into the produce request
      */
     private int $batchSize = 0;
@@ -155,10 +148,8 @@ class KafkaProducer
         }
         $this->partitioner = new $partitioner();
 
-        // Fail fast on a codec that this client can not write, instead of on the first flush
-        $this->compressionCodec = ProducerConfig::compressionCodec(
-            $this->configuration[ProducerConfig::COMPRESSION_TYPE]
-        );
+        // Fail fast on a codec that this client can not write, instead of on the first flush of a batch
+        ProducerConfig::compressionCodec($this->configuration[ProducerConfig::COMPRESSION_TYPE]);
     }
 
     /**
@@ -475,10 +466,6 @@ class KafkaProducer
      */
     protected function createClient(Cluster $cluster, array $configuration): Client
     {
-        if ($this->compressionCodec === CompressionCodec::NONE) {
-            return new Client($cluster, $configuration);
-        }
-
-        return new CompressingClient($cluster, $configuration, $this->compressionCodec);
+        return new Client($cluster, $configuration);
     }
 }
