@@ -22,6 +22,9 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
 
 /**
  * Consumer config enumeration class
+ *
+ * Kafka 0.8.2.2 has no broker-side group management, so the options that only drive it (the session timeout, the
+ * keep-alive interval of a group member and partition.assignment.strategy) do not exist on this branch.
  */
 final class ConsumerConfig extends GeneralConfig
 {
@@ -30,45 +33,22 @@ final class ConsumerConfig extends GeneralConfig
      */
     private static array $consumerConfiguration = [
         /* Used configs */
-        ConsumerConfig::GROUP_ID                      => '',
-        ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => RoundRobinAssignor::class,
-        ConsumerConfig::SESSION_TIMEOUT_MS            => 30000,
-        ConsumerConfig::FETCH_MIN_BYTES               => 1,
-        ConsumerConfig::FETCH_MAX_WAIT_MS             => 500,
-        ConsumerConfig::MAX_PARTITION_FETCH_BYTES     => 65536,
-        ConsumerConfig::AUTO_OFFSET_RESET             => OffsetResetStrategy::LATEST,
-        ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 2000,
-        ConsumerConfig::ENABLE_AUTO_COMMIT            => true,
-        ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
+        ConsumerConfig::GROUP_ID                  => '',
+        ConsumerConfig::FETCH_MIN_BYTES           => 1,
+        ConsumerConfig::FETCH_MAX_WAIT_MS         => 500,
+        ConsumerConfig::MAX_PARTITION_FETCH_BYTES => 65536,
+        ConsumerConfig::AUTO_OFFSET_RESET         => OffsetResetStrategy::LATEST,
+        ConsumerConfig::ENABLE_AUTO_COMMIT        => true,
+        ConsumerConfig::AUTO_COMMIT_INTERVAL_MS   => 0, // Commit always after each poll()
     ];
 
     /**
      * A unique string that identifies the consumer group this consumer belongs to.
      *
-     * This property is required if the consumer uses either the group management functionality by using
-     * subscribe(topic) or the Kafka-based offset management strategy.
+     * This property is required if the consumer uses the Kafka-based offset management strategy, because the
+     * committed offsets are stored per consumer group.
      */
     public const string GROUP_ID = 'group.id';
-
-    /**
-     * The class name of the partition assignment strategy that the client will use to distribute partition ownership
-     * amongst consumer instances when group management is used
-     */
-    public const string PARTITION_ASSIGNMENT_STRATEGY = 'partition.assignment.strategy';
-
-    /**
-     * The timeout used to detect failures when using Kafka's group management facilities.
-     *
-     * When a consumer's heartbeat is not received within the session timeout, the broker will mark the consumer as
-     * failed and rebalance the group.
-     *
-     * Since heartbeats are sent only when poll() is invoked, a higher session timeout allows more time for message
-     * processing in the consumer's poll loop at the cost of a longer time to detect hard failures. See also
-     * max.poll.records for another option to control the processing time in the poll loop. Note that the value must be
-     * in the allowable range as configured in the broker configuration by group.min.session.timeout.ms and
-     * group.max.session.timeout.ms
-     */
-    public const string SESSION_TIMEOUT_MS = 'session.timeout.ms';
 
     /**
      * The minimum amount of data the server should return for a fetch request.
@@ -108,16 +88,6 @@ final class ConsumerConfig extends GeneralConfig
     public const string AUTO_OFFSET_RESET = 'auto.offset.reset';
 
     /**
-     * The expected time between heartbeats to the consumer coordinator when using Kafka's group management facilities.
-     *
-     * Heartbeats are used to ensure that the consumer's session stays active and to facilitate rebalancing when new
-     * consumers join or leave the group. The value must be set lower than session.timeout.ms, but typically should be
-     * set no higher than 1/3 of that value. It can be adjusted even lower to control the expected time for normal
-     * rebalances.
-     */
-    public const string HEARTBEAT_INTERVAL_MS = 'heartbeat.interval.ms';
-
-    /**
      * If true the consumer's offset will be periodically committed after poll() operation.
      */
     public const string ENABLE_AUTO_COMMIT = 'enable.auto.commit';
@@ -129,11 +99,11 @@ final class ConsumerConfig extends GeneralConfig
     public const string AUTO_COMMIT_INTERVAL_MS = 'auto.commit.interval.ms';
 
 
-    public const string KEY_DESERIALIZER              = 'key.deserializer';
-    public const string VALUE_DESERIALIZER            = 'value.deserializer';
-    public const string EXCLUDE_INTERNAL_TOPICS       = 'exclude.internal.topics';
-    public const string MAX_POLL_RECORDS              = 'max.poll.records';
-    public const string CHECK_CRCS                    = 'check.crcs';
+    public const string KEY_DESERIALIZER        = 'key.deserializer';
+    public const string VALUE_DESERIALIZER      = 'value.deserializer';
+    public const string EXCLUDE_INTERNAL_TOPICS = 'exclude.internal.topics';
+    public const string MAX_POLL_RECORDS        = 'max.poll.records';
+    public const string CHECK_CRCS              = 'check.crcs';
 
     /**
      * Returns default configuration for consumer
