@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 
 /**
- * Verifies the GroupCoordinator, OffsetCommit and OffsetFetch APIs against a real Kafka 0.8.2.2 broker.
+ * Verifies the GroupCoordinator, OffsetCommit and OffsetFetch APIs against a real Kafka 0.9.0.1 broker.
  *
  * The two versions of the offset APIs address two different storages: version 0 keeps the offsets in ZooKeeper as
  * Kafka 0.8.1 did, version 1 keeps them in the internal `__consumer_offsets` topic of the cluster. Both are exercised
@@ -66,7 +66,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 final class OffsetsCoordinatorTest extends IntegrationTestCase
 {
     /**
-     * `offset.metadata.max.bytes` of a 0.8.2.2 broker; a longer metadata string is answered with the error code 12
+     * `offset.metadata.max.bytes` of a 0.9.0.1 broker; a longer metadata string is answered with the error code 12
      */
     private const int OFFSET_METADATA_MAX_BYTES = 4096;
 
@@ -193,7 +193,17 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         );
     }
 
-    public function testPartitionThatTheClusterDoesNotHostIsUnknownToBothVersions(): void
+    /**
+     * A partition that the cluster does not host is the one answer the two versions stopped sharing in Kafka 0.9.
+     *
+     * Version 1 of 0.8.2.2 filtered the requested topic-partitions against the metadata cache and reported the
+     * unknown ones with the error code 3. Version 1 of 0.9.0.1 does not: KafkaApis hands the whole list to the
+     * group coordinator and notes that "we do not need to filter the partitions in the metadata cache as the topic
+     * partitions will be filtered in coordinator's offset manager through the offset cache" - and a partition the
+     * offset cache does not know is simply an uncommitted one, i.e. the offset -1 with the error code 0. Version 0
+     * still reads a ZooKeeper node that is not there and keeps reporting the error code 3.
+     */
+    public function testPartitionThatTheClusterDoesNotHostIsUncommittedToVersionOneAndUnknownToVersionZero(): void
     {
         $groupId          = self::uniqueGroupName();
         $topic            = $this->createTopic();
@@ -203,10 +213,22 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $fromKafka = $this->fetchV1($stream, $groupId, [$topic => [$missingPartition]]);
 
         self::assertSame(
-            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
-            $fromKafka[$topic]->partitions[$missingPartition]->errorCode
+            KafkaException::NO_ERROR,
+            $fromKafka[$topic]->partitions[$missingPartition]->errorCode,
+            'version 1 of a 0.9 broker does not check the requested partition against the metadata cache any more'
         );
         self::assertSame(-1, $fromKafka[$topic]->partitions[$missingPartition]->offset);
+
+        new OffsetFetchRequestV0($groupId, [$topic => [$missingPartition]], 'kafka-client-t6', 32)
+            ->writeTo($stream);
+        $fromZooKeeper = OffsetFetchResponse::unpack($stream)->topics;
+
+        self::assertSame(
+            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+            $fromZooKeeper[$topic]->partitions[$missingPartition]->errorCode,
+            'version 0 reads a ZooKeeper node that does not exist'
+        );
+        self::assertSame(-1, $fromZooKeeper[$topic]->partitions[$missingPartition]->offset);
     }
 
     public function testMetadataOfACommittedOffsetSurvivesTheRoundTrip(): void

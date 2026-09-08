@@ -137,10 +137,11 @@ final class AdminApiTest extends IntegrationTestCase
 
     public function testControlledShutdownOfAnUnknownBrokerIsRefused(): void
     {
-        // The controller throws BrokerNotAvailableException, but ControlledShutdownRequest.handleError() maps
-        // e.getCause() - which is null - so the code -1 (Unknown) is what reaches the wire, see the protocol document
+        // The controller throws BrokerNotAvailableException and ControlledShutdownRequest.handleError() @ 0.9.0.1
+        // maps e.getClass(), so the code 8 reaches the wire. A 0.8.2.2 broker mapped e.getCause(), which is null for
+        // a directly thrown exception, and answered -1 (Unknown) instead.
         $this->expectException(KafkaException::class);
-        $this->expectExceptionCode(KafkaException::UNKNOWN);
+        $this->expectExceptionCode(KafkaException::BROKER_NOT_AVAILABLE);
 
         $this->admin->controlledShutdown(self::UNKNOWN_BROKER_ID);
     }

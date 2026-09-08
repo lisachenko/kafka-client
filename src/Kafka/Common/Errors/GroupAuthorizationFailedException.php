@@ -16,14 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The request included a message larger than the max message size the server will accept.
- *
- * Named MessageSizeTooLargeCode (10) in kafka/common/ErrorMapping.scala @ 0.9.0.1.
+ * Not authorized to access group.
  */
-class MessageTooLargeException extends KafkaException implements ServerExceptionInterface
+class GroupAuthorizationFailedException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::MESSAGE_TOO_LARGE, $previous);
+        parent::__construct($context, self::GROUP_AUTHORIZATION_FAILED, $previous);
     }
 }
