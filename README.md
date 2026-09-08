@@ -16,7 +16,7 @@ line — and nothing else. The API of the classes is the one of the `main` branc
 0.8 has the same concept, so code written against `main` mostly compiles here; what the 0.8
 protocol cannot do is simply absent, and [what that is](#supported-kafka-protocol-versions)
 is listed below. The grammar this branch implements is written down, byte for byte, in
-[docs/protocol/0.8.2.md](docs/protocol/0.8.2.md).
+[docs/protocol/0.9.0.md](docs/protocol/0.9.0.md).
 
 Installation
 ------------
@@ -298,7 +298,7 @@ The integration suite is skipped unless `KAFKA_BOOTSTRAP_SERVERS` points at a ru
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka 0.8.2.2 broker sent
 or accepted — through the request and response classes and checks that the annotated dumps of
-[docs/protocol/0.8.2.md](docs/protocol/0.8.2.md) still hold the same bytes, so the document and
+[docs/protocol/0.9.0.md](docs/protocol/0.9.0.md) still hold the same bytes, so the document and
 the code cannot drift apart.
 
 Issues and pull requests are welcome.

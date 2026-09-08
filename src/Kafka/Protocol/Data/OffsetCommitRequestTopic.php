@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The layout of a partition entry depends on the version of the request, so the class of the entries is derived from
  * {@see OffsetCommitRequestTopic::VERSION}, which {@see OffsetCommitRequestTopicV0} lowers to 0.
  *
- * @see docs/protocol/0.8.2.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0 and v1)"
  */
 class OffsetCommitRequestTopic implements BinarySchemaInterface
 {

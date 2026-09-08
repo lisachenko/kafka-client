@@ -36,7 +36,7 @@ use Protocol\Kafka\IO\StringStream;
  *    so reading a buffer unwraps those inner sets and keeps the offsets that the broker assigned to the inner
  *    messages.
  *
- * @see docs/protocol/0.8.2.md, section "MessageSet and Message"
+ * @see docs/protocol/0.9.0.md, section "MessageSet and Message"
  * @see kafka/message/ByteBufferMessageSet.scala @ 0.8.2.2
  */
 final class MessageSet implements \Countable, \Stringable

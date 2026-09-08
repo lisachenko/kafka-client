@@ -16,7 +16,7 @@ namespace Protocol\Kafka\Tests\Compliance;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Keeps `docs/protocol/0.8.2.md` and `docs/protocol/vectors/*.json` from drifting apart.
+ * Keeps `docs/protocol/0.9.0.md` and `docs/protocol/vectors/*.json` from drifting apart.
  *
  * Every vector is documented twice: as an annotated hex dump in the protocol document, introduced by an
  * `<!-- vector: <id> -->` marker, and as raw hex plus decoded fields in the vector file that {@see ProtocolVectorTest}

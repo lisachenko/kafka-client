@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
  * Kafka 0.8.1 did, version 1 keeps them in the internal `__consumer_offsets` topic of the cluster. Both are exercised
  * here, because both are reachable through the `offsets.storage` option of the client.
  *
- * @see docs/protocol/0.8.2.md, sections "GroupCoordinator API (key 10, v0)", "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, sections "GroupCoordinator API (key 10, v0)", "OffsetCommit API (key 8, v0 and v1)"
  *      and "OffsetFetch API (key 9, v0 and v1)"
  */
 #[CoversClass(Client::class)]

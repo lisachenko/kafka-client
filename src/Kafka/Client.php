@@ -74,7 +74,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/0.8.2.md
+ * @see docs/protocol/0.9.0.md
  */
 class Client
 {
@@ -116,7 +116,7 @@ class Client
             $this->configuration[ProducerConfig::COMPRESSION_TYPE] ?? ProducerConfig::COMPRESSION_TYPE_NONE
         );
 
-        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.8.2.md
+        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.9.0.md
         $topicPartitionMessageSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {

@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The `IsInternal` flag only exists from version 1 of the Metadata API (Kafka 0.10.0) onwards.
  *
- * @see docs/protocol/0.8.2.md, section "Metadata API (key 3, v0)"
+ * @see docs/protocol/0.9.0.md, section "Metadata API (key 3, v0)"
  */
 class TopicMetadata implements BinarySchemaInterface
 {

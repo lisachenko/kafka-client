@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
  * The array holds the topic-partitions that still have a leader or a replica on the broker after the controller has
  * done what it could; an empty array together with the error code 0 means the broker may now be stopped.
  *
- * @see docs/protocol/0.8.2.md, section "ControlledShutdown API (key 7, v0)"
+ * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0)"
  */
 class ControlledShutdownResponse extends AbstractResponse
 {

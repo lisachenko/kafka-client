@@ -2,3 +2,6 @@ vendor
 .phpunit.cache
 .php-cs-fixer.cache
 composer.phar
+
+# Sandbox-only CA certificates for the broker image build (docker/<version>/ca/README.md)
+docker/*/ca/*.crt

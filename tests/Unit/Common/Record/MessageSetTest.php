@@ -33,7 +33,7 @@ use Protocol\Kafka\Common\Record\Record;
  *
  * A log segment is a message set, so the bytes below are exactly what a Fetch returns for that partition.
  *
- * @see docs/protocol/0.8.2.md, section "MessageSet and Message"
+ * @see docs/protocol/0.9.0.md, section "MessageSet and Message"
  */
 #[CoversClass(MessageSet::class)]
 final class MessageSetTest extends TestCase

@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
  * Replays every documented wire vector of the Kafka 0.8.2.2 protocol through the request and response classes.
  *
  * Each vector is a frame that a Kafka 0.8.2.2 broker really sent or really accepted, stored as hex in
- * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/0.8.2.md`. For every one of them
+ * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/0.9.0.md`. For every one of them
  * this suite checks four things:
  *
  * 1. the frame decodes into the class that the vector names;

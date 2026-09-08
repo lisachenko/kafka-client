@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV0;
  * the class names and the way the topic-partitions are packed - is shared. That keeps the diff of this class against
  * the version 2 request of the later protocol lines down to the two version-dependent fields.
  *
- * @see docs/protocol/0.8.2.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0 and v1)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {

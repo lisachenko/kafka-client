@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The `LogAppendTime` of the later protocol lines arrived with version 2 of this API (Kafka 0.10.0).
  *
- * @see docs/protocol/0.8.2.md, section "Produce API (key 0, v0)"
+ * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {

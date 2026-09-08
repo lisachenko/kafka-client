@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * {@see OffsetFetchRequestV0} only lowers the version constant. The nullable topic array, which asks the coordinator
  * for every topic of the group, arrived with version 2 in Kafka 0.9 and does not exist here.
  *
- * @see docs/protocol/0.8.2.md, section "OffsetFetch API (key 9, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetFetch API (key 9, v0 and v1)"
  */
 class OffsetFetchRequest extends AbstractRequest
 {

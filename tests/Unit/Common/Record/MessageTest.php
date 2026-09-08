@@ -32,7 +32,7 @@ use Protocol\Kafka\Common\Record\Record;
  *   offset: 0 ... crc: 520903 payload: bar                        # 520903     == 0x0007f2c7
  *   offset: 0 ... crc: 3099221847 keysize: 3 key: foo payload: bar # 3099221847 == 0xb8ba5f57
  *
- * @see docs/protocol/0.8.2.md, section "MessageSet and Message"
+ * @see docs/protocol/0.9.0.md, section "MessageSet and Message"
  */
 #[CoversClass(Message::class)]
 final class MessageTest extends TestCase

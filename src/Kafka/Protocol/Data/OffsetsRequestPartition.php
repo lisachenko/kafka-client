@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `MaxNumberOfOffsets` only exists in v0: the timestamp-based v1 of the API (Kafka 0.10.1) returns exactly one offset
  * per partition and dropped the field.
  *
- * @see docs/protocol/0.8.2.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
+ * @see docs/protocol/0.9.0.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
 class OffsetsRequestPartition implements BinarySchemaInterface
 {

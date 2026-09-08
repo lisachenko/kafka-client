@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Version 0 of the request has no `timestamp` field, so the scheme is selected by {@see OffsetCommitRequestPartition::VERSION}
  * and {@see OffsetCommitRequestPartitionV0} only lowers that constant.
  *
- * @see docs/protocol/0.8.2.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0 and v1)"
  */
 class OffsetCommitRequestPartition implements BinarySchemaInterface
 {

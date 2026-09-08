@@ -26,7 +26,7 @@ use Protocol\Kafka\Common\Record\Record;
  * without a second round trip to the broker.
  *
  * @see \Protocol\Kafka\Client::fetchPartitions()
- * @see docs/protocol/0.8.2.md, section "Fetch API (key 1, v0)"
+ * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0)"
  */
 final class FetchedPartition
 {

@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
  * that {@see OffsetCommitRequest::getScheme()} builds follows the version constant below. Unlike version 1, this
  * request does not have to be sent to the coordinator of the group: any broker of the cluster answers it.
  *
- * @see docs/protocol/0.8.2.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0 and v1)"
  */
 final class OffsetCommitRequestV0 extends OffsetCommitRequest
 {

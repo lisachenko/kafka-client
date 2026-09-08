@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
  * The request-level `MaxBytes` (v3) and `IsolationLevel` (v4) of the later protocol versions do not exist here, the
  * only limit is the per-partition `MaxBytes`.
  *
- * @see docs/protocol/0.8.2.md, section "Fetch API (key 1, v0)"
+ * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0)"
  */
 class FetchRequest extends AbstractRequest
 {

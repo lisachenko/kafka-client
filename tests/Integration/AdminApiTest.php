@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 /**
  * Exercises the AdminClient against a real Kafka 0.8.2.2 broker.
  *
- * @see docs/protocol/0.8.2.md
+ * @see docs/protocol/0.9.0.md
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ControlledShutdownRequest::class)]

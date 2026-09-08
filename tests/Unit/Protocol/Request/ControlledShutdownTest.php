@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
  *   ControlledShutdownResponse => ErrorCode int16 [TopicName string Partition int32]
  * </pre>
  *
- * @see docs/protocol/0.8.2.md, section "ControlledShutdown API (key 7, v0)"
+ * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0)"
  */
 #[CoversClass(ControlledShutdownRequest::class)]
 #[CoversClass(ControlledShutdownResponse::class)]

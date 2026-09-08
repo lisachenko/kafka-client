@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
  *   OffsetResponse => [TopicName [Partition ErrorCode [Offset]]]
  * </pre>
  *
- * @see docs/protocol/0.8.2.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
+ * @see docs/protocol/0.9.0.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsResponse::class)]

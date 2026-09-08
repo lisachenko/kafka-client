@@ -35,7 +35,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
  * The message sets are built by {@see SpecMessageSet} directly from the specification, so that the request classes
  * are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/0.8.2.md, sections "Produce API (key 0, v0)" and "MessageSet and Message"
+ * @see docs/protocol/0.9.0.md, sections "Produce API (key 0, v0)" and "MessageSet and Message"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]

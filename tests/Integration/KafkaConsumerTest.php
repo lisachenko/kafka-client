@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * APIs, `offsets.storage` = `kafka`) or in ZooKeeper (the version 0, `offsets.storage` = `zookeeper`). Both are
  * exercised here, because a consumer resumes from what it committed there.
  *
- * @see docs/protocol/0.8.2.md, sections "Fetch API (key 1, v0)", "Offsets API (key 2, v0), a.k.a. ListOffset" and
+ * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0)", "Offsets API (key 2, v0), a.k.a. ListOffset" and
  *      "OffsetFetch API (key 9, v0 and v1)"
  */
 #[CoversClass(KafkaConsumer::class)]

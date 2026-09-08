@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
  *     PartitionMetadata => PartitionErrorCode int16 PartitionId int32 Leader int32 Replicas [int32] Isr [int32]
  * </pre>
  *
- * @see docs/protocol/0.8.2.md, section "Metadata API (key 3, v0)"
+ * @see docs/protocol/0.9.0.md, section "Metadata API (key 3, v0)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataResponse::class)]

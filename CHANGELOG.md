@@ -54,7 +54,7 @@ against a real one.
   the offsets of the group).
 - **`offsets.storage`** configuration option, selecting the Kafka-backed version 1 or the
   ZooKeeper-backed version 0 of the OffsetCommit and OffsetFetch apis.
-- **Documentation**: [docs/protocol/0.8.2.md](docs/protocol/0.8.2.md) describes the whole 0.8.2.2
+- **Documentation**: [docs/protocol/0.9.0.md](docs/protocol/0.9.0.md) describes the whole 0.8.2.2
   grammar, the broker quirks and an annotated hex dump of every wire vector; the same vectors are
   stored machine-readable in [docs/protocol/vectors](docs/protocol/vectors).
 - **Tests**: a unit suite, an integration suite that runs against the Kafka 0.8.2.2 container of

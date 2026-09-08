@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * null for a directly thrown exception - so `ErrorMapping.codeFor(null)` falls back to the Unknown code. The broker
  * log shows what really happened ("Broker id 4242 does not exist."). Observed on Kafka 0.8.2.2.
  *
- * @see docs/protocol/0.8.2.md, section "ControlledShutdown API (key 7, v0)"
+ * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0)"
  */
 class ControlledShutdownRequest extends AbstractRequest
 {

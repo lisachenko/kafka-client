@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The `timestamp` field only exists in version 1, so this class exists solely to lower the version constant that
  * drives {@see OffsetCommitRequestPartition::getScheme()}.
  *
- * @see docs/protocol/0.8.2.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0 and v1)"
  */
 final class OffsetCommitRequestPartitionV0 extends OffsetCommitRequestPartition
 {

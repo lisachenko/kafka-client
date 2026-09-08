@@ -39,7 +39,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The broker validates the CRC of every message it appends, so a green run here also proves that the message sets
  * built by {@see SpecMessageSet} follow the specification.
  *
- * @see docs/protocol/0.8.2.md, section "Produce API (key 0, v0)"
+ * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
