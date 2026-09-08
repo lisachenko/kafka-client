@@ -16,9 +16,9 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * A requested replica is not available on the broker that answered the metadata request.
+ * The replica is not available for the requested topic-partition
  */
-class ReplicaNotAvailableException extends KafkaException
+class ReplicaNotAvailableException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {

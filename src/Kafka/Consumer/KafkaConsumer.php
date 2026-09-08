@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 /**
  * A Kafka client that consumes records from a Kafka 0.8.2.2 cluster.
  *
- * Kafka 0.8 has no broker-side group membership: the coordinator only stores committed offsets (ConsumerMetadata,
+ * Kafka 0.8 has no broker-side group membership: the coordinator only stores committed offsets (GroupCoordinator,
  * OffsetCommit, OffsetFetch), while partition assignment and rebalancing were done by the consumers themselves
  * through ZooKeeper. This client therefore behaves like the 0.8 SimpleConsumer: partitions must be assigned
  * explicitly with assign(), and offsets can still be committed to and fetched from the broker.
@@ -300,7 +300,7 @@ class KafkaConsumer
      */
     protected function getCoordinator(): Node
     {
-        return $this->coordinator ??= $this->client->getConsumerCoordinator(
+        return $this->coordinator ??= $this->client->getGroupCoordinator(
             $this->configuration[ConsumerConfig::GROUP_ID]
         );
     }

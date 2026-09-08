@@ -16,9 +16,9 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * This server is not the leader for the requested topic-partition.
+ * This server is not the leader for that topic-partition.
  */
-class NotLeaderForPartitionException extends KafkaException implements RetriableException
+class NotLeaderForPartitionException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {

@@ -107,10 +107,8 @@ final class ConsumerConfig extends GeneralConfig
 
     /**
      * Returns default configuration for consumer
-     *
-     * @return array
      */
-    public static function getDefaultConfiguration()
+    public static function getDefaultConfiguration(): array
     {
         return self::$consumerConfiguration + parent::$generalConfiguration;
     }

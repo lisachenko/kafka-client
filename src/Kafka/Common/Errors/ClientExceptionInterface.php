@@ -14,6 +14,6 @@ declare (strict_types=1);
 namespace Protocol\Kafka\Common\Errors;
 
 /**
- * Special retriable marker exception interface
+ * Interface ClientExceptionInterface. These kind of exceptions came from this library, not from a broker
  */
-interface RetriableException {}
+interface ClientExceptionInterface {}

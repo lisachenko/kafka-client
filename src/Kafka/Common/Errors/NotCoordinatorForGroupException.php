@@ -16,12 +16,14 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The request included a message set larger than the configured segment size on the server.
+ * This is not the correct coordinator for this group.
+ *
+ * Named NotCoordinatorForConsumerCode (16) in kafka/common/ErrorMapping.scala @ 0.8.2.2.
  */
-class MessageSetSizeTooLargeException extends KafkaException
+class NotCoordinatorForGroupException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::MESSAGE_SET_SIZE_TOO_LARGE, $previous);
+        parent::__construct($context, self::NOT_COORDINATOR_FOR_GROUP, $previous);
     }
 }

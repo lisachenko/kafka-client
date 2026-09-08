@@ -17,24 +17,27 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
-use Protocol\Kafka\Common\Errors\ConsumerCoordinatorNotAvailableException;
+use Protocol\Kafka\Common\Errors\ClientExceptionInterface;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
+use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
+use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\InvalidFetchSizeException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\LeaderNotAvailableException;
-use Protocol\Kafka\Common\Errors\MessageSetSizeTooLargeException;
-use Protocol\Kafka\Common\Errors\MessageSizeTooLargeException;
-use Protocol\Kafka\Common\Errors\NotCoordinatorForConsumerException;
+use Protocol\Kafka\Common\Errors\MessageTooLargeException;
+use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\NotEnoughReplicasAfterAppendException;
 use Protocol\Kafka\Common\Errors\NotEnoughReplicasException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OffsetMetadataTooLargeException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
-use Protocol\Kafka\Common\Errors\OffsetsLoadInProgressException;
+use Protocol\Kafka\Common\Errors\RecordListTooLargeException;
 use Protocol\Kafka\Common\Errors\ReplicaNotAvailableException;
 use Protocol\Kafka\Common\Errors\RequestTimedOutException;
 use Protocol\Kafka\Common\Errors\RetriableException;
+use Protocol\Kafka\Common\Errors\ServerExceptionInterface;
 use Protocol\Kafka\Common\Errors\StaleControllerEpochException;
 use Protocol\Kafka\Common\Errors\StaleLeaderEpochException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
@@ -44,8 +47,9 @@ use RuntimeException;
 /**
  * Verifies that the error codes of this branch are exactly the ones of Kafka 0.8.2.2.
  *
- * The expectations below mirror kafka/common/ErrorMapping.scala at tag 0.8.2.2; the retriable flags follow the
- * RetriableException hierarchy of the Java client of that era.
+ * The codes mirror kafka/common/ErrorMapping.scala at tag 0.8.2.2, while the class names are those of the later
+ * protocol lines (branch main) so that the cascade merge stays small; the retriable flags follow the
+ * RetriableException hierarchy of the Java client.
  */
 #[CoversClass(KafkaException::class)]
 final class KafkaExceptionTest extends TestCase
@@ -68,15 +72,15 @@ final class KafkaExceptionTest extends TestCase
             'RequestTimedOut'                => [7, RequestTimedOutException::class, true],
             'BrokerNotAvailable'             => [8, BrokerNotAvailableException::class, false],
             'ReplicaNotAvailable'            => [9, ReplicaNotAvailableException::class, false],
-            'MessageSizeTooLarge'            => [10, MessageSizeTooLargeException::class, false],
+            'MessageSizeTooLarge'            => [10, MessageTooLargeException::class, false],
             'StaleControllerEpoch'           => [11, StaleControllerEpochException::class, false],
             'OffsetMetadataTooLarge'         => [12, OffsetMetadataTooLargeException::class, false],
             'StaleLeaderEpoch'               => [13, StaleLeaderEpochException::class, false],
-            'OffsetsLoadInProgress'          => [14, OffsetsLoadInProgressException::class, true],
-            'ConsumerCoordinatorNotAvailable' => [15, ConsumerCoordinatorNotAvailableException::class, true],
-            'NotCoordinatorForConsumer'      => [16, NotCoordinatorForConsumerException::class, true],
+            'OffsetsLoadInProgress'          => [14, GroupLoadInProgressException::class, true],
+            'ConsumerCoordinatorNotAvailable' => [15, GroupCoordinatorNotAvailableException::class, true],
+            'NotCoordinatorForConsumer'      => [16, NotCoordinatorForGroupException::class, true],
             'InvalidTopic'                   => [17, InvalidTopicException::class, false],
-            'MessageSetSizeTooLarge'         => [18, MessageSetSizeTooLargeException::class, false],
+            'MessageSetSizeTooLarge'         => [18, RecordListTooLargeException::class, false],
             'NotEnoughReplicas'              => [19, NotEnoughReplicasException::class, true],
             'NotEnoughReplicasAfterAppend'   => [20, NotEnoughReplicasAfterAppendException::class, true],
         ];
@@ -108,6 +112,18 @@ final class KafkaExceptionTest extends TestCase
         self::assertSame($isRetriable, $exception instanceof RetriableException);
     }
 
+    /**
+     * Everything that fromCode() produces came from a broker response
+     */
+    #[DataProvider('errorCodeProvider')]
+    public function testBrokerErrorsAreMarkedAsServerExceptions(int $errorCode): void
+    {
+        $exception = KafkaException::fromCode($errorCode, []);
+
+        self::assertInstanceOf(ServerExceptionInterface::class, $exception);
+        self::assertNotInstanceOf(ClientExceptionInterface::class, $exception);
+    }
+
     #[DataProvider('errorCodeProvider')]
     public function testExceptionCarriesTheContextAndADescription(int $errorCode): void
     {
@@ -132,6 +148,7 @@ final class KafkaExceptionTest extends TestCase
             'UnknownMemberId (25)'     => [25],
             'UnsupportedVersion (35)'  => [35],
             'out of range'             => [4242],
+            'negative out of range'    => [-999],
         ];
     }
 
@@ -170,5 +187,18 @@ final class KafkaExceptionTest extends TestCase
         }
 
         self::assertSame(array_merge([-1], range(1, 20)), $mappedCodes);
+    }
+
+    /**
+     * On 0.8.2 code 13 is StaleLeaderEpoch; NetworkException is client-side here and carries no wire code
+     */
+    public function testNetworkExceptionIsAClientSideErrorOutsideTheCodeMap(): void
+    {
+        $exception = new NetworkException(['error' => 'Can not read from the stream']);
+
+        self::assertInstanceOf(ClientExceptionInterface::class, $exception);
+        self::assertInstanceOf(RetriableException::class, $exception);
+        self::assertNotInstanceOf(NetworkException::class, KafkaException::fromCode(13, []));
+        self::assertInstanceOf(StaleLeaderEpochException::class, KafkaException::fromCode(13, []));
     }
 }

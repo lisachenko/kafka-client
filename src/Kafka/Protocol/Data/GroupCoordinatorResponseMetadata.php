@@ -20,9 +20,11 @@ namespace Protocol\Kafka\Protocol\Data;
 use Protocol\Kafka\IO\Stream;
 
 /**
- * ConsumerMetadata response data: the coordinator broker of a consumer group
+ * GroupCoordinator response data
+ *
+ * The coordinator broker of a consumer group, as returned by the ConsumerMetadata API of Kafka 0.8.2.
  */
-class ConsumerMetadataResponseMetadata
+class GroupCoordinatorResponseMetadata
 {
     /**
      * The broker id.

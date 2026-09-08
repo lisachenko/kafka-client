@@ -16,12 +16,14 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The offsets topic has not been created yet or all of its partitions are still unavailable.
+ * The coordinator is loading and hence can't process requests for this group.
+ *
+ * Named OffsetsLoadInProgressCode (14) in kafka/common/ErrorMapping.scala @ 0.8.2.2.
  */
-class ConsumerCoordinatorNotAvailableException extends KafkaException implements RetriableException
+class GroupLoadInProgressException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::CONSUMER_COORDINATOR_NOT_AVAILABLE, $previous);
+        parent::__construct($context, self::GROUP_LOAD_IN_PROGRESS, $previous);
     }
 }

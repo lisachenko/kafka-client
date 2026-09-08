@@ -14,6 +14,6 @@ declare (strict_types=1);
 namespace Protocol\Kafka\Common\Errors;
 
 /**
- * Special retriable marker exception interface
+ * No more brokers available in kafka cluster.
  */
-interface RetriableException {}
+class AllBrokersNotAvailableException extends KafkaException implements ClientExceptionInterface {}
