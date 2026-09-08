@@ -15,31 +15,56 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
+use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
 
 /**
- * Byte-exact tests of the ControlledShutdown API v0.
+ * Byte-exact tests of the ControlledShutdown API, versions 0 and 1.
  *
  * <pre>
  *   ControlledShutdownRequest  => BrokerId int32
  *   ControlledShutdownResponse => ErrorCode int16 [TopicName string Partition int32]
  * </pre>
  *
- * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0)"
+ * The versions differ in their header alone: version 1, added by Kafka 0.9, carries the client id of the common
+ * request header, version 0 has no client id at all.
+ *
+ * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
  */
 #[CoversClass(ControlledShutdownRequest::class)]
+#[CoversClass(ControlledShutdownRequestV0::class)]
 #[CoversClass(ControlledShutdownResponse::class)]
 #[CoversClass(ControlledShutdownResponsePartition::class)]
 final class ControlledShutdownTest extends TestCase
 {
-    public function testRequestHeaderCarriesNoClientId(): void
+    public function testVersion1RequestUsesTheCommonHeaderWithTheClientId(): void
+    {
+        // Size = 22: ApiKey 7, ApiVersion 1, CorrelationId 21, ClientId "t2-probe", BrokerId 4242
+        $request = new ControlledShutdownRequest(4242, 't2-probe', 21);
+
+        self::assertSame(
+            '00000016' . '0007' . '0001' . '00000015' . '0008' . bin2hex('t2-probe') . '00001092',
+            bin2hex((string) $request)
+        );
+        self::assertSame(22, $request->getMessageSize());
+        self::assertSame(ApiKeys::CONTROLLED_SHUTDOWN, $request->getApiKey());
+        self::assertSame(1, $request->getApiVersion());
+        self::assertSame(4242, $request->getBrokerId());
+        self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'brokerId'],
+            array_keys(ControlledShutdownRequest::getScheme())
+        );
+    }
+
+    public function testVersion0RequestHeaderCarriesNoClientId(): void
     {
         // Size = 12: ApiKey 7, ApiVersion 0, CorrelationId 20, BrokerId 4242 - and no ClientId string in between
-        $request = new ControlledShutdownRequest(4242, 20);
+        $request = new ControlledShutdownRequestV0(4242, 20);
 
         self::assertSame(
             '0000000c' . '0007' . '0000' . '00000014' . '00001092',
@@ -51,25 +76,25 @@ final class ControlledShutdownTest extends TestCase
         self::assertSame(4242, $request->getBrokerId());
     }
 
-    public function testRequestSchemeDropsTheClientIdOfTheCommonHeader(): void
+    public function testVersion0SchemeDropsTheClientIdOfTheCommonHeader(): void
     {
         // Reading a client id string as the broker id is exactly the bug this guards against
-        self::assertArrayNotHasKey('clientId', ControlledShutdownRequest::getScheme());
+        self::assertArrayNotHasKey('clientId', ControlledShutdownRequestV0::getScheme());
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'brokerId'],
-            array_keys(ControlledShutdownRequest::getScheme())
+            array_keys(ControlledShutdownRequestV0::getScheme())
         );
     }
 
     public function testResponseWithoutRemainingPartitionsIsDecoded(): void
     {
-        // The answer of a 0.8.2.2 broker for a broker id the controller does not know: error -1, no partitions
+        // The answer of a 0.9.0.1 broker for a broker id the controller does not know: error 8, no partitions
         $response = ControlledShutdownResponse::unpack(
-            new StringStream((string) hex2bin('0000000a' . '00000014' . 'ffff' . '00000000'))
+            new StringStream((string) hex2bin('0000000a' . '00000014' . '0008' . '00000000'))
         );
 
         self::assertSame(20, $response->getCorrelationId());
-        self::assertSame(-1, $response->errorCode);
+        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $response->errorCode);
         self::assertSame([], $response->remainingTopicPartitions);
     }
 

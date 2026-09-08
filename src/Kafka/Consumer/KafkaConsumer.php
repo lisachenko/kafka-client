@@ -28,6 +28,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Serialization\Deserializer;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
@@ -196,6 +197,11 @@ class KafkaConsumer
      * records that the next poll() would return - the record of the offset that was committed is *not* consumed
      * again by a consumer that resumes from it.
      *
+     * This consumer does not join a consumer group yet - the JoinGroup api of Kafka 0.9 is a ticket of its own - so
+     * the commit goes out as the commit of a "simple consumer": the generation id and the member id of a request
+     * that is not a member of any group. `offset.retention.ms` is passed on as the `retention_time` of the v2
+     * request, with -1 asking the broker for its own `offsets.retention.minutes`.
+     *
      * @param array<string, array<int, int|OffsetAndMetadata>>|null $topicPartitionOffsets Offsets to commit, or
      *                                                                                     null for the positions
      *                                                                                     of this consumer
@@ -211,7 +217,10 @@ class KafkaConsumer
         $this->getClient()->commitGroupOffsets(
             $this->getCoordinator(),
             $this->requireGroupId(),
-            $topicPartitionOffsets
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            $topicPartitionOffsets,
+            (int) $this->configuration[ConsumerConfig::OFFSET_RETENTION_MS]
         );
     }
 

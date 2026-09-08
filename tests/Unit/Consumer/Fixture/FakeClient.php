@@ -233,9 +233,21 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function commitGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitionOffsets): void
-    {
-        $this->commits[] = ['group' => $groupId, 'offsets' => $topicPartitionOffsets];
+    public function commitGroupOffsets(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $generationId,
+        array $topicPartitionOffsets,
+        int $retentionTimeMs
+    ): void {
+        $this->commits[] = [
+            'group'         => $groupId,
+            'memberId'      => $memberId,
+            'generationId'  => $generationId,
+            'offsets'       => $topicPartitionOffsets,
+            'retentionTime' => $retentionTimeMs,
+        ];
 
         foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
             foreach ($partitionOffsets as $partition => $offset) {

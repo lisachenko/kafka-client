@@ -1,13 +1,73 @@
 {
     "api": "fetch",
     "apiKey": 1,
-    "section": "Fetch API (key 1, v0)",
-    "description": "Wire vectors of the Fetch API (key 1, v0), replayed by tests/Compliance.",
+    "section": "Fetch API (key 1, v0 and v1)",
+    "description": "Wire vectors of the Fetch API (key 1, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
+        {
+            "id": "fetch.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "Fetch request v1 of an ordinary consumer (ReplicaId = -1) reading one partition from offset 0. The body is the one of v0, only the api version of the header differs.",
+            "hex": "0000003c000100010000000c00027432ffffffff000000640000000100000001000a74322d766563746f72730000000100000000000000000000000000001000",
+            "fields": {
+                "messageSize": 60,
+                "apiKey": 1,
+                "apiVersion": 1,
+                "correlationId": 12,
+                "clientId": "t2",
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "topicPartitions": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "maxBytes": 4096
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Fetch response v1: the ThrottleTimeMs that version 1 put in front of the topics array (0, the broker enforces no consumer quota), then the high watermark and the message set of the partition.",
+            "hex": "0000007f0000000c0000000000000001000a74322d766563746f72730000000100000000000000000000000000020000005100000000000000000000001d7ca88df6000000000001310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32",
+            "fields": {
+                "messageSize": 127,
+                "correlationId": 12,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000001d7ca88df6000000000001310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
         {
             "id": "fetch.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV0",
             "version": 0,
             "source": "broker",
             "description": "Fetch request v0 of an ordinary consumer (ReplicaId = -1) reading one partition from offset 0.",
@@ -38,10 +98,10 @@
         {
             "id": "fetch.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV0",
             "version": 0,
             "source": "broker",
-            "description": "Fetch response v0 with the high watermark and the message set that the produce vector wrote.",
+            "description": "Fetch response v0 with the high watermark and the message set that the produce vector wrote, and without the ThrottleTimeMs prefix that v1 added.",
             "hex": "0000007d0000000c00000001000b7431302d766563746f72730000000100000000000000000000000000020000005200000000000000000000001ea65e6c150000000000026b310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32",
             "fields": {
                 "messageSize": 125,
