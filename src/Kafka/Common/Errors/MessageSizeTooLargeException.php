@@ -16,9 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The coordinator is not aware of this member.
+ * The request included a message larger than the maximum message size the server will accept.
  */
-class UnknownMemberIdException extends KafkaException
+class MessageSizeTooLargeException extends KafkaException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::MESSAGE_SIZE_TOO_LARGE, $previous);
+    }
 }

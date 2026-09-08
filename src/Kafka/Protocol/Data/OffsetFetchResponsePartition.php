@@ -41,7 +41,7 @@ class OffsetFetchResponsePartition implements \Stringable
     /**
      * Any associated metadata the client wants to keep.
      *
-     * @var string
+     * @var string|null
      */
     public $metadata;
 
@@ -74,13 +74,14 @@ class OffsetFetchResponsePartition implements \Stringable
 
     public function __toString(): string
     {
-        $metadataLength = strlen($this->metadata);
+        $metadata       = $this->metadata ?? '';
+        $metadataLength = strlen($metadata);
         $payload        = pack(
             "NJna{$metadataLength}",
             $this->partition,
             $this->offset,
             $metadataLength ?: -1,
-            $this->metadata
+            $metadata
         );
 
         return $payload;

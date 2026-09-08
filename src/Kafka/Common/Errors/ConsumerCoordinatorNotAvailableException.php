@@ -16,12 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The request included a message larger than the max message size the server will accept.
+ * The offsets topic has not been created yet or all of its partitions are still unavailable.
  */
-class MessageTooLargeException extends KafkaException
+class ConsumerCoordinatorNotAvailableException extends KafkaException implements RetriableException
 {
-    public function __construct(array $context, ?Exception $previous = null)
+    public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::MESSAGE_TOO_LARGE, $previous);
+        parent::__construct($context, self::CONSUMER_COORDINATOR_NOT_AVAILABLE, $previous);
     }
 }

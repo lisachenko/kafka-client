@@ -20,6 +20,9 @@ namespace Protocol\Kafka\Common;
 
 /**
  * General config, suitable for both producer and consumer
+ *
+ * Kafka 0.8.2.2 knows no transport security at all - encryption and authentication only arrived with 0.9 - so this
+ * branch carries no ssl.*, security.protocol or authentication-mechanism options.
  */
 class ClientConfig
 {
@@ -32,16 +35,12 @@ class ClientConfig
         ClientConfig::RECEIVE_BUFFER_BYTES         => 32768,
         ClientConfig::SEND_BUFFER_BYTES            => 131072,
 
-        ClientConfig::SSL_KEY_PASSWORD          => null,
-        ClientConfig::SSL_KEYSTORE_LOCATION     => null,
-        ClientConfig::SSL_KEYSTORE_PASSWORD     => null,
         ClientConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
         ClientConfig::REQUEST_TIMEOUT_MS        => 30000,
-        ClientConfig::SASL_MECHANISM            => 'GSSAPI',
-        ClientConfig::SECURITY_PROTOCOL         => 'plaintext',
         ClientConfig::METADATA_FETCH_TIMEOUT_MS => 60000,
         ClientConfig::RECONNECT_BACKOFF_MS      => 50,
         ClientConfig::RETRY_BACKOFF_MS          => 100,
+        ClientConfig::OFFSETS_STORAGE           => 'kafka',
     ];
 
     /**
@@ -64,6 +63,25 @@ class ClientConfig
      * fail the request if retries are exhausted.
      */
     public const REQUEST_TIMEOUT_MS = 'request.timeout.ms';
+
+    /**
+     * Where the consumer offsets are stored: in Kafka itself or in ZooKeeper.
+     *
+     * Kafka 0.8.2 introduced Kafka-based offset storage (OffsetCommit/OffsetFetch v1) while keeping the ZooKeeper
+     * storage of 0.8.1 available through v0 of the same requests. This option selects the storage that the client
+     * uses; only the `kafka` value is meaningful for a broker-only client.
+     */
+    public const OFFSETS_STORAGE = 'offsets.storage';
+
+    /**
+     * Offsets are committed to and fetched from the offset coordinator (OffsetCommit/OffsetFetch v1)
+     */
+    public const OFFSETS_STORAGE_KAFKA = 'kafka';
+
+    /**
+     * Offsets are committed to and fetched from ZooKeeper (OffsetCommit/OffsetFetch v0)
+     */
+    public const OFFSETS_STORAGE_ZOOKEEPER = 'zookeeper';
 
     /**
      * Should client use persistent connection to the cluster or not
@@ -110,16 +128,9 @@ class ClientConfig
      */
     public const RECEIVE_BUFFER_BYTES = 'receive.buffer.bytes';
 
-    public const SSL_KEY_PASSWORD              = 'ssl.key.password';
-    public const SSL_KEYSTORE_LOCATION         = 'ssl.keystore.location';
-    public const SSL_KEYSTORE_PASSWORD         = 'ssl.keystore.password';
-    public const CONNECTIONS_MAX_IDLE_MS       = 'connections.max.idle.ms';
-    public const SASL_MECHANISM                = 'sasl.mechanism';
-    public const SECURITY_PROTOCOL             = 'security.protocol';
-    public const SSL_ENABLED_PROTOCOLS         = 'ssl.enabled.protocols';
-    public const SSL_PROTOCOL                  = 'ssl.protocol';
-    public const RECONNECT_BACKOFF_MS          = 'reconnect.backoff.ms';
-    public const RETRY_BACKOFF_MS              = 'retry.backoff.ms';
+    public const CONNECTIONS_MAX_IDLE_MS = 'connections.max.idle.ms';
+    public const RECONNECT_BACKOFF_MS    = 'reconnect.backoff.ms';
+    public const RETRY_BACKOFF_MS        = 'retry.backoff.ms';
 
     /**
      * Returns default configuration

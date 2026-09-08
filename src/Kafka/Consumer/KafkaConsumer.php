@@ -17,24 +17,28 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Consumer;
 
+use BadMethodCallException;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
-use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\RecordBatch;
-use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * A Kafka client that consumes records from a Kafka cluster.
+ * A Kafka client that consumes records from a Kafka 0.8.2.2 cluster.
+ *
+ * Kafka 0.8 has no broker-side group membership: the coordinator only stores committed offsets (ConsumerMetadata,
+ * OffsetCommit, OffsetFetch), while partition assignment and rebalancing were done by the consumers themselves
+ * through ZooKeeper. This client therefore behaves like the 0.8 SimpleConsumer: partitions must be assigned
+ * explicitly with assign(), and offsets can still be committed to and fetched from the broker.
  */
 class KafkaConsumer
 {
     /**
-     * The producer configs
+     * The consumer configs
      */
     private array $configuration;
 
@@ -46,37 +50,11 @@ class KafkaConsumer
     private $cluster;
 
     /**
-     * Assignor strategy
-     */
-    private readonly PartitionAssignorInterface $assignorStrategy;
-
-    /**
      * Low-level kafka client
      *
      * @var Client
      */
     private $client;
-
-    /**
-     * Assigned memberId for this consumer
-     *
-     * @var string
-     */
-    private $memberId;
-
-    /**
-     * Assigned consumer generation ID
-     *
-     * @var integer
-     */
-    private $generationId;
-
-    /**
-     * Metadata for subscribed topics
-     *
-     * @var Subscription
-     */
-    private $subscription;
 
     /**
      * List of assigned topic partitions
@@ -96,18 +74,9 @@ class KafkaConsumer
     private $topicPartitionOffsets = [];
 
     /**
-     * Coordinator node
-     *
-     * @var Node
+     * Offset coordinator node for the configured consumer group
      */
-    private $coordinator;
-
-    /**
-     * Last hearbeat time in ms
-     *
-     * @var integer
-     */
-    private $lastHearbeatMs;
+    private ?Node $coordinator = null;
 
     /**
      * Last commit time in ms
@@ -119,12 +88,6 @@ class KafkaConsumer
         $this->configuration = $configuration + ConsumerConfig::getDefaultConfiguration();
         $this->cluster       = Cluster::bootstrap($this->configuration);
         $this->client        = new Client($this->cluster, $this->configuration);
-        $assignorStrategy    = $this->configuration[ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY];
-
-        if (!is_subclass_of($assignorStrategy, PartitionAssignorInterface::class)) {
-            throw new \InvalidArgumentException('Partition strategy class should implement PartitionAssignorInterface');
-        }
-        $this->assignorStrategy = new $assignorStrategy();
     }
 
     /**
@@ -140,14 +103,10 @@ class KafkaConsumer
                 'Probably, not enough partitions for this topic.'
             );
         }
-        $unknownTopics = array_diff(array_keys($topicPartitions), $this->subscription->topics);
-        if ($unknownTopics !== []) {
-            throw new UnknownTopicOrPartitionException(['unknownTopics' => $unknownTopics]);
-        }
         $this->assignedTopicPartitions = $topicPartitions;
 
         $topicPartitionOffsets = $this->client->fetchGroupOffsets(
-            $this->coordinator,
+            $this->getCoordinator(),
             $this->configuration[ConsumerConfig::GROUP_ID],
             $topicPartitions
         );
@@ -165,7 +124,7 @@ class KafkaConsumer
     }
 
     /**
-     * Commit offsets returned on the last poll() for all the subscribed list of topics and partitions.
+     * Commit offsets returned on the last poll() for all the assigned list of topics and partitions.
      *
      * @param array $topicPartitionOffsets Specified offsets for the specified list of topics and partitions.
      */
@@ -174,7 +133,7 @@ class KafkaConsumer
         $topicPartitionOffsets ??= $this->topicPartitionOffsets;
 
         $this->client->commitGroupOffsets(
-            $this->coordinator,
+            $this->getCoordinator(),
             $this->configuration[ConsumerConfig::GROUP_ID],
             $topicPartitionOffsets
         );
@@ -205,13 +164,13 @@ class KafkaConsumer
     }
 
     /**
-     * Fetches data for the topics or partitions specified using one of the subscribe/assign APIs.
+     * Fetches data for the topics or partitions specified using the assign() API.
      *
-     * It is an error to not have subscribed to any topics or partitions before polling for data.
+     * It is an error to not have assigned any topics or partitions before polling for data.
      *
      * On each poll, consumer will try to use the last consumed offset as the starting offset and fetch sequentially.
      * The last consumed offset can be manually set through seek(topic, partition, long) or automatically set as the
-     * last committed offset for the subscribed list of partitions
+     * last committed offset for the assigned list of partitions
      *
      * @param integer $timeout The time, in milliseconds, spent waiting in poll if data is not available.
      *                         If 0, returns immediately with any records that are available now.
@@ -219,9 +178,6 @@ class KafkaConsumer
     public function poll($timeout)
     {
         $milliSeconds = (int) (microtime(true) * 1e3);
-        if (($milliSeconds - $this->lastHearbeatMs) > $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS]) {
-            $this->heartbeat($milliSeconds);
-        }
 
         $activeTopicPartitionOffsets = $this->topicPartitionOffsets;
         foreach ($this->pausedTopicPartitions as $topic => $partitions) {
@@ -312,113 +268,41 @@ class KafkaConsumer
     }
 
     /**
-     * Subscribe to the given list of topics to get dynamically assigned partitions.
+     * Subscribing to topics is not available on the Kafka 0.8 protocol line.
+     *
+     * Dynamic partition assignment requires the broker-side group membership protocol (API keys 11-14), which was
+     * introduced in Kafka 0.9; a 0.8.2.2 broker does not serve those API keys. Assign the partitions explicitly
+     * with assign() instead.
      *
      * @param array $topics List of topics to subscribe
      */
     public function subscribe(array $topics): void
     {
-        $groupId           = $this->configuration[ConsumerConfig::GROUP_ID];
-        $this->coordinator = $this->client->getGroupCoordinator($groupId);
-
-        $subscription = Subscription::fromSubscription($topics);
-        $joinResult   = $this->client->joinGroup(
-            $this->coordinator,
-            $this->configuration[ConsumerConfig::GROUP_ID],
-            $this->memberId,
-            'consumer',
-            ['range' => $subscription]
+        throw new BadMethodCallException(
+            'Kafka 0.8 has no broker-side group membership, so subscribe() can not be supported: the group '
+            . 'membership APIs (keys 11-14) only exist since Kafka 0.9, and a 0.8.2.2 broker either answers them '
+            . 'with "Unknown api code" or closes the connection. Use assign() to select the topic partitions for '
+            . 'this consumer explicitly.'
         );
-
-        $this->memberId     = $joinResult->memberId;
-        $this->generationId = $joinResult->generationId;
-
-        $isLeader = $joinResult->memberId === $joinResult->leaderId;
-
-        if ($isLeader) {
-            $groupAssignments = $this->assignorStrategy->assign($this->cluster, $joinResult->members);
-            $syncResult       = $this->client->syncGroup(
-                $this->coordinator,
-                $this->configuration[ConsumerConfig::GROUP_ID],
-                $this->memberId,
-                $this->generationId,
-                $groupAssignments
-            );
-            $topicPartitions = $groupAssignments[$this->memberId]->topicPartitions;
-        } else {
-            $syncResult = $this->client->syncGroup(
-                $this->coordinator,
-                $this->configuration[ConsumerConfig::GROUP_ID],
-                $this->memberId,
-                $this->generationId
-            );
-
-            $assignments = MemberAssignment::unpack(new StringStream($syncResult->memberAssignment));
-
-            // TODO: Use $assignments->userData; $assignments->version;
-            $topicPartitions = $assignments->topicPartitions;
-        }
-        $this->subscription = $subscription;
-        $this->assign($topicPartitions);
     }
 
     /**
-     * Get the current subscription
-     *
-     * @return Subscription
-     */
-    public function subscription()
-    {
-        return $this->subscription;
-    }
-
-    /**
-     * Unsubscribes from topics currently subscribed with subscribe(array $topics).
-     *
-     * This also clears any partitions directly assigned through assign(array $topicPartitions).
+     * Clears any partitions directly assigned through assign(array $topicPartitions).
      */
     public function unsubscribe(): void
     {
-        if (!empty($this->subscription)) {
-            $this->client->leaveGroup(
-                $this->coordinator,
-                $this->configuration[ConsumerConfig::GROUP_ID],
-                $this->memberId
-            );
-            unset($this->subscription);
-        }
-
         $this->assignedTopicPartitions = [];
         $this->topicPartitionOffsets   = [];
     }
 
     /**
-     * Automatic consumer destruction should invoke unsubscription process
+     * Returns the offset coordinator for the configured consumer group, looking it up on the first use.
      */
-    public function __destruct()
+    protected function getCoordinator(): Node
     {
-        $this->unsubscribe();
-    }
-
-    /**
-     * Performs a heartbeat for the group
-     *
-     * @param int $heartBeatTimeMs timestamp in ms (microtime(true) * 100)
-     */
-    protected function heartbeat($heartBeatTimeMs)
-    {
-        try {
-            $this->client->heartbeat(
-                $this->coordinator,
-                $this->configuration[ConsumerConfig::GROUP_ID],
-                $this->memberId,
-                $this->generationId
-            );
-        } catch (KafkaException) {
-            // Re-subscribe to the group in the case of failed heartbeat
-            $this->subscribe($this->subscription->topics);
-        }
-        $this->lastHearbeatMs = $heartBeatTimeMs; // Expect 64-bit platform PHP
+        return $this->coordinator ??= $this->client->getConsumerCoordinator(
+            $this->configuration[ConsumerConfig::GROUP_ID]
+        );
     }
 
     /**
