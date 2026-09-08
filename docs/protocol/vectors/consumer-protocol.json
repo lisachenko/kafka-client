@@ -1,0 +1,113 @@
+{
+    "api": "consumer-protocol",
+    "apiKey": null,
+    "section": "Consumer group protocol (protocol_type = consumer)",
+    "description": "Wire vectors of the consumer group protocol structures, the opaque payloads of JoinGroup (key 11) and SyncGroup (key 14), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "consumerprotocol.subscription.v0.single-topic",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Consumer\\Subscription",
+            "version": 0,
+            "source": "broker",
+            "description": "Member metadata of a Java 0.9.0.1 consumer subscribed to one topic, as the broker relayed it in DescribeGroups v0.",
+            "hex": "000000000001001474362d636f6e73756d65722d70726f746f636f6c00000000",
+            "fields": {
+                "version": 0,
+                "topics": [
+                    "t6-consumer-protocol"
+                ],
+                "userData": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "consumerprotocol.assignment.v0.two-partitions",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Consumer\\MemberAssignment",
+            "version": 0,
+            "source": "broker",
+            "description": "Assignment that the Java leader of the range group gave to its first member: the partitions 0 and 1.",
+            "hex": "000000000001001474362d636f6e73756d65722d70726f746f636f6c00000002000000000000000100000000",
+            "fields": {
+                "version": 0,
+                "topicPartitions": {
+                    "t6-consumer-protocol": {
+                        "topic": "t6-consumer-protocol",
+                        "partitions": [
+                            0,
+                            1
+                        ]
+                    }
+                },
+                "userData": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "consumerprotocol.assignment.v0.single-partition",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Consumer\\MemberAssignment",
+            "version": 0,
+            "source": "broker",
+            "description": "Assignment of the second member of the same range group: the remaining partition 2.",
+            "hex": "000000000001001474362d636f6e73756d65722d70726f746f636f6c000000010000000200000000",
+            "fields": {
+                "version": 0,
+                "topicPartitions": {
+                    "t6-consumer-protocol": {
+                        "topic": "t6-consumer-protocol",
+                        "partitions": [
+                            2
+                        ]
+                    }
+                },
+                "userData": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "consumerprotocol.assignment.v0.roundrobin",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Consumer\\MemberAssignment",
+            "version": 0,
+            "source": "broker",
+            "description": "Assignment of the first member of a group whose members ran the roundrobin assignor: the partitions 0 and 2.",
+            "hex": "000000000001001474362d636f6e73756d65722d70726f746f636f6c00000002000000000000000200000000",
+            "fields": {
+                "version": 0,
+                "topicPartitions": {
+                    "t6-consumer-protocol": {
+                        "topic": "t6-consumer-protocol",
+                        "partitions": [
+                            0,
+                            2
+                        ]
+                    }
+                },
+                "userData": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "consumerprotocol.assignment.v0.empty",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Consumer\\MemberAssignment",
+            "version": 0,
+            "source": "broker",
+            "description": "Assignment of a member that the assignor left without partitions: an empty topic array, not empty bytes.",
+            "hex": "00000000000000000000",
+            "fields": {
+                "version": 0,
+                "topicPartitions": [],
+                "userData": {
+                    "$bytes": ""
+                }
+            }
+        }
+    ]
+}
