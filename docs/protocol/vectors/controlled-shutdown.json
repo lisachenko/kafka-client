@@ -1,16 +1,48 @@
 {
     "api": "controlled-shutdown",
     "apiKey": 7,
-    "section": "ControlledShutdown API (key 7, v0)",
-    "description": "Wire vectors of the ControlledShutdown API (key 7, v0), replayed by tests/Compliance.",
+    "section": "ControlledShutdown API (key 7, v0 and v1)",
+    "description": "Wire vectors of the ControlledShutdown API (key 7, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
+        {
+            "id": "controlledshutdown.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ControlledShutdown request v1, the version Kafka 0.9 added: the first one whose header carries the client id of the common request header.",
+            "hex": "0000001000070001000000150002743200001092",
+            "fields": {
+                "messageSize": 16,
+                "apiKey": 7,
+                "apiVersion": 1,
+                "correlationId": 21,
+                "clientId": "t2",
+                "brokerId": 4242
+            }
+        },
+        {
+            "id": "controlledshutdown.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "ControlledShutdown response for a broker id that the controller does not know: the error code 8 (BrokerNotAvailable) and an empty partition list. Kafka 0.8.2.2 answered -1 (Unknown) here.",
+            "hex": "0000000a00000015000800000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 21,
+                "errorCode": 8,
+                "remainingTopicPartitions": []
+            }
+        },
         {
             "id": "controlledshutdown.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownRequestV0",
             "version": 0,
             "source": "broker",
-            "description": "ControlledShutdown request v0 - the only request of 0.8.2.2 whose header carries no client id.",
+            "description": "ControlledShutdown request v0 - the one request of the protocol whose header carries no client id, still served by a 0.9.0.1 broker.",
             "hex": "0000000c000700000000001400001092",
             "fields": {
                 "messageSize": 12,
@@ -26,12 +58,12 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownResponse",
             "version": 0,
             "source": "broker",
-            "description": "ControlledShutdown response for a broker id that the controller does not know: the error code -1 (Unknown) and an empty partition list.",
-            "hex": "0000000a00000014ffff00000000",
+            "description": "ControlledShutdown response of the version 0 request: the same answer, with the error code 8 that a 0.9.0.1 controller reports for an unknown broker id.",
+            "hex": "0000000a00000014000800000000",
             "fields": {
                 "messageSize": 10,
                 "correlationId": 20,
-                "errorCode": -1,
+                "errorCode": 8,
                 "remainingTopicPartitions": []
             }
         }

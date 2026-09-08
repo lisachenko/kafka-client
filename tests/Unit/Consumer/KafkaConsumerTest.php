@@ -30,6 +30,7 @@ use Protocol\Kafka\Consumer\KafkaConsumer;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Consumer\OffsetResetStrategy;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\FakeClient;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\JsonDeserializer;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\TestKafkaConsumer;
@@ -237,6 +238,28 @@ final class KafkaConsumerTest extends TestCase
         self::assertSame(self::GROUP, $client->commits[0]['group']);
         self::assertSame([self::TOPIC => [0 => 2]], $client->commits[0]['offsets']);
         self::assertSame(2, $client->committedOffsets[self::GROUP][self::TOPIC][0]);
+
+        // This consumer is not a member of a broker-side group yet, so it commits as a "simple consumer" and asks
+        // for the retention that the broker is configured with
+        self::assertSame(OffsetCommitRequest::DEFAULT_MEMBER_NAME, $client->commits[0]['memberId']);
+        self::assertSame(OffsetCommitRequest::DEFAULT_GENERATION_ID, $client->commits[0]['generationId']);
+        self::assertSame(OffsetCommitRequest::DEFAULT_RETENTION_TIME, $client->commits[0]['retentionTime']);
+    }
+
+    public function testOffsetRetentionOptionIsPassedOnToTheCommit(): void
+    {
+        $client   = $this->clientWithLog([0 => 2]);
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+            ConsumerConfig::OFFSET_RETENTION_MS => 3600000,
+        ]);
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        $consumer->commitSync();
+
+        self::assertSame(3600000, $client->commits[0]['retentionTime']);
     }
 
     public function testAutomaticCommitWaitsForTheConfiguredInterval(): void

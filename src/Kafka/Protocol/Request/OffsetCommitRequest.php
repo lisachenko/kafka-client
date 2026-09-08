@@ -19,46 +19,54 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV0;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
 
 /**
- * OffsetCommit, version 1: the offsets are stored in the `__consumer_offsets` topic of the cluster.
+ * OffsetCommit, version 2: the offsets are stored in the `__consumer_offsets` topic of the cluster.
  *
  * This api saves out the consumer's position in the stream for one or more partitions. In the scala API this happens
  * when the consumer calls commit() or in the background if "autocommit" is enabled. This is the position the consumer
  * will pick up from if it crashes before its next commit().
  *
  * <pre>
- *   OffsetCommit Request (Version: 1) => group_id generation_id member_id [topics]
- *     group_id      => STRING
- *     generation_id => INT32
- *     member_id     => STRING
- *     topics        => topic [partitions]
+ *   OffsetCommit Request (Version: 2) => group_id generation_id member_id retention_time [topics]
+ *     group_id       => STRING
+ *     generation_id  => INT32
+ *     member_id      => STRING
+ *     retention_time => INT64
+ *     topics         => topic [partitions]
  *       topic      => STRING
- *       partitions => partition offset timestamp metadata
+ *       partitions => partition offset metadata
  *         partition => INT32
  *         offset    => INT64
- *         timestamp => INT64
  *         metadata  => NULLABLE_STRING
  * </pre>
  *
- * Kafka 0.8.2.2 asserts that the version is either 0 or 1 and closes the connection on anything above, so the
- * `retention_time` field of the version 2 request does not exist here and the per-partition `timestamp` of the
- * version 1 request has not been replaced by it yet.
+ * Version 2 replaced the per-partition `timestamp` of version 1 with one `retention_time` for the whole request
+ * (`OFFSET_COMMIT_REQUEST_V2` in `Protocol.java` @ 0.9.0.1). With {@see self::DEFAULT_RETENTION_TIME} the broker
+ * keeps the offsets for `offsets.retention.minutes`, otherwise for the given number of milliseconds counted from
+ * the moment it received the commit, see `KafkaApis.handleOffsetCommitRequest`. A 0.9.0.1 broker asserts that the
+ * version is 0, 1 or 2 and closes the connection on anything above.
  *
- * The two versions differ in their scheme, and the scheme is a static property of the class, so version 0 lives in
- * {@see OffsetCommitRequestV0}, which only lowers {@see OffsetCommitRequest::VERSION}; everything else - the fields,
- * the class names and the way the topic-partitions are packed - is shared. That keeps the diff of this class against
- * the version 2 request of the later protocol lines down to the two version-dependent fields.
+ * The three versions differ in their scheme, and a scheme is a static property of a class, so each of them has a
+ * class of its own that only lowers {@see OffsetCommitRequest::VERSION}: {@see OffsetCommitRequestV1} and
+ * {@see OffsetCommitRequestV0}. Everything else - the fields, the class names and the way the topic-partitions are
+ * packed - is shared.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {
     /**
+     * @inheritdoc
+     */
+    public const int API_KEY = ApiKeys::OFFSET_COMMIT;
+
+    /**
      * Generation id for a consumer that is not a member of a group.
      *
-     * Kafka 0.8.2.2 has no group membership protocol at all - the API keys 11-14 arrived with 0.9 - so every commit
-     * that this branch sends is the commit of a "simple consumer".
+     * A consumer that joined a group through the JoinGroup api (key 11, Kafka 0.9) has to commit with the generation
+     * the coordinator assigned to it, otherwise the commit is refused with the error code 22 (IllegalGeneration).
      */
     public const int DEFAULT_GENERATION_ID = -1;
 
@@ -68,9 +76,16 @@ class OffsetCommitRequest extends AbstractRequest
     public const string DEFAULT_MEMBER_NAME = '';
 
     /**
+     * Asks the broker to keep the offsets for `offsets.retention.minutes` instead of a retention of its own.
+     *
+     * @since Version 2 of protocol
+     */
+    public const int DEFAULT_RETENTION_TIME = -1;
+
+    /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Offsets to commit, indexed by the topic they belong to.
@@ -86,6 +101,8 @@ class OffsetCommitRequest extends AbstractRequest
      * @param string $consumerGroup   The consumer group id
      * @param int    $generationId    The generation of the group, {@see self::DEFAULT_GENERATION_ID} without one
      * @param string $memberName      The member id assigned by the coordinator, empty without one
+     * @param int    $retentionTime   How long to keep the offsets, {@see self::DEFAULT_RETENTION_TIME} for the
+     *                                retention configured on the broker
      * @param array<string, array<int, int|OffsetAndMetadata|OffsetCommitRequestPartition>> $topicPartitions Offsets
      * @param string $clientId        Unique client identifier
      * @param int    $correlationId   Correlated request id
@@ -107,6 +124,12 @@ class OffsetCommitRequest extends AbstractRequest
          * @since Version 1 of protocol
          */
         protected readonly string $memberName,
+        /**
+         * Time period in ms to retain the offset.
+         *
+         * @since Version 2 of protocol
+         */
+        protected readonly int $retentionTime,
         array $topicPartitions,
         string $clientId = '',
         int $correlationId = 0
@@ -120,7 +143,7 @@ class OffsetCommitRequest extends AbstractRequest
         }
         $this->topicPartitions = $packedTopicPartitions;
 
-        parent::__construct(ApiKeys::OFFSET_COMMIT, $clientId, $correlationId);
+        parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
     /**
@@ -136,6 +159,9 @@ class OffsetCommitRequest extends AbstractRequest
             $body['generationId'] = BinarySchema::TYPE_INT32;
             $body['memberName']   = BinarySchema::TYPE_STRING;
         }
+        if (static::VERSION >= 2) {
+            $body['retentionTime'] = BinarySchema::TYPE_INT64;
+        }
         $body['topicPartitions'] = ['topic' => static::topicClass()];
 
         return $header + $body;
@@ -148,6 +174,10 @@ class OffsetCommitRequest extends AbstractRequest
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 1 ? OffsetCommitRequestTopic::class : OffsetCommitRequestTopicV0::class;
+        return match (true) {
+            static::VERSION >= 2  => OffsetCommitRequestTopic::class,
+            static::VERSION === 1 => OffsetCommitRequestTopicV1::class,
+            default               => OffsetCommitRequestTopicV0::class,
+        };
     }
 }

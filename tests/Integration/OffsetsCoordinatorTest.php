@@ -19,20 +19,27 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartitionV1;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
+use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
@@ -41,12 +48,13 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 /**
  * Verifies the GroupCoordinator, OffsetCommit and OffsetFetch APIs against a real Kafka 0.9.0.1 broker.
  *
- * The two versions of the offset APIs address two different storages: version 0 keeps the offsets in ZooKeeper as
- * Kafka 0.8.1 did, version 1 keeps them in the internal `__consumer_offsets` topic of the cluster. Both are exercised
- * here, because both are reachable through the `offsets.storage` option of the client.
+ * The versions of the OffsetCommit API address two different storages: version 0 keeps the offsets in ZooKeeper as
+ * Kafka 0.8.1 did, versions 1 and 2 keep them in the internal `__consumer_offsets` topic of the cluster. All of them
+ * are exercised here, because version 0 and version 2 are reachable through the `offsets.storage` option of the
+ * client and version 1 is the version a 0.8 broker expects.
  *
- * @see docs/protocol/0.9.0.md, sections "GroupCoordinator API (key 10, v0)", "OffsetCommit API (key 8, v0 and v1)"
- *      and "OffsetFetch API (key 9, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, sections "GroupCoordinator API (key 10, v0)",
+ *      "OffsetCommit API (key 8, v0, v1 and v2)" and "OffsetFetch API (key 9, v0 and v1)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]
@@ -55,8 +63,11 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 #[CoversClass(GroupCoordinatorResponseMetadata::class)]
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]
+#[CoversClass(OffsetCommitRequestV1::class)]
 #[CoversClass(OffsetCommitRequestPartition::class)]
+#[CoversClass(OffsetCommitRequestPartitionV1::class)]
 #[CoversClass(OffsetCommitRequestTopic::class)]
+#[CoversClass(OffsetCommitRequestTopicV1::class)]
 #[CoversClass(OffsetCommitResponse::class)]
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]
@@ -69,6 +80,21 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
      * `offset.metadata.max.bytes` of a 0.9.0.1 broker; a longer metadata string is answered with the error code 12
      */
     private const int OFFSET_METADATA_MAX_BYTES = 4096;
+
+    /**
+     * `offsets.retention.minutes` of the broker, in milliseconds: what a `retention_time` of -1 asks for
+     */
+    private const int DEFAULT_OFFSET_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+    /**
+     * `offsets.topic.num.partitions` of the test broker: the partition of a group is one of these
+     */
+    private const int OFFSETS_TOPIC_PARTITIONS = 5;
+
+    /**
+     * Internal topic the coordinator appends every committed offset to
+     */
+    private const string OFFSETS_TOPIC = '__consumer_offsets';
 
     /**
      * The cluster is resolved once: every test of this class talks to the same brokers
@@ -118,7 +144,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $topic   = $this->createTopic();
         $stream  = $this->coordinatorStream($groupId);
 
-        $this->commitV1($stream, $groupId, [$topic => [0 => 21, 1 => 42]]);
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => 21, 1 => 42]]);
 
         $offsets = $this->fetchV1($stream, $groupId, [$topic => [0, 1]]);
 
@@ -155,7 +181,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $topic   = $this->createTopic();
         $stream  = $this->coordinatorStream($groupId);
 
-        $this->commitV1($stream, $groupId, [$topic => [0 => 1000]]);
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => 1000]]);
         new OffsetCommitRequestV0($groupId, [$topic => [0 => 5]], 'kafka-client-t6', 21)->writeTo($stream);
         OffsetCommitResponse::unpack($stream);
 
@@ -212,6 +238,9 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         $fromKafka = $this->fetchV1($stream, $groupId, [$topic => [$missingPartition]]);
 
+        // A 0.9.0.1 broker answers "never committed" here, where 0.8.2.2 answered 3 (UnknownTopicOrPartition):
+        // `KafkaApis.handleOffsetFetchRequest` @ 0.9.0.1 hands the version 1 request straight to the coordinator
+        // and no longer checks the metadata cache ("we do not need to filter the partitions in the metadata cache").
         self::assertSame(
             KafkaException::NO_ERROR,
             $fromKafka[$topic]->partitions[$missingPartition]->errorCode,
@@ -238,7 +267,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $stream   = $this->coordinatorStream($groupId);
         $metadata = 'committed by ' . __FUNCTION__;
 
-        $this->commitV1($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(64, $metadata)]]);
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(64, $metadata)]]);
         $offsets = $this->fetchV1($stream, $groupId, [$topic => [0]]);
 
         self::assertSame(64, $offsets[$topic]->partitions[0]->offset);
@@ -252,11 +281,10 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $stream   = $this->coordinatorStream($groupId);
         $metadata = str_repeat('m', self::OFFSET_METADATA_MAX_BYTES + 1);
 
-        // Version 1: the entry is filtered out of the append to __consumer_offsets and reported as an error. Note
-        // that KafkaApis still hands the whole request to OffsetManager.putOffsets(), so the rejected offset does
-        // reach the in-memory cache of this coordinator - it just never becomes durable. Only the error code is a
-        // contract of the protocol, so only the error code is asserted here.
-        $inKafka = $this->commitV1($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(1, $metadata)]], false);
+        // The Kafka storage filters the entry out of the append to __consumer_offsets and reports it as an error.
+        // A 0.9.0.1 broker filters it before the cache as well, so the offset stays uncommitted, see the protocol
+        // document; only the error code is a contract of the protocol, so only the error code is asserted here.
+        $inKafka = $this->commitInKafka($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(1, $metadata)]], false);
 
         self::assertSame(
             KafkaException::OFFSET_METADATA_TOO_LARGE,
@@ -285,11 +313,96 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $stream   = $this->coordinatorStream($groupId);
         $metadata = str_repeat('m', self::OFFSET_METADATA_MAX_BYTES);
 
-        $this->commitV1($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(2, $metadata)]]);
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(2, $metadata)]]);
         $offsets = $this->fetchV1($stream, $groupId, [$topic => [0]]);
 
         self::assertSame(2, $offsets[$topic]->partitions[0]->offset);
         self::assertSame($metadata, $offsets[$topic]->partitions[0]->metadata);
+    }
+
+    public function testVersion1CommitIsStillAcceptedAndCarriesItsOwnTimestamp(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $topic   = $this->createTopic();
+        $stream  = $this->coordinatorStream($groupId);
+
+        // The commit timestamp of version 1 is the point the retention is counted from; -1 asks for the receive time
+        new OffsetCommitRequestV1(
+            $groupId,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            [$topic => [0 => new OffsetCommitRequestPartitionV1(0, 77, 'by version 1')]],
+            'kafka-client-t6',
+            1
+        )->writeTo($stream);
+        $response = OffsetCommitResponse::unpack($stream);
+
+        self::assertSame(KafkaException::NO_ERROR, $response->topics[$topic]->partitions[0]->errorCode);
+
+        $offsets = $this->fetchV1($stream, $groupId, [$topic => [0]]);
+
+        self::assertSame(77, $offsets[$topic]->partitions[0]->offset);
+        self::assertSame('by version 1', $offsets[$topic]->partitions[0]->metadata);
+    }
+
+    public function testRetentionTimeOfVersion2ReplacesTheRetentionOfTheBroker(): void
+    {
+        $groupId       = self::uniqueGroupName();
+        $topic         = $this->createTopic();
+        $stream        = $this->coordinatorStream($groupId);
+        $retentionTime = 60000;
+
+        // Partition 0 asks for the retention of the broker, partition 1 brings its own
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => 5]]);
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => 6]], true, $retentionTime);
+
+        $stored = $this->readStoredOffsets($groupId, $topic, 0);
+
+        self::assertNotSame([], $stored, 'the commits have to be readable back out of __consumer_offsets');
+
+        [$offsetOfDefault, , $commitOfDefault, $expiryOfDefault] = $stored[0];
+        [$offsetOfExplicit, , $commitOfExplicit, $expiryOfExplicit] = $stored[1];
+
+        self::assertSame(5, $offsetOfDefault);
+        self::assertSame(6, $offsetOfExplicit);
+        self::assertSame(
+            self::DEFAULT_OFFSET_RETENTION_MS,
+            $expiryOfDefault - $commitOfDefault,
+            'retention_time = -1 asks for offsets.retention.minutes of the broker'
+        );
+        self::assertSame(
+            $retentionTime,
+            $expiryOfExplicit - $commitOfExplicit,
+            'an explicit retention_time replaces it for this commit alone'
+        );
+    }
+
+    public function testVersion3OfTheOffsetCommitApiIsDroppedWithoutAnAnswer(): void
+    {
+        // `OffsetCommitRequest.readFrom` @ 0.9.0.1 asserts that the version is 0, 1 or 2. A frame it cannot parse is
+        // not refused, it is silently dropped: the socket stays open and the request is simply never answered, see
+        // "An api the broker does not serve is dropped, not refused" in the protocol document. The client has no
+        // class for the version, so the frame is built by hand here.
+        $groupId = self::uniqueGroupName();
+        $topic   = $this->createTopic();
+        $body    = pack('n', 8) . pack('n', 3) . pack('N', 91) . pack('n', 0)
+            . pack('n', strlen($groupId)) . $groupId
+            . pack('N', -1) . pack('n', 0) . pack('J', -1) . pack('N', 0);
+        $stream  = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 1000]);
+        $stream->write('N', strlen($body));
+        $stream->writeBuffer($body);
+
+        try {
+            OffsetCommitResponse::unpack($stream);
+            self::fail('The broker cannot parse an OffsetCommit v3 and must not answer it');
+        } catch (NetworkException $exception) {
+            self::assertStringContainsString('stream', strtolower($exception->getMessage()));
+        }
+
+        // The connection is still perfectly usable: the next well-formed request on it is answered normally
+        $accepted = $this->commitInKafka($stream, $groupId, [$topic => [0 => 3]]);
+
+        self::assertSame(KafkaException::NO_ERROR, $accepted->topics[$topic]->partitions[0]->errorCode);
     }
 
     public function testClientRoundTripsOffsetsThroughTheKafkaStorage(): void
@@ -301,7 +414,14 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $client        = new Client($this->cluster(), $configuration);
 
         $coordinator = $client->getGroupCoordinator($groupId);
-        $client->commitGroupOffsets($coordinator, $groupId, [$topic => [0 => new OffsetAndMetadata(17, 'by client')]]);
+        $client->commitGroupOffsets(
+            $coordinator,
+            $groupId,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            [$topic => [0 => new OffsetAndMetadata(17, 'by client')]],
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME
+        );
 
         self::assertSame([$topic => [0 => 17]], $client->fetchGroupOffsets($coordinator, $groupId, [$topic => [0]]));
     }
@@ -316,7 +436,14 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         // Version 0 is answered by any broker, the coordinator is just a convenient node to talk to
         $anyNode = $client->getGroupCoordinator($groupId);
-        $client->commitGroupOffsets($anyNode, $groupId, [$topic => [0 => 19]]);
+        $client->commitGroupOffsets(
+            $anyNode,
+            $groupId,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            [$topic => [0 => 19]],
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME
+        );
 
         self::assertSame([$topic => [0 => 19]], $client->fetchGroupOffsets($anyNode, $groupId, [$topic => [0]]));
     }
@@ -335,20 +462,22 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
     }
 
     /**
-     * Commits offsets with a version 1 request and asserts that the broker accepted them
+     * Commits offsets into the Kafka storage with a version 2 request and asserts that the broker accepted them
      *
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
      */
-    private function commitV1(
+    private function commitInKafka(
         Stream $stream,
         string $groupId,
         array $topicPartitionOffsets,
-        bool $expectSuccess = true
+        bool $expectSuccess = true,
+        int $retentionTime = OffsetCommitRequest::DEFAULT_RETENTION_TIME
     ): OffsetCommitResponse {
         new OffsetCommitRequest(
             $groupId,
             OffsetCommitRequest::DEFAULT_GENERATION_ID,
             OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            $retentionTime,
             $topicPartitionOffsets,
             'kafka-client-t6',
             1
@@ -382,6 +511,89 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         new OffsetFetchRequest($groupId, $topicPartitions, 'kafka-client-t6', 2)->writeTo($stream);
 
         return OffsetFetchResponse::unpack($stream)->topics;
+    }
+
+    /**
+     * Reads every offset entry of one group and topic-partition back out of the `__consumer_offsets` topic.
+     *
+     * The internal topic is a plain log of key/value messages; its schemes belong to the coordinator and not to the
+     * client protocol, so they are decoded here by hand. Only that log carries the commit and expiry timestamps that
+     * `retention_time` decides - the OffsetFetch API never reports them.
+     *
+     * @return list<array{int, ?string, int, ?int}> offset, metadata, commit timestamp, expire timestamp, in the
+     *         order the entries were appended
+     */
+    private function readStoredOffsets(string $groupId, string $topic, int $partition): array
+    {
+        $configuration = $this->configuration();
+        $fetchOffsets  = array_fill(0, self::OFFSETS_TOPIC_PARTITIONS, 0);
+        $stream        = $this->connect();
+
+        new FetchRequest(
+            [self::OFFSETS_TOPIC => $fetchOffsets],
+            100,
+            1,
+            1048576,
+            -1,
+            $configuration[ClientConfig::CLIENT_ID],
+            3
+        )->writeTo($stream);
+        $response = FetchResponse::unpack($stream);
+
+        $entries = [];
+        foreach ($response->topics[self::OFFSETS_TOPIC]->partitions ?? [] as $responsePartition) {
+            foreach (MessageSet::fromBuffer((string) $responsePartition->messageSet, false)->getRecords() as $record) {
+                $entry = self::decodeOffsetEntry((string) $record->key, $record->value);
+                if ($entry !== null && $entry[0] === $groupId && $entry[1] === $topic && $entry[2] === $partition) {
+                    $entries[] = $entry[3];
+                }
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Decodes one message of `__consumer_offsets` into the group, topic and partition it belongs to and its value.
+     *
+     * Key (version 0 and 1)   => version int16 group string topic string partition int32
+     * Value (version 0 and 1) => version int16 offset int64 metadata string commitTimestamp int64
+     *                            [expireTimestamp int64, version 1 only]
+     *
+     * Everything else - the group metadata messages of the membership protocol, whose key version is 2 - is skipped.
+     *
+     * @return array{string, string, int, array{int, ?string, int, ?int}}|null
+     */
+    private static function decodeOffsetEntry(string $key, ?string $value): ?array
+    {
+        $keyVersion = unpack('nversion', $key)['version'];
+        if ($keyVersion > 1 || $value === null) {
+            return null;
+        }
+
+        $offsetInKey  = 2;
+        $groupLength  = unpack('nlength', substr($key, $offsetInKey, 2))['length'];
+        $group        = substr($key, $offsetInKey + 2, $groupLength);
+        $offsetInKey += 2 + $groupLength;
+        $topicLength  = unpack('nlength', substr($key, $offsetInKey, 2))['length'];
+        $topic        = substr($key, $offsetInKey + 2, $topicLength);
+        $offsetInKey += 2 + $topicLength;
+        $partition    = unpack('Npartition', substr($key, $offsetInKey, 4))['partition'];
+
+        $valueVersion   = unpack('nversion', $value)['version'];
+        $offsetInValue  = 2;
+        $offset         = unpack('Joffset', substr($value, $offsetInValue, 8))['offset'];
+        $offsetInValue += 8;
+        $metadataLength = unpack('nlength', substr($value, $offsetInValue, 2))['length'];
+        $metadata       = $metadataLength === 0xFFFF ? null : substr($value, $offsetInValue + 2, $metadataLength);
+        $offsetInValue += 2 + ($metadataLength === 0xFFFF ? 0 : $metadataLength);
+        $commit         = unpack('Jtimestamp', substr($value, $offsetInValue, 8))['timestamp'];
+        $offsetInValue += 8;
+        $expiry         = $valueVersion >= 1
+            ? unpack('Jtimestamp', substr($value, $offsetInValue, 8))['timestamp']
+            : null;
+
+        return [$group, $topic, $partition, [$offset, $metadata, $commit, $expiry]];
     }
 
     /**
