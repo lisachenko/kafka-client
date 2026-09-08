@@ -19,10 +19,10 @@ use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
+use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
-use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
@@ -236,18 +236,20 @@ final class AdminClientTest extends TestCase
 
     public function testControlledShutdownThrowsTheErrorCodeOfTheController(): void
     {
-        $broker = $this->scriptBroker(self::vector('controlled-shutdown', 'controlledshutdown.response.v0'));
+        // A 0.9.0.1 controller answers an unknown broker id with the code 8, where 0.8.2.2 answered -1
+        $broker = $this->scriptBroker(self::vector('controlled-shutdown', 'controlledshutdown.response.v1'));
         $admin  = $this->adminClient();
 
         try {
             $admin->controlledShutdown(4242);
             self::fail('An unknown broker id has to be reported as an error');
-        } catch (UnknownErrorException $exception) {
+        } catch (BrokerNotAvailableException $exception) {
             self::assertStringContainsString('4242', $exception->getMessage());
         }
 
+        // The admin client sends version 1, the version whose header carries the client id
         self::assertSame(
-            [self::requestFrame(new ControlledShutdownRequest(4242, $broker->getReceivedCorrelationIds()[0]))],
+            [self::requestFrame(new ControlledShutdownRequest(4242, 't10', $broker->getReceivedCorrelationIds()[0]))],
             $broker->getReceivedFrames()
         );
     }

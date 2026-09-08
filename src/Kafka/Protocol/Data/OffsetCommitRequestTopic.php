@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * OffsetCommitRequestTopic DTO, version 1 of the OffsetCommit API
+ * OffsetCommitRequestTopic DTO, version 2 of the OffsetCommit API
  *
  * <pre>
  *   OffsetCommitRequestTopic => topic [partitions]
@@ -26,17 +26,18 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partitions => OffsetCommitRequestPartition
  * </pre>
  *
- * The layout of a partition entry depends on the version of the request, so the class of the entries is derived from
- * {@see OffsetCommitRequestTopic::VERSION}, which {@see OffsetCommitRequestTopicV0} lowers to 0.
+ * The topic entry itself is the same in every version of the request; only the layout of a partition entry changes,
+ * so the class of the entries is derived from {@see OffsetCommitRequestTopic::VERSION}, which
+ * {@see OffsetCommitRequestTopicV1} and {@see OffsetCommitRequestTopicV0} lower.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitRequestTopic implements BinarySchemaInterface
 {
     /**
      * Version of the OffsetCommit API that this DTO is packed for
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Name of the topic
@@ -95,6 +96,10 @@ class OffsetCommitRequestTopic implements BinarySchemaInterface
      */
     protected static function partitionClass(): string
     {
-        return static::VERSION >= 1 ? OffsetCommitRequestPartition::class : OffsetCommitRequestPartitionV0::class;
+        return match (true) {
+            static::VERSION >= 2  => OffsetCommitRequestPartition::class,
+            static::VERSION === 1 => OffsetCommitRequestPartitionV1::class,
+            default               => OffsetCommitRequestPartitionV0::class,
+        };
     }
 }

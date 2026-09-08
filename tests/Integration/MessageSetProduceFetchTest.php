@@ -24,13 +24,15 @@ use Protocol\Kafka\Common\Record\Snappy;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
+use Protocol\Kafka\Protocol\Request\FetchRequestV0;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\FetchResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Produces message sets to a real Kafka 0.8.2.2 broker and fetches them back.
+ * Produces message sets to a real Kafka 0.9.0.1 broker and fetches them back.
  *
  * The broker is the authority on the message format: it validates the checksum of every message it appends, it
  * decompresses a compressed set to assign the offsets of its inner messages, and it recompresses it with the codec
@@ -42,6 +44,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(Message::class)]
 #[CoversClass(CompressionCodec::class)]
 #[CoversClass(Snappy::class)]
+#[CoversClass(FetchRequestV0::class)]
+#[CoversClass(FetchResponseV0::class)]
 #[CoversClass(FetchResponsePartition::class)]
 final class MessageSetProduceFetchTest extends IntegrationTestCase
 {
@@ -153,6 +157,34 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
         $offset = $this->produce(MessageSet::fromRecords([new Record('bar', 'foo')]));
 
         self::assertGreaterThanOrEqual(0, $offset);
+    }
+
+    public function testVersion1FetchAnswerIsPrefixedWithAThrottleTimeAndVersion0IsNot(): void
+    {
+        $baseOffset = $this->produce(MessageSet::fromRecords([new Record('throttle', 'probe')]));
+        $stream     = $this->connect();
+
+        new FetchRequest([$this->topic => [self::PARTITION => $baseOffset]], 1000, 1, 65536, -1, self::CLIENT_ID, 51)
+            ->writeTo($stream);
+        $versionOne = FetchResponse::unpack($stream);
+
+        self::assertSame(51, $versionOne->getCorrelationId());
+        self::assertSame(0, $versionOne->throttleTimeMs, 'the test broker enforces no consumer quota');
+
+        new FetchRequestV0([$this->topic => [self::PARTITION => $baseOffset]], 1000, 1, 65536, -1, self::CLIENT_ID, 52)
+            ->writeTo($stream);
+        $versionZero = FetchResponseV0::unpack($stream);
+
+        self::assertSame(52, $versionZero->getCorrelationId());
+        self::assertSame(
+            $versionOne->getMessageSize() - 4,
+            $versionZero->getMessageSize(),
+            'the ThrottleTimeMs prefix of version 1 is the only difference between the two answers'
+        );
+        self::assertSame(
+            bin2hex((string) $versionOne->topics[$this->topic]->partitions[self::PARTITION]->messageSet),
+            bin2hex((string) $versionZero->topics[$this->topic]->partitions[self::PARTITION]->messageSet)
+        );
     }
 
     /**

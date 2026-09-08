@@ -428,13 +428,17 @@ class AdminClient
      * Asks the controller to move every leader and every replica off the given broker
      *
      * This is what `kafka-server-stop.sh` triggers through `controlled.shutdown.enable`; a client normally has no
-     * reason to send it. Only the active controller serves the request - and 0.8 metadata does not tell which broker
-     * that is - so it is sent to the brokers of the cluster until one of them answers.
+     * reason to send it. Only the active controller serves the request - and 0.9 metadata does not tell which broker
+     * that is - so it is sent to the brokers of the cluster until one of them answers. The request goes out as
+     * version 1, the version Kafka 0.9 added, which is the first one whose header carries the client id;
+     * {@see \Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0} sends the header-less version 0 of a
+     * 0.8 broker.
      *
      * @param int $brokerId Identifier of the broker to shut down
      *
-     * @throws \Protocol\Kafka\Common\Errors\UnknownErrorException If the controller does not know that broker id -
-     *         0.8.2.2 reports it as the error code -1 instead of 8, see {@see ControlledShutdownRequest}
+     * @throws \Protocol\Kafka\Common\Errors\BrokerNotAvailableException If the controller does not know that
+     *         broker id - a 0.9.0.1 broker answers the error code 8 for it, where 0.8.2.2 answered -1, see
+     *         {@see ControlledShutdownRequest}
      *
      * @return list<ControlledShutdownResponsePartition> Partitions that still live on the broker, empty when it is
      *                                                   safe to stop it
@@ -444,7 +448,7 @@ class AdminClient
         /** @var ControlledShutdownResponse $response */
         $response = $this->sendAnyNode(
             fn(int $correlationId): ControlledShutdownRequest
-                => new ControlledShutdownRequest($brokerId, $correlationId),
+                => new ControlledShutdownRequest($brokerId, $this->clientId(), $correlationId),
             ControlledShutdownResponse::class
         );
 
