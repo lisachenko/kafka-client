@@ -33,15 +33,17 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Drives the consumer against a real Kafka 0.8.2.2 broker.
+ * Drives the consumer with the partitions picked by hand against a real Kafka 0.9.0.1 broker.
  *
- * Kafka 0.8 has no broker-side group membership, so the partitions are always assigned explicitly; what the broker
- * does provide is the offset storage of a group, in the `__consumer_offsets` topic (the version 1 of the offset
- * APIs, `offsets.storage` = `kafka`) or in ZooKeeper (the version 0, `offsets.storage` = `zookeeper`). Both are
- * exercised here, because a consumer resumes from what it committed there.
+ * A consumer that selects its partitions with `assign()` joins no group, whichever Kafka version the broker runs:
+ * it fetches, seeks and pauses on its own, and the only thing the group id is used for is the offset storage, in
+ * the `__consumer_offsets` topic (`offsets.storage` = `kafka`) or in ZooKeeper (the version 0 of the offset apis,
+ * `offsets.storage` = `zookeeper`). Both are exercised here, because a consumer resumes from what it committed
+ * there. The broker-side group membership of Kafka 0.9 - subscribe(), the rebalance and the heartbeats - is driven
+ * by {@see ConsumerGroupTest}.
  *
- * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0)", "Offsets API (key 2, v0), a.k.a. ListOffset" and
- *      "OffsetFetch API (key 9, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0 and v1)", "Offsets API (key 2, v0), a.k.a.
+ *      ListOffset" and "OffsetFetch API (key 9, v0 and v1)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(SubscriptionState::class)]
