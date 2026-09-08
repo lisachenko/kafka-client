@@ -155,6 +155,17 @@ $earliest = $admin->listOffsets(['test' => [0]], OffsetsRequest::EARLIEST);
 
 $coordinator = $admin->findCoordinator('kafka-daemon');     // Node that holds the group offsets
 $committed   = $admin->listGroupOffsets('kafka-daemon', ['test' => [0, 1, 2]]);
+
+$groups = $admin->listAllGroups();                          // group id => ListGroupResponseProtocol
+$groups = $admin->listGroups($coordinator);                 // only the groups of that one broker
+
+$group = $admin->describeGroup('kafka-daemon');             // DescribeGroupResponseMetadata
+echo $group->state;                                         // Stable, AwaitingSync, PreparingRebalance or Dead
+echo $group->protocol;                                      // the assignor, only while the group is stable
+foreach ($group->members as $memberId => $member) {
+    echo $memberId, ' ', $member->clientId, ' ', $member->clientHost, PHP_EOL;
+    // $member->memberMetadata and $member->memberAssignment are the opaque bytes of the protocol type
+}
 ```
 
 | Method                                       | Wire API                | Notes                                                                |
@@ -164,13 +175,20 @@ $committed   = $admin->listGroupOffsets('kafka-daemon', ['test' => [0, 1, 2]]);
 | `listOffsets()`                              | Offsets v0              | Earliest, latest or by segment timestamp; sent to the partition leader |
 | `findCoordinator()`                          | GroupCoordinator v0     | Retries the codes 15 and 14 while the coordinator warms up            |
 | `listGroupOffsets()`                         | OffsetFetch v0/v1       | The partitions are explicit: 0.9 has no "all topics" request          |
+| `listGroups()` / `listAllGroups()`           | ListGroups v0           | A broker only knows its own groups; `listAllGroups()` merges them all  |
+| `describeGroup()` / `describeGroups()`       | DescribeGroups v0       | Sent to the coordinator of the group; an unknown group answers `Dead`  |
 | `controlledShutdown()`                       | ControlledShutdown v0   | Moves every partition leader off a broker — it really does stop it    |
 
-`describeGroup()` (DescribeGroups, key 15) and `listGroups()`/`listAllGroups()` (ListGroups,
-key 16) are apis that Kafka 0.9 does serve and that this line implements in its second wave
-(#29). `getApiVersions()` is **not** on this branch: ApiVersions is key 18 and arrived with
-Kafka 0.10, and a 0.9 broker has no way at all to report which apis it speaks — it does not
-even refuse a request it cannot parse, it drops it silently (see below).
+The group apis are what Kafka 0.9 added when it moved the consumer groups out of ZooKeeper: a
+group exists on its coordinator while it has members, so `listGroups()` shows it from the first
+JoinGroup until the last member is gone, and `describeGroup()` reports its state, the assignor
+its members agreed on and one entry per member, with the `Subscription` and `MemberAssignment`
+of the consumer protocol as opaque byte arrays. Asking about a group that does not exist is not
+an error: the coordinator answers the state `Dead` with the error code 0.
+
+`getApiVersions()` is **not** on this branch: ApiVersions is key 18 and arrived with Kafka 0.10,
+and a 0.9 broker has no way at all to report which apis it speaks — it does not even refuse a
+request it cannot parse, it drops it silently (see below).
 
 There is no CreateTopics api either (that is Kafka 0.10.1). A topic is created by writing to
 ZooKeeper — `kafka-topics.sh --create` — or implicitly by asking for the metadata of a topic

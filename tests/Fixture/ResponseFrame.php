@@ -246,11 +246,74 @@ final class ResponseFrame
     }
 
     /**
+     * Builds a JoinGroup response (api key 11, v0)
+     *
+     * <pre>
+     *   JoinGroupResponse => ErrorCode GenerationId GroupProtocol LeaderId MemberId [MemberId MemberMetadata]
+     * </pre>
+     *
+     * @param array<string, string> $members Metadata of every member, by member id; filled for the leader only
+     */
+    public static function joinGroup(
+        int $correlationId,
+        int $errorCode,
+        int $generationId = 1,
+        string $groupProtocol = 'range',
+        string $leaderId = '',
+        string $memberId = '',
+        array $members = []
+    ): string {
+        $body = pack('n', $errorCode)
+            . pack('N', $generationId)
+            . self::string($groupProtocol)
+            . self::string($leaderId)
+            . self::string($memberId)
+            . pack('N', count($members));
+        foreach ($members as $member => $metadata) {
+            $body .= self::string((string) $member) . self::bytes($metadata);
+        }
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds a SyncGroup response (api key 14, v0), which has no throttle time before Kafka 0.10.1
+     */
+    public static function syncGroup(int $correlationId, int $errorCode, string $assignment = ''): string
+    {
+        return self::of($correlationId, pack('n', $errorCode) . self::bytes($assignment));
+    }
+
+    /**
+     * Builds a Heartbeat response (api key 12, v0), whose whole body is the error code
+     */
+    public static function heartbeat(int $correlationId, int $errorCode): string
+    {
+        return self::of($correlationId, pack('n', $errorCode));
+    }
+
+    /**
+     * Builds a LeaveGroup response (api key 13, v0), whose whole body is the error code
+     */
+    public static function leaveGroup(int $correlationId, int $errorCode): string
+    {
+        return self::of($correlationId, pack('n', $errorCode));
+    }
+
+    /**
      * Encodes a non-nullable string: int16 length prefix followed by the content
      */
     private static function string(string $value): string
     {
         return pack('n', strlen($value)) . $value;
+    }
+
+    /**
+     * Encodes a byte array: int32 length prefix followed by the content
+     */
+    private static function bytes(string $value): string
+    {
+        return pack('N', strlen($value)) . $value;
     }
 
     /**

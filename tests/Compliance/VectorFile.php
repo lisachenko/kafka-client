@@ -52,7 +52,10 @@ final class VectorFile
     /**
      * Returns the whole content of one vector file
      *
-     * @return array{api: string, apiKey: int, section: string, vectors: list<array<string, mixed>>}
+     * The `apiKey` is null for the vectors that belong to no api of their own, i.e. the structures that travel
+     * inside a byte array field of another message.
+     *
+     * @return array{api: string, apiKey: int|null, section: string, vectors: list<array<string, mixed>>}
      */
     public static function read(string $api): array
     {

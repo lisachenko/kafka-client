@@ -32,6 +32,15 @@ The entries below land ticket by ticket; the protocol surface is the first of th
   `tests/Fixture/RawApiProbe.php`). Kafka 0.9 has no ApiVersions request, so the api surface of a
   broker can only be established by sending a minimal request of every key and version; the result
   is the api-key table of the protocol document.
+- **Consumer group protocol (`protocol_type = "consumer"`)** — `Consumer\Subscription` and
+  `Consumer\MemberAssignment`, the two structures that JoinGroup and SyncGroup carry as opaque
+  byte arrays (`ConsumerProtocol` @ 0.9.0.1), declared on the schema engine with `pack()` and
+  `unpack()` helpers, and the assignors that fill them: `Consumer\RangeAssignor` (the default of
+  the Java client) and `Consumer\RoundRobinAssignor`, both with the ordering rules of Java, so a
+  PHP member may lead a group of Java members. `Consumer\AbstractPartitionAssignor::fromStrategy()`
+  resolves the `partition.assignment.strategy` option - a wire name or the class of a custom
+  `Consumer\PartitionAssignorInterface`. Byte-exact vectors captured from the members of Java
+  0.9.0.1 consumer groups (`docs/protocol/vectors/consumer-protocol.json`).
 
 ### Changed
 
