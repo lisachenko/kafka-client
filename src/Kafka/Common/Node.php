@@ -17,8 +17,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common;
 
-use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
@@ -56,13 +56,6 @@ class Node implements BinarySchemaInterface
     public int $port = 0;
 
     /**
-     * Cached list of connections
-     *
-     * @var array<string, array<int, Stream>>
-     */
-    private static array $nodeConnections = [];
-
-    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -77,18 +70,23 @@ class Node implements BinarySchemaInterface
     /**
      * Returns a connection to this node.
      *
+     * The connection is kept open and handed out again for the next request to the same broker, see
+     * {@see ConnectionFactory} for the lifetime of that cache.
+     *
      * @param array<string, mixed> $configuration Client configuration
      *
      * @todo Move this method outside this class
      */
     public function getConnection(array $configuration): Stream
     {
-        if (!isset(self::$nodeConnections[$this->host][$this->port])) {
-            $connection = new SocketStream("tcp://{$this->host}:{$this->port}", $configuration);
+        return ConnectionFactory::connect($this->host, $this->port, $configuration);
+    }
 
-            self::$nodeConnections[$this->host][$this->port] = $connection;
-        }
-
-        return self::$nodeConnections[$this->host][$this->port];
+    /**
+     * Closes every open broker connection of this process
+     */
+    public static function closeConnections(): void
+    {
+        ConnectionFactory::closeAll();
     }
 }

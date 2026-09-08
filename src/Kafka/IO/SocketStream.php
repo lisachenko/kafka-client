@@ -135,6 +135,23 @@ class SocketStream extends AbstractStream
     }
 
     /**
+     * Returns the underlying socket resource, opening the connection first if it is not established yet.
+     *
+     * The client waits for the answers of several brokers at once with `stream_select()`, which needs the socket
+     * resources themselves; every other operation goes through the methods of this class.
+     *
+     * @return resource
+     */
+    public function getStreamSocket()
+    {
+        if (!$this->isConnected()) {
+            $this->connect();
+        }
+
+        return $this->streamSocket;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function __debugInfo(): array
@@ -191,9 +208,12 @@ class SocketStream extends AbstractStream
     }
 
     /**
-     * Performs connection to the specified socket address
+     * Performs connection to the specified socket address.
+     *
+     * A stream connects itself lazily on the first read or write; this method is public so that the connection
+     * layer can establish a connection up front, before it hands the socket to `stream_select()`.
      */
-    protected function connect(): void
+    public function connect(): void
     {
         $socketFlags = STREAM_CLIENT_CONNECT;
         if (!empty($this->configuration[ClientConfig::STREAM_ASYNC_CONNECT])) {
@@ -231,9 +251,13 @@ class SocketStream extends AbstractStream
     }
 
     /**
-     * Performs the disconnect operation
+     * Performs the disconnect operation.
+     *
+     * The stream stays usable afterwards: the next read or write opens a fresh connection to the same address.
+     *
+     * @see \Protocol\Kafka\Network\ConnectionFactory::close()
      */
-    protected function disconnect(): void
+    public function disconnect(): void
     {
         if (is_resource($this->streamSocket)
             && empty($this->configuration[ClientConfig::STREAM_PERSISTENT_CONNECTION])
