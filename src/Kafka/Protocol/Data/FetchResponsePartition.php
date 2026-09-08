@@ -17,8 +17,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\IO\Stream;
 
 /**
  * Fetch response DTO

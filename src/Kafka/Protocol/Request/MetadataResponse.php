@@ -18,10 +18,10 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\RestorableTrait;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Common\RestorableTrait;
 
 /**
  * Metadata response object

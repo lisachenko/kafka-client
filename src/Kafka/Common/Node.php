@@ -17,8 +17,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common;
 
-use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\IO\SocketStream;
+use Protocol\Kafka\IO\Stream;
 
 /**
  * Information about a Kafka node

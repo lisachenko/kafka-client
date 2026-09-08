@@ -19,13 +19,13 @@ namespace Protocol\Kafka\Common;
 
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
-use Protocol\Kafka\Protocol\ApiKeys;
-use Protocol\Kafka\Common\Errors\UnknownErrorException;
 
 /**
  * A representation of a subset of the nodes, topics, and partitions in the ApiKeys cluster.
