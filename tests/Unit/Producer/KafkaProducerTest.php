@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Tests\Unit\Producer;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Client;
+use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
@@ -262,32 +263,7 @@ final class KafkaProducerTest extends TestCase
         self::assertSame([$failure, $failure], $errors);
     }
 
-    public function testARetriableErrorIsSentAgain(): void
-    {
-        [$producer, $client] = $this->producer(
-            [ProducerConfig::BATCH_SIZE => 1024 * 1024, ProducerConfig::RETRIES => 2],
-            [
-                static fn(array $messages): array => throw new TopicPartitionRequestException(
-                    [],
-                    [self::TOPIC => [1 => new NotLeaderForPartitionException(['topic' => self::TOPIC])]]
-                ),
-            ]
-        );
-
-        $metadata = null;
-        $producer
-            ->send(self::TOPIC, Record::fromKeyValue('key-0', 'value'))
-            ->then(static function (RecordMetadata $recordMetadata) use (&$metadata): void {
-                $metadata = $recordMetadata;
-            });
-        $producer->flush();
-
-        self::assertCount(2, $client->produceCalls, 'The failed partition is sent a second time');
-        self::assertInstanceOf(RecordMetadata::class, $metadata, 'The retry succeeded and settled the promise');
-        self::assertCount(1, $client->produceCalls[1][self::TOPIC][1], 'Only the failed partition is sent again');
-    }
-
-    public function testTheRecordsAreDroppedWhenEveryRetryFailed(): void
+    public function testTheProducerLeavesTheRetryOfAFailedBatchToTheClient(): void
     {
         $failure = new NotLeaderForPartitionException(['topic' => self::TOPIC]);
 
@@ -307,12 +283,43 @@ final class KafkaProducerTest extends TestCase
             });
         $producer->flush();
 
-        self::assertSame($failure, $rejected);
-        self::assertCount(3, $client->produceCalls, 'The first try plus the two configured retries');
+        // Client::produce() is the one that refreshes the metadata and sends the failed partitions again, up to
+        // `retries` times; the producer does not add a second layer of retries on top of it
+        self::assertCount(1, $client->produceCalls);
+        self::assertSame($failure, $rejected, 'What the client gave up on fails the promise of its partition');
 
         // Nothing is left over for the next flush
         $producer->flush();
-        self::assertCount(3, $client->produceCalls);
+        self::assertCount(1, $client->produceCalls);
+    }
+
+    public function testTheRetryBudgetOfTheProducerIsTheOneOfItsClient(): void
+    {
+        // `retries` is a single option of the client configuration: the producer default of 0 replaces the default
+        // of the general client configuration, and whatever is configured reaches the client that sends the batches
+        self::assertSame(0, ProducerConfig::getDefaultConfiguration()[ClientConfig::RETRIES]);
+
+        $producer = new class ($this->clusterConfiguration + [ProducerConfig::RETRIES => 4]) extends KafkaProducer {
+            /**
+             * @var array<string, mixed>
+             */
+            public array $clientConfiguration = [];
+
+            /**
+             * @inheritdoc
+             */
+            protected function createClient(Cluster $cluster, array $configuration): Client
+            {
+                $this->clientConfiguration = $configuration;
+
+                return new FakeClient($cluster, $configuration);
+            }
+        };
+
+        $producer->send(self::TOPIC, Record::fromKeyValue('key-0', 'value'));
+
+        self::assertSame(4, $producer->clientConfiguration[ClientConfig::RETRIES]);
+        self::assertSame(100, $producer->clientConfiguration[ClientConfig::RETRY_BACKOFF_MS]);
     }
 
     public function testAFireAndForgetSendIsAcknowledgedWithTheOffsetMinusOne(): void

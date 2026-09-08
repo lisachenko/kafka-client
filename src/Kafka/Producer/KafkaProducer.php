@@ -23,7 +23,6 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\MessageTooLargeException;
-use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\CompressionCodec;
@@ -69,6 +68,10 @@ use React\Promise\Promise;
  * flush of a full batch inside {@see KafkaProducer::send()}, or the destructor of the producer. There is no event
  * loop behind them: this is a synchronous client, the promise only carries the result of a send back to its caller.
  *
+ * A batch whose topic-partitions failed with a retriable error is sent again by {@see Client::produce()}, `retries`
+ * times with `retry.backoff.ms` in between and with a refresh of the cluster metadata before each attempt; the
+ * default of that option is 0, so a batch is sent exactly once unless the producer is configured to retry.
+ *
  * Without a key a record goes to the next available partition in a round-robin fashion, with a key it goes to the
  * partition that the murmur2 hash of the key selects, exactly like the official Java client, see
  * {@see DefaultPartitioner}.
@@ -103,11 +106,6 @@ class KafkaProducer
      * Compression codec that every batch of this producer is compressed with
      */
     private readonly int $compressionCodec;
-
-    /**
-     * Current iteration of sending data
-     */
-    private int $currentTry = 0;
 
     /**
      * Size of the buffered batch in bytes, as it will be serialized into the produce request
@@ -179,10 +177,13 @@ class KafkaProducer
      */
     public function send(string $topic, Record $message, ?int $concretePartition = null): Promise
     {
+        // The metadata of the topic are needed either way: to place the record, and to find the leader to send it to
+        $cluster = $this->getCluster($topic);
+
         if (isset($concretePartition)) {
             $partition = $concretePartition;
         } else {
-            $partition = $this->partitioner->partition($topic, $message->key, $message->value, $this->getCluster());
+            $partition = $this->partitioner->partition($topic, $message->key, $message->value, $cluster);
         }
 
         $recordSize     = self::recordSize($message);
@@ -225,9 +226,12 @@ class KafkaProducer
      * the requests associated with these records.
      *
      * Every topic-partition of the batch is settled by the time this method returns: resolved with the metadata that
-     * the broker answered with, or rejected with the error of that partition. A partition that failed with a
-     * retriable error is sent again, up to `retries` times, after a `retry.backoff.ms` pause and a refresh of the
-     * cluster metadata; a partition that failed with any other error is rejected right away.
+     * the broker answered with, or rejected with the error of that partition.
+     *
+     * The retries of a failed partition happen one layer below, inside {@see Client::produce()}, which refreshes the
+     * cluster metadata and sends the partitions that failed with a retriable error again, `retries` times with
+     * `retry.backoff.ms` in between. The producer adds no second layer on top of it: `retries` is the whole budget
+     * of a batch, and its default of 0 means that a batch is sent exactly once, as with the Java producer.
      */
     public function flush(): void
     {
@@ -235,53 +239,22 @@ class KafkaProducer
             return;
         }
 
-        $maximumTries      = max(0, (int) $this->configuration[ProducerConfig::RETRIES]);
-        $retryBackoffMs    = (int) $this->configuration[ProducerConfig::RETRY_BACKOFF_MS];
-        $retriableFailures = [];
+        [$produceResult, $produceExceptions] = $this->produceBufferedBatch();
 
-        for ($this->currentTry = 0; ; $this->currentTry++) {
-            [$produceResult, $produceExceptions] = $this->produceBufferedBatch();
+        $this->resolveAcknowledgedPartitions($produceResult);
 
-            $this->resolveAcknowledgedPartitions($produceResult);
-
-            $retriableFailures = [];
-            foreach ($produceExceptions as $topic => $partitionExceptions) {
-                foreach ($partitionExceptions as $partitionId => $partitionException) {
-                    if ($partitionException instanceof RetriableException) {
-                        $retriableFailures[$topic][$partitionId] = $partitionException;
-
-                        continue;
-                    }
-                    // Nothing would change by sending this batch again, so its promise fails immediately
-                    $this->rejectPartition($topic, $partitionId, $partitionException);
-                }
-            }
-
-            $isLastTry = $this->currentTry >= $maximumTries;
-            if ($this->topicPartitionMessages === [] || $retriableFailures === [] || $isLastTry) {
-                break;
-            }
-
-            usleep(1000 * $retryBackoffMs);
-            try {
-                // A retriable error is almost always a leader that moved, so the metadata are refreshed first
-                $this->getCluster()->reload();
-            } catch (KafkaException) {
-                // A cluster that can not be reached right now is not a reason to drop the batch: the retry runs
-                // with the metadata at hand and the batch is rejected with its own error if it fails again
+        foreach ($produceExceptions as $topic => $partitionExceptions) {
+            foreach ($partitionExceptions as $partitionId => $partitionException) {
+                $this->rejectPartition($topic, $partitionId, $partitionException);
             }
         }
 
-        // Whatever is still buffered was never acknowledged, its promises are rejected with the last known error
+        // A partition that was neither acknowledged nor reported as failed would keep its promise pending forever
         foreach ($this->topicPartitionMessages as $topic => $partitions) {
-            foreach ($partitions as $partitionId => $records) {
-                $this->rejectPartition(
-                    $topic,
-                    $partitionId,
-                    $retriableFailures[$topic][$partitionId] ?? new \RuntimeException(
-                        "Can not deliver {$topic}-{$partitionId} to the broker"
-                    )
-                );
+            foreach (array_keys($partitions) as $partitionId) {
+                $this->rejectPartition($topic, $partitionId, new \RuntimeException(
+                    "The broker did not report anything about {$topic}-{$partitionId}"
+                ));
             }
         }
 
@@ -299,7 +272,7 @@ class KafkaProducer
      */
     public function partitionsFor(string $topic): array
     {
-        return $this->getCluster()->partitionsForTopic($topic);
+        return $this->getCluster($topic)->partitionsForTopic($topic);
     }
 
     /**
@@ -467,11 +440,17 @@ class KafkaProducer
 
     /**
      * Cluster lazy-loading
+     *
+     * The topic of the first record is passed on to the metadata request that bootstraps the cluster: a broker with
+     * `auto.create.topics.enable` creates a topic when a client asks for the metadata of that topic, and a cluster
+     * that hosts no topic at all only starts advertising its brokers once it holds one.
+     *
+     * @param string|null $topic Topic the producer is about to write to, if it knows it already
      */
-    private function getCluster(): Cluster
+    private function getCluster(?string $topic = null): Cluster
     {
         if ($this->cluster === null) {
-            $this->cluster = Cluster::bootstrap($this->configuration);
+            $this->cluster = Cluster::bootstrap($this->configuration, $topic);
         }
 
         return $this->cluster;

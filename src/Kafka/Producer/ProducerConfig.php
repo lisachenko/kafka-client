@@ -18,6 +18,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Producer;
 
+use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
@@ -94,6 +95,12 @@ final class ProducerConfig extends GeneralConfig
      * error. Allowing retries without setting max.in.flight.requests.per.connection to 1 will potentially change the
      * ordering of records because if two batches are sent to a single partition, and the first fails and is retried
      * but the second succeeds, then the records in the second batch may appear first.
+     *
+     * This is the same option as {@see GeneralConfig::RETRIES}, and the default of the producer - no retry at all,
+     * as with the Java producer - deliberately replaces the default of the general client configuration. It is the
+     * whole retry budget of a batch: {@see Client::produce()} refreshes the cluster metadata and sends the
+     * topic-partitions that failed with a retriable error again, this many times with `retry.backoff.ms` in between,
+     * and {@see KafkaProducer::flush()} adds no second layer of retries on top of it.
      */
     public const string RETRIES = 'retries';
 
