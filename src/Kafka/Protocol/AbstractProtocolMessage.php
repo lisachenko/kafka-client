@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date 14.07.2016
@@ -17,10 +18,17 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol;
 
-
 use Protocol\Kafka\IO\Stream;
+
 /**
- * ApiKeys record class
+ * Common envelope for every request and response of the Kafka wire protocol.
+ *
+ * <pre>
+ *   RequestOrResponse => Size (RequestMessage | ResponseMessage)
+ *     Size => int32
+ * </pre>
+ *
+ * @see docs/protocol/0.8.2.md, section "Common Request and Response Structure"
  */
 class AbstractProtocolMessage implements \Stringable
 {
@@ -34,22 +42,20 @@ class AbstractProtocolMessage implements \Stringable
 
     /**
      * The message_data field contains subsequent request or response message bytes.
-     *
-     * @var string
      */
-    private $messageData = '';
+    private string $messageData = '';
 
     /**
      * Unpacks the message from the binary data buffer
      *
      * @param Stream $stream Binary stream buffer
      *
-     * @return static
+     * @deprecated Use the typed {@see Request\AbstractResponse::unpackFrom()} contract for new protocol classes.
      */
     final public static function unpack(Stream $stream): static
     {
-        $self = new static();
-        $self->messageSize = $stream->read(ApiKeys::HEADER_FORMAT)['size'];
+        $self              = new static();
+        $self->messageSize = $stream->readInt32();
         if ($self->messageSize > 0) {
             static::unpackPayload($self, $stream);
         }
@@ -58,32 +64,27 @@ class AbstractProtocolMessage implements \Stringable
     }
 
     /**
-     * Writes the message to the stream
+     * Writes the message to the stream, prefixed with its int32 size
      *
      * @param Stream $stream Binary stream buffer
      */
     final public function writeTo(Stream $stream): void
     {
-        $stream->writeByteArray($this->messageData);
+        $stream->writeBytes($this->messageData);
     }
 
     /**
      * Returns the binary message representation of record
-     *
-     * @return string
      */
     final public function __toString(): string
     {
-        $headerPacket  = pack("N", $this->messageSize);
-        return $headerPacket . $this->messageData;
+        return pack('N', $this->messageSize) . $this->messageData;
     }
 
     /**
      * Sets the content data and adjusts the length fields
-     *
-     * @param $data
      */
-    final protected function setMessageData($data)
+    final protected function setMessageData(string $data): void
     {
         $this->messageData = $data;
         $this->messageSize = strlen($this->messageData);
@@ -91,20 +92,16 @@ class AbstractProtocolMessage implements \Stringable
 
     /**
      * Returns the context data from the record
-     *
-     * @return string
      */
-    final protected function getMessageData()
+    final protected function getMessageData(): string
     {
         return $this->messageData;
     }
 
     /**
      * Returns the size of content length
-     *
-     * @return int
      */
-    final protected function getMessageSize()
+    final protected function getMessageSize(): int
     {
         return $this->messageSize;
     }
@@ -115,7 +112,7 @@ class AbstractProtocolMessage implements \Stringable
      * NB: Default implementation will be always called
      *
      * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
+     * @param Stream                         $stream Binary data
      */
     protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream)
     {
