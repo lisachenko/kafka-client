@@ -188,6 +188,43 @@ final class KafkaProducerTest extends TestCase
         self::assertSame(self::TOPIC . '-1@0', (string) $metadata);
     }
 
+    public function testThePromiseCarriesTheThrottleTimeOfTheAnswer(): void
+    {
+        // A broker with a `producer_byte_rate` quota for this client id appends the batch and delays its answer
+        [$producer] = $this->producer(
+            [ProducerConfig::BATCH_SIZE => 1024 * 1024],
+            [fn(array $topicPartitionMessages): array => $this->fakeClient->acknowledge($topicPartitionMessages, 793)]
+        );
+
+        $metadata = null;
+        $producer
+            ->send(self::TOPIC, Record::fromKeyValue('key-0', 'value'))
+            ->then(static function (RecordMetadata $recordMetadata) use (&$metadata): void {
+                $metadata = $recordMetadata;
+            });
+        $producer->flush();
+
+        self::assertInstanceOf(RecordMetadata::class, $metadata);
+        self::assertSame(793, $metadata->throttleTimeMs, 'the delay of the answer reaches the caller of send()');
+        self::assertNull($metadata->timestamp, 'a 0.9 broker reports no LogAppendTime');
+    }
+
+    public function testAnUnthrottledAnswerReportsNoDelay(): void
+    {
+        [$producer] = $this->producer([ProducerConfig::BATCH_SIZE => 1024 * 1024]);
+
+        $metadata = null;
+        $producer
+            ->send(self::TOPIC, Record::fromKeyValue('key-0', 'value'))
+            ->then(static function (RecordMetadata $recordMetadata) use (&$metadata): void {
+                $metadata = $recordMetadata;
+            });
+        $producer->flush();
+
+        self::assertInstanceOf(RecordMetadata::class, $metadata);
+        self::assertSame(0, $metadata->throttleTimeMs);
+    }
+
     public function testEveryRecordOfABatchGetsTheMetadataOfThatBatch(): void
     {
         [$producer] = $this->producer([ProducerConfig::BATCH_SIZE => 1024 * 1024]);
@@ -325,6 +362,7 @@ final class KafkaProducerTest extends TestCase
         self::assertCount(1, $client->produceCalls);
         self::assertInstanceOf(RecordMetadata::class, $metadata);
         self::assertSame(-1, $metadata->offset, 'The offset of a record that was never acknowledged is unknown');
+        self::assertSame(0, $metadata->throttleTimeMs, 'A request without an answer reports no throttle time');
     }
 
     public function testARecordThatIsLargerThanTheRequestSizeIsRejected(): void

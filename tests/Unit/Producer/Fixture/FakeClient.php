@@ -81,10 +81,12 @@ final class FakeClient extends Client
      * Acknowledges every topic-partition of a request, with the offset the partition grew to
      *
      * @param array<string, array<int, list<Record>>> $topicPartitionMessages
+     * @param int                                     $throttleTimeMs Delay the answer of a quota carries, as
+     *        {@see Client::produce()} puts it on every partition of an answer
      *
      * @return array<string, array<int, ProduceResponsePartition>>
      */
-    public function acknowledge(array $topicPartitionMessages): array
+    public function acknowledge(array $topicPartitionMessages, int $throttleTimeMs = 0): array
     {
         $result = [];
         foreach ($topicPartitionMessages as $topic => $partitions) {
@@ -93,9 +95,10 @@ final class FakeClient extends Client
 
                 $this->nextOffsets["{$topic}-{$partitionId}"] = $baseOffset + count($records);
 
-                $partitionResult             = new ProduceResponsePartition();
-                $partitionResult->partition  = $partitionId;
-                $partitionResult->baseOffset = $baseOffset;
+                $partitionResult                 = new ProduceResponsePartition();
+                $partitionResult->partition      = $partitionId;
+                $partitionResult->baseOffset     = $baseOffset;
+                $partitionResult->throttleTimeMs = $throttleTimeMs;
 
                 $result[$topic][$partitionId] = $partitionResult;
             }
