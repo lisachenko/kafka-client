@@ -10,6 +10,7 @@
  */
 
 declare(strict_types=1);
+
 /**
  * @author Alexander.Lisachenko
  * @date   26.07.2016
@@ -21,14 +22,14 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Errors\NetworkException;
 
 /**
- * Implementation of simple socket stream
+ * Implementation of the binary stream on top of a plain TCP socket
  */
 class SocketStream extends AbstractStream
 {
     /**
      * Internal socket
      *
-     * @var resource
+     * @var resource|null
      */
     protected $streamSocket;
 
@@ -39,97 +40,88 @@ class SocketStream extends AbstractStream
 
     /**
      * Port number
-     *
-     * @var integer
      */
-    protected $port;
+    protected int $port;
 
     /**
-     * Timeout for connection
-     *
-     * @var integer
+     * Timeout for the connection, in seconds
      */
-    protected $timeout;
+    protected float $timeout;
 
     /**
      * Flag that determines if connection was established
-     *
-     * @var boolean
      */
-    protected $isConnected;
+    protected bool $isConnected = false;
 
     /**
      * Socket stream constructor
      *
-     * @param string  $tcpAddress        Tcp address for connection
-     * @param array   $configuration     Configuration options
-     * @param integer $connectionTimeout Timeout for connection
+     * @param string             $tcpAddress        Tcp address for connection
+     * @param array<string, mixed> $configuration   Configuration options
+     * @param float|int|null     $connectionTimeout Timeout for connection, in seconds
      */
-    public function __construct($tcpAddress, protected array $configuration, $connectionTimeout = null)
+    public function __construct(string $tcpAddress, protected array $configuration = [], $connectionTimeout = null)
     {
         $tcpInfo = parse_url($tcpAddress);
         if ($tcpInfo === false || !isset($tcpInfo['host'])) {
             throw new NetworkException(['error' => "Malformed tcp address: {$tcpAddress}"]);
         }
-        $this->host          = $tcpInfo['host'];
-        $this->port          = $tcpInfo['port'] ?? 9092;
-        $this->timeout       = $connectionTimeout ?? ini_get("default_socket_timeout");
+        $this->host    = $tcpInfo['host'];
+        $this->port    = (int) ($tcpInfo['port'] ?? 9092);
+        $this->timeout = (float) ($connectionTimeout ?? ini_get('default_socket_timeout'));
     }
 
-    /**
-     * Writes arguments to the stream
-     *
-     * @param string $format       Format for packing arguments
-     * @param array  ...$arguments List of arguments for packing
-     *
-     * @see pack() manual for format
-     *
-     * @return void
-     */
-    public function write($format, ...$arguments): void
+    public function writeRaw(string $data): void
     {
         if (!$this->isConnected) {
             $this->connect();
         }
 
-        $packedData = pack($format, ...$arguments);
-
-        for ($written = 0; $written < strlen($packedData); $written += $result) {
-            $result = @fwrite($this->streamSocket, substr($packedData, $written));
-            if ($result === false || feof($this->streamSocket)) {
-                throw new NetworkException(['error' => 'Can not write to the stream']);
+        $totalBytes = strlen($data);
+        for ($written = 0; $written < $totalBytes;) {
+            $result = @fwrite($this->streamSocket, substr($data, $written));
+            if ($result === false || $result === 0) {
+                throw new NetworkException(['error' => 'Can not write to the stream', 'written' => $written]);
             }
+            $written += $result;
         }
     }
 
-    /**
-     * Reads information from the stream, advanced internal pointer
-     *
-     * @param string $format Format for unpacking arguments
-     * @see unpack() manual for format
-     *
-     * @return array List of unpacked arguments
-     */
-    public function read($format): array|false
+    public function readRaw(int $length): string
     {
+        if ($length < 0) {
+            throw new \InvalidArgumentException("Length should not be negative, {$length} given");
+        }
+        if ($length === 0) {
+            return '';
+        }
         if (!$this->isConnected) {
             $this->connect();
         }
 
-        $packetSize   = self::packetSize($format);
-        $streamBuffer = '';
+        $buffer = '';
+        while (($received = strlen($buffer)) < $length) {
+            $chunk = @fread($this->streamSocket, $length - $received);
+            if ($chunk === false || $chunk === '') {
+                $metadata = stream_get_meta_data($this->streamSocket);
+                if (!empty($metadata['timed_out'])) {
+                    throw new NetworkException([
+                        'error'    => 'Timeout while reading from the stream',
+                        'expected' => $length,
+                        'received' => $received,
+                    ]);
+                }
 
-        for ($received = 0; $received < $packetSize; $received += strlen($result)) {
-            $result = fread($this->streamSocket, $packetSize);
-            if ($result === false || feof($this->streamSocket)) {
-                throw new NetworkException(['error' => 'Can not read from the stream']);
+                throw new NetworkException([
+                    'error'    => 'Unexpected end of stream',
+                    'expected' => $length,
+                    'received' => $received,
+                ]);
             }
-            $streamBuffer .= $result;
+            $buffer .= $chunk;
         }
 
-        $arguments = unpack($format, $streamBuffer);
-
-        return $arguments;
+        return $buffer;
     }
 
     /**
@@ -143,9 +135,13 @@ class SocketStream extends AbstractStream
     /**
      * Performs connection to the specified socket address
      */
-    protected function connect()
+    protected function connect(): void
     {
-        $socketFlags  = STREAM_CLIENT_CONNECT;
+        if ($this->isConnected) {
+            return;
+        }
+
+        $socketFlags = STREAM_CLIENT_CONNECT;
         if (!empty($this->configuration[ClientConfig::STREAM_ASYNC_CONNECT])) {
             $socketFlags |= STREAM_CLIENT_ASYNC_CONNECT;
         }
@@ -159,11 +155,22 @@ class SocketStream extends AbstractStream
             $this->timeout,
             $socketFlags
         );
-        if (!$streamSocket) {
+        if ($streamSocket === false) {
             throw new NetworkException(['errorNumber' => $errorNumber, 'errorString' => $errorString]);
         }
-        stream_set_write_buffer($streamSocket, $this->configuration[ClientConfig::SEND_BUFFER_BYTES]);
-        stream_set_read_buffer($streamSocket, $this->configuration[ClientConfig::RECEIVE_BUFFER_BYTES]);
+
+        $sendBuffer    = $this->configuration[ClientConfig::SEND_BUFFER_BYTES] ?? null;
+        $receiveBuffer = $this->configuration[ClientConfig::RECEIVE_BUFFER_BYTES] ?? null;
+        if ($sendBuffer !== null) {
+            stream_set_write_buffer($streamSocket, (int) $sendBuffer);
+        }
+        if ($receiveBuffer !== null) {
+            stream_set_read_buffer($streamSocket, (int) $receiveBuffer);
+        }
+
+        // The read/write timeout is driven by request.timeout.ms, the connection timeout only covers the handshake
+        $requestTimeoutMs = (int) ($this->configuration[ClientConfig::REQUEST_TIMEOUT_MS] ?? ($this->timeout * 1000));
+        stream_set_timeout($streamSocket, intdiv($requestTimeoutMs, 1000), ($requestTimeoutMs % 1000) * 1000);
 
         $this->streamSocket = $streamSocket;
         $this->isConnected  = true;
@@ -172,11 +179,14 @@ class SocketStream extends AbstractStream
     /**
      * Performs the disconnect operation
      */
-    protected function disconnect()
+    protected function disconnect(): void
     {
-        if (is_resource($this->streamSocket) && empty($this->configuration[ClientConfig::STREAM_PERSISTENT_CONNECTION])) {
+        if (is_resource($this->streamSocket)
+            && empty($this->configuration[ClientConfig::STREAM_PERSISTENT_CONNECTION])
+        ) {
             fclose($this->streamSocket);
         }
-        $this->isConnected = false;
+        $this->streamSocket = null;
+        $this->isConnected  = false;
     }
 }
