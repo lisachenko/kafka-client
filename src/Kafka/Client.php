@@ -17,24 +17,30 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka;
 
+use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
+use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\SocketStream;
+use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
-use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
-use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
@@ -65,22 +71,56 @@ class Client
      *
      * @param array $topicPartitionMessages List of messages for each topic and partition
      *
-     * @return ProduceResponse
+     * @return array Accepted partitions in the form [topic => [partition => ProduceResponsePartition]], empty for
+     *               a fire-and-forget request (acks = 0), which the broker never answers
      */
     public function produce(array $topicPartitionMessages)
     {
-        $result = $this->clusterRequest($topicPartitionMessages, function (array $nodeTopicPartitionMessages): ProduceRequest {
-            $request = new ProduceRequest(
-                $nodeTopicPartitionMessages,
-                $this->configuration[ProducerConfig::ACKS],
-                $this->configuration[ProducerConfig::TIMEOUT_MS],
-                $this->configuration[ProducerConfig::CLIENT_ID]
-            );
+        $requiredAcks = (int) $this->configuration[ProducerConfig::ACKS];
 
-            return $request;
-        }, ProduceResponse::class, function (array $result, ProduceResponse $response): array {
-            /** @var ProduceResponsePartition[] $partitions */
-            foreach ($response->topics as $topic => $partitions) {
+        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.8.2.md
+        // TODO: build it with Common\Record\MessageSet::fromRecords() once the message set of T3 (#4) is merged
+        $topicPartitionMessageSets = [];
+        foreach ($topicPartitionMessages as $topic => $partitionMessages) {
+            foreach ($partitionMessages as $partition => $messages) {
+                $messageSetBuffer = '';
+                foreach ($messages as $message) {
+                    $messageSetBuffer .= RecordBatch::fromMessage($message);
+                }
+                $topicPartitionMessageSets[$topic][$partition] = $messageSetBuffer;
+            }
+        }
+
+        $createRequest = fn(array $nodeTopicPartitionMessageSets): ProduceRequest => new ProduceRequest(
+            $nodeTopicPartitionMessageSets,
+            $requiredAcks,
+            $this->configuration[ProducerConfig::TIMEOUT_MS],
+            $this->configuration[ProducerConfig::CLIENT_ID]
+        );
+
+        // acks = 0 is the only request of the protocol that the broker does not answer, so nothing may be read back
+        // from those connections, see ProduceRequest::expectsResponse()
+        if ($requiredAcks === ProduceRequest::ACKS_NONE) {
+            $messageSetsByNode = [];
+            foreach ($topicPartitionMessageSets as $topic => $partitionMessageSets) {
+                foreach ($partitionMessageSets as $partition => $messageSet) {
+                    $leaderNode = $this->cluster->leaderFor($topic, $partition);
+
+                    $messageSetsByNode[$leaderNode->nodeId][$topic][$partition] = $messageSet;
+                }
+            }
+            foreach ($messageSetsByNode as $nodeId => $nodeTopicPartitionMessageSets) {
+                $stream = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
+                $createRequest($nodeTopicPartitionMessageSets)->writeTo($stream);
+            }
+
+            return [];
+        }
+
+        $result = $this->clusterRequest($topicPartitionMessageSets, $createRequest, ProduceResponse::class, function (array $result, ProduceResponse $response): array {
+            foreach ($response->topics as $topic => $topicResult) {
+                /** @var ProduceResponsePartition[] $partitions */
+                $partitions = $topicResult->partitions;
                 foreach ($partitions as $partitionId => $partitionInfo) {
                     if ($partitionInfo->errorCode !== 0) {
                         throw KafkaException::fromCode($partitionInfo->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
@@ -97,9 +137,14 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
+     * The version of the request follows the `offsets.storage` option: version 1 stores the offsets in the
+     * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group, version 0 stores
+     * them in ZooKeeper and is answered by any broker. An offset may be given as a plain integer or as an
+     * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch.
+     *
      * @param Node   $coordinatorNode       Current offset coordinator for $groupId
      * @param string $groupId               Name of the group
-     * @param array  $topicPartitionOffsets List of topic => partitions for fetching information
+     * @param array  $topicPartitionOffsets List of topic => partition => offset|OffsetAndMetadata to commit
      *
      * @throws Common\Errors\OffsetMetadataTooLargeException
      * @throws Common\Errors\GroupLoadInProgressException
@@ -108,18 +153,31 @@ class Client
      */
     public function commitGroupOffsets(Node $coordinatorNode, $groupId, array $topicPartitionOffsets): void
     {
-        $stream  = $coordinatorNode->getConnection($this->configuration);
-        $request = new OffsetCommitRequest(
-            $groupId,
-            $topicPartitionOffsets,
-            $this->configuration[ConsumerConfig::CLIENT_ID]
-        );
+        $stream    = $coordinatorNode->getConnection($this->configuration);
+        $clientId  = $this->configuration[ConsumerConfig::CLIENT_ID];
+        $isInKafka = ($this->configuration[ClientConfig::OFFSETS_STORAGE] ?? ClientConfig::OFFSETS_STORAGE_KAFKA)
+            === ClientConfig::OFFSETS_STORAGE_KAFKA;
+
+        $request = $isInKafka
+            ? new OffsetCommitRequest(
+                $groupId,
+                OffsetCommitRequest::DEFAULT_GENERATION_ID,
+                OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+                $topicPartitionOffsets,
+                $clientId
+            )
+            : new OffsetCommitRequestV0($groupId, $topicPartitionOffsets, $clientId);
+
         $request->writeTo($stream);
         $response = OffsetCommitResponse::unpack($stream);
-        foreach ($response->topics as $topic => $partitions) {
-            foreach ($partitions as $partitionId => $errorCode) {
-                if ($errorCode !== 0) {
-                    throw KafkaException::fromCode($errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
+        foreach ($response->topics as $topic => $topicResponse) {
+            /** @var OffsetCommitResponsePartition $partition */
+            foreach ($topicResponse->partitions as $partitionId => $partition) {
+                if ($partition->errorCode !== 0) {
+                    throw KafkaException::fromCode(
+                        $partition->errorCode,
+                        ['topic' => $topic, 'partitionId' => $partitionId]
+                    );
                 }
             }
         }
@@ -127,6 +185,10 @@ class Client
 
     /**
      * Fetches the offsets for topic partition for the concrete consumer group
+     *
+     * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}.
+     * A topic-partition that has never been committed comes back with the offset -1: as the error code 0 from the
+     * `__consumer_offsets` topic (v1), and as the error code 3 from ZooKeeper (v0).
      *
      * @param Node   $coordinatorNode Current offset coordinator for $groupId
      * @param string $groupId         Name of the group
@@ -141,20 +203,22 @@ class Client
      */
     public function fetchGroupOffsets(Node $coordinatorNode, $groupId, array $topicPartitions): array
     {
-        $stream = $coordinatorNode->getConnection($this->configuration);
+        $stream    = $coordinatorNode->getConnection($this->configuration);
+        $clientId  = $this->configuration[ConsumerConfig::CLIENT_ID];
+        $isInKafka = ($this->configuration[ClientConfig::OFFSETS_STORAGE] ?? ClientConfig::OFFSETS_STORAGE_KAFKA)
+            === ClientConfig::OFFSETS_STORAGE_KAFKA;
 
-        $request = new OffsetFetchRequest(
-            $groupId,
-            $topicPartitions,
-            $this->configuration[ConsumerConfig::CLIENT_ID]
-        );
+        $request = $isInKafka
+            ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId)
+            : new OffsetFetchRequestV0($groupId, $topicPartitions, $clientId);
+
         $request->writeTo($stream);
         $response = OffsetFetchResponse::unpack($stream);
 
         $result = [];
-        foreach ($response->topics as $topic => $partitions) {
-            /** @var OffsetFetchResponsePartition[] $partitions */
-            foreach ($partitions as $partitionId => $partition) {
+        foreach ($response->topics as $topic => $topicResponse) {
+            /** @var OffsetFetchResponsePartition $partition */
+            foreach ($topicResponse->partitions as $partitionId => $partition) {
                 $isUnknownTopicPartition = $partition->errorCode === KafkaException::UNKNOWN_TOPIC_OR_PARTITION;
                 if ($partition->errorCode !== 0 && !$isUnknownTopicPartition) {
                     throw KafkaException::fromCode($partition->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
@@ -170,7 +234,8 @@ class Client
      * Discovers the coordinator node for the consumer group (ApiKey 10, called ConsumerMetadata in Kafka 0.8.2)
      *
      * The broker answers with error code 15 (ConsumerCoordinatorNotAvailable) while the internal __consumer_offsets
-     * topic is still being created, so this call is worth retrying.
+     * topic is still being created and with 14 (OffsetsLoadInProgress) while it reads the offsets of the group out
+     * of it, so {@see CoordinatorLookup} retries both with `retry.backoff.ms` until `metadata.fetch.timeout.ms`.
      *
      * @param string $groupId Name of the group
      *
@@ -180,25 +245,7 @@ class Client
      */
     public function getGroupCoordinator($groupId)
     {
-        // TODO: iterate over connections and wrap logic into the try..catch block
-        /** @var Node $firstNode */
-        $clusterNodes = $this->cluster->nodes();
-        $firstNode    = reset($clusterNodes);
-        $stream       = $firstNode->getConnection($this->configuration);
-
-        $request = new GroupCoordinatorRequest(
-            $groupId,
-            $this->configuration[ConsumerConfig::CLIENT_ID]
-        );
-        $request->writeTo($stream);
-        $response = GroupCoordinatorResponse::unpack($stream);
-        if ($response->errorCode !== 0) {
-            throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
-        }
-
-        $coordinator = $this->cluster->nodeById($response->coordinator->nodeId);
-
-        return $coordinator;
+        return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinator($groupId);
     }
 
     /**
@@ -231,13 +278,26 @@ class Client
 
             return $request;
         }, FetchResponse::class, function (array $result, FetchResponse $response): array {
-            foreach ($response->topics as $topic => $partitions) {
-                foreach ($partitions as $partitionId => $responsePartition) {
+            foreach ($response->topics as $topic => $topicResponse) {
+                foreach ($topicResponse->partitions as $partitionId => $responsePartition) {
                     /** @var FetchResponsePartition $responsePartition */
                     if ($responsePartition->errorCode !== 0) {
                         throw KafkaException::fromCode($responsePartition->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
                     }
-                    $result[$topic][$partitionId] = $responsePartition->messageSet;
+                    // The schema engine hands over the raw bytes of the message set, because the broker is allowed to
+                    // cut its last message short. Decoding them belongs to the record layer; until it lands the
+                    // legacy reader is used here, dropping a partial trailing message.
+                    $buffer     = $responsePartition->messageSet ?? '';
+                    $bufferSize = strlen($buffer);
+                    $messages   = [];
+                    for ($position = 0; $position + 12 <= $bufferSize; $position += 12 + $messageSize) {
+                        $messageSize = (int) unpack('NmessageSize', $buffer, $position + 8)['messageSize'];
+                        if ($position + 12 + $messageSize > $bufferSize) {
+                            break;
+                        }
+                        $messages[] = RecordBatch::unpack(new StringStream(substr($buffer, $position, 12 + $messageSize)));
+                    }
+                    $result[$topic][$partitionId] = $messages;
                 }
             }
 
@@ -271,13 +331,14 @@ class Client
 
             return $request;
         }, OffsetsResponse::class, function (array $result, OffsetsResponse $response): array {
-            foreach ($response->topics as $topic => $partitions) {
-                /** @var OffsetsResponsePartition[] $partitions */
-                foreach ($partitions as $partitionId => $partitionMetadata) {
+            foreach ($response->topics as $topic => $topicResponse) {
+                /** @var OffsetsResponsePartition $partitionMetadata */
+                foreach ($topicResponse->partitions as $partitionId => $partitionMetadata) {
                     if ($partitionMetadata->errorCode !== 0) {
                         throw KafkaException::fromCode($partitionMetadata->errorCode, ['topic' => $topic, 'partitionId' => $partitionId]);
                     }
-                    $result[$topic][$partitionId] = reset($partitionMetadata->offsets);
+                    // v0 answers with a list of segment offsets, the newest one first
+                    $result[$topic][$partitionId] = $partitionMetadata->offsets[0] ?? 0;
                 }
             }
 

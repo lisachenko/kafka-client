@@ -10,58 +10,61 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * Offsets response DTO
+ * One partition of an Offsets (ListOffset) response v0
+ *
+ * <pre>
+ *   OffsetsResponsePartition => Partition ErrorCode [Offset]
+ *     Partition => int32
+ *     ErrorCode => int16
+ *     Offset    => int64
+ * </pre>
+ *
+ * v0 answers with a list of segment offsets, which is why there is an array here and a single `Timestamp`/`Offset`
+ * pair in v1 (Kafka 0.10.1) of the API.
+ *
+ * @see docs/protocol/0.8.2.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
-class OffsetsResponsePartition
+class OffsetsResponsePartition implements BinarySchemaInterface
 {
     /**
      * The partition this response entry corresponds to.
-     *
-     * @var integer
      */
-    public $partition;
+    public int $partition;
 
     /**
      * The error from this partition, if any.
      *
      * Errors are given on a per-partition basis because a given partition may be unavailable or maintained on a
-     * different host, while others may have successfully accepted the produce request.
-     *
-     * @var integer
+     * different host, while others may have been answered successfully.
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
-     * List of offsets in the partition
+     * Offsets of this partition, newest first.
      *
-     * @var integer[]|array
+     * For `OffsetsRequest::LATEST` this is the log end offset, for `OffsetsRequest::EARLIEST` the first available
+     * offset; for an ordinary timestamp it holds up to `MaxNumberOfOffsets` segment start offsets.
+     *
+     * @var list<int>
      */
-    public $offsets;
+    public array $offsets = [];
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->errorCode, $offsetsNumber] = array_values($stream->read('Npartition/nerrorCode/NoffsetsNumber'));
-
-        $partition->offsets = array_values($stream->read("J{$offsetsNumber}metadata"));
-
-        return $partition;
+        return [
+            'partition' => BinarySchema::TYPE_INT32,
+            'errorCode' => BinarySchema::TYPE_INT16,
+            'offsets'   => [BinarySchema::TYPE_INT64],
+        ];
     }
 }

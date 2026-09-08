@@ -10,17 +10,16 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\OffsetsRequestTopic;
 
 /**
- * Offsets API
+ * Offsets API (key 2, v0), a.k.a. ListOffset
  *
  * This API describes the valid offset range available for a set of topic-partitions. As with the produce and fetch
  * APIs requests must be directed to the broker that is currently the leader for the partitions in question. This can
@@ -28,58 +27,95 @@ use Protocol\Kafka\Protocol\ApiKeys;
  *
  * The response contains the starting offset of each segment for the requested partition as well as the "log end
  * offset" i.e. the offset of the next message that would be appended to the given partition.
+ *
+ * <pre>
+ *   OffsetRequest => ReplicaId [TopicName [Partition Time MaxNumberOfOffsets]]
+ *     ReplicaId          => int32
+ *     TopicName          => string
+ *     Partition          => int32
+ *     Time               => int64
+ *     MaxNumberOfOffsets => int32
+ * </pre>
+ *
+ * @see docs/protocol/0.8.2.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
 class OffsetsRequest extends AbstractRequest
 {
     /**
      * Special value for the offset of the next coming message
      */
-    public const LATEST = -1;
+    public const int LATEST = -1;
 
     /**
      * Special value for receiving the earliest available offset
      */
-    public const EARLIEST = -2;
+    public const int EARLIEST = -2;
 
     /**
-     * @param int $replicaId
-     * @param int $maxOffsets
+     * Topics to list the offsets of, indexed by the topic name
+     *
+     * @var array<string, OffsetsRequestTopic>
+     */
+    private readonly array $topicPartitions;
+
+    /**
+     * @param array<string, array<int, int>> $topicPartitions    Target time of every partition, as topic => partition
+     *                                                           => time, where the time is a timestamp in
+     *                                                           milliseconds, self::LATEST or self::EARLIEST
+     * @param int                            $maxNumberOfOffsets Maximum number of offsets to return per partition
+     * @param int                            $replicaId          The node id of the replica that initiates this
+     *                                                           request. Ordinary consumers always send -1 as they
+     *                                                           have no node id.
      */
     public function __construct(
-        private readonly array $topicPartitions,
-        /**
-         * Maximum number of offsets to return
-         */
-        private $maxOffsets = 1,
-        /**
-         * The replica id indicates the node id of the replica initiating this request. Normal client consumers should
-         * always specify this as -1 as they have no node id. Other brokers set this to be their own node id. The value -2
-         * is accepted to allow a non-broker to issue fetch requests as if it were a replica broker for debugging purposes.
-         */
-        private $replicaId = -1,
-        $clientId = '',
-        $correlationId = 0
+        array $topicPartitions,
+        int $maxNumberOfOffsets = 1,
+        private readonly int $replicaId = -1,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
+        $packedTopicPartitions = [];
+        foreach ($topicPartitions as $topic => $partitionTimestamps) {
+            $packedTopicPartitions[$topic] = new OffsetsRequestTopic($topic, $partitionTimestamps, $maxNumberOfOffsets);
+        }
+        $this->topicPartitions = $packedTopicPartitions;
+
         parent::__construct(ApiKeys::OFFSETS, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
+     * Builds a request that asks for the same target time for each of the given topic partitions
+     *
+     * @param iterable<TopicPartition> $topicPartitions    Partitions to list the offsets of
+     * @param int                      $timestamp          Timestamp in milliseconds, self::LATEST or self::EARLIEST
+     * @param int                      $maxNumberOfOffsets Maximum number of offsets to return per partition
      */
-    protected function packPayload(): string
-    {
-        $payload     = parent::packPayload();
-        $totalTopics = count($this->topicPartitions);
-
-        $payload .= pack('NN', $this->replicaId, $totalTopics);
-        foreach ($this->topicPartitions as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            foreach ($partitions as $partitionId => $timeOffset) {
-                $payload .= pack('NJN', $partitionId, $timeOffset, $this->maxOffsets);
-            }
+    public static function fromTopicPartitions(
+        iterable $topicPartitions,
+        int $timestamp = self::LATEST,
+        int $maxNumberOfOffsets = 1,
+        int $replicaId = -1,
+        string $clientId = '',
+        int $correlationId = 0
+    ): self {
+        $partitionTimestamps = [];
+        foreach ($topicPartitions as $topicPartition) {
+            $partitionTimestamps[$topicPartition->topic][$topicPartition->partition] = $timestamp;
         }
 
-        return $payload;
+        return new self($partitionTimestamps, $maxNumberOfOffsets, $replicaId, $clientId, $correlationId);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public static function getScheme(): array
+    {
+        $header = parent::getScheme();
+
+        return $header + [
+            'replicaId'       => BinarySchema::TYPE_INT32,
+            'topicPartitions' => ['topic' => OffsetsRequestTopic::class],
+        ];
     }
 }

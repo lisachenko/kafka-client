@@ -17,67 +17,67 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Information about a topic-partition metadata.
+ *
+ * <pre>
+ *   PartitionMetadata => PartitionErrorCode PartitionId Leader Replicas Isr
+ *     PartitionErrorCode => int16
+ *     PartitionId        => int32
+ *     Leader             => int32
+ *     Replicas           => [int32]
+ *     Isr                => [int32]
+ * </pre>
+ *
+ * @see docs/protocol/0.8.2.md, section "Metadata API (key 3, v0)"
  */
-class PartitionMetadata
+class PartitionMetadata implements BinarySchemaInterface
 {
     use RestorableTrait;
 
     /**
      * The error code for the partition, if any.
-     *
-     * @var integer
      */
-    public $partitionErrorCode;
+    public int $partitionErrorCode = 0;
 
     /**
      * The id of the partition.
-     *
-     * @var integer
      */
-    public $partitionId;
+    public int $partitionId = 0;
 
     /**
-     * The id of the broker acting as leader for this partition.
-     *
-     * @var integer
+     * The id of the broker acting as leader for this partition, `-1` while a leader election is in progress.
      */
-    public $leader;
+    public int $leader = -1;
 
     /**
      * The set of all nodes that host this partition.
      *
-     * @var array|integer[]
+     * @var list<int>
      */
-    public $replicas = [];
+    public array $replicas = [];
 
     /**
      * The set of nodes that are in sync with the leader for this partition.
      *
-     * @var array|integer[]
+     * @var list<int>
      */
-    public $isr = [];
+    public array $isr = [];
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partitionMetadata = new static();
-        [$partitionMetadata->partitionErrorCode, $partitionMetadata->partitionId, $partitionMetadata->leader, $numberOfReplicas] = array_values($stream->read('npartitionErrorCode/NpartitionId/Nleader/NnumberOfReplicas'));
-
-        $partitionMetadata->replicas = array_values($stream->read("N{$numberOfReplicas}"));
-
-        $numberOfIsr = $stream->read('NnumberOfIsr')['numberOfIsr'];
-        $partitionMetadata->isr = array_values($stream->read("N{$numberOfIsr}"));
-
-        return $partitionMetadata;
+        return [
+            'partitionErrorCode' => BinarySchema::TYPE_INT16,
+            'partitionId'        => BinarySchema::TYPE_INT32,
+            'leader'             => BinarySchema::TYPE_INT32,
+            'replicas'           => [BinarySchema::TYPE_INT32],
+            'isr'                => [BinarySchema::TYPE_INT32],
+        ];
     }
 }
