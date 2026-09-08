@@ -58,10 +58,18 @@ and the broker has acknowledged it. The only required option is
 `Protocol\Kafka\Producer\ProducerConfig` and the [producer configuration] reference.
 
 `ProducerConfig::ACKS` selects the durability of a write: `0` sends fire-and-forget (the
-0.8 broker sends **no response at all** for such a request, so the promise resolves without a
-partition and an offset), `1` waits for the leader's log and `-1` for all in-sync replicas.
-Compression is set with `ProducerConfig::COMPRESSION_TYPE`; 0.8.2.2 supports `gzip` and
-`snappy` (`lz4` exists in the broker but is not implemented by this client).
+0.8 broker sends **no response at all** for such a request, so the promise resolves with the
+offset `-1`), `1` waits for the leader's log and `-1` for all in-sync replicas. Records are
+collected until they fill `ProducerConfig::BATCH_SIZE` bytes or `ProducerConfig::LINGER_MS`
+has passed, and a batch that fails with a retriable error is sent again `ProducerConfig::RETRIES`
+times — that option is the whole retry budget of a batch and defaults to no retry at all, like
+the Java producer. Compression is set with `ProducerConfig::COMPRESSION_TYPE` and applies to a
+whole batch; 0.8.2.2 supports `gzip` and `snappy` (`lz4` exists in the broker but is not
+implemented by this client).
+
+Without a key a record is spread over the partitions that have a leader, with a key it goes to
+the partition that the murmur2 hash of the key selects, exactly as with the official Java
+client (`Producer\DefaultPartitioner`); an explicit partition can be passed to `send()`.
 
 A runnable version of this is [examples/producer.php](examples/producer.php).
 

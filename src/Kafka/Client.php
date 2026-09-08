@@ -23,6 +23,7 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
+use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
@@ -104,16 +105,25 @@ class Client
      *         which the broker never answers
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
+     * @throws InvalidConfigurationException  For a `compression.type` that this client can not write
      */
     public function produce(array $topicPartitionMessages): array
     {
         $requiredAcks = (int) $this->configuration[ProducerConfig::ACKS];
 
+        // `compression.type` compresses a whole batch at once, so it is applied per topic-partition, not per record
+        $compressionCodec = ProducerConfig::compressionCodec(
+            $this->configuration[ProducerConfig::COMPRESSION_TYPE] ?? ProducerConfig::COMPRESSION_TYPE_NONE
+        );
+
         // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.8.2.md
         $topicPartitionMessageSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
-                $topicPartitionMessageSets[$topic][$partition] = MessageSet::fromRecords(self::toRecords($messages));
+                $topicPartitionMessageSets[$topic][$partition] = MessageSet::fromRecords(
+                    self::toRecords($messages),
+                    $compressionCodec
+                );
             }
         }
 
