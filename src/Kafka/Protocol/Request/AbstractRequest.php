@@ -21,19 +21,16 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Basic class for all requests.
+ * Basic class for all requests
  *
- * Every request is framed as follows:
- *
- * <pre>
- *   RequestMessage => ApiKey ApiVersion CorrelationId ClientId RequestBody
- *     ApiKey        => int16
- *     ApiVersion    => int16
- *     CorrelationId => int32
- *     ClientId      => string
- * </pre>
+ * Request Header => api_key api_version correlation_id client_id
+ *   api_key        => INT16
+ *   api_version    => INT16
+ *   correlation_id => INT32
+ *   client_id      => STRING
  *
  * @see docs/protocol/0.8.2.md, section "Requests"
  */
@@ -50,44 +47,57 @@ abstract class AbstractRequest extends AbstractProtocolMessage
     public const int VERSION = 0;
 
     /**
-     * The id of the request type. (INT16)
-     */
-    protected int $apiKey;
-
-    /**
      * The version of the API. (INT16)
      */
     protected int $apiVersion;
 
     /**
-     * A user-supplied integer value that will be passed back with the response (INT32)
+     * Payload of a request class that still packs itself by hand instead of declaring a scheme
      */
-    protected int $correlationId;
+    private ?string $legacyPayload = null;
 
     /**
-     * Global request counter, used only by {@see AbstractRequest::nextCorrelationId()}
+     * Global request counter, only used by {@see AbstractRequest::nextCorrelationId()}
      */
     private static int $counter = 0;
 
     /**
-     * @param int|null $apiKey        Api key of the request, defaults to the API_KEY constant of the class
-     * @param string   $clientId      A user specified identifier for the client making the request
-     * @param int      $correlationId A user-supplied value that the broker passes back unmodified
+     * @param int    $apiKey        The id of the request type (INT16)
+     * @param string $clientId      A user specified identifier for the client making the request
+     * @param int    $correlationId A user-supplied value that the broker passes back unmodified
      */
-    public function __construct(?int $apiKey = null, protected string $clientId = '', int $correlationId = 0)
+    public function __construct(protected int $apiKey, protected string $clientId = '', int $correlationId = 0)
     {
-        $this->apiKey        = $apiKey ?? static::API_KEY;
         $this->apiVersion    = static::VERSION;
         $this->correlationId = $correlationId;
 
-        $this->setMessageData($this->packPayload());
+        if (static::hasLegacyPayloadWriter()) {
+            $this->legacyPayload = $this->packPayload();
+            $this->messageSize   = strlen($this->legacyPayload);
+        } else {
+            $this->messageSize = BinarySchema::getObjectTypeSize($this) - 4 /* INT32 MessageSize */;
+        }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public static function getScheme(): array
+    {
+        return [
+            'messageSize'   => BinarySchema::TYPE_INT32,
+            'apiKey'        => BinarySchema::TYPE_INT16,
+            'apiVersion'    => BinarySchema::TYPE_INT16,
+            'correlationId' => BinarySchema::TYPE_INT32,
+            'clientId'      => BinarySchema::TYPE_STRING,
+        ];
     }
 
     /**
      * Returns the next value of the process-wide correlation id sequence.
      *
-     * The correlation id is always supplied by the caller, this helper only exists for the callers that do not
-     * maintain their own sequence yet.
+     * The correlation id of a request is always the one the caller supplied; this helper only exists for the callers
+     * that do not maintain their own sequence yet.
      */
     public static function nextCorrelationId(): int
     {
@@ -115,40 +125,48 @@ abstract class AbstractRequest extends AbstractProtocolMessage
     }
 
     /**
-     * Writes the request header to the given stream.
+     * @inheritdoc
      */
-    final protected function packHeader(Stream $stream): void
+    protected function packInto(Stream $stream): void
     {
-        $stream->writeInt16($this->apiKey);
-        $stream->writeInt16($this->apiVersion);
-        $stream->writeInt32($this->correlationId);
-        $stream->writeString($this->clientId);
+        if ($this->legacyPayload !== null) {
+            $stream->write('N', $this->messageSize);
+            $stream->writeBuffer($this->legacyPayload);
+
+            return;
+        }
+
+        parent::packInto($stream);
     }
 
     /**
-     * Writes the request body (everything after the header) to the given stream.
+     * Packs the request header, byte for byte as {@see AbstractRequest::getScheme()} describes it.
      *
-     * This is the contract for the typed protocol classes, the default implementation writes an empty body.
-     */
-    protected function packBody(Stream $stream): void
-    {
-        // nothing here
-    }
-
-    /**
-     * Implementation of packing the payload: the request header followed by the request body.
+     * The request classes that have not been migrated to a scheme yet override this method and concatenate their own
+     * pack()-ed body to the result of `parent::packPayload()`.
      *
-     * Legacy protocol classes override this method and concatenate their own `pack()`-ed body to the result of
-     * `parent::packPayload()`, which stays byte-identical to the header written by {@see self::packHeader()}.
+     * @deprecated Declare a {@see BinarySchema} scheme instead, this hook disappears once every request class is
+     *             described by a scheme.
      */
     protected function packPayload(): string
     {
-        $buffer = '';
-        $stream = new StringStream($buffer);
+        // self:: on purpose: this must stay the header of the base class even for a subclass with its own scheme
+        $headerScheme = self::getScheme();
+        unset($headerScheme['messageSize']);
 
-        $this->packHeader($stream);
-        $this->packBody($stream);
+        $stream = new StringStream();
+        foreach ($headerScheme as $fieldName => $schemeType) {
+            BinarySchema::writeSingleType($schemeType, $this->$fieldName, $stream);
+        }
 
-        return $buffer;
+        return $stream->getBuffer();
+    }
+
+    /**
+     * Checks whether the concrete class still packs its payload by hand instead of declaring a scheme
+     */
+    private static function hasLegacyPayloadWriter(): bool
+    {
+        return new \ReflectionMethod(static::class, 'packPayload')->getDeclaringClass()->getName() !== self::class;
     }
 }
