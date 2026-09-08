@@ -66,6 +66,27 @@ final class KafkaConsumerTest extends IntegrationTestCase
     private const float POLL_TIMEOUT = 30.0;
 
     /**
+     * How long to wait for a freshly created partition to start serving requests, in seconds
+     */
+    private const float TOPIC_TIMEOUT = 30.0;
+
+    /**
+     * How long to wait between two attempts at a partition that is not servable yet, `retry.backoff.ms` in style
+     */
+    private const int RETRY_BACKOFF_MICROSECONDS = 200000;
+
+    /**
+     * Error codes of a partition that exists but is not being served by this broker yet
+     *
+     * @var list<int>
+     */
+    private const array NOT_SERVABLE_YET = [
+        KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+        KafkaException::LEADER_NOT_AVAILABLE,
+        KafkaException::NOT_LEADER_FOR_PARTITION,
+    ];
+
+    /**
      * Topic of the current test, created and given a leader by {@see self::setUp()}
      */
     private string $topic;
@@ -446,29 +467,45 @@ final class KafkaConsumerTest extends IntegrationTestCase
     /**
      * Produces the given values into one partition of the topic under test
      *
+     * The metadata of the topic already announces a leader for every partition when this runs, but a broker that
+     * has just been made the leader of one still needs a moment to serve it and answers LeaderNotAvailable (5) or
+     * NotLeaderForPartition (6) in between, so the request is repeated while that is the case.
+     *
      * @param list<string> $values Values of the records to append
      */
     private function produce(int $partition, array $values, int $codec = CompressionCodec::NONE): void
     {
         $records    = array_map(static fn(string $value): Record => new Record($value), $values);
         $messageSet = MessageSet::fromRecords($records, $codec);
+        $deadline   = microtime(true) + self::TOPIC_TIMEOUT;
 
-        $stream = $this->connect();
-        new ProduceRequest(
-            [$this->topic => [$partition => $messageSet]],
-            1,
-            self::PRODUCE_TIMEOUT_MS,
-            self::CLIENT_ID,
-            1
-        )->writeTo($stream);
+        do {
+            $stream = $this->connect();
+            new ProduceRequest(
+                [$this->topic => [$partition => $messageSet]],
+                1,
+                self::PRODUCE_TIMEOUT_MS,
+                self::CLIENT_ID,
+                1
+            )->writeTo($stream);
 
-        $response = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition];
-        if ($response->errorCode !== 0) {
-            throw KafkaException::fromCode(
-                $response->errorCode,
-                ['topic' => $this->topic, 'partitionId' => $partition]
-            );
-        }
+            $errorCode = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+            if ($errorCode === 0) {
+                return;
+            }
+            if (!in_array($errorCode, self::NOT_SERVABLE_YET, true)) {
+                throw KafkaException::fromCode($errorCode, ['topic' => $this->topic, 'partitionId' => $partition]);
+            }
+            usleep(self::RETRY_BACKOFF_MICROSECONDS);
+        } while (microtime(true) < $deadline);
+
+        self::fail(sprintf(
+            'The partition %s-%d still answered with the error code %d after %.0f seconds',
+            $this->topic,
+            $partition,
+            $errorCode,
+            self::TOPIC_TIMEOUT
+        ));
     }
 
     /**
