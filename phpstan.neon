@@ -1,0 +1,10 @@
+parameters:
+    level: 0
+    paths:
+        - src
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        -
+            message: '#Unsafe usage of new static\(\)#'
+            path: src/Kafka/Common/RestorableTrait.php
+            reportUnmatched: false

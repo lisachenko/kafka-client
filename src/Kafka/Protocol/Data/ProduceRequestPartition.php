@@ -13,11 +13,11 @@ declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Utils\ByteUtils;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
-use Protocol\Kafka\Common\Record\RecordBatch;
 
 /**
  * Produce request Topic-Partition DTO

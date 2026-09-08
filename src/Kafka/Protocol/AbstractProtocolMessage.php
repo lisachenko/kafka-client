@@ -13,8 +13,8 @@ declare (strict_types=1);
 
 namespace Protocol\Kafka\Protocol;
 
-
 use Protocol\Kafka\IO\Stream;
+
 /**
  * Kafka record class
  */

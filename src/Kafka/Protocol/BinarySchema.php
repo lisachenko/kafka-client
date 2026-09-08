@@ -19,9 +19,9 @@ use function is_string;
 use function key;
 
 use Protocol\Kafka\Common\Utils\ByteUtils;
+use Protocol\Kafka\IO\Stream;
 use ReflectionClass;
 use RuntimeException;
-use Protocol\Kafka\IO\Stream;
 
 use function strlen;
 
