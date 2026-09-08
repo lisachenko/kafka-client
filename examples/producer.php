@@ -103,6 +103,12 @@ foreach ($producer->partitionsFor($topic) as $partitionMetadata) {
 
 $onSuccess = static function (RecordMetadata $metadata): void {
     echo "  stored {$metadata}\n";
+
+    // A broker with a `producer_byte_rate` quota for this client id delays its answer instead of rejecting the
+    // batch, and reports that delay in the Produce v1 response; without a quota this is always 0
+    if ($metadata->throttleTimeMs > 0) {
+        echo "    the broker throttled this batch for {$metadata->throttleTimeMs} ms\n";
+    }
 };
 $onFailure = static function (\Throwable $error): void {
     echo '  failed: ' . $error->getMessage() . "\n";
