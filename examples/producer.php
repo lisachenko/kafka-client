@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Produces a handful of records to a topic of a Kafka 0.8.2.2 cluster.
+ * Produces a handful of records to a topic of a Kafka 0.9.0.1 cluster.
  *
  * Run it against the broker of the development environment:
  *
@@ -139,5 +139,5 @@ try {
 }
 
 echo "Done. Read the records back with the console consumer of the broker container:\n";
-echo "  docker exec kafka08 /opt/kafka/bin/kafka-console-consumer.sh --zookeeper localhost:2181"
+echo "  docker exec kafka-0-9-0-1 /opt/kafka/bin/kafka-console-consumer.sh --zookeeper localhost:2181"
     . " --topic {$topic} --from-beginning --max-messages 12\n";

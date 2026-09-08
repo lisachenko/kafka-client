@@ -20,7 +20,7 @@ use Protocol\Kafka\Tests\Fixture\BrokerRecord;
 use Protocol\Kafka\Tests\Fixture\ClusterReadinessProbe;
 
 /**
- * Base class for the tests that talk to a real Kafka 0.8.2.2 broker.
+ * Base class for the tests that talk to a real Kafka 0.9.0.1 broker.
  *
  * The whole suite is skipped unless the KAFKA_BOOTSTRAP_SERVERS environment variable points at a running broker,
  * e.g. the one started by `docker compose up`:

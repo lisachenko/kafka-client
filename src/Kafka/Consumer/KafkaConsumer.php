@@ -691,7 +691,7 @@ class KafkaConsumer
         $result = [];
         foreach ($fetchedPartitions as $topic => $partitions) {
             foreach ($partitions as $partitionId => $fetchedPartition) {
-                // A 0.8.2.2 broker fills the answer up to MaxBytes without guaranteeing that one message fits, so
+                // A 0.9.0.1 broker fills the answer up to MaxBytes without guaranteeing that one message fits, so
                 // a partition whose next message is bigger would come back empty forever
                 if ($fetchedPartition->isSingleMessageTooLarge()) {
                     throw new RecordTooLargeException(

@@ -45,7 +45,7 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
     /**
      * Maximum number of bytes of the message set that the broker may put into the response for this partition.
      *
-     * A 0.8.2.2 broker answers with an empty message set when the first message at `fetchOffset` is bigger than this
+     * A 0.9.0.1 broker answers with an empty message set when the first message at `fetchOffset` is bigger than this
      * limit; the guaranteed progress of the later protocol versions does not exist yet.
      */
     public int $maxBytes;

@@ -53,3 +53,9 @@ vendor/bin/phpunit --testsuite compliance
 To add a vector: capture the frame from a broker (`docker compose up -d` starts one), add an entry here with the
 values it decodes into, and add the annotated dump to the "Wire vectors" section of the protocol document with an
 `<!-- vector: <id> -->` marker in front of it. Both suites fail until the two halves agree.
+
+A **new api** needs a new file plus one data provider and one test method in `ProtocolVectorTest`. The provider is
+named after the file it reads - `offsetCommitVectors()` reads `offset-commit.json` - and returns
+`VectorFile::provideFor(__FUNCTION__)`; `testEveryVectorFileIsReplayed()` derives the list of covered apis from
+those providers, so nothing has to be added to a shared list and two tickets that capture vectors at the same time
+do not conflict.

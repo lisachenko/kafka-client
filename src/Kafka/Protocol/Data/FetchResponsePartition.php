@@ -98,7 +98,7 @@ class FetchResponsePartition implements BinarySchemaInterface
     /**
      * Tells whether a single message of this partition is bigger than the MaxBytes that were asked for.
      *
-     * A 0.8.2.2 broker cuts the message set off at `MaxBytes` and does not guarantee any progress, unlike the later
+     * A 0.9.0.1 broker cuts the message set off at `MaxBytes` and does not guarantee any progress, unlike the later
      * protocol versions: when the message at `FetchOffset` is bigger than that limit, the partition comes back
      * without an error and with a message set that holds no complete message at all - either nothing or the first
      * bytes of that one message - while its high water mark shows that there is something to read. A consumer that

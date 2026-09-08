@@ -136,7 +136,8 @@ if ($shouldProduce) {
 
 $consumer = new KafkaConsumer($configuration);
 
-// Kafka 0.8 assigns nothing on its own: pick the partitions to read, here simply all of them
+// assign() picks the partitions to read by hand - here simply all of them - and joins no group at all;
+// examples/consumer-group.php is the same example with the broker-side group membership of Kafka 0.9
 $partitionIds = array_keys($consumer->partitionsFor($topic));
 sort($partitionIds);
 $consumer->assign([$topic => $partitionIds]);

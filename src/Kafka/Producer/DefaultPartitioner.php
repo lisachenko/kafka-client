@@ -34,7 +34,7 @@ use Protocol\Kafka\Common\PartitionMetadata;
  * record produced by this client therefore lands in the same partition as a record produced with the same key by
  * the official Java client, and log compaction and partition-local ordering keep working across both.
  *
- * @see kafka.common.utils.Utils#murmur2 @ 0.8.2.2 (clients/src/main/java/org/apache/kafka/common/utils/Utils.java)
+ * @see kafka.common.utils.Utils#murmur2 @ 0.9.0.1 (clients/src/main/java/org/apache/kafka/common/utils/Utils.java)
  */
 class DefaultPartitioner implements PartitionerInterface
 {

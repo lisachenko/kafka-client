@@ -17,7 +17,7 @@ namespace Protocol\Kafka\Consumer;
  * The committed position of a topic-partition, together with the metadata the client keeps next to it.
  *
  * The metadata is opaque to the broker: it stores the string and hands it back with the next OffsetFetch. Kafka
- * 0.8.2.2 rejects a commit whose metadata is longer than `offset.metadata.max.bytes` (4096 by default) with the
+ * 0.9.0.1 rejects a commit whose metadata is longer than `offset.metadata.max.bytes` (4096 by default) with the
  * error code 12, OffsetMetadataTooLarge.
  */
 final class OffsetAndMetadata implements \Stringable

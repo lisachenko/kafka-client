@@ -37,7 +37,7 @@ namespace Protocol\Kafka\Tests\Fixture;
 final class SpecMessageSet
 {
     /**
-     * Magic byte of the only message format that Kafka 0.8.2.2 knows
+     * Magic byte of the only message format that Kafka 0.9.0.1 knows
      */
     public const int MAGIC_BYTE_V0 = 0;
 

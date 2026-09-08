@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * Tests the way the AdminClient maps the answers of a broker onto its return values.
  *
  * The canned answers are the documented wire vectors of `docs/protocol/vectors`, i.e. frames that a real Kafka
- * 0.8.2.2 broker sent, replayed by a scripted broker connection - so this suite and the compliance suite cannot
+ * broker sent, replayed by a scripted broker connection - so this suite and the compliance suite cannot
  * disagree about what a broker says. The scripted connection echoes the correlation id of each request the way a
  * broker does, which is what the client validates the answer against.
  *

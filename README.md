@@ -319,6 +319,9 @@ client that bootstraps over TLS therefore learns the TLS endpoints of the whole 
 keeps talking TLS to every broker it discovers; one that bootstraps in plaintext learns the
 plaintext ones. The two never mix, and there is no way to ask one listener about another.
 
+[examples/ssl.php](examples/ssl.php) produces and consumes over the SSL listener of `docker-compose.yml`, whose
+self-signed certificate is checked in as `docker/kafka-0.9.0.1/ssl/broker.crt`.
+
 **SASL is out of scope on this branch.** Kafka 0.9 does have SASL, but only GSSAPI (Kerberos)
 and it is negotiated *outside* the Kafka protocol: the broker expects the raw token exchange on
 a freshly opened connection, with no request to introduce it. The `SaslHandshake` request that
@@ -330,7 +333,7 @@ Supported Kafka protocol versions
 ----------------------------------
 
 This branch tracks the **Kafka 0.9.0.1** wire protocol. `main` tracks Kafka 0.11; the frozen
-protocol snapshots of the other lines live on `0.10.x` (Kafka 0.10.0), this branch, `0.9.x`,
+protocol snapshots of the other lines live on `0.10.x` (Kafka 0.10.x), this branch, `0.9.x`,
 and `0.8.x` (Kafka 0.8.2.2).
 
 Kafka 0.9 has no ApiVersions request, so the versions below are not something a broker can be
@@ -339,23 +342,23 @@ a real 0.9.0.1 broker (`tests/Integration/ApiVersionProbeTest.php`).
 
 | Api key | API                | Versions in 0.9.0.1 | Client-facing | Implemented                |
 |---------|--------------------|---------------------|---------------|----------------------------|
-| 0       | Produce            | v0, v1              | yes           | v0; v1 in wave 1 (#27)     |
-| 1       | Fetch              | v0, v1              | yes           | v0; v1 in wave 1 (#27)     |
+| 0       | Produce            | v0, v1              | yes           | v0, v1                     |
+| 1       | Fetch              | v0, v1              | yes           | v0, v1                     |
 | 2       | Offsets            | v0                  | yes           | yes                        |
 | 3       | Metadata           | v0                  | yes           | yes                        |
 | 4       | LeaderAndIsr       | v0                  | broker→broker | no                         |
 | 5       | StopReplica        | v0                  | broker→broker | no                         |
 | 6       | UpdateMetadata     | v0, v1              | broker→broker | no                         |
-| 7       | ControlledShutdown | v0, v1              | controller    | v0; v1 in wave 1 (#27)     |
-| 8       | OffsetCommit       | v0, v1, v2          | yes           | v0, v1; v2 in wave 1 (#27) |
+| 7       | ControlledShutdown | v0, v1              | controller    | v0, v1                     |
+| 8       | OffsetCommit       | v0, v1, v2          | yes           | v0, v1, v2                 |
 | 9       | OffsetFetch        | v0, v1              | yes           | yes                        |
 | 10      | GroupCoordinator   | v0                  | yes           | yes                        |
-| 11      | JoinGroup          | v0                  | yes           | wave 2 (#28)               |
-| 12      | Heartbeat          | v0                  | yes           | wave 2 (#28)               |
-| 13      | LeaveGroup         | v0                  | yes           | wave 2 (#28)               |
-| 14      | SyncGroup          | v0                  | yes           | wave 2 (#28)               |
-| 15      | DescribeGroups     | v0                  | yes           | wave 2 (#29)               |
-| 16      | ListGroups         | v0                  | yes           | wave 2 (#29)               |
+| 11      | JoinGroup          | v0                  | yes           | yes                        |
+| 12      | Heartbeat          | v0                  | yes           | yes                        |
+| 13      | LeaveGroup         | v0                  | yes           | yes                        |
+| 14      | SyncGroup          | v0                  | yes           | yes                        |
+| 15      | DescribeGroups     | v0                  | yes           | yes                        |
+| 16      | ListGroups         | v0                  | yes           | yes                        |
 
 Everything a later Kafka added is missing here, by design:
 
@@ -365,6 +368,8 @@ Everything a later Kafka added is missing here, by design:
 | ApiVersions (key 18)                           | 0.10       | no — the api surface is probed, not asked for     |
 | CreateTopics / DeleteTopics                    | 0.10.1     | no — topics are created through ZooKeeper         |
 | Metadata v1 (`ControllerId`, broker `Rack`)    | 0.10       | no — Metadata v0 only                             |
+| Metadata v2 (`ClusterId`)                      | 0.10.1     | no — Metadata v0 only                             |
+| Fetch v3 (`MaxBytes` for the whole request)    | 0.10.1     | no — the per-partition limit only                 |
 | Message format v1 with a timestamp, LZ4        | 0.10       | no — message format v0, gzip and snappy only      |
 | Offsets by timestamp (Offsets v1)              | 0.10.1     | no — the segment-based v0 only                    |
 | JoinGroup v1 (`RebalanceTimeout`)              | 0.10.1     | no — JoinGroup v0 only                            |
@@ -417,11 +422,13 @@ The suite is split in three:
 vendor/bin/phpunit --testsuite unit          # pure unit tests, no broker
 vendor/bin/phpunit --testsuite compliance    # replays the documented wire vectors
 
-docker compose up -d                         # Kafka 0.9.0.1, broker on 127.0.0.1:9092
+docker compose up -d                         # Kafka 0.9.0.1: PLAINTEXT 9092, SSL 9093
 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 vendor/bin/phpunit --testsuite integration
 ```
 
-The integration suite is skipped unless `KAFKA_BOOTSTRAP_SERVERS` points at a running broker.
+The integration suite is skipped unless `KAFKA_BOOTSTRAP_SERVERS` points at a running broker; the
+tests of the SSL transport use the listener of `KAFKA_SSL_BOOTSTRAP_SERVERS` (`127.0.0.1:9093` by
+default) and the certificate the broker container was built with.
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or
 accepted — through the request and response classes and checks that the annotated dumps of

@@ -151,7 +151,7 @@ final class ConnectionFactoryTest extends TestCase
     {
         ConnectionFactory::useStreamFactory(null);
 
-        // Kafka 0.8.2.2 has no transport security at all, a connection is always a plain TCP socket
+        // Without `security.protocol = SSL` a connection is a plain TCP socket, as on every broker before Kafka 0.9
         self::assertInstanceOf(SocketStream::class, ConnectionFactory::open('tcp://127.0.0.1:9092'));
     }
 }

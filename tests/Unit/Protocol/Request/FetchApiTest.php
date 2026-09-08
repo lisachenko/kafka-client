@@ -214,7 +214,7 @@ final class FetchApiTest extends TestCase
 
     public function testMessageSetWithoutASingleCompleteMessageIsReportedAsAnOversizedMessage(): void
     {
-        // What a 0.8.2.2 broker really answers when MaxBytes is smaller than the message: its first bytes only
+        // What a 0.9.0.1 broker really answers when MaxBytes is smaller than the message: its first bytes only
         $firstBytesOnly = substr(self::MESSAGE_SET_HEX, 0, 2 * 20);
 
         $response  = FetchResponse::unpack(new StringStream(self::responseFrame($firstBytesOnly, 0, 0, 2)));
