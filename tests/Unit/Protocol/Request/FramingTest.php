@@ -19,12 +19,14 @@ use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\EmptyResponse;
-use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\StubRequest;
-use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\StubResponse;
+use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\LegacyResponse;
+use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\SchemaMetadataRequest;
+use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\SchemaMetadataResponse;
 
 /**
  * Byte-exact tests for the request and response framing.
@@ -37,7 +39,7 @@ use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\StubResponse;
 final class FramingTest extends TestCase
 {
     /**
-     * MetadataRequest v0, correlation id 1, client id "test", empty topic list.
+     * Metadata request v0, correlation id 1, client id "test", empty topic list.
      *
      *   Size          => 00 00 00 12 (18 bytes)
      *   ApiKey        => 00 03
@@ -55,25 +57,48 @@ final class FramingTest extends TestCase
 
     public function testRequestHeaderIsPackedAccordingToTheSpec(): void
     {
-        $request = new MetadataRequest([], 'test', 1);
+        $request = new SchemaMetadataRequest([], 'test', 1);
 
         self::assertSame(self::METADATA_REQUEST_HEX, bin2hex((string) $request));
     }
 
     public function testRequestIsWrittenToTheStreamPrefixedWithItsSize(): void
     {
-        $buffer  = '';
-        $stream  = new StringStream($buffer);
-        $request = new MetadataRequest([], 'test', 1);
+        $stream  = new StringStream();
+        $request = new SchemaMetadataRequest([], 'test', 1);
         $request->writeTo($stream);
 
-        self::assertSame(self::METADATA_REQUEST_HEX, bin2hex($buffer));
+        self::assertSame(self::METADATA_REQUEST_HEX, bin2hex($stream->getBuffer()));
+        // Size counts everything that follows it: the 18 bytes of header and body, not the size field
+        self::assertSame(18, $request->getMessageSize());
     }
 
-    public function testTypedBodyContractProducesTheSameBytesAsTheLegacyOne(): void
+    public function testRequestSchemeDescribesTheHeaderOfTheSpec(): void
+    {
+        self::assertSame(
+            [
+                'messageSize'   => BinarySchema::TYPE_INT32,
+                'apiKey'        => BinarySchema::TYPE_INT16,
+                'apiVersion'    => BinarySchema::TYPE_INT16,
+                'correlationId' => BinarySchema::TYPE_INT32,
+                'clientId'      => BinarySchema::TYPE_STRING,
+            ],
+            AbstractRequest::getScheme()
+        );
+    }
+
+    public function testSubclassSchemeExtendsTheHeaderOfTheParent(): void
+    {
+        $scheme = SchemaMetadataRequest::getScheme();
+
+        self::assertSame(array_keys(AbstractRequest::getScheme()), array_slice(array_keys($scheme), 0, 5));
+        self::assertSame([BinarySchema::TYPE_STRING], $scheme['topics']);
+    }
+
+    public function testSchemaDrivenRequestProducesTheSameBytesAsTheLegacyOne(): void
     {
         $legacy = new MetadataRequest([], 'test', 1);
-        $typed  = new StubRequest([], 'test', 1);
+        $typed  = new SchemaMetadataRequest([], 'test', 1);
 
         self::assertSame(bin2hex((string) $legacy), bin2hex((string) $typed));
         self::assertSame(ApiKeys::METADATA, $typed->getApiKey());
@@ -84,7 +109,7 @@ final class FramingTest extends TestCase
 
     public function testRequestBodyIsWrittenAfterTheHeader(): void
     {
-        $request = new StubRequest(['foo'], '', 0);
+        $request = new SchemaMetadataRequest(['foo'], '', 0);
 
         self::assertSame(
             '00000013'
@@ -99,7 +124,7 @@ final class FramingTest extends TestCase
 
     public function testEmptyClientIdIsWrittenAsAnEmptyStringNotAsNull(): void
     {
-        $request = new MetadataRequest([], '', 7);
+        $request = new SchemaMetadataRequest([], '', 7);
 
         self::assertSame(
             '0000000e' . '0003' . '0000' . '00000007' . '0000' . '00000000',
@@ -109,8 +134,8 @@ final class FramingTest extends TestCase
 
     public function testCorrelationIdIsTakenFromTheCallerAndNotFromAHiddenCounter(): void
     {
-        $first  = new MetadataRequest([], 'test', 42);
-        $second = new MetadataRequest([], 'test', 42);
+        $first  = new SchemaMetadataRequest([], 'test', 42);
+        $second = new SchemaMetadataRequest([], 'test', 42);
 
         self::assertSame(42, $first->getCorrelationId());
         self::assertSame(42, $second->getCorrelationId());
@@ -125,38 +150,67 @@ final class FramingTest extends TestCase
         self::assertSame($first + 1, $second);
     }
 
-    public function testResponseHeaderIsUnpackedAccordingToTheSpec(): void
+    public function testResponseSchemeDescribesTheHeaderOfTheSpec(): void
     {
-        // Size = 12 bytes: CorrelationId + ErrorCode + TopicName
-        $frame = hex2bin('0000000c' . '00000001' . '0003' . '0004' . '74657374');
+        self::assertSame(
+            [
+                'messageSize'   => BinarySchema::TYPE_INT32,
+                'correlationId' => BinarySchema::TYPE_INT32,
+            ],
+            AbstractResponse::getScheme()
+        );
+    }
 
-        $response = StubResponse::unpackFrom(StringStream::fromString($frame));
+    public function testResponseIsUnpackedThroughItsScheme(): void
+    {
+        // Size = 29: CorrelationId + [Broker] with one entry (nodeId, "127.0.0.1", port) + ErrorCode
+        $frame = hex2bin(
+            '0000001d'
+            . '00000001'
+            . '00000001' . '00000000' . '0009' . bin2hex('127.0.0.1') . '00002384'
+            . '0000'
+        );
+
+        $response = SchemaMetadataResponse::unpack(new StringStream($frame));
 
         self::assertSame(1, $response->getCorrelationId());
-        self::assertSame(3, $response->errorCode);
-        self::assertSame('test', $response->topic);
+        self::assertSame([0], array_keys($response->brokers));
+        self::assertSame('127.0.0.1', $response->brokers[0]->host);
+        self::assertSame(9092, $response->brokers[0]->port);
+        self::assertSame(0, $response->errorCode);
     }
 
     public function testResponseBodyIsBoundedByTheAnnouncedSize(): void
     {
-        $frame  = hex2bin('0000000c' . '00000001' . '0003' . '0004' . '74657374');
-        $stream = StringStream::fromString($frame . 'trailing bytes');
+        $frame  = hex2bin('00000006' . '00000001' . '0003');
+        $stream = new StringStream($frame . 'trailing bytes');
 
-        StubResponse::unpackFrom($stream);
+        $response = LegacyResponse::unpack($stream);
 
+        self::assertSame(1, $response->getCorrelationId());
+        self::assertSame(3, $response->errorCode);
         self::assertSame('trailing bytes', $stream->readRaw(14));
+    }
+
+    public function testResponseClassesThatStillParseByHandKeepWorking(): void
+    {
+        $response = LegacyResponse::unpack(new StringStream(hex2bin('00000006' . '0000002a' . 'fffb')));
+
+        self::assertSame(42, $response->getCorrelationId());
+        self::assertSame(65531, $response->errorCode, 'the legacy hook unpacks "n" itself, unsigned as before');
     }
 
     public function testResponseWithoutABodyOnlyCarriesTheCorrelationId(): void
     {
-        $response = EmptyResponse::unpackFrom(StringStream::fromString(hex2bin('00000004' . '0000002a')));
+        $response = EmptyResponse::unpack(new StringStream(hex2bin('00000004' . '0000002a')));
 
         self::assertSame(42, $response->getCorrelationId());
+        self::assertSame(4, $response->getMessageSize());
     }
 
-    public function testTruncatedResponseSizeIsRejected(): void
+    public function testOversizedFrameIsRejected(): void
     {
         $this->expectException(NetworkException::class);
-        StubResponse::unpackFrom(StringStream::fromString(hex2bin('00000003')));
+        EmptyResponse::unpack(new StringStream(hex2bin('7fffffff')));
     }
 }

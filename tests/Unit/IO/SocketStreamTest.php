@@ -87,14 +87,28 @@ final class SocketStreamTest extends TestCase
     public function testConnectionTimeoutIsAFloatAndDoesNotFatalOnPhp84(): void
     {
         // The default connection timeout comes from the default_socket_timeout ini setting, which ini_get() returns
-        // as a string; stream_socket_client() declares a float parameter and would fail under strict_types.
+        // as a string, while stream_socket_client() declares a float parameter.
         $stream = $this->connectStream();
 
         $this->writeToClient('kafka');
         self::assertSame('kafka', $stream->readRaw(5));
     }
 
-    public function testReadRawKeepsAccumulatingPartiallyDeliveredData(): void
+    public function testIsConnectedReflectsTheStateOfTheUnderlyingSocket(): void
+    {
+        $address = stream_socket_get_name($this->server, false);
+        $stream  = new SocketStream("tcp://{$address}", [], 1.0);
+
+        self::assertFalse($stream->isConnected(), 'The socket is opened lazily on the first read or write');
+
+        $this->stream = $stream;
+        $this->forceConnect($stream);
+
+        self::assertTrue($stream->isConnected());
+        self::assertSame(['host', 'port'], array_keys($stream->__debugInfo()));
+    }
+
+    public function testReadKeepsAccumulatingPartiallyDeliveredData(): void
     {
         $stream = $this->connectStream([ClientConfig::REQUEST_TIMEOUT_MS => 200]);
 
@@ -113,7 +127,7 @@ final class SocketStreamTest extends TestCase
         }
     }
 
-    public function testReadRawReturnsExactlyTheRequestedAmountOfBytes(): void
+    public function testReadReturnsExactlyTheRequestedAmountOfBytes(): void
     {
         $stream = $this->connectStream();
 
@@ -153,8 +167,7 @@ final class SocketStreamTest extends TestCase
             $stream->readInt32();
             self::fail('A read from a silent server is expected to time out');
         } catch (NetworkException $exception) {
-            $context = $exception->getContext();
-            self::assertSame('Timeout while reading from the stream', $context['error']);
+            self::assertSame('Timeout while reading from the stream', $exception->getContext()['error']);
         }
         self::assertGreaterThanOrEqual(0.15, microtime(true) - $startedAt);
     }
@@ -163,27 +176,25 @@ final class SocketStreamTest extends TestCase
     {
         $stream = $this->connectStream();
 
-        $stream->writeInt16(3);
-        $stream->writeInt16(0);
+        $stream->write('nn', 3, 0);
         $stream->writeInt32(1);
         $stream->writeString('test');
 
-        $this->acceptConnection();
         self::assertSame('0003' . '0000' . '00000001' . '0004' . '74657374', $this->readFromServer(14));
     }
 
-    public function testTypedPrimitivesAreReadFromTheSocket(): void
+    public function testPrimitivesAreReadFromTheSocket(): void
     {
         $stream = $this->connectStream();
 
-        $this->writeToClient(hex2bin('ff' . 'fffe' . 'ffffffff' . 'ffffffffffffffff' . 'ffff' . 'ffffffff'));
+        $this->writeToClient(hex2bin('ff' . 'fffe' . 'ffffffff' . 'ffffffffffffffff' . 'ffffffff' . '0004' . '74657374'));
 
         self::assertSame(-1, $stream->readInt8());
         self::assertSame(-2, $stream->readInt16());
         self::assertSame(-1, $stream->readInt32());
         self::assertSame(-1, $stream->readInt64());
-        self::assertNull($stream->readString());
-        self::assertNull($stream->readBytes());
+        self::assertNull($stream->readByteArray());
+        self::assertSame('test', $stream->readString());
     }
 
     /**
@@ -195,11 +206,27 @@ final class SocketStreamTest extends TestCase
     {
         $address      = stream_socket_get_name($this->server, false);
         $this->stream = new SocketStream("tcp://{$address}", $configuration, 1.0);
-        // Writing nothing still establishes the connection, so the server side can accept it
-        $this->stream->writeRaw('');
+        $this->forceConnect($this->stream);
         $this->acceptConnection();
 
         return $this->stream;
+    }
+
+    /**
+     * Opens the socket without sending anything, the same way the client does it for stream_select()
+     */
+    private function forceConnect(SocketStream $stream): void
+    {
+        $connector = \Closure::bind(
+            static function (SocketStream $socket): void {
+                if (!$socket->isConnected) {
+                    $socket->connect();
+                }
+            },
+            null,
+            SocketStream::class
+        );
+        $connector($stream);
     }
 
     private function acceptConnection(): void
@@ -225,6 +252,8 @@ final class SocketStreamTest extends TestCase
      */
     private function readFromServer(int $length): string
     {
+        $this->acceptConnection();
+
         $buffer = '';
         while (strlen($buffer) < $length) {
             $chunk = fread($this->connection, $length - strlen($buffer));
