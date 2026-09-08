@@ -1,0 +1,199 @@
+<?php
+
+/*
+ * This file is part of the lisachenko/kafka-client package.
+ *
+ * (c) Alexander Lisachenko <lisachenko.it@gmail.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
+
+namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
+
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\IO\StringStream;
+use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
+use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
+use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
+use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
+
+/**
+ * Byte-exact tests of the Produce API v0.
+ *
+ * <pre>
+ *   ProduceRequest  => RequiredAcks int16 Timeout int32 [TopicName [Partition int32 MessageSetSize int32 MessageSet]]
+ *   ProduceResponse => [TopicName [Partition int32 ErrorCode int16 Offset int64]]
+ * </pre>
+ *
+ * The message sets are built by {@see SpecMessageSet} directly from the specification, so that the request classes
+ * are never checked against bytes they produced themselves.
+ *
+ * @see docs/protocol/0.8.2.md, sections "Produce API (key 0, v0)" and "MessageSet and Message"
+ */
+#[CoversClass(ProduceRequest::class)]
+#[CoversClass(ProduceResponse::class)]
+#[CoversClass(ProduceRequestTopic::class)]
+#[CoversClass(ProduceRequestPartition::class)]
+#[CoversClass(ProduceResponseTopic::class)]
+#[CoversClass(ProduceResponsePartition::class)]
+final class ProduceApiTest extends TestCase
+{
+    /**
+     * One message set with a single message: no key, value "hello", offset 0.
+     *
+     *   Offset      => 00 00 00 00 00 00 00 00
+     *   MessageSize => 00 00 00 13 (19 bytes)
+     *   Crc         => 87 a7 7a b2 (CRC-32 of "MagicByte Attributes Key Value")
+     *   MagicByte   => 00, Attributes => 00
+     *   Key         => ff ff ff ff (null)
+     *   Value       => 00 00 00 05 "hello"
+     */
+    private const string HELLO_MESSAGE_SET_HEX = '0000000000000000' . '00000013'
+        . '87a77ab2' . '00' . '00' . 'ffffffff' . '00000005' . '68656c6c6f';
+
+    /**
+     * Header of a produce request for the topic "orders", client id "test", correlation id 5, timeout 1000 ms.
+     *
+     *   Size          => 00 00 00 4b (75 bytes)
+     *   ApiKey        => 00 00 (Produce), ApiVersion => 00 00
+     *   CorrelationId => 00 00 00 05, ClientId => 00 04 "test"
+     */
+    private const string REQUEST_HEADER_HEX = '0000004b' . '0000' . '0000' . '00000005' . '0004' . '74657374';
+
+    /**
+     * Everything after RequiredAcks: Timeout, one topic "orders" and its partition 0 with the message set above
+     */
+    private const string REQUEST_BODY_HEX = '000003e8'
+        . '00000001' . '0006' . '6f7264657273'
+        . '00000001' . '00000000' . '0000001f' . self::HELLO_MESSAGE_SET_HEX;
+
+    public function testMessageSetOfTheFixtureFollowsTheSpecification(): void
+    {
+        self::assertSame(
+            self::HELLO_MESSAGE_SET_HEX,
+            bin2hex(SpecMessageSet::of([[null, 'hello']]))
+        );
+    }
+
+    public function testRequestWithAcksOneWaitsForTheLocalLogOfTheLeader(): void
+    {
+        $request = $this->createRequest(1);
+
+        self::assertSame(
+            self::REQUEST_HEADER_HEX . '0001' . self::REQUEST_BODY_HEX,
+            bin2hex((string) $request)
+        );
+        self::assertTrue($request->expectsResponse());
+    }
+
+    public function testRequestWithAcksMinusOneWaitsForAllInSyncReplicas(): void
+    {
+        $request = $this->createRequest(-1);
+
+        self::assertSame(
+            self::REQUEST_HEADER_HEX . 'ffff' . self::REQUEST_BODY_HEX,
+            bin2hex((string) $request)
+        );
+        self::assertTrue($request->expectsResponse());
+    }
+
+    public function testRequestWithAcksZeroIsNeverAnsweredByTheBroker(): void
+    {
+        $request = $this->createRequest(0);
+
+        self::assertSame(
+            self::REQUEST_HEADER_HEX . '0000' . self::REQUEST_BODY_HEX,
+            bin2hex((string) $request)
+        );
+        self::assertFalse($request->expectsResponse(), 'acks = 0 is the only request that the broker does not answer');
+        self::assertSame(0, $request->getRequiredAcks());
+    }
+
+    public function testMessageSetIsCarriedAsAnOpaqueByteArrayOfAnyStringable(): void
+    {
+        // The message set of T3 is a Stringable, the request only prefixes its bytes with their int32 size
+        $messageSet = new class (SpecMessageSet::of([[null, 'hello']])) implements \Stringable {
+            public function __construct(private readonly string $buffer) {}
+
+            public function __toString(): string
+            {
+                return $this->buffer;
+            }
+        };
+
+        $request = new ProduceRequest(['orders' => [0 => $messageSet]], 1, 1000, 'test', 5);
+
+        self::assertSame(self::REQUEST_HEADER_HEX . '0001' . self::REQUEST_BODY_HEX, bin2hex((string) $request));
+    }
+
+    public function testRequestPacksEveryTopicPartitionOfTheBatch(): void
+    {
+        $request = new ProduceRequest(
+            [
+                'orders' => [
+                    0 => SpecMessageSet::of([[null, 'hello']]),
+                    2 => SpecMessageSet::of([['key', 'world']]),
+                ],
+            ],
+            1,
+            1000,
+            'test',
+            5
+        );
+
+        //   Size => 00 00 00 75 (117 bytes), then the header, RequiredAcks 1, Timeout 1000, one topic with the
+        //   partitions 0 and 2; the second message set carries the key "key" and the value "world"
+        self::assertSame(
+            '00000075' . '0000' . '0000' . '00000005' . '0004' . '74657374'
+            . '0001' . '000003e8'
+            . '00000001' . '0006' . '6f7264657273' . '00000002'
+            . '00000000' . '0000001f' . self::HELLO_MESSAGE_SET_HEX
+            . '00000002' . '00000022'
+            . '0000000000000000' . '00000016'
+            . '04568840' . '00' . '00' . '00000003' . '6b6579' . '00000005' . '776f726c64',
+            bin2hex((string) $request)
+        );
+    }
+
+    public function testResponseReportsTheBaseOffsetAndTheErrorOfEveryPartition(): void
+    {
+        //   Size => 00 00 00 30 (48), CorrelationId => 3, one topic "orders" with two partitions:
+        //   partition 0 => no error, base offset 42; partition 1 => error 6 (NotLeaderForPartition), offset -1
+        $frame = hex2bin(
+            '00000030' . '00000003'
+            . '00000001' . '0006' . '6f7264657273' . '00000002'
+            . '00000000' . '0000' . '000000000000002a'
+            . '00000001' . '0006' . 'ffffffffffffffff'
+        );
+
+        $response = ProduceResponse::unpack(new StringStream($frame));
+
+        self::assertSame(3, $response->getCorrelationId());
+        self::assertSame(['orders'], array_keys($response->topics));
+
+        $partitions = $response->topics['orders']->partitions;
+        self::assertSame([0, 1], array_keys($partitions));
+        self::assertSame(0, $partitions[0]->errorCode);
+        self::assertSame(42, $partitions[0]->baseOffset);
+        self::assertSame(6, $partitions[1]->errorCode, 'NotLeaderForPartition');
+        self::assertSame(-1, $partitions[1]->baseOffset);
+    }
+
+    private function createRequest(int $requiredAcks): ProduceRequest
+    {
+        return new ProduceRequest(
+            ['orders' => [0 => SpecMessageSet::of([[null, 'hello']])]],
+            $requiredAcks,
+            1000,
+            'test',
+            5
+        );
+    }
+}
