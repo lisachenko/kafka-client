@@ -29,6 +29,13 @@ against a real one.
 - **All client-facing apis of Kafka 0.8.2.2**: Metadata v0, Produce v0, Fetch v0,
   Offsets (ListOffset) v0, GroupCoordinator v0, OffsetCommit v0 and v1, OffsetFetch v0 and v1,
   plus ControlledShutdown v0.
+- **Network client.** One connection per broker, opened on demand and kept open for the requests that follow
+  (`Network\ConnectionFactory`, `connections.max.idle.ms`); a correlation id on every request that is checked against
+  the answer (`Network\ResponseValidator`, `Errors\CorrelationIdMismatchException`), and a metadata refresh with
+  `retries`/`retry.backoff.ms` for the errors that one can cure - 3, 5, 6 and a dropped connection
+  (`Network\RetryPolicy`). A request that fans out over several partition leaders and only partly succeeds is
+  reported as a `Errors\TopicPartitionRequestException` carrying the partial result and the exception of each failed
+  topic-partition.
 - **Message set v0** (`Common\Record\{Record,Message,MessageSet,CompressionCodec,Snappy}`) with
   CRC-32 validation, gzip and snappy compression, unwrapping of compressed sets and silent
   dropping of the partial trailing message a broker is allowed to send.

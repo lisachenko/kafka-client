@@ -159,6 +159,35 @@ list until the controller has elected the leaders, so a client has to ask again.
 [examples/admin.php](examples/admin.php) runs all of it against the broker of
 `docker-compose.yml`.
 
+Network client
+--------------
+
+One connection per broker is opened on demand and kept open for the requests that follow, the way a Kafka connection
+is meant to be used: it is an ordered request/response channel, and every request carries a correlation id that the
+broker echoes back. The client generates that id, checks it on every answer and drops a connection whose answer does
+not match — its stream position would be unknown from then on. `Protocol\Kafka\Common\Node::closeConnections()`
+closes every connection of the process, which a long-running worker can call when it goes idle.
+
+Three options steer this:
+
+- `connections.max.idle.ms` — a cached connection that was unused for longer is re-opened instead of handed out, because
+  the broker closes idle connections on its side and a half-closed socket would only surface mid-request.
+- `metadata.max.age.ms` — how long the cluster metadata (and a `metadata.cache.file`, if configured) stays valid before
+  it is fetched again.
+- `retries` and `retry.backoff.ms` — how often a request that failed with something a metadata refresh can cure is
+  refreshed and sent again: the error codes 3 (UnknownTopicOrPartition, e.g. a topic that was only just auto-created),
+  5 (LeaderNotAvailable, an election is in progress) and 6 (NotLeaderForPartition, the cached leader moved), plus a
+  dropped connection. Every other error is final and reaches the caller straight away.
+
+A request that fans out over several partition leaders can fail for some partitions and succeed for others. That is
+reported as a `Common\Errors\TopicPartitionRequestException`, which carries both halves: `getPartialResult()` holds
+the topic-partitions that did work and `getExceptions()` the exception of each one that did not, indexed by topic and
+partition.
+
+The Admin API uses the same connections and the same correlation id checks; it does not retry, but every request that
+any broker can answer — Metadata, ControlledShutdown and the ZooKeeper-backed OffsetFetch v0 — is tried on the brokers
+of the cluster in turn until one of them answers.
+
 PHP-specific configuration
 ---------------------------
 

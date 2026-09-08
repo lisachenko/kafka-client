@@ -13,21 +13,26 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Admin;
 
+use Closure;
 use Exception;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
+use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicPartition;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Network\ConnectionFactory;
+use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
+use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -91,9 +96,11 @@ class AdminClient
      */
     public function findAllBrokers(): array
     {
-        $request = new MetadataRequest([], $this->clientId());
         /** @var MetadataResponse $response */
-        $response = $this->sendAnyNode($request, MetadataResponse::class);
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): MetadataRequest => new MetadataRequest([], $this->clientId(), $correlationId),
+            MetadataResponse::class
+        );
 
         return $response->brokers;
     }
@@ -142,9 +149,16 @@ class AdminClient
      */
     public function describeTopics(array $topics = []): array
     {
-        $request = new MetadataRequest(array_values($topics), $this->clientId());
+        $requestedTopics = array_values($topics);
         /** @var MetadataResponse $response */
-        $response = $this->sendAnyNode($request, MetadataResponse::class);
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): MetadataRequest => new MetadataRequest(
+                $requestedTopics,
+                $this->clientId(),
+                $correlationId
+            ),
+            MetadataResponse::class
+        );
 
         return $response->topics;
     }
@@ -183,10 +197,26 @@ class AdminClient
 
         $result = [];
         foreach ($this->groupByLeader($partitionTimes) as $nodeId => $nodePartitionTimes) {
-            $request  = new OffsetsRequest($nodePartitionTimes, $maxNumberOfOffsets, -1, $this->clientId());
-            $stream   = $this->cluster->nodeById($nodeId)->getConnection($this->configuration);
-            $request->writeTo($stream);
-            $response = OffsetsResponse::unpack($stream);
+            $leader = $this->cluster->nodeById($nodeId);
+            if ($leader === null) {
+                throw new AllBrokersNotAvailableException(
+                    ['nodeId' => $nodeId, 'error' => 'The cluster does not know the leader of these partitions']
+                );
+            }
+
+            /** @var OffsetsResponse $response */
+            $response = $this->sendTo(
+                $leader->getConnection($this->configuration),
+                fn(int $correlationId): OffsetsRequest => new OffsetsRequest(
+                    $nodePartitionTimes,
+                    $maxNumberOfOffsets,
+                    -1,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                OffsetsResponse::class,
+                ['node' => $nodeId]
+            );
 
             foreach ($response->topics as $topic => $topicResponse) {
                 /** @var OffsetsResponsePartition $partitionOffsets */
@@ -229,20 +259,23 @@ class AdminClient
      */
     public function listGroupOffsets(string $groupId, iterable $topicPartitions): array
     {
-        $partitions  = self::normalizeTopicPartitions($topicPartitions);
-        $isInKafka   = $this->isOffsetStorageKafka();
-        $request     = $isInKafka
-            ? new OffsetFetchRequest($groupId, $partitions, $this->clientId())
-            : new OffsetFetchRequestV0($groupId, $partitions, $this->clientId());
+        $partitions    = self::normalizeTopicPartitions($topicPartitions);
+        $isInKafka     = $this->isOffsetStorageKafka();
+        $createRequest = fn(int $correlationId): OffsetFetchRequest => $isInKafka
+            ? new OffsetFetchRequest($groupId, $partitions, $this->clientId(), $correlationId)
+            : new OffsetFetchRequestV0($groupId, $partitions, $this->clientId(), $correlationId);
 
-        if ($isInKafka) {
-            $stream = $this->findCoordinator($groupId)->getConnection($this->configuration);
-            $request->writeTo($stream);
-            $response = OffsetFetchResponse::unpack($stream);
-        } else {
-            /** @var OffsetFetchResponse $response */
-            $response = $this->sendAnyNode($request, OffsetFetchResponse::class);
-        }
+        /** @var OffsetFetchResponse $response */
+        $response = $isInKafka
+            // Version 1 reads the offsets out of __consumer_offsets, which only the coordinator of the group serves
+            ? $this->sendTo(
+                $this->findCoordinator($groupId)->getConnection($this->configuration),
+                $createRequest,
+                OffsetFetchResponse::class,
+                ['groupId' => $groupId]
+            )
+            // Version 0 reads them from ZooKeeper, which every broker of the cluster can answer
+            : $this->sendAnyNode($createRequest, OffsetFetchResponse::class);
 
         foreach ($response->topics as $topic => $topicResponse) {
             /** @var OffsetFetchResponsePartition $partition */
@@ -277,9 +310,12 @@ class AdminClient
      */
     public function controlledShutdown(int $brokerId): array
     {
-        $request = new ControlledShutdownRequest($brokerId);
         /** @var ControlledShutdownResponse $response */
-        $response = $this->sendAnyNode($request, ControlledShutdownResponse::class);
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): ControlledShutdownRequest
+                => new ControlledShutdownRequest($brokerId, $correlationId),
+            ControlledShutdownResponse::class
+        );
 
         if ($response->errorCode !== KafkaException::NO_ERROR) {
             throw KafkaException::fromCode($response->errorCode, ['brokerId' => $brokerId]);
@@ -289,32 +325,68 @@ class AdminClient
     }
 
     /**
-     * Sends a request to any node of the cluster and returns the first answer
+     * Sends a request to the nodes of the cluster until one of them answers
      *
-     * @param AbstractRequest $request       Request to send
-     * @param class-string<AbstractProtocolMessage> $responseClass Response class to unpack the answer with
+     * Every attempt builds its own request, because each of them carries its own correlation id.
+     *
+     * @param Closure(int): AbstractRequest  $createRequest Builds the request for a given correlation id
+     * @param class-string<AbstractResponse> $responseClass Response class to unpack the answer with
      *
      * @throws AllBrokersNotAvailableException If not a single broker of the cluster answered
      */
-    private function sendAnyNode(AbstractRequest $request, string $responseClass): AbstractProtocolMessage
+    private function sendAnyNode(Closure $createRequest, string $responseClass): AbstractResponse
     {
         $lastException = null;
         foreach ($this->cluster->nodes() as $node) {
             try {
-                $stream = $node->getConnection($this->configuration);
-                $request->writeTo($stream);
-
-                return $responseClass::unpack($stream);
+                return $this->sendTo(
+                    $node->getConnection($this->configuration),
+                    $createRequest,
+                    $responseClass,
+                    ['node' => $node->nodeId]
+                );
             } catch (Exception $exception) {
                 $lastException = $exception;
             }
         }
 
         throw new AllBrokersNotAvailableException(
-            ['request' => $request::class, 'error' => 'No broker of the cluster answered the request'],
+            ['response' => $responseClass, 'error' => 'No broker of the cluster answered the request'],
             KafkaException::UNKNOWN,
             $lastException
         );
+    }
+
+    /**
+     * Sends one request over the given connection and reads the answer that belongs to it
+     *
+     * Connections are kept open and shared between requests, so an answer is only accepted when it carries the
+     * correlation id of the request; a connection that answered something else has an unknown stream position and is
+     * dropped instead of being handed out again.
+     *
+     * @param Stream                         $stream        Connection to the broker
+     * @param Closure(int): AbstractRequest  $createRequest Builds the request for a given correlation id
+     * @param class-string<AbstractResponse> $responseClass Response class to unpack the answer with
+     * @param array<string, mixed>           $context       Additional context for an exception
+     *
+     * @throws CorrelationIdMismatchException If the broker answered a different request
+     */
+    private function sendTo(
+        Stream $stream,
+        Closure $createRequest,
+        string $responseClass,
+        array $context = []
+    ): AbstractResponse {
+        $correlationId = AbstractRequest::nextCorrelationId();
+        $createRequest($correlationId)->writeTo($stream);
+
+        try {
+            return ResponseValidator::read($responseClass, $stream, $correlationId, $context);
+        } catch (CorrelationIdMismatchException $exception) {
+            ConnectionFactory::closeStream($stream);
+
+            throw $exception;
+        }
     }
 
     /**
