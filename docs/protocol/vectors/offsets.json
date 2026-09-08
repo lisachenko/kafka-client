@@ -1,0 +1,118 @@
+{
+    "api": "offsets",
+    "apiKey": 2,
+    "section": "Offsets API (key 2, v0), a.k.a. ListOffset",
+    "description": "Wire vectors of the Offsets API (key 2, v0), a.k.a. ListOffset, replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "offsets.request.v0.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "Offsets request v0 asking for the latest offset (Time = -1) of one partition.",
+            "hex": "00000036000200000000000d0003743130ffffffff00000001000b7431302d766563746f72730000000100000000ffffffffffffffff00000001",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 2,
+                "apiVersion": 0,
+                "correlationId": 13,
+                "clientId": "t10",
+                "replicaId": -1,
+                "topicPartitions": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "timestamp": -1,
+                                "maxNumberOfOffsets": 1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v0.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Offsets response v0: the log end offset of the partition after two messages were produced into it.",
+            "hex": "0000002b0000000d00000001000b7431302d766563746f727300000001000000000000000000010000000000000002",
+            "fields": {
+                "messageSize": 43,
+                "correlationId": 13,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "offsets": [
+                                    2
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v0.earliest-unknown-partition",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "Offsets request v0 asking for the earliest offset (Time = -2) of a partition that the cluster does not host.",
+            "hex": "00000036000200000000000e0003743130ffffffff00000001000b7431302d766563746f72730000000100000063fffffffffffffffe00000001",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 2,
+                "apiVersion": 0,
+                "correlationId": 14,
+                "clientId": "t10",
+                "replicaId": -1,
+                "topicPartitions": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": {
+                            "99": {
+                                "partition": 99,
+                                "timestamp": -2,
+                                "maxNumberOfOffsets": 1
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v0.unknown-partition",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Offsets response v0 with the per-partition error code 3 (UnknownTopicOrPartition) and an empty offset array.",
+            "hex": "000000230000000e00000001000b7431302d766563746f72730000000100000063000300000000",
+            "fields": {
+                "messageSize": 35,
+                "correlationId": 14,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": {
+                            "99": {
+                                "partition": 99,
+                                "errorCode": 3,
+                                "offsets": []
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

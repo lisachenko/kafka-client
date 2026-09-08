@@ -1,0 +1,105 @@
+{
+    "api": "metadata",
+    "apiKey": 3,
+    "section": "Metadata API (key 3, v0)",
+    "description": "Wire vectors of the Metadata API (key 3, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "metadata.request.v0.all-topics",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 0,
+            "source": "constructed",
+            "description": "Metadata request v0 with an empty topic array, which asks for every topic of the cluster.",
+            "hex": "00000012000300000000000100047465737400000000",
+            "fields": {
+                "messageSize": 18,
+                "apiKey": 3,
+                "apiVersion": 0,
+                "correlationId": 1,
+                "clientId": "test",
+                "topics": []
+            }
+        },
+        {
+            "id": "metadata.request.v0.single-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "Metadata request v0 for one topic; a topic that does not exist yet is created by this request when auto.create.topics.enable is on.",
+            "hex": "0000001e0003000000000007000374313000000001000b7431302d766563746f7273",
+            "fields": {
+                "messageSize": 30,
+                "apiKey": 3,
+                "apiVersion": 0,
+                "correlationId": 7,
+                "clientId": "t10",
+                "topics": [
+                    "t10-vectors"
+                ]
+            }
+        },
+        {
+            "id": "metadata.response.v0.single-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Metadata of a topic with three partitions on a single-broker cluster.",
+            "hex": "0000008000000007000000010000000000093132372e302e302e3100002384000000010000000b7431302d766563746f727300000003000000000002000000000000000100000000000000010000000000000000000100000000000000010000000000000001000000000000000000000000000000000001000000000000000100000000",
+            "fields": {
+                "messageSize": 128,
+                "correlationId": 7,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092
+                    }
+                ],
+                "topics": {
+                    "t10-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t10-vectors",
+                        "partitions": {
+                            "2": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 2,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "1": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 1,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "0": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

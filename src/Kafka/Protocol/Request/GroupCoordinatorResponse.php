@@ -10,53 +10,52 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
 
 /**
  * Group coordinator response
+ *
+ * Called ConsumerMetadataResponse in Kafka 0.8.2 (api key 10, v0); the wire format below is unchanged in 0.9.
+ *
+ * <pre>
+ *   GroupCoordinatorResponse => ErrorCode CoordinatorId CoordinatorHost CoordinatorPort
+ *     ErrorCode       => int16
+ *     CoordinatorId   => int32
+ *     CoordinatorHost => string
+ *     CoordinatorPort => int32
+ * </pre>
+ *
+ * While the broker is still creating the internal `__consumer_offsets` topic the answer is the error code 15
+ * (GroupCoordinatorNotAvailable) with the coordinator `-1:"":-1`, so the lookup is worth retrying.
+ *
+ * @see docs/protocol/0.8.2.md, section "GroupCoordinator API (key 10, v0)"
  */
 class GroupCoordinatorResponse extends AbstractResponse
 {
     /**
      * Error code.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
      * Host and port information for the coordinator for a consumer group.
-     *
-     * @var GroupCoordinatorResponseMetadata
      */
-    public $coordinator;
+    public GroupCoordinatorResponseMetadata $coordinator;
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [
-            $self->correlationId,
-            $self->errorCode,
-        ] = array_values($stream->read("NcorrelationId/nerrorCode"));
+        $header = parent::getScheme();
 
-        $self->coordinator = GroupCoordinatorResponseMetadata::unpack($stream);
-
-        return $self;
+        return $header + [
+            'errorCode'   => BinarySchema::TYPE_INT16,
+            'coordinator' => GroupCoordinatorResponseMetadata::class,
+        ];
     }
 }

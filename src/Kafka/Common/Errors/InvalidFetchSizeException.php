@@ -18,7 +18,10 @@ use Exception;
 /**
  * The requested fetch size is invalid.
  */
-class InvalidFetchSizeException extends KafkaException
+class InvalidFetchSizeException extends KafkaException implements ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::INVALID_FETCH_SIZE, $previous);
+    }
 }

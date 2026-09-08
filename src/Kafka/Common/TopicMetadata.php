@@ -17,63 +17,57 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Topic metadata DTO
+ *
+ * <pre>
+ *   TopicMetadata => TopicErrorCode TopicName [PartitionMetadata]
+ *     TopicErrorCode => int16
+ *     TopicName      => string
+ * </pre>
+ *
+ * The `IsInternal` flag only exists from version 1 of the Metadata API (Kafka 0.10.0) onwards.
+ *
+ * @see docs/protocol/0.8.2.md, section "Metadata API (key 3, v0)"
  */
-class TopicMetadata
+class TopicMetadata implements BinarySchemaInterface
 {
     use RestorableTrait;
 
     /**
      * The error code for the given topic.
      *
-     * @var integer
+     * A topic that was just auto-created is announced with error code 5 (LeaderNotAvailable) and an empty partition
+     * list until the controller has elected the partition leaders.
      */
-    public $topicErrorCode;
+    public int $topicErrorCode = 0;
 
     /**
      * The name of the topic
-     *
-     * @var string
      */
-    public $topic;
+    public string $topic = '';
 
     /**
-     * Indicates if the topic is considered a Kafka internal topic
+     * Metadata for each partition of the topic, indexed by the partition id.
      *
-     * @var boolean
-     * @since Version 1 of protocol
+     * @var array<int, PartitionMetadata>
      */
-    public $isInternal;
+    public array $partitions = [];
 
     /**
-     * Metadata for each partition of the topic.
-     *
-     * @var PartitionMetadata[]|array
+     * @inheritdoc
      */
-    public $partitions = [];
-
-    /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $topic = new static();
-        [$topic->topicErrorCode, $topicLength] = array_values($stream->read('ntopicErrorCode/ntopicLength'));
-        [$topic->topic, $topic->isInternal, $numberOfPartitions] = array_values($stream->read("a{$topicLength}topic/cisInternal/NnumberOfPartition"));
-
-        for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-            $partitionMetadata = PartitionMetadata::unpack($stream);
-
-            $topic->partitions[$partitionMetadata->partitionId] = $partitionMetadata;
-        }
-
-        return $topic;
+        return [
+            'topicErrorCode' => BinarySchema::TYPE_INT16,
+            'topic'          => BinarySchema::TYPE_STRING,
+            // A broker does not promise any ordering for the partitions, so they are indexed by their id: the
+            // cluster looks a partition up by number, see Cluster::partition() and Cluster::leaderFor()
+            'partitions'     => ['partitionId' => PartitionMetadata::class],
+        ];
     }
 }

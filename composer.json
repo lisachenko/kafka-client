@@ -22,9 +22,6 @@
         "friendsofphp/php-cs-fixer": "^3.60",
         "rector/rector": "^2.0"
     },
-    "suggest": {
-        "ext-openssl": "to enable SSL socket stream support"
-    },
     "minimum-stability": "stable",
     "prefer-stable": true,
     "autoload": {

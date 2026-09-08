@@ -10,97 +10,43 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2014
- */
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * OffsetCommit DTO
+ * OffsetCommitResponsePartition DTO
+ *
+ * <pre>
+ *   OffsetCommitResponsePartition => partition error_code
+ *     partition  => INT32
+ *     error_code => INT16
+ * </pre>
+ *
+ * @see docs/protocol/0.8.2.md, section "OffsetCommit API (key 8, v0 and v1)"
  */
-class OffsetCommitResponsePartition implements \Stringable
+class OffsetCommitResponsePartition implements BinarySchemaInterface
 {
     /**
      * The partition this response entry corresponds to.
-     *
-     * @var integer
      */
-    public $partition;
-
-    /**
-     * The offset assigned to the first message in the message set appended to this partition.
-     *
-     * @var integer
-     */
-    public $offset;
-
-    /**
-     * Timestamp of the commit
-     *
-     * @var integer
-     */
-    public $timestamp;
-
-    /**
-     * Any associated metadata the client wants to keep.
-     *
-     * @var string
-     */
-    public $metadata;
+    public int $partition;
 
     /**
      * The error from this partition, if any.
-     *
-     * Errors are given on a per-partition basis because a given partition may be unavailable or maintained on a
-     * different host, while others may have successfully accepted the produce request.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->offset, $partition->timestamp, $metadataLength] = array_values($stream->read('Npartition/Joffset/Jtimestamp/nmetadataLength'));
-        $metadataLength = $metadataLength < 0x8000 ? $metadataLength : 0;
-        [$partition->metadata, $partition->errorCode] = array_values($stream->read("a{$metadataLength}metadata/nerrorCode"));
-
-        return $partition;
-    }
-
-    public function __toString(): string
-    {
-        $metadataLength = strlen($this->metadata);
-        $payload        = pack(
-            "NJJna{$metadataLength}",
-            $this->partition,
-            $this->offset,
-            $this->timestamp,
-            $metadataLength ?: -1,
-            $this->metadata
-        );
-
-        return $payload;
-    }
-
-    public static function fromPartitionOffset($partition, $offset, $metadata = null): static
-    {
-        $instance = new static();
-        $instance->partition = $partition;
-        $instance->offset    = $offset;
-        $instance->metadata  = $metadata;
-
-        return $instance;
+        return [
+            'partition' => BinarySchema::TYPE_INT32,
+            'errorCode' => BinarySchema::TYPE_INT16,
+        ];
     }
 }

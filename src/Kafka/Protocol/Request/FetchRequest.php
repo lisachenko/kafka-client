@@ -10,17 +10,17 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 
 /**
- * Fetch API
+ * Fetch API (key 1, v0)
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -34,80 +34,103 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * As an optimization the server is allowed to return a partial message at the end of the message set. Clients should
  * handle this case.
  *
- * One thing to note is that the fetch API requires specifying the partition to consume from. The question is how
- * should a consumer know what partitions to consume from? In particular how can you balance the partitions over a set
- * of consumers acting as a group so that each consumer gets a subset of partitions. We have done this assignment
- * dynamically using zookeeper for the scala and java client. The downside of this approach is that it requires a
- * fairly fat client and a zookeeper connection. We haven't yet created a ApiKeys API to allow this functionality to be
- * moved to the server side and accessed more conveniently. A simple consumer client can be implemented by simply
- * requiring that the partitions be specified in config, though this will not allow dynamic reassignment of partitions
- * should that consumer fail. We hope to address this gap in the next major release.
+ * <pre>
+ *   FetchRequest => ReplicaId MaxWaitTime MinBytes [TopicName [Partition FetchOffset MaxBytes]]
+ *     ReplicaId   => int32
+ *     MaxWaitTime => int32
+ *     MinBytes    => int32
+ * </pre>
+ *
+ * The request-level `MaxBytes` (v3) and `IsolationLevel` (v4) of the later protocol versions do not exist here, the
+ * only limit is the per-partition `MaxBytes`.
+ *
+ * @see docs/protocol/0.8.2.md, section "Fetch API (key 1, v0)"
  */
 class FetchRequest extends AbstractRequest
 {
     /**
-     * @inheritDoc
+     * Topics to fetch from, indexed by the topic name
+     *
+     * @var array<string, FetchRequestTopic>
      */
-    public const VERSION = 1;
+    private readonly array $topicPartitions;
 
     /**
-     * @param int $maxWaitTime
-     * @param int $minBytes
-     * @param int $maxBytes
-     * @param int $replicaId
+     * @param array<string, array<int, int>> $topicPartitions Fetch offset of every partition, as topic => partition
+     *                                                       => offset
+     * @param int                            $maxWaitTime     The maximum amount of time in milliseconds to block
+     *                                                        waiting if insufficient data is available at the time the
+     *                                                        request is issued.
+     * @param int                            $minBytes        The minimum number of bytes of messages that must be
+     *                                                        available to give a response. With 0 the server always
+     *                                                        responds immediately, with 1 as soon as at least one
+     *                                                        partition has at least one byte of data, or when
+     *                                                        $maxWaitTime is over.
+     * @param int                            $maxBytes        The maximum number of bytes to include in the message set
+     *                                                        of one partition. This bounds the size of the response,
+     *                                                        but a 0.8.2.2 broker returns an empty message set instead
+     *                                                        of a single message that is bigger than this limit.
+     * @param int                            $replicaId       The node id of the replica that initiates this request.
+     *                                                        Ordinary consumers always send -1 as they have no node
+     *                                                        id; -2 is accepted from a non-broker that wants to fetch
+     *                                                        as if it were a replica, for debugging purposes.
      */
     public function __construct(
-        private readonly array $topicPartitions,
-        /**
-         * The max wait time is the maximum amount of time in milliseconds to block waiting if insufficient data is
-         * available at the time the request is issued.
-         */
-        private $maxWaitTime,
-        /**
-         * This is the minimum number of bytes of messages that must be available to give a response.
-         *
-         * If the client sets
-         * this to 0 the server will always respond immediately, however if there is no new data since their last request
-         * they will just get back empty message sets. If this is set to 1, the server will respond as soon as at least one
-         * partition has at least 1 byte of data or the specified timeout occurs. By setting higher values in combination
-         * with the timeout the consumer can tune for throughput and trade a little additional latency for reading only
-         * large chunks of data (e.g. setting MaxWaitTime to 100 ms and setting MinBytes to 64k would allow the server to
-         * wait up to 100ms to try to accumulate 64k of data before responding).
-         */
-        private $minBytes,
-        /**
-         * The maximum bytes to include in the message set for this partition. This helps bound the size of the response.
-         */
-        private $maxBytes,
-        /**
-         * The replica id indicates the node id of the replica initiating this request. Normal client consumers should
-         * always specify this as -1 as they have no node id. Other brokers set this to be their own node id. The value -2
-         * is accepted to allow a non-broker to issue fetch requests as if it were a replica broker for debugging purposes.
-         */
-        private $replicaId = -1,
-        $clientId = '',
-        $correlationId = 0
+        array $topicPartitions,
+        private readonly int $maxWaitTime,
+        private readonly int $minBytes,
+        int $maxBytes,
+        private readonly int $replicaId = -1,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
+        $packedTopicPartitions = [];
+        foreach ($topicPartitions as $topic => $partitionOffsets) {
+            $partitions = [];
+            foreach ($partitionOffsets as $partition => $fetchOffset) {
+                $partitions[$partition] = new FetchRequestTopicPartition($partition, $fetchOffset, $maxBytes);
+            }
+            $packedTopicPartitions[$topic] = new FetchRequestTopic($topic, $partitions);
+        }
+        $this->topicPartitions = $packedTopicPartitions;
+
         parent::__construct(ApiKeys::FETCH, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
+     * Builds a request from a list of topic partitions with the offset to start fetching each of them at
+     *
+     * @param iterable<array{TopicPartition, int}> $partitionOffsets Pairs of a topic partition and its fetch offset
      */
-    protected function packPayload(): string
-    {
-        $payload     = parent::packPayload();
-        $totalTopics = count($this->topicPartitions);
-
-        $payload .= pack('NNNN', $this->replicaId, $this->maxWaitTime, $this->minBytes, $totalTopics);
-        foreach ($this->topicPartitions as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            foreach ($partitions as $partitionId => $offset) {
-                $payload .= pack('NJN', $partitionId, $offset, $this->maxBytes);
-            }
+    public static function fromTopicPartitions(
+        iterable $partitionOffsets,
+        int $maxWaitTime,
+        int $minBytes,
+        int $maxBytes,
+        int $replicaId = -1,
+        string $clientId = '',
+        int $correlationId = 0
+    ): self {
+        $topicPartitions = [];
+        foreach ($partitionOffsets as [$topicPartition, $fetchOffset]) {
+            $topicPartitions[$topicPartition->topic][$topicPartition->partition] = $fetchOffset;
         }
 
-        return $payload;
+        return new self($topicPartitions, $maxWaitTime, $minBytes, $maxBytes, $replicaId, $clientId, $correlationId);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public static function getScheme(): array
+    {
+        $header = parent::getScheme();
+
+        return $header + [
+            'replicaId'       => BinarySchema::TYPE_INT32,
+            'maxWaitTime'     => BinarySchema::TYPE_INT32,
+            'minBytes'        => BinarySchema::TYPE_INT32,
+            'topicPartitions' => ['topic' => FetchRequestTopic::class],
+        ];
     }
 }

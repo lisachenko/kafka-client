@@ -19,16 +19,34 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * Basic class for all responses
+ *
+ * Response Header => correlation_id
+ *   correlation_id => INT32
+ *
+ * @see docs/protocol/0.8.2.md, section "Responses"
  */
 abstract class AbstractResponse extends AbstractProtocolMessage
 {
     /**
-     * A user-supplied integer value that will be passed back with the response (INT32)
-     *
-     * @var integer
+     * @inheritdoc
      */
-    public $correlationId;
+    public static function getScheme(): array
+    {
+        return [
+            'messageSize'   => BinarySchema::TYPE_INT32,
+            'correlationId' => BinarySchema::TYPE_INT32,
+        ];
+    }
+
+    /**
+     * Returns the correlation id that the broker echoed back from the matching request
+     */
+    public function getCorrelationId(): int
+    {
+        return $this->correlationId;
+    }
 }
