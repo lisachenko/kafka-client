@@ -25,9 +25,9 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
-use Protocol\Kafka\Tests\Fixture\ClusterReadinessProbe;
-use Protocol\Kafka\Tests\Fixture\MessageSetProduceRequest;
+use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
  * Produces message sets to a real Kafka 0.8.2.2 broker and fetches them back.
@@ -42,6 +42,7 @@ use Protocol\Kafka\Tests\Fixture\MessageSetProduceRequest;
 #[CoversClass(Message::class)]
 #[CoversClass(CompressionCodec::class)]
 #[CoversClass(Snappy::class)]
+#[CoversClass(FetchResponsePartition::class)]
 final class MessageSetProduceFetchTest extends IntegrationTestCase
 {
     /**
@@ -50,9 +51,28 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t3';
 
     /**
-     * How long to keep retrying a produce while the freshly created topic has no leader yet, in seconds
+     * Partition that every test of this class produces to and fetches from
      */
-    private const float LEADER_TIMEOUT = 30.0;
+    private const int PARTITION = 0;
+
+    /**
+     * How long the broker may take to acknowledge a produce request, in milliseconds
+     */
+    private const int PRODUCE_TIMEOUT_MS = 5000;
+
+    /**
+     * Topic of the current test, created and given a leader by {@see MessageSetProduceFetchTest::setUp()}
+     */
+    private string $topic;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->topic = self::uniqueTopicName('t3-message-set');
+        new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, self::CLIENT_ID)
+            ->awaitTopicWithLeaders($this->topic);
+    }
 
     /**
      * @return iterable<string, array{0: int}>
@@ -67,7 +87,6 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     #[DataProvider('compressionCodecs')]
     public function testAMessageSetSurvivesTheRoundTripThroughTheBroker(int $codec): void
     {
-        $topic   = $this->createTopic('t3-message-set');
         $records = [
             new Record('alpha', 'first'),
             new Record('bravo'),
@@ -77,12 +96,11 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
         $messageSet = MessageSet::fromRecords($records, $codec);
         // The offsets of a produced set always count from 0; producing it twice shows that the broker replaces them,
         // inside a compressed wrapper as well
-        $this->produce($topic, $messageSet);
-        $baseOffset = $this->produce($topic, $messageSet);
-        $fetched    = $this->fetch($topic, $baseOffset);
+        $this->produce($messageSet);
+        $baseOffset = $this->produce($messageSet);
+        $fetched    = $this->fetch($baseOffset);
 
         self::assertSame(3, $baseOffset, 'the second set is appended after the three messages of the first one');
-
         self::assertCount(3, $fetched);
         self::assertSame(['alpha', 'bravo', $records[2]->value], array_map(
             static fn(Record $record): ?string => $record->value,
@@ -101,14 +119,12 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
 
     public function testANullValueSurvivesTheRoundTripThroughTheBroker(): void
     {
-        $topic = $this->createTopic('t3-message-set-null');
-
-        $baseOffset = $this->produce($topic, MessageSet::fromRecords([
+        $baseOffset = $this->produce(MessageSet::fromRecords([
             new Record(null, 'tombstone'),
             new Record('', 'empty'),
             new Record('value', null),
         ]));
-        $fetched = $this->fetch($topic, $baseOffset);
+        $fetched = $this->fetch($baseOffset);
 
         self::assertCount(3, $fetched);
         self::assertNull($fetched[0]->value, 'a null value is not the same thing as an empty one');
@@ -120,82 +136,71 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
 
     public function testAFetchThatDoesNotFitTheFirstMessageComesBackWithoutRecords(): void
     {
-        $topic      = $this->createTopic('t3-message-set-partial');
-        $baseOffset = $this->produce($topic, MessageSet::fromRecords([new Record(str_repeat('x', 4096))]));
+        $baseOffset = $this->produce(MessageSet::fromRecords([new Record(str_repeat('x', 4096))]));
 
         // MaxBytes below the size of the first message: the broker answers with a message it cut short
-        $partial = $this->fetch($topic, $baseOffset, 64);
+        $partition = $this->fetchPartition($baseOffset, 64);
 
-        self::assertSame([], $partial, 'a partial trailing message is dropped instead of failing the fetch');
-        self::assertCount(1, $this->fetch($topic, $baseOffset, 65536));
+        self::assertSame([], $partition->getMessageSet()->getRecords(), 'the partial message is dropped');
+        self::assertTrue($partition->getMessageSet()->hasPartialTrailingMessage());
+        self::assertTrue($partition->isSingleMessageTooLarge($baseOffset));
+        self::assertCount(1, $this->fetch($baseOffset));
     }
 
     public function testTheBrokerAcceptsTheChecksumsThisClientComputes(): void
     {
-        $topic = $this->createTopic('t3-message-set-crc');
-
-        // A corrupt checksum would make the broker answer with error code 2 instead of an offset
-        $offset = $this->produce($topic, MessageSet::fromRecords([new Record('bar', 'foo')]));
+        // A corrupt checksum would make the broker answer with error code 2 instead of a base offset
+        $offset = $this->produce(MessageSet::fromRecords([new Record('bar', 'foo')]));
 
         self::assertGreaterThanOrEqual(0, $offset);
     }
 
     /**
-     * Creates a topic through the auto-creation of the broker and waits until its metadata is published
+     * Produces the message set into the partition under test and returns the offset of its first message
      */
-    private function createTopic(string $prefix): string
+    private function produce(MessageSet $messageSet): int
     {
-        $topic = self::uniqueTopicName($prefix);
+        $stream = $this->connect();
+        new ProduceRequest(
+            [$this->topic => [self::PARTITION => $messageSet]],
+            1,
+            self::PRODUCE_TIMEOUT_MS,
+            self::CLIENT_ID,
+            1
+        )->writeTo($stream);
 
-        new ClusterReadinessProbe(
-            fn(): Stream => $this->connect(),
-            self::LEADER_TIMEOUT,
-            clientId: self::CLIENT_ID
-        )->awaitBrokers($topic);
+        $partition = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
+        if ($partition->errorCode !== 0) {
+            throw KafkaException::fromCode($partition->errorCode, ['topic' => $this->topic, 'partitionId' => self::PARTITION]);
+        }
 
-        return $topic;
+        return $partition->baseOffset;
     }
 
     /**
-     * Produces the message set into partition 0 and returns the offset the broker assigned to its first message
-     */
-    private function produce(string $topic, MessageSet $messageSet): int
-    {
-        $deadline  = microtime(true) + self::LEADER_TIMEOUT;
-        $lastError = 0;
-
-        do {
-            $stream = $this->connect();
-            new MessageSetProduceRequest([$topic => [0 => $messageSet]], 1, 5000, self::CLIENT_ID, 1)->writeTo($stream);
-
-            $partition = ProduceResponse::unpack($stream)->topics[$topic][0];
-            if ($partition->errorCode === KafkaException::NO_ERROR) {
-                return $partition->offset;
-            }
-            // A freshly auto-created topic has no leader for a moment
-            $lastError = $partition->errorCode;
-            usleep(250000);
-        } while (microtime(true) < $deadline);
-
-        throw KafkaException::fromCode($lastError, ['topic' => $topic, 'partitionId' => 0]);
-    }
-
-    /**
-     * Fetches partition 0 of the topic from the given offset
+     * Fetches the partition under test from the given offset and returns the records it holds
      *
      * @return list<Record>
      */
-    private function fetch(string $topic, int $offset, int $maxBytes = 65536): array
+    private function fetch(int $offset, int $maxBytes = 65536): array
+    {
+        return $this->fetchPartition($offset, $maxBytes)->getMessageSet()->getRecords();
+    }
+
+    /**
+     * Fetches the partition under test from the given offset
+     */
+    private function fetchPartition(int $offset, int $maxBytes = 65536): FetchResponsePartition
     {
         $stream = $this->connect();
-        new FetchRequest([$topic => [0 => $offset]], 1000, 1, $maxBytes, -1, self::CLIENT_ID, 2)->writeTo($stream);
+        new FetchRequest([$this->topic => [self::PARTITION => $offset]], 1000, 1, $maxBytes, -1, self::CLIENT_ID, 2)
+            ->writeTo($stream);
 
-        /** @var FetchResponsePartition $partition */
-        $partition = FetchResponse::unpack($stream)->topics[$topic][0];
-        if ($partition->errorCode !== KafkaException::NO_ERROR) {
-            throw KafkaException::fromCode($partition->errorCode, ['topic' => $topic, 'partitionId' => 0]);
+        $partition = FetchResponse::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
+        if ($partition->errorCode !== 0) {
+            throw KafkaException::fromCode($partition->errorCode, ['topic' => $this->topic, 'partitionId' => self::PARTITION]);
         }
 
-        return array_values($partition->messageSet);
+        return $partition;
     }
 }

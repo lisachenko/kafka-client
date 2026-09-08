@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
@@ -223,15 +224,15 @@ final class FetchApiTest extends TestCase
 
     public function testMessageSetIsDecodedByTheRecordLayer(): void
     {
-        if (!class_exists('Protocol\Kafka\Common\Record\MessageSet')) {
-            self::markTestSkipped('the record layer of the 0.8 line is not part of this branch yet');
-        }
-
         $response  = FetchResponse::unpack(new StringStream(self::responseFrame(self::MESSAGE_SET_HEX, 0, 0, 2)));
         $partition = $response->topics['topic']->partitions[0];
 
         self::assertSame(self::MESSAGE_SET_HEX, bin2hex((string) $partition->getMessageSet()));
         self::assertSame($partition->getMessageSet(), $partition->getMessageSet(), 'the message set is decoded once');
+        self::assertSame([0, 1], array_map(
+            static fn(Record $record): ?int => $record->offset,
+            $partition->getMessageSet()->getRecords()
+        ));
     }
 
     /**
