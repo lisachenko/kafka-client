@@ -18,8 +18,6 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\BinarySchema;
 
@@ -52,11 +50,6 @@ abstract class AbstractRequest extends AbstractProtocolMessage
     protected int $apiVersion;
 
     /**
-     * Payload of a request class that still packs itself by hand instead of declaring a scheme
-     */
-    private ?string $legacyPayload = null;
-
-    /**
      * Global request counter, only used by {@see AbstractRequest::nextCorrelationId()}
      */
     private static int $counter = 0;
@@ -70,13 +63,7 @@ abstract class AbstractRequest extends AbstractProtocolMessage
     {
         $this->apiVersion    = static::VERSION;
         $this->correlationId = $correlationId;
-
-        if (static::hasLegacyPayloadWriter()) {
-            $this->legacyPayload = $this->packPayload();
-            $this->messageSize   = strlen($this->legacyPayload);
-        } else {
-            $this->messageSize = BinarySchema::getObjectTypeSize($this) - 4 /* INT32 MessageSize */;
-        }
+        $this->messageSize   = BinarySchema::getObjectTypeSize($this) - 4 /* INT32 MessageSize */;
     }
 
     /**
@@ -124,49 +111,4 @@ abstract class AbstractRequest extends AbstractProtocolMessage
         return $this->clientId;
     }
 
-    /**
-     * @inheritdoc
-     */
-    protected function packInto(Stream $stream): void
-    {
-        if ($this->legacyPayload !== null) {
-            $stream->write('N', $this->messageSize);
-            $stream->writeBuffer($this->legacyPayload);
-
-            return;
-        }
-
-        parent::packInto($stream);
-    }
-
-    /**
-     * Packs the request header, byte for byte as {@see AbstractRequest::getScheme()} describes it.
-     *
-     * The request classes that have not been migrated to a scheme yet override this method and concatenate their own
-     * pack()-ed body to the result of `parent::packPayload()`.
-     *
-     * @deprecated Declare a {@see BinarySchema} scheme instead, this hook disappears once every request class is
-     *             described by a scheme.
-     */
-    protected function packPayload(): string
-    {
-        // self:: on purpose: this must stay the header of the base class even for a subclass with its own scheme
-        $headerScheme = self::getScheme();
-        unset($headerScheme['messageSize']);
-
-        $stream = new StringStream();
-        foreach ($headerScheme as $fieldName => $schemeType) {
-            BinarySchema::writeSingleType($schemeType, $this->$fieldName, $stream);
-        }
-
-        return $stream->getBuffer();
-    }
-
-    /**
-     * Checks whether the concrete class still packs its payload by hand instead of declaring a scheme
-     */
-    private static function hasLegacyPayloadWriter(): bool
-    {
-        return new \ReflectionMethod(static::class, 'packPayload')->getDeclaringClass()->getName() !== self::class;
-    }
 }
