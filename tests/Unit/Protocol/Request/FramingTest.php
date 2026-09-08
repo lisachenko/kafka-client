@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\EmptyResponse;
-use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\LegacyResponse;
+use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\ErrorCodeResponse;
 use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\SchemaMetadataRequest;
 use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\SchemaMetadataResponse;
 
@@ -95,12 +95,12 @@ final class FramingTest extends TestCase
         self::assertSame([BinarySchema::TYPE_STRING], $scheme['topics']);
     }
 
-    public function testSchemaDrivenRequestProducesTheSameBytesAsTheLegacyOne(): void
+    public function testATestFixtureAndTheRealRequestOfTheSameApiProduceTheSameBytes(): void
     {
-        $legacy = new MetadataRequest([], 'test', 1);
-        $typed  = new SchemaMetadataRequest([], 'test', 1);
+        $real  = new MetadataRequest([], 'test', 1);
+        $typed = new SchemaMetadataRequest([], 'test', 1);
 
-        self::assertSame(bin2hex((string) $legacy), bin2hex((string) $typed));
+        self::assertSame(bin2hex((string) $real), bin2hex((string) $typed));
         self::assertSame(ApiKeys::METADATA, $typed->getApiKey());
         self::assertSame(0, $typed->getApiVersion());
         self::assertSame(1, $typed->getCorrelationId());
@@ -182,22 +182,23 @@ final class FramingTest extends TestCase
 
     public function testResponseBodyIsBoundedByTheAnnouncedSize(): void
     {
+        // The frame announces six bytes; whatever follows them belongs to the next response on that connection
         $frame  = hex2bin('00000006' . '00000001' . '0003');
         $stream = new StringStream($frame . 'trailing bytes');
 
-        $response = LegacyResponse::unpack($stream);
+        $response = ErrorCodeResponse::unpack($stream);
 
         self::assertSame(1, $response->getCorrelationId());
         self::assertSame(3, $response->errorCode);
         self::assertSame('trailing bytes', $stream->readRaw(14));
     }
 
-    public function testResponseClassesThatStillParseByHandKeepWorking(): void
+    public function testResponseErrorCodesAreReadAsSignedValues(): void
     {
-        $response = LegacyResponse::unpack(new StringStream(hex2bin('00000006' . '0000002a' . 'fffb')));
+        $response = ErrorCodeResponse::unpack(new StringStream(hex2bin('00000006' . '0000002a' . 'ffff')));
 
         self::assertSame(42, $response->getCorrelationId());
-        self::assertSame(65531, $response->errorCode, 'the legacy hook unpacks "n" itself, unsigned as before');
+        self::assertSame(-1, $response->errorCode, 'the error code -1 (Unknown) is a negative int16');
     }
 
     public function testResponseWithoutABodyOnlyCarriesTheCorrelationId(): void

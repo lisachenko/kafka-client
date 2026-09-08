@@ -70,15 +70,6 @@ abstract class AbstractProtocolMessage implements BinarySchemaInterface
         }
         $payload = $messageSize > 0 ? (string) $stream->read("a{$messageSize}data")['data'] : '';
 
-        // Protocol classes that have not been migrated to a scheme yet still parse their payload by hand
-        if (static::hasLegacyPayloadReader()) {
-            $self              = new static();
-            $self->messageSize = $messageSize;
-            static::unpackPayload($self, new StringStream($payload));
-
-            return $self;
-        }
-
         return BinarySchema::readObjectFromStream(
             static::class,
             new StringStream(pack('N', $messageSize) . $payload)
@@ -120,27 +111,5 @@ abstract class AbstractProtocolMessage implements BinarySchemaInterface
     protected function packInto(Stream $stream): void
     {
         BinarySchema::writeObjectToStream($this, $stream);
-    }
-
-    /**
-     * Method to unpack the payload for the record.
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of the current frame
-     * @param Stream                         $stream Binary data of the frame, bounded by its announced size
-     *
-     * @deprecated Declare a {@see BinarySchemaInterface::getScheme()} instead, this hook disappears once every
-     *             protocol class is described by a scheme.
-     */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream)
-    {
-        // nothing here
-    }
-
-    /**
-     * Checks whether the concrete class still parses its payload by hand instead of declaring a scheme
-     */
-    private static function hasLegacyPayloadReader(): bool
-    {
-        return new \ReflectionMethod(static::class, 'unpackPayload')->getDeclaringClass()->getName() !== self::class;
     }
 }

@@ -1,0 +1,117 @@
+{
+    "api": "offset-commit",
+    "apiKey": 8,
+    "section": "OffsetCommit API (key 8, v0 and v1)",
+    "description": "Wire vectors of the OffsetCommit API (key 8, v0 and v1), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "offsetcommit.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "OffsetCommit request v1 of a client that is not a group member: generation id -1, empty consumer id, TimeStamp -1 (the broker uses its receive time) and null metadata.",
+            "hex": "000000510008000100000010000374313000117431302d766563746f72732d67726f7570ffffffff000000000001000b7431302d766563746f727300000001000000000000000000000001ffffffffffffffffffff",
+            "fields": {
+                "messageSize": 81,
+                "apiKey": 8,
+                "apiVersion": 1,
+                "correlationId": 16,
+                "clientId": "t10",
+                "consumerGroup": "t10-vectors-group",
+                "generationId": -1,
+                "memberName": "",
+                "topicPartitions": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 1,
+                                "timestamp": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "OffsetCommit response, identical in v0 and v1: one error code per topic-partition.",
+            "hex": "0000001f0000001000000001000b7431302d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 31,
+                "correlationId": 16,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "OffsetCommit request v0, which stores the offsets in ZooKeeper and has neither the generation id and consumer id nor the per-partition TimeStamp of v1.",
+            "hex": "0000004000080000000000110003743130000e7431302d766563746f72732d7a6b00000001000b7431302d766563746f727300000001000000000000000000000001ffff",
+            "fields": {
+                "messageSize": 64,
+                "apiKey": 8,
+                "apiVersion": 0,
+                "correlationId": 17,
+                "clientId": "t10",
+                "consumerGroup": "t10-vectors-zk",
+                "topicPartitions": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "OffsetCommit response of the ZooKeeper-backed version 0.",
+            "hex": "0000001f0000001100000001000b7431302d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 31,
+                "correlationId": 17,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}

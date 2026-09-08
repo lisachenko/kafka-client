@@ -1,0 +1,39 @@
+{
+    "api": "controlled-shutdown",
+    "apiKey": 7,
+    "section": "ControlledShutdown API (key 7, v0)",
+    "description": "Wire vectors of the ControlledShutdown API (key 7, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "controlledshutdown.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ControlledShutdown request v0 - the only request of 0.8.2.2 whose header carries no client id.",
+            "hex": "0000000c000700000000001400001092",
+            "fields": {
+                "messageSize": 12,
+                "apiKey": 7,
+                "apiVersion": 0,
+                "correlationId": 20,
+                "brokerId": 4242
+            }
+        },
+        {
+            "id": "controlledshutdown.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "ControlledShutdown response for a broker id that the controller does not know: the error code -1 (Unknown) and an empty partition list.",
+            "hex": "0000000a00000014ffff00000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 20,
+                "errorCode": -1,
+                "remainingTopicPartitions": []
+            }
+        }
+    ]
+}
