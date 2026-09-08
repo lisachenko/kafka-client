@@ -19,18 +19,20 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Protocol\Data\ConsumerMetadataResponseMetadata;
+use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
 
 /**
- * Consumer metadata response (ApiKey 10, v0)
+ * Group coordinator response
  *
- * ConsumerMetadataResponse => ErrorCode CoordinatorId CoordinatorHost CoordinatorPort
+ * Called ConsumerMetadataResponse in Kafka 0.8.2 (api key 10, v0); the wire format below is unchanged in 0.9.
+ *
+ * GroupCoordinatorResponse => ErrorCode CoordinatorId CoordinatorHost CoordinatorPort
  *   ErrorCode       => int16
  *   CoordinatorId   => int32
  *   CoordinatorHost => string
  *   CoordinatorPort => int32
  */
-class ConsumerMetadataResponse extends AbstractResponse
+class GroupCoordinatorResponse extends AbstractResponse
 {
     /**
      * Error code.
@@ -40,9 +42,9 @@ class ConsumerMetadataResponse extends AbstractResponse
     public $errorCode;
 
     /**
-     * Host and port information for the coordinator of a consumer group.
+     * Host and port information for the coordinator for a consumer group.
      *
-     * @var ConsumerMetadataResponseMetadata
+     * @var GroupCoordinatorResponseMetadata
      */
     public $coordinator;
 
@@ -61,7 +63,7 @@ class ConsumerMetadataResponse extends AbstractResponse
             $self->errorCode,
         ] = array_values($stream->read("NcorrelationId/nerrorCode"));
 
-        $self->coordinator = ConsumerMetadataResponseMetadata::unpack($stream);
+        $self->coordinator = GroupCoordinatorResponseMetadata::unpack($stream);
 
         return $self;
     }

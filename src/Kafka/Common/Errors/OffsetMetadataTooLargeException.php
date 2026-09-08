@@ -16,9 +16,9 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The committed metadata string is larger than the maximum size the server will accept.
+ * The metadata field of the offset request was too large.
  */
-class OffsetMetadataTooLargeException extends KafkaException
+class OffsetMetadataTooLargeException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {

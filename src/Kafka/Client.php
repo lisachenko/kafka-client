@@ -28,8 +28,8 @@ use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
-use Protocol\Kafka\Protocol\Request\ConsumerMetadataRequest;
-use Protocol\Kafka\Protocol\Request\ConsumerMetadataResponse;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
  * Low-level client for the Kafka 0.8.2.2 protocol
  *
  * Kafka 0.8 has no broker-side group membership (the API keys 11-14 were only added in 0.9), therefore this client
- * only speaks Produce, Fetch, Offsets, OffsetCommit, OffsetFetch and ConsumerMetadata.
+ * only speaks Produce, Fetch, Offsets, OffsetCommit, OffsetFetch and GroupCoordinator (ConsumerMetadata in 0.8.2).
  */
 class Client
 {
@@ -102,9 +102,9 @@ class Client
      * @param array  $topicPartitionOffsets List of topic => partitions for fetching information
      *
      * @throws Common\Errors\OffsetMetadataTooLargeException
-     * @throws Common\Errors\OffsetsLoadInProgressException
-     * @throws Common\Errors\ConsumerCoordinatorNotAvailableException
-     * @throws Common\Errors\NotCoordinatorForConsumerException
+     * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
      */
     public function commitGroupOffsets(Node $coordinatorNode, $groupId, array $topicPartitionOffsets): void
     {
@@ -136,8 +136,8 @@ class Client
      *
      * Exception UnknownTopicOrPartition is ignored and silenced, offset -1 will be returned
      *
-     * @throws Common\Errors\OffsetsLoadInProgressException
-     * @throws Common\Errors\NotCoordinatorForConsumerException
+     * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\NotCoordinatorForGroupException
      */
     public function fetchGroupOffsets(Node $coordinatorNode, $groupId, array $topicPartitions): array
     {
@@ -167,7 +167,7 @@ class Client
     }
 
     /**
-     * Discovers the offset coordinator node for the consumer group (ConsumerMetadata, ApiKey 10)
+     * Discovers the coordinator node for the consumer group (ApiKey 10, called ConsumerMetadata in Kafka 0.8.2)
      *
      * The broker answers with error code 15 (ConsumerCoordinatorNotAvailable) while the internal __consumer_offsets
      * topic is still being created, so this call is worth retrying.
@@ -176,9 +176,9 @@ class Client
      *
      * @return Node
      *
-     * @throws Common\Errors\ConsumerCoordinatorNotAvailableException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
      */
-    public function getConsumerCoordinator($groupId)
+    public function getGroupCoordinator($groupId)
     {
         // TODO: iterate over connections and wrap logic into the try..catch block
         /** @var Node $firstNode */
@@ -186,12 +186,12 @@ class Client
         $firstNode    = reset($clusterNodes);
         $stream       = $firstNode->getConnection($this->configuration);
 
-        $request = new ConsumerMetadataRequest(
+        $request = new GroupCoordinatorRequest(
             $groupId,
             $this->configuration[ConsumerConfig::CLIENT_ID]
         );
         $request->writeTo($stream);
-        $response = ConsumerMetadataResponse::unpack($stream);
+        $response = GroupCoordinatorResponse::unpack($stream);
         if ($response->errorCode !== 0) {
             throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
         }

@@ -50,6 +50,12 @@ class ApiKeys
      */
     public const REQUEST_HEADER_FORMAT = 'napiKey/napiVersion/NcorrelationId/ZclientId';
 
+    /**
+     * The following are the numeric codes that the ApiKey in the request can take for each of the below request types.
+     *
+     * The names are those of the later protocol lines; key 10 is called ConsumerMetadata in Kafka 0.8.2
+     * (kafka/api/RequestKeys.scala) and was renamed to GroupCoordinator in 0.9 without a wire format change.
+     */
     public const PRODUCE             = 0;
     public const FETCH               = 1;
     public const OFFSETS             = 2;
@@ -60,5 +66,5 @@ class ApiKeys
     public const CONTROLLED_SHUTDOWN = 7;
     public const OFFSET_COMMIT       = 8;
     public const OFFSET_FETCH        = 9;
-    public const CONSUMER_METADATA   = 10;
+    public const GROUP_COORDINATOR   = 10;
 }

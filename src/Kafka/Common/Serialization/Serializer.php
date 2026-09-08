@@ -9,11 +9,14 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
-namespace Protocol\Kafka\Common\Errors;
+namespace Protocol\Kafka\Common\Serialization;
 
 /**
- * Special retriable marker exception interface
+ * Converts an application-level value into the raw bytes stored in a record's key or value.
  */
-interface RetriableException {}
+interface Serializer
+{
+    public function serialize(string $topic, mixed $data): string;
+}

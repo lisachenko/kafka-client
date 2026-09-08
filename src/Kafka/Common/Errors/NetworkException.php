@@ -16,12 +16,14 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The connection to the broker could not be established, or the server disconnected before a response was received.
+ * The server disconnected before a response was received.
  *
- * This is a client-side condition: Kafka 0.8.2.2 has no wire error code for it (code 13 is StaleLeaderEpoch), so this
- * exception is never produced by KafkaException::fromCode().
+ * On the 0.8 protocol line this is a purely client-side condition: error code 13 is StaleLeaderEpochCode in
+ * kafka/common/ErrorMapping.scala @ 0.8.2.2, and it only became NetworkException in a later protocol line. The class
+ * is therefore never produced by KafkaException::fromCode() here, it is raised by the socket layer. When 0.8.x is
+ * merged into 0.9.x, this class regains its NETWORK_EXCEPTION (13) code and the ServerExceptionInterface marker.
  */
-class NetworkException extends KafkaException implements RetriableException
+class NetworkException extends KafkaException implements RetriableException, ClientExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {

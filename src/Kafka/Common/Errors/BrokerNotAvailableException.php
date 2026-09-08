@@ -16,9 +16,9 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The broker is not available. This error is never returned to a client by a 0.8.2 broker; it is used internally.
+ * The broker is not available.
  */
-class BrokerNotAvailableException extends KafkaException
+class BrokerNotAvailableException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {

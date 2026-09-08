@@ -13,7 +13,9 @@ declare (strict_types=1);
 
 namespace Protocol\Kafka\Common\Errors;
 
+use RuntimeException;
+
 /**
- * Special retriable marker exception interface
+ * Class InvalidConfigurationException
  */
-interface RetriableException {}
+class InvalidConfigurationException extends RuntimeException implements ClientExceptionInterface {}
