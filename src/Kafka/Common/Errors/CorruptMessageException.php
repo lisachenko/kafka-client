@@ -20,5 +20,8 @@ use Exception;
  */
 class CorruptMessageException extends KafkaException implements RetriableException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::CORRUPT_MESSAGE, $previous);
+    }
 }

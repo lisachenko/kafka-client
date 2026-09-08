@@ -20,5 +20,8 @@ use Exception;
  */
 class LeaderNotAvailableException extends KafkaException implements RetriableException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::LEADER_NOT_AVAILABLE, $previous);
+    }
 }

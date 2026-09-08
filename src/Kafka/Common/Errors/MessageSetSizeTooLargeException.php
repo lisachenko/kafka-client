@@ -16,11 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The session timeout is not within the range allowed by the broker
- *
- * as configured by group.min.session.timeout.ms and group.max.session.timeout.ms
+ * The request included a message set larger than the configured segment size on the server.
  */
-class InvalidSessionTimeoutException extends KafkaException
+class MessageSetSizeTooLargeException extends KafkaException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::MESSAGE_SET_SIZE_TOO_LARGE, $previous);
+    }
 }

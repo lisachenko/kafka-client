@@ -16,9 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * Messages are rejected since there are fewer in-sync replicas than required.
+ * There are not enough in-sync replicas alive to satisfy the required acks of this produce request.
  */
 class NotEnoughReplicasException extends KafkaException implements RetriableException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::NOT_ENOUGH_REPLICAS, $previous);
+    }
 }

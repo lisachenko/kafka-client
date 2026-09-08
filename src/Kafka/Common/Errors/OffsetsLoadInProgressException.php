@@ -16,12 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The group is rebalancing, so a rejoin is needed.
+ * The coordinator is loading the offsets of this consumer group and cannot serve the request yet.
  */
-class RebalanceInProgressException extends KafkaException
+class OffsetsLoadInProgressException extends KafkaException implements RetriableException
 {
-    public function __construct(array $context, ?Exception $previous = null)
+    public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::REBALANCE_IN_PROGRESS, $previous);
+        parent::__construct($context, self::OFFSETS_LOAD_IN_PROGRESS, $previous);
     }
 }

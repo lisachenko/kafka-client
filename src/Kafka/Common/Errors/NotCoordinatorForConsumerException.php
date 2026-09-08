@@ -16,9 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The configured groupId is invalid
+ * This broker is not the coordinator for this consumer group.
  */
-class InvalidGroupIdException extends KafkaException
+class NotCoordinatorForConsumerException extends KafkaException implements RetriableException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::NOT_COORDINATOR_FOR_CONSUMER, $previous);
+    }
 }
