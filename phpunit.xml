@@ -13,6 +13,10 @@
         <testsuite name="integration">
             <directory>tests/Integration</directory>
         </testsuite>
+        <!-- Replays the documented wire vectors of docs/protocol through the protocol classes, no broker needed -->
+        <testsuite name="compliance">
+            <directory>tests/Compliance</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>

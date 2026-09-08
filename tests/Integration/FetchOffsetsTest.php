@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Tests\Integration;
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\IO\SocketStream;
+use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
@@ -28,10 +29,9 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
-use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
-use Protocol\Kafka\Tests\Fixture\ClusterMetadataResponse;
+use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
  * Verifies the Fetch and Offsets APIs against a real Kafka 0.8.2.2 broker.
@@ -74,6 +74,26 @@ final class FetchOffsetsTest extends IntegrationTestCase
      * How long to wait for an auto-created topic to become writable, in seconds
      */
     private const float TOPIC_TIMEOUT = 30.0;
+
+    /**
+     * How long to wait between two attempts at a partition that is not servable yet, `retry.backoff.ms` in style
+     */
+    private const int RETRY_BACKOFF_MICROSECONDS = 200000;
+
+    /**
+     * Error codes of a partition that exists but is not being served by this broker yet
+     *
+     * A freshly auto-created topic runs through all three of them: the broker knows nothing about the topic (3),
+     * the controller has not elected a leader for the partition yet (5), and the elected leader has not finished
+     * taking it over (6). None of them is a permanent failure, so a request that meets one is repeated.
+     *
+     * @var list<int>
+     */
+    private const array NOT_SERVABLE_YET = [
+        KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+        KafkaException::LEADER_NOT_AVAILABLE,
+        KafkaException::NOT_LEADER_FOR_PARTITION,
+    ];
 
     public function testFetchFromTheBeginningReturnsEveryProducedMessage(): void
     {
@@ -242,37 +262,56 @@ final class FetchOffsetsTest extends IntegrationTestCase
     }
 
     /**
-     * Creates a topic through a metadata request and waits until the partition under test can be queried
+     * Creates a topic and waits until the partition under test really serves requests
      *
-     * Auto-creation is asynchronous: until the controller has assigned a leader to the new partitions the broker
-     * answers with UnknownTopicOrPartition (3), LeaderNotAvailable (5) or, once a leader has been elected but this
-     * broker has not been told about it yet, NotLeaderForPartition (6).
+     * Auto-creation is asynchronous and happens in two steps that a client sees separately. Asking for the metadata
+     * of an unknown topic creates it, but the controller elects the leaders of its partitions afterwards, so the
+     * metadata announces the topic without a leader for a while ({@see TopicMetadataProbe} waits for that). A broker
+     * that has just been made the leader of a partition still needs a moment to start serving it, and answers
+     * UnknownTopicOrPartition (3), LeaderNotAvailable (5) or NotLeaderForPartition (6) in between - which is what a
+     * cold broker does after the metadata already looks good, so the first request is retried as well.
      */
     private function createTopic(SocketStream $stream, string $prefix): string
     {
         $topic = self::uniqueTopicName($prefix);
-        new MetadataRequest([$topic], self::CLIENT_ID, 1)->writeTo($stream);
-        ClusterMetadataResponse::unpack($stream);
+        new TopicMetadataProbe(fn(): Stream => $this->connect(), self::TOPIC_TIMEOUT, self::CLIENT_ID)
+            ->awaitTopicWithLeaders($topic);
 
+        // listOffsets() itself waits for a partition that is not servable yet, so this is the second step
+        self::assertSame(0, $this->listOffsets($stream, $topic, OffsetsRequest::LATEST)->errorCode);
+
+        return $topic;
+    }
+
+    /**
+     * Repeats a request while the partition it addresses is not servable yet
+     *
+     * Only the error codes of a partition that is still being handed over are retried; every other answer, the
+     * successful one and the failures that the tests assert on alike, is given back as it is.
+     *
+     * @param \Closure(): (FetchResponsePartition|OffsetsResponsePartition) $request Request to repeat
+     */
+    private function awaitServablePartition(
+        string $topic,
+        \Closure $request
+    ): FetchResponsePartition|OffsetsResponsePartition {
         $deadline = microtime(true) + self::TOPIC_TIMEOUT;
+
         do {
-            $errorCode = $this->listOffsets($stream, $topic, OffsetsRequest::LATEST)->errorCode;
-            if ($errorCode === 0) {
-                return $topic;
+            $partition = $request();
+            if (!in_array($partition->errorCode, self::NOT_SERVABLE_YET, true)) {
+                return $partition;
             }
-            self::assertContains(
-                $errorCode,
-                [
-                    KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
-                    KafkaException::LEADER_NOT_AVAILABLE,
-                    KafkaException::NOT_LEADER_FOR_PARTITION,
-                ],
-                "The broker answered with error code {$errorCode} for the fresh topic {$topic}"
-            );
-            usleep(200000);
+            usleep(self::RETRY_BACKOFF_MICROSECONDS);
         } while (microtime(true) < $deadline);
 
-        self::fail("The partition {$topic}-" . self::PARTITION . ' did not become available in time');
+        self::fail(sprintf(
+            'The partition %s-%d still answered with the error code %d after %.0f seconds',
+            $topic,
+            self::PARTITION,
+            $partition->errorCode,
+            self::TOPIC_TIMEOUT
+        ));
     }
 
     /**
@@ -305,17 +344,13 @@ final class FetchOffsetsTest extends IntegrationTestCase
             if ($errorCode === 0) {
                 return;
             }
-            // The auto-created topic may still be electing a leader for its partitions
+            // The auto-created topic may still be electing a leader for its partitions, or handing one over
             self::assertContains(
                 $errorCode,
-                [
-                    KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
-                    KafkaException::LEADER_NOT_AVAILABLE,
-                    KafkaException::NOT_LEADER_FOR_PARTITION,
-                ],
+                self::NOT_SERVABLE_YET,
                 "The broker refused to accept the messages of {$topic} with error code {$errorCode}"
             );
-            usleep(200000);
+            usleep(self::RETRY_BACKOFF_MICROSECONDS);
         } while (microtime(true) < $deadline);
 
         self::fail("The partition {$topic}-" . self::PARTITION . ' did not get a leader in time');
@@ -348,21 +383,30 @@ final class FetchOffsetsTest extends IntegrationTestCase
         int $maxWaitTime = 1000,
         int $minBytes = 1
     ): FetchResponsePartition {
-        new FetchRequest(
-            [$topic => [self::PARTITION => $fetchOffset]],
-            $maxWaitTime,
-            $minBytes,
+        return $this->awaitServablePartition($topic, function () use (
+            $stream,
+            $topic,
+            $fetchOffset,
             $maxBytes,
-            -1,
-            self::CLIENT_ID,
-            11
-        )->writeTo($stream);
+            $maxWaitTime,
+            $minBytes
+        ): FetchResponsePartition {
+            new FetchRequest(
+                [$topic => [self::PARTITION => $fetchOffset]],
+                $maxWaitTime,
+                $minBytes,
+                $maxBytes,
+                -1,
+                self::CLIENT_ID,
+                11
+            )->writeTo($stream);
 
-        $response = FetchResponse::unpack($stream);
-        self::assertSame(11, $response->getCorrelationId());
-        self::assertArrayHasKey($topic, $response->topics);
+            $response = FetchResponse::unpack($stream);
+            self::assertSame(11, $response->getCorrelationId());
+            self::assertArrayHasKey($topic, $response->topics);
 
-        return $response->topics[$topic]->partitions[self::PARTITION];
+            return $response->topics[$topic]->partitions[self::PARTITION];
+        });
     }
 
     /**
@@ -370,19 +414,24 @@ final class FetchOffsetsTest extends IntegrationTestCase
      */
     private function listOffsets(SocketStream $stream, string $topic, int $timestamp): OffsetsResponsePartition
     {
-        new OffsetsRequest(
-            [$topic => [self::PARTITION => $timestamp]],
-            1,
-            -1,
-            self::CLIENT_ID,
-            12
-        )->writeTo($stream);
+        return $this->awaitServablePartition(
+            $topic,
+            function () use ($stream, $topic, $timestamp): OffsetsResponsePartition {
+                new OffsetsRequest(
+                    [$topic => [self::PARTITION => $timestamp]],
+                    1,
+                    -1,
+                    self::CLIENT_ID,
+                    12
+                )->writeTo($stream);
 
-        $response = OffsetsResponse::unpack($stream);
-        self::assertSame(12, $response->getCorrelationId());
-        self::assertArrayHasKey($topic, $response->topics);
+                $response = OffsetsResponse::unpack($stream);
+                self::assertSame(12, $response->getCorrelationId());
+                self::assertArrayHasKey($topic, $response->topics);
 
-        return $response->topics[$topic]->partitions[self::PARTITION];
+                return $response->topics[$topic]->partitions[self::PARTITION];
+            }
+        );
     }
 
     /**
