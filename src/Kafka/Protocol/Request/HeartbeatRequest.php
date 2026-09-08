@@ -10,63 +10,61 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Heartbeat Request
+ * Heartbeat, version 0: keeps a member of a group alive and tells it when a rebalance has started.
  *
- * Once a member has joined and synced, it will begin sending periodic heartbeats to keep itself in the group. If not
- * heartbeat has been received by the coordinator with the configured session timeout, the member will be kicked out of
- * the group.
+ * Once a member has joined and synced it sends periodic heartbeats; if the coordinator receives none within the
+ * `session_timeout` of the JoinGroup request, the member is removed from the group and the group rebalances. PHP has
+ * no background thread, so this client sends the heartbeat from its poll loop, once
+ * {@see \Protocol\Kafka\Consumer\ConsumerConfig::HEARTBEAT_INTERVAL_MS} has elapsed.
+ *
+ * <pre>
+ *   Heartbeat Request (Version: 0) => group_id group_generation_id member_id
+ *     group_id            => STRING
+ *     group_generation_id => INT32
+ *     member_id           => STRING
+ * </pre>
+ *
+ * @see docs/protocol/0.9.0.md, section "Heartbeat API (key 12, v0)"
  */
 class HeartbeatRequest extends AbstractRequest
 {
-    /**
-     * @param string $consumerGroup
-     * @param int $generationId
-     * @param string $memberId
-     */
-    public function __construct(/**
-     * The consumer group id.
-     */
-        private $consumerGroup, /**
-     * The generation of the group.
-     */
-        private $generationId, /**
-     * The member id assigned by the group coordinator.
-     */
-        private $memberId,
-        $clientId = '',
-        $correlationId = 0
+    public function __construct(
+        /**
+         * The consumer group id.
+         */
+        protected readonly string $consumerGroup,
+        /**
+         * The generation of the group.
+         */
+        protected readonly int $generationId,
+        /**
+         * The member id assigned by the group coordinator.
+         */
+        protected readonly string $memberId,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
         parent::__construct(ApiKeys::HEARTBEAT, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload      = parent::packPayload();
-        $groupLength  = strlen($this->consumerGroup);
-        $memberLength = strlen($this->memberId);
+        $header = parent::getScheme();
 
-        $payload .= pack(
-            "na{$groupLength}Nna{$memberLength}",
-            $groupLength,
-            $this->consumerGroup,
-            $this->generationId,
-            $memberLength,
-            $this->memberId
-        );
-
-        return $payload;
+        return $header + [
+            'consumerGroup' => BinarySchema::TYPE_STRING,
+            'generationId'  => BinarySchema::TYPE_INT32,
+            'memberId'      => BinarySchema::TYPE_STRING,
+        ];
     }
 }

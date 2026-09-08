@@ -1,0 +1,110 @@
+{
+    "api": "offset-fetch",
+    "apiKey": 9,
+    "section": "OffsetFetch API (key 9, v0 and v1)",
+    "description": "Wire vectors of the OffsetFetch API (key 9, v0 and v1), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "offsetfetch.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "OffsetFetch request v1, which reads the offsets from the __consumer_offsets topic; the partitions are always explicit, the nullable topic array is version 2 of the api, which arrived with Kafka 0.10.2.",
+            "hex": "000000390009000100000012000374313000117431302d766563746f72732d67726f757000000001000b7431302d766563746f72730000000100000000",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 9,
+                "apiVersion": 1,
+                "correlationId": 18,
+                "clientId": "t10",
+                "consumerGroup": "t10-vectors-group",
+                "topicPartitions": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "OffsetFetch response v1 reading back the offset that the OffsetCommit vector committed.",
+            "hex": "000000290000001200000001000b7431302d766563746f727300000001000000000000000000000001ffff0000",
+            "fields": {
+                "messageSize": 41,
+                "correlationId": 18,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 1,
+                                "metadata": null,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "OffsetFetch request v0, byte for byte the request of v1 with a lower version field; it reads the offsets from ZooKeeper.",
+            "hex": "000000390009000000000013000374313000117431302d766563746f72732d67726f757000000001000b7431302d766563746f72730000000100000001",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 9,
+                "apiVersion": 0,
+                "correlationId": 19,
+                "clientId": "t10",
+                "consumerGroup": "t10-vectors-group",
+                "topicPartitions": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            1
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.response.v0.no-committed-offset",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "OffsetFetch response v0 for a partition that the group never committed: offset -1 with the error code 3, which a client has to read as \"no offset yet\".",
+            "hex": "000000290000001300000001000b7431302d766563746f72730000000100000001ffffffffffffffff00000003",
+            "fields": {
+                "messageSize": 41,
+                "correlationId": 19,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": {
+                            "1": {
+                                "partition": 1,
+                                "offset": -1,
+                                "metadata": "",
+                                "errorCode": 3
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

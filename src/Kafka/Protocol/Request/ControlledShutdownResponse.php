@@ -10,54 +10,54 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2014
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 
 /**
- * Controlled shutdown response
+ * ControlledShutdown response object
+ *
+ * <pre>
+ *   ControlledShutdownResponse => ErrorCode [TopicName Partition]
+ *     ErrorCode => int16
+ *     TopicName => string
+ *     Partition => int32
+ * </pre>
+ *
+ * The array holds the topic-partitions that still have a leader or a replica on the broker after the controller has
+ * done what it could; an empty array together with the error code 0 means the broker may now be stopped.
+ *
+ * Both versions of the request share this response: `ControlledShutdownResponse` @ 0.9.0.1 has no version of its own.
+ *
+ * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
  */
 class ControlledShutdownResponse extends AbstractResponse
 {
     /**
-     * Error code.
-     *
-     * @var integer
+     * Error code of the whole request
      */
-    public $errorCode;
+    public int $errorCode = 0;
 
     /**
-     * The topic partitions that the broker still leads.
+     * Topic-partitions that could not be moved off the broker
      *
-     * @var array|string[]
+     * @var list<ControlledShutdownResponsePartition>
      */
-    public $remainingTopicPartitions = [];
+    public array $remainingTopicPartitions = [];
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $self->errorCode, $topicPartitionsNumber] = array_values($stream->read('NcorrelationId/nerrorCode/NtopicNumber'));
+        $header = parent::getScheme();
 
-        for ($i = 0; $i < $topicPartitionsNumber; $i++) {
-            $topic     = $stream->readString();
-            $partition = $stream->read('Npartition')['partition'];
-
-            $self->remainingTopicPartitions[$topic][] = $partition;
-        }
-
-        return $self;
+        return $header + [
+            'errorCode' => BinarySchema::TYPE_INT16,
+            // A flat list of pairs, not partitions grouped by topic, so it cannot be indexed by the topic name
+            'remainingTopicPartitions' => [ControlledShutdownResponsePartition::class],
+        ];
     }
 }

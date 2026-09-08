@@ -17,63 +17,65 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * Produce response DTO
+ * Produce response partition DTO
+ *
+ * <pre>
+ *   Partition ErrorCode Offset
+ *     Partition => int32
+ *     ErrorCode => int16
+ *     Offset    => int64
+ * </pre>
+ *
+ * The `LogAppendTime` of the later protocol lines arrived with version 2 of this API (Kafka 0.10.0).
+ *
+ * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
  */
-class ProduceResponsePartition
+class ProduceResponsePartition implements BinarySchemaInterface
 {
     /**
      * The partition this response entry corresponds to.
-     *
-     * @var integer
      */
-    public $partition;
+    public int $partition = 0;
 
     /**
      * The error from this partition, if any.
      *
      * Errors are given on a per-partition basis because a given partition may be unavailable or maintained on a
      * different host, while others may have successfully accepted the produce request.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode = 0;
 
     /**
      * The offset assigned to the first message in the message set appended to this partition.
-     *
-     * @var integer
      */
-    public $offset;
+    public int $baseOffset = 0;
 
     /**
-     * If LogAppendTime is used for the topic, this is the timestamp assigned by the broker to the message set.
-     * All the messages in the message set have the same timestamp.
+     * Milliseconds the broker delayed the answer this partition arrived in, because of a produce quota.
      *
-     * If CreateTime is used, this field is always -1. The producer can assume the timestamp of the messages in the
-     * produce request has been accepted by the broker if there is no error code returned.
+     * This is **not** a field of the wire format - the Produce API reports its `ThrottleTime` once per response,
+     * behind the topics array - and it is therefore not part of {@see self::getScheme()}. The client copies the
+     * value of an answer onto every partition of it, because a batch is split by partition leaders and each of
+     * those answers carries a throttle time of its own.
      *
-     * Unit is milliseconds since beginning of the epoch (midnight Jan 1, 1970 (UTC)).
-     *
-     * @var integer
-     * @since Version 2 of protocol
+     * @see \Protocol\Kafka\Producer\RecordMetadata::$throttleTimeMs
+     * @see docs/protocol/0.9.0.md, section "Quotas and throttle time"
      */
-    public $timestamp;
+    public int $throttleTimeMs = 0;
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->offset, $partition->timestamp] = array_values($stream->read('Npartition/nerrorCode/Joffset/Jtimestamp'));
-
-        return $partition;
+        return [
+            'partition'  => BinarySchema::TYPE_INT32,
+            'errorCode'  => BinarySchema::TYPE_INT16,
+            'baseOffset' => BinarySchema::TYPE_INT64,
+        ];
     }
 }

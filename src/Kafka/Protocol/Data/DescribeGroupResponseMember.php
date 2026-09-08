@@ -10,79 +10,68 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 28.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * DescribeGroup member metadata DTO
+ * One member of a group, as reported by the DescribeGroups API
+ *
+ * <pre>
+ *   DescribeGroupResponseMember => MemberId ClientId ClientHost MemberMetadata MemberAssignment
+ *     MemberId         => string
+ *     ClientId         => string
+ *     ClientHost       => string
+ *     MemberMetadata   => bytes
+ *     MemberAssignment => bytes
+ * </pre>
+ *
+ * Both byte arrays are opaque to this api: their content depends on the protocol type of the group. For the
+ * `consumer` protocol type they hold the `Subscription` the member sent with its JoinGroup request and the
+ * `MemberAssignment` the leader published with SyncGroup.
+ *
+ * @see docs/protocol/0.9.0.md, section "DescribeGroups API (key 15, v0)"
  */
-class DescribeGroupResponseMember
+class DescribeGroupResponseMember implements BinarySchemaInterface
 {
     /**
-     * 	The memberId assigned by the coordinator
-     *
-     * @var string
+     * The memberId assigned by the coordinator
      */
-    public $memberId;
+    public string $memberId;
 
     /**
      * The client id used in the member's latest join group request
-     *
-     * @var string
      */
-    public $clientId;
+    public string $clientId;
 
     /**
-     * The client host used in the request session corresponding to the member's join group.
-     *
-     * @var string
+     * The client host used in the request session corresponding to the member's join group
      */
-    public $clientHost;
+    public string $clientHost;
 
     /**
-     * The metadata corresponding to the current group protocol in use (will only be present if the group is stable).
-     *
-     * @var string Binary data
+     * The metadata corresponding to the current group protocol in use (only present if the group is stable)
      */
-    public $memberMetadata;
+    public string $memberMetadata;
 
     /**
-     * The current assignment provided by the group leader (will only be present if the group is stable).
-     *
-     * @var string
+     * The current assignment provided by the group leader (only present if the group is stable)
      */
-    public $memberAssignment;
+    public string $memberAssignment;
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     *
-     *  members => member_id client_id client_host member_metadata member_assignment
-     *    member_id => STRING
-     *    client_id => STRING
-     *    client_host => STRING
-     *    member_metadata => BYTES
-     *    member_assignment => BYTES
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $memberMetadata = new static();
-
-        $memberMetadata->memberId         = $stream->readString();
-        $memberMetadata->clientId         = $stream->readString();
-        $memberMetadata->clientHost       = $stream->readString();
-        $memberMetadata->memberMetadata   = $stream->readByteArray();
-        $memberMetadata->memberAssignment = $stream->readByteArray();
-
-        return $memberMetadata;
+        return [
+            'memberId'         => BinarySchema::TYPE_STRING,
+            'clientId'         => BinarySchema::TYPE_STRING,
+            'clientHost'       => BinarySchema::TYPE_STRING,
+            'memberMetadata'   => BinarySchema::TYPE_BYTEARRAY,
+            'memberAssignment' => BinarySchema::TYPE_BYTEARRAY,
+        ];
     }
 }

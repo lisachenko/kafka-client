@@ -1,0 +1,51 @@
+name: Cascade merge
+
+# The protocol lines are developed lowest-first and merged upwards:
+#   0.8.x -> 0.9.x -> 0.10.x -> main
+# Whenever a lower line moves, this workflow opens (or refreshes) a pull request
+# that carries it into the next line. Conflicts are resolved by hand on a branch
+# named cascade/<from>-into-<to> (see docs/CASCADE.md), never by force-pushing
+# either protocol branch.
+
+on:
+  push:
+    branches: [0.8.x, 0.9.x, 0.10.x]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  open-cascade-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve the next line
+        id: next
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            0.8.x)  echo "target=0.9.x"  >> "$GITHUB_OUTPUT" ;;
+            0.9.x)  echo "target=0.10.x" >> "$GITHUB_OUTPUT" ;;
+            0.10.x) echo "target=main"   >> "$GITHUB_OUTPUT" ;;
+          esac
+      - name: Open or refresh the cascade pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FROM: ${{ github.ref_name }}
+          TO: ${{ steps.next.outputs.target }}
+        run: |
+          set -euo pipefail
+          if git merge-base --is-ancestor "origin/${FROM}" "origin/${TO}"; then
+            echo "${TO} already contains ${FROM}; nothing to cascade."
+            exit 0
+          fi
+          existing="$(gh pr list --base "${TO}" --head "${FROM}" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "${existing}" ]; then
+            echo "Cascade PR #${existing} ${FROM} -> ${TO} is already open."
+            exit 0
+          fi
+          gh pr create --base "${TO}" --head "${FROM}" \
+            --title "cascade: merge ${FROM} into ${TO}" \
+            --body "$(printf 'Automated cascade of the %s protocol line into %s.\n\nIf this merge conflicts, resolve it on a branch named cascade/%s-into-%s following docs/CASCADE.md (the lower line wins for shared structures; version-specific fields and classes of %s are re-applied on top), open a PR from that branch instead, and close this one.' "${FROM}" "${TO}" "${FROM}" "${TO}" "${TO}")"

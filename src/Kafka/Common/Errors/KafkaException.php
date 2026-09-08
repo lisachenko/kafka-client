@@ -14,16 +14,25 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Common\Errors;
 
 use Exception;
+use ReflectionObject;
+use RuntimeException;
 
 /**
  * Kafka uses numeric codes to indicate what problem occurred on the server.
  *
  * These can be translated by the client into exceptions or whatever the appropriate error handling mechanism in the
  * client language.
+ *
+ * The constant names are those of the later protocol lines so that the cascade merge stays small; the codes and the
+ * set of codes are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 0.9.0.1, which ends
+ * at 31. Code 13 was StaleLeaderEpochCode in the 0.8 line and is NETWORK_EXCEPTION here; NO_ERROR is not part of the
+ * mapping. Codes 32 and above (INVALID_TIMESTAMP, the SASL codes, UNSUPPORTED_VERSION) arrived with Kafka 0.10.
  */
-abstract class KafkaException extends \RuntimeException
+abstract class KafkaException extends RuntimeException
 {
     public const UNKNOWN = -1;
+
+    public const NO_ERROR = 0;
 
     public const OFFSET_OUT_OF_RANGE              = 1;
     public const CORRUPT_MESSAGE                  = 2;
@@ -56,17 +65,13 @@ abstract class KafkaException extends \RuntimeException
     public const TOPIC_AUTHORIZATION_FAILED       = 29;
     public const GROUP_AUTHORIZATION_FAILED       = 30;
     public const CLUSTER_AUTHORIZATION_FAILED     = 31;
-    public const INVALID_TIMESTAMP                = 32;
-    public const UNSUPPORTED_SASL_MECHANISM       = 33;
-    public const ILLEGAL_SASL_STATE               = 34;
-    public const UNSUPPORTED_VERSION              = 35;
 
     /**
      * Mapping from the codes to class names
      *
-     * @var array
+     * @var array<int, class-string<KafkaException>>
      */
-    private static $codeToClassMap = [
+    private static array $codeToClassMap = [
         self::UNKNOWN                          => UnknownErrorException::class,
         self::OFFSET_OUT_OF_RANGE              => OffsetOutOfRangeException::class,
         self::CORRUPT_MESSAGE                  => CorruptMessageException::class,
@@ -99,10 +104,6 @@ abstract class KafkaException extends \RuntimeException
         self::TOPIC_AUTHORIZATION_FAILED       => TopicAuthorizationFailedException::class,
         self::GROUP_AUTHORIZATION_FAILED       => GroupAuthorizationFailedException::class,
         self::CLUSTER_AUTHORIZATION_FAILED     => ClusterAuthorizationFailedException::class,
-        self::INVALID_TIMESTAMP                => InvalidTimestampException::class,
-        self::UNSUPPORTED_SASL_MECHANISM       => UnsupportedSaslMechanismException::class,
-        self::ILLEGAL_SASL_STATE               => IllegalSaslStateException::class,
-        self::UNSUPPORTED_VERSION              => UnsupportedVersionException::class,
     ];
 
     /**
@@ -110,18 +111,18 @@ abstract class KafkaException extends \RuntimeException
      *
      * @var array
      */
-    private $context = [];
+    private array $context = [];
 
     /**
      * Creates an instance of exception by error code
      *
-     * @param integer         $errorCode Error code from the Kafka
-     * @param array           $context   Additional context
+     * @param integer        $errorCode Error code from the Kafka
+     * @param array          $context   Additional context
      * @param Exception|null $previous
      *
      * @return KafkaException
      */
-    final public static function fromCode($errorCode, array $context, ?Exception $previous = null)
+    final public static function fromCode(int $errorCode, array $context = [], ?Exception $previous = null): KafkaException
     {
         if (!isset(self::$codeToClassMap[$errorCode])) {
             return new UnknownErrorException(['errorCode' => $errorCode] + $context, $previous);
@@ -134,22 +135,23 @@ abstract class KafkaException extends \RuntimeException
     /**
      * @inheritDoc
      */
-    public function __construct(array $context = [], $code = null, ?Exception $previous = null)
+    public function __construct(array $context = [], int $code = self::UNKNOWN, ?Exception $previous = null)
     {
         $this->context = $context;
-        $docBlock = new \ReflectionObject($this)->getDocComment();
-        $docBlock = preg_replace('/^\s*\/?\*+\/?/m', '', $docBlock);
-        $docBlock = preg_replace('/\s{2,}/', '', $docBlock);
 
-        $message = $docBlock . PHP_EOL . "Context: " . json_encode($context);
+        $docBlock = new ReflectionObject($this)->getDocComment() ?: '';
+        $docBlock = (string) preg_replace('/^\s*\/?\*+\/?/m', '', $docBlock);
+        $docBlock = trim((string) preg_replace('/\s{2,}/', ' ', $docBlock));
+
+        $message = $docBlock . PHP_EOL . 'Context: ' . json_encode($context);
+
+        parent::__construct($message, $code, $previous);
     }
 
     /**
      * Returns the context for this exception
-     *
-     * @return array
      */
-    public function getContext()
+    public function getContext(): array
     {
         return $this->context;
     }

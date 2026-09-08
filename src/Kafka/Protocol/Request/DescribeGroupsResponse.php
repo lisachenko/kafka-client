@@ -10,60 +10,41 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 28.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 
 /**
  * Describe groups response
+ *
+ * <pre>
+ *   DescribeGroupsResponse => [ErrorCode GroupId State ProtocolType Protocol [Members]]
+ * </pre>
+ *
+ * There is no error code for the request as a whole: every group carries its own, and the order of the array is the
+ * order of the group ids in the request.
+ *
+ * @see docs/protocol/0.9.0.md, section "DescribeGroups API (key 15, v0)"
  */
 class DescribeGroupsResponse extends AbstractResponse
 {
     /**
-     * List of groups as keys and group info as values
+     * Description of each requested group, indexed by the group id
      *
-     * @var array
+     * @var array<string, DescribeGroupResponseMetadata>
      */
-    public $groups = [];
+    public array $groups = [];
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
-     *
-     * DescribeGroupsResponse => [ErrorCode GroupId State ProtocolType Protocol Members]
-     *   ErrorCode => int16
-     *   GroupId => string
-     *   State => string
-     *   ProtocolType => string
-     *   Protocol => string
-     *   Members => [MemberId ClientId ClientHost MemberMetadata MemberAssignment]
-     *     MemberId => string
-     *     ClientId => string
-     *     ClientHost => string
-     *     MemberMetadata => bytes
-     *     MemberAssignment => bytes
-
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $groupNumber] = array_values($stream->read('NcorrelationId/NgroupNumber'));
+        $header = parent::getScheme();
 
-        for ($groupIndex = 0; $groupIndex < $groupNumber; $groupIndex++) {
-            $groupMetadata = DescribeGroupResponseMetadata::unpack($stream);
-            $self->groups[$groupMetadata->groupId] = $groupMetadata;
-        }
-
-        return $self;
+        return $header + [
+            'groups' => ['groupId' => DescribeGroupResponseMetadata::class],
+        ];
     }
 }

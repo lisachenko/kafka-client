@@ -10,74 +10,61 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * Offsets response DTO
+ * One partition of an Offsets (ListOffset) response v0
  *
- * Offsets Response (Version: 1) => [responses]
- *   responses => topic [partition_responses]
- *     topic => STRING
- *     partition_responses => partition error_code timestamp offset
- *       partition => INT32
- *       error_code => INT16
- *       timestamp => INT64
- *       offset => INT64
+ * <pre>
+ *   OffsetsResponsePartition => Partition ErrorCode [Offset]
+ *     Partition => int32
+ *     ErrorCode => int16
+ *     Offset    => int64
+ * </pre>
+ *
+ * v0 answers with a list of segment offsets, which is why there is an array here and a single `Timestamp`/`Offset`
+ * pair in v1 (Kafka 0.10.1) of the API.
+ *
+ * @see docs/protocol/0.9.0.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
-class OffsetsResponsePartition
+class OffsetsResponsePartition implements BinarySchemaInterface
 {
     /**
      * The partition this response entry corresponds to.
-     *
-     * @var integer
      */
-    public $partition;
+    public int $partition;
 
     /**
      * The error from this partition, if any.
      *
      * Errors are given on a per-partition basis because a given partition may be unavailable or maintained on a
-     * different host, while others may have successfully accepted the produce request.
-     *
-     * @var integer
+     * different host, while others may have been answered successfully.
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
-     * The timestamp associated with the returned offset
+     * Offsets of this partition, newest first.
      *
-     * @since 0.10.1
+     * For `OffsetsRequest::LATEST` this is the log end offset, for `OffsetsRequest::EARLIEST` the first available
+     * offset; for an ordinary timestamp it holds up to `MaxNumberOfOffsets` segment start offsets.
      *
-     * @var integer
+     * @var list<int>
      */
-    public $timestamp;
+    public array $offsets = [];
 
     /**
-     * Found offset
-     *
-     * @var integer
+     * @inheritdoc
      */
-    public $offset;
-
-    /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $partition = new static();
-        [$partition->partition, $partition->errorCode, $partition->timestamp, $partition->offset] = array_values($stream->read('Npartition/nerrorCode/Jtimestamp/Joffset'));
-
-        return $partition;
+        return [
+            'partition' => BinarySchema::TYPE_INT32,
+            'errorCode' => BinarySchema::TYPE_INT16,
+            'offsets'   => [BinarySchema::TYPE_INT64],
+        ];
     }
 }

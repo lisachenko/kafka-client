@@ -10,53 +10,49 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Sync group response
+ * SyncGroup response, version 0.
+ *
+ * <pre>
+ *   SyncGroup Response (Version: 0) => error_code member_assignment
+ *     error_code        => INT16
+ *     member_assignment => BYTES
+ * </pre>
+ *
+ * The `throttle_time_ms` that opens this response on `main` is a field of version 1 (Kafka 0.10.1) and is therefore
+ * absent here. The assignment is the share of the member that sent the request, exactly the bytes the leader gave
+ * the coordinator for it; a member the leader did not mention receives an empty byte array, and an answer with an
+ * error code carries an empty one as well.
+ *
+ * @see docs/protocol/0.9.0.md, section "SyncGroup API (key 14, v0)"
  */
 class SyncGroupResponse extends AbstractResponse
 {
     /**
      * Error code.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
-     * Assigned data to the member
-     *
-     * @var string
+     * Assignment of the member that sent the request, opaque to this api.
      */
-    public $memberAssignment;
+    public string $memberAssignment;
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * SyncGroupResponse => ErrorCode MemberAssignment
-     *   ErrorCode => int16
-     *   MemberAssignment => bytes
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $self->errorCode] = array_values($stream->read('NcorrelationId/nerrorCode'));
+        $header = parent::getScheme();
 
-        $self->memberAssignment = $stream->readByteArray();
-
-        return $self;
+        return $header + [
+            'errorCode'        => BinarySchema::TYPE_INT16,
+            'memberAssignment' => BinarySchema::TYPE_BYTEARRAY,
+        ];
     }
 }

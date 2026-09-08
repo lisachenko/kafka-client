@@ -10,97 +10,106 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Consumer;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\IO\StringStream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * Subscription information that is used for the synchronization between consumers
+ * Member metadata that a consumer publishes to the group coordinator, the `protocol_type = "consumer"` payload of
+ * the JoinGroup request.
+ *
+ * <pre>
+ *   Subscription => Version [Topic] UserData
+ *     Version  => int16
+ *     Topic    => string
+ *     UserData => bytes
+ * </pre>
+ *
+ * The structure travels as an opaque byte array in the `member_metadata` field of JoinGroup and comes back to the
+ * leader of the group in the `members` array of the JoinGroup response, which is where the assignor reads it.
+ * Kafka 0.9.0.1 knows exactly one version of it, {@see Subscription::VERSION}; the Java client of 0.9 parses a
+ * higher version with the layout of version 0, so new versions may only append fields.
+ *
+ * The `UserData` is what a custom assignor forwards to the leader - a rack id, the number of cpus of the machine,
+ * the assignment of the previous generation for a sticky assignor. The built-in assignors keep no state and send
+ * the empty byte array that the Java client sends, `PartitionAssignor.Subscription` defaulting the field to
+ * `ByteBuffer.wrap(new byte[0])`.
+ *
+ * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see \Protocol\Kafka\Consumer\PartitionAssignorInterface::subscription()
  */
-class Subscription implements \Stringable
+class Subscription implements BinarySchemaInterface
 {
     /**
-     * This is a version id.
-     *
-     * @var integer
+     * Version of the consumer group protocol that Kafka 0.9.0.1 speaks
      */
-    public $version;
+    public const int VERSION = 0;
 
     /**
-     * This property holds all the topics for the consumer.
-     *
-     * @var array
+     * Version of the structure, `ConsumerProtocol.CONSUMER_PROTOCOL_V0` in the Java client
      */
-    public $topics;
+    public int $version;
 
     /**
-     * The UserData field can be used by custom partition assignment strategies.
+     * Topics that the member wants to consume
      *
-     * For example, in a sticky partitioning implementation, this field can contain the assignment from the previous
-     * generation. In a resource-based assignment strategy, it could include the number of cpus on the machine hosting
-     * each consumer instance.
-     *
-     * @var string
+     * @var list<string>
      */
-    public $userData;
+    public array $topics;
 
-    public static function fromSubscription(array $topics, $version = 0, $userData = ''): static
+    /**
+     * Opaque data of the assignor, null for the `bytes` value -1 that the protocol defines as null
+     */
+    public ?string $userData;
+
+    /**
+     * @param list<string> $topics   Topics that the member subscribes to
+     * @param int          $version  Version of the structure, 0 in Kafka 0.9.0.1
+     * @param string|null  $userData Data that the assignor of the leader receives together with the topics
+     */
+    public function __construct(array $topics, int $version = self::VERSION, ?string $userData = '')
     {
-        $message = new static();
-
-        $message->topics   = $topics;
-        $message->version  = $version;
-        $message->userData = $userData;
-
-        return $message;
+        $this->topics   = $topics;
+        $this->version  = $version;
+        $this->userData = $userData;
     }
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $message = new static();
-
-        [$message->version, $topicNumber] = array_values($stream->read('nversion/NtopicNumber'));
-
-        for ($topicIndex = 0; $topicIndex < $topicNumber; $topicIndex++) {
-            $message->topics[] = $stream->readString();
-        }
-        $message->userData = $stream->readByteArray();
-
-        return $message;
+        return [
+            'version'  => BinarySchema::TYPE_INT16,
+            'topics'   => [BinarySchema::TYPE_STRING],
+            'userData' => BinarySchema::TYPE_BYTEARRAY,
+        ];
     }
 
     /**
-     * @return string
-     *
-     * ProtocolMetadata => Version Subscription UserData
-     *   Version => int16
-     *   Subscription => [Topic]
-     *     Topic => string
-     *   UserData => bytes
+     * Returns the binary representation of this structure, the `member_metadata` of a JoinGroup request
      */
-    public function __toString(): string
+    public function pack(): string
     {
-        $payload = pack('nN', $this->version, count($this->topics));
-        foreach ($this->topics as $topic) {
-            $topicLength = strlen($topic);
-            $payload .= pack("na{$topicLength}", $topicLength, $topic);
-        }
-        $userDataLength = strlen($this->userData);
-        $payload .= pack('N', $userDataLength);
-        $payload .= $this->userData;
+        $stream = new StringStream();
+        BinarySchema::writeObjectToStream($this, $stream);
 
-        return $payload;
+        return $stream->getBuffer();
+    }
+
+    /**
+     * Restores the structure from the `member_metadata` bytes of a JoinGroup response
+     *
+     * @param string $bytes Content of the byte array field, without its length prefix
+     */
+    public static function unpack(string $bytes): static
+    {
+        /** @var static $subscription */
+        $subscription = BinarySchema::readObjectFromStream(static::class, new StringStream($bytes));
+
+        return $subscription;
     }
 }

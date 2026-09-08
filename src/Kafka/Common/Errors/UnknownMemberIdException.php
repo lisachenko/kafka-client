@@ -17,8 +17,13 @@ use Exception;
 
 /**
  * The coordinator is not aware of this member.
+ *
+ * Listed as UNKNOWN_CONSUMER_ID in the comments of kafka/common/ErrorMapping.scala @ 0.9.0.1.
  */
-class UnknownMemberIdException extends KafkaException
+class UnknownMemberIdException extends KafkaException implements ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::UNKNOWN_MEMBER_ID, $previous);
+    }
 }
