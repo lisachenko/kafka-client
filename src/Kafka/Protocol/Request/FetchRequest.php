@@ -20,7 +20,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 
 /**
- * Fetch API (key 1, v0)
+ * Fetch API (key 1), version 1
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -35,25 +35,39 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
  * handle this case.
  *
  * <pre>
- *   FetchRequest => ReplicaId MaxWaitTime MinBytes [TopicName [Partition FetchOffset MaxBytes]]
+ *   FetchRequest (Version: 1) => ReplicaId MaxWaitTime MinBytes [TopicName [Partition FetchOffset MaxBytes]]
  *     ReplicaId   => int32
  *     MaxWaitTime => int32
  *     MinBytes    => int32
  * </pre>
  *
+ * `FETCH_REQUEST_V1` of Kafka 0.9.0.1 is `FETCH_REQUEST_V0`: the body did not change, only the answer gained the
+ * `ThrottleTimeMs` prefix, see {@see FetchResponse}. The version therefore only selects the layout of the response,
+ * and {@see FetchRequestV0} keeps the version 0 pair available.
+ *
  * The request-level `MaxBytes` (v3) and `IsolationLevel` (v4) of the later protocol versions do not exist here, the
  * only limit is the per-partition `MaxBytes`.
  *
- * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0)"
+ * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
  */
 class FetchRequest extends AbstractRequest
 {
+    /**
+     * @inheritdoc
+     */
+    public const int API_KEY = ApiKeys::FETCH;
+
+    /**
+     * @inheritdoc
+     */
+    public const int VERSION = 1;
+
     /**
      * Topics to fetch from, indexed by the topic name
      *
      * @var array<string, FetchRequestTopic>
      */
-    private readonly array $topicPartitions;
+    protected readonly array $topicPartitions;
 
     /**
      * @param array<string, array<int, int>> $topicPartitions Fetch offset of every partition, as topic => partition
@@ -77,10 +91,10 @@ class FetchRequest extends AbstractRequest
      */
     public function __construct(
         array $topicPartitions,
-        private readonly int $maxWaitTime,
-        private readonly int $minBytes,
+        protected readonly int $maxWaitTime,
+        protected readonly int $minBytes,
         int $maxBytes,
-        private readonly int $replicaId = -1,
+        protected readonly int $replicaId = -1,
         string $clientId = '',
         int $correlationId = 0
     ) {
@@ -94,7 +108,7 @@ class FetchRequest extends AbstractRequest
         }
         $this->topicPartitions = $packedTopicPartitions;
 
-        parent::__construct(ApiKeys::FETCH, $clientId, $correlationId);
+        parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
     /**
@@ -110,13 +124,13 @@ class FetchRequest extends AbstractRequest
         int $replicaId = -1,
         string $clientId = '',
         int $correlationId = 0
-    ): self {
+    ): static {
         $topicPartitions = [];
         foreach ($partitionOffsets as [$topicPartition, $fetchOffset]) {
             $topicPartitions[$topicPartition->topic][$topicPartition->partition] = $fetchOffset;
         }
 
-        return new self($topicPartitions, $maxWaitTime, $minBytes, $maxBytes, $replicaId, $clientId, $correlationId);
+        return new static($topicPartitions, $maxWaitTime, $minBytes, $maxBytes, $replicaId, $clientId, $correlationId);
     }
 
     /**

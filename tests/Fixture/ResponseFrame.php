@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Fixture;
 
 /**
- * Builds the response frames of the 0.8.2.2 APIs, byte for byte as the specification describes them.
+ * Builds the response frames of the Kafka 0.9.0.1 APIs, byte for byte as the specification describes them.
  *
  * <pre>
  *   Response => Size CorrelationId ResponseMessage
@@ -84,15 +84,16 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Produce response (api key 0, v0)
+     * Builds a Produce response (api key 0, v1)
      *
      * <pre>
-     *   ProduceResponse => [TopicName [Partition ErrorCode Offset]]
+     *   ProduceResponse => [TopicName [Partition ErrorCode Offset]] ThrottleTime
      * </pre>
      *
-     * @param array<string, array<int, array{int, int}>> $topics topic => partition => [errorCode, baseOffset]
+     * @param array<string, array<int, array{int, int}>> $topics       topic => partition => [errorCode, baseOffset]
+     * @param int                                        $throttleTime Milliseconds the broker delayed the request
      */
-    public static function produce(int $correlationId, array $topics): string
+    public static function produce(int $correlationId, array $topics, int $throttleTime = 0): string
     {
         $body = pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
@@ -101,8 +102,22 @@ final class ResponseFrame
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $baseOffset);
             }
         }
+        // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it
+        $body .= pack('N', $throttleTime);
 
         return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds a Produce response of version 0, i.e. the same answer without the trailing `ThrottleTime`
+     *
+     * @param array<string, array<int, array{int, int}>> $topics topic => partition => [errorCode, baseOffset]
+     */
+    public static function produceV0(int $correlationId, array $topics): string
+    {
+        $frame = self::produce($correlationId, $topics);
+
+        return self::of($correlationId, substr($frame, 8, -4));
     }
 
     /**
@@ -132,18 +147,22 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Fetch response (api key 1, v0)
+     * Builds a Fetch response (api key 1, v1)
      *
      * <pre>
-     *   FetchResponse => [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet]]
+     *   FetchResponse => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize
+     *                                               MessageSet]]
      * </pre>
      *
      * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
      *        [errorCode, highWaterMarkOffset, message set bytes]
+     * @param int                                                $throttleTimeMs Milliseconds the broker delayed the
+     *        request
      */
-    public static function fetch(int $correlationId, array $topics): string
+    public static function fetch(int $correlationId, array $topics, int $throttleTimeMs = 0): string
     {
-        $body = pack('N', count($topics));
+        // The throttle time of v1 opens the response, before the topics array
+        $body = pack('N', $throttleTimeMs) . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $highWaterMark, $messageSet]) {
@@ -159,7 +178,20 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetCommit response (api key 8, v0 and v1 share the response format)
+     * Builds a Fetch response of version 0, i.e. the same answer without the leading `ThrottleTimeMs`
+     *
+     * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
+     *        [errorCode, highWaterMarkOffset, message set bytes]
+     */
+    public static function fetchV0(int $correlationId, array $topics): string
+    {
+        $frame = self::fetch($correlationId, $topics);
+
+        return self::of($correlationId, substr($frame, 12));
+    }
+
+    /**
+     * Builds an OffsetCommit response (api key 8, the versions 0, 1 and 2 share the response format)
      *
      * @param array<string, array<int, int>> $topics topic => partition => error code
      */

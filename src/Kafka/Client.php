@@ -62,10 +62,12 @@ use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 
 /**
- * Low-level client for the Kafka 0.8.2.2 protocol.
+ * Low-level client for the Kafka 0.9.0.1 protocol.
  *
- * Kafka 0.8 has no broker-side group membership (the API keys 11-14 were only added in 0.9), therefore this client
- * only speaks Produce, Fetch, Offsets, OffsetCommit, OffsetFetch and GroupCoordinator (ConsumerMetadata in 0.8.2).
+ * Every api is sent with the highest version a 0.9.0.1 broker serves: Produce v1 and Fetch v1, whose answers carry
+ * the throttle time of a quota, OffsetCommit v2 with its `retention_time`, and OffsetCommit v0 when the offsets are
+ * stored in ZooKeeper. The version 0 classes of those apis stay usable directly, for a client that has to talk to a
+ * 0.8 broker.
  *
  * Every request that addresses topic-partitions is split by their current leader and sent to all of those brokers
  * at once; the answers are collected with `stream_select()` as they arrive. A topic-partition whose leader answered
@@ -197,8 +199,11 @@ class Client
      *
      * A consumer needs more than the records to drive its fetch loop: the high water mark of a partition tells it
      * how far behind the end of the log it is, and a message that is larger than `max.partition.fetch.bytes` makes
-     * a 0.8.2.2 broker answer without an error and without a single complete message, which would turn a naive
-     * fetch loop into an endless one, see {@see FetchedPartition::isSingleMessageTooLarge()}.
+     * the broker answer without an error and without a single complete message, which would turn a naive fetch loop
+     * into an endless one, see {@see FetchedPartition::isSingleMessageTooLarge()}.
+     *
+     * The request goes out as Fetch v1, so every returned partition also carries the `throttleTimeMs` the broker
+     * reported for the answer it belongs to; without quotas that is always 0.
      *
      * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
      * @param int                            $timeout               Timeout in ms to wait for fetching
@@ -256,7 +261,8 @@ class Client
                             $responsePartition->errorCode,
                             $responsePartition->highWaterMarkOffset,
                             $messageSet,
-                            $responsePartition->isSingleMessageTooLarge($fetchOffset)
+                            $responsePartition->isSingleMessageTooLarge($fetchOffset),
+                            $response->throttleTimeMs
                         );
                     }
                 }
@@ -314,23 +320,40 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option: version 1 stores the offsets in the
+     * The version of the request follows the `offsets.storage` option: version 2 stores the offsets in the
      * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group, version 0 stores
      * them in ZooKeeper and is answered by any broker. An offset may be given as a plain integer or as an
      * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch.
      *
-     * @param Node                                                       $coordinatorNode       Current offset
-     *        coordinator for $groupId
-     * @param string                                                     $groupId               Name of the group
-     * @param array<string, array<int, int|OffsetAndMetadata>>           $topicPartitionOffsets Offsets to commit
+     * `$retentionTimeMs` is the `retention_time` field of the v2 request: with
+     * {@see OffsetCommitRequest::DEFAULT_RETENTION_TIME} the broker keeps the offsets for `offsets.retention.minutes`
+     * counted from its receive time, any other value replaces that retention for this commit. The ZooKeeper version
+     * has no such field and ignores it. A client that is not a member of a group commits with
+     * {@see OffsetCommitRequest::DEFAULT_GENERATION_ID} and {@see OffsetCommitRequest::DEFAULT_MEMBER_NAME}; a member
+     * of a group has to pass the generation and the member id the coordinator assigned to it, otherwise the
+     * coordinator answers with 22 (IllegalGeneration) or 25 (UnknownMemberId).
+     *
+     * @param Node                                             $coordinatorNode       Current offset coordinator for
+     *        $groupId
+     * @param string                                           $groupId               Name of the group
+     * @param string                                           $memberId              Member id inside the group
+     * @param int                                              $generationId          Generation of the group
+     * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
+     * @param int                                              $retentionTimeMs       How long the broker keeps them
      *
      * @throws Common\Errors\OffsetMetadataTooLargeException
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
      */
-    public function commitGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitionOffsets): void
-    {
+    public function commitGroupOffsets(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $generationId,
+        array $topicPartitionOffsets,
+        int $retentionTimeMs
+    ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         $this->coordinatorRequest(
@@ -338,8 +361,9 @@ class Client
             fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
                 ? new OffsetCommitRequest(
                     $groupId,
-                    OffsetCommitRequest::DEFAULT_GENERATION_ID,
-                    OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+                    $generationId,
+                    $memberId,
+                    $retentionTimeMs,
                     $topicPartitionOffsets,
                     $clientId,
                     $correlationId
@@ -365,9 +389,10 @@ class Client
     /**
      * Fetches the offsets for topic partition for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}.
-     * A topic-partition that has never been committed comes back with the offset -1: as the error code 0 from the
-     * `__consumer_offsets` topic (v1), and as the error code 3 from ZooKeeper (v0).
+     * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}
+     * - OffsetFetch itself did not change in 0.9, its v2 is Kafka 0.10.2. A topic-partition that has never been
+     * committed comes back with the offset -1: as the error code 0 from the `__consumer_offsets` topic (v1), and as
+     * the error code 3 from ZooKeeper (v0).
      *
      * @param Node                          $coordinatorNode Current offset coordinator for $groupId
      * @param string                        $groupId         Name of the group
@@ -467,7 +492,7 @@ class Client
     }
 
     /**
-     * Checks whether the consumer offsets are stored in Kafka itself (v1) instead of ZooKeeper (v0)
+     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v2) instead of ZooKeeper (v0)
      */
     private function isOffsetStorageKafka(): bool
     {

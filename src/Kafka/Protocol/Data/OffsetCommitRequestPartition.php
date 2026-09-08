@@ -17,32 +17,35 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * OffsetCommitRequestPartition DTO, version 1 of the OffsetCommit API
+ * OffsetCommitRequestPartition DTO, version 2 of the OffsetCommit API
  *
  * <pre>
- *   OffsetCommitRequestPartition => partition offset timestamp metadata
+ *   OffsetCommitRequestPartition => partition offset metadata
  *     partition => INT32
  *     offset    => INT64
- *     timestamp => INT64  (version 1 only)
  *     metadata  => NULLABLE_STRING
  * </pre>
  *
- * Version 0 of the request has no `timestamp` field, so the scheme is selected by {@see OffsetCommitRequestPartition::VERSION}
- * and {@see OffsetCommitRequestPartitionV0} only lowers that constant.
+ * The per-partition `timestamp` exists in **version 1 only**: version 0 never had it and version 2 replaced it with
+ * the single `retention_time` field of the request (`OFFSET_COMMIT_REQUEST_PARTITION_V2` in `Protocol.java`
+ * @ 0.9.0.1, `OffsetCommitRequest.readFrom` reads it for `versionId == 1`). The layout of version 2 is therefore
+ * the layout of version 0 again, and the odd one out lives in {@see OffsetCommitRequestPartitionV1}; the scheme is
+ * selected by {@see OffsetCommitRequestPartition::VERSION}.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0 and v1)"
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitRequestPartition implements BinarySchemaInterface
 {
     /**
      * Version of the OffsetCommit API that this DTO is packed for
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Asks the broker to stamp the commit with its own receive time.
      *
-     * The offset is then retained for `offsets.retention.minutes` counted from the moment the broker received it.
+     * Version 1 of the request carries this value per partition; version 2 has no such field any more, the broker
+     * always stamps its own receive time and computes the expiry from `retention_time` instead.
      */
     public const int BROKER_TIMESTAMP = -1;
 
@@ -60,6 +63,7 @@ class OffsetCommitRequestPartition implements BinarySchemaInterface
      * Commit timestamp in milliseconds, or {@see self::BROKER_TIMESTAMP} for the receive time of the broker.
      *
      * @since Version 1 of protocol
+     * @deprecated Since version 2 of protocol, which replaced it with the `retentionTime` of the request
      */
     public int $timestamp;
 
@@ -89,7 +93,7 @@ class OffsetCommitRequestPartition implements BinarySchemaInterface
             'partition' => BinarySchema::TYPE_INT32,
             'offset'    => BinarySchema::TYPE_INT64,
         ];
-        if (static::VERSION >= 1) {
+        if (static::VERSION === 1) {
             $scheme['timestamp'] = BinarySchema::TYPE_INT64;
         }
         $scheme['metadata'] = BinarySchema::TYPE_NULLABLE_STRING;

@@ -17,26 +17,29 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Asks the controller of the cluster to move every leader and every replica off one broker.
+ * Asks the controller of the cluster to move every leader and every replica off one broker, version 1.
  *
  * <pre>
- *   ControlledShutdownRequest => BrokerId
+ *   ControlledShutdownRequest (Version: 1) => BrokerId
  *     BrokerId => int32
  * </pre>
  *
- * This request is the one exception to the common request header of the protocol: `ControlledShutdownRequest.readFrom`
- * of Kafka 0.8.2.2 reads the api version, the correlation id and the broker id, and **no client id at all**
- * (`core/src/main/scala/kafka/api/ControlledShutdownRequest.scala` @ 0.8.2.2). A client id string on the wire would
- * be parsed as the broker id, therefore the scheme of this request drops the `clientId` field of its parent. The
- * field came back with version 1 of the API in Kafka 0.9.
+ * Version 1, introduced by Kafka 0.9, is the version that finally uses the common request header of the protocol:
+ * `ControlledShutdownRequest.readFrom` @ 0.9.0.1 reads the api version, the correlation id, then the client id
+ * **only when `versionId > 0`**, and the broker id last. Version 0 - the only version a 0.8.2.2 broker speaks - has
+ * no client id at all and lives in {@see ControlledShutdownRequestV0}; sending a client id with it would make the
+ * broker read that string as the broker id.
  *
- * Only the active controller can serve this request. A broker id that the controller does not know is answered with
- * the error code -1 (Unknown), which makes an unknown id a harmless probe of the api: the controller does throw
- * `BrokerNotAvailableException` (code 8) but `ControlledShutdownRequest.handleError()` maps `e.getCause` - which is
- * null for a directly thrown exception - so `ErrorMapping.codeFor(null)` falls back to the Unknown code. The broker
- * log shows what really happened ("Broker id 4242 does not exist."). Observed on Kafka 0.8.2.2.
+ * Only the active controller can serve this request, and a 0.9 Metadata response does not say which broker that is
+ * (the `ControllerId` field arrived with Metadata v1 in Kafka 0.10), so a client has to try the brokers.
  *
- * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0)"
+ * A broker id that the controller does not know is answered with the error code **8 (BrokerNotAvailable)** on a
+ * 0.9.0.1 broker, for both versions of the request: the controller throws `BrokerNotAvailableException` and
+ * `ControlledShutdownRequest.handleError()` maps `e.getClass`. On 0.8.2.2 the very same situation produced the code
+ * -1 (Unknown), because that release mapped `e.getCause`, which is null for a directly thrown exception. Verified
+ * against the broker of this branch.
+ *
+ * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
  */
 class ControlledShutdownRequest extends AbstractRequest
 {
@@ -48,7 +51,7 @@ class ControlledShutdownRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Identifier of the broker that should be shut down
@@ -56,14 +59,15 @@ class ControlledShutdownRequest extends AbstractRequest
     protected int $brokerId;
 
     /**
-     * @param int $brokerId      Identifier of the broker that should be shut down
-     * @param int $correlationId A user-supplied value that the broker passes back unmodified
+     * @param int    $brokerId      Identifier of the broker that should be shut down
+     * @param string $clientId      A user specified identifier for the client making the request, ignored by v0
+     * @param int    $correlationId A user-supplied value that the broker passes back unmodified
      */
-    public function __construct(int $brokerId, int $correlationId = 0)
+    public function __construct(int $brokerId, string $clientId = '', int $correlationId = 0)
     {
         $this->brokerId = $brokerId;
 
-        parent::__construct(self::API_KEY, '', $correlationId);
+        parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
     /**
@@ -72,8 +76,10 @@ class ControlledShutdownRequest extends AbstractRequest
     public static function getScheme(): array
     {
         $header = parent::getScheme();
-        // 0.8.2.2 does not read a client id for this api key, see the class docblock
-        unset($header['clientId']);
+        if (static::VERSION < 1) {
+            // Version 0 does not read a client id for this api key, see the class docblock
+            unset($header['clientId']);
+        }
 
         return $header + [
             'brokerId' => BinarySchema::TYPE_INT32,
