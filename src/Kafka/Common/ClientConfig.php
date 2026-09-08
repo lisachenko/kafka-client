@@ -134,10 +134,8 @@ class ClientConfig
 
     /**
      * Returns default configuration
-     *
-     * @return array
      */
-    public static function getDefaultConfiguration()
+    public static function getDefaultConfiguration(): array
     {
         return self::$generalConfiguration;
     }
