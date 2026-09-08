@@ -10,57 +10,51 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * GroupCoordinator response data
  *
- * The coordinator broker of a consumer group, as returned by the ConsumerMetadata API of Kafka 0.8.2.
+ * The coordinator broker of a consumer group, as returned by the ConsumerMetadata API (key 10) of Kafka 0.8.2.
+ *
+ * <pre>
+ *   CoordinatorId   => int32
+ *   CoordinatorHost => string
+ *   CoordinatorPort => int32
+ * </pre>
+ *
+ * @see docs/protocol/0.8.2.md, section "GroupCoordinator API (key 10, v0)"
  */
-class GroupCoordinatorResponseMetadata
+class GroupCoordinatorResponseMetadata implements BinarySchemaInterface
 {
     /**
      * The broker id.
-     *
-     * @var integer
      */
-    public $nodeId;
+    public int $nodeId;
 
     /**
      * The hostname of the broker.
-     *
-     * @var string
      */
-    public $host;
+    public string $host;
 
     /**
      * The port on which the broker accepts requests.
-     *
-     * @var integer
      */
-    public $port;
+    public int $port;
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $coordinatorMetadata = new static();
-        [$coordinatorMetadata->nodeId, $hostLength] = array_values($stream->read("NnodeId/nhostLength"));
-
-        [$coordinatorMetadata->host, $coordinatorMetadata->port] = array_values($stream->read("a{$hostLength}host/Nport"));
-
-        return $coordinatorMetadata;
+        return [
+            'nodeId' => BinarySchema::TYPE_INT32,
+            'host'   => BinarySchema::TYPE_STRING,
+            'port'   => BinarySchema::TYPE_INT32,
+        ];
     }
 }
