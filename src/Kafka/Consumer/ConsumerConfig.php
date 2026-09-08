@@ -23,8 +23,11 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
 /**
  * Consumer config enumeration class
  *
- * Kafka 0.8.2.2 has no broker-side group management, so the options that only drive it (the session timeout, the
- * keep-alive interval of a group member and partition.assignment.strategy) do not exist on this branch.
+ * Kafka 0.8.2.2 has no broker-side group management, so the options that only drive it (session.timeout.ms,
+ * heartbeat.interval.ms, rebalance.timeout.ms and partition.assignment.strategy) do not exist on this branch, and
+ * neither do the ones of the transactional protocol of 0.11 (isolation.level) or the offset retention that arrived
+ * with the OffsetCommit v2 of 0.9 (offset.retention.ms). The `offsets.storage` option of the general config
+ * ({@see GeneralConfig::OFFSETS_STORAGE}) selects where the committed offsets live, which is a 0.8-only choice.
  */
 final class ConsumerConfig extends GeneralConfig
 {
@@ -40,6 +43,9 @@ final class ConsumerConfig extends GeneralConfig
         ConsumerConfig::AUTO_OFFSET_RESET         => OffsetResetStrategy::LATEST,
         ConsumerConfig::ENABLE_AUTO_COMMIT        => true,
         ConsumerConfig::AUTO_COMMIT_INTERVAL_MS   => 0, // Commit always after each poll()
+        ConsumerConfig::CHECK_CRCS                => true,
+        ConsumerConfig::KEY_DESERIALIZER          => null,
+        ConsumerConfig::VALUE_DESERIALIZER        => null,
     ];
 
     /**
@@ -99,11 +105,31 @@ final class ConsumerConfig extends GeneralConfig
     public const string AUTO_COMMIT_INTERVAL_MS = 'auto.commit.interval.ms';
 
 
-    public const string KEY_DESERIALIZER        = 'key.deserializer';
-    public const string VALUE_DESERIALIZER      = 'value.deserializer';
+    /**
+     * Deserializer that turns the raw bytes of a record key into an application-level value.
+     *
+     * Either an instance of {@see \Protocol\Kafka\Common\Serialization\Deserializer} or the name of a class that
+     * implements it and can be constructed without arguments; null leaves the keys as raw byte strings.
+     */
+    public const string KEY_DESERIALIZER = 'key.deserializer';
+
+    /**
+     * Deserializer that turns the raw bytes of a record value into an application-level value, see
+     * {@see self::KEY_DESERIALIZER}.
+     */
+    public const string VALUE_DESERIALIZER = 'value.deserializer';
+
+    /**
+     * Automatically check the CRC32 of the consumed records.
+     *
+     * This ensures no on-the-wire or on-disk corruption to the messages occurred; the check adds some overhead, so
+     * it may be disabled in cases seeking extreme performance. The record layer of this branch always verifies the
+     * checksums, so `false` is rejected instead of being silently ignored.
+     */
+    public const string CHECK_CRCS = 'check.crcs';
+
     public const string EXCLUDE_INTERNAL_TOPICS = 'exclude.internal.topics';
     public const string MAX_POLL_RECORDS        = 'max.poll.records';
-    public const string CHECK_CRCS              = 'check.crcs';
 
     /**
      * Returns default configuration for consumer
