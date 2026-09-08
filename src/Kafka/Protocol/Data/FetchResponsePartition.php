@@ -17,7 +17,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\Common\Record\MessageSet;
+use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\IO\Stream;
 
 /**
@@ -51,7 +52,9 @@ class FetchResponsePartition
     public $highwaterMarkOffset;
 
     /**
-     * @var array|RecordBatch[]
+     * Records of the message set of this partition, with the offset that the broker assigned to each of them
+     *
+     * @var array|Record[]
      */
     public $messageSet = [];
 
@@ -67,10 +70,11 @@ class FetchResponsePartition
         $partition = new static();
         [$partition->partition, $partition->errorCode, $partition->highwaterMarkOffset, $messageSetSize] = array_values($stream->read('Npartition/nerrorCode/JhighwaterMarkOffset/NmessageSetSize'));
 
-        for ($received = 0; $received < $messageSetSize; $received += ($messageSet->messageSize + 12)) {
-            $messageSet = RecordBatch::unpack($stream);
-            $partition->messageSet[] = $messageSet;
-        }
+        // The message set is a raw byte region: it is read in one go and parsed on its own, because the broker is
+        // allowed to cut its last message short and a partial message must never desynchronize the stream
+        $buffer = $messageSetSize > 0 ? (string) $stream->read("a{$messageSetSize}data")['data'] : '';
+
+        $partition->messageSet = MessageSet::fromBuffer($buffer)->getRecords();
 
         return $partition;
     }

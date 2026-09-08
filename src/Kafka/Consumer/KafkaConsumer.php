@@ -24,7 +24,7 @@ use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
-use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
@@ -379,7 +379,7 @@ class KafkaConsumer
                 if (empty($messageSet)) {
                     continue;
                 }
-                /** @var RecordBatch $lastMessage */
+                /** @var Record $lastMessage */
                 $lastMessage = end($messageSet);
                 $result[$topic][$partitionId] = $lastMessage->offset + 1;
             }

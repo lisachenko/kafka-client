@@ -17,7 +17,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Protocol\ApiKeys;
 
 /**
@@ -56,7 +56,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritDoc
      *
-     * ProduceRequest => RequiredAcks Timeout [TopicName [Partition MessageSetSize RecordBatch]]
+     * ProduceRequest => RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
      *   RequiredAcks => int16
      *   Timeout => int32
      *   Partition => int32
@@ -72,11 +72,7 @@ class ProduceRequest extends AbstractRequest
             $topicLength = strlen($topic);
             $payload .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
             foreach ($partitions as $partition => $messages) {
-                $messageSetPayload = '';
-                foreach ($messages as $message) {
-                    $messageSet = RecordBatch::fromMessage($message);
-                    $messageSetPayload .= $messageSet;
-                }
+                $messageSetPayload = MessageSet::fromRecords($messages)->toBuffer();
                 $payload .= pack('NN', $partition, strlen($messageSetPayload));
                 $payload .= $messageSetPayload;
             }
