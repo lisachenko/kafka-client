@@ -17,7 +17,7 @@ jobs:
         with:
           php-version: '8.4'
       - run: composer validate --strict
-      - run: find src tests -name '*.php' -print0 | xargs -0 -n1 php -l
+      - run: find src tests examples -name '*.php' -print0 | xargs -0 -n1 php -l
 
   cs:
     runs-on: ubuntu-latest
@@ -52,6 +52,9 @@ jobs:
           coverage: xdebug
       - run: composer install --prefer-dist --no-progress
       - run: vendor/bin/phpunit --testsuite unit --coverage-clover=coverage.xml
+      - name: Replay the documented wire vectors
+        # The compliance suite needs no broker: it replays docs/protocol/vectors through the protocol classes
+        run: vendor/bin/phpunit --testsuite compliance
       - uses: codecov/codecov-action@v4
         with:
           files: coverage.xml

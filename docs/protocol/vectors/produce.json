@@ -1,0 +1,64 @@
+{
+    "api": "produce",
+    "apiKey": 0,
+    "section": "Produce API (key 0, v0)",
+    "description": "Wire vectors of the Produce API (key 0, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "produce.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "Produce request v0 with RequiredAcks = 1 and a message set of two uncompressed messages, the second one without a key.",
+            "hex": "00000082000000000000000b00037431300001000005dc00000001000b7431302d766563746f727300000001000000000000005200000000000000000000001ea65e6c150000000000026b310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32",
+            "fields": {
+                "messageSize": 130,
+                "apiKey": 0,
+                "apiVersion": 0,
+                "correlationId": 11,
+                "clientId": "t10",
+                "requiredAcks": 1,
+                "timeout": 1500,
+                "topicMessages": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000001ea65e6c150000000000026b310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Produce response v0: the base offset the message set was appended at.",
+            "hex": "000000270000000b00000001000b7431302d766563746f7273000000010000000000000000000000000000",
+            "fields": {
+                "messageSize": 39,
+                "correlationId": 11,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}
