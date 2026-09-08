@@ -121,6 +121,34 @@ final class ClientTest extends TestCase
         self::assertSame(1, $second->getRequestCount());
     }
 
+    public function testTheThrottleTimeOfAProduceAnswerReachesEveryPartitionOfIt(): void
+    {
+        // Produce v1 reports the throttle time once per answer, behind the topics, and a batch is split by the
+        // partition leaders, so each of those answers carries the delay of its own broker
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::produce(
+                0,
+                [self::TOPIC => [0 => [0, 17]]],
+                793
+            )))
+            ->on(self::SECOND_LEADER, new BrokerConnection(ResponseFrame::produce(
+                0,
+                [self::TOPIC => [1 => [0, 42]]]
+            )))
+            ->install();
+
+        $result = $this->client()->produce([
+            self::TOPIC => [
+                0 => [new Record('over the quota')],
+                1 => [new Record('inside the quota')],
+            ],
+        ]);
+
+        self::assertSame(793, $result[self::TOPIC][0]->throttleTimeMs);
+        self::assertSame(0, $result[self::TOPIC][1]->throttleTimeMs, 'the other leader did not throttle anything');
+    }
+
     public function testEveryRequestCarriesItsOwnCorrelationId(): void
     {
         $leader = new BrokerConnection(

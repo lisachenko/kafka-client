@@ -110,6 +110,9 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
+     * The request goes out as Produce v1, so every accepted partition also carries the `throttleTimeMs` the broker
+     * reported for the answer it arrived in; without a `producer_byte_rate` quota that is always 0.
+     *
      * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
      *        each topic and partition
      *
@@ -173,6 +176,10 @@ class Client
                             );
                             continue;
                         }
+                        // Version 1 reports one ThrottleTime for the whole answer, and a batch is split by
+                        // partition leaders, so the value of this answer is carried onto every partition of it
+                        $partitionInfo->throttleTimeMs = $response->throttleTime;
+
                         $result[$topic][$partitionId] = $partitionInfo;
                     }
                 }

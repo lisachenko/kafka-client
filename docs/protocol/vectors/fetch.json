@@ -65,6 +65,35 @@
             }
         },
         {
+            "id": "fetch.response.v1.throttled",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Fetch response v1 of a client that exceeded its consumer_byte_rate quota: the fetch started at the high watermark and returned no records at all, and the broker still delayed the answer by 5943 ms because the byte rate of the window was over the quota.",
+            "hex": "0000002e0000000c0000173700000001000a74382d766563746f727300000001000000000000000000000000000a00000000",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 12,
+                "throttleTimeMs": 5943,
+                "topics": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 10,
+                                "messageSet": {
+                                    "$bytes": ""
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
             "id": "fetch.request.v0",
             "kind": "request",
             "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV0",
