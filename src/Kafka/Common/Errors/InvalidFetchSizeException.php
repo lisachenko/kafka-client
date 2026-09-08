@@ -17,6 +17,10 @@ use Exception;
 
 /**
  * The requested fetch size is invalid.
+ *
+ * Code 4 is InvalidFetchSizeCode in kafka/common/ErrorMapping.scala @ 0.9.0.1, which the Scala Fetch path still
+ * produces, while clients/.../common/protocol/Errors.java of the same tag leaves the code free with a
+ * "TODO: errorCode 4 for InvalidFetchSize". The class therefore stays, as it does on `main`.
  */
 class InvalidFetchSizeException extends KafkaException implements ServerExceptionInterface
 {

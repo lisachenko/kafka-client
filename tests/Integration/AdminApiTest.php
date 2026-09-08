@@ -17,7 +17,6 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
-use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
@@ -143,9 +142,9 @@ final class AdminApiTest extends IntegrationTestCase
     public function testControlledShutdownOfAnUnknownBrokerIsRefused(): void
     {
         // The controller throws BrokerNotAvailableException and ControlledShutdownRequest.handleError() @ 0.9.0.1
-        // maps e.getClass, so the code 8 reaches the wire. Kafka 0.8.2.2 mapped e.getCause - null for a directly
-        // thrown exception - and leaked -1 (Unknown) instead, see the protocol document.
-        $this->expectException(BrokerNotAvailableException::class);
+        // maps e.getClass(), so the code 8 reaches the wire. A 0.8.2.2 broker mapped e.getCause(), which is null for
+        // a directly thrown exception, and answered -1 (Unknown) instead.
+        $this->expectException(KafkaException::class);
         $this->expectExceptionCode(KafkaException::BROKER_NOT_AVAILABLE);
 
         $this->admin->controlledShutdown(self::UNKNOWN_BROKER_ID);

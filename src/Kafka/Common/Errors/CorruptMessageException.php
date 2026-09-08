@@ -18,7 +18,7 @@ use Exception;
 /**
  * This message has failed its CRC checksum, exceeds the valid size, or is otherwise corrupt.
  *
- * Named InvalidMessageCode (2) in kafka/common/ErrorMapping.scala @ 0.8.2.2.
+ * Named InvalidMessageCode (2) in kafka/common/ErrorMapping.scala @ 0.9.0.1.
  */
 class CorruptMessageException extends KafkaException implements RetriableException, ServerExceptionInterface
 {

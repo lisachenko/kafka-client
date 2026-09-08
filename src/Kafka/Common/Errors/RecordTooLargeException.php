@@ -18,7 +18,7 @@ use RuntimeException;
 /**
  * A record in the log is bigger than the fetch size the consumer asked for, so it can never be received.
  *
- * A Kafka 0.8.2.2 broker cuts a fetched message set off at `MaxBytes` without guaranteeing any progress: when the
+ * A Kafka 0.9.0.1 broker cuts a fetched message set off at `MaxBytes` without guaranteeing any progress: when the
  * very first message at the requested offset is bigger than that limit, the partition comes back without an error
  * and without a single complete message, while its high water mark still shows unread data. A consumer that keeps
  * asking for the same offset would spin forever, therefore it raises this error instead - the only way out is a

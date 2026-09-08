@@ -1,20 +1,65 @@
 Changelog
 =========
 
-All notable changes to the `0.8.x` line of `lisachenko/kafka-client` are documented in this file.
+All notable changes to the `0.9.x` line of `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this line
 follows the Apache Kafka release it speaks rather than semantic versioning of its own: every
-`0.8.x` release implements the **Kafka 0.8.2.2 wire protocol** and nothing above it. Later
-protocol lines live on their own branches (`0.9.x`, `0.10.x`, `main`), and this branch is merged
-upwards into them.
+`0.9.x` release implements the **Kafka 0.9.0.1 wire protocol** and nothing above it. The line
+below it is `0.8.x` (Kafka 0.8.2.2), the ones above are `0.10.x` and `main`, and every line is
+merged upwards into the next one.
 
-Unreleased
-----------
+Unreleased — the 0.9.x line
+---------------------------
 
-The first release of the `0.8.x` line: a rewrite of the client onto the declarative binary
-schema engine of `main`, with every api of a Kafka 0.8.2.2 broker implemented and verified
-against a real one.
+Everything a Kafka 0.9.0.1 broker speaks, built on top of the `0.8.x` line it was merged from.
+The entries below land ticket by ticket; the protocol surface is the first of them.
+
+### Added
+
+- **Api keys 11-16** — `JOIN_GROUP`, `HEARTBEAT`, `LEAVE_GROUP`, `SYNC_GROUP`, `DESCRIBE_GROUPS`
+  and `LIST_GROUPS`, the group membership and group introspection apis that Kafka 0.9 added
+  (`kafka/api/RequestKeys.scala` @ 0.9.0.1). `Protocol\ApiKeys` now ends at 16: SaslHandshake (17)
+  and ApiVersions (18) are Kafka 0.10.
+- **Error codes 21-31** — `InvalidRequiredAcksException` (21), `IllegalGenerationException` (22),
+  `InconsistentGroupProtocolException` (23), `InvalidGroupIdException` (24),
+  `UnknownMemberIdException` (25), `InvalidSessionTimeoutException` (26),
+  `RebalanceInProgressException` (27), `InvalidCommitOffsetSizeException` (28),
+  `TopicAuthorizationFailedException` (29), `GroupAuthorizationFailedException` (30) and
+  `ClusterAuthorizationFailedException` (31), with their constants on `KafkaException` and their
+  entries in the code map. None of them is retriable in the Java client of 0.9.0.1.
+- **An api-version probe against a real broker** (`tests/Integration/ApiVersionProbeTest.php`,
+  `tests/Fixture/RawApiProbe.php`). Kafka 0.9 has no ApiVersions request, so the api surface of a
+  broker can only be established by sending a minimal request of every key and version; the result
+  is the api-key table of the protocol document.
+
+### Changed
+
+- **Error code 13 is `NetworkException`** (`ServerExceptionInterface`, retriable), as on `main`.
+  It was `StaleLeaderEpochCode` in `kafka/common/ErrorMapping.scala` @ 0.8.2.2 and no broker ever
+  sent it; `StaleLeaderEpochException` is therefore gone and the class the socket layer raises for
+  a dropped connection now carries the wire code 13.
+- **OffsetFetch v1 for a partition the cluster does not host** answers offset `-1` with the error
+  code `0` on a 0.9.0.1 broker, where 0.8.2.2 answered 3 (`UnknownTopicOrPartition`): version 1
+  stopped filtering the requested partitions against the metadata cache. The integration suite and
+  the protocol document record it.
+- **`docs/protocol/0.9.0.md`** now describes the Kafka 0.9.0.1 grammar: the api-key table with the
+  probed versions, the error table -1 … 31, what a 0.9 broker does with an api it does not serve
+  (it drops the request silently and keeps the connection open), which apis do not validate the
+  version they are sent with, and what is *not* in 0.9.
+- README and CHANGELOG follow the `0.9.x` line; the compatibility matrix lists the api keys 0-16.
+
+### Removed
+
+- `StaleLeaderEpochException` and the `STALE_LEADER_EPOCH` constant, whose code 13 belongs to
+  `NetworkException` from Kafka 0.9 onwards.
+
+Unreleased — the 0.8.x line
+---------------------------
+
+The history below is the one of the `0.8.x` branch, which this line was merged from: its first
+release, a rewrite of the client onto the declarative binary schema engine of `main`, with every
+api of a Kafka 0.8.2.2 broker implemented and verified against a real one.
 
 ### Added
 

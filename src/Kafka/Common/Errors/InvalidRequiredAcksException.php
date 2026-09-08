@@ -16,14 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The request included a message larger than the max message size the server will accept.
- *
- * Named MessageSizeTooLargeCode (10) in kafka/common/ErrorMapping.scala @ 0.9.0.1.
+ * Produce request specified an invalid value for required acks.
  */
-class MessageTooLargeException extends KafkaException implements ServerExceptionInterface
+class InvalidRequiredAcksException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::MESSAGE_TOO_LARGE, $previous);
+        parent::__construct($context, self::INVALID_REQUIRED_ACKS, $previous);
     }
 }
