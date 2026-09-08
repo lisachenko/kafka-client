@@ -56,7 +56,7 @@ $shouldProduce    = !in_array('--no-produce', $argv, true);
 $configuration = [
     ClientConfig::BOOTSTRAP_SERVERS => [$brokerAddress],
     ClientConfig::CLIENT_ID         => 'kafka-client-example',
-    // Where the committed offsets live: `kafka` uses the coordinator of the group (OffsetCommit/OffsetFetch v1),
+    // Where the committed offsets live: `kafka` uses the coordinator of the group (OffsetCommit v2, OffsetFetch v1),
     // `zookeeper` keeps them where the consumers of Kafka 0.8.1 did (v0). The two storages are independent.
     ClientConfig::OFFSETS_STORAGE   => ClientConfig::OFFSETS_STORAGE_KAFKA,
 

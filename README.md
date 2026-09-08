@@ -208,7 +208,7 @@ foreach ($group->members as $memberId => $member) {
 | `listGroupOffsets()`                         | OffsetFetch v0/v1       | The partitions are explicit: 0.9 has no "all topics" request          |
 | `listGroups()` / `listAllGroups()`           | ListGroups v0           | A broker only knows its own groups; `listAllGroups()` merges them all  |
 | `describeGroup()` / `describeGroups()`       | DescribeGroups v0       | Sent to the coordinator of the group; an unknown group answers `Dead`  |
-| `controlledShutdown()`                       | ControlledShutdown v0   | Moves every partition leader off a broker — it really does stop it    |
+| `controlledShutdown()`                       | ControlledShutdown v1   | Moves every partition leader off a broker — it really does stop it    |
 
 The group apis are what Kafka 0.9 added when it moved the consumer groups out of ZooKeeper: a
 group exists on its coordinator while it has members, so `listGroups()` shows it from the first
@@ -273,10 +273,14 @@ For publishing from web requests, enabling persistent connections together with 
 cache file keeps producing as fast as possible.
 
 One more option matters on this branch: `offsets.storage` selects where the offsets of a
-consumer group live. `kafka` (the default) commits and fetches them with version 1 of the
-OffsetCommit/OffsetFetch apis, which Kafka 0.8.2 introduced and which stores them in the
-`__consumer_offsets` topic; `zookeeper` uses version 0 of the same apis, which stores them in
-ZooKeeper the way Kafka 0.8.1 did. Nothing else in this client differs between the two.
+consumer group live. `kafka` (the default) commits with OffsetCommit v2 and fetches with
+OffsetFetch v1, both sent to the coordinator of the group and stored in the `__consumer_offsets`
+topic — the v2 commit carries the member id and generation of a group member and the
+`offset.retention.ms` of the consumer as its `RetentionTime` (`-1` keeps the retention of the
+broker); `zookeeper` uses version 0 of both apis, which stores the offsets in ZooKeeper the way
+Kafka 0.8.1 did and which any broker of the cluster answers. A consumer that joins a group
+(`subscribe()`) should keep `kafka`: a v0 commit carries no membership, so the coordinator could
+not refuse the commit of a member whose generation is over.
 
 Security / SSL
 ---------------
