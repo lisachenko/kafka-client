@@ -16,6 +16,8 @@ namespace Protocol\Kafka\Tests\Integration;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\IO\SocketStream;
+use Protocol\Kafka\Tests\Fixture\BrokerRecord;
+use Protocol\Kafka\Tests\Fixture\ClusterReadinessProbe;
 
 /**
  * Base class for the tests that talk to a real Kafka 0.8.2.2 broker.
@@ -31,6 +33,35 @@ abstract class IntegrationTestCase extends TestCase
      * Name of the environment variable that holds a comma-separated list of `host:port` pairs
      */
     public const string BOOTSTRAP_SERVERS_ENV = 'KAFKA_BOOTSTRAP_SERVERS';
+
+    /**
+     * How long to wait for a booting broker to publish its metadata, in seconds
+     */
+    private const float CLUSTER_TIMEOUT = 60.0;
+
+    /**
+     * Brokers of the cluster, resolved once for the whole test run
+     *
+     * @var array<int, BrokerRecord>|null
+     */
+    private static ?array $clusterBrokers = null;
+
+    public static function setUpBeforeClass(): void
+    {
+        if (self::bootstrapServers() === [] || self::$clusterBrokers !== null) {
+            return;
+        }
+
+        // A broker that has just booted answers with an empty broker array, which is "not ready", not "no brokers"
+        self::$clusterBrokers = new ClusterReadinessProbe(
+            static fn(): SocketStream => new SocketStream(
+                'tcp://' . self::firstBootstrapServer(),
+                [ClientConfig::REQUEST_TIMEOUT_MS => 5000],
+                5.0
+            ),
+            self::CLUSTER_TIMEOUT
+        )->awaitBrokers();
+    }
 
     protected function setUp(): void
     {
@@ -61,9 +92,17 @@ abstract class IntegrationTestCase extends TestCase
      */
     final protected static function firstBootstrapServer(): string
     {
-        $servers = self::bootstrapServers();
+        return self::bootstrapServers()[0];
+    }
 
-        return $servers[0];
+    /**
+     * Returns the brokers that the cluster advertised once it was ready
+     *
+     * @return array<int, BrokerRecord>
+     */
+    final protected static function clusterBrokers(): array
+    {
+        return self::$clusterBrokers ?? [];
     }
 
     /**

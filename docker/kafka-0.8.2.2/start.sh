@@ -6,8 +6,9 @@ set -e
 
 cd /opt/kafka
 
+BROKER_PORT=${BROKER_PORT:-9092}
 ADVERTISED_HOST=${ADVERTISED_HOST:-127.0.0.1}
-ADVERTISED_PORT=${ADVERTISED_PORT:-9092}
+ADVERTISED_PORT=${ADVERTISED_PORT:-$BROKER_PORT}
 BROKER_ID=${BROKER_ID:-0}
 NUM_PARTITIONS=${NUM_PARTITIONS:-3}
 
@@ -25,6 +26,10 @@ sed -i "s/^broker.id=.*/broker.id=${BROKER_ID}/" config/server.properties
 sed -i "s/^num.partitions=.*/num.partitions=${NUM_PARTITIONS}/" config/server.properties
 
 {
+    # The controller reaches every broker through its ADVERTISED address, so it has to resolve to this
+    # container from the inside as well - otherwise UpdateMetadata never arrives and the metadata cache
+    # of the broker stays empty forever.
+    echo "port=${BROKER_PORT}"
     echo "advertised.host.name=${ADVERTISED_HOST}"
     echo "advertised.port=${ADVERTISED_PORT}"
     echo "auto.create.topics.enable=true"
