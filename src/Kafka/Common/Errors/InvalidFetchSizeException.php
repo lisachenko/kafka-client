@@ -16,9 +16,9 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The requested fetch size is smaller than the size of the message that has to be returned.
+ * The requested fetch size is invalid.
  */
-class InvalidFetchSizeException extends KafkaException
+class InvalidFetchSizeException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {

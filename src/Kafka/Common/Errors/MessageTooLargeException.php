@@ -16,12 +16,14 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * This broker is not the coordinator for this consumer group.
+ * The request included a message larger than the max message size the server will accept.
+ *
+ * Named MessageSizeTooLargeCode (10) in kafka/common/ErrorMapping.scala @ 0.8.2.2.
  */
-class NotCoordinatorForConsumerException extends KafkaException implements RetriableException
+class MessageTooLargeException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::NOT_COORDINATOR_FOR_CONSUMER, $previous);
+        parent::__construct($context, self::MESSAGE_TOO_LARGE, $previous);
     }
 }

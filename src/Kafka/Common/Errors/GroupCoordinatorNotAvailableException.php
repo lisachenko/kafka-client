@@ -16,12 +16,14 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The request included a message larger than the maximum message size the server will accept.
+ * The group coordinator is not available.
+ *
+ * Named ConsumerCoordinatorNotAvailableCode (15) in kafka/common/ErrorMapping.scala @ 0.8.2.2.
  */
-class MessageSizeTooLargeException extends KafkaException
+class GroupCoordinatorNotAvailableException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::MESSAGE_SIZE_TOO_LARGE, $previous);
+        parent::__construct($context, self::GROUP_COORDINATOR_NOT_AVAILABLE, $previous);
     }
 }

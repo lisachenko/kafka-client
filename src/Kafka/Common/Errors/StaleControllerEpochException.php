@@ -16,9 +16,9 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The controller moved to another broker, so the controller epoch of this request is stale.
+ * The controller moved to another broker.
  */
-class StaleControllerEpochException extends KafkaException
+class StaleControllerEpochException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {
