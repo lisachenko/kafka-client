@@ -30,7 +30,12 @@ ControlledShutdown v1 and the group apis - is captured on the 0.9.0.1 container 
 }
 ```
 
-* `hex` is the complete frame, `Size` field included.
+A vector of the kind `structure` is not a frame but the content of a byte array field that travels inside one -
+the `Subscription` and `MemberAssignment` payloads of the consumer group protocol, which belong to no api key of
+their own (`"apiKey": null`) and carry neither a `Size` field nor a header. The compliance suite replays them
+through the `pack()` and `unpack()` helpers of their class instead of the framing of `AbstractProtocolMessage`.
+
+* `hex` is the complete frame, `Size` field included, or the bare structure for a vector of the kind `structure`.
 * `fields` mirrors the scheme of the class: the field names and the order are the ones of `getScheme()`, nested
   objects are nested maps, and a raw byte field - the message set of Produce and Fetch, and the member metadata and
   assignments of the group apis - is written as `{"$bytes": "<hex>"}`.
