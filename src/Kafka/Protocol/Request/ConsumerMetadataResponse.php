@@ -12,18 +12,25 @@
 declare(strict_types=1);
 /**
  * @author Alexander.Lisachenko
- * @date 28.07.2016
+ * @date 14.07.2016
  */
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\Data\ConsumerMetadataResponseMetadata;
 
 /**
- * List groups response
+ * Consumer metadata response (ApiKey 10, v0)
+ *
+ * ConsumerMetadataResponse => ErrorCode CoordinatorId CoordinatorHost CoordinatorPort
+ *   ErrorCode       => int16
+ *   CoordinatorId   => int32
+ *   CoordinatorHost => string
+ *   CoordinatorPort => int32
  */
-class ListGroupsResponse extends AbstractResponse
+class ConsumerMetadataResponse extends AbstractResponse
 {
     /**
      * Error code.
@@ -33,11 +40,11 @@ class ListGroupsResponse extends AbstractResponse
     public $errorCode;
 
     /**
-     * List of groups as keys and current protocols as values
+     * Host and port information for the coordinator of a consumer group.
      *
-     * @var array
+     * @var ConsumerMetadataResponseMetadata
      */
-    public $groups = [];
+    public $coordinator;
 
     /**
      * Method to unpack the payload for the record
@@ -49,14 +56,12 @@ class ListGroupsResponse extends AbstractResponse
      */
     protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
     {
-        [$self->correlationId, $self->errorCode, $groupNumber] = array_values($stream->read('NcorrelationId/nerrorCode/NgroupNumber'));
+        [
+            $self->correlationId,
+            $self->errorCode,
+        ] = array_values($stream->read("NcorrelationId/nerrorCode"));
 
-        for ($groupIndex = 0; $groupIndex < $groupNumber; $groupIndex++) {
-            $groupId  = $stream->readString();
-            $protocol = $stream->readString();
-
-            $self->groups[$groupId] = $protocol;
-        }
+        $self->coordinator = ConsumerMetadataResponseMetadata::unpack($stream);
 
         return $self;
     }

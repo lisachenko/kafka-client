@@ -16,9 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The requested offset is not within the range of offsets maintained by the server.
+ * The requested offset is not within the range of offsets maintained by the server for the given topic/partition.
  */
 class OffsetOutOfRangeException extends KafkaException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::OFFSET_OUT_OF_RANGE, $previous);
+    }
 }

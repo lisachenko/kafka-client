@@ -20,5 +20,8 @@ use Exception;
  */
 class UnknownTopicOrPartitionException extends KafkaException implements RetriableException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::UNKNOWN_TOPIC_OR_PARTITION, $previous);
+    }
 }

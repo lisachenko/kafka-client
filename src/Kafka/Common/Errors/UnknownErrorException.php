@@ -16,11 +16,11 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The server experienced an unexpected error when processing the request
+ * The server experienced an unexpected error when processing the request.
  */
 class UnknownErrorException extends KafkaException
 {
-    public function __construct(array $context, ?Exception $previous = null)
+    public function __construct(array $context = [], ?Exception $previous = null)
     {
         parent::__construct($context, self::UNKNOWN, $previous);
     }

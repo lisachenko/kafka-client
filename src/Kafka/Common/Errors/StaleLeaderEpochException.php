@@ -16,9 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The broker does not support the requested SASL mechanism.
+ * The leader epoch of this request is stale; another leader has been elected in the meantime.
  */
-class UnsupportedSaslMechanismException extends KafkaException
+class StaleLeaderEpochException extends KafkaException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::STALE_LEADER_EPOCH, $previous);
+    }
 }

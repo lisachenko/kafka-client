@@ -16,12 +16,15 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The server disconnected before a response was received.
+ * The connection to the broker could not be established, or the server disconnected before a response was received.
+ *
+ * This is a client-side condition: Kafka 0.8.2.2 has no wire error code for it (code 13 is StaleLeaderEpoch), so this
+ * exception is never produced by KafkaException::fromCode().
  */
 class NetworkException extends KafkaException implements RetriableException
 {
-    public function __construct(array $context, ?Exception $previous = null)
+    public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::NETWORK_EXCEPTION, $previous);
+        parent::__construct($context, self::UNKNOWN, $previous);
     }
 }

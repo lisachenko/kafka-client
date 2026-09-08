@@ -16,9 +16,12 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The request timed out.
+ * The request timed out on the server side before it could be completed.
  */
 class RequestTimedOutException extends KafkaException implements RetriableException
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::REQUEST_TIMED_OUT, $previous);
+    }
 }
