@@ -90,6 +90,29 @@ foreach ($admin->listGroupOffsets($groupId, [$topic => $partitions]) as $topicOf
     }
 }
 
+// Kafka 0.9 moved the consumer groups out of ZooKeeper into the brokers: each of them coordinates a share of the
+// groups and reports only its own, so the list of the cluster is the union of all of their answers.
+echo "\nConsumer groups of the cluster\n";
+$groups = $admin->listAllGroups();
+if ($groups === []) {
+    echo "  not a single group has a member at the moment\n";
+}
+foreach ($groups as $listedGroupId => $listedGroup) {
+    echo "  {$listedGroupId} ({$listedGroup->protocolType})\n";
+}
+
+// DescribeGroups is answered by the coordinator of the group. A group that has no members - because nobody has
+// joined it, or because everybody has left - is reported with the state Dead and the error code 0, not as an error.
+echo "\nDescription of the group {$groupId}\n";
+$description = $admin->describeGroup($groupId);
+echo "  state: {$description->state}\n";
+echo "  protocol type: '{$description->protocolType}', protocol: '{$description->protocol}'\n";
+foreach ($description->members as $memberId => $member) {
+    $assignmentSize = strlen($member->memberAssignment);
+    echo "  member {$memberId} of the client {$member->clientId} at {$member->clientHost}, "
+        . "{$assignmentSize} bytes of assignment\n";
+}
+
 // The remaining admin call, controlledShutdown(), asks the controller to move every leader off a broker. It is what
 // kafka-server-stop.sh triggers, and it really does stop serving that broker - only send it to a broker you want to
-// shut down. Kafka 0.8 has no DescribeGroups, ListGroups or ApiVersions api, so there is nothing else to call here.
+// shut down. There is no ApiVersions api to call here: that is key 18 and arrived with Kafka 0.10.

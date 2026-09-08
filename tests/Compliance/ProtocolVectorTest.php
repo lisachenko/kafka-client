@@ -44,8 +44,10 @@ final class ProtocolVectorTest extends TestCase
     private const array REPLAYED_APIS = [
         'consumer-protocol',
         'controlled-shutdown',
+        'describe-groups',
         'fetch',
         'group-coordinator',
+        'list-groups',
         'metadata',
         'offset-commit',
         'offset-fetch',
@@ -126,6 +128,22 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeGroupsVectors(): iterable
+    {
+        return VectorFile::provide('describe-groups');
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function listGroupsVectors(): iterable
+    {
+        return VectorFile::provide('list-groups');
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('metadataVectors')]
@@ -193,6 +211,24 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('controlledShutdownVectors')]
     public function testControlledShutdownApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeGroupsVectors')]
+    public function testDescribeGroupsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('listGroupsVectors')]
+    public function testListGroupsApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }
