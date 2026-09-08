@@ -40,6 +40,14 @@ final class ClusterTest extends TestCase
 {
     private const string BOOTSTRAP_ADDRESS = 'tcp://kafka-1:9092';
 
+    /**
+     * `metadata.max.age.ms` of the tests that let the metadata expire.
+     *
+     * The tests do not wait for it to pass: they move the fetch time into the past instead. A budget of a few
+     * milliseconds made them fail whenever the runner was slow between two calls (e.g. under Xdebug coverage in CI).
+     */
+    private const int MAX_AGE_MS = 300000;
+
     private ScriptedConnections $broker;
 
     protected function setUp(): void
@@ -251,10 +259,10 @@ final class ClusterTest extends TestCase
             new BrokerConnection(ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], ['payments' => [0 => 0]]))
         );
 
-        $cluster = Cluster::bootstrap($this->configuration([ClientConfig::METADATA_MAX_AGE_MS => 20]));
+        $cluster = Cluster::bootstrap($this->configuration([ClientConfig::METADATA_MAX_AGE_MS => self::MAX_AGE_MS]));
 
         self::assertSame(['orders'], $cluster->topics());
-        usleep(40000);
+        self::backdateMetadata($cluster, self::MAX_AGE_MS + 1);
 
         self::assertSame(['payments'], $cluster->topics(), 'new topics and brokers are only found by asking again');
         self::assertSame(2, $this->broker->getConnectionCount(self::BOOTSTRAP_ADDRESS));
@@ -264,7 +272,7 @@ final class ClusterTest extends TestCase
     {
         $this->script(new BrokerConnection($this->clusterMetadata()));
 
-        $cluster = Cluster::bootstrap($this->configuration([ClientConfig::METADATA_MAX_AGE_MS => 300000]));
+        $cluster = Cluster::bootstrap($this->configuration([ClientConfig::METADATA_MAX_AGE_MS => self::MAX_AGE_MS]));
 
         $cluster->topics();
         $cluster->nodes();
@@ -284,14 +292,14 @@ final class ClusterTest extends TestCase
         $cacheFile     = sys_get_temp_dir() . '/t7-cluster-cache-' . bin2hex(random_bytes(6)) . '.php';
         $configuration = $this->configuration([
             ClientConfig::METADATA_CACHE_FILE => $cacheFile,
-            ClientConfig::METADATA_MAX_AGE_MS => 20,
+            ClientConfig::METADATA_MAX_AGE_MS => self::MAX_AGE_MS,
         ]);
 
         try {
             Cluster::bootstrap($configuration);
             self::assertFileExists($cacheFile, 'a successful metadata fetch fills the cache');
 
-            usleep(40000);
+            self::backdateCacheFile($cacheFile, self::MAX_AGE_MS + 1);
             $reloaded = Cluster::bootstrap($configuration);
 
             self::assertSame(['orders'], $reloaded->topics());
@@ -338,5 +346,27 @@ final class ClusterTest extends TestCase
             ClientConfig::METADATA_FETCH_TIMEOUT_MS => 1000,
             ClientConfig::RETRY_BACKOFF_MS          => 1,
         ];
+    }
+    /**
+     * Moves the fetch time of the metadata that a cluster holds in memory into the past
+     */
+    private static function backdateMetadata(Cluster $cluster, int $byMs): void
+    {
+        (function (int $byMs): void {
+            $this->fetchedAtMs -= $byMs;
+        })->call($cluster, $byMs);
+    }
+
+    /**
+     * Moves the fetch time recorded in a metadata cache file into the past
+     */
+    private static function backdateCacheFile(string $cacheFile, int $byMs): void
+    {
+        [$fetchedAtMs, $metadata] = include $cacheFile;
+
+        file_put_contents($cacheFile, '<?php return ' . var_export([$fetchedAtMs - $byMs, $metadata], true) . ';');
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($cacheFile, true);
+        }
     }
 }
