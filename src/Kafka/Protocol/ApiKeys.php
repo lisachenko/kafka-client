@@ -26,30 +26,6 @@ namespace Protocol\Kafka\Protocol;
  */
 class ApiKeys
 {
-    /**
-     * Number of bytes in a kafka header
-     */
-    public const HEADER_LEN = 4;
-
-    /**
-     * Format of kafka header for unpacking in PHP
-     *
-     * RequestOrResponse => Size (RequestMessage | ResponseMessage)
-     * Size => int32
-     */
-    public const HEADER_FORMAT = 'Nsize';
-
-    /**
-     * Format of kafka request header for unpacking in PHP
-     *
-     * Request Header => api_key api_version correlation_id client_id
-     *   api_key        => INT16
-     *   api_version    => INT16
-     *   correlation_id => INT32
-     *   client_id      => NULLABLE_STRING
-     */
-    public const REQUEST_HEADER_FORMAT = 'napiKey/napiVersion/NcorrelationId/ZclientId';
-
     public const PRODUCE             = 0;
     public const FETCH               = 1;
     public const OFFSETS             = 2;
