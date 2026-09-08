@@ -10,54 +10,48 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 15.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 
 /**
- * Produce response object
+ * OffsetFetch response object
+ *
+ * <pre>
+ *   OffsetFetch Response (Version: 0 and 1) => [responses]
+ *     responses => topic [partition_responses]
+ *       topic               => STRING
+ *       partition_responses => partition offset metadata error_code
+ *         partition  => INT32
+ *         offset     => INT64
+ *         metadata   => NULLABLE_STRING
+ *         error_code => INT16
+ * </pre>
+ *
+ * The top-level `error_code` of the version 2 response belongs to Kafka 0.9: in 0.8.2.2 every error is reported per
+ * topic-partition.
+ *
+ * @see docs/protocol/0.8.2.md, section "OffsetFetch API (key 9, v0 and v1)"
  */
 class OffsetFetchResponse extends AbstractResponse
 {
     /**
-     * List of broker metadata info
+     * List of topic responses
      *
-     * @var array|OffsetFetchResponsePartition[]
+     * @var array<string, OffsetFetchResponseTopic>
      */
-    public $topics = [];
+    public array $topics = [];
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [
-            $self->correlationId,
-            $numberOfTopics,
-        ] = array_values($stream->read('NcorrelationId/NnumberOfTopics'));
+        $header = parent::getScheme();
 
-        for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicLength = $stream->read('ntopicLength')['topicLength'];
-            [$topicName, $numberOfPartitions] = array_values($stream->read("a{$topicLength}/NnumberOfPartitions"));
-
-            for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-                $topicMetadata = OffsetFetchResponsePartition::unpack($stream);
-                $self->topics[$topicName][$topicMetadata->partition] = $topicMetadata;
-            }
-        }
-
-        return $self;
+        return $header + [
+            'topics' => ['topic' => OffsetFetchResponseTopic::class],
+        ];
     }
 }
