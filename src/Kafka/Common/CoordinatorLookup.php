@@ -17,6 +17,8 @@ use Exception;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
+use Protocol\Kafka\Network\ResponseValidator;
+use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 
@@ -93,7 +95,7 @@ final class CoordinatorLookup
         }
 
         try {
-            return $this->cluster->nodeById($response->coordinator->nodeId);
+            $coordinator = $this->cluster->nodeById($response->coordinator->nodeId);
         } catch (Exception $exception) {
             throw new NotCoordinatorForGroupException(
                 ['groupId' => $groupId, 'nodeId' => $response->coordinator->nodeId],
@@ -101,6 +103,18 @@ final class CoordinatorLookup
                 $exception
             );
         }
+        if ($coordinator === null) {
+            throw new NotCoordinatorForGroupException(
+                [
+                    'groupId' => $groupId,
+                    'nodeId'  => $response->coordinator->nodeId,
+                    'error'   => 'The cluster does not know the node the broker pointed at',
+                ],
+                KafkaException::NOT_COORDINATOR_FOR_GROUP
+            );
+        }
+
+        return $coordinator;
     }
 
     /**
@@ -112,14 +126,19 @@ final class CoordinatorLookup
     private function requestCoordinator(string $groupId, ?Exception &$lastException = null): ?GroupCoordinatorResponse
     {
         $clientId = (string) ($this->configuration[ClientConfig::CLIENT_ID] ?? '');
-        $request  = new GroupCoordinatorRequest($groupId, $clientId);
 
         foreach ($this->cluster->nodes() as $node) {
             try {
-                $stream = $node->getConnection($this->configuration);
-                $request->writeTo($stream);
+                $stream        = $node->getConnection($this->configuration);
+                $correlationId = AbstractRequest::nextCorrelationId();
+                new GroupCoordinatorRequest($groupId, $clientId, $correlationId)->writeTo($stream);
 
-                return GroupCoordinatorResponse::unpack($stream);
+                return ResponseValidator::read(
+                    GroupCoordinatorResponse::class,
+                    $stream,
+                    $correlationId,
+                    ['groupId' => $groupId, 'node' => $node->nodeId]
+                );
             } catch (Exception $exception) {
                 $lastException = $exception;
             }

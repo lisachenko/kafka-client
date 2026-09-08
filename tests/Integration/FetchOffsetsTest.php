@@ -245,7 +245,8 @@ final class FetchOffsetsTest extends IntegrationTestCase
      * Creates a topic through a metadata request and waits until the partition under test can be queried
      *
      * Auto-creation is asynchronous: until the controller has assigned a leader to the new partitions the broker
-     * answers with UnknownTopicOrPartition (3) or LeaderNotAvailable (5).
+     * answers with UnknownTopicOrPartition (3), LeaderNotAvailable (5) or, once a leader has been elected but this
+     * broker has not been told about it yet, NotLeaderForPartition (6).
      */
     private function createTopic(SocketStream $stream, string $prefix): string
     {
@@ -261,7 +262,11 @@ final class FetchOffsetsTest extends IntegrationTestCase
             }
             self::assertContains(
                 $errorCode,
-                [KafkaException::UNKNOWN_TOPIC_OR_PARTITION, KafkaException::LEADER_NOT_AVAILABLE],
+                [
+                    KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+                    KafkaException::LEADER_NOT_AVAILABLE,
+                    KafkaException::NOT_LEADER_FOR_PARTITION,
+                ],
                 "The broker answered with error code {$errorCode} for the fresh topic {$topic}"
             );
             usleep(200000);
@@ -303,7 +308,11 @@ final class FetchOffsetsTest extends IntegrationTestCase
             // The auto-created topic may still be electing a leader for its partitions
             self::assertContains(
                 $errorCode,
-                [KafkaException::UNKNOWN_TOPIC_OR_PARTITION, KafkaException::LEADER_NOT_AVAILABLE],
+                [
+                    KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+                    KafkaException::LEADER_NOT_AVAILABLE,
+                    KafkaException::NOT_LEADER_FOR_PARTITION,
+                ],
                 "The broker refused to accept the messages of {$topic} with error code {$errorCode}"
             );
             usleep(200000);
