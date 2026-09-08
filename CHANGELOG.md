@@ -39,6 +39,13 @@ against a real one.
 - **Message set v0** (`Common\Record\{Record,Message,MessageSet,CompressionCodec,Snappy}`) with
   CRC-32 validation, gzip and snappy compression, unwrapping of compressed sets and silent
   dropping of the partial trailing message a broker is allowed to send.
+- **`Producer\KafkaProducer`**, the 0.8 port of the producer of `main`: `send()` buffers a record
+  and hands back a promise that is resolved with the `RecordMetadata` of the batch its
+  topic-partition was appended in, or rejected with the error of that partition. Batching by
+  `batch.size` and `linger.ms`, `compression.type` applied to a whole batch, `max.request.size`
+  enforced before a record is buffered, and `Producer\DefaultPartitioner`, which places a keyed
+  record with the same murmur2 hash as `org.apache.kafka.common.utils.Utils.murmur2` and spreads
+  the records without a key over the partitions that have a leader.
 - **`Admin\AdminClient`**, the 0.8 port of the admin client of `main`: `findAllBrokers()`,
   `findCoordinator()`, `listGroupOffsets()`, and the 0.8-specific `listTopics()`,
   `describeTopics()`, `listOffsets()` and `controlledShutdown()`.
