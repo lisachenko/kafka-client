@@ -18,7 +18,7 @@ use Exception;
 /**
  * The request included message batch larger than the configured segment size on the server.
  *
- * Named MessageSetSizeTooLargeCode (18) in kafka/common/ErrorMapping.scala @ 0.8.2.2.
+ * Named MessageSetSizeTooLargeCode (18) in kafka/common/ErrorMapping.scala @ 0.9.0.1.
  */
 class RecordListTooLargeException extends KafkaException implements ServerExceptionInterface
 {

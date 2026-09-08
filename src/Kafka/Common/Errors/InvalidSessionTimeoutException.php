@@ -16,14 +16,14 @@ namespace Protocol\Kafka\Common\Errors;
 use Exception;
 
 /**
- * The request included a message larger than the max message size the server will accept.
+ * The session timeout is not within the range allowed by the broker
  *
- * Named MessageSizeTooLargeCode (10) in kafka/common/ErrorMapping.scala @ 0.9.0.1.
+ * as configured by group.min.session.timeout.ms and group.max.session.timeout.ms
  */
-class MessageTooLargeException extends KafkaException implements ServerExceptionInterface
+class InvalidSessionTimeoutException extends KafkaException implements ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {
-        parent::__construct($context, self::MESSAGE_TOO_LARGE, $previous);
+        parent::__construct($context, self::INVALID_SESSION_TIMEOUT, $previous);
     }
 }
