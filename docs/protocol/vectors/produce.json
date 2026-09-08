@@ -62,6 +62,32 @@
             }
         },
         {
+            "id": "produce.response.v1.throttled",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Produce response v1 of a client that exceeded its producer_byte_rate quota: the batch was appended, and the broker held the answer back for 793 ms and reported that delay as the ThrottleTime of the response.",
+            "hex": "0000002a0000000b00000001000a74382d766563746f727300000001000000000000000000000000000900000319",
+            "fields": {
+                "messageSize": 42,
+                "correlationId": 11,
+                "topics": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 9
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 793
+            }
+        },
+        {
             "id": "produce.request.v0",
             "kind": "request",
             "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV0",
