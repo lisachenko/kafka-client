@@ -20,11 +20,11 @@ use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
  * Compression codecs that the Attributes byte of a {@see Message} can announce.
  *
  * The three lowest bits of the Attributes byte hold the codec, every other bit is 0 in message format v0.
- * The 0.8.2.2 broker already knows the LZ4 codec (3), added for the new Java producer, but this client neither
+ * The 0.9.0.1 broker already knows the LZ4 codec (3), added for the new Java producer, but this client neither
  * produces nor consumes it.
  *
  * @see docs/protocol/0.9.0.md, section "MessageSet and Message"
- * @see kafka/message/CompressionCodec.scala @ 0.8.2.2
+ * @see kafka/message/CompressionCodec.scala @ 0.9.0.1
  */
 final class CompressionCodec
 {

@@ -82,7 +82,7 @@ class FetchRequest extends AbstractRequest
      *                                                        $maxWaitTime is over.
      * @param int                            $maxBytes        The maximum number of bytes to include in the message set
      *                                                        of one partition. This bounds the size of the response,
-     *                                                        but a 0.8.2.2 broker returns an empty message set instead
+     *                                                        but a 0.9.0.1 broker returns an empty message set instead
      *                                                        of a single message that is bigger than this limit.
      * @param int                            $replicaId       The node id of the replica that initiates this request.
      *                                                        Ordinary consumers always send -1 as they have no node

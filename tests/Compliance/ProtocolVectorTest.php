@@ -22,9 +22,10 @@ use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 
 /**
- * Replays every documented wire vector of the Kafka 0.8.2.2 protocol through the request and response classes.
+ * Replays every documented wire vector of the Kafka 0.9.0.1 protocol through the request and response classes.
  *
- * Each vector is a frame that a Kafka 0.8.2.2 broker really sent or really accepted, stored as hex in
+ * Each vector is a frame that a Kafka broker really sent or really accepted - 0.9.0.1 for everything the release
+ * added, 0.8.2.2 for the version 0 apis whose frames 0.9 does not change - stored as hex in
  * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/0.9.0.md`. For every one of them
  * this suite checks four things:
  *
@@ -39,32 +40,11 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
 final class ProtocolVectorTest extends TestCase
 {
     /**
-     * Vector files that the data providers of this class replay, in the order {@see VectorFile::names()} returns them
-     */
-    private const array REPLAYED_APIS = [
-        'consumer-protocol',
-        'controlled-shutdown',
-        'describe-groups',
-        'fetch',
-        'group-coordinator',
-        'heartbeat',
-        'join-group',
-        'leave-group',
-        'list-groups',
-        'metadata',
-        'offset-commit',
-        'offset-fetch',
-        'offsets',
-        'produce',
-        'sync-group',
-    ];
-
-    /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
     public static function consumerProtocolVectors(): iterable
     {
-        return VectorFile::provide('consumer-protocol');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -72,7 +52,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function metadataVectors(): iterable
     {
-        return VectorFile::provide('metadata');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -80,7 +60,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function produceVectors(): iterable
     {
-        return VectorFile::provide('produce');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -88,7 +68,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function fetchVectors(): iterable
     {
-        return VectorFile::provide('fetch');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -96,7 +76,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function offsetsVectors(): iterable
     {
-        return VectorFile::provide('offsets');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -104,7 +84,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function groupCoordinatorVectors(): iterable
     {
-        return VectorFile::provide('group-coordinator');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -112,7 +92,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function joinGroupVectors(): iterable
     {
-        return VectorFile::provide('join-group');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -120,7 +100,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function syncGroupVectors(): iterable
     {
-        return VectorFile::provide('sync-group');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -128,7 +108,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function heartbeatVectors(): iterable
     {
-        return VectorFile::provide('heartbeat');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -136,7 +116,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function leaveGroupVectors(): iterable
     {
-        return VectorFile::provide('leave-group');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -144,7 +124,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function offsetCommitVectors(): iterable
     {
-        return VectorFile::provide('offset-commit');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -152,7 +132,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function offsetFetchVectors(): iterable
     {
-        return VectorFile::provide('offset-fetch');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -160,7 +140,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function controlledShutdownVectors(): iterable
     {
-        return VectorFile::provide('controlled-shutdown');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -168,7 +148,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function describeGroupsVectors(): iterable
     {
-        return VectorFile::provide('describe-groups');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -176,7 +156,7 @@ final class ProtocolVectorTest extends TestCase
      */
     public static function listGroupsVectors(): iterable
     {
-        return VectorFile::provide('list-groups');
+        return VectorFile::provideFor(__FUNCTION__);
     }
 
     /**
@@ -316,14 +296,69 @@ final class ProtocolVectorTest extends TestCase
 
     /**
      * Every vector file has to be replayed by a data provider of this class, so that a new file cannot be forgotten
+     *
+     * The list of the replayed apis is derived from the providers themselves - a provider is named after the file
+     * it reads - instead of being repeated in a constant: a ticket that captures the vectors of a new api adds one
+     * provider and one test method of its own and touches nothing another ticket also touches.
      */
     public function testEveryVectorFileIsReplayed(): void
     {
         self::assertSame(
             VectorFile::names(),
-            self::REPLAYED_APIS,
+            self::providedApis(),
             'A vector file is not covered by a data provider of this class'
         );
+    }
+
+    /**
+     * Every provider of this class has to be used by a test method, otherwise its vectors are never replayed
+     */
+    public function testEveryProviderIsUsedByATestMethod(): void
+    {
+        $used = [];
+        foreach (new \ReflectionClass(self::class)->getMethods() as $method) {
+            foreach ($method->getAttributes(DataProvider::class) as $attribute) {
+                $used[] = $attribute->getArguments()[0];
+            }
+        }
+        sort($used);
+
+        self::assertSame(
+            self::providerMethods(),
+            $used,
+            'A data provider of this class is not used by any test method'
+        );
+    }
+
+    /**
+     * Names of the data provider methods of this class, in alphabetical order
+     *
+     * @return list<string>
+     */
+    private static function providerMethods(): array
+    {
+        $providers = [];
+        foreach (new \ReflectionClass(self::class)->getMethods(\ReflectionMethod::IS_STATIC) as $method) {
+            if (str_ends_with($method->getName(), 'Vectors')) {
+                $providers[] = $method->getName();
+            }
+        }
+        sort($providers);
+
+        return $providers;
+    }
+
+    /**
+     * Base names of the vector files that the providers of this class read, in alphabetical order
+     *
+     * @return list<string>
+     */
+    private static function providedApis(): array
+    {
+        $apis = array_map(VectorFile::apiOfProvider(...), self::providerMethods());
+        sort($apis);
+
+        return $apis;
     }
 
     /**

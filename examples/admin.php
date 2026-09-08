@@ -10,7 +10,7 @@
  */
 
 /**
- * Admin API example for the Kafka 0.8.2.2 protocol.
+ * Admin API example for the Kafka 0.9.0.1 protocol.
  *
  * Start the broker of docker-compose.yml and run:
  *
@@ -51,7 +51,7 @@ foreach ($admin->listTopics() as $name) {
 }
 
 // CAVEAT: a topic that does not exist yet is CREATED by this call when the broker runs with
-// auto.create.topics.enable=true. Kafka 0.8 has no CreateTopics api - that arrived in 0.10.1 - so a Metadata
+// auto.create.topics.enable=true. Kafka 0.9 has no CreateTopics api - that arrived in 0.10.1 - so a Metadata
 // request is the only way a client can create a topic at all. The first answer reports the topic error code 5
 // (LeaderNotAvailable) and no partitions until the controller has elected the partition leaders.
 echo "\nPartitions of {$topic}\n";
@@ -79,8 +79,9 @@ foreach ($partitions as $partition) {
     echo "  {$partition}: {$first} .. {$last} (" . ($last - $first) . " messages)\n";
 }
 
-// 0.8 has no "every topic of this group" request - the nullable topic array of OffsetFetch arrived in Kafka 0.9 -
-// so the partitions whose committed offsets are wanted have to be named explicitly.
+// 0.9 has no "every topic of this group" request - the nullable topic array of OffsetFetch is version 2 of that
+// api and arrived with Kafka 0.10.2 - so the partitions whose committed offsets are wanted have to be named
+// explicitly.
 echo "\nCommitted offsets of the group {$groupId}\n";
 echo "  coordinator: node " . $admin->findCoordinator($groupId)->nodeId . "\n";
 foreach ($admin->listGroupOffsets($groupId, [$topic => $partitions]) as $topicOffsets) {

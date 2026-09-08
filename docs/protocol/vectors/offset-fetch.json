@@ -10,7 +10,7 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
             "version": 1,
             "source": "broker",
-            "description": "OffsetFetch request v1, which reads the offsets from the __consumer_offsets topic; the partitions are always explicit, the nullable topic array is Kafka 0.9.",
+            "description": "OffsetFetch request v1, which reads the offsets from the __consumer_offsets topic; the partitions are always explicit, the nullable topic array is version 2 of the api, which arrived with Kafka 0.10.2.",
             "hex": "000000390009000100000012000374313000117431302d766563746f72732d67726f757000000001000b7431302d766563746f72730000000100000000",
             "fields": {
                 "messageSize": 57,

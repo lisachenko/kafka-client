@@ -36,7 +36,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the Produce API v0 against a real Kafka 0.8.2.2 broker.
+ * Verifies the Produce API against a real Kafka 0.9.0.1 broker.
  *
  * The broker validates the CRC of every message it appends, so a green run here also proves that the message sets
  * built by {@see SpecMessageSet} follow the specification.

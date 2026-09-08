@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the Fetch and Offsets APIs against a real Kafka 0.8.2.2 broker.
+ * Verifies the Fetch and Offsets APIs against a real Kafka 0.9.0.1 broker.
  *
  * The messages are produced with hand-written Produce v0 bytes, so that these tests only depend on the wire format
  * of the spec and not on the state of the other protocol classes.
@@ -142,7 +142,7 @@ final class FetchOffsetsTest extends IntegrationTestCase
         $topic  = $this->createTopic($stream, 't5-fetch-maxbytes');
         $this->produce($stream, $topic, [str_repeat('x', 4096)]);
 
-        // A 0.8.2.2 broker cuts the message set off at MaxBytes and does not guarantee progress, unlike the later
+        // A 0.9.0.1 broker cuts the message set off at MaxBytes and does not guarantee progress, unlike the later
         // protocol versions: what comes back are the first 64 bytes of a message that is 4110 bytes long
         $partition = $this->fetch($stream, $topic, 0, maxBytes: 64);
 

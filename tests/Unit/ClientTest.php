@@ -402,7 +402,7 @@ final class ClientTest extends TestCase
             ->install();
 
         try {
-            // 0.8.2.2 knows the lz4 codec, but this client neither writes nor reads it
+            // 0.9.0.1 knows the lz4 codec, but this client neither writes nor reads it
             $this->client([ProducerConfig::COMPRESSION_TYPE => 'lz4'])
                 ->produce([self::TOPIC => [0 => [new Record('never sent')]]]);
             self::fail('An unsupported compression type has to be rejected');
@@ -523,7 +523,7 @@ final class ClientTest extends TestCase
 
     public function testAMessageThatDoesNotFitIntoTheFetchSizeIsVisibleWithoutASecondRequest(): void
     {
-        // A 0.8.2.2 broker cuts the set off at MaxBytes without guaranteeing progress: the answer carries no
+        // A 0.9.0.1 broker cuts the set off at MaxBytes without guaranteeing progress: the answer carries no
         // complete message at all although the high water mark shows that there is something to read
         $truncated = substr(MessageSet::fromRecords([new Record(str_repeat('x', 512))])->toBuffer(), 0, 40);
         $this->brokers

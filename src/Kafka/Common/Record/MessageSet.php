@@ -37,7 +37,7 @@ use Protocol\Kafka\IO\StringStream;
  *    messages.
  *
  * @see docs/protocol/0.9.0.md, section "MessageSet and Message"
- * @see kafka/message/ByteBufferMessageSet.scala @ 0.8.2.2
+ * @see kafka/message/ByteBufferMessageSet.scala @ 0.9.0.1
  */
 final class MessageSet implements \Countable, \Stringable
 {

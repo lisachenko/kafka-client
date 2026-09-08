@@ -50,6 +50,32 @@ final class VectorFile
     }
 
     /**
+     * Returns the vectors of the api that a data provider method is named after
+     *
+     * `offsetCommitVectors` reads `offset-commit.json`, `consumerProtocolVectors` reads `consumer-protocol.json`.
+     * Deriving the file from the name of its provider keeps the list of replayed apis out of a shared constant,
+     * which is what two tickets capturing vectors in parallel used to conflict on.
+     *
+     * @param string $method Name of the calling provider method, i.e. `__FUNCTION__`
+     *
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function provideFor(string $method): iterable
+    {
+        return self::provide(self::apiOfProvider($method));
+    }
+
+    /**
+     * Turns the name of a data provider method into the base name of the vector file it reads
+     */
+    public static function apiOfProvider(string $method): string
+    {
+        $api = preg_replace('/Vectors$/', '', $method) ?? $method;
+
+        return strtolower((string) preg_replace('/(?<!^)[A-Z]/', '-$0', $api));
+    }
+
+    /**
      * Returns the whole content of one vector file
      *
      * The `apiKey` is null for the vectors that belong to no api of their own, i.e. the structures that travel
