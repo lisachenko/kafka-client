@@ -49,12 +49,20 @@ final class KafkaConsumerTest extends TestCase
 
     private const string GROUP = 't9-unit-group';
 
-    public function testCheckCrcsCanNotBeSwitchedOff(): void
+    public function testCheckCrcsIsOnByDefaultAndMayBeSwitchedOff(): void
     {
-        $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessageMatches('/check\.crcs/');
+        self::assertTrue(ConsumerConfig::getDefaultConfiguration()[ConsumerConfig::CHECK_CRCS]);
 
-        new TestKafkaConsumer(new FakeClient(), $this->configuration([ConsumerConfig::CHECK_CRCS => false]));
+        // The client threads the option into MessageSet::fromBuffer(), so a consumer that trusts its network can
+        // skip the checksum of every message it reads
+        $client   = $this->clientWithLog([0 => 2]);
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::CHECK_CRCS         => false,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([self::TOPIC => [0]]);
+
+        self::assertCount(2, $consumer->poll(10)[self::TOPIC][0]);
     }
 
     public function testAutomaticCommitRequiresAGroup(): void
@@ -490,8 +498,9 @@ final class KafkaConsumerTest extends TestCase
     public function testAPartitionStuckOnATooLargeMessageIsReported(): void
     {
         $client = new FakeClient();
-        $client->logStartOffsets[self::TOPIC][0] = 0;
-        $client->logEndOffsets[self::TOPIC][0]   = 4;
+        $client->logStartOffsets[self::TOPIC][0]   = 0;
+        $client->logEndOffsets[self::TOPIC][0]     = 4;
+        $client->oversizedMessages[self::TOPIC][0] = true;
 
         $consumer = $this->consumer($client, [
             ConsumerConfig::AUTO_OFFSET_RESET         => OffsetResetStrategy::EARLIEST,
@@ -500,12 +509,18 @@ final class KafkaConsumerTest extends TestCase
         ]);
         $consumer->assign([self::TOPIC => [0]]);
 
-        // The first empty answer is indistinguishable from an idle partition, so it costs nothing
-        self::assertSame([self::TOPIC => [0 => []]], $consumer->poll(10));
-
-        $this->expectException(RecordTooLargeException::class);
-        $this->expectExceptionMessageMatches('/max\.partition\.fetch\.bytes/');
-        $consumer->poll(10);
+        // The broker says so in the very answer, so the first poll already refuses instead of spinning
+        try {
+            $consumer->poll(10);
+            self::fail('A partition that can not make progress has to be reported');
+        } catch (RecordTooLargeException $exception) {
+            self::assertSame(self::TOPIC, $exception->topic);
+            self::assertSame(0, $exception->partition);
+            self::assertSame(0, $exception->fetchOffset);
+            self::assertSame(64, $exception->maxBytes);
+            self::assertSame(4, $exception->logEndOffset);
+            self::assertStringContainsString('max.partition.fetch.bytes', $exception->getMessage());
+        }
     }
 
     public function testAnIdlePartitionIsNotReportedAsStuck(): void

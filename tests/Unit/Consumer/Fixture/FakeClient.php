@@ -14,10 +14,15 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Unit\Consumer\Fixture;
 
 use Protocol\Kafka\Client;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 
 /**
  * An in-memory stand-in for the low-level client, so that the consumer can be driven without a broker.
@@ -92,6 +97,13 @@ final class FakeClient extends Client
      */
     public bool $ignoreFetchOffset = false;
 
+    /**
+     * Partitions whose next message does not fit into the requested fetch size, as [topic][partition] => true
+     *
+     * @var array<string, array<int, bool>>
+     */
+    public array $oversizedMessages = [];
+
     public function __construct() {}
 
     /**
@@ -110,7 +122,7 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function fetch(array $topicPartitionOffsets, $timeout)
+    public function fetchPartitions(array $topicPartitionOffsets, int $timeout): array
     {
         $this->fetchCalls[] = $topicPartitionOffsets;
 
@@ -123,13 +135,24 @@ final class FakeClient extends Client
         foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
             foreach ($partitionOffsets as $partition => $offset) {
                 $records = $this->log[$topic][$partition] ?? [];
-
-                $result[$topic][$partition] = $this->ignoreFetchOffset
-                    ? array_values($records)
-                    : array_values(array_filter(
+                if (!$this->ignoreFetchOffset) {
+                    $records = array_filter(
                         $records,
                         static fn(Record $record): bool => $record->offset >= $offset
-                    ));
+                    );
+                }
+
+                $logEndOffset = $this->logEndOffset($topic, $partition);
+                $isTooLarge   = ($this->oversizedMessages[$topic][$partition] ?? false) && $logEndOffset > $offset;
+
+                $result[$topic][$partition] = new FetchedPartition(
+                    new TopicPartition((string) $topic, (int) $partition),
+                    (int) $offset,
+                    KafkaException::NO_ERROR,
+                    $logEndOffset,
+                    $isTooLarge ? MessageSet::fromBuffer('') : self::messageSetOf(array_values($records)),
+                    $isTooLarge
+                );
             }
         }
 
@@ -139,7 +162,43 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function fetchTopicPartitionOffsets(array $topicPartitions)
+    public function fetch(array $topicPartitionOffsets, int $timeout): array
+    {
+        $result = [];
+        foreach ($this->fetchPartitions($topicPartitionOffsets, $timeout) as $topic => $partitions) {
+            foreach ($partitions as $partition => $fetchedPartition) {
+                $result[$topic][$partition] = $fetchedPartition->getRecords();
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Builds a message set that carries the given records at the offsets they already have
+     *
+     * MessageSet::fromRecords() numbers a produced set from 0, because the broker assigns the real offsets on
+     * append; a fetched set has the offsets of the log, so its bytes are built to the specification here.
+     *
+     * @param list<Record> $records
+     */
+    private static function messageSetOf(array $records): MessageSet
+    {
+        $buffer = '';
+        foreach ($records as $record) {
+            $buffer .= SpecMessageSet::entry(
+                (int) $record->offset,
+                SpecMessageSet::message($record->key, $record->value, $record->attributes)
+            );
+        }
+
+        return MessageSet::fromBuffer($buffer);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function fetchTopicPartitionOffsets(array $topicPartitions): array
     {
         $this->offsetsCalls[] = $topicPartitions;
 
@@ -158,7 +217,7 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function fetchGroupOffsets(Node $coordinatorNode, $groupId, array $topicPartitions): array
+    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitions): array
     {
         $result = [];
         foreach ($topicPartitions as $topic => $partitions) {
@@ -174,7 +233,7 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function commitGroupOffsets(Node $coordinatorNode, $groupId, array $topicPartitionOffsets): void
+    public function commitGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitionOffsets): void
     {
         $this->commits[] = ['group' => $groupId, 'offsets' => $topicPartitionOffsets];
 
@@ -190,7 +249,7 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function getGroupCoordinator($groupId)
+    public function getGroupCoordinator(string $groupId): Node
     {
         $node         = new Node();
         $node->nodeId = 1;

@@ -391,13 +391,28 @@ final class KafkaConsumerTest extends IntegrationTestCase
         ]);
         $consumer->assign([$this->topic => [0]]);
 
-        // The broker answers with a message it cut short, which the record layer drops: the first empty answer is
-        // indistinguishable from an idle partition, the second one is not
-        self::assertSame([], $this->pollOnce($consumer, 0));
+        // The broker answers with a message it cut short, which the record layer drops, while its high water mark
+        // shows there is something to read: fetching the same offset again would return the very same answer, so
+        // the first poll already refuses instead of spinning
+        try {
+            $consumer->poll(1000);
+            self::fail('A partition that can not make progress has to be reported');
+        } catch (RecordTooLargeException $exception) {
+            self::assertSame($this->topic, $exception->topic);
+            self::assertSame(0, $exception->partition);
+            self::assertSame(0, $exception->fetchOffset);
+            self::assertSame(64, $exception->maxBytes);
+            self::assertSame(1, $exception->logEndOffset, 'the log holds the one message that does not fit');
+        }
 
-        $this->expectException(RecordTooLargeException::class);
-        $this->expectExceptionMessageMatches('/max\.partition\.fetch\.bytes/');
-        $consumer->poll(1000);
+        // The very same partition is readable with enough room for that message
+        $roomy = $this->consumer(self::uniqueGroupName(), [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $roomy->assign([$this->topic => [0]]);
+
+        self::assertSame([str_repeat('x', 4096)], $this->valuesOf($this->pollUntil($roomy, 1), 0));
     }
 
     /**

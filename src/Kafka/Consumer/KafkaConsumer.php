@@ -21,6 +21,7 @@ use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
@@ -71,6 +72,10 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * The options that only drive the group membership of Kafka 0.9 (session.timeout.ms, heartbeat.interval.ms,
  * rebalance.timeout.ms, partition.assignment.strategy) do not exist on this branch, and neither does the
  * `offset.retention.ms` of the OffsetCommit v2 or the `isolation.level` of the transactional protocol of 0.11.
+ *
+ * A message that does not fit into `max.partition.fetch.bytes` is refused with a {@see RecordTooLargeException}
+ * rather than silently stalling the partition, because a 0.8.2.2 broker cuts a message set off at that size
+ * without guaranteeing that a single message fits into it.
  */
 class KafkaConsumer
 {
@@ -117,19 +122,6 @@ class KafkaConsumer
     private readonly ?Deserializer $valueDeserializer;
 
     /**
-     * Position of every topic-partition whose last fetch came back without a single record.
-     *
-     * A fetch that returns nothing is normal - the partition is simply up to date - but it also happens when the
-     * next message does not fit into `max.partition.fetch.bytes`, and the two are only told apart by the log end
-     * offset of that partition. This map holds the position at which a partition already came back empty once, so
-     * that only a partition that is repeatedly stuck costs an additional Offsets request, see
-     * {@see detectOversizedMessages()}.
-     *
-     * @var array<string, array<int, int>> [topic: string][partition: int] => position of the empty fetch
-     */
-    private array $emptyFetchPositions = [];
-
-    /**
      * @param array<string, mixed> $configuration Consumer options, see {@see ConsumerConfig}
      */
     public function __construct(array $configuration = [])
@@ -137,12 +129,6 @@ class KafkaConsumer
         $this->configuration     = $configuration + ConsumerConfig::getDefaultConfiguration();
         $this->subscriptionState = new SubscriptionState();
 
-        if ($this->configuration[ConsumerConfig::CHECK_CRCS] !== true) {
-            throw new InvalidConfigurationException(
-                'The record layer of this branch always verifies the CRC32 of every consumed message, therefore '
-                . ConsumerConfig::CHECK_CRCS . ' can not be switched off.'
-            );
-        }
         if ($this->isAutoCommitEnabled() && $this->groupId() === '') {
             throw new InvalidConfigurationException(
                 'Committed offsets are stored per consumer group, so ' . ConsumerConfig::GROUP_ID . ' is required '
@@ -302,11 +288,10 @@ class KafkaConsumer
             return [];
         }
 
-        [$fetchedOffsets, $result] = $this->fetchMessages($activeTopicPartitionOffsets, $timeout);
+        $fetchedPartitions = $this->fetchMessages($activeTopicPartitionOffsets, $timeout);
+        $result            = $this->collectRecords($fetchedPartitions);
 
-        $result = $this->discardRecordsBeforePosition($fetchedOffsets, $result);
-        $this->updateFetchPositions($result);
-        $this->detectOversizedMessages($fetchedOffsets, $result);
+        $this->updateFetchPositions($fetchedPartitions);
 
         if ($this->isAutoCommitEnabled()) {
             $elapsedInterval = $milliSeconds - (int) $this->lastAutoCommitMs;
@@ -404,8 +389,7 @@ class KafkaConsumer
     {
         $this->subscriptionState->unsubscribe();
 
-        $this->emptyFetchPositions = [];
-        $this->coordinator         = null;
+        $this->coordinator = null;
     }
 
     /**
@@ -522,19 +506,61 @@ class KafkaConsumer
     /**
      * Moves the position of every partition behind the last record that was received for it
      *
-     * @param array<string, array<int, list<Record>>> $fetchResult Records of one poll()
+     * A partition that returned nothing keeps its position, so that the next poll() asks for the same offset
+     * again; the position never moves backwards, whatever a compressed set carried.
+     *
+     * @param array<string, array<int, FetchedPartition>> $fetchedPartitions Partitions of one poll()
      */
-    protected function updateFetchPositions(array $fetchResult): void
+    protected function updateFetchPositions(array $fetchedPartitions): void
     {
-        foreach ($fetchResult as $topic => $partitions) {
-            foreach ($partitions as $partitionId => $records) {
-                if ($records === []) {
-                    continue;
+        foreach ($fetchedPartitions as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $fetchedPartition) {
+                $nextOffset = $fetchedPartition->getNextOffset();
+                if ($nextOffset > $fetchedPartition->fetchOffset) {
+                    $this->subscriptionState->seek((string) $topic, (int) $partitionId, $nextOffset);
                 }
-                $lastRecord = end($records);
-                $this->subscriptionState->seek((string) $topic, (int) $partitionId, (int) $lastRecord->offset + 1);
             }
         }
+    }
+
+    /**
+     * Turns the answers of the broker into the records of a poll(), refusing a partition that can not progress
+     *
+     * A compressed message set is stored and returned as a whole, so a fetch that starts in the middle of one also
+     * carries the records before the requested offset; those have already been consumed and are dropped here.
+     *
+     * @param array<string, array<int, FetchedPartition>> $fetchedPartitions Partitions of one poll()
+     *
+     * @return array<string, array<int, list<Record>>> [topic: string][partition: int] => list of records
+     *
+     * @throws RecordTooLargeException
+     */
+    private function collectRecords(array $fetchedPartitions): array
+    {
+        $result = [];
+        foreach ($fetchedPartitions as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $fetchedPartition) {
+                // A 0.8.2.2 broker fills the answer up to MaxBytes without guaranteeing that one message fits, so
+                // a partition whose next message is bigger would come back empty forever
+                if ($fetchedPartition->isSingleMessageTooLarge()) {
+                    throw new RecordTooLargeException(
+                        (string) $topic,
+                        (int) $partitionId,
+                        $fetchedPartition->fetchOffset,
+                        (int) $this->configuration[ConsumerConfig::MAX_PARTITION_FETCH_BYTES],
+                        $fetchedPartition->highWaterMarkOffset
+                    );
+                }
+
+                $fetchOffset                  = $fetchedPartition->fetchOffset;
+                $result[$topic][$partitionId] = array_values(array_filter(
+                    $fetchedPartition->getRecords(),
+                    static fn(Record $record): bool => $record->offset === null || $record->offset >= $fetchOffset
+                ));
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -547,27 +573,23 @@ class KafkaConsumer
      * @param array<string, array<int, int>> $activeTopicPartitionOffsets Positions to fetch from
      * @param int                            $timeout                     Poll timeout in milliseconds
      *
-     * @return array{0: array<string, array<int, int>>, 1: array<string, array<int, list<Record>>>} The positions
-     *         that were finally fetched and the records that came back for them
+     * @return array<string, array<int, FetchedPartition>> What the broker answered for each partition
      */
     private function fetchMessages(array $activeTopicPartitionOffsets, int $timeout): array
     {
         try {
-            return [
-                $activeTopicPartitionOffsets,
-                $this->getClient()->fetch($activeTopicPartitionOffsets, $timeout),
-            ];
+            return $this->getClient()->fetchPartitions($activeTopicPartitionOffsets, $timeout);
         } catch (OffsetOutOfRangeException $exception) {
             $resetOffsets = $this->resetOutOfRangeOffsets($activeTopicPartitionOffsets, $exception);
         } catch (TopicPartitionRequestException $exception) {
-            // A client that reports the failed partitions separately keeps the records of the healthy ones
+            // A client that reports the failed partitions separately keeps the answers of the healthy ones
             if (!self::hasOffsetOutOfRange($exception)) {
                 throw $exception;
             }
             $resetOffsets = $this->resetOutOfRangeOffsets($activeTopicPartitionOffsets, $exception);
         }
 
-        return [$resetOffsets, $this->getClient()->fetch($resetOffsets, $timeout)];
+        return $this->getClient()->fetchPartitions($resetOffsets, $timeout);
     }
 
     /**
@@ -635,86 +657,6 @@ class KafkaConsumer
         }
 
         return false;
-    }
-
-    /**
-     * Drops the records that lie before the position a partition was fetched from.
-     *
-     * A compressed message set is stored and returned as a whole, so a fetch that starts in the middle of one
-     * comes back with the records before the requested offset as well; those have already been consumed.
-     *
-     * @param array<string, array<int, int>>          $fetchOffsets Position every partition was fetched from
-     * @param array<string, array<int, list<Record>>> $fetchResult  Records that came back
-     *
-     * @return array<string, array<int, list<Record>>>
-     */
-    private function discardRecordsBeforePosition(array $fetchOffsets, array $fetchResult): array
-    {
-        foreach ($fetchResult as $topic => $partitions) {
-            foreach ($partitions as $partition => $records) {
-                $fetchOffset = $fetchOffsets[$topic][$partition] ?? 0;
-                $fetchResult[$topic][$partition] = array_values(array_filter(
-                    $records,
-                    static fn(Record $record): bool => $record->offset === null || $record->offset >= $fetchOffset
-                ));
-            }
-        }
-
-        return $fetchResult;
-    }
-
-    /**
-     * Raises an error for a partition that can not make progress because its next message is too big.
-     *
-     * A 0.8.2.2 broker cuts a message set off at `MaxBytes` without guaranteeing that a single message fits, so a
-     * partition whose next message is bigger comes back empty forever. The only way to tell that apart from an
-     * idle partition is the log end offset, which the Fetch response of this client does not expose, therefore it
-     * is asked for - but only for a partition that already came back empty at the same position before, so that
-     * an idle consumer does not pay for the check on every poll.
-     *
-     * @param array<string, array<int, int>>          $fetchOffsets Position every partition was fetched from
-     * @param array<string, array<int, list<Record>>> $fetchResult  Records that came back
-     *
-     * @throws RecordTooLargeException
-     */
-    private function detectOversizedMessages(array $fetchOffsets, array $fetchResult): void
-    {
-        $suspects        = [];
-        $emptyPositions  = [];
-        foreach ($fetchOffsets as $topic => $partitionOffsets) {
-            foreach ($partitionOffsets as $partition => $fetchOffset) {
-                if (($fetchResult[$topic][$partition] ?? []) !== []) {
-                    continue;
-                }
-
-                $emptyPositions[$topic][$partition] = $fetchOffset;
-                if (($this->emptyFetchPositions[$topic][$partition] ?? null) === $fetchOffset) {
-                    $suspects[$topic][$partition] = OffsetsRequest::LATEST;
-                }
-            }
-        }
-        $this->emptyFetchPositions = $emptyPositions;
-
-        if ($suspects === []) {
-            return;
-        }
-
-        $logEndOffsets = $this->getClient()->fetchTopicPartitionOffsets($suspects);
-        foreach ($suspects as $topic => $partitions) {
-            foreach (array_keys($partitions) as $partition) {
-                $fetchOffset  = $fetchOffsets[$topic][$partition];
-                $logEndOffset = $logEndOffsets[$topic][$partition] ?? $fetchOffset;
-                if ($logEndOffset > $fetchOffset) {
-                    throw new RecordTooLargeException(
-                        (string) $topic,
-                        (int) $partition,
-                        (int) $fetchOffset,
-                        (int) $this->configuration[ConsumerConfig::MAX_PARTITION_FETCH_BYTES],
-                        (int) $logEndOffset
-                    );
-                }
-            }
-        }
     }
 
     /**

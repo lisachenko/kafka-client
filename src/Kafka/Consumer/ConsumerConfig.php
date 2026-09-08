@@ -123,8 +123,8 @@ final class ConsumerConfig extends GeneralConfig
      * Automatically check the CRC32 of the consumed records.
      *
      * This ensures no on-the-wire or on-disk corruption to the messages occurred; the check adds some overhead, so
-     * it may be disabled in cases seeking extreme performance. The record layer of this branch always verifies the
-     * checksums, so `false` is rejected instead of being silently ignored.
+     * a consumer that trusts its network may switch it off in cases seeking extreme performance. A message whose
+     * checksum does not match is reported as a CorruptMessageException for its own partition.
      */
     public const string CHECK_CRCS = 'check.crcs';
 
