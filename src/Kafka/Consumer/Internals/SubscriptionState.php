@@ -21,9 +21,15 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * Bookkeeping of the partitions a consumer works on: which ones are assigned, where it reads them and which of
  * them are paused.
  *
- * Kafka 0.8.2.2 has no broker-side group membership, so the only way to get partitions is {@see assignFromUser()};
- * the subscription types that the later protocol lines fill in through JoinGroup/SyncGroup (TYPE_AUTO_TOPICS,
- * TYPE_AUTO_PATTERN) do not exist here.
+ * Kafka 0.9.0.1 knows two ways to get partitions, and they are mutually exclusive, exactly as in the Java client:
+ * {@see assignFromUser()} for the partitions an application picked itself ({@see \Protocol\Kafka\Consumer\KafkaConsumer::assign()})
+ * and {@see subscribeByTopics()} plus {@see assignFromSubscribed()} for the ones the group coordinator handed out
+ * through JoinGroup/SyncGroup ({@see \Protocol\Kafka\Consumer\KafkaConsumer::subscribe()}). The pattern subscription
+ * of the Java client (`TYPE_AUTO_PATTERN`) is not implemented on this line: it is a client-side concern - the
+ * consumer matches the pattern against the topics of the cluster metadata - and no wire structure of Kafka 0.9
+ * carries it.
+ *
+ * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 final class SubscriptionState
 {
@@ -31,6 +37,11 @@ final class SubscriptionState
      * No subscription type has been defined yet
      */
     public const int TYPE_NONE = 0;
+
+    /**
+     * Subscription to a list of topics through KafkaConsumer::subscribe(), the partitions come from the group
+     */
+    public const int TYPE_AUTO_TOPICS = 1;
 
     /**
      * Subscription is assigned manually through KafkaConsumer::assign()
@@ -43,6 +54,13 @@ final class SubscriptionState
      * @var array<string, array<int, array{position: int|null, isPaused: bool}>>
      */
     private array $assignment = [];
+
+    /**
+     * Topics of a subscription, as a set of topic name => true; empty for a manual assignment
+     *
+     * @var array<string, true>
+     */
+    private array $subscription = [];
 
     /**
      * Type of this subscription, one of the self::TYPE_* constants
@@ -72,15 +90,66 @@ final class SubscriptionState
     }
 
     /**
-     * Return the list of subscribed topics, which is always empty on this protocol line
+     * Subscribes to the given list of topics, whose partitions are handed out by the group coordinator
      *
-     * Topic subscriptions need the group membership APIs of Kafka 0.9, see KafkaConsumer::subscribe().
+     * The subscription replaces the previous one; the partitions themselves only arrive with the SyncGroup answer
+     * of the next rebalance, which is what {@see assignFromSubscribed()} stores.
+     *
+     * @param list<string> $topics Topics to subscribe to
+     */
+    public function subscribeByTopics(array $topics): void
+    {
+        $this->setSubscriptionType(self::TYPE_AUTO_TOPICS);
+        $this->subscription = array_fill_keys($topics, true);
+    }
+
+    /**
+     * Stores the partitions that the leader of the group assigned to this member
+     *
+     * The assignment is refused when it names a topic this member did not subscribe to: a group whose members do
+     * not agree on the assignor - or a leader with a bug - would otherwise silently make a consumer read a topic
+     * its application knows nothing about.
+     *
+     * @param array<string, PartitionsForTopic> $assignments Topic name => DTO with the partitions of that topic
+     */
+    public function assignFromSubscribed(array $assignments): void
+    {
+        if (!$this->partitionsAutoAssigned()) {
+            throw new InvalidArgumentException(
+                'Attempt to dynamically assign partitions while manual assignment is in use'
+            );
+        }
+
+        $unknownTopics = array_diff_key($assignments, $this->subscription);
+        if ($unknownTopics !== []) {
+            throw new InvalidArgumentException(
+                sprintf(
+                    'The leader assigned the not subscribed topics [%s]; the subscription is [%s]',
+                    implode(', ', array_keys($unknownTopics)),
+                    implode(', ', $this->getSubscription())
+                )
+            );
+        }
+
+        $this->setAssignment($assignments);
+    }
+
+    /**
+     * Return the list of topics this consumer subscribed to, empty for a manual assignment
      *
      * @return list<string>
      */
     public function getSubscription(): array
     {
-        return [];
+        return array_keys($this->subscription);
+    }
+
+    /**
+     * Tells whether the partitions of this state are handed out by the group coordinator
+     */
+    public function partitionsAutoAssigned(): bool
+    {
+        return $this->subscriptionType === self::TYPE_AUTO_TOPICS;
     }
 
     /**
@@ -94,12 +163,13 @@ final class SubscriptionState
     }
 
     /**
-     * Drops every assignment of this state
+     * Drops every assignment and every subscription of this state
      */
     public function unsubscribe(): void
     {
         $this->subscriptionType = self::TYPE_NONE;
         $this->assignment       = [];
+        $this->subscription     = [];
     }
 
     /**

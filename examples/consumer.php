@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Consumes a topic of a Kafka 0.8.2.2 cluster with {@see KafkaConsumer}.
+ * Consumes a topic of a Kafka 0.9.0.1 cluster with the partitions picked by hand, see {@see KafkaConsumer}.
  *
  * Start the broker of this repository and run the example against it:
  *
@@ -23,9 +23,10 @@ declare(strict_types=1);
  *
  * The example seeds the topic with a handful of records first, so that there is always something to read; pass
  * `--no-produce` to consume what is already in the log. It then assigns every partition of the topic explicitly -
- * Kafka 0.8 has no broker-side group membership, so KafkaConsumer::subscribe() is not available and the partitions
- * are chosen by the application - rewinds to the beginning of the log, prints what it receives and commits the
- * positions it reached.
+ * an `assign()`ed consumer joins no group, so it neither rebalances nor heartbeats, and two consumers of one group
+ * that assign the same partition both read it - rewinds to the beginning of the log, prints what it receives and
+ * commits the positions it reached. {@see examples/consumer-group.php} is the same example with the broker-side
+ * group membership of Kafka 0.9, where the partitions are handed out by the group coordinator.
  */
 
 use Protocol\Kafka\Common\ClientConfig;

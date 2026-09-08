@@ -43,4 +43,12 @@ final class TestKafkaConsumer extends KafkaConsumer
     {
         throw new LogicException('This consumer must not resolve a cluster, it talks to a fake client');
     }
+
+    /**
+     * @inheritdoc
+     */
+    protected function partitionsForAssignment(array $topics): array
+    {
+        return array_intersect_key($this->fakeClient->partitionsPerTopic, array_flip($topics));
+    }
 }

@@ -76,46 +76,77 @@ A runnable version of this is [examples/producer.php](examples/producer.php).
 Consumer API
 ------------
 
-The Consumer API reads streams of records from topics in the Kafka cluster.
+The Consumer API reads streams of records from topics in the Kafka cluster. Kafka 0.9 moved the
+coordination of a consumer group into the broker, so a consumer can simply **subscribe** to topics
+and let the group hand out the partitions:
 
 ```php
-use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\KafkaConsumer;
 use Protocol\Kafka\Consumer\OffsetResetStrategy;
 
 $consumer = new KafkaConsumer([
-    ConsumerConfig::BOOTSTRAP_SERVERS   => ['tcp://127.0.0.1:9092'],
-    ConsumerConfig::GROUP_ID            => 'kafka-daemon',
-    ConsumerConfig::FETCH_MAX_WAIT_MS   => 5000,
-    ConsumerConfig::AUTO_OFFSET_RESET   => OffsetResetStrategy::EARLIEST,
-    ConsumerConfig::METADATA_CACHE_FILE => '/tmp/metadata.php',
+    ClientConfig::BOOTSTRAP_SERVERS => ['tcp://127.0.0.1:9092'],
+    // A JoinGroup is answered only once the whole rebalance is over, so this has to exceed
+    // session.timeout.ms; the consumer defaults are 40000 and 30000, as in the Java client
+    ClientConfig::REQUEST_TIMEOUT_MS => 40000,
+
+    ConsumerConfig::GROUP_ID                      => 'kafka-daemon',
+    ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => 'range', // or 'roundrobin', or your own class
+    ConsumerConfig::SESSION_TIMEOUT_MS            => 30000,
+    ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 3000,
+    ConsumerConfig::AUTO_OFFSET_RESET             => OffsetResetStrategy::EARLIEST,
 ]);
 
-// Assign the partitions explicitly; broker-side group membership is being implemented, see below
-$consumer->assign([new TopicPartition('test', 0), new TopicPartition('test', 1)]);
+// Nothing is sent yet: the group is joined by the first poll(), which brings the assignment
+$consumer->subscribe(['test']);
 
-for ($i = 0; $i < 100; $i++) {
-    foreach ($consumer->poll(1000) as $record) {
-        echo json_encode($record), PHP_EOL;
+while (true) {
+    // [topic][partition] => records, in offset order
+    foreach ($consumer->poll(1000) as $topic => $partitions) {
+        foreach ($partitions as $partition => $records) {
+            foreach ($records as $record) {
+                echo $topic, ':', $partition, '@', $record->offset, ' ', $record->value, PHP_EOL;
+            }
+        }
     }
     $consumer->commitSync();
 }
+
+$consumer->close(); // commits once more and leaves the group with a LeaveGroup request
 ```
 
-`assign()` picks the partitions to read, `poll($timeoutMs)` fetches the next records from them,
-`commitSync()` stores the current position of the group on the broker, and
-`seek()`/`seekToBeginning()`/`seekToEnd()` move the position. The offsets a group committed
-survive the process, so the next `poll()` continues where the last `commitSync()` left off.
+`subscribe()` names the topics and `assignment()` reports the partitions the group gave this
+member; `assign()` still picks partitions by hand and joins no group at all, and the two are
+mutually exclusive, exactly as in the Java client. `commitSync()` stores the position of the
+group — carrying the member id and the generation of this consumer, so a coordinator refuses a
+commit of a generation that is over — and `seek()`/`seekToBeginning()`/`seekToEnd()` move the
+position. `unsubscribe()` leaves the group without committing, `close()` commits first.
 
-**Group membership is still a client-side concern on this branch.** Kafka 0.9 is the release
-that moved it into the broker — JoinGroup, SyncGroup, Heartbeat and LeaveGroup — and this
-line implements those apis in its second and third wave (`subscribe()`/`unsubscribe()` and the
-rebalance loop land with #32). Until then `assign()` is the way to pick the partitions, and two
-consumers of one group that assign the same partition will both read it.
+**The heartbeat is sent from `poll()`, because PHP has no background thread.** A consumer that
+does not poll for longer than `session.timeout.ms` is dropped by the coordinator and its
+partitions are given to the other members; the next `poll()` sees that in the error code of its
+heartbeat and joins the group again. Keep the processing of a batch well below the session
+timeout, or raise `session.timeout.ms` — within the `group.min.session.timeout.ms` and
+`group.max.session.timeout.ms` of the broker. There is no `max.poll.interval.ms` on this line,
+that option arrived with Kafka 0.10.1.
 
-See the [consumer configuration] reference for the full set of options and
-[examples/consumer.php](examples/consumer.php) for a runnable version.
+The partitions are distributed by the member the coordinator elected as the leader of the
+generation: `partition.assignment.strategy` selects `range` (the default) or `roundrobin` —
+both with the ordering rules of the Java client of 0.9.0.1, so a PHP member can lead a group of
+Java members and the other way round — or names a class that implements
+`Consumer\PartitionAssignorInterface`. Every member of a group has to offer the same one, a
+coordinator that finds no common protocol refuses the join with the error 23. A
+`Consumer\ConsumerRebalanceListener` passed to `subscribe()` is called with the partitions that
+each rebalance takes away and hands over, which is where a consumer with `enable.auto.commit`
+off commits what it has consumed.
+
+[examples/consumer-group.php](examples/consumer-group.php) is a runnable version of this —
+start it twice and watch the two members split the partitions — and
+[examples/consumer.php](examples/consumer.php) is the same thing with `assign()`.
+
+See the [consumer configuration] reference for the full set of options.
 
 Admin API
 ---------

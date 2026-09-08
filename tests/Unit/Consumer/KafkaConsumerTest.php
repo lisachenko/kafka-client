@@ -13,26 +13,34 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Tests\Unit\Consumer;
 
-use BadMethodCallException;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
+use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\ConsumerRecord;
+use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Consumer\KafkaConsumer;
+use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Consumer\OffsetResetStrategy;
+use Protocol\Kafka\Consumer\RoundRobinAssignor;
+use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\FakeClient;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\JsonDeserializer;
+use Protocol\Kafka\Tests\Unit\Consumer\Fixture\RecordingRebalanceListener;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\TestKafkaConsumer;
 
 /**
@@ -41,6 +49,8 @@ use Protocol\Kafka\Tests\Unit\Consumer\Fixture\TestKafkaConsumer;
  * broker.
  */
 #[CoversClass(KafkaConsumer::class)]
+#[CoversClass(ConsumerCoordinator::class)]
+#[CoversClass(SubscriptionState::class)]
 #[CoversClass(ConsumerRecord::class)]
 #[CoversClass(ConsumerConfig::class)]
 #[CoversClass(RecordTooLargeException::class)]
@@ -84,17 +94,6 @@ final class KafkaConsumerTest extends TestCase
         new TestKafkaConsumer(new FakeClient(), $this->configuration([
             ConsumerConfig::VALUE_DESERIALIZER => \stdClass::class,
         ]));
-    }
-
-    public function testSubscribeIsNotSupportedByTheProtocolLine(): void
-    {
-        $consumer = new TestKafkaConsumer(new FakeClient(), $this->configuration());
-
-        self::assertSame([], $consumer->subscription());
-
-        $this->expectException(BadMethodCallException::class);
-        $this->expectExceptionMessageMatches('/assign\(\)/');
-        $consumer->subscribe([self::TOPIC]);
     }
 
     public function testAssignmentIsReportedBack(): void
@@ -662,6 +661,483 @@ final class KafkaConsumerTest extends TestCase
 
         self::assertSame([], $consumer->subscription());
         self::assertNotSame(SubscriptionState::TYPE_NONE, SubscriptionState::TYPE_USER_ASSIGNED);
+    }
+
+    public function testSubscriptionIsEmptyUntilTopicsAreSubscribed(): void
+    {
+        $consumer = new TestKafkaConsumer(new FakeClient(), $this->configuration());
+
+        self::assertSame([], $consumer->subscription());
+        self::assertSame([], $consumer->assignment());
+    }
+
+    public function testSubscribeJoinsTheGroupOnTheFirstPollAndReceivesEveryPartition(): void
+    {
+        $client                     = $this->clientWithLog([0 => 2, 1 => 1, 2 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0, 1, 2]];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+
+        self::assertSame([self::TOPIC], $consumer->subscription());
+        self::assertSame([], $consumer->assignment(), 'nothing is sent to the broker before the first poll()');
+
+        $records = $consumer->poll(10);
+
+        self::assertSame([self::TOPIC => [0 => 0, 1 => 1, 2 => 2]], $consumer->assignment());
+        self::assertCount(2, $records[self::TOPIC][0]);
+        self::assertCount(1, $client->joins, 'one JoinGroup is enough to establish the membership');
+        self::assertSame(self::GROUP, $client->joins[0]['groupId']);
+        self::assertSame('', $client->joins[0]['memberId'], 'a client without a member id joins with an empty one');
+        self::assertSame('consumer', $client->joins[0]['protocolType']);
+        self::assertSame(['range'], array_keys($client->joins[0]['protocols']));
+        self::assertEquals(
+            new Subscription([self::TOPIC]),
+            Subscription::unpack($client->joins[0]['protocols']['range']),
+            'the member metadata of a consumer group is the Subscription of the member'
+        );
+        self::assertSame([self::TOPIC => [0, 1, 2]], $client->assignmentOf('member-1'));
+    }
+
+    public function testTheLeaderOfTheGroupAssignsThePartitionsOfEveryMember(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1, 1 => 1, 2 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0, 1, 2]];
+        $client->addGroupMember('member-9', [self::TOPIC]);
+        $client->leaderId = 'member-1';
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        // `range` over one topic with three partitions and the members sorted lexicographically: 2 + 1
+        self::assertSame([self::TOPIC => [0 => 0, 1 => 1]], $consumer->assignment());
+        self::assertSame([self::TOPIC => [0, 1]], $client->assignmentOf('member-1'));
+        self::assertSame([self::TOPIC => [2]], $client->assignmentOf('member-9'));
+        self::assertSame(
+            ['member-1', 'member-9'],
+            array_keys($client->syncs[0]['assignments']),
+            'the leader publishes an assignment for every member of the generation'
+        );
+    }
+
+    public function testTheRoundRobinAssignorSpreadsThePartitionsOfTheLeaderDifferently(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1, 1 => 1, 2 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0, 1, 2]];
+        $client->addGroupMember('member-9', [self::TOPIC]);
+        $client->leaderId = 'member-1';
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT            => false,
+            ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => RoundRobinAssignor::NAME,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        self::assertSame(['roundrobin'], array_keys($client->joins[0]['protocols']));
+        self::assertSame([self::TOPIC => [0, 2]], $client->assignmentOf('member-1'));
+        self::assertSame([self::TOPIC => [1]], $client->assignmentOf('member-9'));
+    }
+
+    public function testAFollowerTakesTheAssignmentTheLeaderPublishedForIt(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1, 1 => 1, 2 => 3]);
+        $client->partitionsPerTopic = [self::TOPIC => [0, 1, 2]];
+        $client->addGroupMember('member-9', [self::TOPIC]);
+        $client->memberAssignments  = ['member-1' => new MemberAssignment([self::TOPIC => [2]])->pack()];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+        $records = $consumer->poll(10);
+
+        self::assertSame([self::TOPIC => [2 => 2]], $consumer->assignment());
+        self::assertSame([], $client->syncs[0]['assignments'], 'a follower sends an empty SyncGroup');
+        self::assertCount(3, $records[self::TOPIC][2]);
+    }
+
+    public function testAMemberThatGetsNoPartitionsPollsNothingAndStaysInTheGroup(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+        $client->addGroupMember('member-9', [self::TOPIC]);
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT    => false,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS => 0,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+
+        self::assertSame([], $consumer->poll(10), 'the leader left this member without partitions');
+        self::assertSame([], $consumer->assignment());
+
+        $consumer->poll(10);
+
+        self::assertCount(1, $client->joins, 'a member without partitions does not rejoin on every poll');
+        self::assertCount(1, $client->heartbeats, 'but it keeps its session alive with heartbeats');
+    }
+
+    public function testTheHeartbeatIsSentFromPollOnceTheIntervalHasElapsed(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT    => false,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS => 60000,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+        $consumer->poll(10);
+
+        self::assertSame([], $client->heartbeats, 'the interval has not elapsed since the join');
+
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+        $eager                      = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT    => false,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS => 0,
+        ]);
+        $eager->subscribe([self::TOPIC]);
+        $eager->poll(10);
+        $eager->poll(10);
+        $eager->poll(10);
+
+        self::assertCount(2, $client->heartbeats, 'at most one heartbeat per poll(), none on the joining one');
+        self::assertSame('member-2', $client->heartbeats[0]['memberId']);
+        self::assertSame(2, $client->heartbeats[0]['generationId']);
+    }
+
+    public function testARebalancingGroupIsRejoinedWithTheMemberIdOfThePreviousGeneration(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT    => false,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS => 0,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        $client->heartbeatFailures = [new RebalanceInProgressException(['groupId' => self::GROUP])];
+        $consumer->poll(10);
+
+        self::assertCount(2, $client->joins);
+        self::assertSame('member-1', $client->joins[1]['memberId'], 'a member keeps its id across a rebalance');
+        self::assertSame(2, $client->syncs[1]['generationId'], 'the rebalance produced the next generation');
+        self::assertSame([self::TOPIC => [0 => 0]], $consumer->assignment());
+    }
+
+    public function testAMemberTheCoordinatorDroppedJoinsWithoutAMemberId(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT    => false,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS => 0,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        $client->heartbeatFailures = [new UnknownMemberIdException(['groupId' => self::GROUP])];
+        $consumer->poll(10);
+
+        self::assertCount(2, $client->joins);
+        self::assertSame('', $client->joins[1]['memberId'], 'the member id of the dropped member is forgotten');
+        self::assertSame('member-2', $client->syncs[1]['memberId'], 'the coordinator assigned a new one');
+    }
+
+    public function testAGenerationThatIsOverIsRejoinedOnTheNextPoll(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT    => false,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS => 0,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        $client->heartbeatFailures = [new IllegalGenerationException(['groupId' => self::GROUP])];
+        $consumer->poll(10);
+
+        self::assertCount(2, $client->joins);
+        self::assertSame('member-1', $client->joins[1]['memberId']);
+    }
+
+    public function testARebalanceThatIsInterruptedByAnotherOneIsRepeated(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+        $client->syncFailures       = [new RebalanceInProgressException(['groupId' => self::GROUP])];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        self::assertCount(2, $client->joins, 'the member joins again when its SyncGroup is answered with 27');
+        self::assertSame([self::TOPIC => [0 => 0]], $consumer->assignment());
+    }
+
+    public function testARebalanceThatKeepsFailingIsReportedToTheApplication(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+        $client->joinFailures       = array_fill(0, 5, new RebalanceInProgressException(['groupId' => self::GROUP]));
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+
+        $this->expectException(RebalanceInProgressException::class);
+        $consumer->poll(10);
+    }
+
+    public function testCommitsOfAGroupMemberCarryItsMemberIdAndGeneration(): void
+    {
+        $client                     = $this->clientWithLog([0 => 2]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        self::assertSame('member-1', $client->commits[0]['memberId']);
+        self::assertSame(1, $client->commits[0]['generationId']);
+        self::assertSame([self::TOPIC => [0 => 2]], $client->commits[0]['offsets']);
+    }
+
+    public function testCommitsOfAManuallyAssignedConsumerCarryNoMembership(): void
+    {
+        $client   = $this->clientWithLog([0 => 2]);
+        $consumer = $this->consumer($client);
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        self::assertSame('', $client->commits[0]['memberId'], 'a simple consumer commits without a member id');
+        self::assertSame(-1, $client->commits[0]['generationId']);
+        self::assertSame([], $client->joins, 'assign() joins no group at all');
+    }
+
+    public function testThePositionsAreCommittedBeforeThePartitionsAreGivenUp(): void
+    {
+        $client                     = $this->clientWithLog([0 => 3]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_COMMIT_INTERVAL_MS => 60000,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS   => 0,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        self::assertCount(1, $client->commits, 'the very first poll() commits, there is no last commit to wait for');
+
+        $client->heartbeatFailures = [new RebalanceInProgressException(['groupId' => self::GROUP])];
+        $consumer->poll(10);
+
+        self::assertCount(2, $client->commits, 'the interval did not elapse, this is the commit of the rebalance');
+        self::assertSame(
+            1,
+            $client->commits[1]['generationId'],
+            'the positions are committed with the generation that is being left, i.e. before the rejoin'
+        );
+        self::assertSame([self::TOPIC => [0 => 3]], $client->commits[1]['offsets']);
+    }
+
+    public function testACommitThatTheLostGenerationRefusesDoesNotStopTheRebalance(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::HEARTBEAT_INTERVAL_MS => 0]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        $client->commitFailures    = [new IllegalGenerationException(['groupId' => self::GROUP])];
+        $client->heartbeatFailures = [new RebalanceInProgressException(['groupId' => self::GROUP])];
+        $consumer->poll(10);
+
+        self::assertCount(2, $client->joins);
+        self::assertSame([self::TOPIC => [0 => 0]], $consumer->assignment());
+    }
+
+    public function testTheRebalanceListenerSeesTheRevokedAndTheAssignedPartitions(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1, 1 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0, 1]];
+        $listener                   = new RecordingRebalanceListener();
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT    => false,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS => 0,
+        ]);
+        $consumer->subscribe([self::TOPIC], $listener);
+        $consumer->poll(10);
+
+        self::assertSame([['assigned', [self::TOPIC => [0, 1]]]], $listener->calls);
+
+        $client->heartbeatFailures = [new RebalanceInProgressException(['groupId' => self::GROUP])];
+        $consumer->poll(10);
+
+        self::assertSame(
+            [
+                ['assigned', [self::TOPIC => [0, 1]]],
+                ['revoked', [self::TOPIC => [0, 1]]],
+                ['assigned', [self::TOPIC => [0, 1]]],
+            ],
+            $listener->calls,
+            'a rebalance revokes the whole assignment before it hands the new one over'
+        );
+    }
+
+    public function testUnsubscribeLeavesTheGroupAndForgetsTheMembership(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        $consumer->unsubscribe();
+
+        self::assertSame([['groupId' => self::GROUP, 'memberId' => 'member-1']], $client->leaves);
+        self::assertSame([], $consumer->assignment());
+        self::assertSame([], $consumer->subscription());
+        self::assertSame([], $consumer->poll(10), 'a consumer without a subscription fetches nothing');
+        self::assertCount(1, $client->joins, 'and it does not join a group again on its own');
+    }
+
+    public function testCloseCommitsThePositionsAndLeavesTheGroup(): void
+    {
+        $client                     = $this->clientWithLog([0 => 2]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::AUTO_COMMIT_INTERVAL_MS => 60000]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        $consumer->close();
+
+        self::assertSame([self::TOPIC => [0 => 2]], $client->commits[0]['offsets']);
+        self::assertSame('member-1', $client->commits[0]['memberId']);
+        self::assertCount(1, $client->leaves);
+        self::assertSame([], $consumer->subscription());
+    }
+
+    public function testAMemberThatLeavesAGroupItIsNotInAnyMoreIsNotAnError(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+        $client->leaveFailures      = [new UnknownMemberIdException(['groupId' => self::GROUP])];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        $consumer->unsubscribe();
+
+        self::assertSame([], $consumer->subscription());
+    }
+
+    public function testSubscribeAndAssignAreMutuallyExclusive(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $consumer->assign([self::TOPIC => [0]]);
+    }
+
+    public function testSubscribeOfAnEmptyListUnsubscribes(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+        $consumer->subscribe([]);
+
+        self::assertSame([], $consumer->subscription());
+        self::assertCount(1, $client->leaves);
+    }
+
+    public function testSubscribeRefusesAnEmptyTopicName(): void
+    {
+        $consumer = $this->consumer(new FakeClient(), [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $consumer->subscribe([self::TOPIC, ' ']);
+    }
+
+    public function testSubscribeWithoutAGroupIsRefused(): void
+    {
+        $consumer = new TestKafkaConsumer(new FakeClient(), [
+            ConsumerConfig::GROUP_ID           => '',
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/group\.id/');
+        $consumer->subscribe([self::TOPIC]);
+    }
+
+    public function testSubscribeRefusesARequestTimeoutThatIsNotAboveTheSessionTimeout(): void
+    {
+        $consumer = $this->consumer(new FakeClient(), [
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+            ConsumerConfig::REQUEST_TIMEOUT_MS => 10000,
+            ConsumerConfig::SESSION_TIMEOUT_MS => 10000,
+        ]);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/request\.timeout\.ms/');
+        $consumer->subscribe([self::TOPIC]);
+    }
+
+    public function testTheDefaultConfigurationLetsAConsumerSubscribe(): void
+    {
+        $configuration = ConsumerConfig::getDefaultConfiguration();
+
+        self::assertGreaterThan(
+            $configuration[ConsumerConfig::SESSION_TIMEOUT_MS],
+            $configuration[ConsumerConfig::REQUEST_TIMEOUT_MS],
+            'a JoinGroup that waits for a whole rebalance must not run into the socket timeout'
+        );
+    }
+
+    public function testAnAssignmentOfATopicThatWasNotSubscribedIsRefused(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+        $client->addGroupMember('member-9', [self::TOPIC]);
+        $client->memberAssignments  = ['member-1' => new MemberAssignment(['another-topic' => [0]])->pack()];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/another-topic/');
+        $consumer->poll(10);
+    }
+
+    public function testTheSubscriptionStateIsAutoAssignedWhileSubscribed(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        self::assertSame([self::TOPIC], $consumer->subscription());
+        self::assertSame(SubscriptionState::TYPE_AUTO_TOPICS, 1);
     }
 
     /**

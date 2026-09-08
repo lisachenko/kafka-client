@@ -28,6 +28,10 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
  * OffsetCommit v2 request. What arrived later is absent: rebalance.timeout.ms (JoinGroup v1, Kafka 0.10.1) and
  * isolation.level (the transactional protocol of 0.11). The `offsets.storage` option of the general config
  * ({@see GeneralConfig::OFFSETS_STORAGE}) still selects where the committed offsets live (OffsetCommit v0 vs v2).
+ *
+ * A consumer overrides one option of the general config: `request.timeout.ms` defaults to 40000 instead of 30000,
+ * as it does in the Java consumer of 0.9.0.1, because it has to be larger than `session.timeout.ms` - the socket
+ * would otherwise time out on a JoinGroup that the coordinator holds until the rebalance of the group is over.
  */
 final class ConsumerConfig extends GeneralConfig
 {
@@ -38,6 +42,9 @@ final class ConsumerConfig extends GeneralConfig
         /* Used configs */
         ConsumerConfig::GROUP_ID                      => '',
         ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => 'range',
+        // Larger than SESSION_TIMEOUT_MS below, as in the Java consumer of 0.9.0.1: the coordinator answers a
+        // JoinGroup only once the whole rebalance is over, which can take a full session timeout
+        ConsumerConfig::REQUEST_TIMEOUT_MS            => 40000,
         ConsumerConfig::SESSION_TIMEOUT_MS            => 30000,
         ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 3000,
         ConsumerConfig::FETCH_MIN_BYTES               => 1,

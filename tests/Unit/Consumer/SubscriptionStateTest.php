@@ -154,6 +154,74 @@ final class SubscriptionStateTest extends TestCase
         self::assertSame([], $state->allConsumed());
     }
 
+    public function testSubscriptionByTopicsHasNoPartitionsUntilTheGroupAssignsThem(): void
+    {
+        $state = new SubscriptionState();
+        $state->subscribeByTopics([self::TOPIC, 'another-topic']);
+
+        self::assertSame(SubscriptionState::TYPE_AUTO_TOPICS, $state->getSubscriptionType());
+        self::assertTrue($state->partitionsAutoAssigned());
+        self::assertSame([self::TOPIC, 'another-topic'], $state->getSubscription());
+        self::assertSame([], $state->getAssignment());
+    }
+
+    public function testAssignmentFromTheGroupIsStoredWithUnknownPositions(): void
+    {
+        $state = new SubscriptionState();
+        $state->subscribeByTopics([self::TOPIC]);
+        $state->assignFromSubscribed([self::TOPIC => new PartitionsForTopic(self::TOPIC, [1, 2])]);
+
+        self::assertTrue($state->isAssigned(self::TOPIC, 1));
+        self::assertTrue($state->isAssigned(self::TOPIC, 2));
+        self::assertSame([], $state->allConsumed(), 'the positions are read from the committed offsets afterwards');
+
+        $state->seek(self::TOPIC, 1, 7);
+
+        self::assertSame([self::TOPIC => [1 => 7]], $state->fetchablePartitions());
+    }
+
+    public function testAnAssignmentOfANotSubscribedTopicIsRejected(): void
+    {
+        $state = new SubscriptionState();
+        $state->subscribeByTopics([self::TOPIC]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/another-topic/');
+        $state->assignFromSubscribed(['another-topic' => new PartitionsForTopic('another-topic', [0])]);
+    }
+
+    public function testAGroupAssignmentIsRejectedForAManuallyAssignedConsumer(): void
+    {
+        $state = $this->assignedState([0]);
+
+        self::assertFalse($state->partitionsAutoAssigned());
+
+        $this->expectException(InvalidArgumentException::class);
+        $state->assignFromSubscribed([self::TOPIC => new PartitionsForTopic(self::TOPIC, [0])]);
+    }
+
+    public function testASubscriptionAndAManualAssignmentAreMutuallyExclusive(): void
+    {
+        $state = new SubscriptionState();
+        $state->subscribeByTopics([self::TOPIC]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $state->assignFromUser([self::TOPIC => new PartitionsForTopic(self::TOPIC, [0])]);
+    }
+
+    public function testUnsubscribeDropsTheSubscriptionAsWell(): void
+    {
+        $state = new SubscriptionState();
+        $state->subscribeByTopics([self::TOPIC]);
+        $state->assignFromSubscribed([self::TOPIC => new PartitionsForTopic(self::TOPIC, [0])]);
+
+        $state->unsubscribe();
+
+        self::assertSame([], $state->getSubscription());
+        self::assertFalse($state->partitionsAutoAssigned());
+        self::assertSame(SubscriptionState::TYPE_NONE, $state->getSubscriptionType());
+    }
+
     /**
      * @param list<int> $partitions
      */
