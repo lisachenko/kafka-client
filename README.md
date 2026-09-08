@@ -213,12 +213,53 @@ OffsetCommit/OffsetFetch apis, which Kafka 0.8.2 introduced and which stores the
 `__consumer_offsets` topic; `zookeeper` uses version 0 of the same apis, which stores them in
 ZooKeeper the way Kafka 0.8.1 did. Nothing else in this client differs between the two.
 
-Kafka 0.9 is the release that added **transport security**: an SSL listener next to the
-PLAINTEXT one, selected with `security.protocol` and configured with the `ssl.*` options. This
-line implements it in its second wave (#30); the test broker of `docker-compose.yml` already
-publishes an SSL listener on 9093. SASL/GSSAPI also exists in Kafka 0.9, but it is negotiated
-outside the protocol — the SaslHandshake request is key 17 and arrived with 0.10 — and is out
-of scope for this branch.
+Security / SSL
+---------------
+
+Kafka 0.9 is the release that added **transport security**: a broker binds one listener per
+security protocol (`listeners=PLAINTEXT://…,SSL://…`) and every listener answers the identical
+request set, so encryption changes the transport and never a single byte of a request. Point
+`bootstrap.servers` at the SSL listener and set `security.protocol`:
+
+```php
+use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Security\SecurityProtocol;
+use Protocol\Kafka\Producer\KafkaProducer;
+
+$producer = new KafkaProducer([
+    ClientConfig::BOOTSTRAP_SERVERS    => ['tcp://kafka-1.example.com:9093'],
+    ClientConfig::SECURITY_PROTOCOL    => SecurityProtocol::SSL,
+    ClientConfig::SSL_CA_CERT_LOCATION => '/etc/kafka/ca.pem',
+]);
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `security.protocol` | `PLAINTEXT` | `PLAINTEXT` or `SSL`; `SASL_PLAINTEXT`/`SASL_SSL` are rejected, see below |
+| `ssl.protocol` | `TLS` | TLS version to offer: `TLS` (any), `TLSv1_1`, `TLSv1_2`, `SSL`, `SSLv2`, `SSLv3` |
+| `ssl.enabled.protocols` | – | list of the values above; when set it wins over `ssl.protocol` |
+| `ssl.ca.cert.location` | – | PEM file with the certificates the broker certificate is verified against (the `ssl.truststore.location` of the Java client); without it the certificate stores of the system are used |
+| `ssl.client.cert.location` | – | PEM file with the client certificate, for a broker running `ssl.client.auth=required` |
+| `ssl.key.location` | – | private key of that client certificate |
+| `ssl.key.password` | – | passphrase of the private key |
+
+The certificate of the broker is always verified, and its subject has to match the host the
+connection was made to — a self-signed broker certificate therefore needs
+`ssl.ca.cert.location` pointing at it. The handshake happens right after `connect()` and is
+bounded by the connection timeout of the stream, not by `request.timeout.ms`.
+
+**Metadata over SSL.** Version 0 of the Metadata api has room for exactly one host/port per
+broker, and a 0.9 broker fills it with the endpoint of the listener the request arrived on. A
+client that bootstraps over TLS therefore learns the TLS endpoints of the whole cluster and
+keeps talking TLS to every broker it discovers; one that bootstraps in plaintext learns the
+plaintext ones. The two never mix, and there is no way to ask one listener about another.
+
+**SASL is out of scope on this branch.** Kafka 0.9 does have SASL, but only GSSAPI (Kerberos)
+and it is negotiated *outside* the Kafka protocol: the broker expects the raw token exchange on
+a freshly opened connection, with no request to introduce it. The `SaslHandshake` request that
+made the mechanism negotiable is api key 17 and arrived with Kafka 0.10.0, so
+`security.protocol = SASL_PLAINTEXT` and `SASL_SSL` raise an `InvalidConfigurationException`
+that says so.
 
 Supported Kafka protocol versions
 ----------------------------------
