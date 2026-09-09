@@ -5,8 +5,17 @@
          colors="true"
          cacheDirectory=".phpunit.cache">
     <testsuites>
+        <!-- Pure unit tests, no external dependencies -->
         <testsuite name="unit">
-            <directory>tests</directory>
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <!-- Tests against a real Kafka 0.9.0.1 broker, skipped unless KAFKA_BOOTSTRAP_SERVERS is set -->
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+        <!-- Replays the documented wire vectors of docs/protocol through the protocol classes, no broker needed -->
+        <testsuite name="compliance">
+            <directory>tests/Compliance</directory>
         </testsuite>
     </testsuites>
     <source>

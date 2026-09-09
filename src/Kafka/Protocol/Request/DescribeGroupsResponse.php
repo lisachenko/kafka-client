@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -17,13 +17,24 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 
 /**
  * Describe groups response
+ *
+ * <pre>
+ *   DescribeGroupsResponse => [ErrorCode GroupId State ProtocolType Protocol [Members]]
+ * </pre>
+ *
+ * There is no error code for the request as a whole: every group carries its own, and the order of the array is the
+ * order of the group ids in the request.
+ *
+ * @see docs/protocol/0.10.2.md, section "DescribeGroups API (key 15, v0)"
  */
 class DescribeGroupsResponse extends AbstractResponse
 {
     /**
-     * List of groups as keys and group info as values
+     * Description of each requested group, indexed by the group id
+     *
+     * @var array<string, DescribeGroupResponseMetadata>
      */
-    public $groups = [];
+    public array $groups = [];
 
     /**
      * @inheritdoc

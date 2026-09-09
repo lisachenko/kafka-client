@@ -1,0 +1,351 @@
+{
+    "api": "fetch",
+    "apiKey": 1,
+    "section": "Fetch API (key 1, v0 to v3)",
+    "description": "Wire vectors of the Fetch API (key 1, v0 to v3), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "fetch.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV2",
+            "version": 2,
+            "source": "broker",
+            "description": "Fetch request v2 of an ordinary consumer (ReplicaId = -1) for one partition, with a MaxBytes of 4096 for it. The frame is the one of version 1; the version alone tells the broker that the client understands message format v1, so the log is not converted down to format v0.",
+            "hex": "0000003c000100020000001700027434ffffffff000000640000000100000001000a74342d766563746f72730000000100000000000000000000000000001000",
+            "fields": {
+                "messageSize": 60,
+                "apiKey": 1,
+                "apiVersion": 2,
+                "correlationId": 23,
+                "clientId": "t4",
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "topicPartitions": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "maxBytes": 4096
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV2",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer of that request: the ThrottleTimeMs of version 1, the high water mark of the partition and the 97 bytes of the message set as the log holds them - two messages of format v1 (magic byte 1) with the CreateTime the producer stamped on them.",
+            "hex": "0000008f000000170000000000000001000a74342d766563746f727300000001000000000000000000000000000200000061000000000000000000000025531f2a0601000000015ac2acf80000000001310000000e766563746f722d76616c75652d310000000000000001000000243c923d1401000000015ac2acf801ffffffff0000000e766563746f722d76616c75652d32",
+            "fields": {
+                "messageSize": 143,
+                "correlationId": 23,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000025531f2a0601000000015ac2acf80000000001310000000e766563746f722d76616c75652d310000000000000001000000243c923d1401000000015ac2acf801ffffffff0000000e766563746f722d76616c75652d32"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "Fetch request v3, which adds the request-level MaxBytes after MinBytes: 8192 bytes for the whole answer, next to the 4096 bytes of the single partition.",
+            "hex": "00000040000100030000001800027434ffffffff00000064000000010000200000000001000a74342d766563746f72730000000100000000000000000000000000001000",
+            "fields": {
+                "messageSize": 64,
+                "apiKey": 1,
+                "apiVersion": 3,
+                "correlationId": 24,
+                "clientId": "t4",
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 8192,
+                "topicPartitions": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "maxBytes": 4096
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer of the version 3 request is the answer of the version 2 one: the response frame did not change between v1, v2 and v3, only the correlation id of this capture differs.",
+            "hex": "0000008f000000180000000000000001000a74342d766563746f727300000001000000000000000000000000000200000061000000000000000000000025531f2a0601000000015ac2acf80000000001310000000e766563746f722d76616c75652d310000000000000001000000243c923d1401000000015ac2acf801ffffffff0000000e766563746f722d76616c75652d32",
+            "fields": {
+                "messageSize": 143,
+                "correlationId": 24,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000025531f2a0601000000015ac2acf80000000001310000000e766563746f722d76616c75652d310000000000000001000000243c923d1401000000015ac2acf801ffffffff0000000e766563746f722d76616c75652d32"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v3.max-bytes",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "Fetch request v3 for two partitions of one topic with a request-level MaxBytes of 40 bytes, which is less than a single message of either of them. The order of the partitions in this frame is the order in which the broker fills the answer.",
+            "hex": "00000050000100030000001b00027434ffffffff00000064000000010000002800000001000a74342d766563746f7273000000020000000000000000000000020000100000000001000000000000000000001000",
+            "fields": {
+                "messageSize": 80,
+                "apiKey": 1,
+                "apiVersion": 3,
+                "correlationId": 27,
+                "clientId": "t4",
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 40,
+                "topicPartitions": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 2,
+                                "maxBytes": 4096
+                            },
+                            {
+                                "partition": 1,
+                                "fetchOffset": 0,
+                                "maxBytes": 4096
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v3.max-bytes",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "What the broker answers to it: the first partition ignores the budget and returns its 52-byte message in full, so that the consumer can make progress, and the second one - whose turn comes when the 40 bytes are already used up - comes back with an empty message set although its high water mark shows that there is a message to read.",
+            "hex": "000000740000001b0000000000000001000a74342d766563746f7273000000020000000000000000000000000003000000340000000000000002000000280ffd22d101000000015ac2acf800ffffffff000000126275646765742d706172746974696f6e2d30000000010000000000000000000100000000",
+            "fields": {
+                "messageSize": 116,
+                "correlationId": 27,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 3,
+                                "messageSet": {
+                                    "$bytes": "0000000000000002000000280ffd22d101000000015ac2acf800ffffffff000000126275646765742d706172746974696f6e2d30"
+                                }
+                            },
+                            {
+                                "partition": 1,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 1,
+                                "messageSet": {
+                                    "$bytes": ""
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "Fetch request v1 of an ordinary consumer (ReplicaId = -1) reading one partition from offset 0. The body is the one of v0, only the api version of the header differs.",
+            "hex": "0000003c000100010000000c00027432ffffffff000000640000000100000001000a74322d766563746f72730000000100000000000000000000000000001000",
+            "fields": {
+                "messageSize": 60,
+                "apiKey": 1,
+                "apiVersion": 1,
+                "correlationId": 12,
+                "clientId": "t2",
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "topicPartitions": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "maxBytes": 4096
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "Fetch response v1: the ThrottleTimeMs that version 1 put in front of the topics array (0, the broker enforces no consumer quota), then the high watermark and the message set of the partition.",
+            "hex": "0000007f0000000c0000000000000001000a74322d766563746f72730000000100000000000000000000000000020000005100000000000000000000001d7ca88df6000000000001310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32",
+            "fields": {
+                "messageSize": 127,
+                "correlationId": 12,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000001d7ca88df6000000000001310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v1.throttled",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "Fetch response v1 of a client that exceeded its consumer_byte_rate quota: the fetch started at the high watermark and returned no records at all, and the broker still delayed the answer by 5943 ms because the byte rate of the window was over the quota.",
+            "hex": "0000002e0000000c0000173700000001000a74382d766563746f727300000001000000000000000000000000000a00000000",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 12,
+                "throttleTimeMs": 5943,
+                "topics": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 10,
+                                "messageSet": {
+                                    "$bytes": ""
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "Fetch request v0 of an ordinary consumer (ReplicaId = -1) reading one partition from offset 0.",
+            "hex": "0000003e000100000000000c0003743130ffffffff000001f40000000100000001000b7431302d766563746f72730000000100000000000000000000000000010000",
+            "fields": {
+                "messageSize": 62,
+                "apiKey": 1,
+                "apiVersion": 0,
+                "correlationId": 12,
+                "clientId": "t10",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "topicPartitions": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "maxBytes": 65536
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "Fetch response v0 with the high watermark and the message set that the produce vector wrote, and without the ThrottleTimeMs prefix that v1 added.",
+            "hex": "0000007d0000000c00000001000b7431302d766563746f72730000000100000000000000000000000000020000005200000000000000000000001ea65e6c150000000000026b310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32",
+            "fields": {
+                "messageSize": 125,
+                "correlationId": 12,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000001ea65e6c150000000000026b310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}

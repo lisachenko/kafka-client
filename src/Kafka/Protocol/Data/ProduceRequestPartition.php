@@ -9,55 +9,52 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
+/**
+ * @author Alexander.Lisachenko
+ * @date 14.07.2016
+ */
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\Common\Record\RecordBatch;
-use Protocol\Kafka\Common\Utils\ByteUtils;
-use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Produce request Topic-Partition DTO
+ *
+ * <pre>
+ *   Partition MessageSetSize MessageSet
+ *     Partition      => int32
+ *     MessageSetSize => int32
+ * </pre>
+ *
+ * A message set is a raw byte region, not a length-prefixed array of structures, therefore it travels as a BYTEARRAY
+ * whose int32 length prefix is exactly the `MessageSetSize` field of the spec. This is the 0.8 counterpart of the
+ * `recordBatch` field of the `main` branch.
+ *
+ * @see docs/protocol/0.10.2.md, sections "Produce API (key 0, v0, v1 and v2)" and "MessageSet and Message"
  */
 class ProduceRequestPartition implements BinarySchemaInterface
 {
     /**
      * The partition this request entry corresponds to.
-     * @var int
      */
-    public $partition;
+    public int $partition = 0;
 
     /**
-     * Data for each separate partition in the topic
-     *
-     * @var string Should be RecordBatch, but not supported by scheme right now
-     *
-     * @todo Switch to the RecordBatch binary packet
+     * Encoded message set for this topic-partition.
      */
-    public $recordBatch;
+    public string $messageSet = '';
 
     /**
-     * @inheritDoc
+     * @param int                $partition  Number of the partition to produce to
+     * @param string|\Stringable $messageSet Encoded message set, typically a Common\Record\MessageSet instance
      */
-    public function __construct(int $partition = 0, ?RecordBatch $recordBatch = null)
+    public function __construct(int $partition = 0, string|\Stringable $messageSet = '')
     {
-        $this->partition = $partition;
-        $recordBatch ??= new RecordBatch();
-
-        $recordBatchStream = new StringStream();
-        BinarySchema::writeObjectToStream($recordBatch, $recordBatchStream);
-        $recordBatchBuffer = $recordBatchStream->getBuffer();
-
-        // TODO: Calculation of CRC should be in the RecordBatch, but here we can work with raw buffer in one place
-        $prefix = substr($recordBatchBuffer, 0, 17); // firstOffset..magic fields
-        $body   = substr($recordBatchBuffer, 21);
-        $crc32c = ByteUtils::crc32c($body);
-
-        $recordBatch->crc  = $crc32c;
-        $this->recordBatch = $prefix . pack('N', $crc32c) . $body;
+        $this->partition  = $partition;
+        $this->messageSet = (string) $messageSet;
     }
 
     /**
@@ -66,8 +63,8 @@ class ProduceRequestPartition implements BinarySchemaInterface
     public static function getScheme(): array
     {
         return [
-            'partition'   => BinarySchema::TYPE_INT32,
-            'recordBatch' => BinarySchema::TYPE_BYTEARRAY,
+            'partition'  => BinarySchema::TYPE_INT32,
+            'messageSet' => BinarySchema::TYPE_BYTEARRAY,
         ];
     }
 }

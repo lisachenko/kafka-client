@@ -9,26 +9,31 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Leave group response
+ * LeaveGroup response, version 0.
  *
- * LeaveGroup Response (Version: 0) => error_code
- *   error_code => INT16
+ * <pre>
+ *   LeaveGroup Response (Version: 0) => error_code
+ *     error_code => INT16
+ * </pre>
+ *
+ * A member id the coordinator does not know - because the member was already removed, or because the group does not
+ * exist at all - is answered with the error code 25 (UnknownMemberId).
+ *
+ * @see docs/protocol/0.10.2.md, section "LeaveGroup API (key 13, v0)"
  */
 class LeaveGroupResponse extends AbstractResponse
 {
     /**
      * Error code.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
      * @inheritdoc

@@ -9,7 +9,11 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
+/**
+ * @author Alexander.Lisachenko
+ * @date 14.07.2016
+ */
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -18,22 +22,35 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Produce response Topic DTO
+ *
+ * <pre>
+ *   TopicName [Partition ErrorCode Offset LogAppendTime]
+ *     TopicName => string
+ * </pre>
+ *
+ * The partition entries of a version 0 or 1 answer carry no `LogAppendTime`, which is what the version constant of
+ * this DTO selects, see {@see ProduceResponseTopicV0}.
+ *
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 class ProduceResponseTopic implements BinarySchemaInterface
 {
     /**
-     * The name of the topic
-     *
-     * @var string
+     * Version of the Produce API that this DTO is unpacked from
      */
-    public $topic;
+    public const int VERSION = 2;
 
     /**
-     * Data for all partitions in the topic
-     *
-     * @var ProduceResponsePartition[]
+     * The name of the topic
      */
-    public $partitions = [];
+    public string $topic = '';
+
+    /**
+     * Result for all partitions of this topic, indexed by the partition number
+     *
+     * @var array<int, ProduceResponsePartition>
+     */
+    public array $partitions = [];
 
     /**
      * @inheritdoc
@@ -42,7 +59,17 @@ class ProduceResponseTopic implements BinarySchemaInterface
     {
         return [
             'topic'      => BinarySchema::TYPE_STRING,
-            'partitions' => ['partition' => ProduceResponsePartition::class],
+            'partitions' => ['partition' => static::partitionClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a partition entry for the version of the API that this DTO belongs to
+     *
+     * @return class-string<ProduceResponsePartition>
+     */
+    protected static function partitionClass(): string
+    {
+        return static::VERSION >= 2 ? ProduceResponsePartition::class : ProduceResponsePartitionV0::class;
     }
 }

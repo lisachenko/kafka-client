@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -17,22 +17,33 @@ use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * SASL handshake response
+ *
+ * <pre>
+ *   SaslHandshakeResponse => ErrorCode [EnabledMechanisms]
+ *     ErrorCode         => int16
+ *     EnabledMechanisms => string
+ * </pre>
+ *
+ * The error code is 0 when the broker accepted the mechanism of the request, and 33 (UnsupportedSaslMechanism) when
+ * it did not; `EnabledMechanisms` always carries the `sasl.enabled.mechanisms` of the broker, so a client can report
+ * what it could have asked for. After an error the broker closes the connection instead of waiting for another
+ * handshake (`SaslServerAuthenticator.handleKafkaRequest` @ 0.10.2.2).
+ *
+ * @see docs/protocol/0.10.2.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  */
 class SaslHandshakeResponse extends AbstractResponse
 {
     /**
-     * Array of mechanisms enabled in the server.
-     *
-     * @var string[]
+     * Error code.
      */
-    public $enabledMechanisms = [];
+    public int $errorCode;
 
     /**
-     * Error code.
+     * Array of mechanisms enabled in the server.
      *
-     * @var integer
+     * @var list<string>
      */
-    public $errorCode;
+    public array $enabledMechanisms = [];
 
     /**
      * @inheritdoc

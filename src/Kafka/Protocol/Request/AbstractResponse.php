@@ -9,7 +9,12 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
+
+/**
+ * @author Alexander.Lisachenko
+ * @date 14.07.2016
+ */
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -18,6 +23,11 @@ use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * Basic class for all responses
+ *
+ * Response Header => correlation_id
+ *   correlation_id => INT32
+ *
+ * @see docs/protocol/0.10.2.md, section "Responses"
  */
 abstract class AbstractResponse extends AbstractProtocolMessage
 {
@@ -30,5 +40,13 @@ abstract class AbstractResponse extends AbstractProtocolMessage
             'messageSize'   => BinarySchema::TYPE_INT32,
             'correlationId' => BinarySchema::TYPE_INT32,
         ];
+    }
+
+    /**
+     * Returns the correlation id that the broker echoed back from the matching request
+     */
+    public function getCorrelationId(): int
+    {
+        return $this->correlationId;
     }
 }

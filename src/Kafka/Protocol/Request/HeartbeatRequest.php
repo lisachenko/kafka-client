@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -17,16 +17,21 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Heartbeat Request
+ * Heartbeat, version 0: keeps a member of a group alive and tells it when a rebalance has started.
  *
- * Once a member has joined and synced, it will begin sending periodic heartbeats to keep itself in the group. If not
- * heartbeat has been received by the coordinator with the configured session timeout, the member will be kicked out of
- * the group.
+ * Once a member has joined and synced it sends periodic heartbeats; if the coordinator receives none within the
+ * `session_timeout` of the JoinGroup request, the member is removed from the group and the group rebalances. PHP has
+ * no background thread, so this client sends the heartbeat from its poll loop, once
+ * {@see \Protocol\Kafka\Consumer\ConsumerConfig::HEARTBEAT_INTERVAL_MS} has elapsed.
  *
- * Heartbeat Request (Version: 0) => group_id generation_id member_id
- *   group_id => STRING
- *   generation_id => INT32
- *   member_id => STRING
+ * <pre>
+ *   Heartbeat Request (Version: 0) => group_id group_generation_id member_id
+ *     group_id            => STRING
+ *     group_generation_id => INT32
+ *     member_id           => STRING
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "Heartbeat API (key 12, v0)"
  */
 class HeartbeatRequest extends AbstractRequest
 {
@@ -34,15 +39,15 @@ class HeartbeatRequest extends AbstractRequest
         /**
          * The consumer group id.
          */
-        private readonly string $consumerGroup,
+        protected readonly string $consumerGroup,
         /**
          * The generation of the group.
          */
-        private readonly int $generationId,
+        protected readonly int $generationId,
         /**
          * The member id assigned by the group coordinator.
          */
-        private readonly string $memberId,
+        protected readonly string $memberId,
         string $clientId = '',
         int $correlationId = 0
     ) {
@@ -54,7 +59,7 @@ class HeartbeatRequest extends AbstractRequest
      */
     public static function getScheme(): array
     {
-        $header = null;
+        $header = parent::getScheme();
 
         return $header + [
             'consumerGroup' => BinarySchema::TYPE_STRING,

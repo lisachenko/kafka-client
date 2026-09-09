@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -17,25 +17,30 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * LeaveGroup Request
+ * LeaveGroup, version 0: removes a member from its group without waiting for the session timeout.
  *
- * To explicitly leave a group, the client can send a leave group request. This is preferred over letting the session
- * timeout expire since it allows the group to rebalance faster, which for the consumer means that less time will
- * elapse before partitions can be reassigned to an active member.
+ * This is preferred over letting the session timeout expire, since it lets the group rebalance right away - for a
+ * consumer that means that less time elapses before its partitions can be reassigned to an active member.
  *
- * LeaveGroup Request (Version: 0) => group_id member_id
- *   group_id => STRING
- *   member_id => STRING
+ * <pre>
+ *   LeaveGroup Request (Version: 0) => group_id member_id
+ *     group_id  => STRING
+ *     member_id => STRING
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "LeaveGroup API (key 13, v0)"
  */
 class LeaveGroupRequest extends AbstractRequest
 {
-    public function __construct(/**
-     * The consumer group id.
-     */
-        private readonly string $consumerGroup, /**
-     * The member id assigned by the group coordinator.
-     */
-        private readonly string $memberId,
+    public function __construct(
+        /**
+         * The consumer group id.
+         */
+        protected readonly string $consumerGroup,
+        /**
+         * The member id assigned by the group coordinator.
+         */
+        protected readonly string $memberId,
         string $clientId = '',
         int $correlationId = 0
     ) {
@@ -47,7 +52,7 @@ class LeaveGroupRequest extends AbstractRequest
      */
     public static function getScheme(): array
     {
-        $header = null;
+        $header = parent::getScheme();
 
         return $header + [
             'consumerGroup' => BinarySchema::TYPE_STRING,

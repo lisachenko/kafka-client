@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Errors;
 
@@ -20,5 +20,8 @@ use Exception;
  */
 class RequestTimedOutException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::REQUEST_TIMED_OUT, $previous);
+    }
 }

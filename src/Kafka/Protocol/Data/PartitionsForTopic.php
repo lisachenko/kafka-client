@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -19,27 +19,29 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 /**
  * Generic topic-partitions structure
  *
- * PartitionsForTopic => [Topic [Partition]]
- *   Topic => string
- *   Partition => int32
+ * <pre>
+ *   PartitionsForTopic => Topic [Partition]
+ *     Topic     => string
+ *     Partition => int32
+ * </pre>
  */
 class PartitionsForTopic implements BinarySchemaInterface
 {
     /**
-     * Name of the topic to assign
-     * @var string
+     * Name of the topic
      */
-    public $topic;
+    public string $topic;
 
     /**
-     * List of partitions from the topic to assign
+     * List of partitions of that topic
      *
-     * @var integer[]
+     * @var list<int>
      */
-    public $partitions = [];
+    public array $partitions = [];
 
     /**
-     * @inheritDoc
+     * @param string    $topic      Name of the topic
+     * @param list<int> $partitions List of partitions of that topic
      */
     public function __construct(string $topic, array $partitions)
     {

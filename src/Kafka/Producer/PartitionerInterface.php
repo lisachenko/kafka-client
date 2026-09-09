@@ -9,7 +9,12 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
+
+/**
+ * @author Alexander.Lisachenko
+ * @date   29.07.2016
+ */
 
 namespace Protocol\Kafka\Producer;
 
@@ -28,7 +33,7 @@ interface PartitionerInterface
      * @param string|null $value   The value to partition on or null
      * @param Cluster     $cluster The current cluster metadata
      *
-     * @return int
+     * @return int Number of the partition to send the record to
      */
     public function partition(string $topic, ?string $key, ?string $value, Cluster $cluster): int;
 }

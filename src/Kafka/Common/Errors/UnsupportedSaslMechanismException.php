@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Errors;
 
@@ -17,8 +17,13 @@ use Exception;
 
 /**
  * The broker does not support the requested SASL mechanism.
+ *
+ * Error code 33, Kafka 0.10.0 (SaslHandshake, KIP-43).
  */
 class UnsupportedSaslMechanismException extends KafkaException implements ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::UNSUPPORTED_SASL_MECHANISM, $previous);
+    }
 }

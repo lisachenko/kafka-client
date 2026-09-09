@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -19,27 +19,27 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 /**
  * OffsetCommitResponseTopic DTO
  *
- * OffsetCommitResponseTopic => topic [partition_responses]
- *   topic => STRING
- *   partition_responses => partition error_code
- *     partition => INT32
- *     error_code => INT16
+ * <pre>
+ *   OffsetCommitResponseTopic => topic [partition_responses]
+ *     topic               => STRING
+ *     partition_responses => OffsetCommitResponsePartition
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitResponseTopic implements BinarySchemaInterface
 {
     /**
      * Name of the topic
-     *
-     * @var string
      */
-    public $topic;
+    public string $topic;
 
     /**
-     * Result for offset committing by each topic-partition
+     * Result of committing the offset of each partition of this topic
      *
-     * @var OffsetCommitResponsePartition[]
+     * @var array<int, OffsetCommitResponsePartition>
      */
-    public $partitions;
+    public array $partitions;
 
     /**
      * @inheritdoc

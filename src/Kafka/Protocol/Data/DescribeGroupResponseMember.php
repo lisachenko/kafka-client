@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -17,51 +17,49 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * DescribeGroupResponseMember metadata DTO
+ * One member of a group, as reported by the DescribeGroups API
  *
- * DescribeGroupResponseMember => member_id client_id client_host member_metadata member_assignment
- *   member_id => STRING
- *   client_id => STRING
- *   client_host => STRING
- *   member_metadata => BYTES
- *   member_assignment => BYTES
+ * <pre>
+ *   DescribeGroupResponseMember => MemberId ClientId ClientHost MemberMetadata MemberAssignment
+ *     MemberId         => string
+ *     ClientId         => string
+ *     ClientHost       => string
+ *     MemberMetadata   => bytes
+ *     MemberAssignment => bytes
+ * </pre>
+ *
+ * Both byte arrays are opaque to this api: their content depends on the protocol type of the group. For the
+ * `consumer` protocol type they hold the `Subscription` the member sent with its JoinGroup request and the
+ * `MemberAssignment` the leader published with SyncGroup.
+ *
+ * @see docs/protocol/0.10.2.md, section "DescribeGroups API (key 15, v0)"
  */
 class DescribeGroupResponseMember implements BinarySchemaInterface
 {
     /**
-     * 	The memberId assigned by the coordinator
-     *
-     * @var string
+     * The memberId assigned by the coordinator
      */
-    public $memberId;
+    public string $memberId;
 
     /**
      * The client id used in the member's latest join group request
-     *
-     * @var string
      */
-    public $clientId;
+    public string $clientId;
 
     /**
-     * The client host used in the request session corresponding to the member's join group.
-     *
-     * @var string
+     * The client host used in the request session corresponding to the member's join group
      */
-    public $clientHost;
+    public string $clientHost;
 
     /**
-     * The metadata corresponding to the current group protocol in use (will only be present if the group is stable).
-     *
-     * @var string Binary data
+     * The metadata corresponding to the current group protocol in use (only present if the group is stable)
      */
-    public $memberMetadata;
+    public string $memberMetadata;
 
     /**
-     * The current assignment provided by the group leader (will only be present if the group is stable).
-     *
-     * @var string
+     * The current assignment provided by the group leader (only present if the group is stable)
      */
-    public $memberAssignment;
+    public string $memberAssignment;
 
     /**
      * @inheritdoc

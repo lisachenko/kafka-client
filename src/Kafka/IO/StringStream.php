@@ -9,10 +9,20 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
+
+/**
+ * @author Alexander.Lisachenko
+ * @date   26.07.2016
+ */
 
 namespace Protocol\Kafka\IO;
 
+use Protocol\Kafka\Common\Errors\NetworkException;
+
+/**
+ * In-memory implementation of the binary stream, used for framing and in the unit tests
+ */
 class StringStream extends AbstractStream
 {
     /**
@@ -23,51 +33,45 @@ class StringStream extends AbstractStream
     /**
      * String stream constructor.
      *
-     * @param string $stringBuffer Optional buffer to read from
+     * @param string|null $stringBuffer Optional buffer to read from
      */
     public function __construct(?string $stringBuffer = null)
     {
         $this->buffer = $stringBuffer ?? '';
     }
 
-    /**
-     * Writes arguments to the stream
-     *
-     * @param string $format       Format for packing arguments
-     * @param array  ...$arguments List of arguments for packing
-     *
-     * @return void
-     * @see pack() manual for format
-     *
-     */
     public function write(string $format, ...$arguments): void
     {
         $this->buffer .= pack($format, ...$arguments);
     }
 
-    /**
-     * Reads information from the stream, advanced internal pointer
-     *
-     * @param string $format Format for unpacking arguments
-     *
-     * @return array List of unpacked arguments
-     * @see unpack() manual for format
-     *
-     */
     public function read(string $format): array
     {
-        $arguments    = unpack($format, $this->buffer);
-        $this->buffer = substr($this->buffer, self::packetSize($format));
+        $packetSize = self::packetSize($format);
+        $available  = strlen($this->buffer);
+        if ($available < $packetSize) {
+            throw new NetworkException(
+                ['error' => "Not enough data in the buffer: {$packetSize} bytes requested, {$available} available"]
+            );
+        }
+
+        $arguments = unpack($format, $this->buffer);
+        if ($arguments === false) {
+            throw new \InvalidArgumentException("Can not unpack the data with the format: {$format}");
+        }
+        $this->buffer = substr($this->buffer, $packetSize);
 
         return $arguments;
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function isConnected(): bool
     {
         return true;
+    }
+
+    public function isEmpty(): bool
+    {
+        return $this->buffer === '';
     }
 
     /**
@@ -79,10 +83,10 @@ class StringStream extends AbstractStream
     }
 
     /**
-     * Checks if stream is empty
+     * Returns the number of bytes that are still available for reading
      */
-    public function isEmpty(): bool
+    public function remaining(): int
     {
-        return $this->buffer === '';
+        return strlen($this->buffer);
     }
 }

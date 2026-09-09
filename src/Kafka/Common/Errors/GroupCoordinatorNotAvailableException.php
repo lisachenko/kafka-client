@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Errors;
 
@@ -17,8 +17,13 @@ use Exception;
 
 /**
  * The group coordinator is not available.
+ *
+ * Named ConsumerCoordinatorNotAvailableCode (15) in kafka/common/ErrorMapping.scala @ 0.10.2.2.
  */
 class GroupCoordinatorNotAvailableException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::GROUP_COORDINATOR_NOT_AVAILABLE, $previous);
+    }
 }

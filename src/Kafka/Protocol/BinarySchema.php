@@ -9,63 +9,66 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol;
 
+use function count;
 use function current;
 use function is_array;
 use function is_string;
 use function key;
 
-use Protocol\Kafka\Common\Utils\ByteUtils;
 use Protocol\Kafka\IO\Stream;
 use ReflectionClass;
-use RuntimeException;
 
 use function strlen;
 
 /**
- * BinarySchema defines common types and API for reading and writing primitve types into
+ * BinarySchema defines the common types and the API for reading and writing the primitive types of the protocol.
+ *
+ * This is the 0.8 port of the engine of the `main` branch: the type constants keep their numeric values so that the
+ * cascade merges upwards stay trivial, but only the types that the protocol of this line actually has are implemented.
+ * Varints, zigzag encoding and var-arrays arrive with the 0.11 record format and are deliberately absent; the boolean
+ * (a single byte, `00` or `01`) arrived with Kafka 0.10 (`is_internal` of Metadata v1, `validate_only` of
+ * CreateTopics v1) and has no counterpart on `main` yet, hence its value outside of main's numbering.
+ *
+ * @see docs/protocol/0.10.2.md
  */
 class BinarySchema
 {
-    public const TYPE_INT8           =  1;
-    public const TYPE_INT16          =  2;
-    public const TYPE_INT32          =  3;
-    public const TYPE_INT64          =  4;
-    public const TYPE_VARINT         =  5;
-    public const TYPE_VARLONG        =  6;
-    public const TYPE_VARCHAR        =  7; // Varint-encoded length + string itself
-    public const TYPE_STRING         =  8; // INT16-encoded length and then bytes of chars
-    public const TYPE_BYTEARRAY      = 10; // INT32 size of data, then bytes of data
-    public const TYPE_VARINT_ZIGZAG  = 11; // Varint + ZigZag encoding
-    public const TYPE_VARLONG_ZIGZAG = 12; // Varlong + ZigZag encoding
-    public const TYPE_VARCHAR_ZIGZAG = 13; // Varint-zigzag-encoded length + string itself
-    public const FLAG_VARARRAY       = 14; // Array, which size is VARINT-encoded
-    public const FLAG_NULLABLE       = 128; // Use -1 as null array/string
+    public const int TYPE_INT8      = 1;
+    public const int TYPE_INT16     = 2;
+    public const int TYPE_INT32     = 3;
+    public const int TYPE_INT64     = 4;
+    public const int TYPE_STRING    = 8;  // INT16-encoded length and then bytes of chars
+    public const int TYPE_BYTEARRAY = 10; // INT32 size of data, then bytes of data, -1 as size means null
+    public const int TYPE_BOOLEAN   = 20; // A single byte: 0 is false, anything else is true (Kafka 0.10)
 
     /**
-     *  INT16-encoded length and then bytes of chars, -1 as size means null value
+     * Use -1 as null array/string
      */
-    public const TYPE_NULLABLE_STRING = self::TYPE_STRING | self::FLAG_NULLABLE;
+    public const int FLAG_NULLABLE = 128;
 
     /**
-     * Calculates the size of single item, can be scalar, array or object
+     * INT16-encoded length and then bytes of chars, -1 as size means null value
+     */
+    public const int TYPE_NULLABLE_STRING = self::TYPE_STRING | self::FLAG_NULLABLE;
+
+    /**
+     * Calculates the size of a single item, which can be a scalar, an array or an object
      *
      * @param mixed $schemeType BinarySchema type
-     * @param mixed $value Optional value to calculate size of string, arrays, object, etc...
-     *
-     * @return int
+     * @param mixed $value      Optional value to calculate the size of a string, array, object, etc.
      */
-    public static function getSingleTypeSize($schemeType, $value = null): int
+    public static function getSingleTypeSize(mixed $schemeType, mixed $value = null): int
     {
         // Let's check for the complex type mapping
         if (is_array($schemeType)) {
             return self::getArrayTypeSize($schemeType, $value);
         }
 
-        // If it's string, then we have an object with internal scheme
+        // If it's a string, then we have an object with an internal scheme
         if (is_string($schemeType)) {
             return self::getObjectTypeSize($value);
         }
@@ -75,70 +78,41 @@ class BinarySchema
             case self::TYPE_INT16:
             case self::TYPE_INT32:
             case self::TYPE_INT64:
-                return 2 ** ($schemeType - 1); // We assume sequence 1..4 and just use it as base for 2^type
+                return 2 ** ($schemeType - 1); // We assume the sequence 1..4 and use it as the base for 2^type
+
+            case self::TYPE_BOOLEAN:
+                return 1;
 
             case self::TYPE_STRING:
             case self::TYPE_NULLABLE_STRING:
-                $length = !empty($value) ? strlen($value) : 0;
-                return 2 /* INT16 Size */ + $length;
-
-            case self::TYPE_VARINT:
-                return ByteUtils::sizeOfVarint($value);
-            case self::TYPE_VARLONG:
-                return ByteUtils::sizeOfVarlong($value);
-            case self::TYPE_VARCHAR:
-                $length = strlen($value);
-                return ByteUtils::sizeOfVarint($length) + $length;
-
-            case self::TYPE_VARINT_ZIGZAG:
-                $encodedLength = ByteUtils::encodeZigZag($value);
-                return ByteUtils::sizeOfVarint($encodedLength);
-
-            case self::TYPE_VARLONG_ZIGZAG:
-                $encodedLength = ByteUtils::encodeZigZag($value);
-                return ByteUtils::sizeOfVarint($encodedLength);
-
-            case self::TYPE_VARCHAR_ZIGZAG:
-                $length        = !empty($value) ? strlen($value) : 0;
-                $encodedLength = ByteUtils::encodeZigZag($length);
-                return ByteUtils::sizeOfVarint($encodedLength) + $length;
+                return 2 /* INT16 Size */ + ($value !== null ? strlen((string) $value) : 0);
 
             case self::TYPE_BYTEARRAY:
-                return 4 /* INT32 Size */ + strlen($value);
+                return 4 /* INT32 Size */ + ($value !== null ? strlen((string) $value) : 0);
         }
 
-        throw new RuntimeException("Unknown scheme type {$schemeType}");
+        throw new \RuntimeException("Unknown scheme type {$schemeType}");
     }
 
     /**
-     * Calculates the size of array in bytes
+     * Calculates the size of an array in bytes
      *
-     * @param array $schemeType Special notation for array
-     * @param array|null $value Array of items or null for nullable arrays
-     *
-     * @return int
+     * @param array<mixed>      $schemeType Special notation for an array
+     * @param array<mixed>|null $value      Array of items, or null for nullable arrays
      */
     public static function getArrayTypeSize(array $schemeType, ?array $value = null): int
     {
-        $isVarArray    = !empty($schemeType[self::FLAG_VARARRAY]);
         $isNullable    = !empty($schemeType[self::FLAG_NULLABLE]);
-        $sizeType      = $isVarArray ? self::TYPE_VARINT : self::TYPE_INT32;
         $arrayItemType = current($schemeType);
         if ($value === null) {
             if (!$isNullable) {
                 throw new \UnexpectedValueException('Received null value for not nullable array');
             }
-            $itemCount = -1;
-            $value     = []; // To continue with foreach loop
-        } elseif (is_array($value)) {
-            $itemCount = count($value);
-        } else {
-            $receivedType = gettype($value);
-            throw new \UnexpectedValueException("Array type should receive only arrays, {$receivedType} received");
+
+            return self::getSingleTypeSize(self::TYPE_INT32, -1);
         }
 
-        $size = self::getSingleTypeSize($sizeType, $itemCount);
-        // TODO: add support for fixed-size arrays to prevent multiple calls in foreach
+        $size = self::getSingleTypeSize(self::TYPE_INT32, count($value));
         foreach ($value as $singleItemValue) {
             $size += self::getSingleTypeSize($arrayItemType, $singleItemValue);
         }
@@ -147,14 +121,13 @@ class BinarySchema
     }
 
     /**
-     * Calculates the size of object in bytes
+     * Calculates the size of an object in bytes
      */
     public static function getObjectTypeSize(BinarySchemaInterface $object): int
     {
-        $objectScheme = $object->getScheme();
+        $objectScheme   = $object->getScheme();
         $sizeCalculator = function (array $objectScheme) use ($object): int {
             $objectSize = 0;
-            // TODO: add support for fixed-size objects and DTOs
             foreach ($objectScheme as $fieldKey => $schemeType) {
                 $objectSize += BinarySchema::getSingleTypeSize($schemeType, $object->$fieldKey);
             }
@@ -165,7 +138,12 @@ class BinarySchema
         return $sizeCalculator->call($object, $objectScheme);
     }
 
-    public static function readObjectFromStream(string $recordClass, Stream $stream, $path = '')
+    /**
+     * Reads a whole object of the given class from the stream, following its scheme
+     *
+     * @param class-string<BinarySchemaInterface> $recordClass
+     */
+    public static function readObjectFromStream(string $recordClass, Stream $stream, string $path = ''): object
     {
         $scheme           = $recordClass::getScheme();
         $recordReflection = new ReflectionClass($recordClass);
@@ -173,7 +151,7 @@ class BinarySchema
 
         $reader = function (array $scheme) use ($record, $stream, $path): void {
             foreach ($scheme as $fieldKey => $schemeType) {
-                $record->$fieldKey = BinarySchema::readSingleType($schemeType, $stream, "$path->{$fieldKey}");
+                $record->$fieldKey = BinarySchema::readSingleType($schemeType, $stream, "{$path}->{$fieldKey}");
             }
         };
         $reader->call($record, $scheme);
@@ -181,6 +159,9 @@ class BinarySchema
         return $record;
     }
 
+    /**
+     * Writes a whole object to the stream, following its scheme
+     */
     public static function writeObjectToStream(BinarySchemaInterface $record, Stream $stream): void
     {
         $scheme = $record->getScheme();
@@ -192,24 +173,25 @@ class BinarySchema
         $writer->call($record, $scheme);
     }
 
-    public static function readSingleType($schemeType, Stream $stream, string $path = '')
+    /**
+     * Reads a single value of the given type from the stream
+     */
+    public static function readSingleType(mixed $schemeType, Stream $stream, string $path = ''): mixed
     {
         // Let's check for the complex type mapping
         if (is_array($schemeType)) {
             $arrayItemType = current($schemeType);
             $arrayKeyName  = key($schemeType);
-            $isVarArray    = !empty($schemeType[self::FLAG_VARARRAY]);
             $isNullable    = !empty($schemeType[self::FLAG_NULLABLE]);
-            $sizeType      = $isVarArray ? self::TYPE_VARINT : self::TYPE_INT32;
-            $arraySize     = self::readSingleType($sizeType, $stream, "{$path}[size]");
-            // Special handling of null value type
+            $arraySize     = self::readSingleType(self::TYPE_INT32, $stream, "{$path}[size]");
+            // Special handling of the null value type
             if ($arraySize === -1 && $isNullable) {
                 return null;
             }
 
             $result = [];
             for ($index = 0; $index < $arraySize; $index++) {
-                $value = self::readSingleType($arrayItemType, $stream, "{$path}[$index]");
+                $value = self::readSingleType($arrayItemType, $stream, "{$path}[{$index}]");
                 if (is_string($arrayKeyName)) {
                     $result[$value->$arrayKeyName] = $value;
                 } else {
@@ -220,20 +202,23 @@ class BinarySchema
             return $result;
         }
 
-        // If it's string, then we have nested object that can be unpacked
+        // If it's a string, then we have a nested object that can be unpacked
         if (is_string($schemeType)) {
             return self::readObjectFromStream($schemeType, $stream, "{$path}:{$schemeType}");
         }
 
         switch ($schemeType) {
             case self::TYPE_INT8:
-                return $stream->read('CINT8')['INT8'];
+                // Signed, unlike the implementation on `main`, which reads 'C': the Attributes byte of a Message
+                // and the error codes of the protocol are signed values
+                return $stream->read('cINT8')['INT8'];
 
             case self::TYPE_INT16:
                 $value = $stream->read('nINT16')['INT16'];
                 if ($value & 0x8000) {
                     $value -= 0x10000;
                 }
+
                 return $value;
 
             case self::TYPE_INT32:
@@ -241,147 +226,113 @@ class BinarySchema
                 if ($value & 0x80000000) {
                     $value -= 0x100000000;
                 }
+
                 return $value;
 
             case self::TYPE_INT64:
                 return $stream->read('JINT64')['INT64'];
 
-            case self::TYPE_VARINT:
-                return $stream->readVarint();
-
-            case self::TYPE_VARLONG:
-                return $stream->readVarint(); // TODO: Need to use VARLONG type here
-
-            case self::TYPE_VARCHAR:
-                $dataLength = $stream->readVarint();
-                if ($dataLength >= 0) {
-                    return $stream->read("a{$dataLength}data")['data'];
-                }
-                return null;
-
-            case self::TYPE_VARINT_ZIGZAG:
-                $encoded = $stream->readVarint();
-                return ByteUtils::decodeZigZag($encoded);
-
-            case self::TYPE_VARLONG_ZIGZAG:
-                $encoded = $stream->readVarint(); // TODO: Need to use VARLONG type here
-                return ByteUtils::decodeZigZag($encoded);
-
-            case self::TYPE_VARCHAR_ZIGZAG:
-                $encodedLength = $stream->readVarint();
-                $dataLength    = ByteUtils::decodeZigZag($encodedLength);
-                if ($dataLength >= 0) {
-                    return $stream->read("a{$dataLength}data")['data'];
-                }
-                return null;
+            case self::TYPE_BOOLEAN:
+                // Types.BOOLEAN of the Java client reads any non-zero byte as true and always writes 0 or 1
+                return $stream->read('CBOOLEAN')['BOOLEAN'] !== 0;
 
             case self::TYPE_STRING:
                 return $stream->readString();
 
             case self::TYPE_NULLABLE_STRING:
                 $stringSize = self::readSingleType(self::TYPE_INT16, $stream, "{$path}[size]");
-                if ($stringSize >= 0) {
-                    return $stream->read("a{$stringSize}data")['data'];
+                if ($stringSize < 0) {
+                    return null;
                 }
-                return null;
+
+                return $stringSize === 0 ? '' : $stream->read("a{$stringSize}data")['data'];
 
             case self::TYPE_BYTEARRAY:
-                // TODO: Support nullable byte arrays
                 return $stream->readByteArray();
         }
 
-        throw new \RuntimeException('Unexpected scheme type received');
+        throw new \RuntimeException("Unknown scheme type {$schemeType} received at {$path}");
     }
 
-    public static function writeSingleType($schemeType, $value, Stream $stream): void
+    /**
+     * Writes a single value of the given type to the stream
+     */
+    public static function writeSingleType(mixed $schemeType, mixed $value, Stream $stream): void
     {
         // Let's check for the complex type mapping
         if (is_array($schemeType)) {
             $arrayItemType = current($schemeType);
-            $isVarArray    = !empty($schemeType[self::FLAG_VARARRAY]);
             $isNullable    = !empty($schemeType[self::FLAG_NULLABLE]);
-            $sizeType      = $isVarArray ? self::TYPE_VARINT : self::TYPE_INT32;
             // Special handling of null arrays
             if ($value === null) {
                 if (!$isNullable) {
                     throw new \UnexpectedValueException('Received null value for not nullable array');
                 }
-                self::writeSingleType($sizeType, -1, $stream);
+                self::writeSingleType(self::TYPE_INT32, -1, $stream);
+
                 return;
             }
 
-            if (is_array($value)) {
-                $itemCount = count($value);
-                self::writeSingleType($sizeType, $itemCount, $stream);
-            } else {
+            if (!is_array($value)) {
                 $receivedType = gettype($value);
                 throw new \UnexpectedValueException("Array type should receive only arrays, {$receivedType} received");
             }
 
+            self::writeSingleType(self::TYPE_INT32, count($value), $stream);
             foreach ($value as $singleItemValue) {
                 self::writeSingleType($arrayItemType, $singleItemValue, $stream);
             }
+
             return;
         }
 
-        // If it's string, then we have nested object that can be packed into the stream
+        // If it's a string, then we have a nested object that can be packed into the stream
         if (is_string($schemeType)) {
             self::writeObjectToStream($value, $stream);
+
             return;
         }
 
         switch ($schemeType) {
             case self::TYPE_INT8:
-                $stream->write('C', $value);
+                $stream->write('c', $value);
+
                 return;
             case self::TYPE_INT16:
                 $stream->write('n', $value);
+
                 return;
             case self::TYPE_INT32:
                 $stream->write('N', $value);
+
                 return;
             case self::TYPE_INT64:
                 $stream->write('J', $value);
-                return;
-            case self::TYPE_VARINT:
-                $stream->writeVarint($value);
-                return;
-            case self::TYPE_VARLONG:
-                $stream->writeVarint($value); // TODO: Need to use VARLONG type here
-                return;
-            case self::TYPE_VARCHAR:
-                $dataLength = strlen($value);
-                $stream->writeVarint($dataLength);
-                $stream->writeBuffer($value);
-                return;
-            case self::TYPE_VARINT_ZIGZAG:
-                $encoded = ByteUtils::encodeZigZag($value, 32);
-                $stream->writeVarint($encoded);
-                return;
 
-            case self::TYPE_VARLONG_ZIGZAG:
-                $encoded = ByteUtils::encodeZigZag($value, 64);
-                $stream->writeVarint($encoded);
                 return;
+            case self::TYPE_BOOLEAN:
+                $stream->write('C', $value ? 1 : 0);
 
-            case self::TYPE_VARCHAR_ZIGZAG:
-                $dataLength    = !empty($value) ? strlen($value) : 0;
-                $encodedLength = ByteUtils::encodeZigZag($dataLength);
-                $stream->writeVarint($encodedLength);
-                $stream->writeBuffer($value);
                 return;
-
             case self::TYPE_STRING:
-                $stream->writeString($value);
+                $stream->writeString((string) $value);
+
                 return;
             case self::TYPE_NULLABLE_STRING:
-                $size = $value === null ? -1 : strlen($value);
-                $stream->write('n', $size);
-                $stream->writeBuffer($value);
+                if ($value === null) {
+                    self::writeSingleType(self::TYPE_INT16, -1, $stream);
+
+                    return;
+                }
+                $stream->writeString((string) $value);
+
                 return;
             case self::TYPE_BYTEARRAY:
                 $stream->writeByteArray($value);
+
                 return;
         }
+
+        throw new \RuntimeException("Unknown scheme type {$schemeType}");
     }
 }

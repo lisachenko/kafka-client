@@ -1,0 +1,462 @@
+{
+    "api": "message-format",
+    "apiKey": null,
+    "section": "MessageSet and Message",
+    "description": "Wire vectors of the message formats v0 and v1, the byte region that the Produce and the Fetch apis carry, captured from a Kafka 0.10.2.2 broker and replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "messageformat.v1.createtime.uncompressed",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MessageSet",
+            "magic": 1,
+            "source": "broker",
+            "description": "Three uncompressed records of message format v1 on a topic with the default message.timestamp.type=CreateTime, read back with a Fetch v2 request. Every message carries its own timestamp and the absolute offset the broker assigned to it.",
+            "hex": "00000000000000000000001b565adc8c01000000015ac2acf800ffffffff00000005616c70686100000000000000010000001efbaeeebd01000000015ac2acf80a000000036b657900000005627261766f00000000000000020000001d8ee35bea01000000015ac2acf805ffffffff00000007636861726c6965",
+            "fields": {
+                "shallow": [
+                    {
+                        "offset": 0,
+                        "message": {
+                            "crc": 1448795276,
+                            "magicByte": 1,
+                            "attributes": 0,
+                            "timestamp": 1489324800000,
+                            "key": null,
+                            "value": {
+                                "$bytes": "616c706861"
+                            }
+                        }
+                    },
+                    {
+                        "offset": 1,
+                        "message": {
+                            "crc": 4222545597,
+                            "magicByte": 1,
+                            "attributes": 0,
+                            "timestamp": 1489324800010,
+                            "key": {
+                                "$bytes": "6b6579"
+                            },
+                            "value": {
+                                "$bytes": "627261766f"
+                            }
+                        }
+                    },
+                    {
+                        "offset": 2,
+                        "message": {
+                            "crc": 2397264874,
+                            "magicByte": 1,
+                            "attributes": 0,
+                            "timestamp": 1489324800005,
+                            "key": null,
+                            "value": {
+                                "$bytes": "636861726c6965"
+                            }
+                        }
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1489324800000,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1489324800010,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1489324800005,
+                        "timestampType": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v1.logappendtime.uncompressed",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MessageSet",
+            "magic": 1,
+            "source": "broker",
+            "description": "The same three records on a topic configured with message.timestamp.type=LogAppendTime: the broker replaced every timestamp with the time of the append and set bit 3 of the attributes of every message.",
+            "hex": "00000000000000000000001bf71934ba0108000001a0849ae919ffffffff00000005616c70686100000000000000010000001e9016c1a90108000001a0849ae919000000036b657900000005627261766f00000000000000020000001dd377dc800108000001a0849ae919ffffffff00000007636861726c6965",
+            "fields": {
+                "shallow": [
+                    {
+                        "offset": 0,
+                        "message": {
+                            "crc": 4145624250,
+                            "magicByte": 1,
+                            "attributes": 8,
+                            "timestamp": 1788931139865,
+                            "key": null,
+                            "value": {
+                                "$bytes": "616c706861"
+                            }
+                        }
+                    },
+                    {
+                        "offset": 1,
+                        "message": {
+                            "crc": 2417410473,
+                            "magicByte": 1,
+                            "attributes": 8,
+                            "timestamp": 1788931139865,
+                            "key": {
+                                "$bytes": "6b6579"
+                            },
+                            "value": {
+                                "$bytes": "627261766f"
+                            }
+                        }
+                    },
+                    {
+                        "offset": 2,
+                        "message": {
+                            "crc": 3547847808,
+                            "magicByte": 1,
+                            "attributes": 8,
+                            "timestamp": 1788931139865,
+                            "key": null,
+                            "value": {
+                                "$bytes": "636861726c6965"
+                            }
+                        }
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1788931139865,
+                        "timestampType": 1
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1788931139865,
+                        "timestampType": 1
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1788931139865,
+                        "timestampType": 1
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v1.createtime.gzip",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MessageSet",
+            "magic": 1,
+            "source": "broker",
+            "description": "A gzip-compressed batch of the same three records, stored as the second batch of the partition: the wrapper message carries the absolute offset 5 of the last inner message and the largest timestamp of the batch, while the inner offsets stay relative (0, 1, 2).",
+            "hex": "0000000000000005000000768a7abb3801010000015ac2acf80affffffff000000601f8b080000000000000363608003e9b0a83b3d8c400663d4a1353f18fe030190c39a985390910855029295fbbdeedd5eb8322e2083393bb512a432a928b12c1faa92098865fb1e47bf82ab64851ac89e9c91589493990a00624cfe287a000000",
+            "fields": {
+                "shallow": [
+                    {
+                        "offset": 5,
+                        "message": {
+                            "crc": 2323299128,
+                            "magicByte": 1,
+                            "attributes": 1,
+                            "timestamp": 1489324800010,
+                            "key": null,
+                            "value": {
+                                "$bytes": "1f8b080000000000000363608003e9b0a83b3d8c400663d4a1353f18fe030190c39a985390910855029295fbbdeedd5eb8322e2083393bb512a432a928b12c1faa92098865fb1e47bf82ab64851ac89e9c91589493990a00624cfe287a000000"
+                            }
+                        }
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 3,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1489324800000,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 4,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1489324800010,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 5,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1489324800005,
+                        "timestampType": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v1.createtime.snappy",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MessageSet",
+            "magic": 1,
+            "source": "broker",
+            "description": "The same batch with the snappy codec, in the xerial block framing that Kafka uses.",
+            "hex": "00000000000000050000008c21ffc33101020000015ac2acf80affffffff0000007682534e41505059000000000100000001000000627a000019016c1b565adc8c01000000015ac2acf800ffffffff00000005616c7068610120011a1c0000001efbaeeebd010905271c0a000000036b6579012a10627261766f01272c000000020000001d8ee35bea152a00050d511c07636861726c6965",
+            "fields": {
+                "shallow": [
+                    {
+                        "offset": 5,
+                        "message": {
+                            "crc": 570409777,
+                            "magicByte": 1,
+                            "attributes": 2,
+                            "timestamp": 1489324800010,
+                            "key": null,
+                            "value": {
+                                "$bytes": "82534e41505059000000000100000001000000627a000019016c1b565adc8c01000000015ac2acf800ffffffff00000005616c7068610120011a1c0000001efbaeeebd010905271c0a000000036b6579012a10627261766f01272c000000020000001d8ee35bea152a00050d511c07636861726c6965"
+                            }
+                        }
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 3,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1489324800000,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 4,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1489324800010,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 5,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1489324800005,
+                        "timestampType": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v1.createtime.lz4",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MessageSet",
+            "magic": 1,
+            "source": "broker",
+            "description": "The same batch with the lz4 codec: an LZ4 frame with the correct frame descriptor checksum (04 22 4d 18 60 40 82), which is the one message format v1 uses.",
+            "hex": "0000000000000005000000893bce0e8401030000015ac2acf80affffffff0000007304224d186040826400000016000100f00d1b565adc8c01000000015ac2acf800ffffffff00000005616c7068612000001a00800000001efbaeeebd0900012700800a000000036b65792a0050627261766f2700c5000000020000001d8ee35bea2a00130551008007636861726c696500000000",
+            "fields": {
+                "shallow": [
+                    {
+                        "offset": 5,
+                        "message": {
+                            "crc": 1003359876,
+                            "magicByte": 1,
+                            "attributes": 3,
+                            "timestamp": 1489324800010,
+                            "key": null,
+                            "value": {
+                                "$bytes": "04224d186040826400000016000100f00d1b565adc8c01000000015ac2acf800ffffffff00000005616c7068612000001a00800000001efbaeeebd0900012700800a000000036b65792a0050627261766f2700c5000000020000001d8ee35bea2a00130551008007636861726c696500000000"
+                            }
+                        }
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 3,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1489324800000,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 4,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1489324800010,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 5,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1489324800005,
+                        "timestampType": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v1.logappendtime.gzip",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MessageSet",
+            "magic": 1,
+            "source": "broker",
+            "description": "A gzip batch on a LogAppendTime topic: the broker rewrote the wrapper message only - its attributes announce the codec and the LogAppendTime type and its timestamp is the append time - while the compressed inner messages keep the CreateTime values of the producer, which the reader has to ignore.",
+            "hex": "000000000000000500000076082ce74c0109000001a0849b5e8fffffffff000000601f8b080000000000000363608003e9b0a83b3d8c400663d4a1353f18fe030190c39a985390910855029295fbbdeedd5eb8322e2083393bb512a432a928b12c1faa92098865fb1e47bf82ab64851ac89e9c91589493990a00624cfe287a000000",
+            "fields": {
+                "shallow": [
+                    {
+                        "offset": 5,
+                        "message": {
+                            "crc": 137160524,
+                            "magicByte": 1,
+                            "attributes": 9,
+                            "timestamp": 1788931169935,
+                            "key": null,
+                            "value": {
+                                "$bytes": "1f8b080000000000000363608003e9b0a83b3d8c400663d4a1353f18fe030190c39a985390910855029295fbbdeedd5eb8322e2083393bb512a432a928b12c1faa92098865fb1e47bf82ab64851ac89e9c91589493990a00624cfe287a000000"
+                            }
+                        }
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 3,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1788931169935,
+                        "timestampType": 1
+                    },
+                    {
+                        "offset": 4,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1788931169935,
+                        "timestampType": 1
+                    },
+                    {
+                        "offset": 5,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1788931169935,
+                        "timestampType": 1
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v0.lz4.broken-checksum",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MessageSet",
+            "magic": 0,
+            "source": "broker",
+            "description": "The lz4 batch above, read with a Fetch v1 request: the broker converted the stored message format v1 down to v0, which drops the timestamps, turns the inner offsets into absolute ones (3, 4, 5) and writes the LZ4 frame with the broken descriptor checksum of KAFKA-3160 (04 22 4d 18 60 40 1a).",
+            "hex": "000000000000000500000070d4a65e7e0003ffffffff0000006204224d1860401a5300000012000100f20903000000136157e55e0000ffffffff00000005616c7068611e00a100040000001637ba218a100040036b6579220051627261766f1200b50000050000001518b19e6441008007636861726c696500000000",
+            "fields": {
+                "shallow": [
+                    {
+                        "offset": 5,
+                        "message": {
+                            "crc": 3567672958,
+                            "magicByte": 0,
+                            "attributes": 3,
+                            "key": null,
+                            "value": {
+                                "$bytes": "04224d1860401a5300000012000100f20903000000136157e55e0000ffffffff00000005616c7068611e00a100040000001637ba218a100040036b6579220051627261766f1200b50000050000001518b19e6441008007636861726c696500000000"
+                            }
+                        }
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 3,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": null,
+                        "timestampType": -1
+                    },
+                    {
+                        "offset": 4,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": null,
+                        "timestampType": -1
+                    },
+                    {
+                        "offset": 5,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": null,
+                        "timestampType": -1
+                    }
+                ]
+            }
+        }
+    ]
+}

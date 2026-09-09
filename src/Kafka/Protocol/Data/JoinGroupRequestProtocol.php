@@ -9,47 +9,44 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\Consumer\Subscription;
-use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * Join group request protocol DTO
+ * One protocol that a member of a group supports, as it is advertised by a JoinGroup request.
  *
- * JoinGroupRequestProtocol => protocol_name protocol_metadata
- *   protocol_name => STRING
- *   protocol_metadata => BYTES
+ * <pre>
+ *   JoinGroupRequestProtocol => ProtocolName ProtocolMetadata
+ *     ProtocolName     => string
+ *     ProtocolMetadata => bytes
+ * </pre>
+ *
+ * The metadata is opaque to this class and to the coordinator alike: the broker stores the bytes, hands them to the
+ * leader of the group in the JoinGroup response and never looks inside. What they mean is decided by the
+ * `protocol_type` of the request - for `consumer` it is the `Subscription` structure of the consumer protocol.
+ *
+ * @see docs/protocol/0.10.2.md, section "JoinGroup API (key 11, v0 and v1)"
  */
 class JoinGroupRequestProtocol implements BinarySchemaInterface
 {
     /**
-     * Name of the protocol
-     *
-     * @var string
+     * Name of the protocol, e.g. `range` or `roundrobin` for the `consumer` protocol type.
      */
-    public $name;
+    public string $name;
 
     /**
-     * Protocol-specific metadata
-     *
-     * @todo Update scheme to use Subscription instance directly
-     * @var string
+     * Protocol-specific metadata of this member, opaque to the coordinator.
      */
-    public $metadata;
+    public string $metadata;
 
-    public function __construct(string $name, Subscription $subscription)
+    public function __construct(string $name, string $metadata)
     {
-        // TODO: This should be on scheme-level
-        $stringStream = new StringStream();
-        BinarySchema::writeObjectToStream($subscription, $stringStream);
-
         $this->name     = $name;
-        $this->metadata = $stringStream->getBuffer();
+        $this->metadata = $metadata;
     }
 
     /**

@@ -9,7 +9,11 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
+/**
+ * @author Alexander.Lisachenko
+ * @date 14.07.2016
+ */
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -18,26 +22,33 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Produce request Topic DTO
+ *
+ * <pre>
+ *   TopicName [Partition MessageSetSize MessageSet]
+ *     TopicName => string
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 class ProduceRequestTopic implements BinarySchemaInterface
 {
     /**
      * The name of the topic to produce to
-     * @var string
      */
-    public $topic;
+    public string $topic = '';
 
     /**
-     * Data for all partitions in the topic
+     * Data for all partitions of this topic, indexed by the partition number
      *
-     * @var ProduceRequestPartition[]
+     * @var array<int, ProduceRequestPartition>
      */
-    public $partitions = [];
+    public array $partitions = [];
 
     /**
-     * @inheritDoc
+     * @param string                              $topic         Name of the topic
+     * @param array<int, ProduceRequestPartition> $partitionData Message sets, indexed by the partition number
      */
-    public function __construct(string $topic, array $partitionData)
+    public function __construct(string $topic = '', array $partitionData = [])
     {
         $this->topic      = $topic;
         $this->partitions = $partitionData;

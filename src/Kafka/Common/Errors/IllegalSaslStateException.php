@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Errors;
 
@@ -17,8 +17,13 @@ use Exception;
 
 /**
  * Request is not valid given the current SASL state.
+ *
+ * Error code 34, Kafka 0.10.0 (SaslHandshake, KIP-43).
  */
 class IllegalSaslStateException extends KafkaException implements ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::ILLEGAL_SASL_STATE, $previous);
+    }
 }

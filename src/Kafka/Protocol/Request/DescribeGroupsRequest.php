@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -17,24 +17,42 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * DescribeGroups Request
+ * This API describes the groups that the broker it is sent to is the coordinator of.
  *
- * This API can be used to describe the current groups managed by a broker. To get a list of all groups in the cluster, you
- * must send DescribeGroups to all brokers.
+ * A group has to be asked from its own coordinator ({@see GroupCoordinatorRequest}): another broker answers the
+ * group with the error code 16 (NotCoordinatorForGroup) and an empty description. An empty group array is legal and
+ * is answered with an empty group array.
  *
- * DescribeGroups Request (Version: 0) => [group_ids]
- *   group_ids => STRING
+ * <pre>
+ *   DescribeGroupsRequest => [GroupId]
+ *     GroupId => string
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "DescribeGroups API (key 15, v0)"
  */
 class DescribeGroupsRequest extends AbstractRequest
 {
-    public function __construct(/**
-     * List of groups to describe
+    /**
+     * @inheritdoc
      */
-        private readonly array $groups,
+    public const int API_KEY = ApiKeys::DESCRIBE_GROUPS;
+
+    /**
+     * @inheritdoc
+     */
+    public const int VERSION = 0;
+
+    /**
+     * @param list<string> $groups        Groups to describe, an empty list is answered with an empty description
+     * @param string       $clientId      A user specified identifier for the client making the request
+     * @param int          $correlationId A user-supplied value that the broker passes back unmodified
+     */
+    public function __construct(
+        protected array $groups,
         string $clientId = '',
         int $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::DESCRIBE_GROUPS, $clientId, $correlationId);
+        parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
     /**
@@ -42,10 +60,20 @@ class DescribeGroupsRequest extends AbstractRequest
      */
     public static function getScheme(): array
     {
-        $header = null;
+        $header = parent::getScheme();
 
         return $header + [
             'groups' => [BinarySchema::TYPE_STRING],
         ];
+    }
+
+    /**
+     * Returns the groups this request asks the description of
+     *
+     * @return list<string>
+     */
+    public function getGroups(): array
+    {
+        return $this->groups;
     }
 }

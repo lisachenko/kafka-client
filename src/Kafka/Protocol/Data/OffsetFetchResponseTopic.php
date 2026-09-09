@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -17,23 +17,32 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * OffsetFetch/OffsetCommit DTO
+ * OffsetFetchResponseTopic DTO
+ *
+ * <pre>
+ *   OffsetFetchResponseTopic => topic [partition_responses]
+ *     topic               => STRING
+ *     partition_responses => OffsetFetchResponsePartition
+ * </pre>
+ *
+ * The entry did not change across the three versions of the api: the topics array of a version 2 answer holds the
+ * very same structures, only the group-level error code behind the array is new.
+ *
+ * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 class OffsetFetchResponseTopic implements BinarySchemaInterface
 {
     /**
      * Name of the topic
-     *
-     * @var string
      */
-    public $topic;
+    public string $topic;
 
     /**
-     * Information about each offset for the partition in the topic
+     * Committed offset of each partition of this topic
      *
-     * @var OffsetFetchResponsePartition[]
+     * @var array<int, OffsetFetchResponsePartition>
      */
-    public $partitions;
+    public array $partitions;
 
     /**
      * @inheritdoc
