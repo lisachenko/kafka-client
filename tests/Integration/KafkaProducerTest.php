@@ -15,7 +15,11 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Client;
+use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Message;
@@ -32,13 +36,13 @@ use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the producer against a real Kafka 0.9.0.1 broker.
+ * Verifies the producer against a real Kafka 0.10.2.2 broker.
  *
  * Every test writes with the producer and reads the partitions back with a raw Fetch request, so that what the
  * broker really stored is checked, not what the client believes it sent: the partition a key was placed in, the
  * offsets that the promises were resolved with, and the compression of a batch.
  *
- * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 #[CoversClass(KafkaProducer::class)]
 #[CoversClass(DefaultPartitioner::class)]
@@ -272,6 +276,61 @@ final class KafkaProducerTest extends IntegrationTestCase
         self::assertSame(range(0, 24), array_column($storedRecords, 'offset'));
     }
 
+    public function testTheRecordMetadataCarriesTheTimestampTheLogHolds(): void
+    {
+        $producer = $this->producer([
+            ProducerConfig::ACKS       => ProducerConfig::ACKS_LEADER,
+            ProducerConfig::BATCH_SIZE => 1024 * 1024,
+        ]);
+
+        $before   = (int) (microtime(true) * 1000);
+        $metadata = null;
+        $producer->send($this->topic, Record::fromValue('a create time'), 0)->then(
+            static function (RecordMetadata $recordMetadata) use (&$metadata): void {
+                $metadata = $recordMetadata;
+            }
+        );
+        $producer->flush();
+        $after = (int) (microtime(true) * 1000);
+
+        self::assertInstanceOf(RecordMetadata::class, $metadata);
+        // The topic keeps the CreateTime of the producer, so the answer of the broker carries -1 as its
+        // LogAppendTime and the metadata reports the timestamp the producer stamped on the record
+        self::assertGreaterThanOrEqual($before, (int) $metadata->timestamp);
+        self::assertLessThanOrEqual($after, (int) $metadata->timestamp);
+        self::assertSame(
+            $metadata->timestamp,
+            $this->fetchRecords(0)[0]->timestamp,
+            'the log holds the CreateTime the metadata reported'
+        );
+    }
+
+    public function testTheRecordMetadataOfALogAppendTimeTopicCarriesTheTimestampOfTheBroker(): void
+    {
+        $topic    = $this->createLogAppendTimeTopic();
+        $producer = $this->producer([
+            ProducerConfig::ACKS       => ProducerConfig::ACKS_LEADER,
+            ProducerConfig::BATCH_SIZE => 1024 * 1024,
+        ]);
+
+        $before   = (int) (microtime(true) * 1000);
+        $metadata = null;
+        $producer->send($topic, new Record('stamped by the broker', null, 0, null, 1489324800000), 0)->then(
+            static function (RecordMetadata $recordMetadata) use (&$metadata): void {
+                $metadata = $recordMetadata;
+            }
+        );
+        $producer->flush();
+        $after = (int) (microtime(true) * 1000);
+
+        self::assertInstanceOf(RecordMetadata::class, $metadata);
+        // The producer stamped 2017 on the record, but the broker overwrote it with its own clock and reported
+        // that value as the LogAppendTime of version 2 of the Produce API
+        self::assertGreaterThanOrEqual($before, (int) $metadata->timestamp);
+        self::assertLessThanOrEqual($after, (int) $metadata->timestamp);
+        self::assertNotSame(1489324800000, $metadata->timestamp);
+    }
+
     public function testTheProducerReportsThePartitionsOfATopic(): void
     {
         $partitions = $this->producer()->partitionsFor($this->topic);
@@ -307,6 +366,30 @@ final class KafkaProducerTest extends IntegrationTestCase
             ProducerConfig::TIMEOUT_MS        => self::PRODUCE_TIMEOUT_MS,
             ProducerConfig::REQUEST_TIMEOUT_MS => self::PRODUCE_TIMEOUT_MS,
         ]);
+    }
+
+    /**
+     * Creates a topic whose broker stamps every message it appends with its own clock
+     */
+    private function createLogAppendTimeTopic(): string
+    {
+        $configuration = [
+            ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID                 => self::CLIENT_ID,
+            ClientConfig::REQUEST_TIMEOUT_MS        => 40000,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+        ];
+        $topic = self::uniqueTopicName('t8-producer-lat');
+
+        $errors = new AdminClient(Cluster::bootstrap($configuration), $configuration)->createTopics([
+            new NewTopic($topic, 1, 1, [], ['message.timestamp.type' => 'LogAppendTime']),
+        ]);
+        self::assertSame([$topic => null], $errors, 'the controller created the LogAppendTime topic');
+
+        new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, self::CLIENT_ID)
+            ->awaitTopicWithLeaders($topic);
+
+        return $topic;
     }
 
     /**

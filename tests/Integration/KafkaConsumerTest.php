@@ -15,12 +15,16 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\ConsumerRecord;
@@ -28,6 +32,8 @@ use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Consumer\KafkaConsumer;
 use Protocol\Kafka\Consumer\OffsetResetStrategy;
 use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Producer\KafkaProducer;
+use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -42,7 +48,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * there. The broker-side group membership of Kafka 0.9 - subscribe(), the rebalance and the heartbeats - is driven
  * by {@see ConsumerGroupTest}.
  *
- * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 and v1)", "Offsets API (key 2, v0), a.k.a.
+ * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 to v3)", "Offsets API (key 2, v0), a.k.a.
  *      ListOffset" and "OffsetFetch API (key 9, v0 and v1)"
  */
 #[CoversClass(KafkaConsumer::class)]
@@ -382,39 +388,148 @@ final class KafkaConsumerTest extends IntegrationTestCase
         self::assertSame(['p1'], $this->valuesOf($this->pollUntil($consumer, 1), 1));
     }
 
-    public function testAMessageBiggerThanTheFetchSizeIsReported(): void
+    public function testAMessageBiggerThanTheFetchSizeIsReturnedAnyway(): void
     {
         $this->produce(0, [str_repeat('x', 4096)]);
 
+        // Both size limits of the request are smaller than the single message of the partition. Up to version 2 of
+        // the Fetch API the broker cut the answer off there and the consumer refused the partition with a
+        // RecordTooLargeException; version 3 (KIP-74), which this consumer sends, returns the first message of the
+        // answer whatever its size is, so the consumer always makes progress
         $consumer = $this->consumer(self::uniqueGroupName(), [
             ConsumerConfig::AUTO_OFFSET_RESET         => OffsetResetStrategy::EARLIEST,
             ConsumerConfig::ENABLE_AUTO_COMMIT        => false,
             ConsumerConfig::MAX_PARTITION_FETCH_BYTES => 64,
+            ConsumerConfig::FETCH_MAX_BYTES           => 64,
         ]);
         $consumer->assign([$this->topic => [0]]);
 
-        // The broker answers with a message it cut short, which the record layer drops, while its high water mark
-        // shows there is something to read: fetching the same offset again would return the very same answer, so
-        // the first poll already refuses instead of spinning
-        try {
-            $consumer->poll(1000);
-            self::fail('A partition that can not make progress has to be reported');
-        } catch (RecordTooLargeException $exception) {
-            self::assertSame($this->topic, $exception->topic);
-            self::assertSame(0, $exception->partition);
-            self::assertSame(0, $exception->fetchOffset);
-            self::assertSame(64, $exception->maxBytes);
-            self::assertSame(1, $exception->logEndOffset, 'the log holds the one message that does not fit');
-        }
+        self::assertSame([str_repeat('x', 4096)], $this->valuesOf($this->pollUntil($consumer, 1), 0));
+        self::assertSame(1, $consumer->position($this->topic, 0), 'the partition moved behind the message');
+    }
 
-        // The very same partition is readable with enough room for that message
-        $roomy = $this->consumer(self::uniqueGroupName(), [
+    public function testTheRecordsOfAPollCarryTheTimestampsOfMessageFormatV1(): void
+    {
+        $before = (int) (microtime(true) * 1000);
+        $producer = new KafkaProducer([
+            ClientConfig::BOOTSTRAP_SERVERS => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID         => self::CLIENT_ID,
+            ProducerConfig::ACKS            => ProducerConfig::ACKS_LEADER,
+            ProducerConfig::TIMEOUT_MS      => self::PRODUCE_TIMEOUT_MS,
+        ]);
+        $producer->send($this->topic, Record::fromValue('stamped by the producer'), 0);
+        $producer->flush();
+        $after = (int) (microtime(true) * 1000);
+
+        $consumer = $this->consumer(self::uniqueGroupName(), [
             ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
             ConsumerConfig::ENABLE_AUTO_COMMIT => false,
         ]);
-        $roomy->assign([$this->topic => [0]]);
+        $consumer->assign([$this->topic => [0]]);
 
-        self::assertSame([str_repeat('x', 4096)], $this->valuesOf($this->pollUntil($roomy, 1), 0));
+        $records = $this->recordsOf($this->pollUntil($consumer, 1), 0);
+
+        self::assertCount(1, $records);
+        // A Fetch v3 request is answered with the message format of the log, so the CreateTime that the producer
+        // stamped on the record survives the round trip; a request below version 2 would be answered with a
+        // message format v0 set, without any timestamp at all
+        self::assertNotNull($records[0]->timestamp, 'the answer was not converted down to message format v0');
+        self::assertGreaterThanOrEqual($before, $records[0]->timestamp);
+        self::assertLessThanOrEqual($after, $records[0]->timestamp);
+        self::assertSame(TimestampType::CREATE_TIME, $records[0]->timestampType);
+    }
+
+    public function testTheRecordsOfALogAppendTimeTopicCarryTheTimestampOfTheBroker(): void
+    {
+        $topic = $this->createLogAppendTimeTopic();
+
+        $before = (int) (microtime(true) * 1000);
+        $this->produce(0, ['stamped by the broker'], CompressionCodec::NONE, $topic);
+        $after = (int) (microtime(true) * 1000);
+
+        $consumer = $this->consumer(self::uniqueGroupName(), [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([$topic => [0]]);
+
+        $records = [];
+        $deadline = microtime(true) + self::POLL_TIMEOUT;
+        do {
+            foreach ($consumer->poll(1000)[$topic][0] ?? [] as $record) {
+                $records[] = $record;
+            }
+        } while ($records === [] && microtime(true) < $deadline);
+
+        self::assertCount(1, $records);
+        self::assertSame(TimestampType::LOG_APPEND_TIME, $records[0]->timestampType);
+        self::assertGreaterThanOrEqual($before, (int) $records[0]->timestamp);
+        self::assertLessThanOrEqual($after, (int) $records[0]->timestamp);
+    }
+
+    public function testTheConsumerRotatesItsPartitionsWhenTheAnswerIsFullAfterTheFirstOne(): void
+    {
+        $this->produce(0, ['partition zero']);
+        $this->produce(1, ['partition one']);
+
+        // A budget that is smaller than a single message: the broker serves the first partition of the request and
+        // leaves the second one empty, so a consumer that did not rotate its partitions would never read the
+        // second one at all
+        $consumer = $this->consumer(self::uniqueGroupName(), [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+            ConsumerConfig::FETCH_MAX_BYTES    => 40,
+        ]);
+        $consumer->assign([$this->topic => [0, 1]]);
+
+        $received = [];
+        $deadline = microtime(true) + self::POLL_TIMEOUT;
+        do {
+            $polled = $consumer->poll(1000)[$this->topic] ?? [];
+            foreach ([0, 1] as $partition) {
+                foreach ($this->valuesOf($polled, $partition) as $value) {
+                    $received[$partition][] = $value;
+                }
+            }
+            // The budget of an answer is smaller than a single message of either partition, so the broker serves
+            // one of them per request and leaves the other one empty
+            self::assertLessThan(
+                2,
+                count(array_filter([$this->recordsOf($polled, 0), $this->recordsOf($polled, 1)])),
+                'a fetch of 40 bytes can not carry the records of both partitions'
+            );
+        } while (count($received) < 2 && microtime(true) < $deadline);
+
+        // Both partitions were served although a single one exhausts the budget: the consumer moves the partition
+        // that was served behind the one that was not before it asks again
+        self::assertSame(['partition zero'], $received[0] ?? []);
+        self::assertSame(['partition one'], $received[1] ?? []);
+        self::assertSame(1, $consumer->position($this->topic, 0));
+        self::assertSame(1, $consumer->position($this->topic, 1));
+    }
+
+    /**
+     * Creates a topic whose broker stamps every message it appends with its own clock
+     */
+    private function createLogAppendTimeTopic(): string
+    {
+        $configuration = [
+            ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID                 => self::CLIENT_ID,
+            ClientConfig::REQUEST_TIMEOUT_MS        => 40000,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+        ];
+        $topic = self::uniqueTopicName('t9-consumer-lat');
+
+        $errors = new AdminClient(Cluster::bootstrap($configuration), $configuration)->createTopics([
+            new NewTopic($topic, 1, 1, [], ['message.timestamp.type' => 'LogAppendTime']),
+        ]);
+        self::assertSame([$topic => null], $errors, 'the controller created the LogAppendTime topic');
+
+        new TopicMetadataProbe(fn(): Stream => $this->connect(), self::TOPIC_TIMEOUT, self::CLIENT_ID)
+            ->awaitTopicWithLeaders($topic);
+
+        return $topic;
     }
 
     /**
@@ -490,8 +605,13 @@ final class KafkaConsumerTest extends IntegrationTestCase
      *
      * @param list<string> $values Values of the records to append
      */
-    private function produce(int $partition, array $values, int $codec = CompressionCodec::NONE): void
-    {
+    private function produce(
+        int $partition,
+        array $values,
+        int $codec = CompressionCodec::NONE,
+        ?string $topic = null
+    ): void {
+        $topic ??= $this->topic;
         $records    = array_map(static fn(string $value): Record => new Record($value), $values);
         $messageSet = MessageSet::fromRecords($records, $codec);
         $deadline   = microtime(true) + self::TOPIC_TIMEOUT;
@@ -499,19 +619,19 @@ final class KafkaConsumerTest extends IntegrationTestCase
         do {
             $stream = $this->connect();
             new ProduceRequest(
-                [$this->topic => [$partition => $messageSet]],
+                [$topic => [$partition => $messageSet]],
                 1,
                 self::PRODUCE_TIMEOUT_MS,
                 self::CLIENT_ID,
                 1
             )->writeTo($stream);
 
-            $errorCode = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+            $errorCode = ProduceResponse::unpack($stream)->topics[$topic]->partitions[$partition]->errorCode;
             if ($errorCode === 0) {
                 return;
             }
             if (!in_array($errorCode, self::NOT_SERVABLE_YET, true)) {
-                throw KafkaException::fromCode($errorCode, ['topic' => $this->topic, 'partitionId' => $partition]);
+                throw KafkaException::fromCode($errorCode, ['topic' => $topic, 'partitionId' => $partition]);
             }
             usleep(self::RETRY_BACKOFF_MICROSECONDS);
         } while (microtime(true) < $deadline);
