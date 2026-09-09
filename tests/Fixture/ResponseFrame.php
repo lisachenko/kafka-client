@@ -142,7 +142,31 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an Offsets (ListOffset) response (api key 2, v0)
+     * Builds an Offsets (ListOffset) response (api key 2, v1)
+     *
+     * <pre>
+     *   ListOffsets Response (Version: 1) => [responses]
+     *     partition_responses => partition error_code timestamp offset
+     * </pre>
+     *
+     * @param array<string, array<int, array{int, int, int}>> $topics topic => partition =>
+     *        [errorCode, timestamp, offset]
+     */
+    public static function offsets(int $correlationId, array $topics): string
+    {
+        $body = pack('N', count($topics));
+        foreach ($topics as $topic => $partitions) {
+            $body .= self::string((string) $topic) . pack('N', count($partitions));
+            foreach ($partitions as $partitionId => [$errorCode, $timestamp, $offset]) {
+                $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $timestamp) . pack('J', $offset);
+            }
+        }
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds an Offsets (ListOffset) response of version 0, which answers a list of segment offsets per partition
      *
      * <pre>
      *   OffsetResponse => [TopicName [PartitionOffsets]]
@@ -151,7 +175,7 @@ final class ResponseFrame
      *
      * @param array<string, array<int, array{int, list<int>}>> $topics topic => partition => [errorCode, offsets]
      */
-    public static function offsets(int $correlationId, array $topics): string
+    public static function offsetsV0(int $correlationId, array $topics): string
     {
         $body = pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {

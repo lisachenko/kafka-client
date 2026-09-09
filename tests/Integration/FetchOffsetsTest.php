@@ -24,13 +24,19 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestPartition;
+use Protocol\Kafka\Protocol\Data\OffsetsRequestPartitionV0;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopic;
+use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
+use Protocol\Kafka\Protocol\Data\OffsetsResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
+use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -39,7 +45,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The messages are produced with hand-written Produce v0 bytes, so that these tests only depend on the wire format
  * of the spec and not on the state of the other protocol classes.
  *
- * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0)" and "Offsets API (key 2, v0), a.k.a. ListOffset"
+ * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 and v1)" and "Offsets API (key 2, v0 and v1),
+ *      a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -48,11 +55,17 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(FetchResponseTopic::class)]
 #[CoversClass(FetchResponsePartition::class)]
 #[CoversClass(OffsetsRequest::class)]
+#[CoversClass(OffsetsRequestV0::class)]
 #[CoversClass(OffsetsResponse::class)]
+#[CoversClass(OffsetsResponseV0::class)]
 #[CoversClass(OffsetsRequestTopic::class)]
+#[CoversClass(OffsetsRequestTopicV0::class)]
 #[CoversClass(OffsetsRequestPartition::class)]
+#[CoversClass(OffsetsRequestPartitionV0::class)]
 #[CoversClass(OffsetsResponseTopic::class)]
+#[CoversClass(OffsetsResponseTopicV0::class)]
 #[CoversClass(OffsetsResponsePartition::class)]
+#[CoversClass(OffsetsResponsePartitionV0::class)]
 final class FetchOffsetsTest extends IntegrationTestCase
 {
     /**
@@ -209,9 +222,14 @@ final class FetchOffsetsTest extends IntegrationTestCase
         $latest   = $this->listOffsets($stream, $topic, OffsetsRequest::LATEST);
 
         self::assertSame(0, $earliest->errorCode);
-        self::assertSame([0], $earliest->offsets, 'nothing has been deleted, so the log starts at offset 0');
+        self::assertSame(0, $earliest->offset, 'nothing has been deleted, so the log starts at offset 0');
         self::assertSame(0, $latest->errorCode);
-        self::assertSame([3], $latest->offsets, 'the latest offset is the one the next message will get');
+        self::assertSame(3, $latest->offset, 'the latest offset is the one the next message will get');
+        self::assertSame(
+            OffsetsResponsePartition::UNKNOWN_TIMESTAMP,
+            $latest->timestamp,
+            'the two special target times never read a message, so their answer has no timestamp'
+        );
     }
 
     public function testLatestOffsetOfAnEmptyLogIsZero(): void
@@ -219,8 +237,8 @@ final class FetchOffsetsTest extends IntegrationTestCase
         $stream = $this->connect();
         $topic  = $this->createTopic($stream, 't5-offsets-empty');
 
-        self::assertSame([0], $this->listOffsets($stream, $topic, OffsetsRequest::LATEST)->offsets);
-        self::assertSame([0], $this->listOffsets($stream, $topic, OffsetsRequest::EARLIEST)->offsets);
+        self::assertSame(0, $this->listOffsets($stream, $topic, OffsetsRequest::LATEST)->offset);
+        self::assertSame(0, $this->listOffsets($stream, $topic, OffsetsRequest::EARLIEST)->offset);
     }
 
     public function testOffsetsOfAnUnknownPartitionFail(): void
@@ -229,14 +247,15 @@ final class FetchOffsetsTest extends IntegrationTestCase
         $topic  = $this->createTopic($stream, 't5-offsets-unknown');
 
         // The topic is created with 3 partitions, so partition 42 does not exist
-        new OffsetsRequest([$topic => [42 => OffsetsRequest::LATEST]], 1, -1, self::CLIENT_ID, 21)->writeTo($stream);
+        new OffsetsRequest([$topic => [42 => OffsetsRequest::LATEST]], -1, self::CLIENT_ID, 21)->writeTo($stream);
         $response = OffsetsResponse::unpack($stream);
 
         self::assertSame(21, $response->getCorrelationId());
-        self::assertSame(
-            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
-            $response->topics[$topic]->partitions[42]->errorCode
-        );
+
+        $partition = $response->topics[$topic]->partitions[42];
+        self::assertSame(KafkaException::UNKNOWN_TOPIC_OR_PARTITION, $partition->errorCode);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
     }
 
     public function testOffsetsOfSeveralPartitionsComeBackInOneResponse(): void
@@ -247,7 +266,6 @@ final class FetchOffsetsTest extends IntegrationTestCase
 
         new OffsetsRequest(
             [$topic => [0 => OffsetsRequest::LATEST, 1 => OffsetsRequest::LATEST, 2 => OffsetsRequest::LATEST]],
-            1,
             -1,
             self::CLIENT_ID,
             22
@@ -256,9 +274,33 @@ final class FetchOffsetsTest extends IntegrationTestCase
 
         $partitions = $response->topics[$topic]->partitions;
         self::assertSame([0, 1, 2], array_keys($partitions), 'the response is indexed by the partition id');
-        self::assertSame([2], $partitions[0]->offsets);
-        self::assertSame([0], $partitions[1]->offsets, 'nothing was produced to the other partitions');
-        self::assertSame([0], $partitions[2]->offsets);
+        self::assertSame(2, $partitions[0]->offset);
+        self::assertSame(0, $partitions[1]->offset, 'nothing was produced to the other partitions');
+        self::assertSame(0, $partitions[2]->offset);
+    }
+
+    public function testVersionZeroOfTheOffsetsApiIsStillServedWithItsOffsetArray(): void
+    {
+        $stream = $this->connect();
+        $topic  = $this->createTopic($stream, 't5-offsets-v0');
+        $this->produce($stream, $topic, ['first', 'second', 'third']);
+
+        new OffsetsRequestV0(
+            [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
+            5,
+            -1,
+            self::CLIENT_ID,
+            23
+        )->writeTo($stream);
+        $response = OffsetsResponseV0::unpack($stream);
+
+        $partition = $response->topics[$topic]->partitions[self::PARTITION];
+        self::assertSame(0, $partition->errorCode);
+        self::assertSame(
+            [3, 0],
+            $partition->offsets,
+            'version 0 answers a list: the log end offset and the base offset of the only segment'
+        );
     }
 
     /**
@@ -419,7 +461,6 @@ final class FetchOffsetsTest extends IntegrationTestCase
             function () use ($stream, $topic, $timestamp): OffsetsResponsePartition {
                 new OffsetsRequest(
                     [$topic => [self::PARTITION => $timestamp]],
-                    1,
                     -1,
                     self::CLIENT_ID,
                     12

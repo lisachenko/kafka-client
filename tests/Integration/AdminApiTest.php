@@ -117,8 +117,8 @@ final class AdminApiTest extends IntegrationTestCase
 
         self::assertSame([$topic], array_keys($latest));
         foreach ($partitions as $partition) {
-            self::assertSame([0], $latest[$topic][$partition], 'nothing was produced into the topic yet');
-            self::assertSame([0], $earliest[$topic][$partition]);
+            self::assertSame(0, $latest[$topic][$partition], 'nothing was produced into the topic yet');
+            self::assertSame(0, $earliest[$topic][$partition]);
         }
     }
 

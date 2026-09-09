@@ -448,8 +448,8 @@ final class ClientTest extends TestCase
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($metadata))
             ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::offsets(0, [
-                // v0 answers with the list of segment offsets, the newest one first
-                self::TOPIC => [0 => [0, [64, 32, 0]], 1 => [0, []]],
+                // v1 answers one offset per partition; a request for the latest offset carries the timestamp -1
+                self::TOPIC => [0 => [0, -1, 64], 1 => [0, -1, 0]],
             ])))
             ->install();
 

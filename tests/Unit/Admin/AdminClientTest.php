@@ -29,6 +29,7 @@ use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
@@ -169,16 +170,16 @@ final class AdminClientTest extends TestCase
 
     public function testListOffsetsMapsThePartitionOffsetsOfEveryTopic(): void
     {
-        $broker = $this->scriptBroker(self::vector('offsets', 'offsets.response.v0.latest'));
+        // Version 1 answers one offset per partition; the latest offset comes with the timestamp -1
+        $broker = $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [0, -1, 2]]]));
 
         $offsets = $this->adminClient()->listOffsets([self::TOPIC => [0]]);
 
-        self::assertSame([self::TOPIC => [0 => [2]]], $offsets, 'the log end offset of the partition');
+        self::assertSame([self::TOPIC => [0 => 2]], $offsets, 'the log end offset of the partition');
         self::assertSame(
             [self::requestFrame(new OffsetsRequest(
                 [self::TOPIC => [0 => OffsetsRequest::LATEST]],
-                1,
-                -1,
+                OffsetsRequest::CONSUMER_REPLICA_ID,
                 't10',
                 $broker->getReceivedCorrelationIds()[0]
             ))],
@@ -187,14 +188,42 @@ final class AdminClientTest extends TestCase
         );
     }
 
+    public function testListOffsetsReportsAnOffsetOfMinusOneWhenNoMessageMatchesTheTimestamp(): void
+    {
+        $broker = $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [0, -1, -1]]]));
+
+        $offsets = $this->adminClient()->listOffsets([self::TOPIC => [0]], 1600000000000);
+
+        self::assertSame([self::TOPIC => [0 => -1]], $offsets, 'nothing matched, and that is not an error');
+        self::assertSame(
+            [self::requestFrame(new OffsetsRequest(
+                [self::TOPIC => [0 => 1600000000000]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                't10',
+                $broker->getReceivedCorrelationIds()[0]
+            ))],
+            $broker->getReceivedFrames()
+        );
+    }
+
     public function testListOffsetsThrowsThePartitionErrorOfTheBroker(): void
     {
-        $this->scriptBroker(self::vector('offsets', 'offsets.response.v0.unknown-partition'));
+        $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [3, -1, -1]]]));
 
         $this->expectExceptionMessage('This server does not host this topic-partition');
 
         // The leader of the partition is looked up in the cluster metadata, so the request has to name a known one
         $this->adminClient()->listOffsets([self::TOPIC => [0]]);
+    }
+
+    public function testListOffsetsThrowsWhenTheTopicHasNoMessageTimestampsToSearch(): void
+    {
+        // Error code 43, UnsupportedForMessageFormat: the topic runs with message.format.version below 0.10.0
+        $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [43, -1, -1]]]));
+
+        $this->expectException(UnsupportedForMessageFormatException::class);
+
+        $this->adminClient()->listOffsets([self::TOPIC => [0]], 1600000000000);
     }
 
     public function testListGroupOffsetsAsksTheCoordinatorAndReturnsTheCommittedOffsets(): void

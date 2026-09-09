@@ -74,8 +74,8 @@ echo "\nOffsets of {$topic}\n";
 $earliest = $admin->listOffsets([$topic => $partitions], OffsetsRequest::EARLIEST);
 $latest   = $admin->listOffsets([$topic => $partitions]);
 foreach ($partitions as $partition) {
-    $first = $earliest[$topic][$partition][0] ?? 0;
-    $last  = $latest[$topic][$partition][0] ?? 0;
+    $first = $earliest[$topic][$partition] ?? 0;
+    $last  = $latest[$topic][$partition] ?? 0;
     echo "  {$partition}: {$first} .. {$last} (" . ($last - $first) . " messages)\n";
 }
 

@@ -17,17 +17,26 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * One topic of an Offsets (ListOffset) response v0
+ * One topic of an Offsets (ListOffset) response, version 1
  *
  * <pre>
- *   OffsetsResponseTopic => TopicName [Partition ErrorCode [Offset]]
- *     TopicName => string
+ *   OffsetsResponseTopic => topic [partition_responses]
+ *     topic => STRING
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
+ * The topic entry itself is the same in both versions of the answer; only the layout of a partition entry changes,
+ * so the class of the entries is derived from {@see OffsetsResponseTopic::VERSION}, which
+ * {@see OffsetsResponseTopicV0} lowers.
+ *
+ * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
  */
 class OffsetsResponseTopic implements BinarySchemaInterface
 {
+    /**
+     * Version of the Offsets API that this DTO is unpacked from
+     */
+    public const int VERSION = 1;
+
     /**
      * Name of the topic that the offsets were requested for
      */
@@ -47,7 +56,17 @@ class OffsetsResponseTopic implements BinarySchemaInterface
     {
         return [
             'topic'      => BinarySchema::TYPE_STRING,
-            'partitions' => ['partition' => OffsetsResponsePartition::class],
+            'partitions' => ['partition' => static::partitionClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a partition entry for the version of the API that this class unpacks
+     *
+     * @return class-string<OffsetsResponsePartition>
+     */
+    protected static function partitionClass(): string
+    {
+        return static::VERSION >= 1 ? OffsetsResponsePartition::class : OffsetsResponsePartitionV0::class;
     }
 }

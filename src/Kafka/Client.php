@@ -39,6 +39,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
+use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
@@ -340,24 +341,64 @@ class Client
     }
 
     /**
-     * Requests all offsets for the list of topic partitions
+     * Requests one offset for each of the given topic partitions
      *
-     * This query will be made over the current cluster by checking the metadata for each topic partition
+     * This query will be made over the current cluster by checking the metadata for each topic partition; the
+     * Offsets api is served by the leader of a partition alone.
      *
-     * @param array<string, array<int, int>> $topicPartitions Target times of each topic partition
+     * A target time is {@see OffsetsRequest::LATEST} for the log end offset - the offset the next produced message
+     * will get - {@see OffsetsRequest::EARLIEST} for the first offset that is still on disk, or a timestamp in
+     * milliseconds, which version 1 of the api (Kafka 0.10.1) answers with the offset of the first message whose own
+     * timestamp is at or after it. A timestamp that no message of a partition matches is not an error: the offset of
+     * that partition is then {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1. Use
+     * {@see self::fetchTopicPartitionOffsetsForTimes()} to receive the timestamp of the message that was found
+     * together with its offset.
+     *
+     * @param array<string, array<int, int>> $topicPartitionTimestamps Target times of each topic partition
      *
      * @return array<string, array<int, int>> Array in the form: [topic => [partition => offset]]
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
      */
-    public function fetchTopicPartitionOffsets(array $topicPartitions): array
+    public function fetchTopicPartitionOffsets(array $topicPartitionTimestamps): array
+    {
+        $found = $this->fetchTopicPartitionOffsetsForTimes($topicPartitionTimestamps);
+
+        $result = [];
+        foreach ($found as $topic => $partitionOffsets) {
+            foreach ($partitionOffsets as $partitionId => $offsetAndTimestamp) {
+                $result[$topic][$partitionId] = $offsetAndTimestamp?->offset ?? OffsetsResponsePartition::UNKNOWN_OFFSET;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Looks the offsets of the given topic partitions up and reports the timestamp of every message that was found
+     *
+     * The timestamp-based version 1 of the Offsets api answers each partition with one offset and the timestamp of
+     * the message it points at. A partition whose log holds no message at or after the target time - and every
+     * partition of an empty log - is answered with the error code 0 and the offset -1, which arrives here as `null`.
+     * {@see OffsetsRequest::LATEST} and {@see OffsetsRequest::EARLIEST} always find an offset, and the broker
+     * answers them with the timestamp {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP}, because it does not read
+     * the message the offset points at.
+     *
+     * @param array<string, array<int, int>> $topicPartitionTimestamps Target times of each topic partition
+     *
+     * @return array<string, array<int, OffsetAndTimestamp|null>> [topic => [partition => offset and timestamp]]
+     *
+     * @throws TopicPartitionRequestException If a partition was answered with an error code - which is how the
+     *         `UnsupportedForMessageFormatException` of a topic whose `message.format.version` is older than 0.10.0
+     *         arrives, since such a log has no message timestamps to search
+     */
+    public function fetchTopicPartitionOffsetsForTimes(array $topicPartitionTimestamps): array
     {
         return $this->clusterRequest(
-            $topicPartitions,
+            $topicPartitionTimestamps,
             fn(array $nodeTopicRequest, int $correlationId): OffsetsRequest => new OffsetsRequest(
                 $nodeTopicRequest,
-                1,
-                -1,
+                OffsetsRequest::CONSUMER_REPLICA_ID,
                 $this->configuration[ConsumerConfig::CLIENT_ID],
                 $correlationId
             ),
@@ -373,8 +414,10 @@ class Client
                             );
                             continue;
                         }
-                        // v0 answers with a list of segment offsets, the newest one first
-                        $result[$topic][$partitionId] = $partitionMetadata->offsets[0] ?? 0;
+                        // "No message matches that timestamp" is answered with the offset -1 and no error at all
+                        $result[$topic][$partitionId] = $partitionMetadata->offset === OffsetsResponsePartition::UNKNOWN_OFFSET
+                            ? null
+                            : new OffsetAndTimestamp($partitionMetadata->offset, $partitionMetadata->timestamp);
                     }
                 }
 

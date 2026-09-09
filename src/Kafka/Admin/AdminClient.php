@@ -224,25 +224,28 @@ class AdminClient
      * Every request goes to the leader of its partitions, as the Offsets api is served by the leader only. With the
      * default `$time` the answer is the log end offset, i.e. the offset the next produced message will get; with
      * `OffsetsRequest::EARLIEST` it is the first offset that is still on disk. An ordinary timestamp in milliseconds
-     * asks for the offsets of the log segments that were created before it, of which at most
-     * `$maxNumberOfOffsets` are returned - the timestamp of a message itself is unknown to a 0.8 broker, message
-     * format v1 and the timestamp-based v1 of this api only arrived with Kafka 0.10.
+     * asks version 1 of the api (Kafka 0.10.1) for the offset of the first message whose own timestamp is at or
+     * after it, which the time index of the log resolves.
      *
-     * @param array<string, list<int>>|iterable<TopicPartition> $topicPartitions    Partitions to list the offsets of
-     * @param int                                               $time               Timestamp in ms, or one of
-     *                                                                              OffsetsRequest::LATEST/EARLIEST
-     * @param int                                               $maxNumberOfOffsets Offsets to return per partition
+     * Version 1 answers exactly one offset per partition, so the `$maxNumberOfOffsets` of the version 0 api is gone;
+     * a caller that wants the segment offsets of that older version builds an
+     * {@see \Protocol\Kafka\Protocol\Request\OffsetsRequestV0} itself. A timestamp that no message of a partition
+     * matches - and every timestamp on an empty partition - is not an error either: such a partition is answered
+     * with the offset {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1.
+     *
+     * @param array<string, list<int>>|iterable<TopicPartition> $topicPartitions Partitions to list the offsets of
+     * @param int                                               $time            Timestamp in ms, or one of
+     *                                                                           OffsetsRequest::LATEST/EARLIEST
      *
      * @throws \Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException If the cluster does not host one of the partitions
      * @throws \Protocol\Kafka\Common\Errors\NotLeaderForPartitionException If the leader of a partition changed in the meantime
+     * @throws \Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException If a timestamp was searched for in a
+     *         topic whose `message.format.version` is older than 0.10.0
      *
-     * @return array<string, array<int, list<int>>> Offsets as topic => partition => list of offsets, newest first
+     * @return array<string, array<int, int>> Offsets as topic => partition => offset
      */
-    public function listOffsets(
-        iterable $topicPartitions,
-        int $time = OffsetsRequest::LATEST,
-        int $maxNumberOfOffsets = 1
-    ): array {
+    public function listOffsets(iterable $topicPartitions, int $time = OffsetsRequest::LATEST): array
+    {
         $partitionTimes = [];
         foreach (self::normalizeTopicPartitions($topicPartitions) as $topic => $partitions) {
             foreach ($partitions as $partition) {
@@ -257,8 +260,7 @@ class AdminClient
                 $leader->getConnection($this->configuration),
                 fn(int $correlationId): OffsetsRequest => new OffsetsRequest(
                     $nodePartitionTimes,
-                    $maxNumberOfOffsets,
-                    -1,
+                    OffsetsRequest::CONSUMER_REPLICA_ID,
                     $this->clientId(),
                     $correlationId
                 ),
@@ -275,7 +277,7 @@ class AdminClient
                             ['topic' => $topic, 'partition' => $partitionId]
                         );
                     }
-                    $result[$topic][$partitionId] = $partitionOffsets->offsets;
+                    $result[$topic][$partitionId] = $partitionOffsets->offset;
                 }
             }
         }
