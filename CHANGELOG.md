@@ -14,9 +14,10 @@ Unreleased — the 0.10.x line
 ----------------------------
 
 Everything a Kafka 0.10.2.2 broker speaks, built on top of the `0.9.x` line it was merged from.
-The line is being assembled ticket by ticket; what is listed here is what has landed so far, and
-every wire format below was verified against a real 0.10.2.2 broker and is documented byte for
-byte in [docs/protocol/0.10.2.md](docs/protocol/0.10.2.md).
+Every wire format below was verified against a real 0.10.2.2 broker and is documented byte for
+byte in [docs/protocol/0.10.2.md](docs/protocol/0.10.2.md), with 120 wire vectors in
+[docs/protocol/vectors](docs/protocol/vectors) that `tests/Compliance` replays through the
+protocol classes.
 
 ### Added
 
@@ -45,22 +46,97 @@ byte in [docs/protocol/0.10.2.md](docs/protocol/0.10.2.md).
   `Admin\AdminClient::getApiVersions(Node $node)` the indexed array — the name it has on `main`.
   This is the first line of the client that can ask a broker what it speaks instead of probing
   it frame by frame; the client itself still sends the fixed versions of its Kafka release.
-- **SASL/PLAIN** — `SaslHandshakeRequest`/`SaslHandshakeResponse` (key 17, v0), the raw token
-  exchange that follows it on the same socket, `Common\Security\{SaslMechanism,SaslToken}` and
-  the `security.protocol = SASL_PLAINTEXT` / `SASL_SSL` listeners with `sasl.mechanism`,
-  `sasl.username` and `sasl.password`.
-- **Wire vectors of the ApiVersions api** — `docs/protocol/vectors/api-versions.json` with
-  `apiversions.request.v0`, `apiversions.response.v0` (the 21 keys of a 0.10.2.2 broker) and
-  `apiversions.response.v0.unsupported-version` (the error code 35 with an empty api array),
-  captured from the container and replayed by `tests/Compliance/ProtocolVectorTest`.
+- **Message format v1** (KIP-31/KIP-32) — `Common\Record\Message` is the format v1 message
+  (`crc, magic, attributes, timestamp, key, value`) and `MessageV0` the format of 0.8/0.9, both
+  driven by one version-aware scheme on `static::MAGIC`, with the magic byte as the
+  discriminator. `Common\Record\TimestampType` (`NO_TIMESTAMP_TYPE`, `CREATE_TIME`,
+  `LOG_APPEND_TIME`) is bit 3 of the attributes; `Record`, `ConsumerRecord` and
+  `Producer\RecordMetadata` carry the timestamp and its type. A compressed v1 set stores
+  **relative** inner offsets and the reader restores the absolute ones, a `LogAppendTime` wrapper
+  replaces the timestamps of its inner messages, and `MessageSet::shallowFromBuffer()` is the
+  shallow iteration a broker does.
+- **LZ4 compression** — `Common\Record\Lz4`, a pure-PHP LZ4 block codec plus the Kafka LZ4 frame
+  with the **KAFKA-3160** quirk (a magic 0 frame carries the broken descriptor checksum, a magic 1
+  frame the correct one, a reader accepts both); `CompressionCodec::LZ4` and
+  `compression.type = lz4`.
+- **Produce v2** — `ProduceResponse`/`ProduceResponseV1`/`ProduceResponseV0` with the
+  per-partition `LogAppendTime` (`NO_LOG_APPEND_TIME = -1`) between `Offset` and the throttle
+  time; the request body of the three versions is identical. `Client::produce()` sends v2.
+- **Fetch v2 and v3** — `FetchRequest`/`FetchRequestV2`/`FetchRequestV1`/`FetchRequestV0` and the
+  matching responses. Version 2 is the statement "I understand message format v1", which stops the
+  broker from converting its answer down to format v0; version 3 (KIP-74) adds the request-level
+  `MaxBytes` after `MinBytes` and makes the partition order of the request significant.
+  `ConsumerConfig::FETCH_MAX_BYTES` (`fetch.max.bytes`, default 52428800), and
+  `KafkaConsumer::poll()` rotates the partitions that returned records to the end of its fetch
+  order, as `SubscriptionState.movePartitionToEnd` does in the Java consumer.
+- **Metadata v1 and v2** — the nullable topic array (`null` = every topic, `[]` = no topic), the
+  broker `Rack`, the topic `IsInternal`, the `ControllerId` of v1 and the `ClusterId` of v2, with
+  `MetadataRequest`/`MetadataResponse` (v2), `…V1` and `…V0` and `Node`/`NodeV0`,
+  `TopicMetadata`/`TopicMetadataV0`. `Cluster::clusterId()`, `Cluster::controller()` and
+  `Cluster::topics(?bool $excludeInternalTopics = null)` expose them, and both new fields survive
+  the metadata cache file.
+- **Offsets (ListOffset) v1** (KIP-79) — offsets by message timestamp with **one** offset per
+  partition and the timestamp of the message that was found; `OffsetsRequest`/`OffsetsResponse`
+  are version 1 and the `…V0` classes keep the version 0 frame with its offset array.
+  `Consumer\OffsetAndTimestamp`, `Client::fetchTopicPartitionOffsetsForTimes()` and
+  `KafkaConsumer::{offsetsForTimes,beginningOffsets,endOffsets}()`.
+- **OffsetFetch v2** (KIP-88) — `OffsetFetchRequest::forAllTopics()` and a `null` topic array ask
+  the coordinator for every topic the group committed, and the response gains the group-level
+  `ErrorCode` after the topics; `OffsetFetchRequestV1`/`V0` refuse a null array as their Java
+  counterpart does. `AdminClient::listGroupOffsets()` takes the shape of `main` again.
+- **JoinGroup v1** (KIP-62) — the `RebalanceTimeout` after the `SessionTimeout`, sent as
+  `ConsumerConfig::MAX_POLL_INTERVAL_MS` (`max.poll.interval.ms`, default 300000);
+  `Client::joinGroup()` takes it as its last, optional argument.
+- **CreateTopics (key 19, v0 and v1) and DeleteTopics (key 20, v0)** — `Admin\NewTopic` (partitions
+  and replication factor, or an explicit replica assignment, plus topic configs),
+  `AdminClient::createTopics()` with `validateOnly` of version 1, `AdminClient::deleteTopics()` and
+  `AdminClient::findController()`, which reads the `controller_id` of a Metadata answer and repeats
+  a request once against a freshly looked up controller when a topic answers 41 (`NotController`).
+  Both methods return one entry per requested topic: `null` or the exception of its error code,
+  with the `error_message` of CreateTopics v1 in the context.
+- **SASL/PLAIN** (KIP-43) — `SaslHandshakeRequest`/`SaslHandshakeResponse` (key 17, v0), the raw
+  token exchange that follows it on the same socket, `Common\Security\{SaslMechanism,SaslToken}`,
+  the client-side `SaslAuthenticationException` for a connection the broker closes on wrong
+  credentials, and the `security.protocol = SASL_PLAINTEXT` / `SASL_SSL` transports with
+  `sasl.mechanism`, `sasl.username` and `sasl.password`.
+- **The group state `Empty`** — `DescribeGroupResponseMetadata::STATE_EMPTY`, the fifth state of a
+  0.10.1 coordinator: a group whose last member left keeps its committed offsets instead of being
+  dropped.
+- **Wire vectors of everything the line adds** — `api-versions.json`, `message-format.json`,
+  `create-topics.json`, `delete-topics.json`, `sasl-handshake.json` and the new frames in
+  `metadata.json`, `produce.json`, `fetch.json`, `offsets.json`, `offset-fetch.json` and
+  `join-group.json`, all captured from the container and replayed by
+  `tests/Compliance/ProtocolVectorTest`; `DocumentationSyncTest` additionally checks that every
+  `@see docs/protocol/0.10.2.md, section "…"` of the sources names a heading that exists.
+- **Examples** — [`examples/create-topic.php`](examples/create-topic.php),
+  [`examples/offsets-for-times.php`](examples/offsets-for-times.php) and
+  [`examples/sasl.php`](examples/sasl.php).
 
 ### Changed
 
+- **Breaking: `AdminClient::listOffsets()` lost its `$maxNumberOfOffsets` parameter** and answers
+  `topic => partition => offset` instead of `topic => partition => [offsets]`. Version 1 of the
+  api returns exactly one offset per partition; a caller that wants the old segment-timestamp
+  behaviour builds an `OffsetsRequestV0` itself. `Client::fetchTopicPartitionOffsets()` changed the
+  same way.
+- **Breaking: `AdminClient::listGroupOffsets(string $groupId, ?iterable $topicPartitions = null)`** —
+  the partitions are optional now, because OffsetFetch v2 can ask for every topic of the group.
+- **Breaking: the consumer defaults are those of the Java consumer of 0.10.1** —
+  `session.timeout.ms` **10000** (was 30000), `request.timeout.ms` **305000** (was 40000) and the
+  new `max.poll.interval.ms` 300000. `subscribe()` refuses a `request.timeout.ms` that does not
+  exceed *both* `session.timeout.ms` and `max.poll.interval.ms`, because a JoinGroup blocks the
+  connection for the whole rebalance.
+- **Breaking: `Common\Record\Record` and `Consumer\ConsumerRecord` gained two constructor
+  parameters**, `?int $timestamp = null` and `int $timestampType = TimestampType::NO_TIMESTAMP_TYPE`,
+  at the end of their signatures; `Producer\RecordMetadata::$timestamp` is filled now (the create
+  time of the batch, or the `LogAppendTime` the broker answered) where the 0.9 line left it `null`.
+- **Breaking: `Client::joinGroup()` takes a `?int $rebalanceTimeoutMs = null`** as its last
+  argument (`null` = the configured `max.poll.interval.ms`), and `Client` sends Produce v2, Fetch
+  v3, Offsets v1, Metadata v2, OffsetFetch v2 and JoinGroup v1 instead of the 0.9 versions.
 - **The protocol document is `docs/protocol/0.10.2.md`** and describes Kafka 0.10.2.2: the api-key
-  table is now the literal ApiVersions answer of the broker, the framing, error-code, cluster
-  readiness and broker-quirks sections were re-verified against it, and the new
-  "ApiVersions API (key 18, v0)" section documents the api. `docs/protocol/0.9.0.md` stays on the
-  `0.9.x` branch.
+  table is the literal ApiVersions answer of the broker, one section per api of the line, the error
+  table runs to 44, and "Broker quirks and observations" collects every behaviour the integration
+  suite established. `docs/protocol/0.9.0.md` stays on the `0.9.x` branch.
 - **An api the broker does not serve now closes the connection.** A 0.9.0.1 broker dropped a frame
   it could not parse and kept the connection open; a 0.10.2.2 broker closes the socket, for an
   unknown api key, for a version it does not serve, and for a body that does not match the schema
@@ -73,17 +149,21 @@ byte in [docs/protocol/0.10.2.md](docs/protocol/0.10.2.md).
   frame is nevertheless still accepted, because key 7 is the last api the broker parses with a
   Scala class that never looks at the version. `ControlledShutdownRequestV0` is kept for the
   `0.8.x`/`0.9.x` vectors, and `AdminClient::controlledShutdown()` keeps sending v1.
-- **A group whose last member leaves survives as `Empty`.**
-  `Protocol\Data\DescribeGroupResponseMetadata::STATE_EMPTY` is the fifth group state, added by
-  Kafka 0.10.1: the coordinator keeps the group with its committed offsets until
-  `offsets.retention.minutes` expires them, still lists it in ListGroups, and answers JoinGroup
-  for it so that a new member can take it over. A 0.9.0.1 coordinator dropped such a group at once
-  and answered `Dead`, which made "everybody left" and "never existed" indistinguishable.
+- **A group whose last member leaves survives as `Empty`**, keeps its committed offsets until
+  `offsets.retention.minutes` expires them, is still listed by ListGroups and answers JoinGroup so
+  that a new member can take it over. A 0.9.0.1 coordinator dropped such a group at once and
+  answered `Dead`, which made "everybody left" and "never existed" indistinguishable.
 - **A broker without topics answers Metadata with its brokers.** The empty broker array of a fresh
   0.8/0.9 cluster is gone; an empty broker array still means "not ready, retry" and the readiness
   probe of the test suite is unchanged, but it is no longer the normal state of a new cluster.
-- **README and CHANGELOG** describe the 0.10.x line, and the compatibility matrix of the README
-  lists what a 0.10.2.2 broker serves together with the state of this branch.
+- **`AdminClient::findController()` reads the `controller_id` of a Metadata v1/v2 answer** instead
+  of probing every broker with a request only the controller answers.
+- **`Consumer\RecordTooLargeException` cannot be raised by a Fetch v3 answer any more**: the broker
+  returns the first message of a partition whole even when it exceeds the limits (KIP-74), so
+  `FetchResponsePartition::isSingleMessageTooLarge()` is only asked for the versions 0 to 2.
+- **README, CHANGELOG and the examples describe the 0.10.x line**, with a compatibility matrix per
+  api and version over the three protocol branches, a configuration reference for every option, and
+  the four listeners of the integration suite.
 
 Unreleased — the 0.9.x line
 ---------------------------

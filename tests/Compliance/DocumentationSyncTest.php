@@ -14,6 +14,9 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Compliance;
 
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 
 /**
  * Keeps `docs/protocol/0.10.2.md` and `docs/protocol/vectors/*.json` from drifting apart.
@@ -29,6 +32,17 @@ final class DocumentationSyncTest extends TestCase
      * Matches an annotated dump: the marker comment and the fenced block that follows it
      */
     private const string VECTOR_PATTERN = '/<!-- vector: (?P<id>[a-z0-9.\-]+) -->\R```\R(?P<dump>.*?)\R```/s';
+
+    /**
+     * Matches a section reference of a docblock: the name of the protocol document, `, section` or `, sections`,
+     * and the rest of the line, which is where the quoted heading - or the two of an `"a" and "b"` reference - sits
+     */
+    private const string SECTION_REFERENCE_PATTERN = '/0\.10\.2\.md, sections? (?P<sections>.+)$/m';
+
+    /**
+     * Directories whose PHP files may reference a section of the protocol document
+     */
+    private const array SOURCE_DIRECTORIES = ['src', 'tests', 'examples'];
 
     public function testDocumentAndVectorFilesDescribeTheSameVectors(): void
     {
@@ -70,6 +84,34 @@ final class DocumentationSyncTest extends TestCase
         }
     }
 
+    public function testEverySectionReferenceOfTheSourcesResolvesToAHeading(): void
+    {
+        $headings = self::headings();
+        $missing  = [];
+
+        foreach (self::phpFiles() as $file) {
+            $source = (string) file_get_contents($file);
+            if (preg_match_all(self::SECTION_REFERENCE_PATTERN, $source, $references) === 0) {
+                continue;
+            }
+
+            foreach ($references['sections'] as $reference) {
+                preg_match_all('/"(?P<name>[^"]+)"/', $reference, $names);
+                foreach ($names['name'] as $name) {
+                    if (!in_array($name, $headings, true)) {
+                        $missing[] = substr($file, strlen(dirname(__DIR__, 2)) + 1) . ': "' . $name . '"';
+                    }
+                }
+            }
+        }
+
+        self::assertSame(
+            [],
+            array_values(array_unique($missing)),
+            'A docblock references a section that the protocol document does not have as a heading'
+        );
+    }
+
     public function testEveryDocumentedVectorIdIsUnique(): void
     {
         preg_match_all(self::VECTOR_PATTERN, self::document(), $matches);
@@ -109,6 +151,42 @@ final class DocumentationSyncTest extends TestCase
         self::assertMatchesRegularExpression('/^([0-9a-f]{2})+$/', $hex, 'A documented dump is not valid hex');
 
         return $hex;
+    }
+
+    /**
+     * Returns every `##`/`###` heading of the protocol document
+     *
+     * @return list<string>
+     */
+    private static function headings(): array
+    {
+        preg_match_all('/^#{2,3} (?P<heading>.+)$/m', self::document(), $matches);
+
+        return array_map(trim(...), $matches['heading']);
+    }
+
+    /**
+     * Returns every PHP file of the package that a section reference can live in
+     *
+     * @return list<string>
+     */
+    private static function phpFiles(): array
+    {
+        $files = [];
+        foreach (self::SOURCE_DIRECTORIES as $directory) {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator(dirname(__DIR__, 2) . '/' . $directory)
+            );
+            foreach ($iterator as $file) {
+                assert($file instanceof SplFileInfo);
+                if ($file->isFile() && $file->getExtension() === 'php') {
+                    $files[] = $file->getPathname();
+                }
+            }
+        }
+        sort($files);
+
+        return $files;
     }
 
     /**

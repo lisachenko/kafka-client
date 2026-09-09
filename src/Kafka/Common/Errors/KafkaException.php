@@ -24,9 +24,12 @@ use RuntimeException;
  * client language.
  *
  * The constant names are those of the later protocol lines so that the cascade merge stays small; the codes and the
- * set of codes are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 0.9.0.1, which ends
- * at 31. Code 13 was StaleLeaderEpochCode in the 0.8 line and is NETWORK_EXCEPTION here; NO_ERROR is not part of the
- * mapping. Codes 32 and above (INVALID_TIMESTAMP, the SASL codes, UNSUPPORTED_VERSION) arrived with Kafka 0.10.
+ * set of codes are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 0.10.2.2, which
+ * ends at 44: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
+ * 0.10.0, 36-42 (the CreateTopics codes, NOT_CONTROLLER and INVALID_REQUEST) with 0.10.1 and 43-44
+ * (UNSUPPORTED_FOR_MESSAGE_FORMAT, POLICY_VIOLATION) with 0.10.2. Code 13 was StaleLeaderEpochCode in the 0.8 line
+ * and is NETWORK_EXCEPTION here; NO_ERROR is not part of the mapping. Codes above 44 arrived with Kafka 0.11 and
+ * are answered with {@see \Protocol\Kafka\Common\Errors\UnknownErrorException} by {@see self::fromCode()}.
  */
 abstract class KafkaException extends RuntimeException
 {

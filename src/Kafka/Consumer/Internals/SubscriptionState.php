@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * Bookkeeping of the partitions a consumer works on: which ones are assigned, where it reads them and which of
  * them are paused.
  *
- * Kafka 0.9.0.1 knows two ways to get partitions, and they are mutually exclusive, exactly as in the Java client:
+ * Kafka 0.10.2.2 knows two ways to get partitions, and they are mutually exclusive, exactly as in the Java client:
  * {@see assignFromUser()} for the partitions an application picked itself ({@see \Protocol\Kafka\Consumer\KafkaConsumer::assign()})
  * and {@see subscribeByTopics()} plus {@see assignFromSubscribed()} for the ones the group coordinator handed out
  * through JoinGroup/SyncGroup ({@see \Protocol\Kafka\Consumer\KafkaConsumer::subscribe()}). The pattern subscription

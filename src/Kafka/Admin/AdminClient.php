@@ -59,7 +59,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 /**
  * Kafka low-level administrative client
  *
- * This is the 0.9.0.1 port of the `AdminClient` of the `main` branch: the methods that a 0.9 broker can serve keep
+ * This is the 0.10.2.2 port of the `AdminClient` of the `main` branch: the methods a 0.10 broker can serve keep
  * their names and signatures, the ones it cannot serve are absent, and the APIs that only the older lines have a use
  * for were added next to them.
  *
@@ -417,7 +417,7 @@ class AdminClient
      *
      * The request goes to the coordinator of the group ({@see self::findCoordinator()}), the only broker that knows
      * anything about it. The state is one of `PreparingRebalance`, `AwaitingSync`, `Stable` and `Dead`
-     * (`kafka/coordinator/GroupMetadata.scala` @ 0.9.0.1); a group the coordinator has never heard of, or that has
+     * (`kafka/coordinator/GroupMetadata.scala` @ 0.10.2.2); a group the coordinator has never heard of, or that has
      * lost its last member, is NOT an error - it is answered with the error code 0, the state `Dead`, an empty
      * protocol type and no members.
      *
@@ -497,7 +497,7 @@ class AdminClient
      * @param int $brokerId Identifier of the broker to shut down
      *
      * @throws \Protocol\Kafka\Common\Errors\BrokerNotAvailableException If the controller does not know that
-     *         broker id - a 0.9.0.1 broker answers the error code 8 for it, where 0.8.2.2 answered -1, see
+     *         broker id - a 0.10.2.2 broker answers the error code 8 for it, where 0.8.2.2 answered -1, see
      *         {@see ControlledShutdownRequest}
      *
      * @return list<ControlledShutdownResponsePartition> Partitions that still live on the broker, empty when it is

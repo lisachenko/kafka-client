@@ -18,7 +18,7 @@ use Exception;
 /**
  * The group member's supported protocols are incompatible with those of existing members.
  *
- * Listed as INCONSISTENT_PARTITION_ASSIGNMENT_STRATEGY in the comments of kafka/common/ErrorMapping.scala @ 0.9.0.1.
+ * Listed as INCONSISTENT_PARTITION_ASSIGNMENT_STRATEGY in the comments of kafka/common/ErrorMapping.scala @ 0.10.2.2.
  */
 class InconsistentGroupProtocolException extends KafkaException implements ServerExceptionInterface
 {

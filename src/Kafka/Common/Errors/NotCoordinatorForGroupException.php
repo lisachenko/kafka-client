@@ -18,7 +18,7 @@ use Exception;
 /**
  * This is not the correct coordinator for this group.
  *
- * Named NotCoordinatorForConsumerCode (16) in kafka/common/ErrorMapping.scala @ 0.9.0.1.
+ * Named NotCoordinatorForConsumerCode (16) in kafka/common/ErrorMapping.scala @ 0.10.2.2.
  */
 class NotCoordinatorForGroupException extends KafkaException implements RetriableException, ServerExceptionInterface
 {

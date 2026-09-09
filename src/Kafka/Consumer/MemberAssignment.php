@@ -32,10 +32,10 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  *
  * The leader packs one of these per member into the `member_assignment` field of its SyncGroup request and every
  * member gets its own back in the SyncGroup response. A member that the assignor left without partitions receives
- * a structure with an empty topic array, not an empty byte array - this is what a Kafka 0.9.0.1 broker relays when
+ * a structure with an empty topic array, not an empty byte array - this is what a Kafka 0.10.2.2 broker relays when
  * a group has more members than the subscribed topics have partitions.
  *
- * Kafka 0.9.0.1 knows exactly one version, {@see MemberAssignment::VERSION}, and the built-in assignors send the
+ * Kafka 0.10.2.2 knows exactly one version, {@see MemberAssignment::VERSION}, and the built-in assignors send the
  * empty `UserData` that the Java client sends.
  *
  * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 class MemberAssignment implements BinarySchemaInterface
 {
     /**
-     * Version of the consumer group protocol that Kafka 0.9.0.1 speaks
+     * Version of the consumer group protocol that Kafka 0.10.2.2 speaks
      */
     public const int VERSION = 0;
 
@@ -69,7 +69,7 @@ class MemberAssignment implements BinarySchemaInterface
      * An entry of the assignment is either the list of partition ids of that topic or an already built DTO.
      *
      * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Assigned partitions per topic
-     * @param int                                         $version         Version of the structure, 0 in 0.9.0.1
+     * @param int                                         $version         Version of the structure, 0 in 0.10.2.2
      * @param string|null                                 $userData        Data of the assignor for the member
      */
     public function __construct(array $topicPartitions = [], int $version = self::VERSION, ?string $userData = '')

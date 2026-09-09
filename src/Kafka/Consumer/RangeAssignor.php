@@ -16,7 +16,7 @@ namespace Protocol\Kafka\Consumer;
 use function count;
 
 /**
- * The range assignor works on a per-topic basis and is the default of the Java client of Kafka 0.9.0.1.
+ * The range assignor works on a per-topic basis and is the default of the Java client of Kafka 0.10.2.2.
  *
  * For each topic it lays out the available partitions in numeric order and the members that subscribe to it in
  * lexicographic order, then divides the number of partitions by the number of those members to get the number of

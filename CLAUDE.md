@@ -32,6 +32,11 @@ lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**)
   `KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 vendor/bin/phpunit --testsuite integration` (whole suite).
   `composer check` runs the first three. `find src tests examples -name '*.php' -print0 | xargs -0 -n1 php -l`.
 - phpstan runs as a phar at `vendor/bin/phpstan`; call it with `php vendor/bin/phpstan ...`.
+- **In the sandbox, run phpunit as `php -d opcache.jit=0 vendor/bin/phpunit`.** Its PHP 8.5 CLI enables the tracing
+  JIT by default and the JIT miscompiles the pure-PHP LZ4 decoder once its functions get hot, which shows up as an
+  order-dependent `CorruptMessageException` in `Lz4Test` and in the lz4 message-format vectors (0 of 200 round trips
+  fail with the JIT off, most of them fail with it on). CI runs PHP 8.4 without opcache in the CLI and is
+  unaffected, so this is a sandbox workaround, not a code defect.
 
 ### Installing dependencies in a sandbox that blocks GitHub downloads (Claude Code remote sessions)
 

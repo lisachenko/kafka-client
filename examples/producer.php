@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Produces a handful of records to a topic of a Kafka 0.9.0.1 cluster.
+ * Produces a handful of records to a topic of a Kafka 0.10.2.2 cluster.
  *
  * Run it against the broker of the development environment:
  *
@@ -88,8 +88,12 @@ $producer = new KafkaProducer([
     ProducerConfig::BATCH_SIZE => 16384,
     ProducerConfig::LINGER_MS  => 100,
 
-    // Compress every batch as a whole; 'none' and 'snappy' are the other supported values
+    // Compress every batch as a whole; 'none', 'snappy' and - since Kafka 0.10.0 - 'lz4' are the other values
     ProducerConfig::COMPRESSION_TYPE => ProducerConfig::COMPRESSION_TYPE_GZIP,
+
+    // The message format a batch is written in: '0.10.0' and above write format v1 with a timestamp per record,
+    // '0.9.0' and below the format without one. Use the format of the topic you produce to.
+    ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
 
     // Send a batch again when the leader of its partition moved while it was in flight
     ProducerConfig::RETRIES          => 3,
@@ -103,6 +107,10 @@ foreach ($producer->partitionsFor($topic) as $partitionMetadata) {
 
 $onSuccess = static function (RecordMetadata $metadata): void {
     echo "  stored {$metadata}\n";
+
+    // Message format v1 (Kafka 0.10.0) gave every record a timestamp: this is the one the log holds - the create
+    // time this producer stamped, or the broker's clock for a topic with message.timestamp.type=LogAppendTime
+    echo "    the log holds the timestamp {$metadata->timestamp}\n";
 
     // A broker with a `producer_byte_rate` quota for this client id delays its answer instead of rejecting the
     // batch, and reports that delay in the Produce v1 response; without a quota this is always 0
@@ -139,5 +147,5 @@ try {
 }
 
 echo "Done. Read the records back with the console consumer of the broker container:\n";
-echo "  docker exec kafka-0-9-0-1 /opt/kafka/bin/kafka-console-consumer.sh --zookeeper localhost:2181"
+echo "  docker exec kafka-0-10-2-2 /opt/kafka/bin/kafka-console-consumer.sh --zookeeper localhost:2181"
     . " --topic {$topic} --from-beginning --max-messages 12\n";

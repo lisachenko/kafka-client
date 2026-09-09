@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * </pre>
  *
  * The coordinator fills this array **only in the answer it sends to the leader** of the group; every other member
- * receives an empty array (`GroupCoordinator.doJoinGroup` @ 0.9.0.1). The metadata is the one the member sent for
+ * receives an empty array (`GroupCoordinator.doJoinGroup` @ 0.10.2.2). The metadata is the one the member sent for
  * the protocol the coordinator selected, and it is opaque here.
  *
  * @see docs/protocol/0.10.2.md, section "JoinGroup API (key 11, v0 and v1)"
