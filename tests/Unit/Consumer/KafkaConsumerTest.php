@@ -1101,6 +1101,21 @@ final class KafkaConsumerTest extends TestCase
         $consumer->subscribe([self::TOPIC]);
     }
 
+    public function testSubscribeRefusesARequestTimeoutThatIsNotAboveTheMaxPollInterval(): void
+    {
+        // A JoinGroup blocks for up to the rebalance timeout, which is what max.poll.interval.ms is sent as
+        $consumer = $this->consumer(new FakeClient(), [
+            ConsumerConfig::ENABLE_AUTO_COMMIT   => false,
+            ConsumerConfig::REQUEST_TIMEOUT_MS   => 40000,
+            ConsumerConfig::SESSION_TIMEOUT_MS   => 10000,
+            ConsumerConfig::MAX_POLL_INTERVAL_MS => 300000,
+        ]);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/max\.poll\.interval\.ms/');
+        $consumer->subscribe([self::TOPIC]);
+    }
+
     public function testTheDefaultConfigurationLetsAConsumerSubscribe(): void
     {
         $configuration = ConsumerConfig::getDefaultConfiguration();
@@ -1109,6 +1124,33 @@ final class KafkaConsumerTest extends TestCase
             $configuration[ConsumerConfig::SESSION_TIMEOUT_MS],
             $configuration[ConsumerConfig::REQUEST_TIMEOUT_MS],
             'a JoinGroup that waits for a whole rebalance must not run into the socket timeout'
+        );
+        self::assertGreaterThan(
+            $configuration[ConsumerConfig::MAX_POLL_INTERVAL_MS],
+            $configuration[ConsumerConfig::REQUEST_TIMEOUT_MS],
+            'the coordinator holds a JoinGroup for a whole rebalance timeout, i.e. max.poll.interval.ms'
+        );
+        self::assertSame(300000, $configuration[ConsumerConfig::MAX_POLL_INTERVAL_MS], 'as in the Java consumer');
+        self::assertSame(10000, $configuration[ConsumerConfig::SESSION_TIMEOUT_MS], 'as in the Java consumer');
+    }
+
+    public function testTheJoinGroupOfAPollCarriesTheConfiguredMaxPollInterval(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT   => false,
+            ConsumerConfig::MAX_POLL_INTERVAL_MS => 45000,
+            ConsumerConfig::REQUEST_TIMEOUT_MS   => 50000,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        self::assertSame(
+            45000,
+            $client->joins[0]['rebalanceTimeout'],
+            'the consumer sends max.poll.interval.ms as the rebalance_timeout of its JoinGroup v1'
         );
     }
 

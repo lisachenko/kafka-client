@@ -143,7 +143,7 @@ final class AdminApiTest extends IntegrationTestCase
         self::assertSame([$topic], array_keys($topics));
         foreach ($topics[$topic]->partitions as $partition) {
             self::assertSame(-1, $partition->offset, 'an uncommitted partition comes back with the offset -1');
-            self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, 'version 1 reports no error for it');
+            self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, 'the kafka storage reports no error');
         }
     }
 

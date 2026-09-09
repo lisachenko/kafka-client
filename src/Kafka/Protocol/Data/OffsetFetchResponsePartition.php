@@ -28,9 +28,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * </pre>
  *
  * A topic-partition without a committed offset is not an error: the broker answers with the offset `-1`, empty
- * metadata and the error code 0 (v1); v0 reads from ZooKeeper and reports 3 (UnknownTopicOrPartition) instead.
+ * metadata and the error code 0 (v1 and v2); v0 reads from ZooKeeper and reports 3 (UnknownTopicOrPartition)
+ * instead.
  *
- * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0 and v1)"
+ * The metadata is a `NULLABLE_STRING` on the wire, but a 0.10.2.2 broker never sends `null` for it: an offset that
+ * was committed without metadata is stored as `OffsetMetadata.NoMetadata`, the empty string, and comes back as
+ * `00 00`. A capture from an older broker can still carry `ff ff`, so both have to be handled.
+ *
+ * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 class OffsetFetchResponsePartition implements BinarySchemaInterface
 {

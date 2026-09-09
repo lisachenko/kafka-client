@@ -79,6 +79,15 @@ final class ConsumerGroupTest extends IntegrationTestCase
     private const int SESSION_TIMEOUT_MS = 6000;
 
     /**
+     * Rebalance timeout of the members here, sent as the `rebalance_timeout` of their JoinGroup v1 requests
+     *
+     * The coordinator waits this long for a member to rejoin a rebalance, so it bounds every JoinGroup and has to
+     * stay below {@see self::REQUEST_TIMEOUT_MS}; the default of `max.poll.interval.ms` is five minutes, which a
+     * test can not wait for.
+     */
+    private const int MAX_POLL_INTERVAL_MS = 10000;
+
+    /**
      * Read timeout of the sockets, which has to cover a JoinGroup that waits for a whole rebalance
      */
     private const int REQUEST_TIMEOUT_MS = 30000;
@@ -423,6 +432,7 @@ final class ConsumerGroupTest extends IntegrationTestCase
             'groupId'             => $groupId,
             'strategy'            => $strategy,
             'sessionTimeoutMs'    => self::SESSION_TIMEOUT_MS,
+            'maxPollIntervalMs'   => self::MAX_POLL_INTERVAL_MS,
             'heartbeatIntervalMs' => 500,
             'requestTimeoutMs'    => self::REQUEST_TIMEOUT_MS,
             'durationSeconds'     => 2 * self::REBALANCE_TIMEOUT,
@@ -485,6 +495,7 @@ final class ConsumerGroupTest extends IntegrationTestCase
             ClientConfig::REQUEST_TIMEOUT_MS        => self::REQUEST_TIMEOUT_MS,
 
             ConsumerConfig::SESSION_TIMEOUT_MS      => self::SESSION_TIMEOUT_MS,
+            ConsumerConfig::MAX_POLL_INTERVAL_MS    => self::MAX_POLL_INTERVAL_MS,
             ConsumerConfig::HEARTBEAT_INTERVAL_MS   => 500,
             ConsumerConfig::FETCH_MAX_WAIT_MS       => 250,
             ConsumerConfig::AUTO_OFFSET_RESET       => OffsetResetStrategy::EARLIEST,

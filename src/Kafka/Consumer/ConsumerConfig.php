@@ -23,15 +23,18 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
 /**
  * Consumer config enumeration class
  *
- * Kafka 0.9.0.1 brings the broker-side group management, so the options that drive it exist here: session.timeout.ms,
+ * Kafka 0.9 brought the broker-side group management, so the options that drive it exist here: session.timeout.ms,
  * heartbeat.interval.ms and partition.assignment.strategy, plus offset.retention.ms for the `retention_time` of the
- * OffsetCommit v2 request. What arrived later is absent: rebalance.timeout.ms (JoinGroup v1, Kafka 0.10.1) and
- * isolation.level (the transactional protocol of 0.11). The `offsets.storage` option of the general config
+ * OffsetCommit v2 request. Kafka 0.10.1 added {@see self::MAX_POLL_INTERVAL_MS}, the application-side half of the
+ * `rebalance_timeout` that a JoinGroup v1 request carries. What arrived later is absent: isolation.level, the option
+ * of the transactional protocol of 0.11. The `offsets.storage` option of the general config
  * ({@see GeneralConfig::OFFSETS_STORAGE}) still selects where the committed offsets live (OffsetCommit v0 vs v2).
  *
- * A consumer overrides one option of the general config: `request.timeout.ms` defaults to 40000 instead of 30000,
- * as it does in the Java consumer of 0.9.0.1, because it has to be larger than `session.timeout.ms` - the socket
- * would otherwise time out on a JoinGroup that the coordinator holds until the rebalance of the group is over.
+ * A consumer overrides one option of the general config: `request.timeout.ms` defaults to 305000 instead of 30000,
+ * as it does in the Java consumer of 0.10.1 and above ("chosen to be higher than the default of
+ * max.poll.interval.ms", `ConsumerConfig.java` @ 0.10.2.2), because it has to be larger than both
+ * `session.timeout.ms` and `max.poll.interval.ms`: the socket would otherwise time out on a JoinGroup that the
+ * coordinator holds until the rebalance of the group is over, and a rebalance may last a whole rebalance timeout.
  */
 final class ConsumerConfig extends GeneralConfig
 {
@@ -42,10 +45,11 @@ final class ConsumerConfig extends GeneralConfig
         /* Used configs */
         ConsumerConfig::GROUP_ID                      => '',
         ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => 'range',
-        // Larger than SESSION_TIMEOUT_MS below, as in the Java consumer of 0.9.0.1: the coordinator answers a
-        // JoinGroup only once the whole rebalance is over, which can take a full session timeout
-        ConsumerConfig::REQUEST_TIMEOUT_MS            => 40000,
-        ConsumerConfig::SESSION_TIMEOUT_MS            => 30000,
+        // Larger than both timeouts below, as in the Java consumer of 0.10.1 and above: the coordinator answers a
+        // JoinGroup only once the whole rebalance is over, which can take a full rebalance timeout
+        ConsumerConfig::REQUEST_TIMEOUT_MS            => 305000,
+        ConsumerConfig::SESSION_TIMEOUT_MS            => 10000,
+        ConsumerConfig::MAX_POLL_INTERVAL_MS          => ConsumerConfig::DEFAULT_MAX_POLL_INTERVAL_MS,
         ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 3000,
         ConsumerConfig::FETCH_MIN_BYTES               => 1,
         ConsumerConfig::FETCH_MAX_WAIT_MS             => 500,
@@ -89,8 +93,39 @@ final class ConsumerConfig extends GeneralConfig
      * max.poll.records for another option to control the processing time in the poll loop. Note that the value must be
      * in the allowable range as configured in the broker configuration by group.min.session.timeout.ms and
      * group.max.session.timeout.ms (error 26 InvalidSessionTimeout otherwise).
+     *
+     * The default is 10000, which is the default of the Java consumer since Kafka 0.10.1: what an application may
+     * spend between two poll() calls is bounded by {@see self::MAX_POLL_INTERVAL_MS} from then on, so the session
+     * timeout no longer has to cover the processing of a whole batch and may be short enough to notice a member that
+     * died quickly.
      */
     public const string SESSION_TIMEOUT_MS = 'session.timeout.ms';
+
+    /**
+     * The maximum delay between two invocations of poll() for a consumer that uses the group management.
+     *
+     * The value is sent to the coordinator as the `rebalance_timeout` of a JoinGroup v1 request (Kafka 0.10.1,
+     * KIP-62), which is how long the coordinator waits for **this** member to rejoin a rebalance before it hands its
+     * partitions to somebody else. The Java consumer also leaves the group by itself when the application does not
+     * come back to poll() within this interval, which it can do because its heartbeats are sent from a thread of
+     * their own.
+     *
+     * **This client has no such thread.** PHP is single threaded and the heartbeat is sent from poll(), as it is on
+     * the 0.9 line, so an application that stops polling stops sending heartbeats as well: the coordinator drops the
+     * member when its `session.timeout.ms` expires - not when this interval does - and the next poll() sees the
+     * error code 25 (UnknownMemberId) or 27 (RebalanceInProgress) on its heartbeat and joins the group again. What
+     * this option really controls here is therefore how long the *other* members of the group wait in a rebalance,
+     * and for how long a JoinGroup of this client may block.
+     *
+     * Because a JoinGroup blocks for up to this long, `request.timeout.ms` has to be larger than it, which is what
+     * {@see KafkaConsumer::subscribe()} refuses a configuration over.
+     */
+    public const string MAX_POLL_INTERVAL_MS = 'max.poll.interval.ms';
+
+    /**
+     * Default of {@see self::MAX_POLL_INTERVAL_MS}: five minutes, as in the Java consumer of 0.10.1 and above
+     */
+    public const int DEFAULT_MAX_POLL_INTERVAL_MS = 300000;
 
     /**
      * The expected time between heartbeats to the consumer coordinator when using Kafka's group management facilities.

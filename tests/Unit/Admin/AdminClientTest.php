@@ -70,6 +70,11 @@ final class AdminClientTest extends TestCase
     private const string GROUP = 't10-vectors-group';
 
     /**
+     * Name of the topic the OffsetFetch v2 vectors were recorded for, on the 0.10.2.2 container
+     */
+    private const string VECTOR_TOPIC = 't6-vectors';
+
+    /**
      * Name of the consumer group that the DescribeGroups and ListGroups vectors were recorded for
      */
     private const string ADMIN_GROUP = 't4-vectors-group';
@@ -196,25 +201,58 @@ final class AdminClientTest extends TestCase
     {
         $broker = $this->scriptBroker(
             self::vector('group-coordinator', 'groupcoordinator.response.v0'),
-            self::vector('offset-fetch', 'offsetfetch.response.v1')
+            self::vector('offset-fetch', 'offsetfetch.response.v2')
         );
 
-        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::TOPIC => [0]]);
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [0]]);
 
-        self::assertSame([self::TOPIC], array_keys($topics));
-        self::assertSame(1, $topics[self::TOPIC]->partitions[0]->offset);
-        self::assertSame(0, $topics[self::TOPIC]->partitions[0]->errorCode);
+        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
+        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+        self::assertSame(0, $topics[self::VECTOR_TOPIC]->partitions[0]->errorCode);
 
         [$lookupId, $fetchId] = $broker->getReceivedCorrelationIds();
         self::assertSame(
             [
                 self::requestFrame(new GroupCoordinatorRequest(self::GROUP, 't10', $lookupId)),
-                self::requestFrame(new OffsetFetchRequest(self::GROUP, [self::TOPIC => [0]], 't10', $fetchId)),
+                self::requestFrame(new OffsetFetchRequest(self::GROUP, [self::VECTOR_TOPIC => [0]], 't10', $fetchId)),
             ],
             $broker->getReceivedFrames(),
-            'the coordinator lookup comes first, the OffsetFetch v1 goes to the coordinator it named'
+            'the coordinator lookup comes first, the OffsetFetch v2 goes to the coordinator it named'
         );
         self::assertNotSame($lookupId, $fetchId, 'every request carries its own correlation id');
+    }
+
+    public function testListGroupOffsetsAsksForEveryTopicOfTheGroupWithoutPartitions(): void
+    {
+        $broker = $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('offset-fetch', 'offsetfetch.response.v2.all-topics')
+        );
+
+        // main's shape: the group alone, which the nullable topic array of the version 2 makes possible
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP);
+
+        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
+        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+
+        [, $fetchId] = $broker->getReceivedCorrelationIds();
+        self::assertSame(
+            self::requestFrame(new OffsetFetchRequest(self::GROUP, null, 't10', $fetchId)),
+            $broker->getReceivedFrames()[1],
+            'the topic array of the request is the null one, ff ff ff ff'
+        );
+    }
+
+    public function testListGroupOffsetsReportsTheGroupLevelErrorOfVersionTwo(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('offset-fetch', 'offsetfetch.response.v2.group-error')
+        );
+
+        $this->expectException(NotCoordinatorForGroupException::class);
+
+        $this->adminClient()->listGroupOffsets(self::GROUP);
     }
 
     public function testListGroupOffsetsAcceptsAPartitionThatWasNeverCommitted(): void

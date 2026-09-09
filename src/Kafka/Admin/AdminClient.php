@@ -52,6 +52,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 
@@ -283,30 +284,37 @@ class AdminClient
     }
 
     /**
-     * Lists the committed offsets of a consumer group for the given topic partitions
+     * Lists the committed offsets of a consumer group, of the given topic partitions or of every topic it committed
      *
-     * The 0.8 OffsetFetch api has no nullable topic array - the "give me every topic of this group" request only
-     * arrived with version 2 in Kafka 0.9 - so the partitions this method reads have to be named explicitly.
+     * `$topicPartitions` of **null** - the default, and the shape this method has on the `main` branch - asks the
+     * coordinator for every topic-partition the group has a committed offset for. That is what the nullable topic
+     * array of the version 2 of the api (Kafka 0.10.2, KIP-88) made possible; an **empty** iterable is a different
+     * request that names no topic at all and comes back empty.
      *
      * The version of the request follows the `offsets.storage` option: `kafka` (the default) reads the offsets that
-     * version 1 stored in the `__consumer_offsets` topic and has to be sent to the coordinator of the group, while
-     * `zookeeper` reads with version 0 from ZooKeeper, which every broker of the cluster can answer.
+     * version 2 stored in the `__consumer_offsets` topic and has to be sent to the coordinator of the group, while
+     * `zookeeper` reads with version 0 from ZooKeeper, which every broker of the cluster can answer - and which has
+     * no nullable topic array, so it refuses a null with an
+     * {@see \Protocol\Kafka\Common\Errors\UnsupportedVersionException}.
      *
-     * A topic-partition without a committed offset is not an error: version 1 answers it with the offset -1 and the
+     * A topic-partition without a committed offset is not an error: version 2 answers it with the offset -1 and the
      * error code 0, version 0 with the offset -1 and the error code 3 (UnknownTopicOrPartition). Both are returned
-     * as they are, any other error code is thrown.
+     * as they are, any other error code is thrown - including the group-level error code that version 2 appends
+     * after the topics, which reports that this broker is not the coordinator of the group (16), that it is still
+     * loading its offsets (14) or that the group may not be read (30).
      *
-     * @param string                                            $groupId         Name of the consumer group
-     * @param array<string, list<int>>|iterable<TopicPartition> $topicPartitions Partitions to read the offsets of
+     * @param string                                                 $groupId         Name of the consumer group
+     * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Partitions to read the offsets
+     *        of, null for every topic-partition of the group
      *
      * @throws \Protocol\Kafka\Common\Errors\GroupLoadInProgressException If the coordinator is still loading the offsets
      * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If the group moved to another coordinator
      *
      * @return array<string, OffsetFetchResponseTopic> Committed offsets, indexed by the topic name
      */
-    public function listGroupOffsets(string $groupId, iterable $topicPartitions): array
+    public function listGroupOffsets(string $groupId, ?iterable $topicPartitions = null): array
     {
-        $partitions    = self::normalizeTopicPartitions($topicPartitions);
+        $partitions    = $topicPartitions === null ? null : self::normalizeTopicPartitions($topicPartitions);
         $isInKafka     = $this->isOffsetStorageKafka();
         $createRequest = fn(int $correlationId): OffsetFetchRequest => $isInKafka
             ? new OffsetFetchRequest($groupId, $partitions, $this->clientId(), $correlationId)
@@ -314,7 +322,7 @@ class AdminClient
 
         /** @var OffsetFetchResponse $response */
         $response = $isInKafka
-            // Version 1 reads the offsets out of __consumer_offsets, which only the coordinator of the group serves
+            // Version 2 reads the offsets out of __consumer_offsets, which only the coordinator of the group serves
             ? $this->sendTo(
                 $this->findCoordinator($groupId)->getConnection($this->configuration),
                 $createRequest,
@@ -322,7 +330,11 @@ class AdminClient
                 ['groupId' => $groupId]
             )
             // Version 0 reads them from ZooKeeper, which every broker of the cluster can answer
-            : $this->sendAnyNode($createRequest, OffsetFetchResponse::class);
+            : $this->sendAnyNode($createRequest, OffsetFetchResponseV0::class);
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
+        }
 
         foreach ($response->topics as $topic => $topicResponse) {
             /** @var OffsetFetchResponsePartition $partition */

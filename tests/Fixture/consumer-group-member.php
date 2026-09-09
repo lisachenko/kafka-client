@@ -54,6 +54,8 @@ $consumer = new KafkaConsumer([
     ConsumerConfig::GROUP_ID                      => (string) $options['groupId'],
     ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => (string) ($options['strategy'] ?? 'range'),
     ConsumerConfig::SESSION_TIMEOUT_MS            => (int) ($options['sessionTimeoutMs'] ?? 6000),
+    // The `rebalance_timeout` of the JoinGroup v1 request, which request.timeout.ms above has to exceed
+    ConsumerConfig::MAX_POLL_INTERVAL_MS          => (int) ($options['maxPollIntervalMs'] ?? 10000),
     ConsumerConfig::HEARTBEAT_INTERVAL_MS         => (int) ($options['heartbeatIntervalMs'] ?? 1000),
     ConsumerConfig::FETCH_MAX_WAIT_MS             => 250,
     ConsumerConfig::AUTO_OFFSET_RESET             => OffsetResetStrategy::EARLIEST,

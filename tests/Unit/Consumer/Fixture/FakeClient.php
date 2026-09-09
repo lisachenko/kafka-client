@@ -321,8 +321,13 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitions): array
+    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, ?array $topicPartitions): array
     {
+        if ($topicPartitions === null) {
+            // Version 2 of the api answers every topic-partition the group committed an offset for
+            return $this->committedOffsets[$groupId] ?? [];
+        }
+
         $result = [];
         foreach ($topicPartitions as $topic => $partitions) {
             $partitionIds = $partitions instanceof PartitionsForTopic ? $partitions->partitions : $partitions;
@@ -375,13 +380,15 @@ final class FakeClient extends Client
         string $groupId,
         string $memberId,
         string $protocolType,
-        array $groupProtocols
+        array $groupProtocols,
+        ?int $rebalanceTimeoutMs = null
     ): JoinGroupResponse {
         $this->joins[] = [
-            'groupId'      => $groupId,
-            'memberId'     => $memberId,
-            'protocolType' => $protocolType,
-            'protocols'    => $groupProtocols,
+            'groupId'          => $groupId,
+            'memberId'         => $memberId,
+            'protocolType'     => $protocolType,
+            'protocols'        => $groupProtocols,
+            'rebalanceTimeout' => $rebalanceTimeoutMs,
         ];
 
         $failure = array_shift($this->joinFailures);
