@@ -39,6 +39,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
+use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
@@ -72,6 +73,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
@@ -355,24 +357,64 @@ class Client
     }
 
     /**
-     * Requests all offsets for the list of topic partitions
+     * Requests one offset for each of the given topic partitions
      *
-     * This query will be made over the current cluster by checking the metadata for each topic partition
+     * This query will be made over the current cluster by checking the metadata for each topic partition; the
+     * Offsets api is served by the leader of a partition alone.
      *
-     * @param array<string, array<int, int>> $topicPartitions Target times of each topic partition
+     * A target time is {@see OffsetsRequest::LATEST} for the log end offset - the offset the next produced message
+     * will get - {@see OffsetsRequest::EARLIEST} for the first offset that is still on disk, or a timestamp in
+     * milliseconds, which version 1 of the api (Kafka 0.10.1) answers with the offset of the first message whose own
+     * timestamp is at or after it. A timestamp that no message of a partition matches is not an error: the offset of
+     * that partition is then {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1. Use
+     * {@see self::fetchTopicPartitionOffsetsForTimes()} to receive the timestamp of the message that was found
+     * together with its offset.
+     *
+     * @param array<string, array<int, int>> $topicPartitionTimestamps Target times of each topic partition
      *
      * @return array<string, array<int, int>> Array in the form: [topic => [partition => offset]]
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
      */
-    public function fetchTopicPartitionOffsets(array $topicPartitions): array
+    public function fetchTopicPartitionOffsets(array $topicPartitionTimestamps): array
+    {
+        $found = $this->fetchTopicPartitionOffsetsForTimes($topicPartitionTimestamps);
+
+        $result = [];
+        foreach ($found as $topic => $partitionOffsets) {
+            foreach ($partitionOffsets as $partitionId => $offsetAndTimestamp) {
+                $result[$topic][$partitionId] = $offsetAndTimestamp?->offset ?? OffsetsResponsePartition::UNKNOWN_OFFSET;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Looks the offsets of the given topic partitions up and reports the timestamp of every message that was found
+     *
+     * The timestamp-based version 1 of the Offsets api answers each partition with one offset and the timestamp of
+     * the message it points at. A partition whose log holds no message at or after the target time - and every
+     * partition of an empty log - is answered with the error code 0 and the offset -1, which arrives here as `null`.
+     * {@see OffsetsRequest::LATEST} and {@see OffsetsRequest::EARLIEST} always find an offset, and the broker
+     * answers them with the timestamp {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP}, because it does not read
+     * the message the offset points at.
+     *
+     * @param array<string, array<int, int>> $topicPartitionTimestamps Target times of each topic partition
+     *
+     * @return array<string, array<int, OffsetAndTimestamp|null>> [topic => [partition => offset and timestamp]]
+     *
+     * @throws TopicPartitionRequestException If a partition was answered with an error code - which is how the
+     *         `UnsupportedForMessageFormatException` of a topic whose `message.format.version` is older than 0.10.0
+     *         arrives, since such a log has no message timestamps to search
+     */
+    public function fetchTopicPartitionOffsetsForTimes(array $topicPartitionTimestamps): array
     {
         return $this->clusterRequest(
-            $topicPartitions,
+            $topicPartitionTimestamps,
             fn(array $nodeTopicRequest, int $correlationId): OffsetsRequest => new OffsetsRequest(
                 $nodeTopicRequest,
-                1,
-                -1,
+                OffsetsRequest::CONSUMER_REPLICA_ID,
                 $this->configuration[ConsumerConfig::CLIENT_ID],
                 $correlationId
             ),
@@ -388,8 +430,10 @@ class Client
                             );
                             continue;
                         }
-                        // v0 answers with a list of segment offsets, the newest one first
-                        $result[$topic][$partitionId] = $partitionMetadata->offsets[0] ?? 0;
+                        // "No message matches that timestamp" is answered with the offset -1 and no error at all
+                        $result[$topic][$partitionId] = $partitionMetadata->offset === OffsetsResponsePartition::UNKNOWN_OFFSET
+                            ? null
+                            : new OffsetAndTimestamp($partitionMetadata->offset, $partitionMetadata->timestamp);
                     }
                 }
 
@@ -471,22 +515,30 @@ class Client
      * Fetches the offsets for topic partition for the concrete consumer group
      *
      * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}
-     * - OffsetFetch itself did not change in 0.9, its v2 is Kafka 0.10.2. A topic-partition that has never been
-     * committed comes back with the offset -1: as the error code 0 from the `__consumer_offsets` topic (v1), and as
-     * the error code 3 from ZooKeeper (v0).
+     * - `kafka` reads them out of `__consumer_offsets` with the version 2 of the api, `zookeeper` with the version 0.
+     * A topic-partition that has never been committed comes back with the offset -1: as the error code 0 from the
+     * `__consumer_offsets` topic (v1 and v2), and as the error code 3 from ZooKeeper (v0).
      *
-     * @param Node                          $coordinatorNode Current offset coordinator for $groupId
-     * @param string                        $groupId         Name of the group
-     * @param array<string, array<int, int>> $topicPartitions List of topic => partitions for fetching information
+     * `$topicPartitions` of **null** asks the coordinator for every topic-partition the group has a committed offset
+     * for, which the nullable topic array of the version 2 (Kafka 0.10.2) makes possible; an **empty** array names no
+     * topic at all and is answered with an empty result. Reading all topics needs the Kafka storage: version 0 has no
+     * nullable array and refuses it with an {@see Common\Errors\UnsupportedVersionException}.
+     *
+     * @param Node                                $coordinatorNode Current offset coordinator for $groupId
+     * @param string                              $groupId         Name of the group
+     * @param array<string, array<int, int>>|null $topicPartitions List of topic => partitions for fetching
+     *        information, or null for every topic of the group
      *
      * @return array<string, array<int, int>> Committed offsets in the form [topic => [partition => offset]]
      *
      * Exception UnknownTopicOrPartition is ignored and silenced, offset -1 will be returned
      *
      * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitions): array
+    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, ?array $topicPartitions): array
     {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
@@ -495,8 +547,13 @@ class Client
             fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
                 ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId)
                 : new OffsetFetchRequestV0($groupId, $topicPartitions, $clientId, $correlationId),
-            OffsetFetchResponse::class,
+            $this->isOffsetStorageKafka() ? OffsetFetchResponse::class : OffsetFetchResponseV0::class,
             static function (OffsetFetchResponse $response) use ($groupId): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    // Version 2 reports what is wrong with the group itself here, and answers no topic at all
+                    throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
+                }
+
                 $result = [];
                 foreach ($response->topics as $topic => $topicResponse) {
                     /** @var OffsetFetchResponsePartition $partition */
@@ -527,16 +584,20 @@ class Client
      * publishes it with {@see self::syncGroup()}; only that member receives the `members` array.
      *
      * **The coordinator holds this request until the rebalance is over**, i.e. until every known member of the
-     * group has rejoined or has missed its session timeout. `request.timeout.ms` - the read timeout of the socket -
-     * therefore has to be larger than {@see ConsumerConfig::SESSION_TIMEOUT_MS}, which is where the session timeout
-     * of the request comes from.
+     * group has rejoined or has run out of time. How much time each of them gets is the `rebalance_timeout` of the
+     * version 1 request (Kafka 0.10.1): the coordinator waits the **largest** rebalance timeout of the members of
+     * the group, not their session timeout. `request.timeout.ms` - the read timeout of the socket - therefore has to
+     * be larger than both {@see ConsumerConfig::SESSION_TIMEOUT_MS} and {@see ConsumerConfig::MAX_POLL_INTERVAL_MS},
+     * which are where the two timeouts of the request come from.
      *
-     * @param Node                  $coordinatorNode Current group coordinator for $groupId
-     * @param string                $groupId         Name of the group
-     * @param string                $memberId        Name of the group member, empty when it has none yet
-     * @param string                $protocolType    Type of protocol to use for joining, e.g. `consumer`
-     * @param array<string, string> $groupProtocols  Metadata of every supported protocol, by protocol name; opaque
+     * @param Node                  $coordinatorNode   Current group coordinator for $groupId
+     * @param string                $groupId           Name of the group
+     * @param string                $memberId          Name of the group member, empty when it has none yet
+     * @param string                $protocolType      Type of protocol to use for joining, e.g. `consumer`
+     * @param array<string, string> $groupProtocols    Metadata of every supported protocol, by protocol name; opaque
      *        bytes to this api - a `consumer` member sends its `Subscription` here
+     * @param int|null              $rebalanceTimeoutMs How long the coordinator may wait for this member to rejoin a
+     *        rebalance, null for the configured `max.poll.interval.ms`
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -552,16 +613,21 @@ class Client
         string $groupId,
         string $memberId,
         string $protocolType,
-        array $groupProtocols
+        array $groupProtocols,
+        ?int $rebalanceTimeoutMs = null
     ): JoinGroupResponse {
-        $clientId       = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
-        $sessionTimeout = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
+        $clientId         = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+        $sessionTimeout   = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
+        $rebalanceTimeout = $rebalanceTimeoutMs
+            ?? (int) ($this->configuration[ConsumerConfig::MAX_POLL_INTERVAL_MS]
+                ?? ConsumerConfig::DEFAULT_MAX_POLL_INTERVAL_MS);
 
         return $this->groupRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => new JoinGroupRequest(
                 $groupId,
                 $sessionTimeout,
+                $rebalanceTimeout,
                 $memberId,
                 $protocolType,
                 $groupProtocols,

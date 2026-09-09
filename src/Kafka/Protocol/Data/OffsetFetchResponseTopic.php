@@ -25,7 +25,10 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partition_responses => OffsetFetchResponsePartition
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0 and v1)"
+ * The entry did not change across the three versions of the api: the topics array of a version 2 answer holds the
+ * very same structures, only the group-level error code behind the array is new.
+ *
+ * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 class OffsetFetchResponseTopic implements BinarySchemaInterface
 {

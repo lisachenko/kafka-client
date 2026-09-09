@@ -29,6 +29,7 @@ use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
@@ -68,6 +69,11 @@ final class AdminClientTest extends TestCase
      * Name of the consumer group the wire vectors were recorded for
      */
     private const string GROUP = 't10-vectors-group';
+
+    /**
+     * Name of the topic the OffsetFetch v2 vectors were recorded for, on the 0.10.2.2 container
+     */
+    private const string VECTOR_TOPIC = 't6-vectors';
 
     /**
      * Name of the consumer group that the DescribeGroups and ListGroups vectors were recorded for
@@ -164,16 +170,16 @@ final class AdminClientTest extends TestCase
 
     public function testListOffsetsMapsThePartitionOffsetsOfEveryTopic(): void
     {
-        $broker = $this->scriptBroker(self::vector('offsets', 'offsets.response.v0.latest'));
+        // Version 1 answers one offset per partition; the latest offset comes with the timestamp -1
+        $broker = $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [0, -1, 2]]]));
 
         $offsets = $this->adminClient()->listOffsets([self::TOPIC => [0]]);
 
-        self::assertSame([self::TOPIC => [0 => [2]]], $offsets, 'the log end offset of the partition');
+        self::assertSame([self::TOPIC => [0 => 2]], $offsets, 'the log end offset of the partition');
         self::assertSame(
             [self::requestFrame(new OffsetsRequest(
                 [self::TOPIC => [0 => OffsetsRequest::LATEST]],
-                1,
-                -1,
+                OffsetsRequest::CONSUMER_REPLICA_ID,
                 't10',
                 $broker->getReceivedCorrelationIds()[0]
             ))],
@@ -182,9 +188,27 @@ final class AdminClientTest extends TestCase
         );
     }
 
+    public function testListOffsetsReportsAnOffsetOfMinusOneWhenNoMessageMatchesTheTimestamp(): void
+    {
+        $broker = $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [0, -1, -1]]]));
+
+        $offsets = $this->adminClient()->listOffsets([self::TOPIC => [0]], 1600000000000);
+
+        self::assertSame([self::TOPIC => [0 => -1]], $offsets, 'nothing matched, and that is not an error');
+        self::assertSame(
+            [self::requestFrame(new OffsetsRequest(
+                [self::TOPIC => [0 => 1600000000000]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                't10',
+                $broker->getReceivedCorrelationIds()[0]
+            ))],
+            $broker->getReceivedFrames()
+        );
+    }
+
     public function testListOffsetsThrowsThePartitionErrorOfTheBroker(): void
     {
-        $this->scriptBroker(self::vector('offsets', 'offsets.response.v0.unknown-partition'));
+        $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [3, -1, -1]]]));
 
         $this->expectExceptionMessage('This server does not host this topic-partition');
 
@@ -192,29 +216,72 @@ final class AdminClientTest extends TestCase
         $this->adminClient()->listOffsets([self::TOPIC => [0]]);
     }
 
+    public function testListOffsetsThrowsWhenTheTopicHasNoMessageTimestampsToSearch(): void
+    {
+        // Error code 43, UnsupportedForMessageFormat: the topic runs with message.format.version below 0.10.0
+        $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [43, -1, -1]]]));
+
+        $this->expectException(UnsupportedForMessageFormatException::class);
+
+        $this->adminClient()->listOffsets([self::TOPIC => [0]], 1600000000000);
+    }
+
     public function testListGroupOffsetsAsksTheCoordinatorAndReturnsTheCommittedOffsets(): void
     {
         $broker = $this->scriptBroker(
             self::vector('group-coordinator', 'groupcoordinator.response.v0'),
-            self::vector('offset-fetch', 'offsetfetch.response.v1')
+            self::vector('offset-fetch', 'offsetfetch.response.v2')
         );
 
-        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::TOPIC => [0]]);
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [0]]);
 
-        self::assertSame([self::TOPIC], array_keys($topics));
-        self::assertSame(1, $topics[self::TOPIC]->partitions[0]->offset);
-        self::assertSame(0, $topics[self::TOPIC]->partitions[0]->errorCode);
+        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
+        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+        self::assertSame(0, $topics[self::VECTOR_TOPIC]->partitions[0]->errorCode);
 
         [$lookupId, $fetchId] = $broker->getReceivedCorrelationIds();
         self::assertSame(
             [
                 self::requestFrame(new GroupCoordinatorRequest(self::GROUP, 't10', $lookupId)),
-                self::requestFrame(new OffsetFetchRequest(self::GROUP, [self::TOPIC => [0]], 't10', $fetchId)),
+                self::requestFrame(new OffsetFetchRequest(self::GROUP, [self::VECTOR_TOPIC => [0]], 't10', $fetchId)),
             ],
             $broker->getReceivedFrames(),
-            'the coordinator lookup comes first, the OffsetFetch v1 goes to the coordinator it named'
+            'the coordinator lookup comes first, the OffsetFetch v2 goes to the coordinator it named'
         );
         self::assertNotSame($lookupId, $fetchId, 'every request carries its own correlation id');
+    }
+
+    public function testListGroupOffsetsAsksForEveryTopicOfTheGroupWithoutPartitions(): void
+    {
+        $broker = $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('offset-fetch', 'offsetfetch.response.v2.all-topics')
+        );
+
+        // main's shape: the group alone, which the nullable topic array of the version 2 makes possible
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP);
+
+        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
+        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+
+        [, $fetchId] = $broker->getReceivedCorrelationIds();
+        self::assertSame(
+            self::requestFrame(new OffsetFetchRequest(self::GROUP, null, 't10', $fetchId)),
+            $broker->getReceivedFrames()[1],
+            'the topic array of the request is the null one, ff ff ff ff'
+        );
+    }
+
+    public function testListGroupOffsetsReportsTheGroupLevelErrorOfVersionTwo(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('offset-fetch', 'offsetfetch.response.v2.group-error')
+        );
+
+        $this->expectException(NotCoordinatorForGroupException::class);
+
+        $this->adminClient()->listGroupOffsets(self::GROUP);
     }
 
     public function testListGroupOffsetsAcceptsAPartitionThatWasNeverCommitted(): void
