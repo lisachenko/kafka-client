@@ -1,14 +1,16 @@
-Wire vectors of the Kafka 0.9.0.1 protocol
-==========================================
+Wire vectors of the Kafka 0.10.2.2 protocol
+===========================================
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../0.10.2.md`](../0.10.2.md), whose "Wire vectors" section shows the same bytes as annotated
 hex dumps.
 
-The vectors that this branch inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker; Kafka 0.9.0.1 does not
-change the frames of those api versions, and `tests/Integration/ApiVersionProbeTest.php` verifies against a 0.9.0.1
-broker that it still serves exactly them. Everything that 0.9 adds - Produce v1, Fetch v1, OffsetCommit v2,
-ControlledShutdown v1 and the group apis - is captured on the 0.9.0.1 container of `docker-compose.yml`.
+A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
+frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
+- Produce v1, Fetch v1, OffsetCommit v2, ControlledShutdown v1 and the group apis - on a 0.9.0.1 broker, and what
+Kafka 0.10 adds on the 0.10.2.2 container of `docker-compose.yml`. That the older frames are still the current ones
+is not an assumption: `tests/Integration/ApiVersionProbeTest.php` asks the 0.10.2.2 broker with a real **ApiVersions**
+request (`api-versions.json`) which versions it serves, and sends a frame of every one of them.
 
 ```json
 {

@@ -22,10 +22,10 @@ use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 
 /**
- * Replays every documented wire vector of the Kafka 0.9.0.1 protocol through the request and response classes.
+ * Replays every documented wire vector of the Kafka 0.10.2.2 protocol through the request and response classes.
  *
- * Each vector is a frame that a Kafka broker really sent or really accepted - 0.9.0.1 for everything the release
- * added, 0.8.2.2 for the version 0 apis whose frames 0.9 does not change - stored as hex in
+ * Each vector is a frame that a Kafka broker really sent or really accepted - 0.10.2.2 for everything the 0.10 line
+ * added, 0.9.0.1 and 0.8.2.2 for the api versions whose frames the later lines do not change - stored as hex in
  * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/0.10.2.md`. For every one of them
  * this suite checks four things:
  *
@@ -39,6 +39,14 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
  */
 final class ProtocolVectorTest extends TestCase
 {
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function apiVersionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
@@ -157,6 +165,15 @@ final class ProtocolVectorTest extends TestCase
     public static function listGroupsVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('apiVersionsVectors')]
+    public function testApiVersionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
     }
 
     /**

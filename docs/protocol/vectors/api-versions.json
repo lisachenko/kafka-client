@@ -1,0 +1,160 @@
+{
+    "api": "api-versions",
+    "apiKey": 18,
+    "section": "ApiVersions API (key 18, v0)",
+    "description": "Wire vectors of the ApiVersions API (key 18, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "apiversions.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ApiVersions request v0, which has no body at all: only the common request header.",
+            "hex": "00000021001200000000006400176b61666b612d636c69656e742d74312d766563746f7273",
+            "fields": {
+                "messageSize": 33,
+                "apiKey": 18,
+                "apiVersion": 0,
+                "correlationId": 100,
+                "clientId": "kafka-client-t1-vectors"
+            }
+        },
+        {
+            "id": "apiversions.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "ApiVersions response v0 of a Kafka 0.10.2.2 broker: the 21 api keys 0 to 20 it serves.",
+            "hex": "0000008800000064000000000015000000000002000100000003000200000001000300000002000400000000000500000000000600000003000700010001000800000002000900000002000a00000000000b00000001000c00000000000d00000000000e00000000000f00000000001000000000001100000000001200000000001300000001001400000000",
+            "fields": {
+                "messageSize": 136,
+                "correlationId": 100,
+                "errorCode": 0,
+                "apiVersions": [
+                    {
+                        "apiKey": 0,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    {
+                        "apiKey": 1,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    {
+                        "apiKey": 2,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    {
+                        "apiKey": 3,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    {
+                        "apiKey": 4,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 5,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 6,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    {
+                        "apiKey": 7,
+                        "minVersion": 1,
+                        "maxVersion": 1
+                    },
+                    {
+                        "apiKey": 8,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    {
+                        "apiKey": 9,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    {
+                        "apiKey": 10,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 11,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    {
+                        "apiKey": 12,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 13,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 14,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 15,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 16,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 17,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 18,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 19,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    {
+                        "apiKey": 20,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "apiversions.response.v0.unsupported-version",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Answer to an ApiVersions request of version 7: the error code 35 and an empty api array, in the version 0 layout.",
+            "hex": "0000000a00000065002300000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 101,
+                "errorCode": 35,
+                "apiVersions": []
+            }
+        }
+    ]
+}

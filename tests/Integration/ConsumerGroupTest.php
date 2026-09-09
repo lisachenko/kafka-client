@@ -235,10 +235,13 @@ final class ConsumerGroupTest extends IntegrationTestCase
 
         $consumer->unsubscribe();
 
-        // The coordinator removes a group whose last member left, and reports it as Dead from then on
+        // The coordinator of Kafka 0.10.1 and later keeps a group whose last member left: it moves to `Empty` and
+        // lingers there with its committed offsets until `offsets.retention.minutes` expires them, where a 0.9.0.1
+        // coordinator dropped it at once and answered `Dead`. That is what makes a restarted consumer of the same
+        // group resume where the group committed instead of starting over.
         $description = $this->describeGroup($groupId);
 
-        self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $description->state);
+        self::assertSame(DescribeGroupResponseMetadata::STATE_EMPTY, $description->state);
         self::assertSame([], $description->members);
         self::assertSame([], $consumer->subscription());
         self::assertSame([], $consumer->assignment());

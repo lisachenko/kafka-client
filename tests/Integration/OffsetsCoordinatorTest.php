@@ -377,12 +377,13 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         );
     }
 
-    public function testVersion3OfTheOffsetCommitApiIsDroppedWithoutAnAnswer(): void
+    public function testVersion3OfTheOffsetCommitApiClosesTheConnection(): void
     {
-        // `OffsetCommitRequest.readFrom` @ 0.9.0.1 asserts that the version is 0, 1 or 2. A frame it cannot parse is
-        // not refused, it is silently dropped: the socket stays open and the request is simply never answered, see
-        // "An api the broker does not serve is dropped, not refused" in the protocol document. The client has no
-        // class for the version, so the frame is built by hand here.
+        // OffsetCommit stops at v2 in Kafka 0.10.2.2 - v3, which carries a throttle time in its answer, is 0.11 -
+        // and `AbstractRequest.getRequest()` throws for it. A 0.10 broker does not drop such a frame the way a
+        // 0.9.0.1 broker did: `SocketServer.processCompletedReceives` catches the `InvalidRequestException` and
+        // CLOSES the connection, see "An api the broker does not serve closes the connection" in the protocol
+        // document. The client has no class for the version, so the frame is built by hand here.
         $groupId = self::uniqueGroupName();
         $topic   = $this->createTopic();
         $body    = pack('n', 8) . pack('n', 3) . pack('N', 91) . pack('n', 0)
@@ -399,8 +400,13 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             self::assertStringContainsString('stream', strtolower($exception->getMessage()));
         }
 
-        // The connection is still perfectly usable: the next well-formed request on it is answered normally
-        $accepted = $this->commitInKafka($stream, $groupId, [$topic => [0 => 3]]);
+        // The connection is gone with the frame, so the commit that follows needs a new one - which is answered
+        // normally, the broker itself is unaffected
+        $accepted = $this->commitInKafka(
+            $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 1000]),
+            $groupId,
+            [$topic => [0 => 3]]
+        );
 
         self::assertSame(KafkaException::NO_ERROR, $accepted->topics[$topic]->partitions[0]->errorCode);
     }

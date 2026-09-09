@@ -14,6 +14,8 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\BinarySchema;
@@ -23,11 +25,17 @@ use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Tests\Fixture\ClusterMetadataResponse;
 
 /**
- * Verifies the request/response framing against a real Kafka 0.9.0.1 broker.
+ * Verifies the request/response framing against a real Kafka 0.10.2.2 broker.
  *
- * A Metadata request is the cheapest round trip that any broker of the cluster answers. The framing itself did not
- * change between 0.8.2.2 and 0.9.0.1; which api keys and versions the broker frames an answer for at all is the
- * subject of {@see ApiVersionProbeTest}.
+ * A Metadata request is the cheapest round trip that any broker of the cluster answers. The framing itself has not
+ * changed since 0.8.2.2 - a size-prefixed request, a size-prefixed response, correlation ids echoed back in order;
+ * which api keys and versions the broker frames an answer for at all is the subject of {@see ApiVersionProbeTest}.
+ *
+ * What Kafka 0.10 did change is the fate of a frame the broker cannot parse. A 0.9.0.1 broker dropped it and kept
+ * the connection open, so the framing of everything that followed on that connection was unaffected. A 0.10.2.2
+ * broker **closes the connection** instead (`SocketServer.processCompletedReceives` @ 0.10.2.2), which a client sees
+ * as the end of the stream while it waits for the response - the last test below pins that, because it is the
+ * difference between "read the next answer" and "reconnect" for every caller of this client.
  */
 #[CoversClass(AbstractProtocolMessage::class)]
 #[CoversClass(AbstractRequest::class)]
@@ -92,5 +100,49 @@ final class ProtocolFramingTest extends IntegrationTestCase
 
         self::assertSame(99, $response->getCorrelationId());
         self::assertNotEmpty($response->brokers);
+    }
+
+    /**
+     * A frame the broker cannot parse ends the connection, and the client sees it as a dropped stream
+     *
+     * The frame is a Metadata request with the version 3, which Kafka 0.11 has and 0.10.2.2 does not. It is built by
+     * hand, because the point is to send something the request classes of this branch deliberately cannot build.
+     * `RequestChannel.Request` @ 0.10.2.2 throws an `InvalidRequestException` for it and
+     * `SocketServer.processCompletedReceives` closes the channel, so the read of the response runs into the end of
+     * the stream instead of into a timeout - the 0.9.0.1 behaviour this replaces.
+     */
+    public function testAFrameTheBrokerCannotParseClosesTheConnection(): void
+    {
+        $body   = pack('n', 3) . pack('n', 3) . pack('N', 4243) . pack('n', 0) . pack('N', -1);
+        $stream = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 5000]);
+        $stream->write('N', strlen($body));
+        $stream->writeBuffer($body);
+
+        $this->expectException(NetworkException::class);
+
+        ClusterMetadataResponse::unpack($stream);
+    }
+
+    /**
+     * The connection that was closed is the only casualty: a new one answers immediately afterwards
+     */
+    public function testTheNextConnectionIsAnsweredAfterTheBrokerClosedOne(): void
+    {
+        $body   = pack('n', 3) . pack('n', 3) . pack('N', 4244) . pack('n', 0) . pack('N', -1);
+        $broken = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 5000]);
+        $broken->write('N', strlen($body));
+        $broken->writeBuffer($body);
+
+        try {
+            ClusterMetadataResponse::unpack($broken);
+            self::fail('The broker has to close the connection for a Metadata v3 frame');
+        } catch (NetworkException) {
+            // expected: the broker closed the socket
+        }
+
+        $stream = $this->connect();
+        new MetadataRequest([], 'kafka-client-t1', 4245)->writeTo($stream);
+
+        self::assertSame(4245, ClusterMetadataResponse::unpack($stream)->getCorrelationId());
     }
 }

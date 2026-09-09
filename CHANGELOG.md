@@ -1,13 +1,85 @@
 Changelog
 =========
 
-All notable changes to the `0.9.x` line of `lisachenko/kafka-client` are documented in this file.
+All notable changes to the `0.10.x` line of `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this line
 follows the Apache Kafka release it speaks rather than semantic versioning of its own: every
-`0.9.x` release implements the **Kafka 0.9.0.1 wire protocol** and nothing above it. The line
-below it is `0.8.x` (Kafka 0.8.2.2), the ones above are `0.10.x` and `main`, and every line is
-merged upwards into the next one.
+`0.10.x` release implements the **Kafka 0.10.2.2 wire protocol** — the last release of the 0.10
+line — and nothing above it. The lines below it are `0.9.x` (Kafka 0.9.0.1) and `0.8.x`
+(Kafka 0.8.2.2), the one above is `main` (Kafka 0.11), and every line is merged upwards into the
+next one.
+
+Unreleased — the 0.10.x line
+----------------------------
+
+Everything a Kafka 0.10.2.2 broker speaks, built on top of the `0.9.x` line it was merged from.
+The line is being assembled ticket by ticket; what is listed here is what has landed so far, and
+every wire format below was verified against a real 0.10.2.2 broker and is documented byte for
+byte in [docs/protocol/0.10.2.md](docs/protocol/0.10.2.md).
+
+### Added
+
+- **The Kafka 0.10.2.2 broker of the line** — `docker/kafka-0.10.2.2/` with a PLAINTEXT listener
+  on 9092, an SSL listener on 9093 and the **SASL_PLAINTEXT** (9094) and **SASL_SSL** (9095)
+  listeners that Kafka 0.10 makes possible, with SASL/PLAIN users in a JAAS file;
+  `docker-compose.yml` builds it.
+- **Api keys 17-20** — `SASL_HANDSHAKE` (17) and `API_VERSIONS` (18), which arrived with Kafka
+  0.10.0, and `CREATE_TOPICS` (19) and `DELETE_TOPICS` (20), which arrived with 0.10.1.
+  `Protocol\ApiKeys` now ends at 20; everything above it is Kafka 0.11.
+- **Error codes 32-44** — `InvalidTimestampException` (32), `UnsupportedSaslMechanismException`
+  (33), `IllegalSaslStateException` (34), `UnsupportedVersionException` (35),
+  `TopicExistsException` (36), `InvalidPartitionsException` (37),
+  `InvalidReplicationFactorException` (38), `InvalidReplicaAssignmentException` (39),
+  `InvalidConfigException` (40), `NotControllerException` (41), `InvalidRequestException` (42),
+  `UnsupportedForMessageFormatException` (43) and `PolicyViolationException` (44), with their
+  constants on `KafkaException` and their entries in the code map. Only 41 is retriable.
+- **`BinarySchema::TYPE_BOOLEAN`** — the one-byte primitive that Kafka 0.10 introduces
+  (`is_internal` of Metadata v1, `validate_only` of CreateTopics v1). The engine also writes a
+  `null` nullable array as `ff ff ff ff` and an empty one as `00 00 00 00`, which are two
+  different requests from Metadata v1 on.
+- **ApiVersions api (key 18, v0)** — `ApiVersionsRequest`, `ApiVersionsResponse` and
+  `Protocol\Data\ApiVersionsResponseMetadata`. The response indexes the version range of every
+  api by its api key and answers `supports(int $apiKey, int $version)` and
+  `maxVersionOf(int $apiKey)`. `Client::apiVersions(Node $node)` returns the whole response,
+  `Admin\AdminClient::getApiVersions(Node $node)` the indexed array — the name it has on `main`.
+  This is the first line of the client that can ask a broker what it speaks instead of probing
+  it frame by frame; the client itself still sends the fixed versions of its Kafka release.
+- **Wire vectors of the ApiVersions api** — `docs/protocol/vectors/api-versions.json` with
+  `apiversions.request.v0`, `apiversions.response.v0` (the 21 keys of a 0.10.2.2 broker) and
+  `apiversions.response.v0.unsupported-version` (the error code 35 with an empty api array),
+  captured from the container and replayed by `tests/Compliance/ProtocolVectorTest`.
+
+### Changed
+
+- **The protocol document is `docs/protocol/0.10.2.md`** and describes Kafka 0.10.2.2: the api-key
+  table is now the literal ApiVersions answer of the broker, the framing, error-code, cluster
+  readiness and broker-quirks sections were re-verified against it, and the new
+  "ApiVersions API (key 18, v0)" section documents the api. `docs/protocol/0.9.0.md` stays on the
+  `0.9.x` branch.
+- **An api the broker does not serve now closes the connection.** A 0.9.0.1 broker dropped a frame
+  it could not parse and kept the connection open; a 0.10.2.2 broker closes the socket, for an
+  unknown api key, for a version it does not serve, and for a body that does not match the schema
+  of a version it does serve. A client sees the end of the stream, i.e. a `NetworkException`, not
+  a request timeout. `tests/Integration/{ApiVersionProbeTest,ProtocolFramingTest}` and
+  `OffsetsCoordinatorTest` were rewritten for it, and `RawApiProbe::CLOSED` replaces
+  `RawApiProbe::SILENT` in every expectation.
+- **ControlledShutdown v0 is retired but still parsed.** A 0.10.2.2 broker reports
+  `minVersion = 1` for key 7, because version 0 uses a request header without a client id; the
+  frame is nevertheless still accepted, because key 7 is the last api the broker parses with a
+  Scala class that never looks at the version. `ControlledShutdownRequestV0` is kept for the
+  `0.8.x`/`0.9.x` vectors, and `AdminClient::controlledShutdown()` keeps sending v1.
+- **A group whose last member leaves survives as `Empty`.**
+  `Protocol\Data\DescribeGroupResponseMetadata::STATE_EMPTY` is the fifth group state, added by
+  Kafka 0.10.1: the coordinator keeps the group with its committed offsets until
+  `offsets.retention.minutes` expires them, still lists it in ListGroups, and answers JoinGroup
+  for it so that a new member can take it over. A 0.9.0.1 coordinator dropped such a group at once
+  and answered `Dead`, which made "everybody left" and "never existed" indistinguishable.
+- **A broker without topics answers Metadata with its brokers.** The empty broker array of a fresh
+  0.8/0.9 cluster is gone; an empty broker array still means "not ready, retry" and the readiness
+  probe of the test suite is unchanged, but it is no longer the normal state of a new cluster.
+- **README and CHANGELOG** describe the 0.10.x line, and the compatibility matrix of the README
+  lists what a 0.10.2.2 broker serves together with the state of this branch.
 
 Unreleased — the 0.9.x line
 ---------------------------
