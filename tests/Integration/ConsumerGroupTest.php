@@ -463,7 +463,12 @@ final class ConsumerGroupTest extends IntegrationTestCase
     {
         $configuration = $this->configuration();
 
-        return new AdminClient(Cluster::bootstrap($configuration), $configuration)->describeGroup($groupId);
+        // Bootstrapped with the topic of this class only: a metadata request for every topic of a cluster that
+        // thousands of test runs filled takes longer than the one-second session timeout some tests use here, and
+        // the member they describe would be gone before the answer arrives
+        $cluster = Cluster::bootstrap($configuration, $this->topic);
+
+        return new AdminClient($cluster, $configuration)->describeGroup($groupId);
     }
 
     /**
