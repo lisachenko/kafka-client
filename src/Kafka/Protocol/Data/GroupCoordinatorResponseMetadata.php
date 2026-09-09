@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -18,29 +18,33 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * GroupCoordinator response data
+ *
+ * The coordinator broker of a consumer group, as returned by the ConsumerMetadata API (key 10) of Kafka 0.8.2.
+ *
+ * <pre>
+ *   CoordinatorId   => int32
+ *   CoordinatorHost => string
+ *   CoordinatorPort => int32
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "GroupCoordinator API (key 10, v0)"
  */
 class GroupCoordinatorResponseMetadata implements BinarySchemaInterface
 {
     /**
      * The broker id.
-     *
-     * @var integer
      */
-    public $nodeId;
+    public int $nodeId;
 
     /**
      * The hostname of the broker.
-     *
-     * @var string
      */
-    public $host;
+    public string $host;
 
     /**
      * The port on which the broker accepts requests.
-     *
-     * @var integer
      */
-    public $port;
+    public int $port;
 
     /**
      * @inheritdoc

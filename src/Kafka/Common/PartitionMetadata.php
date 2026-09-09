@@ -9,7 +9,11 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
+/**
+ * @author Alexander.Lisachenko
+ * @date 14.07.2016
+ */
 
 namespace Protocol\Kafka\Common;
 
@@ -18,6 +22,17 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Information about a topic-partition metadata.
+ *
+ * <pre>
+ *   PartitionMetadata => PartitionErrorCode PartitionId Leader Replicas Isr
+ *     PartitionErrorCode => int16
+ *     PartitionId        => int32
+ *     Leader             => int32
+ *     Replicas           => [int32]
+ *     Isr                => [int32]
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0, v1 and v2)"
  */
 class PartitionMetadata implements BinarySchemaInterface
 {
@@ -25,39 +40,36 @@ class PartitionMetadata implements BinarySchemaInterface
 
     /**
      * The error code for the partition, if any.
-     *
-     * @var integer
      */
-    public $partitionErrorCode;
+    public int $partitionErrorCode = 0;
 
     /**
      * The id of the partition.
-     *
-     * @var integer
      */
-    public $partitionId;
+    public int $partitionId = 0;
 
     /**
-     * The id of the broker acting as leader for this partition.
-     *
-     * @var integer
+     * The id of the broker acting as leader for this partition, `-1` while a leader election is in progress.
      */
-    public $leader;
+    public int $leader = -1;
 
     /**
      * The set of all nodes that host this partition.
      *
-     * @var integer[]
+     * @var list<int>
      */
-    public $replicas = [];
+    public array $replicas = [];
 
     /**
      * The set of nodes that are in sync with the leader for this partition.
      *
-     * @var integer[]
+     * @var list<int>
      */
-    public $isr = [];
+    public array $isr = [];
 
+    /**
+     * @inheritdoc
+     */
     public static function getScheme(): array
     {
         return [

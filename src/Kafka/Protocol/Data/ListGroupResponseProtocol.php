@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -17,27 +17,30 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * ListGroupResponseGroup DTO
+ * One group of a ListGroups response
  *
- * ListGroupResponseGroup => group_id protocol_type
- *   group_id => STRING
- *   protocol_type => STRING
+ * <pre>
+ *   ListGroupResponseProtocol => GroupId ProtocolType
+ *     GroupId      => string
+ *     ProtocolType => string
+ * </pre>
+ *
+ * The class is named after the `main` branch; the Kafka sources call the structure
+ * `LIST_GROUPS_RESPONSE_GROUP_V0` (Protocol.java @ 0.10.2.2) and `GroupOverview` (kafka/coordinator/GroupMetadata.scala).
+ *
+ * @see docs/protocol/0.10.2.md, section "ListGroups API (key 16, v0)"
  */
 class ListGroupResponseProtocol implements BinarySchemaInterface
 {
     /**
      * The unique group identifier
-     *
-     * @var string
      */
-    public $groupId;
+    public string $groupId;
 
     /**
-     * Supported protocol type
-     *
-     * @var string
+     * Protocol type the group runs, `consumer` for a consumer group of Kafka 0.9
      */
-    public $protocolType;
+    public string $protocolType;
 
     /**
      * @inheritdoc

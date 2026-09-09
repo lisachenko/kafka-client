@@ -1,0 +1,32 @@
+# Single-node Apache Kafka 0.10.2.2 used by the integration test suite.
+#
+#   docker compose up -d
+#   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 vendor/bin/phpunit --testsuite integration
+#
+services:
+    kafka:
+        build:
+            context: ./docker/kafka-0.10.2.2
+        container_name: kafka-0-10-2-2
+        environment:
+            ADVERTISED_HOST: 127.0.0.1
+            ADVERTISED_PORT: 9092
+            BROKER_ID: 0
+            NUM_PARTITIONS: 3
+        ports:
+            - "9092:9092"
+            - "9093:9093"
+            - "9094:9094"
+            - "9095:9095"
+            - "2181:2181"
+        healthcheck:
+            # This only reports that the broker accepts connections. It is deliberately not a readiness check:
+            # a 0.8/0.9 broker answers Metadata with an EMPTY broker array until the controller has pushed
+            # UpdateMetadata to it, and on a cluster without topics that never happens on its own. Readiness is
+            # therefore a client-side concern - see tests/Fixture/ClusterReadinessProbe.php and the "Cluster
+            # readiness" section of docs/protocol/0.10.2.md.
+            test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9092'"]
+            interval: 5s
+            timeout: 5s
+            retries: 30
+            start_period: 5s

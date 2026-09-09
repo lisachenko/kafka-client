@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -19,27 +19,32 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 /**
  * List groups response
  *
- * ListGroups Response (Version: 0) => error_code [groups]
- *   error_code => INT16
- *   groups => group_id protocol_type
- *     group_id => STRING
- *     protocol_type => STRING
+ * <pre>
+ *   ListGroupsResponse => ErrorCode [GroupId ProtocolType]
+ *     ErrorCode    => int16
+ *     GroupId      => string
+ *     ProtocolType => string
+ * </pre>
+ *
+ * The error code belongs to the whole request: the coordinator answers 15 (GroupCoordinatorNotAvailable) while it is
+ * shutting down and 14 (GroupLoadInProgress) while it is still reading the `__consumer_offsets` partitions it owns,
+ * both with an empty group array (`GroupCoordinator.handleListGroups()` @ 0.10.2.2).
+ *
+ * @see docs/protocol/0.10.2.md, section "ListGroups API (key 16, v0)"
  */
 class ListGroupsResponse extends AbstractResponse
 {
     /**
-     * Error code.
-     *
-     * @var integer
+     * Error code of the whole request
      */
-    public $errorCode;
+    public int $errorCode = 0;
 
     /**
-     * List of groups as keys and current protocols as values
+     * Groups the answering broker coordinates, indexed by the group id
      *
-     * @var ListGroupResponseProtocol[]
+     * @var array<string, ListGroupResponseProtocol>
      */
-    public $groups = [];
+    public array $groups = [];
 
     /**
      * @inheritdoc

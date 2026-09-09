@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -19,25 +19,25 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
 /**
  * OffsetCommitResponsePartition DTO
  *
- * OffsetCommitResponsePartition => partition error_code
- *   partition => INT32
- *   error_code => INT16
+ * <pre>
+ *   OffsetCommitResponsePartition => partition error_code
+ *     partition  => INT32
+ *     error_code => INT16
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitResponsePartition implements BinarySchemaInterface
 {
     /**
-     * The partition this request entry corresponds to.
-     *
-     * @var integer
+     * The partition this response entry corresponds to.
      */
-    public $partition;
+    public int $partition;
 
     /**
      * The error from this partition, if any.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
      * @inheritdoc

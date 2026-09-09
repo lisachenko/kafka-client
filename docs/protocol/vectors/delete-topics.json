@@ -1,0 +1,66 @@
+{
+    "api": "delete-topics",
+    "apiKey": 20,
+    "section": "DeleteTopics API (key 20, v0)",
+    "description": "Wire vectors of the DeleteTopics API (key 20, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "deletetopics.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DeleteTopics request v0 that deletes one topic, waiting up to 30 seconds for the controller to finish.",
+            "hex": "000000280014000000000066000a74372d766563746f727300000001000a74372d766563746f727300007530",
+            "fields": {
+                "messageSize": 40,
+                "apiKey": 20,
+                "apiVersion": 0,
+                "correlationId": 102,
+                "clientId": "t7-vectors",
+                "topics": [
+                    "t7-vectors"
+                ],
+                "timeout": 30000
+            }
+        },
+        {
+            "id": "deletetopics.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DeleteTopics response v0 of the controller for a topic it deleted within the timeout of the request.",
+            "hex": "000000160000006600000001000a74372d766563746f72730000",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 102,
+                "topics": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletetopics.response.v0.unknown-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DeleteTopics response v0 for a topic the cluster does not have: the error code 3 (UnknownTopicOrPartition), which the broker answers without ever reaching the deletion itself.",
+            "hex": "0000001e0000006700000001001274372d766563746f72732d756e6b6e6f776e0003",
+            "fields": {
+                "messageSize": 30,
+                "correlationId": 103,
+                "topics": {
+                    "t7-vectors-unknown": {
+                        "topic": "t7-vectors-unknown",
+                        "errorCode": 3
+                    }
+                }
+            }
+        }
+    ]
+}

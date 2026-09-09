@@ -9,51 +9,45 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\Consumer\MemberAssignment;
-use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * SyncGroupRequest group member assignment
+ * The assignment that the leader of a group computed for one member, as a SyncGroup request carries it.
  *
- * GroupAssignment => [MemberId MemberAssignment]
- *   MemberId => string
- *   MemberAssignment => MemberAssignment
+ * <pre>
+ *   SyncGroupRequestMember => MemberId MemberAssignment
+ *     MemberId         => string
+ *     MemberAssignment => bytes
+ * </pre>
+ *
+ * Only the leader of the group fills this array; every other member sends an empty one and just picks its own
+ * assignment out of the response. The coordinator stores the bytes and hands each member its own, adding an empty
+ * assignment for a member the leader did not mention (`GroupCoordinator.doSyncGroup` @ 0.10.2.2) - it never parses
+ * them, which is why the assignment is an opaque byte array here as well.
+ *
+ * @see docs/protocol/0.10.2.md, section "SyncGroup API (key 14, v0)"
  */
 class SyncGroupRequestMember implements BinarySchemaInterface
 {
     /**
-     * Name of the group member
-     * @var string
+     * Name of the group member this assignment is meant for.
      */
-    public $memberId;
+    public string $memberId;
 
     /**
-     * Member-specific assignment
-     *
-     * @var string
-     * @todo This field should be MemberAssignment instance in scheme
+     * Member-specific assignment, opaque to the coordinator.
      */
-    public $assignment;
+    public string $assignment;
 
-    /**
-     * Default initializer
-     *
-     * @param string $memberId Member identifier
-     * @param MemberAssignment $assignment Received assignment
-     */
-    public function __construct(string $memberId, MemberAssignment $assignment)
+    public function __construct(string $memberId, string $assignment)
     {
-        $this->memberId = $memberId;
-        // TODO: This should be done on scheme-level
-        $stringBuffer = new StringStream();
-        BinarySchema::writeObjectToStream($assignment, $stringBuffer);
-        $this->assignment = $stringBuffer->getBuffer();
+        $this->memberId   = $memberId;
+        $this->assignment = $assignment;
     }
 
     /**

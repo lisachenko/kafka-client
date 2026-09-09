@@ -1,0 +1,307 @@
+{
+    "api": "offset-fetch",
+    "apiKey": 9,
+    "section": "OffsetFetch API (key 9, v0, v1 and v2)",
+    "description": "Wire vectors of the OffsetFetch API (key 9, v0, v1 and v2), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "offsetfetch.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "OffsetFetch request v2 that names its partitions explicitly, which is the request v0 and v1 have as well; only the version field of the header tells them apart.",
+            "hex": "00000036000900020000001f00027436001074362d766563746f72732d67726f757000000001000a74362d766563746f72730000000100000000",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 9,
+                "apiVersion": 2,
+                "correlationId": 31,
+                "clientId": "t6",
+                "consumerGroup": "t6-vectors-group",
+                "topicPartitions": {
+                    "t6-vectors": {
+                        "topic": "t6-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "OffsetFetch answer v2 for the committed partition: the same topics array the lower versions answer, and the group-level error code 0 appended after it.",
+            "hex": "0000002c0000001f00000001000a74362d766563746f7273000000010000000000000000000000010002743600000000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 31,
+                "topics": {
+                    "t6-vectors": {
+                        "topic": "t6-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 1,
+                                "metadata": "t6",
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                },
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "offsetfetch.request.v2.all-topics",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "OffsetFetch request v2 with a NULL topic array (ff ff ff ff), which asks the coordinator for every topic-partition the group has a committed offset for. Version 1 closes the connection on the same four bytes.",
+            "hex": "00000022000900020000002000027436001074362d766563746f72732d67726f7570ffffffff",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 9,
+                "apiVersion": 2,
+                "correlationId": 32,
+                "clientId": "t6",
+                "consumerGroup": "t6-vectors-group",
+                "topicPartitions": null
+            }
+        },
+        {
+            "id": "offsetfetch.response.v2.all-topics",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer to the null topic array: every committed topic-partition of the group, byte for byte the answer of the explicit request above.",
+            "hex": "0000002c0000002000000001000a74362d766563746f7273000000010000000000000000000000010002743600000000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 32,
+                "topics": {
+                    "t6-vectors": {
+                        "topic": "t6-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 1,
+                                "metadata": "t6",
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                },
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "offsetfetch.request.v2.no-topics",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "OffsetFetch request v2 with an EMPTY topic array (00 00 00 00), which is a different request from the null one above: it names no topic at all.",
+            "hex": "00000022000900020000002100027436001074362d766563746f72732d67726f757000000000",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 9,
+                "apiVersion": 2,
+                "correlationId": 33,
+                "clientId": "t6",
+                "consumerGroup": "t6-vectors-group",
+                "topicPartitions": []
+            }
+        },
+        {
+            "id": "offsetfetch.response.v2.no-topics",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer to the empty topic array of the same group: no topic and the error code 0, although the group has a committed offset.",
+            "hex": "0000000a00000021000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 33,
+                "topics": [],
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "offsetfetch.request.v2.uncommitted-partition",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "OffsetFetch request v2 for a partition of the topic that the group never committed an offset for.",
+            "hex": "00000036000900020000002200027436001074362d766563746f72732d67726f757000000001000a74362d766563746f72730000000100000002",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 9,
+                "apiVersion": 2,
+                "correlationId": 34,
+                "clientId": "t6",
+                "consumerGroup": "t6-vectors-group",
+                "topicPartitions": {
+                    "t6-vectors": {
+                        "topic": "t6-vectors",
+                        "partitions": [
+                            2
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.response.v2.no-committed-offset",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer for a partition without a committed offset: offset -1, EMPTY metadata (not null) and the error code 0, plus the group-level 0. Version 0 reports the error code 3 for the same case.",
+            "hex": "0000002a0000002200000001000a74362d766563746f72730000000100000002ffffffffffffffff000000000000",
+            "fields": {
+                "messageSize": 42,
+                "correlationId": 34,
+                "topics": {
+                    "t6-vectors": {
+                        "topic": "t6-vectors",
+                        "partitions": {
+                            "2": {
+                                "partition": 2,
+                                "offset": -1,
+                                "metadata": "",
+                                "errorCode": 0
+                            }
+                        }
+                    }
+                },
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "offsetfetch.response.v2.group-error",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 2,
+            "source": "constructed",
+            "description": "The shape of a group-level error of v2: an EMPTY topics array and the error code 16 (NotCoordinatorForGroup) after it, as OffsetFetchRequest.getErrorResponse() @ 0.10.2.2 builds it. Constructed, because the single-broker container coordinates every group itself and therefore never answers 14, 15, 16 or 30 - see the 'Broker quirks' note in the OffsetFetch section.",
+            "hex": "0000000a00000023000000000010",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 35,
+                "topics": [],
+                "errorCode": 16
+            }
+        },
+        {
+            "id": "offsetfetch.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "OffsetFetch request v1, which reads the offsets from the __consumer_offsets topic; the partitions are always explicit, the nullable topic array is version 2 of the api, which arrived with Kafka 0.10.2.",
+            "hex": "000000390009000100000012000374313000117431302d766563746f72732d67726f757000000001000b7431302d766563746f72730000000100000000",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 9,
+                "apiVersion": 1,
+                "correlationId": 18,
+                "clientId": "t10",
+                "consumerGroup": "t10-vectors-group",
+                "topicPartitions": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "OffsetFetch response v1 reading back the offset that the OffsetCommit vector committed. There is no group-level error code after the topics array, which is the whole difference to v2.",
+            "hex": "000000290000001200000001000b7431302d766563746f727300000001000000000000000000000001ffff0000",
+            "fields": {
+                "messageSize": 41,
+                "correlationId": 18,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 1,
+                                "metadata": null,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "OffsetFetch request v0, byte for byte the request of v1 with a lower version field; it reads the offsets from ZooKeeper.",
+            "hex": "000000390009000000000013000374313000117431302d766563746f72732d67726f757000000001000b7431302d766563746f72730000000100000001",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 9,
+                "apiVersion": 0,
+                "correlationId": 19,
+                "clientId": "t10",
+                "consumerGroup": "t10-vectors-group",
+                "topicPartitions": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": [
+                            1
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.response.v0.no-committed-offset",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "OffsetFetch response v0 for a partition that the group never committed: offset -1 with the error code 3, which a client has to read as \"no offset yet\".",
+            "hex": "000000290000001300000001000b7431302d766563746f72730000000100000001ffffffffffffffff00000003",
+            "fields": {
+                "messageSize": 41,
+                "correlationId": 19,
+                "topics": {
+                    "t10-vectors": {
+                        "topic": "t10-vectors",
+                        "partitions": {
+                            "1": {
+                                "partition": 1,
+                                "offset": -1,
+                                "metadata": "",
+                                "errorCode": 3
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

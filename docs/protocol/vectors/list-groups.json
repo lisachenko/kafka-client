@@ -1,0 +1,44 @@
+{
+    "api": "list-groups",
+    "apiKey": 16,
+    "section": "ListGroups API (key 16, v0)",
+    "description": "Wire vectors of the ListGroups API (key 16, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "listgroups.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ListGroups request v0, which has no body at all: only the common request header.",
+            "hex": "0000000c001000000000001500027434",
+            "fields": {
+                "messageSize": 12,
+                "apiKey": 16,
+                "apiVersion": 0,
+                "correlationId": 21,
+                "clientId": "t4"
+            }
+        },
+        {
+            "id": "listgroups.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "ListGroups response v0 of the coordinator of one consumer group.",
+            "hex": "0000002600000015000000000001001074342d766563746f72732d67726f75700008636f6e73756d6572",
+            "fields": {
+                "messageSize": 38,
+                "correlationId": 21,
+                "errorCode": 0,
+                "groups": {
+                    "t4-vectors-group": {
+                        "groupId": "t4-vectors-group",
+                        "protocolType": "consumer"
+                    }
+                }
+            }
+        }
+    ]
+}

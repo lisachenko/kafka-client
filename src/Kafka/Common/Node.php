@@ -9,82 +9,105 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
+/**
+ * @author Alexander.Lisachenko
+ * @date 14.07.2016
+ */
 
 namespace Protocol\Kafka\Common;
 
-use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
  * Information about a Kafka node
+ *
+ * <pre>
+ *   Broker => NodeId Host Port Rack
+ *     NodeId => int32
+ *     Host   => string
+ *     Port   => int32
+ *     Rack   => nullable string
+ * </pre>
+ *
+ * `METADATA_BROKER_V1` in `Protocol.java` @ 0.10.2.2: version 1 of the Metadata API (Kafka 0.10.0) appended the
+ * `Rack` of the broker to the entry of `METADATA_BROKER_V0`, which {@see NodeV0} still describes. The rack is the
+ * `broker.rack` of the broker configuration and is null for a broker that does not declare one - which is what the
+ * broker of `docker-compose.yml` answers, like every broker of a cluster without rack awareness.
+ *
+ * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0, v1 and v2)"
  */
 class Node implements BinarySchemaInterface
 {
     use RestorableTrait;
 
     /**
-     * The broker id.
-     *
-     * @var integer
+     * Version of the Metadata API that this entry is unpacked from
      */
-    public $nodeId;
+    public const int VERSION = 1;
+
+    /**
+     * The broker id.
+     */
+    public int $nodeId = 0;
 
     /**
      * The hostname of the broker.
-     *
-     * @var string
      */
-    public $host;
+    public string $host = '';
 
     /**
      * The port on which the broker accepts requests.
-     *
-     * @var integer
      */
-    public $port;
+    public int $port = 0;
 
     /**
-     * The rack of the broker.
+     * The rack of the broker, null when it declares none or when the answer was a version 0 one.
      *
-     * @var string
      * @since Version 1 of protocol
      */
-    public $rack;
+    public ?string $rack = null;
 
     /**
-     * Cached list of connections
+     * @inheritdoc
      */
-    private static array $nodeConnections = [];
-
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'nodeId' => BinarySchema::TYPE_INT32,
             'host'   => BinarySchema::TYPE_STRING,
             'port'   => BinarySchema::TYPE_INT32,
-            'rack'   => BinarySchema::TYPE_NULLABLE_STRING,
         ];
+        if (static::VERSION >= 1) {
+            $scheme['rack'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+
+        return $scheme;
     }
 
     /**
      * Returns a connection to this node.
      *
-     * @param array $configuration Client configuration
-     * @todo Move this method outside this class
+     * The connection is kept open and handed out again for the next request to the same broker, see
+     * {@see ConnectionFactory} for the lifetime of that cache.
      *
-     * @return Stream
+     * @param array<string, mixed> $configuration Client configuration
+     *
+     * @todo Move this method outside this class
      */
     public function getConnection(array $configuration): Stream
     {
-        if (!isset(self::$nodeConnections[$this->host][$this->port])) {
-            $connection = new SocketStream("tcp://{$this->host}:{$this->port}", $configuration);
+        return ConnectionFactory::connect($this->host, $this->port, $configuration);
+    }
 
-            self::$nodeConnections[$this->host][$this->port] = $connection;
-        }
-
-        return self::$nodeConnections[$this->host][$this->port];
+    /**
+     * Closes every open broker connection of this process
+     */
+    public static function closeConnections(): void
+    {
+        ConnectionFactory::closeAll();
     }
 }

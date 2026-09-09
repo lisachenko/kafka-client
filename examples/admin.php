@@ -1,0 +1,132 @@
+<?php
+
+/*
+ * This file is part of the lisachenko/kafka-client package.
+ *
+ * (c) Alexander Lisachenko <lisachenko.it@gmail.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+/**
+ * Admin API example for the Kafka 0.10.2.2 protocol.
+ *
+ * Start the broker of docker-compose.yml and run:
+ *
+ *   docker compose up -d
+ *   php examples/admin.php [topic] [groupId]
+ */
+
+declare(strict_types=1);
+
+use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+
+require __DIR__ . '/../vendor/autoload.php';
+
+$topic   = $argv[1] ?? 'example-topic';
+$groupId = $argv[2] ?? 'example-group';
+
+$configuration = [
+    ClientConfig::BOOTSTRAP_SERVERS => ['tcp://' . (getenv('KAFKA_BOOTSTRAP_SERVERS') ?: '127.0.0.1:9092')],
+    ClientConfig::CLIENT_ID         => 'admin-example',
+    // Where the group offsets live: `kafka` uses OffsetFetch v2, `zookeeper` the ZooKeeper-backed v0
+    ClientConfig::OFFSETS_STORAGE   => ClientConfig::OFFSETS_STORAGE_KAFKA,
+];
+
+$cluster = Cluster::bootstrap($configuration);
+$admin   = new AdminClient($cluster, $configuration);
+
+// Metadata v1 and v2 (Kafka 0.10.0 / 0.10.1) added the identity of the cluster and of its controller, and a rack
+// for every broker; a cluster that is still electing a controller answers null for it.
+echo "Cluster {$cluster->clusterId()}\n";
+echo 'Controller: ' . ($cluster->controller()?->nodeId ?? 'none yet') . "\n";
+
+echo "\nBrokers\n";
+foreach ($admin->findAllBrokers() as $broker) {
+    $rack = $broker->rack === null ? 'no rack' : "rack {$broker->rack}";
+    echo "  {$broker->nodeId}: {$broker->host}:{$broker->port} ({$rack})\n";
+}
+
+// ApiVersions (key 18) is what Kafka 0.10.0 added so that a client can ask what the broker speaks
+echo "\nApis of the first broker\n";
+$brokers = $admin->findAllBrokers();
+$apis    = $admin->getApiVersions(reset($brokers));
+echo '  ' . count($apis) . " api keys, Produce up to v{$apis[0]->maxVersion}, Fetch up to v{$apis[1]->maxVersion}\n";
+
+echo "\nTopics\n";
+foreach ($admin->listTopics() as $name) {
+    echo "  {$name}\n";
+}
+
+// CAVEAT: a topic that does not exist yet is CREATED by this call when the broker runs with
+// auto.create.topics.enable=true, and the first answer reports the topic error code 5 (LeaderNotAvailable) and no
+// partitions until the controller has elected the partition leaders. Kafka 0.10.1 added the explicit way of doing
+// it, which reports what went wrong instead - see examples/create-topic.php.
+echo "\nPartitions of {$topic}\n";
+$metadata = $admin->describeTopics([$topic])[$topic] ?? null;
+if ($metadata === null || $metadata->partitions === []) {
+    echo "  the topic is being created, run this example again in a moment\n";
+
+    return;
+}
+foreach ($metadata->partitions as $partition) {
+    $replicas = implode(',', $partition->replicas);
+    echo "  {$partition->partitionId}: leader {$partition->leader}, replicas [{$replicas}]\n";
+}
+
+// The Offsets api is served by the leader of each partition, so the cluster metadata has to be fresh
+$cluster->reload();
+$partitions = array_keys($metadata->partitions);
+
+// Version 1 of the Offsets api (Kafka 0.10.1) answers ONE offset per partition, not a list of segment offsets
+echo "\nOffsets of {$topic}\n";
+$earliest = $admin->listOffsets([$topic => $partitions], OffsetsRequest::EARLIEST);
+$latest   = $admin->listOffsets([$topic => $partitions]);
+foreach ($partitions as $partition) {
+    $first = $earliest[$topic][$partition] ?? 0;
+    $last  = $latest[$topic][$partition] ?? 0;
+    echo "  {$partition}: {$first} .. {$last} (" . ($last - $first) . " messages)\n";
+}
+
+// OffsetFetch v2 (Kafka 0.10.2) made the topic array nullable: without a partition list the coordinator answers
+// every topic-partition this group has ever committed, which is what listGroupOffsets() asks for by default.
+echo "\nCommitted offsets of the group {$groupId}\n";
+echo "  coordinator: node " . $admin->findCoordinator($groupId)->nodeId . "\n";
+foreach ($admin->listGroupOffsets($groupId) as $topicOffsets) {
+    foreach ($topicOffsets->partitions as $partitionId => $partition) {
+        $committed = $partition->offset === -1 ? 'nothing committed yet' : (string) $partition->offset;
+        echo "  {$topicOffsets->topic}-{$partitionId}: {$committed}\n";
+    }
+}
+
+// Kafka 0.9 moved the consumer groups out of ZooKeeper into the brokers: each of them coordinates a share of the
+// groups and reports only its own, so the list of the cluster is the union of all of their answers.
+echo "\nConsumer groups of the cluster\n";
+$groups = $admin->listAllGroups();
+if ($groups === []) {
+    echo "  not a single group has a member at the moment\n";
+}
+foreach ($groups as $listedGroupId => $listedGroup) {
+    echo "  {$listedGroupId} ({$listedGroup->protocolType})\n";
+}
+
+// DescribeGroups is answered by the coordinator of the group. A group that has no members - because nobody has
+// joined it, or because everybody has left - is reported with the state Dead and the error code 0, not as an error.
+echo "\nDescription of the group {$groupId}\n";
+$description = $admin->describeGroup($groupId);
+echo "  state: {$description->state}\n";
+echo "  protocol type: '{$description->protocolType}', protocol: '{$description->protocol}'\n";
+foreach ($description->members as $memberId => $member) {
+    $assignmentSize = strlen($member->memberAssignment);
+    echo "  member {$memberId} of the client {$member->clientId} at {$member->clientHost}, "
+        . "{$assignmentSize} bytes of assignment\n";
+}
+
+// The remaining admin call, controlledShutdown(), asks the controller to move every leader off a broker. It is what
+// kafka-server-stop.sh triggers, and it really does stop serving that broker - only send it to a broker you want to
+// shut down. Creating and deleting topics is in examples/create-topic.php, the offsets by timestamp of Kafka 0.10.1
+// in examples/offsets-for-times.php.

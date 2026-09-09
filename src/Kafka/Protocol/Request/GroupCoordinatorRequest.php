@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -21,13 +21,24 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * consumer needs to issue its offset commit and fetch requests to this specific broker.
  *
  * It can discover the current coordinator by issuing a group coordinator request.
+ *
+ * The API is called ConsumerMetadataRequest in Kafka 0.8.2 (api key 10, v0, kafka/api/ConsumerMetadataRequest.scala);
+ * it was renamed to GroupCoordinator in 0.9 without a change to the wire format.
+ *
+ * <pre>
+ *   GroupCoordinatorRequest => ConsumerGroup
+ *     ConsumerGroup => string
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "GroupCoordinator API (key 10, v0)"
  */
 class GroupCoordinatorRequest extends AbstractRequest
 {
-    public function __construct(/**
-     * The consumer group id.
-     */
-        private readonly string $consumerGroup,
+    public function __construct(
+        /**
+         * The consumer group id.
+         */
+        protected readonly string $consumerGroup,
         string $clientId = '',
         int $correlationId = 0
     ) {
@@ -39,7 +50,7 @@ class GroupCoordinatorRequest extends AbstractRequest
      */
     public static function getScheme(): array
     {
-        $header = null;
+        $header = parent::getScheme();
 
         return $header + [
             'consumerGroup' => BinarySchema::TYPE_STRING,

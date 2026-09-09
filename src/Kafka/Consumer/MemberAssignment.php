@@ -9,72 +9,85 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Consumer;
 
+use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
- * Consumer Groups: The format of the MemberAssignment field for consumer groups
+ * Partitions that the leader of a group hands to one of its members, the `protocol_type = "consumer"` payload of
+ * the SyncGroup request and response.
  *
- * MemberAssignment => Version PartitionAssignment
- *   Version => int16
- *   PartitionAssignment => [Topic [Partition]]
- *     Topic => string
+ * <pre>
+ *   MemberAssignment => Version [Topic [Partition]] UserData
+ *     Version   => int16
+ *     Topic     => string
  *     Partition => int32
- *   UserData => bytes
+ *     UserData  => bytes
+ * </pre>
+ *
+ * The leader packs one of these per member into the `member_assignment` field of its SyncGroup request and every
+ * member gets its own back in the SyncGroup response. A member that the assignor left without partitions receives
+ * a structure with an empty topic array, not an empty byte array - this is what a Kafka 0.10.2.2 broker relays when
+ * a group has more members than the subscribed topics have partitions.
+ *
+ * Kafka 0.10.2.2 knows exactly one version, {@see MemberAssignment::VERSION}, and the built-in assignors send the
+ * empty `UserData` that the Java client sends.
+ *
+ * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see \Protocol\Kafka\Consumer\PartitionAssignorInterface::assign()
  */
 class MemberAssignment implements BinarySchemaInterface
 {
     /**
-     * This is a version id.
-     * @var int
+     * Version of the consumer group protocol that Kafka 0.10.2.2 speaks
      */
-    public $version;
+    public const int VERSION = 0;
 
     /**
-     * This property holds assignments of topic partitions for member.
-     *
-     * @var PartitionsForTopic[]
+     * Version of the structure, `ConsumerProtocol.CONSUMER_PROTOCOL_V0` in the Java client
      */
-    public $topicPartitions = [];
+    public int $version;
 
     /**
-     * The UserData field can be used by custom partition assignment strategies.
+     * Assigned partitions, indexed by the topic they belong to
      *
-     * For example, in a sticky partitioning implementation, this field can contain the assignment from the previous
-     * generation. In a resource-based assignment strategy, it could include the number of cpus on the machine hosting
-     * each consumer instance.
-     * @var string
+     * @var array<string, PartitionsForTopic>
      */
-    public $userData;
+    public array $topicPartitions = [];
 
     /**
-     * MemberAssignment constructor.
-     *
-     * @param array|int[][] $topicPartitions Partition assignments per topic
-     * @param int           $version         Optional version
-     * @param string        $userData        Additional user data
+     * Opaque data of the assignor, null for the `bytes` value -1 that the protocol defines as null
      */
-    public function __construct(array $topicPartitions = [], int $version = 0, string $userData = '')
+    public ?string $userData;
+
+    /**
+     * An entry of the assignment is either the list of partition ids of that topic or an already built DTO.
+     *
+     * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Assigned partitions per topic
+     * @param int                                         $version         Version of the structure, 0 in 0.10.2.2
+     * @param string|null                                 $userData        Data of the assignor for the member
+     */
+    public function __construct(array $topicPartitions = [], int $version = self::VERSION, ?string $userData = '')
     {
-        $packedTopicAssignment = [];
+        $packedTopicPartitions = [];
         foreach ($topicPartitions as $topic => $partitions) {
-            $packedTopicAssignment[$topic] = new PartitionsForTopic($topic, $partitions);
+            $packedTopicPartitions[$topic] = $partitions instanceof PartitionsForTopic
+                ? $partitions
+                : new PartitionsForTopic((string) $topic, array_values($partitions));
         }
 
-        $this->topicPartitions = $packedTopicAssignment;
+        $this->topicPartitions = $packedTopicPartitions;
         $this->version         = $version;
         $this->userData        = $userData;
     }
 
     /**
-     * Returns definition of binary packet for the class or object
-     *
-     * @return array
+     * @inheritdoc
      */
     public static function getScheme(): array
     {
@@ -83,5 +96,44 @@ class MemberAssignment implements BinarySchemaInterface
             'topicPartitions' => ['topic' => PartitionsForTopic::class],
             'userData'        => BinarySchema::TYPE_BYTEARRAY,
         ];
+    }
+
+    /**
+     * Returns the assignment as plain partition lists, indexed by the topic they belong to
+     *
+     * @return array<string, list<int>>
+     */
+    public function partitions(): array
+    {
+        $partitions = [];
+        foreach ($this->topicPartitions as $topic => $topicAssignment) {
+            $partitions[$topic] = $topicAssignment->partitions;
+        }
+
+        return $partitions;
+    }
+
+    /**
+     * Returns the binary representation of this structure, the `member_assignment` of a SyncGroup request
+     */
+    public function pack(): string
+    {
+        $stream = new StringStream();
+        BinarySchema::writeObjectToStream($this, $stream);
+
+        return $stream->getBuffer();
+    }
+
+    /**
+     * Restores the structure from the `member_assignment` bytes of a SyncGroup response
+     *
+     * @param string $bytes Content of the byte array field, without its length prefix
+     */
+    public static function unpack(string $bytes): static
+    {
+        /** @var static $assignment */
+        $assignment = BinarySchema::readObjectFromStream(static::class, new StringStream($bytes));
+
+        return $assignment;
     }
 }

@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -18,21 +18,25 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
 /**
  * Offset commit response object
  *
- * OffsetCommit Response (Version: 2) => [responses]
- *   responses => topic [partition_responses]
- *     topic => STRING
- *     partition_responses => partition error_code
- *       partition => INT32
- *       error_code => INT16
+ * <pre>
+ *   OffsetCommit Response (Version: 0 and 1) => [responses]
+ *     responses => topic [partition_responses]
+ *       topic               => STRING
+ *       partition_responses => partition error_code
+ *         partition  => INT32
+ *         error_code => INT16
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitResponse extends AbstractResponse
 {
     /**
-     * List of topics with partition result
+     * List of topics with the result for each of their partitions
      *
-     * @var OffsetCommitResponseTopic[]
+     * @var array<string, OffsetCommitResponseTopic>
      */
-    public $topics = [];
+    public array $topics = [];
 
     /**
      * @inheritdoc

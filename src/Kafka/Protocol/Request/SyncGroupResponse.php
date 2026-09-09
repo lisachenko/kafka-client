@@ -9,45 +9,39 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Sync group response
+ * SyncGroup response, version 0.
  *
- * SyncGroup Response (Version: 1) => throttle_time_ms error_code member_assignment
- *   throttle_time_ms => INT32
- *   error_code => INT16
- *   member_assignment => BYTES
+ * <pre>
+ *   SyncGroup Response (Version: 0) => error_code member_assignment
+ *     error_code        => INT16
+ *     member_assignment => BYTES
+ * </pre>
+ *
+ * The `throttle_time_ms` that opens this response on `main` is a field of version 1 (Kafka 0.10.1) and is therefore
+ * absent here. The assignment is the share of the member that sent the request, exactly the bytes the leader gave
+ * the coordinator for it; a member the leader did not mention receives an empty byte array, and an answer with an
+ * error code carries an empty one as well.
+ *
+ * @see docs/protocol/0.10.2.md, section "SyncGroup API (key 14, v0)"
  */
 class SyncGroupResponse extends AbstractResponse
 {
     /**
-     * Duration in milliseconds for which the request was throttled due to quota violation
-     *
-     * (Zero if the request did not violate any quota)
-     *
-     * @var integer
-     */
-    public $throttleTimeMs;
-
-    /**
      * Error code.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
-     * Assigned data to the member
-     *
-     * @todo This should be implemented on scheme-level as MemberAssignment
-     * @var string
+     * Assignment of the member that sent the request, opaque to this api.
      */
-    public $memberAssignment;
+    public string $memberAssignment;
 
     /**
      * @inheritdoc
@@ -57,7 +51,6 @@ class SyncGroupResponse extends AbstractResponse
         $header = parent::getScheme();
 
         return $header + [
-            'throttleTimeMs'   => BinarySchema::TYPE_INT32,
             'errorCode'        => BinarySchema::TYPE_INT16,
             'memberAssignment' => BinarySchema::TYPE_BYTEARRAY,
         ];

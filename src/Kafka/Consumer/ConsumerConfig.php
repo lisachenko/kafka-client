@@ -9,15 +9,33 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
+
+/**
+ * @author Alexander.Lisachenko
+ * @date   01.08.2016
+ */
 
 namespace Protocol\Kafka\Consumer;
 
 use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
-use Protocol\Kafka\Protocol\Request\FetchRequest;
 
 /**
  * Consumer config enumeration class
+ *
+ * Kafka 0.9 brought the broker-side group management, so the options that drive it exist here: session.timeout.ms,
+ * heartbeat.interval.ms and partition.assignment.strategy, plus offset.retention.ms for the `retention_time` of the
+ * OffsetCommit v2 request. Kafka 0.10.1 added {@see self::MAX_POLL_INTERVAL_MS}, the application-side half of the
+ * `rebalance_timeout` that a JoinGroup v1 request carries, and {@see self::FETCH_MAX_BYTES}, the request-level
+ * bound of a Fetch v3 answer. What arrived later is absent: isolation.level, the option of the transactional
+ * protocol of 0.11. The `offsets.storage` option of the general config ({@see GeneralConfig::OFFSETS_STORAGE})
+ * still selects where the committed offsets live (OffsetCommit v0 vs v2).
+ *
+ * A consumer overrides one option of the general config: `request.timeout.ms` defaults to 305000 instead of 30000,
+ * as it does in the Java consumer of 0.10.1 and above ("chosen to be higher than the default of
+ * max.poll.interval.ms", `ConsumerConfig.java` @ 0.10.2.2), because it has to be larger than both
+ * `session.timeout.ms` and `max.poll.interval.ms`: the socket would otherwise time out on a JoinGroup that the
+ * coordinator holds until the rebalance of the group is over, and a rebalance may last a whole rebalance timeout.
  */
 final class ConsumerConfig extends GeneralConfig
 {
@@ -27,18 +45,24 @@ final class ConsumerConfig extends GeneralConfig
     private static array $consumerConfiguration = [
         /* Used configs */
         ConsumerConfig::GROUP_ID                      => '',
-        ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => RoundRobinAssignor::class,
-        ConsumerConfig::SESSION_TIMEOUT_MS            => 30000,
-        ConsumerConfig::REBALANCE_TIMEOUT_MS          => 60000,
+        ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => 'range',
+        // Larger than both timeouts below, as in the Java consumer of 0.10.1 and above: the coordinator answers a
+        // JoinGroup only once the whole rebalance is over, which can take a full rebalance timeout
+        ConsumerConfig::REQUEST_TIMEOUT_MS            => 305000,
+        ConsumerConfig::SESSION_TIMEOUT_MS            => 10000,
+        ConsumerConfig::MAX_POLL_INTERVAL_MS          => ConsumerConfig::DEFAULT_MAX_POLL_INTERVAL_MS,
+        ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 3000,
         ConsumerConfig::FETCH_MIN_BYTES               => 1,
+        ConsumerConfig::FETCH_MAX_BYTES               => 52428800,
         ConsumerConfig::FETCH_MAX_WAIT_MS             => 500,
         ConsumerConfig::MAX_PARTITION_FETCH_BYTES     => 65536,
         ConsumerConfig::AUTO_OFFSET_RESET             => OffsetResetStrategy::LATEST,
-        ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 2000,
         ConsumerConfig::ENABLE_AUTO_COMMIT            => true,
         ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
-        ConsumerConfig::OFFSET_RETENTION_MS           => -1, // Use broker retention time for offsets
-        ConsumerConfig::ISOLATION_LEVEL               => FetchRequest::READ_UNCOMMITTED,
+        ConsumerConfig::OFFSET_RETENTION_MS           => -1, // Use the broker retention time for offsets
+        ConsumerConfig::CHECK_CRCS                    => true,
+        ConsumerConfig::KEY_DESERIALIZER              => null,
+        ConsumerConfig::VALUE_DESERIALIZER            => null,
     ];
 
     /**
@@ -50,8 +74,13 @@ final class ConsumerConfig extends GeneralConfig
     public const string GROUP_ID = 'group.id';
 
     /**
-     * The class name of the partition assignment strategy that the client will use to distribute partition ownership
-     * amongst consumer instances when group management is used
+     * The partition assignment strategy that the client will use to distribute partition ownership amongst consumer
+     * instances when group management is used.
+     *
+     * Either the wire name of a built-in assignor - `range` (the default, as in the Java client of 0.9) or
+     * `roundrobin` - or the name of a class that implements {@see PartitionAssignorInterface}. The name is what the
+     * JoinGroup request advertises to the coordinator as the group protocol, so every member of a group has to use
+     * the same one (error 23 InconsistentGroupProtocol otherwise).
      */
     public const string PARTITION_ASSIGNMENT_STRATEGY = 'partition.assignment.strategy';
 
@@ -65,18 +94,50 @@ final class ConsumerConfig extends GeneralConfig
      * processing in the consumer's poll loop at the cost of a longer time to detect hard failures. See also
      * max.poll.records for another option to control the processing time in the poll loop. Note that the value must be
      * in the allowable range as configured in the broker configuration by group.min.session.timeout.ms and
-     * group.max.session.timeout.ms
+     * group.max.session.timeout.ms (error 26 InvalidSessionTimeout otherwise).
+     *
+     * The default is 10000, which is the default of the Java consumer since Kafka 0.10.1: what an application may
+     * spend between two poll() calls is bounded by {@see self::MAX_POLL_INTERVAL_MS} from then on, so the session
+     * timeout no longer has to cover the processing of a whole batch and may be short enough to notice a member that
+     * died quickly.
      */
     public const string SESSION_TIMEOUT_MS = 'session.timeout.ms';
 
     /**
-     * The maximum allowed time for each worker to join the group once a rebalance has begun.
+     * The maximum delay between two invocations of poll() for a consumer that uses the group management.
      *
-     * This is basically a limit on the amount of time needed for all tasks to flush any pending data and commit
-     * offsets. If the timeout is exceeded, then the worker will be removed from the group, which will cause offset
-     * commit failures.
+     * The value is sent to the coordinator as the `rebalance_timeout` of a JoinGroup v1 request (Kafka 0.10.1,
+     * KIP-62), which is how long the coordinator waits for **this** member to rejoin a rebalance before it hands its
+     * partitions to somebody else. The Java consumer also leaves the group by itself when the application does not
+     * come back to poll() within this interval, which it can do because its heartbeats are sent from a thread of
+     * their own.
+     *
+     * **This client has no such thread.** PHP is single threaded and the heartbeat is sent from poll(), as it is on
+     * the 0.9 line, so an application that stops polling stops sending heartbeats as well: the coordinator drops the
+     * member when its `session.timeout.ms` expires - not when this interval does - and the next poll() sees the
+     * error code 25 (UnknownMemberId) or 27 (RebalanceInProgress) on its heartbeat and joins the group again. What
+     * this option really controls here is therefore how long the *other* members of the group wait in a rebalance,
+     * and for how long a JoinGroup of this client may block.
+     *
+     * Because a JoinGroup blocks for up to this long, `request.timeout.ms` has to be larger than it, which is what
+     * {@see KafkaConsumer::subscribe()} refuses a configuration over.
      */
-    public const string REBALANCE_TIMEOUT_MS = 'rebalance.timeout.ms';
+    public const string MAX_POLL_INTERVAL_MS = 'max.poll.interval.ms';
+
+    /**
+     * Default of {@see self::MAX_POLL_INTERVAL_MS}: five minutes, as in the Java consumer of 0.10.1 and above
+     */
+    public const int DEFAULT_MAX_POLL_INTERVAL_MS = 300000;
+
+    /**
+     * The expected time between heartbeats to the consumer coordinator when using Kafka's group management facilities.
+     *
+     * Heartbeats are used to ensure that the consumer's session stays active and to facilitate rebalancing when new
+     * consumers join or leave the group. The value must be set lower than session.timeout.ms, but typically should be
+     * set no higher than 1/3 of that value. It can be adjusted even lower to control the expected time for normal
+     * rebalances. PHP has no background thread: the heartbeat is sent from poll() once this interval has elapsed.
+     */
+    public const string HEARTBEAT_INTERVAL_MS = 'heartbeat.interval.ms';
 
     /**
      * The minimum amount of data the server should return for a fetch request.
@@ -88,6 +149,22 @@ final class ConsumerConfig extends GeneralConfig
      * at the cost of some additional latency.
      */
     public const string FETCH_MIN_BYTES = 'fetch.min.bytes';
+
+    /**
+     * The maximum amount of data the server should return for a fetch request, over all of its partitions.
+     *
+     * It is the request-level `MaxBytes` that version 3 of the Fetch API added (Kafka 0.10.1, KIP-74), 50 MiB by
+     * default as in the Java consumer. The broker fills the partitions of a request in the order they were asked
+     * for and stops once this budget is used up, so a consumer that fetches many partitions has to rotate their
+     * order to be fair - {@see KafkaConsumer::poll()} does exactly that.
+     *
+     * The limit is not absolute: if the first message of the first non-empty partition is larger than this value,
+     * it is returned anyway, so that the consumer can always make progress. `max.partition.fetch.bytes` keeps its
+     * own, per-partition meaning next to it.
+     *
+     * @see \Protocol\Kafka\Protocol\Request\FetchRequest::$maxBytes
+     */
+    public const string FETCH_MAX_BYTES = 'fetch.max.bytes';
 
     /**
      * The maximum amount of time the server will block before answering the fetch request if there isn't sufficient
@@ -116,16 +193,6 @@ final class ConsumerConfig extends GeneralConfig
     public const string AUTO_OFFSET_RESET = 'auto.offset.reset';
 
     /**
-     * The expected time between heartbeats to the consumer coordinator when using Kafka's group management facilities.
-     *
-     * Heartbeats are used to ensure that the consumer's session stays active and to facilitate rebalancing when new
-     * consumers join or leave the group. The value must be set lower than session.timeout.ms, but typically should be
-     * set no higher than 1/3 of that value. It can be adjusted even lower to control the expected time for normal
-     * rebalances.
-     */
-    public const string HEARTBEAT_INTERVAL_MS = 'heartbeat.interval.ms';
-
-    /**
      * If true the consumer's offset will be periodically committed after poll() operation.
      */
     public const string ENABLE_AUTO_COMMIT = 'enable.auto.commit';
@@ -137,33 +204,37 @@ final class ConsumerConfig extends GeneralConfig
     public const string AUTO_COMMIT_INTERVAL_MS = 'auto.commit.interval.ms';
 
     /**
-     * This option controls the retention time for topic offset storage, set to -1 to use broker retention time setting
+     * This option controls the retention time for topic offset storage, set to -1 to use broker retention time setting.
+     *
+     * It is the `retention_time` field of the OffsetCommit v2 request of Kafka 0.9, in milliseconds.
      */
     public const string OFFSET_RETENTION_MS = 'offset.retention.ms';
 
     /**
-     *Controls how to read messages written transactionally.
+     * Deserializer that turns the raw bytes of a record key into an application-level value.
      *
-     * If set to read_committed, Consumer->poll() will only return transactional messages which have been committed.
-     *
-     * If set to read_uncommitted' (the default), Consumer->poll() will return all messages, even transactional
-     * messages which have been aborted. Non-transactional messages will be returned unconditionally in either mode.
-     *
-     * Messages will always be returned in offset order. Hence, in read_committed mode, Consumer->poll() will only
-     * return messages up to the last stable offset (LSO), which is the one less than the offset of the first open
-     * transaction. In particular any messages appearing after messages belonging to ongoing transactions will be
-     * withheld until the relevant transaction has been completed. As a result, read_committed consumers will not be
-     * able to read up to the high watermark when there are in flight transactions.
-     *
-     * Further, when in read_committed the seekToEnd method will return the LSO
+     * Either an instance of {@see \Protocol\Kafka\Common\Serialization\Deserializer} or the name of a class that
+     * implements it and can be constructed without arguments; null leaves the keys as raw byte strings.
      */
-    public const string ISOLATION_LEVEL = 'isolation.level';
+    public const string KEY_DESERIALIZER = 'key.deserializer';
 
-    public const string KEY_DESERIALIZER        = 'key.deserializer';
-    public const string VALUE_DESERIALIZER      = 'value.deserializer';
+    /**
+     * Deserializer that turns the raw bytes of a record value into an application-level value, see
+     * {@see self::KEY_DESERIALIZER}.
+     */
+    public const string VALUE_DESERIALIZER = 'value.deserializer';
+
+    /**
+     * Automatically check the CRC32 of the consumed records.
+     *
+     * This ensures no on-the-wire or on-disk corruption to the messages occurred; the check adds some overhead, so
+     * a consumer that trusts its network may switch it off in cases seeking extreme performance. A message whose
+     * checksum does not match is reported as a CorruptMessageException for its own partition.
+     */
+    public const string CHECK_CRCS = 'check.crcs';
+
     public const string EXCLUDE_INTERNAL_TOPICS = 'exclude.internal.topics';
     public const string MAX_POLL_RECORDS        = 'max.poll.records';
-    public const string CHECK_CRCS              = 'check.crcs';
 
     /**
      * Returns default configuration for consumer

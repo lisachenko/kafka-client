@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Errors;
 
@@ -22,6 +22,14 @@ use RuntimeException;
  *
  * These can be translated by the client into exceptions or whatever the appropriate error handling mechanism in the
  * client language.
+ *
+ * The constant names are those of the later protocol lines so that the cascade merge stays small; the codes and the
+ * set of codes are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 0.10.2.2, which
+ * ends at 44: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
+ * 0.10.0, 36-42 (the CreateTopics codes, NOT_CONTROLLER and INVALID_REQUEST) with 0.10.1 and 43-44
+ * (UNSUPPORTED_FOR_MESSAGE_FORMAT, POLICY_VIOLATION) with 0.10.2. Code 13 was StaleLeaderEpochCode in the 0.8 line
+ * and is NETWORK_EXCEPTION here; NO_ERROR is not part of the mapping. Codes above 44 arrived with Kafka 0.11 and
+ * are answered with {@see \Protocol\Kafka\Common\Errors\UnknownErrorException} by {@see self::fromCode()}.
  */
 abstract class KafkaException extends RuntimeException
 {
@@ -60,17 +68,26 @@ abstract class KafkaException extends RuntimeException
     public const TOPIC_AUTHORIZATION_FAILED       = 29;
     public const GROUP_AUTHORIZATION_FAILED       = 30;
     public const CLUSTER_AUTHORIZATION_FAILED     = 31;
-    public const INVALID_TIMESTAMP                = 32;
-    public const UNSUPPORTED_SASL_MECHANISM       = 33;
-    public const ILLEGAL_SASL_STATE               = 34;
-    public const UNSUPPORTED_VERSION              = 35;
+    public const INVALID_TIMESTAMP                  = 32;
+    public const UNSUPPORTED_SASL_MECHANISM         = 33;
+    public const ILLEGAL_SASL_STATE                 = 34;
+    public const UNSUPPORTED_VERSION                = 35;
+    public const TOPIC_ALREADY_EXISTS               = 36;
+    public const INVALID_PARTITIONS                 = 37;
+    public const INVALID_REPLICATION_FACTOR         = 38;
+    public const INVALID_REPLICA_ASSIGNMENT         = 39;
+    public const INVALID_CONFIG                     = 40;
+    public const NOT_CONTROLLER                     = 41;
+    public const INVALID_REQUEST                    = 42;
+    public const UNSUPPORTED_FOR_MESSAGE_FORMAT     = 43;
+    public const POLICY_VIOLATION                   = 44;
 
     /**
      * Mapping from the codes to class names
      *
-     * @var array
+     * @var array<int, class-string<KafkaException>>
      */
-    private static $codeToClassMap = [
+    private static array $codeToClassMap = [
         self::UNKNOWN                          => UnknownErrorException::class,
         self::OFFSET_OUT_OF_RANGE              => OffsetOutOfRangeException::class,
         self::CORRUPT_MESSAGE                  => CorruptMessageException::class,
@@ -103,10 +120,19 @@ abstract class KafkaException extends RuntimeException
         self::TOPIC_AUTHORIZATION_FAILED       => TopicAuthorizationFailedException::class,
         self::GROUP_AUTHORIZATION_FAILED       => GroupAuthorizationFailedException::class,
         self::CLUSTER_AUTHORIZATION_FAILED     => ClusterAuthorizationFailedException::class,
-        self::INVALID_TIMESTAMP                => InvalidTimestampException::class,
-        self::UNSUPPORTED_SASL_MECHANISM       => UnsupportedSaslMechanismException::class,
-        self::ILLEGAL_SASL_STATE               => IllegalSaslStateException::class,
-        self::UNSUPPORTED_VERSION              => UnsupportedVersionException::class,
+        self::INVALID_TIMESTAMP                  => InvalidTimestampException::class,
+        self::UNSUPPORTED_SASL_MECHANISM         => UnsupportedSaslMechanismException::class,
+        self::ILLEGAL_SASL_STATE                 => IllegalSaslStateException::class,
+        self::UNSUPPORTED_VERSION                => UnsupportedVersionException::class,
+        self::TOPIC_ALREADY_EXISTS               => TopicExistsException::class,
+        self::INVALID_PARTITIONS                 => InvalidPartitionsException::class,
+        self::INVALID_REPLICATION_FACTOR         => InvalidReplicationFactorException::class,
+        self::INVALID_REPLICA_ASSIGNMENT         => InvalidReplicaAssignmentException::class,
+        self::INVALID_CONFIG                     => InvalidConfigException::class,
+        self::NOT_CONTROLLER                     => NotControllerException::class,
+        self::INVALID_REQUEST                    => InvalidRequestException::class,
+        self::UNSUPPORTED_FOR_MESSAGE_FORMAT     => UnsupportedForMessageFormatException::class,
+        self::POLICY_VIOLATION                   => PolicyViolationException::class,
     ];
 
     /**
@@ -114,18 +140,18 @@ abstract class KafkaException extends RuntimeException
      *
      * @var array
      */
-    private $context;
+    private array $context = [];
 
     /**
      * Creates an instance of exception by error code
      *
-     * @param integer         $errorCode Error code from the Kafka
-     * @param array           $context   Additional context
+     * @param integer        $errorCode Error code from the Kafka
+     * @param array          $context   Additional context
      * @param Exception|null $previous
      *
      * @return KafkaException
      */
-    final public static function fromCode(int $errorCode, array $context, ?Exception $previous = null): KafkaException
+    final public static function fromCode(int $errorCode, array $context = [], ?Exception $previous = null): KafkaException
     {
         if (!isset(self::$codeToClassMap[$errorCode])) {
             return new UnknownErrorException(['errorCode' => $errorCode] + $context, $previous);
@@ -138,14 +164,17 @@ abstract class KafkaException extends RuntimeException
     /**
      * @inheritDoc
      */
-    public function __construct(array $context, int $code, ?Exception $previous = null)
+    public function __construct(array $context = [], int $code = self::UNKNOWN, ?Exception $previous = null)
     {
         $this->context = $context;
-        $docBlock = new ReflectionObject($this)->getDocComment();
-        $docBlock = preg_replace('/^\s*\/?\*+\/?/m', '', $docBlock);
-        $docBlock = preg_replace('/\s{2,}/', '', $docBlock);
+
+        $docBlock = new ReflectionObject($this)->getDocComment() ?: '';
+        $docBlock = (string) preg_replace('/^\s*\/?\*+\/?/m', '', $docBlock);
+        $docBlock = trim((string) preg_replace('/\s{2,}/', ' ', $docBlock));
 
         $message = $docBlock . PHP_EOL . 'Context: ' . json_encode($context);
+
+        parent::__construct($message, $code, $previous);
     }
 
     /**

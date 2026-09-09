@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
@@ -17,30 +17,32 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * Fetch request topic DTO
+ * One topic of a Fetch request
  *
- * FetchRequestTopic => topic [partitions]
- *   topic => STRING
- *   partitions => partition fetch_offset max_bytes
- *     partition => INT32
- *     fetch_offset => INT64
- *     max_bytes => INT32
+ * <pre>
+ *   FetchRequestTopic => TopicName [Partition FetchOffset MaxBytes]
+ *     TopicName => string
+ * </pre>
+ *
+ * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
  */
 class FetchRequestTopic implements BinarySchemaInterface
 {
     /**
-     * Name of the topic for fetching
-     * @var string
+     * Name of the topic to fetch from
      */
-    public $topic;
+    public string $topic;
 
     /**
-     * Details about fetching for each topic's partition
+     * Partitions of this topic to fetch from, indexed by the partition id
      *
-     * @var FetchRequestTopicPartition[]
+     * @var array<int, FetchRequestTopicPartition>
      */
-    public $partitions;
+    public array $partitions;
 
+    /**
+     * @param array<int, FetchRequestTopicPartition> $partitions Partitions to fetch from, indexed by partition id
+     */
     public function __construct(string $topic, array $partitions = [])
     {
         $this->topic      = $topic;

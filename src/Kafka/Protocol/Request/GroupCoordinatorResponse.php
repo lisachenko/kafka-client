@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-declare (strict_types=1);
+declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
@@ -18,22 +18,33 @@ use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
 
 /**
  * Group coordinator response
+ *
+ * Called ConsumerMetadataResponse in Kafka 0.8.2 (api key 10, v0); the wire format below is unchanged in 0.9.
+ *
+ * <pre>
+ *   GroupCoordinatorResponse => ErrorCode CoordinatorId CoordinatorHost CoordinatorPort
+ *     ErrorCode       => int16
+ *     CoordinatorId   => int32
+ *     CoordinatorHost => string
+ *     CoordinatorPort => int32
+ * </pre>
+ *
+ * While the broker is still creating the internal `__consumer_offsets` topic the answer is the error code 15
+ * (GroupCoordinatorNotAvailable) with the coordinator `-1:"":-1`, so the lookup is worth retrying.
+ *
+ * @see docs/protocol/0.10.2.md, section "GroupCoordinator API (key 10, v0)"
  */
 class GroupCoordinatorResponse extends AbstractResponse
 {
     /**
      * Error code.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
      * Host and port information for the coordinator for a consumer group.
-     *
-     * @var GroupCoordinatorResponseMetadata
      */
-    public $coordinator;
+    public GroupCoordinatorResponseMetadata $coordinator;
 
     /**
      * @inheritdoc
