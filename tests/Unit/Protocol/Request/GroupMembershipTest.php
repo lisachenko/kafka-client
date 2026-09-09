@@ -23,6 +23,7 @@ use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
@@ -30,16 +31,20 @@ use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 
 /**
- * Byte-exact tests for the four apis of the group membership protocol of Kafka 0.9 (keys 11 to 14, all v0).
+ * Byte-exact tests for the four apis of the group membership protocol (keys 11 to 14).
+ *
+ * JoinGroup is the only one of them that Kafka 0.10 changed: its version 1 inserted the `RebalanceTimeout` after
+ * the `SessionTimeout`, and SyncGroup, Heartbeat and LeaveGroup are still at version 0.
  *
  * The member metadata of JoinGroup and the assignments of SyncGroup are opaque byte arrays to these apis - the
  * coordinator never parses them - so every test here uses arbitrary bytes for them, including a NUL byte, and only
  * checks that they survive the round trip untouched.
  *
- * @see docs/protocol/0.10.2.md, sections "JoinGroup API (key 11, v0)", "SyncGroup API (key 14, v0)",
+ * @see docs/protocol/0.10.2.md, sections "JoinGroup API (key 11, v0 and v1)", "SyncGroup API (key 14, v0)",
  *      "Heartbeat API (key 12, v0)" and "LeaveGroup API (key 13, v0)"
  */
 #[CoversClass(JoinGroupRequest::class)]
+#[CoversClass(JoinGroupRequestV0::class)]
 #[CoversClass(JoinGroupResponse::class)]
 #[CoversClass(SyncGroupRequest::class)]
 #[CoversClass(SyncGroupResponse::class)]
@@ -65,22 +70,38 @@ final class GroupMembershipTest extends TestCase
     /**
      * JoinGroup request v0 for the group "my-group", correlation id 1, client id "test".
      *
-     *   Size            => 00 00 00 39 (57 bytes)
-     *   ApiKey          => 00 0b
-     *   ApiVersion      => 00 00
-     *   CorrelationId   => 00 00 00 01
-     *   ClientId        => 00 04 "test"
-     *   GroupId         => 00 08 "my-group"
-     *   SessionTimeout  => 00 00 75 30 (30000)
-     *   MemberId        => 00 00 (empty: this client has none yet)
-     *   ProtocolType    => 00 08 "consumer"
-     *   GroupProtocols  => 00 00 00 01
+     *   Size             => 00 00 00 3d (61 bytes)
+     *   ApiKey           => 00 0b
+     *   ApiVersion       => 00 01
+     *   CorrelationId    => 00 00 00 01
+     *   ClientId         => 00 04 "test"
+     *   GroupId          => 00 08 "my-group"
+     *   SessionTimeout   => 00 00 75 30 (30000)
+     *   RebalanceTimeout => 00 04 93 e0 (300000, the default of max.poll.interval.ms)
+     *   MemberId         => 00 00 (empty: this client has none yet)
+     *   ProtocolType     => 00 08 "consumer"
+     *   GroupProtocols   => 00 00 00 01
      *     ProtocolName     => 00 05 "range"
      *     ProtocolMetadata => 00 00 00 02 00 ff
-     *
-     * There is no RebalanceTimeout between SessionTimeout and MemberId: that is version 1, Kafka 0.10.1.
      */
-    private const string JOIN_REQUEST_HEX = '00000039'
+    private const string JOIN_REQUEST_HEX = '0000003d'
+        . '000b'
+        . '0001'
+        . '00000001'
+        . '0004' . '74657374'
+        . '0008' . '6d792d67726f7570'
+        . '00007530'
+        . '000493e0'
+        . '0000'
+        . '0008' . '636f6e73756d6572'
+        . '00000001'
+        . '0005' . '72616e6765'
+        . '00000002' . '00ff';
+
+    /**
+     * The same request as a version 0 frame: the RebalanceTimeout is gone and only the header version differs
+     */
+    private const string JOIN_REQUEST_V0_HEX = '00000039'
         . '000b'
         . '0000'
         . '00000001'
@@ -199,6 +220,7 @@ final class GroupMembershipTest extends TestCase
         $request = new JoinGroupRequest(
             'my-group',
             30000,
+            300000,
             JoinGroupRequest::DEFAULT_MEMBER_ID,
             'consumer',
             ['range' => self::METADATA],
@@ -208,7 +230,29 @@ final class GroupMembershipTest extends TestCase
 
         self::assertSame(self::JOIN_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::JOIN_GROUP, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'JoinGroup v1 with its RebalanceTimeout is Kafka 0.10.1');
+        self::assertSame(1, $request->getApiVersion(), 'the RebalanceTimeout of Kafka 0.10.1 makes this version 1');
+    }
+
+    public function testJoinGroupRequestV0CarriesNoRebalanceTimeout(): void
+    {
+        $request = new JoinGroupRequestV0(
+            'my-group',
+            30000,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            'consumer',
+            ['range' => self::METADATA],
+            'test',
+            1
+        );
+
+        self::assertSame(self::JOIN_REQUEST_V0_HEX, bin2hex((string) $request));
+        self::assertSame(0, $request->getApiVersion());
+        self::assertArrayNotHasKey(
+            'rebalanceTimeout',
+            JoinGroupRequestV0::getScheme(),
+            'the field arrived with the version 1, and a 0.10.2.2 broker then uses the session timeout instead'
+        );
+        self::assertArrayHasKey('rebalanceTimeout', JoinGroupRequest::getScheme());
     }
 
     public function testJoinGroupRequestKeepsTheOrderOfTheOfferedProtocols(): void
@@ -216,6 +260,7 @@ final class GroupMembershipTest extends TestCase
         $request = new JoinGroupRequest(
             'my-group',
             30000,
+            300000,
             'one-1',
             'consumer',
             ['roundrobin' => 'first', 'range' => 'second'],
@@ -237,6 +282,7 @@ final class GroupMembershipTest extends TestCase
         $request = new JoinGroupRequest(
             'my-group',
             30000,
+            300000,
             JoinGroupRequest::DEFAULT_MEMBER_ID,
             'consumer',
             ['range' => new JoinGroupRequestProtocol('range', self::METADATA)],

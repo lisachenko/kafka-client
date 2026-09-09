@@ -209,12 +209,13 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetFetch response (api key 9, v0 and v1 share the response format)
+     * Builds an OffsetFetch response (api key 9; v0 and v1 share the response format, v2 appends a group error)
      *
      * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
      *        [errorCode, offset, metadata]
+     * @param int|null $groupErrorCode The group-level error code of version 2, null for a version 0 or 1 answer
      */
-    public static function offsetFetch(int $correlationId, array $topics): string
+    public static function offsetFetch(int $correlationId, array $topics, ?int $groupErrorCode = 0): string
     {
         $body = pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
@@ -225,6 +226,9 @@ final class ResponseFrame
                     . self::string($metadata)
                     . pack('n', $errorCode);
             }
+        }
+        if ($groupErrorCode !== null) {
+            $body .= pack('n', $groupErrorCode);
         }
 
         return self::of($correlationId, $body);

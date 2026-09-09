@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Throwable;
 
 /**
- * A Kafka client that consumes records from a Kafka 0.9.0.1 cluster.
+ * A Kafka client that consumes records from a Kafka 0.10.2.2 cluster.
  *
  * Kafka 0.9 moved the coordination of a consumer group out of ZooKeeper into the broker, so this consumer knows
  * both ways of getting partitions, and they are mutually exclusive, exactly as in the Java client:
@@ -55,9 +55,10 @@ use Throwable;
  *     ConsumerConfig::BOOTSTRAP_SERVERS  => ['tcp://127.0.0.1:9092'],
  *     ConsumerConfig::GROUP_ID           => 'my-group',
  *     ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
- *     ConsumerConfig::SESSION_TIMEOUT_MS => 10000,
- *     // request.timeout.ms has to be larger, a JoinGroup blocks until the whole rebalance is over
- *     ClientConfig::REQUEST_TIMEOUT_MS   => 30000,
+ *     ConsumerConfig::SESSION_TIMEOUT_MS   => 10000,
+ *     ConsumerConfig::MAX_POLL_INTERVAL_MS => 30000,
+ *     // request.timeout.ms has to be larger than both, a JoinGroup blocks until the rebalance is over
+ *     ClientConfig::REQUEST_TIMEOUT_MS     => 40000,
  * ]);
  *
  * $consumer->subscribe(['my-topic']);
@@ -81,15 +82,23 @@ use Throwable;
  * the next poll() notices that from the error code of its heartbeat (25/22/27) and rejoins the group. An
  * application whose processing of a batch can take longer than the session timeout therefore has to raise
  * `session.timeout.ms` - within the `group.min.session.timeout.ms`/`group.max.session.timeout.ms` of the broker -
- * or poll more often. There is no `max.poll.interval.ms` on this line, that is Kafka 0.10.1.
+ * or poll more often.
+ *
+ * `max.poll.interval.ms` (Kafka 0.10.1) is the second half of that story, and it works differently here than it
+ * does in Java. Its value is sent to the coordinator as the `rebalance_timeout` of every JoinGroup v1 request, so
+ * it really is what the coordinator waits for this member in a rebalance; but the Java consumer *also* leaves the
+ * group by itself when the application does not call poll() within that interval, which it can only do because its
+ * heartbeats come from a thread of their own. **This consumer has no such thread**: an application that stops
+ * polling stops heartbeating, and the coordinator drops the member when `session.timeout.ms` expires. What
+ * `max.poll.interval.ms` therefore buys here is the time the *rest* of the group is willing to wait for this member
+ * in a rebalance - and the requirement that `request.timeout.ms` exceed it, because a JoinGroup blocks that long.
  *
  * Where the committed offsets are kept is chosen with `offsets.storage`: `kafka` commits them to the coordinator
  * of the group with the version 2 of the OffsetCommit api, which carries the member id and the generation of this
  * consumer, `zookeeper` uses the version 0, which is what the consumers of Kafka 0.8.1 did. The two storages are
  * independent, so a group has one position per storage.
  *
- * What arrived after 0.9.0.1 is absent: `rebalance.timeout.ms` and `max.poll.interval.ms` (JoinGroup v1, Kafka
- * 0.10.1), the `isolation.level` of the transactional protocol of 0.11 and the message format v1 with timestamps.
+ * What arrived after 0.10.2.2 is absent: the `isolation.level` of the transactional protocol of 0.11.
  *
  * A message that does not fit into `max.partition.fetch.bytes` is refused with a {@see RecordTooLargeException}
  * rather than silently stalling the partition, because a 0.9.0.1 broker cuts a message set off at that size
@@ -265,6 +274,10 @@ class KafkaConsumer
      * A topic-partition that the group has never committed comes back with the offset -1, whichever storage the
      * `offsets.storage` option selects.
      *
+     * The partitions are always named explicitly here, as they are in the Java consumer. "Every topic the group
+     * committed" is what the nullable topic array of OffsetFetch v2 asks for, and it is an administrative question
+     * rather than a consumer one: {@see \Protocol\Kafka\Admin\AdminClient::listGroupOffsets()} answers it.
+     *
      * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions of that topic
      *
      * @return array<string, array<int, int>> [topic: string][partition: int] => committed offset, or -1
@@ -426,8 +439,9 @@ class KafkaConsumer
      * @param list<string>                  $topics   List of topics to subscribe to
      * @param ConsumerRebalanceListener|null $listener Observer of the rebalances of this consumer, if any
      *
-     * @throws InvalidConfigurationException when `request.timeout.ms` does not exceed `session.timeout.ms`, which
-     *                                       a JoinGroup that waits for the whole rebalance needs it to
+     * @throws InvalidConfigurationException when `request.timeout.ms` does not exceed both `session.timeout.ms` and
+     *                                       `max.poll.interval.ms`, which a JoinGroup that waits for the whole
+     *                                       rebalance needs it to
      */
     public function subscribe(array $topics, ?ConsumerRebalanceListener $listener = null): void
     {
@@ -443,7 +457,7 @@ class KafkaConsumer
         }
 
         $this->requireGroupId();
-        $this->requireRequestTimeoutAboveSessionTimeout();
+        $this->requireRequestTimeoutAboveTheBlockingTimeouts();
 
         $this->rebalanceListener = $listener;
         $this->subscriptionState->subscribeByTopics($topicNames);
@@ -945,7 +959,8 @@ class KafkaConsumer
             $this->requireGroupId(),
             $this->assignor,
             (int) $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS],
-            (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100)
+            (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
+            $this->rebalanceTimeoutMs()
         );
     }
 
@@ -967,31 +982,54 @@ class KafkaConsumer
     /**
      * Refuses a group membership whose JoinGroup could time out before the rebalance it waits for is over
      *
-     * The coordinator answers a JoinGroup only once every member of the group has rejoined or has missed its
-     * session timeout, so a socket read timeout - `request.timeout.ms` - that is not larger than
-     * `session.timeout.ms` turns a perfectly normal rebalance into a network error. The Java consumer of 0.9.0.1
-     * refuses that combination in its constructor, and this one refuses it when a group is actually joined.
+     * The coordinator answers a JoinGroup only once every member of the group has rejoined or has run out of time,
+     * so a socket read timeout - `request.timeout.ms` - that is not larger than the time it may wait turns a
+     * perfectly normal rebalance into a network error.
+     *
+     * Two options bound that wait since Kafka 0.10.1, and the request timeout has to exceed **both**:
+     * `session.timeout.ms`, after which a member that stopped sending heartbeats is dropped, and
+     * `max.poll.interval.ms`, which this consumer sends as the `rebalance_timeout` of its JoinGroup v1 request and
+     * which is what the coordinator really waits for a member of the group to rejoin (`GroupMetadata` @ 0.10.2.2
+     * takes the largest rebalance timeout of the members). The Java consumer refuses the combination in its
+     * constructor and picks its `request.timeout.ms` default of 305000 for exactly this reason; this one refuses it
+     * when a group is actually joined.
      *
      * @throws InvalidConfigurationException
      */
-    private function requireRequestTimeoutAboveSessionTimeout(): void
+    private function requireRequestTimeoutAboveTheBlockingTimeouts(): void
     {
         $requestTimeoutMs = (int) $this->configuration[ConsumerConfig::REQUEST_TIMEOUT_MS];
-        $sessionTimeoutMs = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
-        if ($requestTimeoutMs > $sessionTimeoutMs) {
-            return;
-        }
+        $blockingTimeouts = [
+            ConsumerConfig::SESSION_TIMEOUT_MS   => (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS],
+            ConsumerConfig::MAX_POLL_INTERVAL_MS => $this->rebalanceTimeoutMs(),
+        ];
 
-        throw new InvalidConfigurationException(
-            sprintf(
-                '%s (%d) has to be greater than %s (%d): the coordinator answers the JoinGroup request of a '
-                . 'member only once the whole rebalance is over, which can take a full session timeout.',
-                ConsumerConfig::REQUEST_TIMEOUT_MS,
-                $requestTimeoutMs,
-                ConsumerConfig::SESSION_TIMEOUT_MS,
-                $sessionTimeoutMs
-            )
-        );
+        foreach ($blockingTimeouts as $option => $timeoutMs) {
+            if ($requestTimeoutMs > $timeoutMs) {
+                continue;
+            }
+
+            throw new InvalidConfigurationException(
+                sprintf(
+                    '%s (%d) has to be greater than %s (%d): the coordinator answers the JoinGroup request of a '
+                    . 'member only once the whole rebalance is over, which can take a full %s.',
+                    ConsumerConfig::REQUEST_TIMEOUT_MS,
+                    $requestTimeoutMs,
+                    $option,
+                    $timeoutMs,
+                    $option
+                )
+            );
+        }
+    }
+
+    /**
+     * Returns the `rebalance_timeout` this consumer sends with its JoinGroup requests, `max.poll.interval.ms`
+     */
+    private function rebalanceTimeoutMs(): int
+    {
+        return (int) ($this->configuration[ConsumerConfig::MAX_POLL_INTERVAL_MS]
+            ?? ConsumerConfig::DEFAULT_MAX_POLL_INTERVAL_MS);
     }
 
     /**

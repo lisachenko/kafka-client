@@ -1,16 +1,71 @@
 {
     "api": "join-group",
     "apiKey": 11,
-    "section": "JoinGroup API (key 11, v0)",
-    "description": "Wire vectors of the JoinGroup API (key 11, v0), replayed by tests/Compliance.",
+    "section": "JoinGroup API (key 11, v0 and v1)",
+    "description": "Wire vectors of the JoinGroup API (key 11, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
+        {
+            "id": "joingroup.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "JoinGroup request v1 of a client that has no member id yet: the rebalance_timeout of Kafka 0.10.1 (30000) sits between the session timeout (10000) and the member id, and it does not have to lie inside the group.min/max.session.timeout.ms of the broker.",
+            "hex": "00000056000b00010000002800027436000f74362d766563746f72732d6a6f696e000027100000753000000008636f6e73756d657200000001000572616e676500000016000000000001000a74362d766563746f7273ffffffff",
+            "fields": {
+                "messageSize": 86,
+                "apiKey": 11,
+                "apiVersion": 1,
+                "correlationId": 40,
+                "clientId": "t6",
+                "consumerGroup": "t6-vectors-join",
+                "sessionTimeout": 10000,
+                "rebalanceTimeout": 30000,
+                "memberId": "",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000a74362d766563746f7273ffffffff"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer to the version 1 request: the frame of version 0, unchanged - JOIN_GROUP_RESPONSE_V1 is JOIN_GROUP_RESPONSE_V0 in Protocol.java @ 0.10.2.2 - for the first and only member of a fresh group, which is its leader and therefore receives the metadata of every member.",
+            "hex": "000000aa00000028000000000001000572616e6765002774362d30366432386338632d343362662d343838332d623066302d646266663834333265353232002774362d30366432386338632d343362662d343838332d623066302d64626666383433326535323200000001002774362d30366432386338632d343362662d343838332d623066302d64626666383433326535323200000016000000000001000a74362d766563746f7273ffffffff",
+            "fields": {
+                "messageSize": 170,
+                "correlationId": 40,
+                "errorCode": 0,
+                "generationId": 1,
+                "groupProtocol": "range",
+                "leaderId": "t6-06d28c8c-43bf-4883-b0f0-dbff8432e522",
+                "memberId": "t6-06d28c8c-43bf-4883-b0f0-dbff8432e522",
+                "members": {
+                    "t6-06d28c8c-43bf-4883-b0f0-dbff8432e522": {
+                        "memberId": "t6-06d28c8c-43bf-4883-b0f0-dbff8432e522",
+                        "metadata": {
+                            "$bytes": "000000000001000a74362d766563746f7273ffffffff"
+                        }
+                    }
+                }
+            }
+        },
         {
             "id": "joingroup.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV0",
             "version": 0,
             "source": "broker",
-            "description": "JoinGroup request v0 of a client that has no member id yet, offering the `range` protocol of the `consumer` protocol type with its subscription as opaque metadata.",
+            "description": "JoinGroup request v0 of a client that has no member id yet, offering the `range` protocol of the `consumer` protocol type with its subscription as opaque metadata. There is no rebalance timeout between the session timeout and the member id: a 0.10.2.2 broker then uses the session timeout as the rebalance timeout as well.",
             "hex": "00000053000b00000000002a00027433001074332d766563746f72732d67726f75700000177000000008636f6e73756d657200000001000572616e676500000016000000000001000a74332d766563746f7273ffffffff",
             "fields": {
                 "messageSize": 83,
@@ -61,7 +116,7 @@
         {
             "id": "joingroup.request.v0.invalid-session-timeout",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV0",
             "version": 0,
             "source": "broker",
             "description": "JoinGroup request v0 with a session timeout below group.min.session.timeout.ms of the broker.",
