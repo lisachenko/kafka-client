@@ -20,6 +20,7 @@ namespace Protocol\Kafka;
 use Closure;
 use Exception;
 use Protocol\Kafka\Admin\NewTopic;
+use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
@@ -48,6 +49,7 @@ use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
+use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
@@ -59,6 +61,8 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -1542,5 +1546,69 @@ class Client
         }
 
         return KafkaException::fromCode($errorCode, $context);
+    }
+
+    /**
+     * Deletes the records before an offset of each of the given partitions (ApiKey 21, Kafka 0.11, KIP-107)
+     *
+     * The api moves the **low watermark** (`logStartOffset`) of a partition forward and leaves the deletion of the
+     * segments below it to the log cleaner: everything BELOW the offset goes away, the record at the offset stays,
+     * and the answer reports the new low watermark of each partition. {@see RecordsToDelete::HIGH_WATERMARK} (-1)
+     * asks for everything that is fully replicated.
+     *
+     * Like Produce and Fetch this is served by the **leader** of each partition, so the request is split per leader
+     * by {@see self::clusterRequest()} and the partitions that a metadata refresh can fix - 3, 5, 6 and a dropped
+     * connection - are retried with the `retries` and `retry.backoff.ms` of {@see RetryPolicy}. A partition that
+     * still fails afterwards is reported in the {@see TopicPartitionRequestException} together with the partial
+     * result of the ones that succeeded, exactly like a produce or a fetch.
+     *
+     * @param array<string, array<int, int|RecordsToDelete>> $topicPartitionOffsets Offset to delete before, as
+     *        topic => partition => offset
+     * @param int $timeoutMs How long the leader waits for the new low watermark to be replicated, in milliseconds
+     *
+     * @return array<string, array<int, DeleteRecordsResponsePartition>> [topic => [partition => result]]
+     *
+     * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
+     */
+    public function deleteRecords(array $topicPartitionOffsets, int $timeoutMs = 30000): array
+    {
+        $partitionOffsets = [];
+        foreach ($topicPartitionOffsets as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $offset) {
+                $partitionOffsets[(string) $topic][(int) $partitionId] = $offset instanceof RecordsToDelete
+                    ? $offset->beforeOffset
+                    : (int) $offset;
+            }
+        }
+
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->clusterRequest(
+            $partitionOffsets,
+            fn(array $nodeTopicPartitions, int $correlationId): DeleteRecordsRequest => new DeleteRecordsRequest(
+                $nodeTopicPartitions,
+                $timeoutMs,
+                $clientId,
+                $correlationId
+            ),
+            DeleteRecordsResponse::class,
+            static function (array $result, DeleteRecordsResponse $response, array &$errors): array {
+                foreach ($response->topics as $topic => $topicResponse) {
+                    /** @var DeleteRecordsResponsePartition $partitionResult */
+                    foreach ($topicResponse->partitions as $partitionId => $partitionResult) {
+                        if ($partitionResult->errorCode !== KafkaException::NO_ERROR) {
+                            $errors[$topic][$partitionId] = KafkaException::fromCode(
+                                $partitionResult->errorCode,
+                                ['topic' => $topic, 'partitionId' => $partitionId]
+                            );
+                            continue;
+                        }
+                        $result[$topic][$partitionId] = $partitionResult;
+                    }
+                }
+
+                return $result;
+            }
+        );
     }
 }

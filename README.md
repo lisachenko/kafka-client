@@ -213,7 +213,9 @@ The Admin API exposes the low-level cluster operations a 0.11.0.3 broker can ser
 
 ```php
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\ConfigResource;
 use Protocol\Kafka\Admin\NewTopic;
+use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -231,6 +233,16 @@ $earliest = $admin->listOffsets(['test' => [0]], OffsetsRequest::EARLIEST);
 $controller = $admin->findController();                     // Node, from the controller_id of Metadata v1
 $created    = $admin->createTopics([new NewTopic('test-2', 3, 1)]);   // topic => ?KafkaException
 $deleted    = $admin->deleteTopics(['test-2']);                      // topic => ?KafkaException
+
+$purged = $admin->deleteRecords(['test' => [0 => 100]]);    // topic => partition => DeletedRecords (low watermark)
+$purged = $admin->deleteRecords(['test' => [0 => RecordsToDelete::allRecords()]]);
+
+$topicResource = ConfigResource::topic('test');
+$configs       = $admin->describeConfigs([$topicResource]); // resource key => Config
+echo $configs[$topicResource->key()]->value('retention.ms');
+$altered = $admin->alterConfigs([                           // resource key => ?KafkaException
+    $topicResource->key() => ['retention.ms' => '3600000'] + $configs[$topicResource->key()]->nonDefaultValues(),
+]);
 
 $coordinator = $admin->findCoordinator('kafka-daemon');     // Node that holds the group offsets
 $committed   = $admin->listGroupOffsets('kafka-daemon');    // every topic the group committed (v2)
@@ -261,6 +273,9 @@ foreach ($group->members as $memberId => $member) {
 | `listGroups()` / `listAllGroups()`           | ListGroups v0           | A broker only knows its own groups; `listAllGroups()` merges them all  |
 | `describeGroup()` / `describeGroups()`       | DescribeGroups v0       | Sent to the coordinator of the group; an unknown group answers `Dead`, one whose last member left `Empty` |
 | `controlledShutdown()`                       | ControlledShutdown v1   | Moves every partition leader off a broker — it really does stop it    |
+| `deleteRecords()`                            | DeleteRecords v0        | Moves the **low watermark** of a partition forward (KIP-107); sent to the partition leader, answers a `DeletedRecords` per partition |
+| `describeConfigs()`                          | DescribeConfigs v0      | The configuration of a topic or a broker (KIP-133); a broker resource is only answered by that broker, and a sensitive value comes back `null` |
+| `alterConfigs()`                             | AlterConfigs v0         | **Replaces** the whole configuration of a topic; a 0.11 broker refuses a broker resource with 42 |
 
 Both topic apis are served by the **controller** alone: `AdminClient` looks it up in the
 `controller_id` of a Metadata answer, and repeats the request once against a freshly looked up
