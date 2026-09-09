@@ -82,6 +82,19 @@ class FetchRequest extends AbstractRequest
     public const int DEFAULT_MAX_BYTES = 52428800;
 
     /**
+     * `isolation_level` of version 4 and above (Kafka 0.11, KIP-98): every record of the log is visible, transactional
+     * ones included, up to the high water mark. What the Offsets api v2 and `ConsumerConfig::ISOLATION_LEVEL` send
+     * by default.
+     */
+    public const int READ_UNCOMMITTED = 0;
+
+    /**
+     * `isolation_level` of version 4 and above: only non-transactional and *committed* transactional records are
+     * visible, and the fetch stops at the last stable offset instead of the high water mark.
+     */
+    public const int READ_COMMITTED = 1;
+
+    /**
      * Topics to fetch from, indexed by the topic name
      *
      * @var array<string, FetchRequestTopic>
