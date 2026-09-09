@@ -15,6 +15,8 @@ broker, and everything Kafka 0.11 adds on the 0.11.0.3 container of `docker-comp
 | File | What was captured on the 0.11.0.3 broker |
 |---|---|
 | `api-versions.json` | ApiVersions **v0 and v1**: the 34 keys the broker serves, in both layouts, and the error code 35 of an unknown version |
+| `produce.json` | Produce **v3**: the request with its nullable `transactional_id` and a record batch v2, and the two answers of a `CreateTime` and a `LogAppendTime` topic - which are the version 2 frame, because `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` |
+| `fetch.json` | Fetch **v4 and v5**: both versions at both isolation levels, which is where the `last_stable_offset = -1` and the null `aborted_transactions` of a `read_uncommitted` answer come from, plus a `read_committed` answer of a partition whose only transaction was aborted |
 
 That the older frames are still the current ones is not an assumption:
 `tests/Integration/ApiVersionProbeTest.php` asks the 0.11.0.3 broker with a real **ApiVersions** request

@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Consumer;
 
+use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\TimestampType;
 
@@ -30,6 +31,10 @@ use Protocol\Kafka\Common\Record\TimestampType;
  * message format v1 (Kafka 0.10.0) has them, message format v0 does not, and neither does an answer that the broker
  * down-converted to v0 for a Fetch request below version 2 - a record read that way has a `null` timestamp and
  * {@see TimestampType::NO_TIMESTAMP_TYPE}.
+ *
+ * The `$headers` (KIP-82) come from the message format v2 alone. A broker converts its log down to the message
+ * format v1 for every Fetch request below version 4 and has nowhere to put them there, so a consumer that talks to
+ * a 0.11 broker sees them and one that reads an older log, or reads with an older api version, gets an empty list.
  */
 class ConsumerRecord extends Record
 {
@@ -44,6 +49,7 @@ class ConsumerRecord extends Record
      * @param mixed       $deserializedValue Value as `value.deserializer` returned it, the raw value without one
      * @param int|null    $timestamp         Timestamp of the record, null for a record of message format v0
      * @param int         $timestampType     One of the {@see TimestampType} constants
+     * @param list<Header> $headers          Headers of the record, only ever filled in the message format v2
      */
     public function __construct(
         public readonly string $topic,
@@ -56,8 +62,9 @@ class ConsumerRecord extends Record
         public readonly mixed $deserializedValue = null,
         ?int $timestamp = null,
         int $timestampType = TimestampType::NO_TIMESTAMP_TYPE,
+        array $headers = [],
     ) {
-        parent::__construct($value, $key, $attributes, $offset, $timestamp, $timestampType);
+        parent::__construct($value, $key, $attributes, $offset, $timestamp, $timestampType, $headers);
     }
 
     /**
@@ -80,7 +87,8 @@ class ConsumerRecord extends Record
             $deserializedKey,
             $deserializedValue,
             $record->timestamp,
-            $record->timestampType
+            $record->timestampType,
+            $record->headers
         );
     }
 }

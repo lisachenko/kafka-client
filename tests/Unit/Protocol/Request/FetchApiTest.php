@@ -15,47 +15,78 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Record\Header;
+use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV0;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
+use Protocol\Kafka\Protocol\Data\FetchResponseAbortedTransaction;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\FetchResponsePartitionV0;
+use Protocol\Kafka\Protocol\Data\FetchResponsePartitionV4;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV0;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
+use Protocol\Kafka\Protocol\Request\FetchRequestV3;
+use Protocol\Kafka\Protocol\Request\FetchRequestV4;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV0;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
+use Protocol\Kafka\Protocol\Request\FetchResponseV3;
+use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 
 /**
- * Byte-exact tests for the Fetch API, versions 0 to 3.
+ * Byte-exact tests for the Fetch API, versions 0 to 5.
  *
  * <pre>
  *   FetchRequest v0, v1, v2 => ReplicaId MaxWaitTime MinBytes [TopicName [Partition FetchOffset MaxBytes]]
  *   FetchRequest v3         => ReplicaId MaxWaitTime MinBytes MaxBytes [TopicName [Partition FetchOffset MaxBytes]]
+ *   FetchRequest v4         => … MaxBytes IsolationLevel [TopicName [Partition FetchOffset MaxBytes]]
+ *   FetchRequest v5         => … MaxBytes IsolationLevel [TopicName [Partition FetchOffset LogStartOffset
+ *                                                                    MaxBytes]]
  *   FetchResponse v0        => [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet]]
  *   FetchResponse v1 to v3  => ThrottleTimeMs [TopicName [...]]
+ *   FetchResponse v4        => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset
+ *                                                         LastStableOffset [AbortedTransactions] …]]
+ *   FetchResponse v5        => … HighwaterMarkOffset LastStableOffset LogStartOffset [AbortedTransactions] …
  * </pre>
  *
- * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v3)" and "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v5)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
+#[CoversClass(FetchRequestV4::class)]
+#[CoversClass(FetchRequestV3::class)]
 #[CoversClass(FetchRequestV2::class)]
 #[CoversClass(FetchRequestV1::class)]
 #[CoversClass(FetchRequestV0::class)]
 #[CoversClass(FetchResponse::class)]
+#[CoversClass(FetchResponseV4::class)]
+#[CoversClass(FetchResponseV3::class)]
 #[CoversClass(FetchResponseV2::class)]
 #[CoversClass(FetchResponseV1::class)]
 #[CoversClass(FetchResponseV0::class)]
 #[CoversClass(FetchRequestTopic::class)]
+#[CoversClass(FetchRequestTopicV0::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
+#[CoversClass(FetchRequestTopicPartitionV0::class)]
 #[CoversClass(FetchResponseTopic::class)]
+#[CoversClass(FetchResponseTopicV4::class)]
+#[CoversClass(FetchResponseTopicV0::class)]
 #[CoversClass(FetchResponsePartition::class)]
+#[CoversClass(FetchResponsePartitionV4::class)]
+#[CoversClass(FetchResponsePartitionV0::class)]
+#[CoversClass(FetchResponseAbortedTransaction::class)]
 final class FetchApiTest extends TestCase
 {
     /**
@@ -75,7 +106,7 @@ final class FetchApiTest extends TestCase
      *       0 => FetchOffset 0,  MaxBytes 1024
      *       1 => FetchOffset 42, MaxBytes 1024
      */
-    private const string FETCH_REQUEST_HEX = '0000004d'
+    private const string FETCH_REQUEST_V3_HEX = '0000004d'
         . '0001'
         . '0003'
         . '00000001'
@@ -89,6 +120,30 @@ final class FetchApiTest extends TestCase
         . '00000002'
         . '00000000' . '0000000000000000' . '00000400'
         . '00000001' . '000000000000002a' . '00000400';
+
+    /**
+     * The same request as a version 5 one: the `IsolationLevel` byte of v4 behind `MaxBytes` and the
+     * `LogStartOffset` of v5 in every partition entry, between `FetchOffset` and its `MaxBytes`.
+     *
+     *   Size           => 00 00 00 5e (94 bytes), ApiVersion => 00 05
+     *   IsolationLevel => 00 (read_uncommitted)
+     *   LogStartOffset => ff ff ff ff ff ff ff ff (-1, a consumer has no log of its own)
+     */
+    private const string FETCH_REQUEST_HEX = '0000005e'
+        . '0001'
+        . '0005'
+        . '00000001'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00000064'
+        . '00000001'
+        . '00100000'
+        . '00'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000002'
+        . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+        . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400';
 
     /**
      * The same request without the request-level MaxBytes, which is what the versions 0 to 2 send
@@ -131,12 +186,94 @@ final class FetchApiTest extends TestCase
     private const string MESSAGE_SET_HEX = '0000000000000000' . '00000013' . self::MESSAGE_HELLO_HEX
         . '0000000000000001' . '00000014' . self::MESSAGE_WORLD_HEX;
 
+    /**
+     * A record batch of the message format v2 with two records, the second of them with two headers.
+     *
+     * These are the bytes of the vector `messageformat.v2.none.headers`, the shape a partition of a Fetch v4 or v5
+     * answer carries when the log holds the message format v2.
+     */
+    private const string RECORD_BATCH_HEX = '000000000000000000000090000000000277ad1da10000000000010000017487'
+        . '6e800000000174876e800affffffffffffffffffffffffffff000000026c000000010a616c7068610418636f6e74656e742d74'
+        . '797065206170706c69636174696f6e2f6a736f6e1074726163652d6964060001024e001402066b65790a627261766f0416656d'
+        . '7074792d76616c756500146e756c6c2d76616c756501';
+
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
         $request = new FetchRequest(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
 
         self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
-        self::assertSame(77, $request->getMessageSize());
+        self::assertSame(94, $request->getMessageSize());
+        self::assertSame(FetchRequest::READ_UNCOMMITTED, $request->getIsolationLevel());
+    }
+
+    public function testTheIsolationLevelOfVersionFourIsWrittenBehindTheRequestLevelMaxBytes(): void
+    {
+        $request = new FetchRequest(
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_COMMITTED
+        );
+
+        // The single byte 01 replaces the 00 of read_uncommitted, and nothing else about the frame changes
+        self::assertSame(
+            substr_replace(self::FETCH_REQUEST_HEX, '01', 2 * 34, 2),
+            bin2hex((string) $request)
+        );
+        self::assertSame(1, FetchRequest::READ_COMMITTED);
+        self::assertSame(0, FetchRequest::READ_UNCOMMITTED);
+        self::assertSame(FetchRequest::READ_COMMITTED, $request->getIsolationLevel());
+    }
+
+    public function testVersion4RequestCarriesTheIsolationLevelWithoutAPartitionLogStartOffset(): void
+    {
+        $request = new FetchRequestV4(
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_COMMITTED
+        );
+
+        //   Size => 00 00 00 4e (78 bytes), i.e. the version 3 frame plus the single IsolationLevel byte
+        self::assertSame(
+            '0000004e' . '0001' . '0004' . '00000001' . '0004' . '74657374'
+            . 'ffffffff' . '00000064' . '00000001' . '00100000' . '01'
+            . '00000001' . '0005' . '746f706963' . '00000002'
+            . '00000000' . '0000000000000000' . '00000400'
+            . '00000001' . '000000000000002a' . '00000400',
+            bin2hex((string) $request)
+        );
+    }
+
+    public function testVersion3RequestHasNeitherAnIsolationLevelNorALogStartOffset(): void
+    {
+        $request = new FetchRequestV3(
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_COMMITTED
+        );
+
+        // An isolation level that the version can not send is silently not written: a version 3 request always
+        // reads uncommitted, because a 0.10 broker knew no transactions at all
+        self::assertSame(self::FETCH_REQUEST_V3_HEX, bin2hex((string) $request));
+        self::assertSame(FetchRequest::READ_UNCOMMITTED, $request->getIsolationLevel());
+        self::assertArrayNotHasKey('isolationLevel', FetchRequestV3::getScheme());
     }
 
     public function testTheRequestLevelMaxBytesDefaultsToTheFiftyMegabytesOfTheJavaConsumer(): void
@@ -144,8 +281,11 @@ final class FetchApiTest extends TestCase
         $request = new FetchRequest(['topic' => [0 => 0]], 100, 1, 1024, -1, 'test', 1);
 
         self::assertSame(52428800, FetchRequest::DEFAULT_MAX_BYTES);
-        // 00 03 20 00 00 = the 50 MiB of `fetch.max.bytes` behind MinBytes
-        self::assertStringContainsString('00000001' . '03200000' . '00000001' . '0005746f706963', bin2hex((string) $request));
+        // 00 03 20 00 00 = the 50 MiB of `fetch.max.bytes` behind MinBytes, then the read_uncommitted byte
+        self::assertStringContainsString(
+            '00000001' . '03200000' . '00' . '00000001' . '0005746f706963',
+            bin2hex((string) $request)
+        );
     }
 
     public function testTheOrderOfTheRequestedPartitionsIsKept(): void
@@ -156,8 +296,8 @@ final class FetchApiTest extends TestCase
 
         self::assertStringEndsWith(
             '00000002'
-            . '00000001' . '000000000000002a' . '00000400'
-            . '00000000' . '0000000000000000' . '00000400',
+            . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
+            . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400',
             bin2hex((string) $request)
         );
     }
@@ -213,30 +353,45 @@ final class FetchApiTest extends TestCase
         self::assertSame(0, $request->getApiVersion());
     }
 
-    public function testRequestSchemeCarriesNoFieldOfALaterVersion(): void
+    public function testEveryVersionOfTheRequestWritesExactlyTheFieldsItHas(): void
     {
         $scheme = FetchRequest::getScheme();
 
-        // The request-level MaxBytes of v3 stands between MinBytes and the topics; the IsolationLevel of v4 and the
-        // LogStartOffset of v5 belong to Kafka 0.11 and are absent
+        // The request-level MaxBytes of v3 stands between MinBytes and the topics, the IsolationLevel of v4 behind
+        // it, and the LogStartOffset of v5 inside a partition entry
+        self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'topicPartitions'],
+            array_keys($scheme)
+        );
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'topicPartitions'],
-            array_keys($scheme)
+            array_keys(FetchRequestV3::getScheme())
         );
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'topicPartitions'],
             array_keys(FetchRequestV2::getScheme())
         );
+        self::assertSame(BinarySchema::TYPE_INT8, $scheme['isolationLevel']);
         self::assertSame(['topic' => FetchRequestTopic::class], $scheme['topicPartitions']);
         self::assertSame(
-            ['partition' => BinarySchema::TYPE_INT32, 'fetchOffset' => BinarySchema::TYPE_INT64, 'maxBytes' => BinarySchema::TYPE_INT32],
+            ['topic' => FetchRequestTopicV0::class],
+            FetchRequestV4::getScheme()['topicPartitions'],
+            'below version 5 the partition entries carry no LogStartOffset'
+        );
+        self::assertSame(
+            ['partition' => BinarySchema::TYPE_INT32, 'fetchOffset' => BinarySchema::TYPE_INT64,
+                'logStartOffset' => BinarySchema::TYPE_INT64, 'maxBytes' => BinarySchema::TYPE_INT32],
             FetchRequestTopicPartition::getScheme()
+        );
+        self::assertSame(
+            ['partition' => BinarySchema::TYPE_INT32, 'fetchOffset' => BinarySchema::TYPE_INT64, 'maxBytes' => BinarySchema::TYPE_INT32],
+            FetchRequestTopicPartitionV0::getScheme()
         );
     }
 
     public function testResponseWithAnEmptyMessageSetIsUnpacked(): void
     {
-        $response = FetchResponse::unpack(new StringStream(self::responseFrame('')));
+        $response = FetchResponseV3::unpack(new StringStream(self::responseFrame('')));
 
         self::assertSame(1, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs, 'a broker without quotas never throttles');
@@ -251,7 +406,7 @@ final class FetchApiTest extends TestCase
 
     public function testResponseWithTwoMessagesKeepsTheRawBytesOfTheMessageSet(): void
     {
-        $response = FetchResponse::unpack(new StringStream(self::responseFrame(self::MESSAGE_SET_HEX, 0, 0, 2)));
+        $response = FetchResponseV3::unpack(new StringStream(self::responseFrame(self::MESSAGE_SET_HEX, 0, 0, 2)));
 
         $partition = $response->topics['topic']->partitions[0];
         self::assertSame(2, $partition->highWaterMarkOffset);
@@ -264,7 +419,7 @@ final class FetchApiTest extends TestCase
         // The broker cuts the message set at MaxBytes: the second entry breaks off after 10 of its 32 bytes
         $truncatedSet = substr(self::MESSAGE_SET_HEX, 0, 2 * (31 + 10));
 
-        $response  = FetchResponse::unpack(new StringStream(self::responseFrame($truncatedSet, 0, 0, 2)));
+        $response  = FetchResponseV3::unpack(new StringStream(self::responseFrame($truncatedSet, 0, 0, 2)));
         $partition = $response->topics['topic']->partitions[0];
 
         self::assertSame(41, strlen((string) $partition->messageSet));
@@ -274,7 +429,7 @@ final class FetchApiTest extends TestCase
     public function testResponseCarriesThePerPartitionErrorCode(): void
     {
         // Error code 1 is OffsetOutOfRange, the partition then comes back without any messages
-        $response  = FetchResponse::unpack(new StringStream(self::responseFrame('', 0, 1, 5)));
+        $response  = FetchResponseV3::unpack(new StringStream(self::responseFrame('', 0, 1, 5)));
         $partition = $response->topics['topic']->partitions[0];
 
         self::assertSame(1, $partition->errorCode);
@@ -288,7 +443,7 @@ final class FetchApiTest extends TestCase
 
     public function testEmptyMessageSetBelowTheHighWaterMarkIsReportedAsAnOversizedMessage(): void
     {
-        $response  = FetchResponse::unpack(new StringStream(self::responseFrame('', 0, 0, 7)));
+        $response  = FetchResponseV3::unpack(new StringStream(self::responseFrame('', 0, 0, 7)));
         $partition = $response->topics['topic']->partitions[0];
 
         self::assertTrue($partition->isSingleMessageTooLarge(0), 'there are 7 messages to read but none fitted');
@@ -300,7 +455,7 @@ final class FetchApiTest extends TestCase
         // What a 0.9.0.1 broker really answers when MaxBytes is smaller than the message: its first bytes only
         $firstBytesOnly = substr(self::MESSAGE_SET_HEX, 0, 2 * 20);
 
-        $response  = FetchResponse::unpack(new StringStream(self::responseFrame($firstBytesOnly, 0, 0, 2)));
+        $response  = FetchResponseV3::unpack(new StringStream(self::responseFrame($firstBytesOnly, 0, 0, 2)));
         $partition = $response->topics['topic']->partitions[0];
 
         self::assertSame(20, strlen((string) $partition->messageSet));
@@ -311,7 +466,7 @@ final class FetchApiTest extends TestCase
     {
         $oneCompleteMessage = substr(self::MESSAGE_SET_HEX, 0, 2 * (31 + 10));
 
-        $response  = FetchResponse::unpack(new StringStream(self::responseFrame($oneCompleteMessage, 0, 0, 2)));
+        $response  = FetchResponseV3::unpack(new StringStream(self::responseFrame($oneCompleteMessage, 0, 0, 2)));
         $partition = $response->topics['topic']->partitions[0];
 
         self::assertFalse(
@@ -322,7 +477,7 @@ final class FetchApiTest extends TestCase
 
     public function testMessageSetIsDecodedByTheRecordLayer(): void
     {
-        $response  = FetchResponse::unpack(new StringStream(self::responseFrame(self::MESSAGE_SET_HEX, 0, 0, 2)));
+        $response  = FetchResponseV3::unpack(new StringStream(self::responseFrame(self::MESSAGE_SET_HEX, 0, 0, 2)));
         $partition = $response->topics['topic']->partitions[0];
 
         self::assertSame(self::MESSAGE_SET_HEX, bin2hex((string) $partition->getMessageSet()));
@@ -336,7 +491,7 @@ final class FetchApiTest extends TestCase
     public function testThrottleTimeOpensTheResponseOfVersionOne(): void
     {
         // 250 ms of throttling, in front of the topics array
-        $response = FetchResponse::unpack(new StringStream(self::responseFrame('', 0, 0, 0, 250)));
+        $response = FetchResponseV3::unpack(new StringStream(self::responseFrame('', 0, 0, 0, 250)));
 
         self::assertSame(250, $response->throttleTimeMs);
         self::assertSame(['topic'], array_keys($response->topics));
@@ -346,7 +501,7 @@ final class FetchApiTest extends TestCase
     {
         $frame = self::responseFrame(self::MESSAGE_SET_HEX, 0, 0, 2);
 
-        foreach ([FetchResponse::class, FetchResponseV2::class, FetchResponseV1::class] as $responseClass) {
+        foreach ([FetchResponseV3::class, FetchResponseV2::class, FetchResponseV1::class] as $responseClass) {
             $response = $responseClass::unpack(new StringStream($frame));
 
             self::assertSame(
@@ -368,11 +523,197 @@ final class FetchApiTest extends TestCase
         self::assertArrayNotHasKey('throttleTimeMs', FetchResponseV0::getScheme());
         self::assertSame(
             ['messageSize', 'correlationId', 'throttleTimeMs', 'topics'],
-            array_keys(FetchResponse::getScheme()),
+            array_keys(FetchResponseV1::getScheme()),
             'version 1 reads the throttle time between the header and the topics'
         );
         self::assertSame(self::MESSAGE_SET_HEX, bin2hex((string) $response->topics['topic']->partitions[0]->messageSet));
         self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
+    }
+
+    public function testVersion5AnswerCarriesTheLastStableOffsetTheLogStartOffsetAndTheAbortedTransactions(): void
+    {
+        //   The partition header of version 5: partition 0, no error, HighwaterMarkOffset 12, LastStableOffset 9,
+        //   LogStartOffset 4 and one aborted transaction of the producer 1000, which started at the offset 5
+        $frame = self::responseFrameV5(
+            self::MESSAGE_SET_HEX,
+            12,
+            9,
+            4,
+            [[1000, 5]]
+        );
+
+        $response  = FetchResponse::unpack(new StringStream($frame));
+        $partition = $response->topics['topic']->partitions[0];
+
+        self::assertSame(12, $partition->highWaterMarkOffset);
+        self::assertSame(9, $partition->lastStableOffset);
+        self::assertSame(4, $partition->logStartOffset, 'everything below the offset 4 has been deleted');
+        self::assertCount(1, (array) $partition->abortedTransactions);
+        self::assertSame(1000, $partition->abortedTransactions[0]->producerId);
+        self::assertSame(5, $partition->abortedTransactions[0]->firstOffset);
+        self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
+    }
+
+    public function testAnEmptyAbortedTransactionsArrayIsNotTheNullOfAReadUncommittedFetch(): void
+    {
+        // A read_committed fetch of a partition that no transaction ever touched: the array is there and empty
+        $empty = FetchResponse::unpack(new StringStream(self::responseFrameV5('', 3, 3, 0, [])));
+        // A read_uncommitted fetch: the broker does not compute the LSO at all and answers the count -1, `null`
+        $null  = FetchResponse::unpack(new StringStream(self::responseFrameV5('', 3, -1, 0, null)));
+
+        self::assertSame([], $empty->topics['topic']->partitions[0]->abortedTransactions);
+        self::assertSame(3, $empty->topics['topic']->partitions[0]->lastStableOffset);
+        self::assertNull($null->topics['topic']->partitions[0]->abortedTransactions);
+        self::assertSame(
+            FetchResponsePartition::INVALID_LAST_STABLE_OFFSET,
+            $null->topics['topic']->partitions[0]->lastStableOffset
+        );
+        self::assertSame(
+            self::responseFrameV5('', 3, -1, 0, null),
+            (string) $null,
+            'a null array is written back as the count -1, not as an empty one'
+        );
+    }
+
+    public function testVersion4AnswerHasNoLogStartOffsetBetweenTheLastStableOffsetAndTheTransactions(): void
+    {
+        $frame = self::responseFrameV4('', 12, 9, [[1000, 5]]);
+
+        $response  = FetchResponseV4::unpack(new StringStream($frame));
+        $partition = $response->topics['topic']->partitions[0];
+
+        self::assertSame(9, $partition->lastStableOffset);
+        self::assertSame(1000, $partition->abortedTransactions[0]->producerId);
+        self::assertSame(
+            FetchResponsePartition::INVALID_LOG_START_OFFSET,
+            $partition->logStartOffset,
+            'a version that does not report a log start offset leaves the field at -1'
+        );
+        self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
+    }
+
+    public function testEveryVersionOfTheResponseReadsThePartitionEntryOfItsOwnVersion(): void
+    {
+        self::assertSame(
+            ['partition', 'errorCode', 'highWaterMarkOffset', 'lastStableOffset', 'logStartOffset',
+                'abortedTransactions', 'messageSet'],
+            array_keys(FetchResponsePartition::getScheme())
+        );
+        self::assertSame(
+            ['partition', 'errorCode', 'highWaterMarkOffset', 'lastStableOffset', 'abortedTransactions',
+                'messageSet'],
+            array_keys(FetchResponsePartitionV4::getScheme())
+        );
+        self::assertSame(
+            ['partition', 'errorCode', 'highWaterMarkOffset', 'messageSet'],
+            array_keys(FetchResponsePartitionV0::getScheme())
+        );
+        self::assertSame(
+            [FetchResponseAbortedTransaction::class, BinarySchema::FLAG_NULLABLE => true],
+            FetchResponsePartition::getScheme()['abortedTransactions'],
+            'the aborted transactions are a nullable array of structures, not a keyed one'
+        );
+        self::assertSame(['topic' => FetchResponseTopic::class], FetchResponse::getScheme()['topics']);
+        self::assertSame(['topic' => FetchResponseTopicV4::class], FetchResponseV4::getScheme()['topics']);
+        self::assertSame(['topic' => FetchResponseTopicV0::class], FetchResponseV3::getScheme()['topics']);
+        self::assertSame(['topic' => FetchResponseTopicV0::class], FetchResponseV0::getScheme()['topics']);
+    }
+
+    public function testTheRecordLayerReadsWhicheverMessageFormatThePartitionCameBackIn(): void
+    {
+        $legacy = FetchResponseV3::unpack(new StringStream(self::responseFrame(self::MESSAGE_SET_HEX, 0, 0, 2)))
+            ->topics['topic']->partitions[0];
+        $batch  = FetchResponse::unpack(new StringStream(self::responseFrameV5(self::RECORD_BATCH_HEX, 2, 2, 0, [])))
+            ->topics['topic']->partitions[0];
+
+        self::assertSame(Message::MAGIC_V0, $legacy->getRecords()->getMagic());
+        self::assertSame([0, 1], array_map(
+            static fn(Record $record): ?int => $record->offset,
+            $legacy->getRecords()->getRecords()
+        ));
+
+        self::assertSame(RecordBatch::MAGIC, $batch->getRecords()->getMagic());
+        self::assertSame($batch->getRecords(), $batch->getRecords(), 'the region is decoded once');
+        $records = $batch->getRecords()->getRecords();
+        self::assertCount(2, $records);
+        self::assertSame('alpha', $records[0]->value);
+        self::assertSame(['content-type', 'trace-id'], array_map(
+            static fn(Header $header): string => $header->key,
+            $records[0]->headers
+        ), 'the headers of a record only exist in the message format v2');
+    }
+
+    /**
+     * Builds a Fetch response v5 frame with a single topic "topic" and a single partition
+     *
+     * @param string                       $recordSetHex        Hex of the record set bytes of that partition
+     * @param list<array{0: int, 1: int}>|null $abortedTransactions Producer id and first offset of every aborted
+     *                                                          transaction, `null` for a read_uncommitted answer
+     */
+    private static function responseFrameV5(
+        string $recordSetHex,
+        int $highWaterMarkOffset = 0,
+        int $lastStableOffset = 0,
+        int $logStartOffset = 0,
+        ?array $abortedTransactions = null
+    ): string {
+        $body = '00000001' . '00000000'
+            . '00000001' . '0005' . '746f706963' . '00000001'
+            . '00000000' . '0000' . sprintf('%016x', $highWaterMarkOffset)
+            . self::int64($lastStableOffset)
+            . self::int64($logStartOffset)
+            . self::abortedTransactions($abortedTransactions)
+            . sprintf('%08x', intdiv(strlen($recordSetHex), 2)) . $recordSetHex;
+
+        return (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+    }
+
+    /**
+     * Builds the same frame without the `LogStartOffset` of version 5, i.e. the answer of a version 4 request
+     *
+     * @param list<array{0: int, 1: int}>|null $abortedTransactions
+     */
+    private static function responseFrameV4(
+        string $recordSetHex,
+        int $highWaterMarkOffset = 0,
+        int $lastStableOffset = 0,
+        ?array $abortedTransactions = null
+    ): string {
+        $body = '00000001' . '00000000'
+            . '00000001' . '0005' . '746f706963' . '00000001'
+            . '00000000' . '0000' . sprintf('%016x', $highWaterMarkOffset)
+            . self::int64($lastStableOffset)
+            . self::abortedTransactions($abortedTransactions)
+            . sprintf('%08x', intdiv(strlen($recordSetHex), 2)) . $recordSetHex;
+
+        return (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+    }
+
+    /**
+     * Encodes the nullable aborted-transactions array: the element count -1 stands for `null`
+     *
+     * @param list<array{0: int, 1: int}>|null $abortedTransactions
+     */
+    private static function abortedTransactions(?array $abortedTransactions): string
+    {
+        if ($abortedTransactions === null) {
+            return 'ffffffff';
+        }
+
+        $hex = sprintf('%08x', count($abortedTransactions));
+        foreach ($abortedTransactions as [$producerId, $firstOffset]) {
+            $hex .= self::int64($producerId) . self::int64($firstOffset);
+        }
+
+        return $hex;
+    }
+
+    /**
+     * Encodes a signed int64 as the eight bytes of the wire format
+     */
+    private static function int64(int $value): string
+    {
+        return bin2hex(pack('J', $value));
     }
 
     /**

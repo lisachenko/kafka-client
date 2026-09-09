@@ -76,16 +76,20 @@ the Java producer. Compression is set with `ProducerConfig::COMPRESSION_TYPE` an
 whole batch: `gzip`, `snappy` and — new in Kafka 0.10.0 — `lz4`, in the frame format of the
 Kafka producer including the KAFKA-3160 checksum quirk of a message format v0 frame.
 
-**Message format v1 and timestamps.** Kafka 0.10.0 gave every record a timestamp:
+**Message formats, timestamps and headers.** Kafka 0.10.0 gave every record a timestamp:
 `Record::$timestamp` (milliseconds since the epoch) and `Record::$timestampType`
-(`TimestampType::CREATE_TIME`, `LOG_APPEND_TIME` or `NO_TIMESTAMP_TYPE`). `send()` stamps the
-create time of every record that does not carry one, and `ProducerConfig::MESSAGE_FORMAT_VERSION`
-(`message.format.version`, `0.10.0` by default) selects the magic byte a batch is written in —
-set it to `0.9.0` for a topic that is configured with the older format, since the broker converts
-whatever it is given and a v1 batch on a v0 topic simply loses its timestamps.
+(`TimestampType::CREATE_TIME`, `LOG_APPEND_TIME` or `NO_TIMESTAMP_TYPE`), and Kafka 0.11 gave it
+**headers** (`Record::withHeaders()`, `Common\Record\Header`), a list of key-value pairs of
+metadata next to the key and the value. `send()` stamps the create time of every record that does
+not carry one, and `ProducerConfig::MESSAGE_FORMAT_VERSION` (`message.format.version`, `0.11.0` by
+default) selects the format a batch is written in — the record batch v2 by default, `0.10.x` for a
+message set with timestamps and `0.9.0` for one without. The format decides the version of the
+Produce request: only the message format v2 travels in a **Produce v3**, and only it has a place
+for the headers, for the producer id of an idempotent producer and for a transaction; a message set
+is sent as a Produce v2, and a 0.11 broker closes the connection on a Produce v3 that carries one.
 `RecordMetadata::$timestamp` reports what the **log** holds: the create time of the first record
-of the batch, or the `LogAppendTime` the broker answered with (Produce v2) when the topic is
-configured with `message.timestamp.type=LogAppendTime`.
+of the batch, or the `LogAppendTime` the broker answered with (Produce v2 and above) when the topic
+is configured with `message.timestamp.type=LogAppendTime`.
 
 Without a key a record is spread over the partitions that have a leader, with a key it goes to
 the partition that the murmur2 hash of the key selects, exactly as with the official Java
@@ -388,6 +392,7 @@ marked **(0.10)**.
 | `request.timeout.ms` | **305000** | has to exceed both timeouts above, because a JoinGroup blocks |
 | `fetch.min.bytes` / `fetch.max.wait.ms` | 1 / 500 | when the broker answers a fetch |
 | `fetch.max.bytes` **(0.10)** | 52428800 | request-level `max_bytes` of Fetch v3, the bound of a whole answer |
+| `isolation.level` **(0.11)** | `read_uncommitted` | `read_uncommitted` or `read_committed`: what a Fetch v4/v5 makes of transactional records |
 | `max.partition.fetch.bytes` | 65536 | per-partition bound; from Fetch v3 on the first partition is served whole even if it exceeds both |
 | `auto.offset.reset` | `latest` | `latest` or `earliest`, used when a partition has no committed offset |
 | `enable.auto.commit` / `auto.commit.interval.ms` | true / 0 | commit from `poll()`; 0 means "after every poll" |
@@ -404,7 +409,7 @@ marked **(0.10)**.
 | `timeout.ms` | 2000 | how long the broker waits for the replicas of a batch |
 | `batch.size` / `linger.ms` | 0 / 0 | when a batch is sent |
 | `compression.type` | `none` | `none`, `gzip`, `snappy`, **(0.10)** `lz4` |
-| `message.format.version` **(0.10)** | `0.10.0` | magic byte a batch is written in: `0.9.0` and below write format v0, `0.10.x` format v1 with timestamps |
+| `message.format.version` **(0.10)** | `0.11.0` | format a batch is written in: `0.9.0` and below format v0, `0.10.x` format v1 with timestamps, `0.11.0` the record batch v2 with headers |
 | `max.request.size` | 1048576 | biggest record this client will buffer |
 | `retries` / `retry.backoff.ms` | 0 / 100 | retry budget of a batch |
 | `partitioner.class` | `DefaultPartitioner` | murmur2 of the key, round robin without one |

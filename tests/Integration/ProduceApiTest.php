@@ -19,9 +19,12 @@ use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Producer\KafkaProducer;
@@ -33,16 +36,20 @@ use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
+use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -54,7 +61,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * really answers: the `LogAppendTime` of a partition, which is -1 for a topic that keeps the `CreateTime` of the
  * producer and the clock of the broker for a topic with `message.timestamp.type=LogAppendTime`.
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceRequestV1::class)]
@@ -128,7 +135,7 @@ final class ProduceApiTest extends IntegrationTestCase
     public function testProduceWithAcksZeroIsNotAnsweredButStillAppends(): void
     {
         $stream  = $this->connect();
-        $request = new ProduceRequest(
+        $request = new ProduceRequestV2(
             [$this->topic => [0 => SpecMessageSet::of([[null, 'fire'], [null, 'forget']])]],
             0,
             self::PRODUCE_TIMEOUT_MS,
@@ -197,14 +204,14 @@ final class ProduceApiTest extends IntegrationTestCase
     {
         $stream = $this->connect();
 
-        new ProduceRequest(
+        new ProduceRequestV2(
             [$this->topic => [0 => SpecMessageSet::of([[null, 'version two']])]],
             1,
             self::PRODUCE_TIMEOUT_MS,
             self::CLIENT_ID,
             41
         )->writeTo($stream);
-        $versionTwo = ProduceResponse::unpack($stream);
+        $versionTwo = ProduceResponseV2::unpack($stream);
 
         self::assertSame(41, $versionTwo->getCorrelationId());
         self::assertSame(0, $versionTwo->topics[$this->topic]->partitions[0]->errorCode);
@@ -293,7 +300,7 @@ final class ProduceApiTest extends IntegrationTestCase
         $records = FetchResponseV2::unpack($stream)
             ->topics[$topic]
             ->partitions[0]
-            ->getMessageSet()
+            ->getRecords()
             ->getRecords();
 
         self::assertCount(2, $records);
@@ -310,9 +317,9 @@ final class ProduceApiTest extends IntegrationTestCase
 
     public function testAMessageFormatV0BatchIsAcceptedByAVersionTwoRequest(): void
     {
-        // The broker does not check the message format against the api version: it converts whatever it is given
-        // into the `message.format.version` of the topic, which is 0.10.2 on this container, so a magic 0 batch is
-        // stored as message format v1 with the timestamp -1 (`Log.append` @ 0.10.2.2)
+        // Below version 3 the broker does not check the message format against the api version: it converts
+        // whatever it is given into the `message.format.version` of the topic, which is 0.11.0 on this container,
+        // so a magic 0 batch is stored as a record batch v2 without a timestamp (`Log.append` @ 0.11.0.3)
         $partition = $this->produce(
             $this->connect(),
             MessageSet::fromRecords([new Record('magic zero')], 0, Message::MAGIC_V0)->toBuffer(),
@@ -325,13 +332,134 @@ final class ProduceApiTest extends IntegrationTestCase
 
         $stream = $this->connect();
         new FetchRequestV2([$this->topic => [0 => 0]], 1000, 1, 65536, -1, self::CLIENT_ID, 55)->writeTo($stream);
-        $messageSet = FetchResponseV2::unpack($stream)->topics[$this->topic]->partitions[0]->getMessageSet();
+        $records = FetchResponseV2::unpack($stream)->topics[$this->topic]->partitions[0]->getRecords();
 
-        self::assertSame(Message::MAGIC_V1, $messageSet->getMagic(), 'the log holds it in the format of the topic');
+        self::assertSame(
+            Message::MAGIC_V1,
+            $records->getMagic(),
+            'a version 2 fetch of a v2 log is answered in the message format v1'
+        );
         self::assertNull(
-            $messageSet->getRecords()[0]->timestamp,
+            $records->getRecords()[0]->timestamp,
             'a message that was written without a timestamp is stored with -1, which is "no timestamp"'
         );
+    }
+
+    public function testAVersionTwoRequestAlsoAcceptsARecordBatchOfTheMessageFormatV2(): void
+    {
+        // The check of the broker only runs the other way round: a batch of the *newest* format is accepted by
+        // every version, because `ProduceRequest.parse` only refuses a magic below 2 for a version 3 request
+        $partition = $this->produce(
+            $this->connect(),
+            RecordBatch::fromRecords([new Record('magic two')->withCreateTime(self::currentTimestampMs())])
+                ->toBuffer(),
+            1,
+            56
+        );
+
+        self::assertSame(0, $partition->errorCode);
+        self::assertSame(0, $partition->baseOffset);
+    }
+
+    public function testAVersionThreeRequestCarriesTheRecordBatchAndTheTransactionalIdOfItsProducer(): void
+    {
+        $stream    = $this->connect();
+        $timestamp = self::currentTimestampMs();
+        $batch     = RecordBatch::fromRecords([
+            new Record('with a header', 'a key')->withCreateTime($timestamp)
+                ->withHeaders(new Header('trace-id', 'abc'), new Header('empty')),
+        ]);
+
+        new ProduceRequest(
+            [$this->topic => [0 => $batch]],
+            1,
+            self::PRODUCE_TIMEOUT_MS,
+            self::CLIENT_ID,
+            57
+        )->writeTo($stream);
+        $response  = ProduceResponse::unpack($stream);
+        $partition = $response->topics[$this->topic]->partitions[0];
+
+        self::assertSame(57, $response->getCorrelationId());
+        self::assertSame(0, $partition->errorCode);
+        self::assertSame(0, $partition->baseOffset);
+        self::assertSame(-1, $partition->logAppendTime, 'the topic keeps the CreateTime of the producer');
+        self::assertSame(
+            $response->getMessageSize(),
+            self::produceResponseSizeOfVersionTwo($this->topic, 1),
+            'the answer of version 3 is the answer of version 2, byte for byte'
+        );
+
+        // Only a Fetch v4 or above brings the headers back: every lower version is answered in a format that has
+        // no place for them
+        $stream = $this->connect();
+        new FetchRequest([$this->topic => [0 => 0]], 1000, 1, 65536, -1, self::CLIENT_ID, 58)->writeTo($stream);
+        $fetched = FetchResponse::unpack($stream)->topics[$this->topic]->partitions[0];
+        $records = $fetched->getRecords()->getRecords();
+
+        self::assertSame(RecordBatch::MAGIC, $fetched->getRecords()->getMagic());
+        self::assertCount(1, $records);
+        self::assertSame('with a header', $records[0]->value);
+        self::assertSame('a key', $records[0]->key);
+        self::assertSame($timestamp, $records[0]->timestamp);
+        self::assertSame(['trace-id', 'empty'], array_map(
+            static fn(Header $header): string => $header->key,
+            $records[0]->headers
+        ));
+        self::assertSame(['abc', null], array_map(
+            static fn(Header $header): ?string => $header->value,
+            $records[0]->headers
+        ));
+    }
+
+    public function testAVersionThreeRequestRefusesAMessageSetAndClosesTheConnection(): void
+    {
+        // `ProduceRequest.parse` @ 0.11.0.3: "Produce requests with version 3 are only allowed to contain record
+        // batches with magic version 2". The broker does not answer an error code - it closes the socket, the way
+        // it does for every frame it can not parse
+        $stream = $this->connect();
+
+        new ProduceRequest(
+            [$this->topic => [0 => SpecMessageSet::of([[null, 'a message set']])]],
+            1,
+            self::PRODUCE_TIMEOUT_MS,
+            self::CLIENT_ID,
+            59
+        )->writeTo($stream);
+
+        $this->expectException(NetworkException::class);
+
+        ProduceResponse::unpack($stream);
+    }
+
+    /**
+     * Returns the size of the answer that the very same append gets from a version 2 request
+     */
+    private function produceResponseSizeOfVersionTwo(string $topic, int $partition): int
+    {
+        $stream = $this->connect();
+        new ProduceRequestV2(
+            [$topic => [$partition => RecordBatch::fromRecords(
+                [new Record('version two')->withCreateTime(self::currentTimestampMs())]
+            )]],
+            1,
+            self::PRODUCE_TIMEOUT_MS,
+            self::CLIENT_ID,
+            60
+        )->writeTo($stream);
+
+        return ProduceResponseV2::unpack($stream)->getMessageSize();
+    }
+
+    /**
+     * The current time in milliseconds, the `CreateTime` a producer stamps a record with.
+     *
+     * A test never writes a fixed timestamp of the past: the retention of the broker deletes a segment by the
+     * largest timestamp it holds, so a record stamped with 2020 disappears from a container whose clock says 2026.
+     */
+    private static function currentTimestampMs(): int
+    {
+        return (int) round(microtime(true) * 1000);
     }
 
     /**
@@ -370,7 +498,9 @@ final class ProduceApiTest extends IntegrationTestCase
         ?string $topic = null
     ): ProduceResponsePartition {
         $topic ??= $this->topic;
-        $request = new ProduceRequest(
+        // A message set may only travel in a request below version 3, see
+        // ProduceApiTest::testAVersionThreeRequestRefusesAMessageSetAndClosesTheConnection()
+        $request = new ProduceRequestV2(
             [$topic => [$partition => $messageSet]],
             $requiredAcks,
             self::PRODUCE_TIMEOUT_MS,
@@ -379,7 +509,7 @@ final class ProduceApiTest extends IntegrationTestCase
         );
         $request->writeTo($stream);
 
-        $response = ProduceResponse::unpack($stream);
+        $response = ProduceResponseV2::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());
         self::assertArrayHasKey($topic, $response->topics);
 

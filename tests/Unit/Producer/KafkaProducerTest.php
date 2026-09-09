@@ -23,9 +23,11 @@ use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\MessageTooLargeException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordV2;
 use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
@@ -556,8 +558,9 @@ final class KafkaProducerTest extends TestCase
     public function testTheRecordSizeOfMessageFormatV1CountsTheTimestampAsWell(): void
     {
         [$producer] = $this->producer([
-            ProducerConfig::BATCH_SIZE       => 1024 * 1024,
-            ProducerConfig::MAX_REQUEST_SIZE => MessageSet::ENTRY_OVERHEAD + Message::MIN_SIZE_V1 + 4,
+            ProducerConfig::BATCH_SIZE             => 1024 * 1024,
+            ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
+            ProducerConfig::MAX_REQUEST_SIZE       => MessageSet::ENTRY_OVERHEAD + Message::MIN_SIZE_V1 + 4,
         ]);
 
         // A record of five bytes fits into message format v0 but not into v1, which adds the eight bytes of the
@@ -567,12 +570,52 @@ final class KafkaProducerTest extends TestCase
         $producer->send(self::TOPIC, Record::fromValue('value'));
     }
 
+    public function testTheRecordSizeOfTheMessageFormatV2CountsItsHeaders(): void
+    {
+        $withoutHeaders = Record::fromValue('value');
+        $withHeaders    = $withoutHeaders->withHeaders(new Header('trace-id', 'abc'));
+
+        [$producer] = $this->producer([
+            ProducerConfig::BATCH_SIZE       => 1024 * 1024,
+            ProducerConfig::MAX_REQUEST_SIZE => new RecordV2('value')->sizeInBytes(),
+        ]);
+
+        // The bare record fits exactly into `max.request.size`, the very same record with a header does not: a
+        // record of the message format v2 carries its headers next to its key and its value
+        $producer->send(self::TOPIC, $withoutHeaders);
+
+        $this->expectException(MessageTooLargeException::class);
+
+        $producer->send(self::TOPIC, $withHeaders);
+    }
+
     public function testAnUnknownMessageFormatVersionIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('0.11.0');
+        $this->expectExceptionMessage('1.0.0');
 
-        new KafkaProducer([ProducerConfig::MESSAGE_FORMAT_VERSION => '0.11.0']);
+        new KafkaProducer([ProducerConfig::MESSAGE_FORMAT_VERSION => '1.0.0']);
+    }
+
+    public function testTheHeadersOfARecordReachTheClientThatWritesTheBatch(): void
+    {
+        [$producer, $client] = $this->producer();
+
+        $producer->send(
+            self::TOPIC,
+            Record::fromKeyValue('key-0', 'value')->withHeaders(new Header('trace-id', 'abc'), new Header('n'))
+        );
+
+        $records = $client->receivedRecords();
+        self::assertCount(1, $records);
+        self::assertSame(['trace-id', 'n'], array_map(
+            static fn(Header $header): string => $header->key,
+            $records[0]->headers
+        ));
+        self::assertSame(['abc', null], array_map(
+            static fn(Header $header): ?string => $header->value,
+            $records[0]->headers
+        ));
     }
 
     public function testTheCompressionTypeIsHandedToTheClientThatSendsTheBatches(): void
@@ -637,7 +680,9 @@ final class KafkaProducerTest extends TestCase
      */
     private function recordSize(?string $key, string $value): int
     {
-        return MessageSet::ENTRY_OVERHEAD + new Message($value, $key)->sizeInBytes();
+        // `message.format.version` defaults to the record batch of the message format v2, whose records are
+        // varint-encoded and cost far less per record than an entry of a message set
+        return new RecordV2($value, $key)->sizeInBytes();
     }
 
 }

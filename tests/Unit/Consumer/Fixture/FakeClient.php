@@ -17,8 +17,10 @@ use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
-use Protocol\Kafka\Common\Record\MessageSet;
+use Protocol\Kafka\Common\Record\CompressionCodec;
+use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
@@ -256,7 +258,7 @@ final class FakeClient extends Client
                     (int) $offset,
                     KafkaException::NO_ERROR,
                     $logEndOffset,
-                    $isTooLarge ? MessageSet::fromBuffer('') : self::messageSetOf(array_values($records)),
+                    $isTooLarge ? MemoryRecords::fromBuffer('') : self::recordsOf(array_values($records)),
                     $isTooLarge
                 );
             }
@@ -281,24 +283,32 @@ final class FakeClient extends Client
     }
 
     /**
-     * Builds a message set that carries the given records at the offsets they already have
+     * Builds the byte region that a Fetch answer carries, with the records at the offsets they already have.
      *
-     * MessageSet::fromRecords() numbers a produced set from 0, because the broker assigns the real offsets on
+     * A record **with headers** can only travel in a record batch of the message format v2, so such a record
+     * becomes a batch of its own, whose `baseOffset` is the offset of the log; everything else is written as the
+     * legacy message set that a broker answers to a Fetch request below version 4.
+     * `MessageSet::fromRecords()` numbers a produced set from 0, because the broker assigns the real offsets on
      * append; a fetched set has the offsets of the log, so its bytes are built to the specification here.
      *
      * @param list<Record> $records
      */
-    private static function messageSetOf(array $records): MessageSet
+    private static function recordsOf(array $records): MemoryRecords
     {
         $buffer = '';
         foreach ($records as $record) {
+            if ($record->headers !== []) {
+                $buffer .= RecordBatch::fromRecords([$record], CompressionCodec::NONE, (int) $record->offset)
+                    ->toBuffer();
+                continue;
+            }
             $buffer .= SpecMessageSet::entry(
                 (int) $record->offset,
                 SpecMessageSet::message($record->key, $record->value, $record->attributes)
             );
         }
 
-        return MessageSet::fromBuffer($buffer);
+        return MemoryRecords::fromBuffer($buffer);
     }
 
     /**

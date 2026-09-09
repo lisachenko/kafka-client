@@ -17,10 +17,10 @@ use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
-use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
 
 /**
- * Fetch API (key 1), version 3
+ * Fetch API (key 1), version 5
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -35,32 +35,39 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
  * handle this case.
  *
  * <pre>
- *   FetchRequest (Version: 3) => ReplicaId MaxWaitTime MinBytes MaxBytes
- *                                [TopicName [Partition FetchOffset MaxBytes]]
- *     ReplicaId   => int32
- *     MaxWaitTime => int32
- *     MinBytes    => int32
- *     MaxBytes    => int32
+ *   FetchRequest (Version: 5) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel
+ *                                [TopicName [Partition FetchOffset LogStartOffset MaxBytes]]
+ *     ReplicaId      => int32
+ *     MaxWaitTime    => int32
+ *     MinBytes       => int32
+ *     MaxBytes       => int32
+ *     IsolationLevel => int8
+ *     FetchOffset    => int64
+ *     LogStartOffset => int64
  * </pre>
  *
- * The three versions of this api that a 0.10.2.2 broker serves next to this one differ as follows:
+ * The five versions of this api that a 0.11.0.3 broker serves next to this one differ as follows:
  *
  * * **v1** (Kafka 0.9) left the request untouched and only prefixed the answer with `ThrottleTimeMs`, see
  *   {@see FetchResponse};
  * * **v2** (Kafka 0.10.0) is byte-identical to v1 in both directions - `FETCH_REQUEST_V2` is `FETCH_REQUEST_V1` in
- *   `Protocol.java` @ 0.10.2.2 - and means one thing only: *the client understands message format v1*. A broker
- *   answers a request below version 2 by converting every stored message of format v1 down to format v0
- *   (`KafkaApis.handleFetchRequest`: `versionId <= 1 && getMagic(tp) > 0` ⇒ `toMessageFormat(MAGIC_VALUE_V0)`),
- *   which strips the timestamps and turns the relative inner offsets of a compressed set back into absolute ones;
+ *   `Protocol.java` @ 0.11.0.3 - and means one thing only: *the client understands message format v1*. A broker
+ *   answers a request below version 2 by converting every stored record down to message format v0
+ *   (`KafkaApis.handleFetchRequest`), which strips the timestamps and turns the relative inner offsets of a
+ *   compressed set back into absolute ones;
  * * **v3** (Kafka 0.10.1, KIP-74) adds the request-level `MaxBytes` after `MinBytes`, which bounds the **whole**
- *   answer instead of a single partition, see {@see self::$maxBytes}.
+ *   answer instead of a single partition, see {@see self::$maxBytes};
+ * * **v4** (Kafka 0.11.0, KIP-98) adds the `IsolationLevel` after it and is the first version that is answered
+ *   with the log as it lies: a record batch of the message format v2, with the headers, the producer ids and the
+ *   transaction flags that no lower version has a place for. Its answer carries the `LastStableOffset` and the
+ *   `AbortedTransactions` of every partition;
+ * * **v5** (KIP-107) adds the `LogStartOffset` of a partition entry, which only a follower fills in, and the
+ *   `LogStartOffset` of every partition of the answer.
  *
- * {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower versions available.
+ * {@see FetchRequestV4}, {@see FetchRequestV3}, {@see FetchRequestV2}, {@see FetchRequestV1} and
+ * {@see FetchRequestV0} keep the lower versions available.
  *
- * The `LogStartOffset` of a partition (v5) and the `IsolationLevel` of the transactional protocol (v4) belong to
- * Kafka 0.11 and do not exist here.
- *
- * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v3)"
+ * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -72,7 +79,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 5;
 
     /**
      * Default bound of a whole answer, the 50 MiB of the `fetch.max.bytes` option of the Java consumer
@@ -146,15 +153,27 @@ class FetchRequest extends AbstractRequest
          * both this bound and its own `MaxBytes` and returns at least one complete message, so a consumer always
          * makes progress. The other side of that coin is that an answer may exceed this value.
          */
-        protected readonly int $maxBytes = self::DEFAULT_MAX_BYTES
+        protected readonly int $maxBytes = self::DEFAULT_MAX_BYTES,
+        /**
+         * Visibility of transactional records, since version 4 (KIP-98).
+         *
+         * {@see self::READ_UNCOMMITTED} shows every record of the log up to the high water mark, transactional
+         * ones included and whether or not their transaction was ever committed; {@see self::READ_COMMITTED} stops
+         * the answer at the `LastStableOffset` of the partition and makes the broker report the transactions it
+         * aborted in that range, so that the consumer can drop their records. A version below 4 does not carry the
+         * field at all and always reads uncommitted.
+         */
+        protected readonly int $isolationLevel = self::READ_UNCOMMITTED
     ) {
+        $topicClass            = static::topicClass();
+        $partitionClass        = $topicClass::partitionClass();
         $packedTopicPartitions = [];
         foreach ($topicPartitions as $topic => $partitionOffsets) {
             $partitions = [];
             foreach ($partitionOffsets as $partition => $fetchOffset) {
-                $partitions[$partition] = new FetchRequestTopicPartition($partition, $fetchOffset, $partitionMaxBytes);
+                $partitions[$partition] = new $partitionClass($partition, $fetchOffset, $partitionMaxBytes);
             }
-            $packedTopicPartitions[$topic] = new FetchRequestTopic($topic, $partitions);
+            $packedTopicPartitions[$topic] = new $topicClass($topic, $partitions);
         }
         $this->topicPartitions = $packedTopicPartitions;
 
@@ -177,7 +196,8 @@ class FetchRequest extends AbstractRequest
         int $replicaId = -1,
         string $clientId = '',
         int $correlationId = 0,
-        int $maxBytes = self::DEFAULT_MAX_BYTES
+        int $maxBytes = self::DEFAULT_MAX_BYTES,
+        int $isolationLevel = self::READ_UNCOMMITTED
     ): static {
         $topicPartitions = [];
         foreach ($partitionOffsets as [$topicPartition, $fetchOffset]) {
@@ -192,7 +212,8 @@ class FetchRequest extends AbstractRequest
             $replicaId,
             $clientId,
             $correlationId,
-            $maxBytes
+            $maxBytes,
+            $isolationLevel
         );
     }
 
@@ -210,8 +231,29 @@ class FetchRequest extends AbstractRequest
         if (static::VERSION >= 3) {
             $body['maxBytes'] = BinarySchema::TYPE_INT32;
         }
-        $body['topicPartitions'] = ['topic' => FetchRequestTopic::class];
+        if (static::VERSION >= 4) {
+            $body['isolationLevel'] = BinarySchema::TYPE_INT8;
+        }
+        $body['topicPartitions'] = ['topic' => static::topicClass()];
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the isolation level this request asks for, {@see self::READ_UNCOMMITTED} below version 4
+     */
+    public function getIsolationLevel(): int
+    {
+        return static::VERSION >= 4 ? $this->isolationLevel : self::READ_UNCOMMITTED;
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this request is sent as
+     *
+     * @return class-string<FetchRequestTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return static::VERSION >= 5 ? FetchRequestTopic::class : FetchRequestTopicV0::class;
     }
 }

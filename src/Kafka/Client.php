@@ -34,8 +34,10 @@ use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
@@ -77,18 +79,22 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 
 /**
- * Low-level client for the Kafka 0.10.2.2 protocol.
+ * Low-level client for the Kafka 0.11.0.3 protocol.
  *
- * Every api is sent with the highest version a 0.10.2.2 broker serves: Produce v2, whose answer carries the
- * `LogAppendTime` of every partition, Fetch v3, which asks for message format v1 and bounds the whole answer with
- * `fetch.max.bytes`, OffsetCommit v2 with its `retention_time`, and OffsetCommit v0 when the offsets are stored in
- * ZooKeeper. The lower version classes of those apis stay usable directly, for a client that has to talk to an
- * older broker.
+ * Every api is sent with the highest version a 0.11.0.3 broker serves: Produce v3, which carries a record batch of
+ * the message format v2 and the transactional id of its producer and whose answer reports the `LogAppendTime` and
+ * the `LogStartOffset` of every partition, Fetch v5, which asks for the log as it lies, bounds the whole answer
+ * with `fetch.max.bytes` and states the isolation level of the consumer, OffsetCommit v2 with its `retention_time`,
+ * and OffsetCommit v0 when the offsets are stored in ZooKeeper. The lower version classes of those apis stay usable
+ * directly, for a client that has to talk to an older broker - and `message.format.version` lowers the Produce
+ * request to v2 by itself, because a message set of the formats v0 and v1 has no place in a version 3 request.
  *
  * Every request that addresses topic-partitions is split by their current leader and sent to all of those brokers
  * at once; the answers are collected with `stream_select()` as they arrive. A topic-partition whose leader answered
@@ -160,10 +166,13 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as Produce v2, so every accepted partition carries two values the broker reported next
-     * to its base offset: the `logAppendTime` the broker stamped on the whole batch, which is -1 unless the topic
-     * is configured with `message.timestamp.type=LogAppendTime`, and the `throttleTimeMs` of the answer it arrived
-     * in, which is 0 without a `producer_byte_rate` quota.
+     * The request goes out as **Produce v3** for the message format v2 (`message.format.version=0.11.0`, the
+     * default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version 3 request
+     * has no place for. Every accepted partition carries two values the broker reported next to its base offset:
+     * the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured with
+     * `message.timestamp.type=LogAppendTime`, and the `throttleTimeMs` of the answer it arrived in, which is 0
+     * without a `producer_byte_rate` quota. Version 3 added no field to the answer at all - `PRODUCE_RESPONSE_V3`
+     * is `PRODUCE_RESPONSE_V2` in `Protocol.java` @ 0.11.0.3 - so the two classes read the same frame.
      *
      * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
      *        each topic and partition
@@ -178,6 +187,46 @@ class Client
      */
     public function produce(array $topicPartitionMessages): array
     {
+        return $this->produceRecords($topicPartitionMessages);
+    }
+
+    /**
+     * Appends the records of a batch, with the producer state that an idempotent or transactional producer holds.
+     *
+     * This is the single place that turns records into the record sets of a Produce request, so that the
+     * bookkeeping of KIP-98 only has to fill in its four values instead of rebuilding the request: the producer id
+     * and the epoch that `InitProducerId` handed out, the sequence number each topic-partition continues at, and
+     * the transactional id the batch is written under. Their defaults - -1, -1, no sequence and `null` - are
+     * exactly what a plain producer sends, and a batch that carries none of them is not deduplicated by the broker.
+     *
+     * The sequence numbers are *per topic-partition*, because that is the space the broker deduplicates in
+     * (`ProducerStateManager` @ 0.11.0.3 keeps one sequence per producer **and** partition), so one call of this
+     * method needs one of them per partition it writes to.
+     *
+     * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
+     *        each topic and partition
+     * @param int                            $producerId      Producer id of the batch, -1 without one
+     * @param int                            $producerEpoch   Epoch of that producer, -1 without one
+     * @param array<string, array<int, int>> $baseSequences   Sequence number the batch of a topic-partition starts
+     *                                                        at, as topic => partition => sequence; a partition
+     *                                                        that is not listed is written without one
+     * @param string|null                    $transactionalId Transactional id of the producer, `null` outside of a
+     *                                                        transaction
+     *
+     * @return array<string, array<int, ProduceResponsePartition>> Accepted partitions in the form
+     *         [topic => [partition => ProduceResponsePartition]], empty for a fire-and-forget request (acks = 0)
+     *
+     * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
+     * @throws InvalidConfigurationException  For a `compression.type` or a `message.format.version` that this client
+     *         can not write, and for producer state that the configured message format has no place for
+     */
+    protected function produceRecords(
+        array $topicPartitionMessages,
+        int $producerId = RecordBatch::NO_PRODUCER_ID,
+        int $producerEpoch = RecordBatch::NO_PRODUCER_EPOCH,
+        array $baseSequences = [],
+        ?string $transactionalId = null
+    ): array {
         $requiredAcks = (int) $this->configuration[ProducerConfig::ACKS];
 
         // `compression.type` compresses a whole batch at once, so it is applied per topic-partition, not per record
@@ -186,42 +235,58 @@ class Client
         );
         // `message.format.version` decides which of the two message formats of this line the batch is written in
         $messageFormatMagic = ProducerConfig::messageFormatMagic(
-            $this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION] ?? ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0
+            $this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION] ?? ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0
         );
 
-        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.11.0.md
-        $topicPartitionMessageSets = [];
+        if ($messageFormatMagic < RecordBatch::MAGIC && $transactionalId !== null) {
+            throw new InvalidConfigurationException(
+                'A transactional producer needs the message format 0.11.0: the transactional id travels in a '
+                . 'Produce v3 request, which only carries a record batch of the message format v2'
+            );
+        }
+
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/0.11.0.md
+        $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
-                $topicPartitionMessageSets[$topic][$partition] = MessageSet::fromRecords(
+                $topicPartitionRecordSets[$topic][$partition] = self::toRecordSet(
                     self::toRecords($messages),
                     $compressionCodec,
-                    $messageFormatMagic
+                    $messageFormatMagic,
+                    $producerId,
+                    $producerEpoch,
+                    (int) ($baseSequences[$topic][$partition] ?? RecordBatch::NO_SEQUENCE),
+                    $transactionalId !== null
                 );
             }
         }
 
-        $createRequest = fn(array $nodeTopicPartitionMessageSets, int $correlationId): ProduceRequest
-            => new ProduceRequest(
-                $nodeTopicPartitionMessageSets,
+        // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the highest
+        // version that has no place for a transactional id
+        $requestClass  = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceRequest::class : ProduceRequestV2::class;
+        $createRequest = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
+            => new $requestClass(
+                $nodeTopicPartitionRecordSets,
                 $requiredAcks,
                 $this->configuration[ProducerConfig::TIMEOUT_MS],
                 $this->configuration[ProducerConfig::CLIENT_ID],
-                $correlationId
+                $correlationId,
+                $transactionalId
             );
+        $responseClass = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceResponse::class : ProduceResponseV2::class;
 
         // acks = 0 is the only request of the protocol that the broker does not answer, so nothing may be read back
         // from those connections, see ProduceRequest::expectsResponse()
         if ($requiredAcks === ProduceRequest::ACKS_NONE) {
-            $this->fireAndForget($topicPartitionMessageSets, $createRequest);
+            $this->fireAndForget($topicPartitionRecordSets, $createRequest);
 
             return [];
         }
 
         return $this->clusterRequest(
-            $topicPartitionMessageSets,
+            $topicPartitionRecordSets,
             $createRequest,
-            ProduceResponse::class,
+            $responseClass,
             static function (array $result, ProduceResponse $response, array &$errors): array {
                 foreach ($response->topics as $topic => $topicResult) {
                     /** @var ProduceResponsePartition[] $partitions */
@@ -279,16 +344,21 @@ class Client
      * which would turn a naive fetch loop into an endless one, see
      * {@see FetchedPartition::isSingleMessageTooLarge()}.
      *
-     * The request goes out as **Fetch v3**, which means three things:
+     * The request goes out as **Fetch v5**, which means four things:
      *
-     * * the message sets come back in the format the log holds them in - a broker converts them down to message
-     *   format v0 only for a request below version 2 - so the records carry the timestamps of format v1;
+     * * the record sets come back in the format the log holds them in - a broker converts them down to message
+     *   format v1 for a request below version 4 and to format v0 below version 2 - so the records carry their
+     *   headers, their timestamps and the producer state of the message format v2;
      * * the whole answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`.
      *   The broker fills the partitions **in the order of `$topicPartitionOffsets`** and stops once that budget is
      *   used up, so the partitions at the end of a large fetch come back empty; a caller that fetches more than one
      *   partition has to rotate their order between calls, as {@see \Protocol\Kafka\Consumer\KafkaConsumer} does;
      * * the first non-empty partition of the answer ignores both limits and carries at least one complete message,
-     *   so a partition can no longer be stuck on a message that is too large and this client never reports one.
+     *   so a partition can no longer be stuck on a message that is too large and this client never reports one;
+     * * every partition of the answer reports its `lastStableOffset`, its `logStartOffset` and the transactions
+     *   that were aborted in the range it covers, and the request states the `isolation.level` of the consumer -
+     *   `read_uncommitted` unless it is configured otherwise, which is what the broker answers a -1 last stable
+     *   offset and a `null` aborted-transactions array to.
      *
      * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
      * @param int                            $timeout               Timeout in ms to wait for fetching
@@ -301,7 +371,8 @@ class Client
     {
         $timeout = (int) min($this->configuration[ConsumerConfig::FETCH_MAX_WAIT_MS], $timeout);
         // A consumer that trusts its network may skip the checksum of every single message it reads
-        $checkCrcs = (bool) ($this->configuration[ConsumerConfig::CHECK_CRCS] ?? true);
+        $checkCrcs      = (bool) ($this->configuration[ConsumerConfig::CHECK_CRCS] ?? true);
+        $isolationLevel = $this->isolationLevel();
 
         return $this->clusterRequest(
             $topicPartitionOffsets,
@@ -313,7 +384,8 @@ class Client
                 -1,
                 $this->configuration[ConsumerConfig::CLIENT_ID],
                 $correlationId,
-                (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES] ?? FetchRequest::DEFAULT_MAX_BYTES)
+                (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES] ?? FetchRequest::DEFAULT_MAX_BYTES),
+                $isolationLevel
             ),
             FetchResponse::class,
             static function (array $result, FetchResponse $response, array &$errors) use (
@@ -332,10 +404,11 @@ class Client
                         }
                         $fetchOffset = (int) ($topicPartitionOffsets[$topic][$partitionId] ?? 0);
                         try {
-                            // The schema engine hands over the raw bytes of the message set, because the broker is
-                            // allowed to cut its last message short. The record layer decodes them, drops that
-                            // partial trailing message and unwraps a compressed set into the messages it holds.
-                            $messageSet = MessageSet::fromBuffer($responsePartition->messageSet ?? '', $checkCrcs);
+                            // The schema engine hands over the raw bytes of the record set, because the broker is
+                            // allowed to cut its last batch short. The record layer looks at the message format of
+                            // every batch, drops that partial trailing one, unwraps a compressed batch into the
+                            // records it holds and keeps the control markers of a transaction to itself.
+                            $records = MemoryRecords::fromBuffer($responsePartition->messageSet ?? '', $checkCrcs);
                         } catch (KafkaException $exception) {
                             // A corrupt message only spoils its own partition, the others are still readable
                             $errors[$topic][$partitionId] = $exception;
@@ -346,12 +419,15 @@ class Client
                             $fetchOffset,
                             $responsePartition->errorCode,
                             $responsePartition->highWaterMarkOffset,
-                            $messageSet,
+                            $records,
                             // From version 3 on the broker guarantees that the first non-empty partition of an
                             // answer holds a complete message, and an empty partition simply means that the
                             // `fetch.max.bytes` of the answer were used up by the ones in front of it
                             FetchRequest::VERSION < 3 && $responsePartition->isSingleMessageTooLarge($fetchOffset),
-                            $response->throttleTimeMs
+                            $response->throttleTimeMs,
+                            $responsePartition->lastStableOffset,
+                            $responsePartition->logStartOffset,
+                            $responsePartition->abortedTransactions
                         );
                     }
                 }
@@ -847,6 +923,68 @@ class Client
         }
 
         return $records;
+    }
+
+    /**
+     * Builds the byte region that one topic-partition of a Produce request carries, in the configured format.
+     *
+     * The message format v2 is a {@see RecordBatch} - one batch per topic-partition, compressed as a whole, with
+     * the producer state and the record headers in it - and the formats v0 and v1 are a {@see MessageSet}, which
+     * has no place for either and silently drops the headers of a record. {@see MemoryRecords} wraps both, so that
+     * the request does not have to know which of them it is sending.
+     *
+     * @param list<Record> $records          Records of this topic-partition, with their `CreateTime` timestamps
+     * @param int          $compressionCodec Codec that compresses the whole batch, {@see \Protocol\Kafka\Common\Record\CompressionCodec::NONE}
+     *                                       for an uncompressed one
+     * @param int          $messageFormatMagic Magic byte of the message format to write
+     * @param int          $producerId       Producer id of an idempotent producer, -1 without one
+     * @param int          $producerEpoch    Epoch of that producer, -1 without one
+     * @param int          $baseSequence     Sequence number of the first record, -1 without a producer id
+     * @param bool         $isTransactional  Whether the batch belongs to a transaction
+     */
+    private static function toRecordSet(
+        array $records,
+        int $compressionCodec,
+        int $messageFormatMagic,
+        int $producerId = RecordBatch::NO_PRODUCER_ID,
+        int $producerEpoch = RecordBatch::NO_PRODUCER_EPOCH,
+        int $baseSequence = RecordBatch::NO_SEQUENCE,
+        bool $isTransactional = false
+    ): MemoryRecords {
+        if ($messageFormatMagic >= RecordBatch::MAGIC) {
+            return MemoryRecords::fromRecordBatch(RecordBatch::fromRecords(
+                $records,
+                $compressionCodec,
+                0,
+                $producerId,
+                $producerEpoch,
+                $baseSequence,
+                $isTransactional
+            ));
+        }
+
+        return MemoryRecords::fromMessageSet(
+            MessageSet::fromRecords($records, $compressionCodec, $messageFormatMagic)
+        );
+    }
+
+    /**
+     * Returns the `isolation.level` a Fetch request of this client states.
+     *
+     * The option is the one of the Java consumer - the strings `read_uncommitted` and `read_committed`, or the
+     * wire value itself - and a client that does not configure it reads uncommitted, which is what every broker
+     * below 0.11 did and what the versions below 4 of the Fetch api do.
+     */
+    private function isolationLevel(): int
+    {
+        $configured = $this->configuration['isolation.level'] ?? FetchRequest::READ_UNCOMMITTED;
+        if (is_int($configured)) {
+            return $configured;
+        }
+
+        return strtolower(trim((string) $configured)) === 'read_committed'
+            ? FetchRequest::READ_COMMITTED
+            : FetchRequest::READ_UNCOMMITTED;
     }
 
     /**

@@ -23,10 +23,10 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
 
 /**
- * Produce response object, version 2
+ * Produce response object, version 3
  *
  * <pre>
- *   ProduceResponse (Version: 2) => [TopicName [Partition ErrorCode Offset LogAppendTime]] ThrottleTime
+ *   ProduceResponse (Version: 3) => [TopicName [Partition ErrorCode Offset LogAppendTime]] ThrottleTime
  *     LogAppendTime => int64
  *     ThrottleTime  => int32
  * </pre>
@@ -36,20 +36,23 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
  * quota. A broker without quotas - the default, `quota.producer.default` is unlimited - always answers 0.
  *
  * Version 2 (Kafka 0.10.0, message format v1) added `LogAppendTime` to every partition entry, in front of that
- * throttle time, see {@see ProduceResponsePartition::$logAppendTime}. Because the three versions have different
- * frames, each of them is a class of its own - {@see ProduceResponseV1} and {@see ProduceResponseV0} - and the
- * version constant of this class selects both the fields of the answer and the class of a partition entry.
+ * throttle time, see {@see ProduceResponsePartition::$logAppendTime}. **Version 3 changed nothing at all**:
+ * `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` in `Protocol.java` @ 0.11.0.3 and a 0.11.0.3 broker really
+ * answers a version 3 request with the version 2 frame, so this class and {@see ProduceResponseV2} decode the very
+ * same bytes and only differ in the version of the request they belong to. The `LogStartOffset` that the Produce
+ * answer eventually got is Kafka 1.0 (Produce v5) and is not part of this line. {@see ProduceResponseV1} and
+ * {@see ProduceResponseV0} carry the two frames that really differ.
  *
  * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
      * Version of the Produce API that this class decodes the answer of
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Result for each topic of the request, indexed by the topic name
