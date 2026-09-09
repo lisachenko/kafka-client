@@ -9,7 +9,7 @@
         <testsuite name="unit">
             <directory>tests/Unit</directory>
         </testsuite>
-        <!-- Tests against a real Kafka 0.9.0.1 broker, skipped unless KAFKA_BOOTSTRAP_SERVERS is set -->
+        <!-- Tests against a real Kafka 0.11.0.3 broker, skipped unless KAFKA_BOOTSTRAP_SERVERS is set -->
         <testsuite name="integration">
             <directory>tests/Integration</directory>
         </testsuite>

@@ -10,7 +10,7 @@
  */
 
 /**
- * Admin API example for the Kafka 0.10.2.2 protocol.
+ * Admin API example for the Kafka 0.11.0.3 protocol.
  *
  * Start the broker of docker-compose.yml and run:
  *
@@ -21,8 +21,10 @@
 declare(strict_types=1);
 
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -62,14 +64,23 @@ foreach ($admin->listTopics() as $name) {
     echo "  {$name}\n";
 }
 
-// CAVEAT: a topic that does not exist yet is CREATED by this call when the broker runs with
-// auto.create.topics.enable=true, and the first answer reports the topic error code 5 (LeaderNotAvailable) and no
-// partitions until the controller has elected the partition leaders. Kafka 0.10.1 added the explicit way of doing
-// it, which reports what went wrong instead - see examples/create-topic.php.
+// Describing a topic is a question and no longer a side effect: Metadata v4 (Kafka 0.11, KIP-4) added
+// `allow_auto_topic_creation`, and every request of the admin client sends it as false, so a topic that does not
+// exist is answered with the error code 3 and stays absent - where every version below 4 would have created it on
+// a broker with auto.create.topics.enable=true. CreateTopics (Kafka 0.10.1) is the explicit way, and it reports
+// what went wrong - see examples/create-topic.php.
 echo "\nPartitions of {$topic}\n";
+$created = $admin->createTopics([new NewTopic($topic, 3, 1)])[$topic] ?? null;
+if ($created !== null && $created->getCode() !== KafkaException::TOPIC_ALREADY_EXISTS) {
+    echo '  the topic could not be created: ' . $created->getMessage() . "\n";
+
+    return;
+}
+
+$cluster->reload();
 $metadata = $admin->describeTopics([$topic])[$topic] ?? null;
 if ($metadata === null || $metadata->partitions === []) {
-    echo "  the topic is being created, run this example again in a moment\n";
+    echo "  the controller has not elected the leaders yet, run this example again in a moment\n";
 
     return;
 }

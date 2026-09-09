@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  *
  * Every partition under test holds five records one second apart, with the `CreateTime` values 1600000000000 to
  * 1600000004000, so that the answer of the broker is fully determined by the timestamp that is searched for. What
- * the tests assert is the table of "What a 0.10.2.2 broker answers" in the protocol document.
+ * the tests assert is the table of "What the broker answers" in the protocol document.
  *
  * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
  */

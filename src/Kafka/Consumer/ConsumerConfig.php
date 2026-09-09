@@ -27,9 +27,10 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
  * heartbeat.interval.ms and partition.assignment.strategy, plus offset.retention.ms for the `retention_time` of the
  * OffsetCommit v2 request. Kafka 0.10.1 added {@see self::MAX_POLL_INTERVAL_MS}, the application-side half of the
  * `rebalance_timeout` that a JoinGroup v1 request carries, and {@see self::FETCH_MAX_BYTES}, the request-level
- * bound of a Fetch v3 answer. What arrived later is absent: isolation.level, the option of the transactional
- * protocol of 0.11. The `offsets.storage` option of the general config ({@see GeneralConfig::OFFSETS_STORAGE})
- * still selects where the committed offsets live (OffsetCommit v0 vs v2).
+ * bound of a Fetch v3 answer, and Kafka 0.11 the `isolation.level` a Fetch v5 request states, which
+ * {@see \Protocol\Kafka\Client::fetchPartitions()} reads out of this configuration. The `offsets.storage` option
+ * of the general config ({@see GeneralConfig::OFFSETS_STORAGE}) still selects where the committed offsets live
+ * (OffsetCommit v0 vs v3).
  *
  * A consumer overrides one option of the general config: `request.timeout.ms` defaults to 305000 instead of 30000,
  * as it does in the Java consumer of 0.10.1 and above ("chosen to be higher than the default of
