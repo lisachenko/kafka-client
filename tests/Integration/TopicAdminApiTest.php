@@ -281,8 +281,9 @@ final class TopicAdminApiTest extends IntegrationTestCase
 
     public function testDeleteTopicsWithAnEmptyTopicArrayIsAnsweredWithAnEmptyResult(): void
     {
-        // This is why findController() can not probe with an empty request: KafkaApis maps over the topics of the
-        // REQUEST, so a follower would answer it exactly like the controller does
+        // KafkaApis maps over the topics of the REQUEST, so a follower answers an empty one exactly like the
+        // controller does - which is why a client that has to PROBE for the controller can not use it
+        // (findController() reads the ControllerId of Metadata v1 instead, see the protocol document)
         $stream = $this->connect();
         new DeleteTopicsRequest([], 0, 't7-topics', 7100)->writeTo($stream);
 
@@ -292,8 +293,10 @@ final class TopicAdminApiTest extends IntegrationTestCase
         self::assertSame([], $response->topics, 'no entry at all, not an error code');
     }
 
-    public function testTheControllerProbeOfTheLookupIsAnsweredWithoutSideEffects(): void
+    public function testADeleteTopicsProbeWithAnIllegalTopicNameIsAnsweredWithoutSideEffects(): void
     {
+        // The probe a client without Metadata v1 has to use to find the controller: an illegal topic name, which
+        // the controller answers with 3 while every other broker answers 41
         $probe  = '#kafka-client-controller-probe#';
         $stream = $this->connect();
         new DeleteTopicsRequest([$probe], 0, 't7-topics', 7101)->writeTo($stream);
