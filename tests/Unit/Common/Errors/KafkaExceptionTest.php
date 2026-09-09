@@ -21,7 +21,7 @@ use Protocol\Kafka\Common\Errors\ClientExceptionInterface;
 use Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\ConcurrentTransactionsException;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
-use Protocol\Kafka\Common\Errors\DuplicateSequenceException;
+use Protocol\Kafka\Common\Errors\DuplicateSequenceNumberException;
 use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
@@ -88,8 +88,9 @@ use RuntimeException;
  * hierarchy of the Java client of 0.9.0.1 (InvalidMetadataException extends RetriableException, so the codes 3, 5,
  * 6 and 13 are retriable; none of the codes 21-31 is). The codes 32-44 are those of Kafka 0.10.0 to 0.10.2
  * (Errors.java @ 0.10.2.2); of them only 41 NotController is retriable. The codes 45-55 are those of Kafka 0.11
- * (Errors.java @ 0.11.0.3): the producer id, sequence and transaction codes of KIP-98 and the two ACL codes; none
- * of them extends RetriableException in the Java client (the transactional producer retries 51 on its own).
+ * (Errors.java @ 0.11.0.3): the producer id, sequence and transaction codes of KIP-98 and the two ACL codes; only
+ * 46 DuplicateSequenceNumber extends RetriableException in the Java client (the transactional producer retries 51
+ * on its own).
  */
 #[CoversClass(KafkaException::class)]
 final class KafkaExceptionTest extends TestCase
@@ -148,7 +149,7 @@ final class KafkaExceptionTest extends TestCase
             'UnsupportedForMessageFormat'   => [43, UnsupportedForMessageFormatException::class, false],
             'PolicyViolation'               => [44, PolicyViolationException::class, false],
             'OutOfOrderSequenceNumber'      => [45, OutOfOrderSequenceException::class, false],
-            'DuplicateSequenceNumber'       => [46, DuplicateSequenceException::class, false],
+            'DuplicateSequenceNumber'       => [46, DuplicateSequenceNumberException::class, true],
             'InvalidProducerEpoch'          => [47, ProducerFencedException::class, false],
             'InvalidTxnState'               => [48, InvalidTxnStateException::class, false],
             'InvalidProducerIdMapping'      => [49, InvalidPidMappingException::class, false],
