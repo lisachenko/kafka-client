@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Consumes a topic as a member of a consumer group of a Kafka 0.9.0.1 cluster.
+ * Consumes a topic as a member of a consumer group of a Kafka 0.10.2.2 cluster.
  *
  * Kafka 0.9 moved the coordination of a group into the broker, so the partitions are not chosen by the application
  * any more ({@see examples/consumer.php} does that with `assign()`): the consumer subscribes to topics, the group
