@@ -1,4 +1,4 @@
-Wire vectors of the Kafka 0.10.2.2 protocol
+Wire vectors of the Kafka 0.11.0.3 protocol
 ===========================================
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
@@ -8,24 +8,16 @@ hex dumps.
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
 - Produce v1, Fetch v1, OffsetCommit v2, ControlledShutdown v1, the group membership apis and the consumer protocol
-structures - on a 0.9.0.1 broker, and everything Kafka 0.10 adds on the 0.10.2.2 container of `docker-compose.yml`:
+structures - on a 0.9.0.1 broker, those of `0.10.x` - message format v1, Metadata v1/v2, Produce v2, Fetch v2/v3,
+Offsets v1, OffsetFetch v2, JoinGroup v1, CreateTopics v0/v1, DeleteTopics v0 and SaslHandshake v0 - on a 0.10.2.2
+broker, and everything Kafka 0.11 adds on the 0.11.0.3 container of `docker-compose.yml`:
 
-| File | What was captured on the 0.10.2.2 broker |
+| File | What was captured on the 0.11.0.3 broker |
 |---|---|
-| `api-versions.json` | ApiVersions v0, the 21 keys the broker serves, and the error code 35 of an unknown version |
-| `message-format.json` | seven message sets of format v1 and the format v0 the broker converts an lz4 set down to |
-| `metadata.json` | Metadata v1 and v2 - `rack`, `is_internal`, `controller_id`, `cluster_id` - next to the v0 frames |
-| `produce.json` | Produce v2 with the `log_append_time` of a `LogAppendTime` topic |
-| `fetch.json` | Fetch v2 and v3, including the request-level `max_bytes` of v3 |
-| `offsets.json` | Offsets v1: by timestamp, one offset per partition, and the 43 of a message-format-v0 topic |
-| `offset-fetch.json` | OffsetFetch v2: named topics, `null` (all topics), `[]` (no topic), and the group error code |
-| `join-group.json` | JoinGroup v1 with the `rebalance_timeout` |
-| `create-topics.json` | CreateTopics v0 and v1, including the `error_message` of v1 |
-| `delete-topics.json` | DeleteTopics v0, including the answer for a topic the cluster does not have |
-| `sasl-handshake.json` | SaslHandshake v0 and the two frames of the PLAIN token exchange (`kind: structure`) |
+| `api-versions.json` | ApiVersions **v0 and v1**: the 34 keys the broker serves, in both layouts, and the error code 35 of an unknown version |
 
 That the older frames are still the current ones is not an assumption:
-`tests/Integration/ApiVersionProbeTest.php` asks the 0.10.2.2 broker with a real **ApiVersions** request
+`tests/Integration/ApiVersionProbeTest.php` asks the 0.11.0.3 broker with a real **ApiVersions** request
 (`api-versions.json`) which versions it serves, and sends a frame of every one of them.
 
 ```json

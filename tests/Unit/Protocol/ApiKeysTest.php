@@ -19,10 +19,11 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use ReflectionClass;
 
 /**
- * Verifies that the api keys of this branch are exactly the ones of Kafka 0.9.0.1.
+ * Verifies that the api keys of this branch are exactly the ones of Kafka 0.11.0.3.
  *
- * The list mirrors kafka/api/RequestKeys.scala @ 0.9.0.1, which ends at key 16. The names are those of the later
- * protocol lines (branch main): key 10 is GroupCoordinator here and ConsumerMetadata in the 0.8.2 sources.
+ * The list mirrors `org.apache.kafka.common.protocol.ApiKeys` @ 0.11.0.3, which ends at key 33. The names are the
+ * ones of the pre-schema `main` branch wherever the concept exists there: key 10 is GroupCoordinator here, although
+ * 0.11 renamed the api to FindCoordinator and the 0.8.2 sources called it ConsumerMetadata.
  *
  * @see \Protocol\Kafka\Tests\Integration\ApiVersionProbeTest for the same list verified against a real broker
  */
@@ -35,27 +36,27 @@ final class ApiKeysTest extends TestCase
      * @var array<string, int>
      */
     private const array KEYS_OF_KAFKA_0_11_0_3 = [
-        'PRODUCE'             => 0,
-        'FETCH'               => 1,
-        'OFFSETS'             => 2,
-        'METADATA'            => 3,
-        'LEADER_AND_ISR'      => 4,
-        'STOP_REPLICA'        => 5,
-        'UPDATE_METADATA'     => 6,
-        'CONTROLLED_SHUTDOWN' => 7,
-        'OFFSET_COMMIT'       => 8,
-        'OFFSET_FETCH'        => 9,
-        'GROUP_COORDINATOR'   => 10,
-        'JOIN_GROUP'          => 11,
-        'HEARTBEAT'           => 12,
-        'LEAVE_GROUP'         => 13,
-        'SYNC_GROUP'          => 14,
-        'DESCRIBE_GROUPS'     => 15,
-        'LIST_GROUPS'         => 16,
-        'SASL_HANDSHAKE'      => 17,
-        'API_VERSIONS'        => 18,
-        'CREATE_TOPICS'       => 19,
-        'DELETE_TOPICS'       => 20,
+        'PRODUCE'                 => 0,
+        'FETCH'                   => 1,
+        'OFFSETS'                 => 2,
+        'METADATA'                => 3,
+        'LEADER_AND_ISR'          => 4,
+        'STOP_REPLICA'            => 5,
+        'UPDATE_METADATA'         => 6,
+        'CONTROLLED_SHUTDOWN'     => 7,
+        'OFFSET_COMMIT'           => 8,
+        'OFFSET_FETCH'            => 9,
+        'GROUP_COORDINATOR'       => 10,
+        'JOIN_GROUP'              => 11,
+        'HEARTBEAT'               => 12,
+        'LEAVE_GROUP'             => 13,
+        'SYNC_GROUP'              => 14,
+        'DESCRIBE_GROUPS'         => 15,
+        'LIST_GROUPS'             => 16,
+        'SASL_HANDSHAKE'          => 17,
+        'API_VERSIONS'            => 18,
+        'CREATE_TOPICS'           => 19,
+        'DELETE_TOPICS'           => 20,
         'DELETE_RECORDS'          => 21,
         'INIT_PRODUCER_ID'        => 22,
         'OFFSET_FOR_LEADER_EPOCH' => 23,

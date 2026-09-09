@@ -186,8 +186,11 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $result = $this->admin->createTopics([new NewTopic($topic, 1, 1, configs: ['no.such.option' => '1'])]);
 
         self::assertInstanceOf(InvalidConfigException::class, $result[$topic]);
+        // The text changed with Kafka 0.11: `LogConfig.validateNames()` @ 0.11.0.3 throws
+        // "Unknown topic config name: <name>" where 0.10.2.2 threw the "Unknown Log configuration <name>." of the
+        // generic `AbstractConfig`. The error code (40) and everything else about the answer are unchanged.
         self::assertSame(
-            'Unknown Log configuration no.such.option.',
+            'Unknown topic config name: no.such.option',
             $result[$topic]->getContext()['error'] ?? null
         );
         self::assertNotContains($topic, $this->admin->listTopics());

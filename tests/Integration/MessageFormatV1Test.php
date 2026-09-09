@@ -228,19 +228,25 @@ final class MessageFormatV1Test extends IntegrationTestCase
             'the codec and the timestamp type live in the attributes of the wrapper'
         );
 
-        // The broker sets the bit on the wrapper only: the compressed inner messages still hold what was produced
+        // A 0.11 broker stores this batch as a record batch v2 - `message.format.version` defaults to 0.11.0 - and
+        // DOWN-CONVERTS it for the Fetch v3 of this client. `AbstractRecords.convertRecordBatch()` @ 0.11.0.3
+        // rebuilds the set with `MemoryRecords.builder(..., timestampType, baseOffset, logAppendTime)`, and a
+        // magic 1 builder writes that timestamp type into the attributes of every message it appends - so the
+        // inner messages carry the LogAppendTime bit here, where a natively written v1 set of a 0.10.2.2 broker
+        // carried it on the wrapper alone. A reader must not read anything into either.
         $inner = MessageSet::shallowFromBuffer($wrapper->decompressValue());
         self::assertSame(
-            [TimestampType::CREATE_TIME, TimestampType::CREATE_TIME],
+            [TimestampType::LOG_APPEND_TIME, TimestampType::LOG_APPEND_TIME],
             array_map(
                 static fn(array $entry): int => $entry[1]->getTimestampType(),
                 $inner->getMessages()
-            )
+            ),
+            'the down-conversion of a batch v2 stamps the timestamp type on every inner message'
         );
         self::assertSame(
-            [self::CREATE_TIME, self::CREATE_TIME + 10],
+            [$wrapper->getTimestamp(), $wrapper->getTimestamp()],
             array_map(static fn(array $entry): ?int => $entry[1]->getTimestamp(), $inner->getMessages()),
-            'the inner timestamps are left alone and have to be ignored by the reader'
+            'and the append time of the batch as the timestamp of every one of them'
         );
         // ... and the reader reports the timestamp of the wrapper for every record of the batch
         $records = $this->fetch($baseOffset, 2, $topic);
@@ -382,7 +388,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
         $command   = [
-            'docker', 'exec', $container === false || $container === '' ? 'kafka-0-10-2-2' : $container,
+            'docker', 'exec', $container === false || $container === '' ? 'kafka-0-11-0-3' : $container,
             '/opt/kafka/bin/kafka-topics.sh', '--zookeeper', 'localhost:2181',
             '--create', '--topic', $topic, '--partitions', '1', '--replication-factor', '1',
         ];
