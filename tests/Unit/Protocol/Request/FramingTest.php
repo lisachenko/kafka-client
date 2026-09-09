@@ -22,7 +22,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
-use Protocol\Kafka\Protocol\Request\MetadataRequest;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
 use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\EmptyResponse;
 use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\ErrorCodeResponse;
 use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\SchemaMetadataRequest;
@@ -97,7 +97,8 @@ final class FramingTest extends TestCase
 
     public function testATestFixtureAndTheRealRequestOfTheSameApiProduceTheSameBytes(): void
     {
-        $real  = new MetadataRequest([], 'test', 1);
+        // The fixture declares version 0 of the api, so the real request of the same version is the one to compare
+        $real  = new MetadataRequestV0([], 'test', 1);
         $typed = new SchemaMetadataRequest([], 'test', 1);
 
         self::assertSame(bin2hex((string) $real), bin2hex((string) $typed));

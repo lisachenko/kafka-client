@@ -16,12 +16,12 @@ request (`api-versions.json`) which versions it serves, and sends a frame of eve
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0)",
+    "section": "Metadata API (key 3, v0, v1 and v2)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV0",
             "version": 0,
             "source": "broker",
             "description": "…",

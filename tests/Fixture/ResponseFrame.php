@@ -40,35 +40,56 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Metadata response (api key 3, v0)
+     * Cluster id that {@see self::metadata()} answers with, 22 characters like the one a 0.10.1 broker generates
+     */
+    public const string CLUSTER_ID = 'kafka-client-test-clst';
+
+    /**
+     * Builds a Metadata response (api key 3, v2)
      *
      * <pre>
-     *   MetadataResponse => [Broker][TopicMetadata]
-     *     Broker            => NodeId int32 Host string Port int32
-     *     TopicMetadata     => TopicErrorCode int16 TopicName string [PartitionMetadata]
+     *   MetadataResponse => [Broker] ClusterId ControllerId [TopicMetadata]
+     *     Broker            => NodeId int32 Host string Port int32 Rack nullable string
+     *     ClusterId         => nullable string
+     *     ControllerId      => int32
+     *     TopicMetadata     => TopicErrorCode int16 TopicName string IsInternal boolean [PartitionMetadata]
      *     PartitionMetadata => PartitionErrorCode int16 PartitionId int32 Leader int32 Replicas [int32] Isr [int32]
      * </pre>
      *
-     * @param list<array{int, string, int}>                          $brokers nodeId, host, port
-     * @param array<string, array<int, int>>                         $topics  topic => partition => leader node id
-     * @param array<string, int>                                     $topicErrorCodes  Error code of a topic, if any
-     * @param array<string, array<int, int>>                         $partitionErrorCodes Error code of a partition
+     * The first broker of the list is the controller unless `$controllerId` says otherwise, and no broker declares
+     * a rack - the answer of the container of `docker-compose.yml`, which runs a single broker without
+     * `broker.rack`. A topic counts as internal when its name is in `$internalTopics`, i.e. `__consumer_offsets`
+     * and nothing else on a 0.10.2.2 cluster.
+     *
+     * @param list<array{int, string, int}>  $brokers             nodeId, host, port
+     * @param array<string, array<int, int>> $topics              topic => partition => leader node id
+     * @param array<string, int>             $topicErrorCodes     Error code of a topic, if any
+     * @param array<string, array<int, int>> $partitionErrorCodes Error code of a partition
+     * @param list<string>                   $internalTopics      Topics to flag with `is_internal`
+     * @param int|null                       $controllerId        Controller of the cluster, -1 while it elects one
      */
     public static function metadata(
         int $correlationId,
         array $brokers,
         array $topics = [],
         array $topicErrorCodes = [],
-        array $partitionErrorCodes = []
+        array $partitionErrorCodes = [],
+        array $internalTopics = [],
+        ?int $controllerId = null
     ): string {
         $body = pack('N', count($brokers));
         foreach ($brokers as [$nodeId, $host, $port]) {
-            $body .= pack('N', $nodeId) . self::string($host) . pack('N', $port);
+            // The rack of the broker, null for a cluster that is not rack aware
+            $body .= pack('N', $nodeId) . self::string($host) . pack('N', $port) . pack('n', 0xFFFF);
         }
+
+        $body .= self::string(self::CLUSTER_ID);
+        $body .= pack('N', $controllerId ?? $brokers[0][0] ?? -1);
 
         $body .= pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= pack('n', $topicErrorCodes[$topic] ?? 0) . self::string((string) $topic);
+            $body .= pack('C', in_array((string) $topic, $internalTopics, true) ? 1 : 0);
             $body .= pack('N', count($partitions));
             foreach ($partitions as $partitionId => $leader) {
                 $replicas = $leader < 0 ? [] : [$leader];
