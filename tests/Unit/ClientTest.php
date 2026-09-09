@@ -402,12 +402,12 @@ final class ClientTest extends TestCase
             ->install();
 
         try {
-            // 0.9.0.1 knows the lz4 codec, but this client neither writes nor reads it
-            $this->client([ProducerConfig::COMPRESSION_TYPE => 'lz4'])
+            // zstd is the codec of Kafka 2.1 and the message format v2, not of this protocol line
+            $this->client([ProducerConfig::COMPRESSION_TYPE => 'zstd'])
                 ->produce([self::TOPIC => [0 => [new Record('never sent')]]]);
             self::fail('An unsupported compression type has to be rejected');
         } catch (InvalidConfigurationException $exception) {
-            self::assertStringContainsString('lz4', $exception->getMessage());
+            self::assertStringContainsString('zstd', $exception->getMessage());
         }
 
         self::assertSame(0, $leader->getRequestCount());
