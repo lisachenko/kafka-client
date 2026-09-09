@@ -18,11 +18,17 @@ use RuntimeException;
 /**
  * A record in the log is bigger than the fetch size the consumer asked for, so it can never be received.
  *
- * A Kafka 0.9.0.1 broker cuts a fetched message set off at `MaxBytes` without guaranteeing any progress: when the
- * very first message at the requested offset is bigger than that limit, the partition comes back without an error
- * and without a single complete message, while its high water mark still shows unread data. A consumer that keeps
+ * A Fetch request **below version 3** is cut off at `MaxBytes` without guaranteeing any progress: when the very
+ * first message at the requested offset is bigger than that limit, the partition comes back without an error and
+ * without a single complete message, while its high water mark still shows unread data. A consumer that keeps
  * asking for the same offset would spin forever, therefore it raises this error instead - the only way out is a
  * bigger `max.partition.fetch.bytes`.
+ *
+ * Kafka 0.10.1 ended that with KIP-74: for a Fetch **v3** request `hardMaxBytesLimit` is false, so
+ * `ReplicaManager.readFromLocalLog` @ 0.10.2.2 reads the first message of a partition whole even when it exceeds
+ * both the partition limit and the request-level `max.bytes`. This client sends v3, so the situation cannot arise
+ * any more; {@see \Protocol\Kafka\Protocol\Data\FetchResponsePartition::isSingleMessageTooLarge()} is asked only
+ * for the versions 0 to 2, which a caller has to build explicitly.
  *
  * This is a client-side error: unlike MessageTooLargeException (broker error code 10), which rejects a *produced*
  * message set that exceeds `message.max.bytes`, no error code travels over the wire for this one.

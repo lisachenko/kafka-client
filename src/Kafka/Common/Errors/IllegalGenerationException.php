@@ -18,7 +18,7 @@ use Exception;
 /**
  * Specified group generation id is not valid.
  *
- * Listed as IllegalConsumerGeneration in the comments of kafka/common/ErrorMapping.scala @ 0.9.0.1.
+ * Listed as IllegalConsumerGeneration in the comments of kafka/common/ErrorMapping.scala @ 0.10.2.2.
  */
 class IllegalGenerationException extends KafkaException implements ServerExceptionInterface
 {

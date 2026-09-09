@@ -211,7 +211,7 @@ class ClientConfig
      * The list of protocols enabled for SSL connections, as a list of {@see SslProtocol} values.
      *
      * When it is set, the handshake offers exactly those versions and `ssl.protocol` is ignored; when it is empty or
-     * missing, `ssl.protocol` alone decides. The Java client of 0.9.0.1 defaults to `TLSv1.2,TLSv1.1,TLSv1`, which
+     * missing, `ssl.protocol` alone decides. The Java client of 0.10.2.2 defaults to `TLSv1.2,TLSv1.1,TLSv1`, which
      * is what the `TLS` default of `ssl.protocol` negotiates here.
      */
     public const SSL_ENABLED_PROTOCOLS = 'ssl.enabled.protocols';

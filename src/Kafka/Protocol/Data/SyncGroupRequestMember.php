@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * Only the leader of the group fills this array; every other member sends an empty one and just picks its own
  * assignment out of the response. The coordinator stores the bytes and hands each member its own, adding an empty
- * assignment for a member the leader did not mention (`GroupCoordinator.doSyncGroup` @ 0.9.0.1) - it never parses
+ * assignment for a member the leader did not mention (`GroupCoordinator.doSyncGroup` @ 0.10.2.2) - it never parses
  * them, which is why the assignment is an opaque byte array here as well.
  *
  * @see docs/protocol/0.10.2.md, section "SyncGroup API (key 14, v0)"

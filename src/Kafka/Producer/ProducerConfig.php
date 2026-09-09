@@ -27,7 +27,7 @@ use Protocol\Kafka\Common\Record\Message;
 /**
  * Producer config enumeration class
  *
- * Kafka 0.9.0.1 has neither idempotent nor transactional delivery - both arrived with 0.11 - so this branch carries
+ * Kafka 0.10.2.2 has neither idempotent nor transactional delivery - both arrived with 0.11 - so this branch carries
  * no `transactional.id` and no `enable.idempotence`.
  */
 final class ProducerConfig extends GeneralConfig
@@ -201,7 +201,7 @@ final class ProducerConfig extends GeneralConfig
      * The maximum size of a request in bytes.
      *
      * This is also effectively a cap on the maximum record size. Note that the server has its own cap on record size
-     * (`message.max.bytes`, one megabyte by default in 0.9.0.1) which may be different from this. A record that
+     * (`message.max.bytes`, one megabyte by default in 0.10.2.2) which may be different from this. A record that
      * exceeds this size is rejected by {@see KafkaProducer::send()} before it reaches the broker, and a buffer that
      * would grow past it is flushed first.
      */

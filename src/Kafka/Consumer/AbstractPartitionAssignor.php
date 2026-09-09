@@ -23,7 +23,7 @@ use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
  * A subclass only implements {@see assignPartitions()}, which maps the member ids to the partitions they get; this
  * class turns the {@see Subscription} structures of the members into the topic lists such an implementation works
  * with, and wraps the result back into the {@see MemberAssignment} structures that the leader publishes with its
- * SyncGroup request. Like `AbstractPartitionAssignor` of the Java client of 0.9.0.1, it keeps no state between two
+ * SyncGroup request. Like `AbstractPartitionAssignor` of the Java client of 0.10.2.2, it keeps no state between two
  * assignments and sends no `userData`.
  *
  * @see \Protocol\Kafka\Consumer\RangeAssignor
@@ -32,7 +32,7 @@ use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 abstract class AbstractPartitionAssignor implements PartitionAssignorInterface
 {
     /**
-     * Built-in assignors of Kafka 0.9.0.1, indexed by the wire name they announce
+     * Built-in assignors of Kafka 0.10.2.2, indexed by the wire name they announce
      *
      * @var array<string, class-string<PartitionAssignorInterface>>
      */
@@ -45,7 +45,7 @@ abstract class AbstractPartitionAssignor implements PartitionAssignorInterface
      * Creates the assignor that the `partition.assignment.strategy` option asks for.
      *
      * The option holds either the wire name of a built-in assignor - `range`, the default of the Java client of
-     * 0.9.0.1, or `roundrobin` - or the name of a class that implements {@see PartitionAssignorInterface}.
+     * 0.10.2.2, or `roundrobin` - or the name of a class that implements {@see PartitionAssignorInterface}.
      *
      * @param string $strategy Value of {@see ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY}
      *

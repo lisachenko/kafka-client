@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Common\Security;
  * constants of PHP.
  *
  * `TLS` means "whatever TLS version both sides support" and is the default, exactly as in the Java client. The
- * broker of Kafka 0.9.0.1 offers TLSv1, TLSv1.1 and TLSv1.2 (`ssl.enabled.protocols`), so `TLS` negotiates TLSv1.2
+ * broker of Kafka 0.10.2.2 offers TLSv1, TLSv1.1 and TLSv1.2 (`ssl.enabled.protocols`), so `TLS` negotiates TLSv1.2
  * against a default-configured 0.9 broker.
  *
  * The SSLv2/SSLv3 members exist because the Java client accepts them; they are broken protocols and modern OpenSSL
