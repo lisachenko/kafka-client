@@ -69,7 +69,7 @@ final class SaslTransportTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t8-sasl';
 
     /**
-     * Credentials of `docker/kafka-0.10.2.2/jaas.conf`
+     * Credentials of `docker/kafka-0.11.0.3/jaas.conf`
      */
     private const string USERNAME = 'kafkatest';
 
@@ -424,7 +424,7 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     private static function saslBrokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-0.10.2.2/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-0.11.0.3/ssl/broker.crt';
     }
 
     /**

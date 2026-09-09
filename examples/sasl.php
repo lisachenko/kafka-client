@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Authenticates against the SASL listeners of a Kafka 0.10.2.2 cluster with SASL/PLAIN.
+ * Authenticates against the SASL listeners of a Kafka 0.11.0.3 cluster with SASL/PLAIN.
  *
  * Kafka 0.10.0 (KIP-43) made SASL part of the protocol: a connection to a `SASL_PLAINTEXT`/`SASL_SSL` listener
  * starts with a `SaslHandshake` request (api key 17) that names the mechanism, and the tokens of that mechanism
@@ -28,7 +28,7 @@ declare(strict_types=1);
  * and the password are plain options here.
  *
  * The broker of this repository advertises PLAINTEXT on 9092, SSL on 9093, SASL_PLAINTEXT on 9094 and SASL_SSL on
- * 9095, with the users of `docker/kafka-0.10.2.2/jaas.conf`:
+ * 9095, with the users of `docker/kafka-0.11.0.3/jaas.conf`:
  *
  *   docker compose up -d
  *   php examples/sasl.php                                             # SASL_PLAINTEXT on 9094
@@ -47,6 +47,7 @@ declare(strict_types=1);
  */
 
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
@@ -74,7 +75,7 @@ $securityProtocol       = $saslSslBootstrapServer !== ''
     : SecurityProtocol::SASL_PLAINTEXT;
 $brokerAddress          = 'tcp://' . trim(explode(',', $saslBootstrapServer)[0]);
 $topic                  = $argv[1] ?? 'kafka-client-example-sasl';
-$certificate            = dirname(__DIR__) . '/docker/kafka-0.10.2.2/ssl/broker.crt';
+$certificate            = dirname(__DIR__) . '/docker/kafka-0.11.0.3/ssl/broker.crt';
 
 if ($securityProtocol === SecurityProtocol::SASL_SSL && !extension_loaded('openssl')) {
     echo "The openssl extension is required for security.protocol = SASL_SSL\n";
@@ -125,8 +126,16 @@ foreach ($admin->findAllBrokers() as $broker) {
     echo "  {$broker->nodeId}: {$broker->host}:{$broker->port}\n";
 }
 
-// Asking for the metadata of an unknown topic creates it when `auto.create.topics.enable` is on; the controller
-// needs a moment to elect the leaders of its partitions afterwards.
+// The admin client asks with `allow_auto_topic_creation = false` since Metadata v4 (Kafka 0.11, KIP-4), so
+// describing a topic no longer creates it: CreateTopics is the explicit way, and 36 (TopicAlreadyExists) simply
+// means the topic is already around. The controller elects the leaders of its partitions a moment later.
+$created = $admin->createTopics([new NewTopic($topic, 1, 1)])[$topic] ?? null;
+if ($created !== null && $created->getCode() !== KafkaException::TOPIC_ALREADY_EXISTS) {
+    echo 'The topic could not be created: ' . $created->getMessage() . "\n";
+
+    exit(1);
+}
+
 $deadline = microtime(true) + 30.0;
 do {
     $cluster->reload();

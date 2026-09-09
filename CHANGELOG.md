@@ -14,9 +14,9 @@ Unreleased — the main line (Kafka 0.11.0.3)
 
 The 0.11 line, built on top of the `0.10.x` line it was cascade-merged from. Everything below was
 verified against a real Apache **0.11.0.3** broker (`docker/kafka-0.11.0.3/`, four listeners) and
-is documented byte for byte in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), whose wire
-vectors [`tests/Compliance`](tests/Compliance) replays through the protocol classes — including
-all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
+is documented byte for byte in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), whose 229 wire
+vectors [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 109 frames
+this line captured and the 120 of the three lines below, which a 0.11.0.3 broker still speaks.
 
 ### Added
 
@@ -30,17 +30,34 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   `WRITE_TXN_MARKERS` (27), `TXN_OFFSET_COMMIT` (28), `DESCRIBE_ACLS` (29), `CREATE_ACLS` (30),
   `DELETE_ACLS` (31), `DESCRIBE_CONFIGS` (32) and `ALTER_CONFIGS` (33). `Protocol\ApiKeys` now ends
   at 33; everything above it is Kafka 1.0.
-- **Error codes 45-55** — `OutOfOrderSequenceException` (45), `DuplicateSequenceNumberException` (46, the one retriable code of the eleven),
-  `ProducerFencedException` (47), `InvalidTxnStateException` (48), `InvalidPidMappingException`
+- **Error codes 45-55** — `OutOfOrderSequenceException` (45), `DuplicateSequenceNumberException`
+  (46), `ProducerFencedException` (47), `InvalidTxnStateException` (48), `InvalidPidMappingException`
   (49), `InvalidTxnTimeoutException` (50), `ConcurrentTransactionsException` (51),
   `TransactionCoordinatorFencedException` (52), `TransactionalIdAuthorizationException` (53),
   `SecurityDisabledException` (54) and `OperationNotAttemptedException` (55), with their constants
-  on `KafkaException` and their entries in the code map. None of them is retriable on this branch.
+  on `KafkaException` and their entries in the code map. **46 is the only retriable one of the
+  eleven**, as in `Errors.java` @ 0.11.0.3 — a duplicate sequence number means the batch is already
+  in the log — and a 0.11.0.3 broker never sends it to a client (see below).
 - **The zigzag varint family of the record batch v2 in the schema engine** —
   `BinarySchema::TYPE_VARINT_ZIGZAG` (11), `TYPE_VARLONG_ZIGZAG` (12), `TYPE_VARCHAR_ZIGZAG` (13)
   and `FLAG_VARARRAY` (14), with `Common\Utils\ByteUtils` for the zigzag and CRC-32C helpers of
   `org.apache.kafka.common.utils.ByteUtils` and `Stream::readVarint()`/`writeVarint()` for the byte
   loop. No request or response body of Kafka 0.11 uses them — only the records inside a batch do.
+- **The record batch v2, the message format of Kafka 0.11** (KIP-98 for the format, KIP-82 for the
+  headers) — `Common\Record\RecordBatch` is the 61-byte batch header as a `getScheme()` declaration
+  plus the reader and writer of its delta-encoded records, next to the `MessageSet`/`Message` of the
+  formats v0 and v1, which a 0.11.0.3 broker still reads and writes. `Common\Record\RecordV2` is the
+  wire form of a record — varint lengths, offset and timestamp deltas, varint-counted headers — and
+  `Common\Record\Header`, `ControlRecordKey`, `ControlRecordType` and `EndTransactionMarker` are the
+  headers of a record and the markers of the transaction protocol. `Common\Record\MemoryRecords`
+  reads a byte region of **any** of the three formats, dispatching on the magic byte at the offset 16
+  of an entry, and hides the records of a control batch from an application. The checksum is the
+  **CRC-32C** of `ByteUtils`, covering the batch from its attributes on, so that the base offset and
+  the partition leader epoch the broker assigns stay outside it; compression compresses the records
+  and not a wrapper message. `Record` gained the trailing `array $headers` and `withHeaders()`, and
+  `Message::classOfMagic()` refuses a magic 2 with the reader to use instead. Twelve wire vectors in
+  `docs/protocol/vectors/message-format.json`, among them a captured control batch and the two
+  down-conversions a 0.11 broker performs.
 - **ApiVersions v1 (key 18)** — `ApiVersionsRequest` now sends **version 1** and
   `ApiVersionsResponse` reads its trailing `throttleTimeMs`; `ApiVersionsRequestV0` and
   `ApiVersionsResponseV0` keep the version 0 frames, which is also the layout the broker answers an
@@ -124,7 +141,6 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   exists for) and reports the error of every resource instead of throwing. A 0.11 broker alters
   topics only and refuses a broker resource with 42; `validateOnly` validates without writing. Six
   wire vectors in `docs/protocol/vectors/alter-configs.json`.
-
 - **InitProducerId v0 (key 22, KIP-98)** — `InitProducerIdRequest`/`InitProducerIdResponse` and
   `Client::initProducerId(?string $transactionalId = null, int $transactionTimeoutMs = 60000)`,
   which answers a `Producer\Internals\ProducerIdAndEpoch`. A `null` transactional id is asked of
@@ -214,6 +230,20 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   the log holds them in instead of the message format v1 a version 3 answer was converted down to.
 - **The container name of the test fixtures** is `kafka-0-11-0-3`, so the quota tests and the
   message-format tests that create a topic with `kafka-topics.sh` run again instead of skipping.
+- **`main` carries only the broker of its own line.** `docker/kafka-0.10.2.2/` — a byte-identical copy
+  of the 0.11 image but for its Kafka version — and `docker/kafka-0.9.0.1/`, which nothing on this branch
+  used at all, were removed, so `docker/` holds `kafka-0.11.0.3/` alone. Every reference to a
+  `ssl/broker.crt` or a `jaas.conf` in the tests and the examples points at `docker/kafka-0.11.0.3/` now.
+  The images of the lower lines live on the `0.10.x` and `0.9.x` branches, where their tests need them.
+- **The examples were brought to the protocol of the line.** `consumer.php` and `consumer-group.php`
+  write a `RecordBatch` instead of a `MessageSet`, because the `ProduceRequest` they use is version 3
+  now and a 0.11 broker closes the connection on a lower magic; `admin.php`, `ssl.php` and `sasl.php`
+  create their topic with `createTopics()`, because `describeTopics()` sends
+  `allow_auto_topic_creation = false` and no longer brings a topic into existence; `producer.php`
+  writes the record batch v2 of the default `message.format.version`. Three examples are new:
+  `record-headers.php` (KIP-82 end to end), `idempotent-producer.php` (`enable.idempotence`, the
+  producer id and the sequence numbers) and `admin-configs.php` (`describeConfigs()`,
+  `alterConfigs()` and `deleteRecords()`).
 
 ### Notes
 
@@ -221,6 +251,23 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   answers all three with the error code 54 (`SecurityDisabled`), and every wire vector of this
   repository comes from a real broker.
 - `SaslAuthenticate` (key 36) and the error code 56 are Kafka 1.0 and stay out of this line.
+- **OffsetForLeaderEpoch (23) and WriteTxnMarkers (27) are broker-to-broker apis**: the classes and
+  the wire vectors are here because they are part of the protocol of 0.11, but this client sends
+  neither, and no method of `Client` or `AdminClient` produces one.
+- **`retries` defaults to 3 with `enable.idempotence`**, not to the `Integer.MAX_VALUE` of the Java
+  producer: this client has no background sender, so the budget is a loop that `flush()` blocks on
+  and an unbounded one would be an unbounded flush.
+- **A 0.11.0.3 broker remembers one batch per producer id and partition.** The five-batch window of
+  `ProducerStateEntry.NumBatchesToRetain` is Kafka 1.0, so a duplicate of a batch that is no longer
+  the last one is answered 45 and not with the offset of the original append.
+- **Five error codes of the transaction protocol could not be produced on a one-broker container
+  without an authorizer** — 49 (`InvalidProducerIdMapping`), 51 as a stable wire vector (it is
+  transient), 52 (`TransactionCoordinatorFenced`, which needs two coordinators), 53 and 30. They are
+  implemented from the sources of 0.11.0.3 and marked as such in the protocol document, next to the
+  ones the container really answered.
+- **The epoch of an `InitProducerId` may move by more than one.** A coordinator that has to roll an
+  open transaction back bumps the epoch once for the fencing and once for the new producer, and
+  answers 51 in between: a client reads the epoch it is given and never computes `epoch + 1`.
 
 Previous line — 0.10.x (Kafka 0.10.2.2)
 ----------------------------------------

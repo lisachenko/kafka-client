@@ -2,8 +2,10 @@
 
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
-(Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `main` (Kafka 0.11, **next**). See
-`docs/CASCADE.md` and, for the current line, `docs/handoff/<branch>.md`.
+(Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `main`
+(Kafka 0.11.0.3, **complete**). The cascade ends at `main`: there is no line above it, so
+`docs/handoff/main.md` carries the **release notes** of the 0.11 line with the plan it was built from
+below them. See `docs/CASCADE.md` and, for a line, `docs/handoff/<branch>.md`.
 
 ## Hard rules (owner's decisions)
 
@@ -24,6 +26,11 @@ lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**)
 6. Tests are spec tests: byte-exact hex vectors (also replayed by `tests/Compliance`) plus
    integration tests against the real broker, skipped when `KAFKA_BOOTSTRAP_SERVERS` is unset.
 
+The `main` of the rules 2, 3 and 4 is the **pre-schema `main`**, i.e. the branch as it stood before the
+cascade merge of `0.10.x` (`git show 94f896a:<path>`): its identifiers are the ones this package publishes,
+and its `$header = null` requests were the defect the schema engine replaced. Since the 0.11 line landed,
+`main` itself is the finished, schema-based implementation of Kafka 0.11.0.3.
+
 ## Toolchain and quality gate
 
 - PHP 8.4 is the target (`composer.json`, CI). The sandbox may have a newer CLI — write 8.4 code.
@@ -36,7 +43,9 @@ lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**)
   JIT by default and the JIT miscompiles the pure-PHP LZ4 decoder once its functions get hot, which shows up as an
   order-dependent `CorruptMessageException` in `Lz4Test` and in the lz4 message-format vectors (0 of 200 round trips
   fail with the JIT off, most of them fail with it on). CI runs PHP 8.4 without opcache in the CLI and is
-  unaffected, so this is a sandbox workaround, not a code defect.
+  unaffected, so this is a sandbox workaround, not a code defect. Suspect the same for any other hot pure-PHP byte
+  loop — the CRC-32C and the varints of the record batch v2 are the candidates — and measure with the JIT off
+  before believing that a failure is a defect of the code.
 
 ### Installing dependencies in a sandbox that blocks GitHub downloads (Claude Code remote sessions)
 
@@ -55,7 +64,9 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 ### Kafka broker for integration tests
 
 - `docker compose up -d --wait` starts the broker of this branch's Kafka version
-  (`docker/kafka-<version>/`, ZooKeeper bundled, advertised as 127.0.0.1:9092).
+  (`docker/kafka-<version>/`, ZooKeeper bundled, advertised as 127.0.0.1:9092). On `main` that is
+  **`docker/kafka-0.11.0.3`**, the container `kafka-0-11-0-3`, with the four listeners PLAINTEXT 9092,
+  SSL 9093, SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image this branch carries.
 - In the remote sandbox the Docker daemon may not be running: `nohup dockerd >/tmp/dockerd.log 2>&1 &`
   and wait for `docker info` to answer. Old Docker Hub images with v1 manifests cannot be pulled;
   build the image from `docker/` (the Kafka tarball comes from archive.apache.org, which is reachable).
@@ -63,7 +74,14 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   which the Dockerfile copies to `/usr/local/share/ca-certificates/extra/` before `update-ca-certificates`.
 - A 0.8/0.9 broker answers Metadata with **zero brokers** until a topic exists; use the readiness probe
   in `tests/Integration/IntegrationTestCase.php`. Fresh topics transiently answer 5/6 — helpers must retry.
-- Several agents share one broker: unique topic/group names per test class; never restart it from a subagent.
+- Several agents share one broker: unique topic/group/transactional-id names per test class; never restart it from
+  a subagent.
+- **0.11 specifics.** The Apache repository has **no `0.11.0.3` tag** — `0.11.0.3-rc0` is the commit the release was
+  built from and is what "@ 0.11.0.3" means in this repository. The `server.properties` shipped with 0.11 ends
+  **without a trailing newline**, so `start.sh` appends one before it writes the settings of this repository into
+  the file. A one-broker cluster additionally needs `transaction.state.log.replication.factor=1` and
+  `transaction.state.log.min.isr=1`, or `__transaction_state` cannot be created and every transactional request ends
+  in the error code 15.
 - Useful in-container tools: `docker exec <container> /opt/kafka/bin/kafka-topics.sh --zookeeper localhost:2181 --list`,
   `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-run-class.sh kafka.tools.DumpLogSegments`.
   From 0.9 on, the console consumer joins a *group* only with `--new-consumer --bootstrap-server host:port` and

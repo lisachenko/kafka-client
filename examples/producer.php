@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Produces a handful of records to a topic of a Kafka 0.10.2.2 cluster.
+ * Produces a handful of records to a topic of a Kafka 0.11.0.3 cluster.
  *
  * Run it against the broker of the development environment:
  *
@@ -91,9 +91,10 @@ $producer = new KafkaProducer([
     // Compress every batch as a whole; 'none', 'snappy' and - since Kafka 0.10.0 - 'lz4' are the other values
     ProducerConfig::COMPRESSION_TYPE => ProducerConfig::COMPRESSION_TYPE_GZIP,
 
-    // The message format a batch is written in: '0.10.0' and above write format v1 with a timestamp per record,
-    // '0.9.0' and below the format without one. Use the format of the topic you produce to.
-    ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
+    // The message format a batch is written in, and with it the version of the Produce request: '0.11.0' (the
+    // default) writes a record batch v2 in a Produce v3, '0.10.x' a message set with a timestamp per record and
+    // '0.9.0' one without, both in a Produce v2. Use the format of the topic you produce to.
+    ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0,
 
     // Send a batch again when the leader of its partition moved while it was in flight
     ProducerConfig::RETRIES          => 3,
@@ -108,8 +109,8 @@ foreach ($producer->partitionsFor($topic) as $partitionMetadata) {
 $onSuccess = static function (RecordMetadata $metadata): void {
     echo "  stored {$metadata}\n";
 
-    // Message format v1 (Kafka 0.10.0) gave every record a timestamp: this is the one the log holds - the create
-    // time this producer stamped, or the broker's clock for a topic with message.timestamp.type=LogAppendTime
+    // Kafka 0.10.0 gave every record a timestamp: this is the one the log holds - the create time this producer
+    // stamped, or the broker's clock for a topic with message.timestamp.type=LogAppendTime
     echo "    the log holds the timestamp {$metadata->timestamp}\n";
 
     // A broker with a `producer_byte_rate` quota for this client id delays its answer instead of rejecting the
@@ -147,5 +148,5 @@ try {
 }
 
 echo "Done. Read the records back with the console consumer of the broker container:\n";
-echo "  docker exec kafka-0-10-2-2 /opt/kafka/bin/kafka-console-consumer.sh --zookeeper localhost:2181"
-    . " --topic {$topic} --from-beginning --max-messages 12\n";
+echo "  docker exec kafka-0-11-0-3 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
+    . " --new-consumer --topic {$topic} --from-beginning --max-messages 12\n";

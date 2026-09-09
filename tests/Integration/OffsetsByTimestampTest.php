@@ -32,8 +32,8 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Verifies version 1 of the Offsets (ListOffset) API - the timestamp lookup of Kafka 0.10.1 - against a real
- * 0.10.2.2 broker.
+ * Verifies the timestamp lookup of the Offsets (ListOffset) API - version 1 of Kafka 0.10.1, and version 2 with
+ * the isolation level of Kafka 0.11 - against a real 0.11.0.3 broker.
  *
  * Every partition under test holds five records one second apart, with `CreateTime` values that start one hour
  * before the run, so that the answer of the broker is fully determined by the timestamp that is searched for. The

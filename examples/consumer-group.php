@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Consumes a topic as a member of a consumer group of a Kafka 0.10.2.2 cluster.
+ * Consumes a topic as a member of a consumer group of a Kafka 0.11.0.3 cluster.
  *
  * Kafka 0.9 moved the coordination of a group into the broker, so the partitions are not chosen by the application
  * any more ({@see examples/consumer.php} does that with `assign()`): the consumer subscribes to topics, the group
@@ -39,8 +39,8 @@ declare(strict_types=1);
 
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Errors\KafkaException;
-use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\ConsumerRebalanceListener;
@@ -127,7 +127,9 @@ function produceDemoRecords(string $brokerAddress, string $topic, array $configu
                 sprintf('Hello from partition %d, record #%d, produced at %s', $partitionId, $index, date(DATE_ATOM))
             );
         }
-        $topicPartitions[$partitionId] = MessageSet::fromRecords($records);
+        // A Produce v3 request carries a record batch of the message format v2 and refuses every older magic;
+        // ProduceRequestV2 with a MessageSet is the way to write the formats v0 and v1
+        $topicPartitions[$partitionId] = RecordBatch::fromRecords($records);
     }
 
     $stream = new SocketStream($brokerAddress, $configuration, 5.0);

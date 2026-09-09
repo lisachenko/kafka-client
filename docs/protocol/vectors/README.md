@@ -1,8 +1,9 @@
 Wire vectors of the Kafka 0.11.0.3 protocol
-====================================
+===========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../0.11.0.md`](../0.11.0.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps.
+hex dumps. There are **229** of them in 30 files: the 120 the three lines below captured, which a 0.11.0.3 broker
+still answers unchanged, and the **109** frames of what Kafka 0.11 added.
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
@@ -11,19 +12,32 @@ structures - on a 0.9.0.1 broker, those of `0.10.x` - message format v1, Metadat
 Offsets v1, OffsetFetch v2, JoinGroup v1, CreateTopics v0/v1, DeleteTopics v0 and SaslHandshake v0 - on a 0.10.2.2
 broker, and everything Kafka 0.11 adds on the 0.11.0.3 container of `docker-compose.yml`:
 
-| File | What was captured on the 0.11.0.3 broker |
-|---|---|
-| `api-versions.json` | ApiVersions **v0 and v1**: the 34 keys the broker serves, in both layouts, and the error code 35 of an unknown version |
-| `metadata.json` | Metadata **v3 and v4**, and the v4 answer of an absent topic asked for with `allow_auto_topic_creation = false` |
-| `offsets.json` | Offsets **v2** in both isolation levels |
-| `offset-commit.json`, `offset-fetch.json` | OffsetCommit **v3** and OffsetFetch **v3** |
-| `group-coordinator.json` | GroupCoordinator **v1** for a consumer group and for a transactional id |
-| `join-group.json`, `sync-group.json`, `heartbeat.json`, `leave-group.json` | The group membership apis one version up: JoinGroup **v2**, SyncGroup/Heartbeat/LeaveGroup **v1** |
-| `describe-groups.json`, `list-groups.json` | DescribeGroups **v1** and ListGroups **v1** |
-| `create-topics.json`, `delete-topics.json` | CreateTopics **v2** and DeleteTopics **v1** |
-| `offset-for-leader-epoch.json` | OffsetForLeaderEpoch **v0** (KIP-101), the epoch of a partition and of one the cluster does not host |
-| `produce.json` | Produce **v3**: the request with its nullable `transactional_id` and a record batch v2, and the two answers of a `CreateTime` and a `LogAppendTime` topic - which are the version 2 frame, because `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` |
-| `fetch.json` | Fetch **v4 and v5**: both versions at both isolation levels, which is where the `last_stable_offset = -1` and the null `aborted_transactions` of a `read_uncommitted` answer come from, plus a `read_committed` answer of a partition whose only transaction was aborted |
+| File | Vectors | What was captured on the 0.11.0.3 broker |
+|---|---|---|
+| `message-format.json` | 13 of 20 | The **record batch v2** (magic 2): the four codecs, a `LogAppendTime` batch, a three-batch region, record **headers**, null keys and values, a transactional batch, the two real **control batches** with their COMMIT and ABORT markers, and the two down-conversions of a 0.11 log to the message formats v1 and v0 |
+| `api-versions.json` | 5 of 5 | ApiVersions **v0 and v1**: the 34 keys the broker serves, in both layouts, and the error code 35 of an unknown version (the two v0 frames were re-captured here) |
+| `metadata.json` | 6 of 17 | Metadata **v3 and v4**, and the v4 answer of an absent topic asked for with `allow_auto_topic_creation = false` |
+| `offsets.json` | 4 of 14 | Offsets **v2** in both isolation levels |
+| `offset-commit.json`, `offset-fetch.json` | 2 of 8, 2 of 15 | OffsetCommit **v3** and OffsetFetch **v3** |
+| `group-coordinator.json` | 4 of 6 | GroupCoordinator **v1** for a consumer group and for a transactional id |
+| `join-group.json`, `sync-group.json`, `heartbeat.json`, `leave-group.json` | 2 of 8, 2 of 6, 2 of 8, 2 of 6 | The group membership apis one version up: JoinGroup **v2**, SyncGroup/Heartbeat/LeaveGroup **v1** |
+| `describe-groups.json`, `list-groups.json` | 2 of 6, 2 of 4 | DescribeGroups **v1** and ListGroups **v1** |
+| `create-topics.json`, `delete-topics.json` | 2 of 7, 2 of 5 | CreateTopics **v2** and DeleteTopics **v1** |
+| `offset-for-leader-epoch.json` | 4 of 4 | OffsetForLeaderEpoch **v0** (KIP-101), the epoch of a partition and of one the cluster does not host |
+| `produce.json` | 8 of 16 | Produce **v3**: the request with its nullable `transactional_id` and a record batch v2, the two answers of a `CreateTime` and a `LogAppendTime` topic - which are the version 2 frame, because `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` - and the four frames of the idempotent producer: a numbered batch, the answer to the very same frame sent again, and an out-of-order sequence |
+| `fetch.json` | 8 of 19 | Fetch **v4 and v5**: both versions at both isolation levels, which is where the `last_stable_offset = -1` and the null `aborted_transactions` of a `read_uncommitted` answer come from, plus the `read_committed` answers of a partition whose only transaction was aborted - with an empty and with a filled `aborted_transactions` array |
+| `delete-records.json` | 6 of 6 | DeleteRecords **v0** (KIP-107): the low watermark it moves, an offset above the high watermark and an unknown topic |
+| `describe-configs.json` | 6 of 6 | DescribeConfigs **v0** (KIP-133) of a topic and of a broker resource, and the 42 of a broker id the answering broker does not have |
+| `alter-configs.json` | 6 of 6 | AlterConfigs **v0** (KIP-133): a topic that is altered, an unknown option name (40) and the broker resource a 0.11 broker refuses (42) |
+| `init-producer-id.json` | 6 of 6 | InitProducerId **v0** (KIP-98) with a null transactional id, with a real one, and the 50 of a transaction timeout above the broker's maximum |
+| `add-partitions-to-txn.json` | 4 of 4 | AddPartitionsToTxn **v0** (KIP-98), and the 47 a producer whose epoch was bumped away gets - reported per partition, because the api has no top-level error code |
+| `add-offsets-to-txn.json` | 2 of 2 | AddOffsetsToTxn **v0**: the request that enrols the offsets of a consumer group into a transaction |
+| `end-txn.json` | 6 of 6 | EndTxn **v0**: a commit, an abort, and the 48 of an abort that follows a commit of the same transactional id |
+| `txn-offset-commit.json` | 2 of 2 | TxnOffsetCommit **v0**: the offsets a transaction carries to the **group** coordinator |
+| `write-txn-markers.json` | 2 of 2 | WriteTxnMarkers **v0** - a broker-to-broker frame, which an unsecured broker serves to an ordinary client, and the only answer of 0.11 without a `throttle_time_ms` |
+
+The remaining three files - `consumer-protocol.json`, `controlled-shutdown.json` and `sasl-handshake.json` - carry
+no 0.11 frame at all: their apis and structures are unchanged since the line that captured them.
 
 That the older frames are still the current ones is not an assumption:
 `tests/Integration/ApiVersionProbeTest.php` asks the 0.11.0.3 broker with a real **ApiVersions** request
