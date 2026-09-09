@@ -50,6 +50,27 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   `docs/protocol/vectors/api-versions.json`, captured on the container.
 - **`FetchRequest::READ_UNCOMMITTED` / `READ_COMMITTED`** — the isolation levels of Fetch v4
   (KIP-98), under the identifiers of the pre-schema `main`.
+- **DeleteRecords v0 (key 21, KIP-107)** — `DeleteRecordsRequest`/`DeleteRecordsResponse` with
+  their topic and partition DTOs, `Client::deleteRecords()` (split per partition leader, like a
+  produce) and `Admin\AdminClient::deleteRecords()`, which answers the new **low watermark** of
+  every partition as an `Admin\DeletedRecords`. The offset to delete before is a plain integer or
+  an `Admin\RecordsToDelete`; `RecordsToDelete::allRecords()` is the `-1` of the wire, i.e.
+  everything up to the high watermark. Six wire vectors in
+  `docs/protocol/vectors/delete-records.json`.
+- **DescribeConfigs v0 (key 32, KIP-133)** — `DescribeConfigsRequest`/`DescribeConfigsResponse`
+  with their resource and entry DTOs, and `Admin\AdminClient::describeConfigs()`, which reads the
+  configuration of a topic or of a broker into an `Admin\Config` of `Admin\ConfigEntry` objects
+  (`value`, `isDefault`, `isSensitive`, `isReadOnly`). A resource is named with an
+  `Admin\ConfigResource` (`topic()` / `broker()`, the type ids of
+  `org.apache.kafka.common.requests.ResourceType` @ 0.11.0.3) and addressed in the result by its
+  `key()`; a **broker** resource is sent to the broker it names, a topic resource to any broker.
+  Six wire vectors in `docs/protocol/vectors/describe-configs.json`.
+- **AlterConfigs v0 (key 33, KIP-133)** — `AlterConfigsRequest`/`AlterConfigsResponse` with their
+  DTOs and `Admin\AdminClient::alterConfigs()`, which **replaces** the whole configuration of a
+  topic (an option left out is reset to its default, which is what `Config::nonDefaultValues()`
+  exists for) and reports the error of every resource instead of throwing. A 0.11 broker alters
+  topics only and refuses a broker resource with 42; `validateOnly` validates without writing. Six
+  wire vectors in `docs/protocol/vectors/alter-configs.json`.
 
 ### Changed
 
