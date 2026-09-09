@@ -23,8 +23,12 @@ use Protocol\Kafka\Protocol\Request\AbstractResponse;
  *     Broker => NodeId Host Port
  * </pre>
  *
- * The topic part is deliberately left out: it is unpacked by the protocol classes of wave 2, this fixture only has
- * to tell whether the broker has published its metadata yet.
+ * The topic part is deliberately left out: this fixture only has to tell whether the broker has published its
+ * metadata yet, which is what {@see ClusterReadinessProbe} asks it for with a version 0 request. Everything the
+ * later versions of the api add - the rack of a broker, the cluster id, the controller id - sits AFTER the broker
+ * array, so a version 1 or 2 answer would be read past the last field this scheme has; that is harmless, because
+ * {@see \Protocol\Kafka\Protocol\AbstractProtocolMessage::unpack()} reads the whole frame off the connection first,
+ * but the probe asks with version 0 anyway.
  */
 final class ClusterMetadataResponse extends AbstractResponse
 {

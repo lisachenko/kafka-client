@@ -75,6 +75,12 @@ use React\Promise\Promise;
  * partition that the murmur2 hash of the key selects, exactly like the official Java client, see
  * {@see DefaultPartitioner}.
  *
+ * Every record is stamped with a **CreateTime** - the current time in milliseconds - unless it already carries a
+ * {@see Record::$timestamp}, and the batch is written in the message format that `message.format.version` selects,
+ * v1 (with timestamps) by default. {@see RecordMetadata::$timestamp} reports the create time of the first record of
+ * the acknowledged batch; the `LogAppendTime` that a broker assigns to a topic configured for it is only visible
+ * through version 2 of the Produce API.
+ *
  * A broker with a `producer_byte_rate` quota for the `client.id` of this producer does not reject anything: it
  * appends the batch and holds its answer back until the client is inside its quota again. That delay is what
  * {@see RecordMetadata::$throttleTimeMs} reports, and {@see KafkaProducer::flush()} simply takes that much longer.
@@ -156,6 +162,8 @@ class KafkaProducer
 
         // Fail fast on a codec that this client can not write, instead of on the first flush of a batch
         ProducerConfig::compressionCodec($this->configuration[ProducerConfig::COMPRESSION_TYPE]);
+        // ... and on a message format that it can not write either
+        ProducerConfig::messageFormatMagic($this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION]);
     }
 
     /**
@@ -183,7 +191,13 @@ class KafkaProducer
             $partition = $this->partitioner->partition($topic, $message->key, $message->value, $cluster);
         }
 
-        $recordSize     = self::recordSize($message);
+        // Every record of a message format v1 batch carries a timestamp; the one the producer stamps is the
+        // CreateTime of the record, and a record that already carries one keeps it, as in the Java producer
+        if ($message->timestamp === null) {
+            $message = $message->withCreateTime(self::currentTimestampMs());
+        }
+
+        $recordSize     = $this->recordSize($message);
         $maxRequestSize = (int) $this->configuration[ProducerConfig::MAX_REQUEST_SIZE];
         if ($recordSize > $maxRequestSize) {
             throw new MessageTooLargeException([
@@ -286,11 +300,23 @@ class KafkaProducer
      * Returns the number of bytes that a record takes in a produce request, its entry of the message set.
      *
      * The size of the *uncompressed* record is the one that `batch.size` and `max.request.size` are measured in,
-     * because the compression ratio of a batch is only known once the batch is complete.
+     * because the compression ratio of a batch is only known once the batch is complete. Message format v1 adds the
+     * eight bytes of the timestamp to every record, so the size depends on the format the producer writes.
      */
-    private static function recordSize(Record $message): int
+    private function recordSize(Record $message): int
     {
-        return MessageSet::ENTRY_OVERHEAD + new Message($message->value, $message->key)->sizeInBytes();
+        $magic = ProducerConfig::messageFormatMagic($this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION]);
+
+        return MessageSet::ENTRY_OVERHEAD
+            + Message::ofMagic($magic, $message->value, $message->key)->sizeInBytes();
+    }
+
+    /**
+     * Returns the current time in milliseconds since the epoch, the clock of a `CreateTime` timestamp
+     */
+    private static function currentTimestampMs(): int
+    {
+        return (int) round(microtime(true) * 1000);
     }
 
     /**
@@ -395,18 +421,31 @@ class KafkaProducer
                 if (!isset($this->topicPartitionMessages[$topic][$partitionId])) {
                     continue;
                 }
-                $deferred = $this->forgetPartition($topic, $partitionId);
+                // The `timestamp` is the CreateTime the producer stamped on the first record of the batch, which is
+                // the record the answer reports the offset of; the `LogAppendTime` that version 2 of the Produce
+                // API reports arrives with Kafka 0.10 and replaces it
+                $createTime = $this->createTimeOf($topic, $partitionId);
+                $deferred   = $this->forgetPartition($topic, $partitionId);
 
-                // The `timestamp` of a record is the `LogAppendTime` of Produce v2 (Kafka 0.10) and stays null here
                 $deferred?->resolve(new RecordMetadata(
                     $topic,
                     $partitionId,
                     $partitionResult->baseOffset,
-                    null,
+                    $createTime,
                     $partitionResult->throttleTimeMs
                 ));
             }
         }
+    }
+
+    /**
+     * Returns the CreateTime that the producer stamped on the first record of a buffered topic-partition
+     */
+    private function createTimeOf(string $topic, int $partitionId): ?int
+    {
+        $records = $this->topicPartitionMessages[$topic][$partitionId] ?? [];
+
+        return $records === [] ? null : $records[0]->timestamp;
     }
 
     /**

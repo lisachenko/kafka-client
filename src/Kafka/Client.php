@@ -163,7 +163,8 @@ class Client
      *         which the broker never answers
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
-     * @throws InvalidConfigurationException  For a `compression.type` that this client can not write
+     * @throws InvalidConfigurationException  For a `compression.type` or a `message.format.version` that this client
+     *         can not write
      */
     public function produce(array $topicPartitionMessages): array
     {
@@ -173,6 +174,10 @@ class Client
         $compressionCodec = ProducerConfig::compressionCodec(
             $this->configuration[ProducerConfig::COMPRESSION_TYPE] ?? ProducerConfig::COMPRESSION_TYPE_NONE
         );
+        // `message.format.version` decides which of the two message formats of this line the batch is written in
+        $messageFormatMagic = ProducerConfig::messageFormatMagic(
+            $this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION] ?? ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0
+        );
 
         // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.10.2.md
         $topicPartitionMessageSets = [];
@@ -180,7 +185,8 @@ class Client
             foreach ($partitionMessages as $partition => $messages) {
                 $topicPartitionMessageSets[$topic][$partition] = MessageSet::fromRecords(
                     self::toRecords($messages),
-                    $compressionCodec
+                    $compressionCodec,
+                    $messageFormatMagic
                 );
             }
         }

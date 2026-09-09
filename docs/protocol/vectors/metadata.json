@@ -1,13 +1,13 @@
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0)",
-    "description": "Wire vectors of the Metadata API (key 3, v0), replayed by tests/Compliance.",
+    "section": "Metadata API (key 3, v0, v1 and v2)",
+    "description": "Wire vectors of the Metadata API (key 3, v0, v1 and v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV0",
             "version": 0,
             "source": "constructed",
             "description": "Metadata request v0 with an empty topic array, which asks for every topic of the cluster.",
@@ -24,7 +24,7 @@
         {
             "id": "metadata.request.v0.single-topic",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV0",
             "version": 0,
             "source": "broker",
             "description": "Metadata request v0 for one topic; a topic that does not exist yet is created by this request when auto.create.topics.enable is on.",
@@ -43,7 +43,7 @@
         {
             "id": "metadata.response.v0.single-topic",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV0",
             "version": 0,
             "source": "broker",
             "description": "Metadata of a topic with three partitions on a single-broker cluster.",
@@ -77,6 +77,318 @@
                             "1": {
                                 "partitionErrorCode": 0,
                                 "partitionId": 1,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "0": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v2.single-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "Metadata request v2 for one topic; a topic that does not exist yet is created by this request when auto.create.topics.enable is on.",
+            "hex": "0000001e0003000200000015000374313000000001000b7431302d766563746f7273",
+            "fields": {
+                "messageSize": 30,
+                "apiKey": 3,
+                "apiVersion": 2,
+                "correlationId": 21,
+                "clientId": "t10",
+                "topics": [
+                    "t10-vectors"
+                ]
+            }
+        },
+        {
+            "id": "metadata.response.v2.single-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "Metadata of a topic with three partitions on a single-broker cluster, with the cluster id and the controller id of version 2 and a broker without a rack.",
+            "hex": "0000009f00000015000000010000000000093132372e302e302e3100002384ffff00165f773739334c354c516b327661585f61364c6d336c7700000000000000010000000b7431302d766563746f72730000000003000000000002000000000000000100000000000000010000000000000000000100000000000000010000000000000001000000000000000000000000000000000001000000000000000100000000",
+            "fields": {
+                "messageSize": 159,
+                "correlationId": 21,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "_w793L5LQk2vaX_a6Lm3lw",
+                "controllerId": 0,
+                "topics": {
+                    "t10-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t10-vectors",
+                        "isInternal": false,
+                        "partitions": {
+                            "2": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 2,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "1": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 1,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "0": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v2.all-topics",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "Metadata request v2 with a null topic array, which asks for every topic of the cluster, the internal ones included.",
+            "hex": "0000001100030002000000160003743130ffffffff",
+            "fields": {
+                "messageSize": 17,
+                "apiKey": 3,
+                "apiVersion": 2,
+                "correlationId": 22,
+                "clientId": "t10",
+                "topics": null
+            }
+        },
+        {
+            "id": "metadata.request.v2.no-topics",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "Metadata request v2 with an empty topic array, which asks for no topic at all: only version 1 and above can express it.",
+            "hex": "000000110003000200000017000374313000000000",
+            "fields": {
+                "messageSize": 17,
+                "apiKey": 3,
+                "apiVersion": 2,
+                "correlationId": 23,
+                "clientId": "t10",
+                "topics": []
+            }
+        },
+        {
+            "id": "metadata.response.v2.no-topics",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer to a request for no topic: the brokers of the cluster, the cluster id, the controller id and an empty topic array.",
+            "hex": "0000003d00000017000000010000000000093132372e302e302e3100002384ffff00165f773739334c354c516b327661585f61364c6d336c770000000000000000",
+            "fields": {
+                "messageSize": 61,
+                "correlationId": 23,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "_w793L5LQk2vaX_a6Lm3lw",
+                "controllerId": 0,
+                "topics": []
+            }
+        },
+        {
+            "id": "metadata.request.v1.single-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "Metadata request v1 for one topic; the frame differs from the one of v2 in the version field of the header alone.",
+            "hex": "0000001e0003000100000018000374313000000001000b7431302d766563746f7273",
+            "fields": {
+                "messageSize": 30,
+                "apiKey": 3,
+                "apiVersion": 1,
+                "correlationId": 24,
+                "clientId": "t10",
+                "topics": [
+                    "t10-vectors"
+                ]
+            }
+        },
+        {
+            "id": "metadata.response.v1.single-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The version 1 answer for the same topic: the racks, the controller id and the internal flag are there, the cluster id of version 2 is not.",
+            "hex": "0000008700000018000000010000000000093132372e302e302e3100002384ffff00000000000000010000000b7431302d766563746f72730000000003000000000002000000000000000100000000000000010000000000000000000100000000000000010000000000000001000000000000000000000000000000000001000000000000000100000000",
+            "fields": {
+                "messageSize": 135,
+                "correlationId": 24,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "controllerId": 0,
+                "topics": {
+                    "t10-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t10-vectors",
+                        "isInternal": false,
+                        "partitions": {
+                            "2": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 2,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "1": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 1,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "0": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.response.v2.internal-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The metadata of __consumer_offsets, the only topic a 0.10.2.2 broker flags with is_internal.",
+            "hex": "000000da00000019000000010000000000093132372e302e302e3100002384ffff00165f773739334c354c516b327661585f61364c6d336c770000000000000001000000125f5f636f6e73756d65725f6f666673657473010000000500000000000200000000000000010000000000000001000000000000000000040000000000000001000000000000000100000000000000000001000000000000000100000000000000010000000000000000000300000000000000010000000000000001000000000000000000000000000000000001000000000000000100000000",
+            "fields": {
+                "messageSize": 218,
+                "correlationId": 25,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "_w793L5LQk2vaX_a6Lm3lw",
+                "controllerId": 0,
+                "topics": {
+                    "__consumer_offsets": {
+                        "topicErrorCode": 0,
+                        "topic": "__consumer_offsets",
+                        "isInternal": true,
+                        "partitions": {
+                            "2": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 2,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "4": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 4,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "1": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 1,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "3": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 3,
                                 "leader": 0,
                                 "replicas": [
                                     0

@@ -26,6 +26,7 @@ use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Producer\RecordMetadata;
@@ -206,7 +207,7 @@ final class KafkaProducerTest extends TestCase
 
         self::assertInstanceOf(RecordMetadata::class, $metadata);
         self::assertSame(793, $metadata->throttleTimeMs, 'the delay of the answer reaches the caller of send()');
-        self::assertNull($metadata->timestamp, 'a 0.9 broker reports no LogAppendTime');
+        self::assertNotNull($metadata->timestamp, 'the CreateTime the producer stamped on the batch');
     }
 
     public function testAnUnthrottledAnswerReportsNoDelay(): void
@@ -445,9 +446,81 @@ final class KafkaProducerTest extends TestCase
     public function testAnUnknownCompressionTypeIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('lz4');
+        $this->expectExceptionMessage('zstd');
 
-        new KafkaProducer([ProducerConfig::COMPRESSION_TYPE => 'lz4']);
+        new KafkaProducer([ProducerConfig::COMPRESSION_TYPE => 'zstd']);
+    }
+
+    public function testEveryRecordIsStampedWithItsCreateTime(): void
+    {
+        [$producer] = $this->producer([ProducerConfig::BATCH_SIZE => 1024 * 1024]);
+        $before     = (int) round(microtime(true) * 1000);
+
+        $producer->send(self::TOPIC, Record::fromKeyValue('key-0', 'value'));
+        $producer->send(self::TOPIC, Record::fromValue('another'));
+        $producer->flush();
+
+        $after   = (int) round(microtime(true) * 1000);
+        $records = $this->fakeClient->receivedRecords();
+
+        self::assertCount(2, $records);
+        foreach ($records as $record) {
+            self::assertNotNull($record->timestamp, 'the producer stamps the CreateTime of every record');
+            self::assertGreaterThanOrEqual($before, $record->timestamp);
+            self::assertLessThanOrEqual($after, $record->timestamp);
+            self::assertSame(TimestampType::CREATE_TIME, $record->timestampType);
+        }
+    }
+
+    public function testARecordThatAlreadyCarriesATimestampKeepsIt(): void
+    {
+        [$producer] = $this->producer([ProducerConfig::BATCH_SIZE => 1024 * 1024]);
+
+        $producer->send(self::TOPIC, new Record('value', 'key-0', 0, null, 1489324800000));
+        $producer->flush();
+
+        $records = $this->fakeClient->receivedRecords();
+
+        self::assertCount(1, $records);
+        self::assertSame(1489324800000, $records[0]->timestamp);
+    }
+
+    public function testTheRecordMetadataCarriesTheCreateTimeOfTheBatch(): void
+    {
+        [$producer] = $this->producer([ProducerConfig::BATCH_SIZE => 1024 * 1024]);
+
+        $metadata = null;
+        $producer
+            ->send(self::TOPIC, new Record('value', 'key-0', 0, null, 1489324800000))
+            ->then(static function (RecordMetadata $recordMetadata) use (&$metadata): void {
+                $metadata = $recordMetadata;
+            });
+        $producer->flush();
+
+        self::assertInstanceOf(RecordMetadata::class, $metadata);
+        self::assertSame(1489324800000, $metadata->timestamp, 'the CreateTime of the first record of the batch');
+    }
+
+    public function testTheRecordSizeOfMessageFormatV1CountsTheTimestampAsWell(): void
+    {
+        [$producer] = $this->producer([
+            ProducerConfig::BATCH_SIZE       => 1024 * 1024,
+            ProducerConfig::MAX_REQUEST_SIZE => MessageSet::ENTRY_OVERHEAD + Message::MIN_SIZE_V1 + 4,
+        ]);
+
+        // A record of five bytes fits into message format v0 but not into v1, which adds the eight bytes of the
+        // timestamp to every message
+        $this->expectException(MessageTooLargeException::class);
+
+        $producer->send(self::TOPIC, Record::fromValue('value'));
+    }
+
+    public function testAnUnknownMessageFormatVersionIsRejected(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('0.11.0');
+
+        new KafkaProducer([ProducerConfig::MESSAGE_FORMAT_VERSION => '0.11.0']);
     }
 
     public function testTheCompressionTypeIsHandedToTheClientThatSendsTheBatches(): void
@@ -514,4 +587,5 @@ final class KafkaProducerTest extends TestCase
     {
         return MessageSet::ENTRY_OVERHEAD + new Message($value, $key)->sizeInBytes();
     }
+
 }

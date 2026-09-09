@@ -32,7 +32,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 /**
  * Tests the cluster metadata against a scripted broker.
  *
- * @see docs/protocol/0.10.2.md, sections "Metadata API (key 3, v0)" and "Cluster readiness"
+ * @see docs/protocol/0.10.2.md, sections "Metadata API (key 3, v0, v1 and v2)" and "Cluster readiness"
  */
 #[CoversClass(Cluster::class)]
 #[CoversClass(AllBrokersNotAvailableException::class)]
@@ -73,6 +73,69 @@ final class ClusterTest extends TestCase
         self::assertSame('kafka-2', $cluster->leaderFor('orders', 1)->host);
         self::assertSame(2, $cluster->partition('orders', 2)->partitionId);
         self::assertSame($cluster->partitionsForTopic('orders'), $cluster->availablePartitionsForTopic('orders'));
+    }
+
+    public function testTheClusterKnowsItsIdAndItsController(): void
+    {
+        $this->script(new BrokerConnection($this->clusterMetadata()));
+
+        $cluster = Cluster::bootstrap($this->configuration());
+
+        self::assertSame(ResponseFrame::CLUSTER_ID, $cluster->clusterId());
+        self::assertSame(0, $cluster->controller()?->nodeId, 'the ControllerId of the answer names the controller');
+        self::assertSame($cluster->nodeById(0), $cluster->controller());
+    }
+
+    public function testAClusterWithoutAnElectedControllerHasNoControllerNode(): void
+    {
+        // -1 is what a broker answers while the cluster is electing a controller
+        $this->script(
+            new BrokerConnection(
+                ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], ['orders' => [0 => 0]], controllerId: -1)
+            )
+        );
+
+        $cluster = Cluster::bootstrap($this->configuration());
+
+        self::assertNull($cluster->controller());
+    }
+
+    public function testAControllerThatIsNotAmongTheBrokersIsNoController(): void
+    {
+        // The controller went down between the metadata of the controller and the alive-broker set of the answer
+        $this->script(
+            new BrokerConnection(
+                ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], ['orders' => [0 => 0]], controllerId: 7)
+            ),
+            new BrokerConnection(
+                ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], ['orders' => [0 => 0]], controllerId: 7)
+            )
+        );
+
+        $cluster = Cluster::bootstrap($this->configuration());
+
+        self::assertNull($cluster->controller());
+    }
+
+    public function testTheInternalTopicsAreListedUnlessTheConfigurationExcludesThem(): void
+    {
+        $metadata = ResponseFrame::metadata(
+            0,
+            [[0, 'kafka-1', 9092]],
+            ['orders' => [0 => 0], '__consumer_offsets' => [0 => 0]],
+            internalTopics: ['__consumer_offsets']
+        );
+        $this->script(new BrokerConnection($metadata), new BrokerConnection($metadata));
+
+        $cluster = Cluster::bootstrap($this->configuration());
+
+        self::assertSame(['orders', '__consumer_offsets'], $cluster->topics(), 'every topic of the answer');
+        self::assertSame(['orders'], $cluster->topics(true), 'without the ones Kafka keeps for itself');
+
+        $excluding = Cluster::bootstrap($this->configuration(['exclude.internal.topics' => true]));
+
+        self::assertSame(['orders'], $excluding->topics(), 'the configuration is the default of the argument');
+        self::assertSame(['orders', '__consumer_offsets'], $excluding->topics(false));
     }
 
     public function testAnEmptyBrokerListIsRetriedUntilTheClusterIsReady(): void
@@ -322,7 +385,7 @@ final class ClusterTest extends TestCase
     }
 
     /**
-     * A cluster of two brokers with one topic of three partitions
+     * A cluster of two brokers with one topic of three partitions, controlled by the broker 0
      */
     private function clusterMetadata(): string
     {
