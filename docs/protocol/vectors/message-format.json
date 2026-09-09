@@ -1585,6 +1585,51 @@
                     }
                 ]
             }
+        },
+        {
+            "id": "messageformat.v2.control.abort",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "The ABORT control batch that the transaction coordinator appended when the transaction of `t8-vectors-abort-txn` was rolled back: the attributes are 0x30 (transactional and control), the single record has the key `00 00 00 00` - the version 0 and the type 0, ABORT - and the value `00 00 00 00 00 00`, the version 0 and the coordinator epoch 0, and the base sequence is -1. The COMMIT marker of the same shape is `messageformat.v2.none.control`.",
+            "hex": "000000000000000200000042000000000269a4f27b003000000000000001a0866f939e000001a0866f939e00000000000000020000ffffffff000000012000000008000000000c00000000000000",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 2,
+                            "batchLength": 66,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 1772417659,
+                            "attributes": 48,
+                            "lastOffsetDelta": 0,
+                            "firstTimestamp": 1788961854366,
+                            "maxTimestamp": 1788961854366,
+                            "producerId": 2,
+                            "producerEpoch": 0,
+                            "baseSequence": -1,
+                            "recordCount": 1
+                        },
+                        "records": [
+                            {
+                                "offset": 2,
+                                "key": {
+                                    "$bytes": "00000000"
+                                },
+                                "value": {
+                                    "$bytes": "000000000000"
+                                },
+                                "timestamp": 1788961854366,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": []
+            }
         }
     ]
 }

@@ -431,6 +431,38 @@
                 },
                 "throttleTime": 0
             }
+        },
+        {
+            "id": "produce.request.v3.transactional",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "Produce v3 of a transactional producer: the request carries the transactional id `t8-vectors-txn` - a plain and an idempotent producer send `null` there - and bit 4 of the record batch attributes (0x10) marks the batch itself as transactional. The producer id, the epoch and the base sequence are the ones of the idempotent producer underneath.",
+            "hex": "000000ab00000003000000b8000a74382d766563746f7273000e74382d766563746f72732d74786effff0000138800000001000a74382d766563746f7273000000010000000000000065000000000000000000000059ffffffff0248b96863001000000001000001a0866f8f71000001a0866f8f7100000000000000000002000000000000000226000000011a636f6d6d6974746564206f6e650026000002011a636f6d6d69747465642074776f00",
+            "fields": {
+                "messageSize": 171,
+                "apiKey": 0,
+                "apiVersion": 3,
+                "correlationId": 184,
+                "clientId": "t8-vectors",
+                "transactionalId": "t8-vectors-txn",
+                "requiredAcks": -1,
+                "timeout": 5000,
+                "topicMessages": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000059ffffffff0248b96863001000000001000001a0866f8f71000001a0866f8f7100000000000000000002000000000000000226000000011a636f6d6d6974746564206f6e650026000002011a636f6d6d69747465642074776f00"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
         }
     ]
 }

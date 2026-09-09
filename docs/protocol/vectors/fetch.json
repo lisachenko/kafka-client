@@ -579,6 +579,43 @@
                     }
                 }
             }
+        },
+        {
+            "id": "fetch.response.v5.aborted-transactions",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "Fetch v5 answer of a `read_committed` consumer of a partition that holds one **aborted** transaction: the last stable offset is 3, past everything, and `aborted_transactions` names the producer id 2 with the first offset 0. The answer nevertheless carries both aborted records and the ABORT control batch - a 0.11.0.3 broker does not filter them out, it names them and leaves the filtering to the client.",
+            "hex": "00000107000000c70000000000000001001074382d766563746f72732d61626f7274000000010000000000000000000000000003000000000000000300000000000000000000000100000000000000020000000000000000000000af000000000000000000000055000000000262eec1c6001000000001000001a0866f8f71000001a0866f8f7100000000000000020000000000000000000222000000011661626f72746564206f6e650022000002011661626f727465642074776f00000000000000000200000042000000000269a4f27b003000000000000001a0866f939e000001a0866f939e00000000000000020000ffffffff000000012000000008000000000c00000000000000",
+            "fields": {
+                "messageSize": 263,
+                "correlationId": 199,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t8-vectors-abort": {
+                        "topic": "t8-vectors-abort",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 3,
+                                "lastStableOffset": 3,
+                                "logStartOffset": 0,
+                                "abortedTransactions": [
+                                    {
+                                        "producerId": 2,
+                                        "firstOffset": 0
+                                    }
+                                ],
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000055000000000262eec1c6001000000001000001a0866f8f71000001a0866f8f7100000000000000020000000000000000000222000000011661626f72746564206f6e650022000002011661626f727465642074776f00000000000000000200000042000000000269a4f27b003000000000000001a0866f939e000001a0866f939e00000000000000020000ffffffff000000012000000008000000000c00000000000000"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
         }
     ]
 }

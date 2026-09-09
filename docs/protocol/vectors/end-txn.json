@@ -1,0 +1,113 @@
+{
+    "api": "end-txn",
+    "apiKey": 26,
+    "section": "EndTxn API (key 26, v0)",
+    "description": "Wire vectors of the EndTxn API (key 26, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "endtxn.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "EndTxn request v0 with `transaction_result = 1`: commit the transaction of `t8-vectors-txn`. The single boolean byte is the whole difference between a commit and an abort.",
+            "hex": "0000002f001a0000000000bd000a74382d766563746f7273000e74382d766563746f72732d74786e0000000000000000000201",
+            "fields": {
+                "messageSize": 47,
+                "apiKey": 26,
+                "apiVersion": 0,
+                "correlationId": 189,
+                "clientId": "t8-vectors",
+                "transactionalId": "t8-vectors-txn",
+                "producerId": 0,
+                "producerEpoch": 2,
+                "transactionResult": true
+            }
+        },
+        {
+            "id": "endtxn.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the transaction coordinator to a commit: the error code 0 means that the coordinator has written its decision into `__transaction_state`, not that the control batches are in the partitions - those are written afterwards, with a WriteTxnMarkers request per partition leader.",
+            "hex": "0000000a000000bd000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 189,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "endtxn.request.v0.abort",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "EndTxn request v0 with `transaction_result = 0`: abort the transaction of `t8-vectors-abort-txn`. The records that were already written stay in the log and are marked with an ABORT control batch.",
+            "hex": "00000035001a0000000000c6000a74382d766563746f7273001474382d766563746f72732d61626f72742d74786e0000000000000002000000",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 26,
+                "apiVersion": 0,
+                "correlationId": 198,
+                "clientId": "t8-vectors",
+                "transactionalId": "t8-vectors-abort-txn",
+                "producerId": 2,
+                "producerEpoch": 0,
+                "transactionResult": false
+            }
+        },
+        {
+            "id": "endtxn.response.v0.abort",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer to an abort, which is the same frame a commit is answered with: the error code 0 and nothing else.",
+            "hex": "0000000a000000c6000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 198,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "endtxn.request.v0.invalid-state",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "EndTxn request v0 that aborts a transaction which was committed a moment before: the transactional id is in the state `CompleteCommit`, from which the coordinator allows a commit (again) but not an abort.",
+            "hex": "0000002f001a0000000000be000a74382d766563746f7273000e74382d766563746f72732d74786e0000000000000000000200",
+            "fields": {
+                "messageSize": 47,
+                "apiKey": 26,
+                "apiVersion": 0,
+                "correlationId": 190,
+                "clientId": "t8-vectors",
+                "transactionalId": "t8-vectors-txn",
+                "producerId": 0,
+                "producerEpoch": 2,
+                "transactionResult": false
+            }
+        },
+        {
+            "id": "endtxn.response.v0.invalid-state",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer to that abort: the error code 48 (InvalidTxnState). A repeated **commit** of the same transaction is answered with 0 instead, because `CompleteCommit` accepts the result it already has.",
+            "hex": "0000000a000000be000000000030",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 190,
+                "throttleTimeMs": 0,
+                "errorCode": 48
+            }
+        }
+    ]
+}

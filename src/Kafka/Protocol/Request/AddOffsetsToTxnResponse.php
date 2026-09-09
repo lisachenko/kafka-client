@@ -1,0 +1,75 @@
+<?php
+
+/*
+ * This file is part of the lisachenko/kafka-client package.
+ *
+ * (c) Alexander Lisachenko <lisachenko.it@gmail.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
+
+namespace Protocol\Kafka\Protocol\Request;
+
+use Protocol\Kafka\Protocol\BinarySchema;
+
+/**
+ * AddOffsetsToTxn response object, version 0 (key 25)
+ *
+ * <pre>
+ *   AddOffsetsToTxn Response (Version: 0) => throttle_time_ms error_code
+ *     throttle_time_ms => INT32
+ *     error_code       => INT16
+ * </pre>
+ *
+ * The api was born in Kafka 0.11, after KIP-124 made `throttle_time_ms` the first field of every new answer.
+ *
+ * Error codes a 0.11.0.3 coordinator reports, all of them at the top level - unlike
+ * {@see AddPartitionsToTxnResponse}, this api enrols exactly one partition and therefore has one error code:
+ *
+ * | Code | Name                               | Meaning                                                          |
+ * |------|------------------------------------|------------------------------------------------------------------|
+ * | 0    | None                               | `__consumer_offsets` of that group is part of the transaction     |
+ * | 15   | GroupCoordinatorNotAvailable       | The transaction coordinator is not available on this broker       |
+ * | 16   | NotCoordinatorForGroup             | Another broker coordinates this transactional id                  |
+ * | 47   | InvalidProducerEpoch               | The epoch is below the one `__transaction_state` holds - fenced   |
+ * | 48   | InvalidTxnState                    | The id is in a state that may not add partitions                  |
+ * | 49   | InvalidProducerIdMapping           | The producer id is not the one the coordinator holds for the id   |
+ * | 51   | ConcurrentTransactions             | The previous transaction of the id is still being completed       |
+ * | 30   | GroupAuthorizationFailed           | The client may not `Read` the consumer group                      |
+ * | 53   | TransactionalIdAuthorizationFailed | The client may not `Write` the transactional id                   |
+ *
+ * @see docs/protocol/0.11.0.md, section "AddOffsetsToTxn API (key 25, v0)"
+ */
+class AddOffsetsToTxnResponse extends AbstractResponse
+{
+    /**
+     * @inheritdoc
+     */
+    public const int VERSION = 0;
+
+    /**
+     * Duration in milliseconds for which the request was throttled due to a quota violation
+     */
+    public int $throttleTimeMs = 0;
+
+    /**
+     * Error code of the answer, 0 when the offsets topic of the group is part of the transaction
+     */
+    public int $errorCode = 0;
+
+    /**
+     * @inheritdoc
+     */
+    public static function getScheme(): array
+    {
+        $header = parent::getScheme();
+
+        return $header + [
+            'throttleTimeMs' => BinarySchema::TYPE_INT32,
+            'errorCode'      => BinarySchema::TYPE_INT16,
+        ];
+    }
+}
