@@ -25,8 +25,8 @@ use ReflectionProperty;
  *
  * The walk follows the scheme of the message, so the result contains exactly the fields the wire format has, in the
  * order the wire format has them, with nested objects as nested maps and arrays as arrays. Raw byte fields - the
- * message set of the Produce and Fetch apis is the only one in 0.8 - become `{"$bytes": "<hex>"}`, because JSON
- * cannot carry binary.
+ * message set of the Produce and Fetch apis, and the varint-prefixed key, value and header of a record of the
+ * message format v2 - become `{"$bytes": "<hex>"}`, because JSON cannot carry binary.
  */
 final class MessageFields
 {
@@ -72,7 +72,8 @@ final class MessageFields
             return self::of($value);
         }
 
-        if ($schemeType === BinarySchema::TYPE_BYTEARRAY && $value !== null) {
+        $isBytes = $schemeType === BinarySchema::TYPE_BYTEARRAY || $schemeType === BinarySchema::TYPE_VARCHAR_ZIGZAG;
+        if ($isBytes && $value !== null) {
             return [self::BYTES_KEY => bin2hex((string) $value)];
         }
 
