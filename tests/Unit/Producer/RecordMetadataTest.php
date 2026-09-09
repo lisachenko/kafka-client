@@ -48,6 +48,17 @@ final class RecordMetadataTest extends TestCase
         self::assertSame(0, new RecordMetadata('orders', 2, 1234)->throttleTimeMs);
     }
 
+    public function testTheTimestampIsTheOneTheLogHolds(): void
+    {
+        // Either the CreateTime the producer stamped on the first record of the batch, or the LogAppendTime the
+        // broker answered a Produce v2 request with for a `message.timestamp.type=LogAppendTime` topic
+        $createTime = new RecordMetadata('orders', 0, 7, 1489324800000);
+        $appendTime = new RecordMetadata('orders', 0, 7, 1788933842981);
+
+        self::assertSame(1489324800000, $createTime->timestamp);
+        self::assertSame(1788933842981, $appendTime->timestamp);
+    }
+
     public function testToStringFormat(): void
     {
         self::assertSame('orders-2@1234', (string) new RecordMetadata('orders', 2, 1234));

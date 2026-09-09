@@ -20,11 +20,12 @@ namespace Protocol\Kafka\Protocol\Request;
  *   ProduceResponse (Version: 0) => [TopicName [Partition ErrorCode Offset]]
  * </pre>
  *
- * The answer of a version 0 request carries no `ThrottleTime`, so this class only lowers the version constant that
- * {@see ProduceResponse::getScheme()} follows. Reading a version 0 answer with the version 1 class would run past
- * the end of the frame.
+ * The answer of a version 0 request carries neither a `ThrottleTime` nor the `LogAppendTime` of a partition, so
+ * this class only lowers the version constant that {@see ProduceResponse::getScheme()} and
+ * {@see \Protocol\Kafka\Protocol\Data\ProduceResponseTopic} follow. Reading a version 0 answer with a higher
+ * version class would run past the end of the frame.
  *
- * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 final class ProduceResponseV0 extends ProduceResponse
 {

@@ -84,40 +84,60 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Produce response (api key 0, v1)
+     * Builds a Produce response (api key 0, v2)
      *
      * <pre>
-     *   ProduceResponse => [TopicName [Partition ErrorCode Offset]] ThrottleTime
+     *   ProduceResponse => [TopicName [Partition ErrorCode Offset LogAppendTime]] ThrottleTime
      * </pre>
      *
-     * @param array<string, array<int, array{int, int}>> $topics       topic => partition => [errorCode, baseOffset]
-     * @param int                                        $throttleTime Milliseconds the broker delayed the request
+     * @param array<string, array<int, array{int, int}>> $topics        topic => partition => [errorCode, baseOffset]
+     * @param int                                        $throttleTime  Milliseconds the broker delayed the request
+     * @param int                                        $logAppendTime Time the broker stamped the batch with, -1
+     *        for a topic that keeps the `CreateTime` of the producer
      */
-    public static function produce(int $correlationId, array $topics, int $throttleTime = 0): string
+    public static function produce(
+        int $correlationId,
+        array $topics,
+        int $throttleTime = 0,
+        int $logAppendTime = -1
+    ): string {
+        // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it
+        $body = self::produceTopics($topics, $logAppendTime) . pack('N', $throttleTime);
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds a Produce response of version 0, i.e. the same answer without `LogAppendTime` and `ThrottleTime`
+     *
+     * @param array<string, array<int, array{int, int}>> $topics topic => partition => [errorCode, baseOffset]
+     */
+    public static function produceV0(int $correlationId, array $topics): string
+    {
+        return self::of($correlationId, self::produceTopics($topics, null));
+    }
+
+    /**
+     * Builds the topics array of a Produce response
+     *
+     * @param array<string, array<int, array{int, int}>> $topics        topic => partition => [errorCode, baseOffset]
+     * @param int|null                                   $logAppendTime Append time of every partition entry, or
+     *        null for the versions 0 and 1, which do not carry that field at all
+     */
+    private static function produceTopics(array $topics, ?int $logAppendTime): string
     {
         $body = pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $baseOffset]) {
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $baseOffset);
+                if ($logAppendTime !== null) {
+                    $body .= pack('J', $logAppendTime);
+                }
             }
         }
-        // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it
-        $body .= pack('N', $throttleTime);
 
-        return self::of($correlationId, $body);
-    }
-
-    /**
-     * Builds a Produce response of version 0, i.e. the same answer without the trailing `ThrottleTime`
-     *
-     * @param array<string, array<int, array{int, int}>> $topics topic => partition => [errorCode, baseOffset]
-     */
-    public static function produceV0(int $correlationId, array $topics): string
-    {
-        $frame = self::produce($correlationId, $topics);
-
-        return self::of($correlationId, substr($frame, 8, -4));
+        return $body;
     }
 
     /**
