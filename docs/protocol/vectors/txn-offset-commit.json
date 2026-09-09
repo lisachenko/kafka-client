@@ -1,0 +1,65 @@
+{
+    "api": "txn-offset-commit",
+    "apiKey": 28,
+    "section": "TxnOffsetCommit API (key 28, v0)",
+    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "txnoffsetcommit.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "TxnOffsetCommit request v0, the only request of the transaction protocol that goes to the **group** coordinator: the offset 2 of `t8-vectors`-0 is committed for the group `t8-vectors-group` inside the transaction of `t8-vectors-txn`. There is no generation id and no member id in it - the producer is not a member of the group, and the producer epoch is what fences it instead.",
+            "hex": "00000062001c0000000000bc000a74382d766563746f7273000e74382d766563746f72732d74786e001074382d766563746f72732d67726f75700000000000000000000200000001000a74382d766563746f727300000001000000000000000000000002ffff",
+            "fields": {
+                "messageSize": 98,
+                "apiKey": 28,
+                "apiVersion": 0,
+                "correlationId": 188,
+                "clientId": "t8-vectors",
+                "transactionalId": "t8-vectors-txn",
+                "groupId": "t8-vectors-group",
+                "producerId": 0,
+                "producerEpoch": 2,
+                "topics": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 2,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the group coordinator: one entry per requested partition, the error code 0 for an offset that was written into `__consumer_offsets` as a transactional record. It stays invisible to an OffsetFetch of the group until the transaction is committed.",
+            "hex": "00000022000000bc0000000000000001000a74382d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 188,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}

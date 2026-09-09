@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Unit\Producer\Fixture;
 
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
@@ -67,6 +68,44 @@ final class FakeClient extends Client
     public array $producerIds = [];
 
     /**
+     * Errors the scripted `InitProducerId` throws before it hands out an id, one after the other
+     *
+     * @var list<\Throwable>
+     */
+    public array $initProducerIdErrors = [];
+
+    /**
+     * Every call of one of the four transaction apis, in the order they were made
+     *
+     * @var list<array<int, mixed>>
+     */
+    public array $transactionCalls = [];
+
+    /**
+     * Errors the transaction apis throw, per api name and in order
+     *
+     * @var array<string, list<\Throwable>>
+     */
+    public array $transactionErrors = [
+        'addPartitionsToTxn' => [],
+        'addOffsetsToTxn'    => [],
+        'endTxn'             => [],
+        'txnOffsetCommit'    => [],
+    ];
+
+    /**
+     * Every coordinator lookup, as `[kind, key]` pairs
+     *
+     * @var list<array{string, string}>
+     */
+    public array $coordinatorLookups = [];
+
+    /**
+     * The node that every coordinator lookup of this client answers with
+     */
+    public Node $coordinator;
+
+    /**
      * Behaviours of the next requests, each one a `fn(array $topicPartitionMessages): array`
      *
      * @var list<\Closure>
@@ -86,7 +125,8 @@ final class FakeClient extends Client
      */
     public function __construct(Cluster $cluster, array $configuration = [], array $behaviours = [])
     {
-        $this->behaviours = $behaviours;
+        $this->behaviours  = $behaviours;
+        $this->coordinator = new Node();
 
         parent::__construct($cluster, $configuration);
     }
@@ -143,7 +183,100 @@ final class FakeClient extends Client
             'transactionTimeoutMs' => $transactionTimeoutMs,
         ];
 
+        $error = array_shift($this->initProducerIdErrors);
+        if ($error !== null) {
+            throw $error;
+        }
+
         return array_shift($this->producerIds) ?? new ProducerIdAndEpoch(1000, 0);
+    }
+
+    /**
+     * Answers the coordinator lookup of a transactional id without asking a broker
+     */
+    public function getTransactionCoordinator(string $transactionalId): Node
+    {
+        $this->coordinatorLookups[] = ['transaction', $transactionalId];
+
+        return $this->coordinator;
+    }
+
+    /**
+     * Answers the coordinator lookup of a consumer group without asking a broker
+     */
+    public function getGroupCoordinator(string $groupId): Node
+    {
+        $this->coordinatorLookups[] = ['group', $groupId];
+
+        return $this->coordinator;
+    }
+
+    /**
+     * Records an `AddPartitionsToTxn` and throws the next scripted error of that api
+     */
+    public function addPartitionsToTxn(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        array $topicPartitions
+    ): void {
+        $this->transactionCalls[] = ['addPartitionsToTxn', $transactionalId, $topicPartitions];
+
+        $this->maybeThrow('addPartitionsToTxn');
+    }
+
+    /**
+     * Records an `AddOffsetsToTxn` and throws the next scripted error of that api
+     */
+    public function addOffsetsToTxn(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        string $groupId
+    ): void {
+        $this->transactionCalls[] = ['addOffsetsToTxn', $transactionalId, $groupId];
+
+        $this->maybeThrow('addOffsetsToTxn');
+    }
+
+    /**
+     * Records an `EndTxn` and throws the next scripted error of that api
+     */
+    public function endTxn(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        bool $transactionResult
+    ): void {
+        $this->transactionCalls[] = ['endTxn', $transactionalId, $transactionResult];
+
+        $this->maybeThrow('endTxn');
+    }
+
+    /**
+     * Records a `TxnOffsetCommit` and throws the next scripted error of that api
+     */
+    public function txnOffsetCommit(
+        Node $coordinatorNode,
+        string $transactionalId,
+        string $groupId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        array $topicPartitionOffsets
+    ): void {
+        $this->transactionCalls[] = ['txnOffsetCommit', $transactionalId, $groupId, $topicPartitionOffsets];
+
+        $this->maybeThrow('txnOffsetCommit');
+    }
+
+    /**
+     * Throws the next scripted error of one of the transaction apis, if there is one left
+     */
+    private function maybeThrow(string $api): void
+    {
+        $error = array_shift($this->transactionErrors[$api]);
+        if ($error !== null) {
+            throw $error;
+        }
     }
 
     /**

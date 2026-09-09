@@ -1,0 +1,69 @@
+{
+    "api": "write-txn-markers",
+    "apiKey": 27,
+    "section": "WriteTxnMarkers API (key 27, v0)",
+    "description": "Wire vectors of the WriteTxnMarkers API (key 27, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "writetxnmarkers.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "WriteTxnMarkers request v0, the broker-to-broker request that a transaction coordinator sends to the leader of every partition of a finished transaction: write a COMMIT marker for the producer id 3 into `t8-vectors-marker`-0, with the coordinator epoch 0 of the `__transaction_state` partition it owns.",
+            "hex": "00000046001b0000000000c9000a74382d766563746f727300000001000000000000000300000100000001001174382d766563746f72732d6d61726b6572000000010000000000000000",
+            "fields": {
+                "messageSize": 70,
+                "apiKey": 27,
+                "apiVersion": 0,
+                "correlationId": 201,
+                "clientId": "t8-vectors",
+                "transactionMarkers": {
+                    "3": {
+                        "producerId": 3,
+                        "producerEpoch": 0,
+                        "transactionResult": true,
+                        "topics": {
+                            "t8-vectors-marker": {
+                                "topic": "t8-vectors-marker",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        },
+                        "coordinatorEpoch": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "writetxnmarkers.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the partition leader: one entry per producer id of the request, one error code per partition it wrote the control batch into. **The only answer of Kafka 0.11 that does not begin with a `throttle_time_ms`**, because the api is broker-to-broker and the quotas of KIP-124 only throttle clients.",
+            "hex": "00000031000000c900000001000000000000000300000001001174382d766563746f72732d6d61726b657200000001000000000000",
+            "fields": {
+                "messageSize": 49,
+                "correlationId": 201,
+                "transactionMarkers": {
+                    "3": {
+                        "producerId": 3,
+                        "topics": {
+                            "t8-vectors-marker": {
+                                "topic": "t8-vectors-marker",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

@@ -291,6 +291,10 @@ class AdminClient
                 fn(int $correlationId): OffsetsRequest => new OffsetsRequest(
                     $nodePartitionTimes,
                     OffsetsRequest::CONSUMER_REPLICA_ID,
+                    // Deliberately not the `isolation.level` of a consumer: an administrator asks what is in the
+                    // log, not what a `read_committed` reader may see, so this stays at the high watermark even
+                    // while a transaction is open. A consumer gets the last stable offset through
+                    // KafkaConsumer::endOffsets(), which reads ConsumerConfig::ISOLATION_LEVEL.
                     FetchRequest::READ_UNCOMMITTED,
                     $this->clientId(),
                     $correlationId
