@@ -25,6 +25,7 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
+use Protocol\Kafka\Common\Errors\DuplicateSequenceNumberException;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
@@ -48,6 +49,8 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Network\RetryPolicy;
+use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
+use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
@@ -70,6 +73,8 @@ use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
+use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
@@ -182,8 +187,19 @@ class Client
      * without a `producer_byte_rate` quota. Version 3 added no field to the answer at all - `PRODUCE_RESPONSE_V3`
      * is `PRODUCE_RESPONSE_V2` in `Protocol.java` @ 0.11.0.3 - so the two classes read the same frame.
      *
+     * An idempotent (or, from the ticket that adds them, a transactional) producer hands over its
+     * {@see TransactionManager}, which is the whole difference between "at least once" and "exactly once, in
+     * order": the batch of every topic-partition is then stamped with the producer id, the epoch and the sequence
+     * number that the manager keeps, the broker recognises a batch it has already appended and answers it with the
+     * offset of that append instead of writing it twice, and the answer moves the sequence numbers on. The three
+     * error codes of KIP-98 - 45, 46 and 47 - are reported to the manager, which decides whether the producer
+     * starts over with a new producer id or is finished for good; a partition that only failed with **46**
+     * (DuplicateSequenceNumber, "this batch is already in the log") counts as accepted, with an unknown offset.
+     *
      * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
      *        each topic and partition
+     * @param TransactionManager|null $transactionManager Producer state of an idempotent producer, `null` for a
+     *        plain one, whose batches carry no producer id and are therefore not deduplicated by the broker
      *
      * @return array<string, array<int, ProduceResponsePartition>> Accepted partitions in the form
      *         [topic => [partition => ProduceResponsePartition]], empty for a fire-and-forget request (acks = 0),
@@ -191,11 +207,137 @@ class Client
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
      * @throws InvalidConfigurationException  For a `compression.type` or a `message.format.version` that this client
-     *         can not write
+     *         can not write, and for a producer state next to an `acks` other than `all`
      */
-    public function produce(array $topicPartitionMessages): array
+    public function produce(array $topicPartitionMessages, ?TransactionManager $transactionManager = null): array
     {
-        return $this->produceRecords($topicPartitionMessages);
+        if ($transactionManager === null) {
+            return $this->produceRecords($topicPartitionMessages);
+        }
+
+        // The sequence of a partition only moves on when the broker acknowledged the batch, so a request the
+        // broker does not answer would send every batch with the sequence 0 and lose all of them but the first
+        $acks = $this->configuration[ProducerConfig::ACKS] ?? ProducerConfig::ACKS_LEADER;
+        if (ProducerConfig::parseAcks($acks) !== ProducerConfig::ACKS_ALL) {
+            throw new InvalidConfigurationException(
+                'The delivery guarantee of KIP-98 needs acks = all: a batch whose acknowledgement is not waited '
+                . 'for can neither be deduplicated by the broker nor numbered by this producer'
+            );
+        }
+
+        // The number of records of every partition is what its sequence number moves on by, and an `iterable` can
+        // only be counted once it has been walked, so the batch is materialized before anything is sent
+        $records = [];
+        foreach ($topicPartitionMessages as $topic => $partitionMessages) {
+            foreach ($partitionMessages as $partition => $messages) {
+                $records[$topic][$partition] = self::toRecords($messages);
+            }
+        }
+
+        $producerIdAndEpoch = $transactionManager->maybeInitProducerId();
+        $baseSequences      = $transactionManager->baseSequences($records);
+
+        try {
+            $result = $this->produceRecords(
+                $records,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $baseSequences,
+                $transactionManager->getTransactionalId()
+            );
+        } catch (TopicPartitionRequestException $exception) {
+            $result = $exception->getPartialResult();
+            $errors = [];
+            foreach ($exception->getExceptions() as $topic => $partitionErrors) {
+                foreach ($partitionErrors as $partitionId => $error) {
+                    $topicPartition = new TopicPartition((string) $topic, (int) $partitionId);
+                    $recordCount    = count($records[$topic][$partitionId] ?? []);
+                    $transactionManager->batchFailed($topicPartition, $error, $recordCount, $producerIdAndEpoch);
+
+                    // "The broker received a duplicate sequence number" is not a failure: the batch is in the log
+                    // already, only the offset of that append is not in this answer
+                    if ($error instanceof DuplicateSequenceNumberException) {
+                        $result[$topic][$partitionId] = self::alreadyAppendedPartition((int) $partitionId);
+                        continue;
+                    }
+                    $errors[$topic][$partitionId] = $error;
+                }
+            }
+            if ($errors !== []) {
+                throw new TopicPartitionRequestException($result, $errors);
+            }
+
+            return $result;
+        }
+
+        foreach ($result as $topic => $partitions) {
+            foreach (array_keys($partitions) as $partitionId) {
+                $transactionManager->batchCompleted(
+                    new TopicPartition((string) $topic, (int) $partitionId),
+                    count($records[$topic][$partitionId] ?? []),
+                    $producerIdAndEpoch
+                );
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Asks a broker for a producer id and its epoch (ApiKey 22, Kafka 0.11, KIP-98)
+     *
+     * This is the first request of an idempotent and of a transactional producer, and the transactional id decides
+     * both what it means and **which broker has to answer it**:
+     *
+     * * with `null` - the idempotent producer - any broker of the cluster hands out the next producer id of the
+     *   block it reserved in ZooKeeper, with the epoch 0. Every call answers a new id, so a producer asks once and
+     *   keeps what it got until it is closed;
+     * * with a transactional id, the request goes to the **transaction coordinator** of that id, which
+     *   {@see Client::getTransactionCoordinator()} looks up: the answer is the producer id that
+     *   `__transaction_state` holds for the id, with an epoch that is one higher than the one the previous producer
+     *   of that id used, which fences that producer.
+     *
+     * The `transactionTimeoutMs` is what the coordinator waits for a status update of an open transaction before it
+     * aborts it, and it is only checked for a non-null id: above the broker's `transaction.max.timeout.ms` (900000
+     * by default) the answer is the error code 50 (InvalidTransactionTimeout), while a `null` transactional id is
+     * answered with a producer id whatever the value is.
+     *
+     * @param string|null $transactionalId      Transactional id of the producer, `null` for an idempotent one
+     * @param int         $transactionTimeoutMs `transaction.timeout.ms` of the producer, ignored without an id
+     *
+     * @throws Common\Errors\InvalidTxnTimeoutException For a timeout above `transaction.max.timeout.ms`
+     * @throws Common\Errors\InvalidRequestException    For the empty string as a transactional id
+     * @throws KafkaException                           For every other error code of the answer
+     */
+    public function initProducerId(
+        ?string $transactionalId = null,
+        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS
+    ): ProducerIdAndEpoch {
+        // A producer id without a transactional id is not coordinated by anything, so any broker may answer it
+        $node = $transactionalId === null
+            ? self::anyNodeOf($this->cluster)
+            : $this->getTransactionCoordinator($transactionalId);
+
+        return $this->coordinatorRequest(
+            $node,
+            fn(int $correlationId): InitProducerIdRequest => new InitProducerIdRequest(
+                $transactionalId,
+                $transactionTimeoutMs,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            InitProducerIdResponse::class,
+            static function (InitProducerIdResponse $response) use ($transactionalId): ProducerIdAndEpoch {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['transactionalId' => $transactionalId]
+                    );
+                }
+
+                return new ProducerIdAndEpoch($response->producerId, $response->producerEpoch);
+            }
+        );
     }
 
     /**
@@ -924,6 +1066,44 @@ class Client
             $transactionalId,
             GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION
         );
+    }
+
+    /**
+     * Returns a broker of the cluster for a request that any of them may answer, e.g. an `InitProducerId` without
+     * a transactional id.
+     *
+     * The Java client picks its least loaded node here; this one has no in-flight bookkeeping to pick by and sends
+     * such a request to the **first broker of the cluster metadata**, deterministically. A broker that does not
+     * answer costs the request, which the caller repeats after a metadata refresh - a producer id is asked for
+     * once per session, so there is nothing to spread over the cluster.
+     *
+     * @throws NetworkException If the cluster metadata list no broker at all
+     */
+    private static function anyNodeOf(Cluster $cluster): Node
+    {
+        $nodes = $cluster->nodes();
+        if ($nodes === []) {
+            throw new NetworkException(['error' => 'The cluster metadata list no broker to send the request to']);
+        }
+
+        return $nodes[array_key_first($nodes)];
+    }
+
+    /**
+     * Builds the answer of a partition whose batch the broker reported as one it already holds (error code 46).
+     *
+     * The base offset of that append is not part of a DuplicateSequenceNumber answer - only the answer that a
+     * 0.11.0.3 broker really sends for a duplicate, the error code 0 with the original offset, carries it - so the
+     * partition is reported as accepted at an unknown offset, the -1 that every official client uses for it.
+     */
+    private static function alreadyAppendedPartition(int $partitionId): ProduceResponsePartition
+    {
+        $partitionResult             = new ProduceResponsePartition();
+        $partitionResult->partition  = $partitionId;
+        $partitionResult->errorCode  = KafkaException::NO_ERROR;
+        $partitionResult->baseOffset = -1;
+
+        return $partitionResult;
     }
 
     /**

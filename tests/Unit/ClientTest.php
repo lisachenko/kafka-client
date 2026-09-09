@@ -26,11 +26,14 @@ use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
+use Protocol\Kafka\Common\Errors\InvalidTxnTimeoutException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
+use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
+use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\FetchedPartition;
@@ -41,12 +44,14 @@ use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Network\RetryPolicy;
+use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
@@ -729,6 +734,240 @@ final class ClientTest extends TestCase
         $client->produceRecordsWith([self::TOPIC => [0 => [new Record('never sent')]]], 1000, 3, [], 'tx-1');
     }
 
+    public function testAProducerIdWithoutATransactionalIdIsAskedOfAnyBroker(): void
+    {
+        $anyBroker = new BrokerConnection(ResponseFrame::initProducerId(0, 0, 2000, 0));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $anyBroker)
+            ->install();
+
+        $producerIdAndEpoch = $this->client()->initProducerId();
+
+        self::assertSame(2000, $producerIdAndEpoch->producerId);
+        self::assertSame(0, $producerIdAndEpoch->epoch);
+        self::assertTrue($producerIdAndEpoch->isValid());
+
+        $frame = $anyBroker->getReceivedFrames()[0];
+
+        self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frame));
+        self::assertSame(0, $this->apiVersionOf($frame));
+        // NullableString -1 followed by the default transaction timeout of one minute
+        self::assertStringEndsWith('ffff' . '0000ea60', bin2hex($frame));
+    }
+
+    public function testAProducerIdOfATransactionalIdIsAskedOfItsTransactionCoordinator(): void
+    {
+        $lookupNode  = new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093));
+        $coordinator = new BrokerConnection(ResponseFrame::initProducerId(0, 0, 4711, 2));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $lookupNode)
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $producerIdAndEpoch = $this->client()->initProducerId('tx-1', 30000);
+
+        self::assertSame(4711, $producerIdAndEpoch->producerId);
+        self::assertSame(2, $producerIdAndEpoch->epoch);
+
+        $lookupFrame = $lookupNode->getReceivedFrames()[0];
+
+        self::assertSame(ApiKeys::GROUP_COORDINATOR, $this->apiKeyOf($lookupFrame));
+        self::assertSame(1, $this->apiVersionOf($lookupFrame), 'Only version 1 carries a coordinator type');
+        // The key "tx-1" and the CoordinatorType 1 of a transactional id
+        self::assertStringEndsWith('0004' . '74782d31' . '01', bin2hex($lookupFrame));
+
+        $initFrame = $coordinator->getReceivedFrames()[0];
+
+        self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($initFrame));
+        self::assertStringEndsWith('0004' . '74782d31' . '00007530', bin2hex($initFrame));
+    }
+
+    public function testAnErrorOfTheProducerIdRequestIsReportedAsItsException(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+                ResponseFrame::initProducerId(0, KafkaException::INVALID_TRANSACTION_TIMEOUT)
+            ))
+            ->install();
+
+        $this->expectException(InvalidTxnTimeoutException::class);
+
+        $this->client()->initProducerId('tx-1', 999999999);
+    }
+
+    public function testAnIdempotentProduceStampsTheBatchesAndMovesTheSequencesOn(): void
+    {
+        $leader = new BrokerConnection(
+            ResponseFrame::initProducerId(0, 0, 2000, 0),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 17]]]),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 19]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        $client->produce([self::TOPIC => [0 => [new Record('one'), new Record('two')]]], $manager);
+        $client->produce([self::TOPIC => [0 => [new Record('three')]]], $manager);
+
+        self::assertSame(2000, $manager->getProducerIdAndEpoch()->producerId);
+        self::assertSame(3, $manager->sequenceNumber(new TopicPartition(self::TOPIC, 0)));
+
+        $frames = $leader->getReceivedFrames();
+
+        self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frames[0]), 'The producer id comes first');
+
+        $first = MemoryRecords::fromBuffer(self::messageSetOf($frames[1]))->getBatches()[0];
+        self::assertInstanceOf(RecordBatch::class, $first);
+        self::assertSame(2000, $first->producerId);
+        self::assertSame(0, $first->producerEpoch);
+        self::assertSame(0, $first->baseSequence);
+        self::assertSame(1, $first->getLastSequence());
+        self::assertFalse($first->isTransactional(), 'An idempotent batch is not a transactional one');
+
+        $second = MemoryRecords::fromBuffer(self::messageSetOf($frames[2]))->getBatches()[0];
+        self::assertInstanceOf(RecordBatch::class, $second);
+        self::assertSame(2, $second->baseSequence, 'The second batch continues where the first one ended');
+    }
+
+    public function testProducerStateNextToAnAcksBelowAllIsRefused(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection())
+            ->install();
+
+        // The default of this fixture is acks = 1, which is exactly what the guarantee can not be built on: a
+        // request that is not answered by the ISR is one whose sequence numbers this client can not move on
+        $client = $this->client();
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('The delivery guarantee of KIP-98 needs acks = all');
+
+        $client->produce([self::TOPIC => [0 => [new Record('never sent')]]], new TransactionManager($client));
+    }
+
+    public function testTheRetryOfABatchIsTheVerySameFrameAgain(): void
+    {
+        $movedLeader = ResponseFrame::metadata(
+            0,
+            [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
+            [self::TOPIC => [0 => 1, 1 => 1]]
+        );
+        $staleLeader = new BrokerConnection(
+            ResponseFrame::initProducerId(0, 0, 2000, 0),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::NOT_LEADER_FOR_PARTITION, -1]]])
+        );
+        $newLeader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 8]]]));
+
+        $this->brokers
+            ->on(
+                self::BOOTSTRAP_ADDRESS,
+                new BrokerConnection($this->clusterMetadata()),
+                new BrokerConnection($movedLeader)
+            )
+            ->on(self::FIRST_LEADER, $staleLeader)
+            ->on(self::SECOND_LEADER, $newLeader)
+            ->install();
+
+        $client  = $this->idempotentClient([ClientConfig::RETRIES => 1]);
+        $manager = new TransactionManager($client);
+        $record  = new Record('exactly once')->withCreateTime(1600000000000);
+
+        $result = $client->produce([self::TOPIC => [0 => [$record]]], $manager);
+
+        self::assertSame(8, $result[self::TOPIC][0]->baseOffset);
+        // The record set is built once and sent to whoever leads the partition, so the retry carries the very same
+        // producer id, epoch and sequence - which is the only reason the broker can recognise it as a duplicate
+        self::assertSame(
+            bin2hex(self::messageSetOf($staleLeader->getReceivedFrames()[1])),
+            bin2hex(self::messageSetOf($newLeader->getReceivedFrames()[0]))
+        );
+        self::assertSame(1, $manager->sequenceNumber(new TopicPartition(self::TOPIC, 0)));
+    }
+
+    public function testADuplicateSequenceIsReportedAsAnAcceptedPartition(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::initProducerId(0, 0, 2000, 0),
+                ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::DUPLICATE_SEQUENCE_NUMBER, -1]]])
+            ))
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        $result = $client->produce([self::TOPIC => [0 => [new Record('already there')]]], $manager);
+
+        self::assertSame(KafkaException::NO_ERROR, $result[self::TOPIC][0]->errorCode);
+        self::assertSame(-1, $result[self::TOPIC][0]->baseOffset, 'The offset of the original append is not in it');
+        self::assertSame(1, $manager->sequenceNumber(new TopicPartition(self::TOPIC, 0)));
+        self::assertFalse($manager->hasFatalError());
+    }
+
+    public function testAnOutOfOrderSequenceThrowsTheProducerIdAwayAndIsReported(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::initProducerId(0, 0, 2000, 0),
+                ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::OUT_OF_ORDER_SEQUENCE_NUMBER, -1]]])
+            ))
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        try {
+            $client->produce([self::TOPIC => [0 => [new Record('a gap')]]], $manager);
+            self::fail('An out of order sequence is expected to be reported to the caller');
+        } catch (TopicPartitionRequestException $exception) {
+            self::assertInstanceOf(
+                OutOfOrderSequenceException::class,
+                $exception->getExceptions()[self::TOPIC][0]
+            );
+        }
+
+        self::assertFalse($manager->hasProducerId(), 'The idempotent producer starts over with a new producer id');
+        self::assertFalse($manager->hasFatalError());
+    }
+
+    public function testAFencedProducerRefusesToSendAnythingElse(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::initProducerId(0, 0, 2000, 0),
+                ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::INVALID_PRODUCER_EPOCH, -1]]])
+            ))
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        try {
+            $client->produce([self::TOPIC => [0 => [new Record('fenced')]]], $manager);
+            self::fail('A fenced producer is expected to report the error of the partition');
+        } catch (TopicPartitionRequestException $exception) {
+            self::assertInstanceOf(ProducerFencedException::class, $exception->getExceptions()[self::TOPIC][0]);
+        }
+
+        self::assertTrue($manager->hasFatalError());
+
+        $this->expectException(ProducerFencedException::class);
+
+        $client->produce([self::TOPIC => [0 => [new Record('never sent')]]], $manager);
+    }
+
     public function testTheChecksumOfEveryMessageIsVerifiedUnlessTheConsumerOptsOut(): void
     {
         $corrupted = MessageSet::fromRecords([new Record('tampered with')])->toBuffer();
@@ -1305,6 +1544,16 @@ final class ClientTest extends TestCase
             ConsumerConfig::FETCH_MIN_BYTES           => 1,
             ConsumerConfig::MAX_PARTITION_FETCH_BYTES => 65536,
         ];
+    }
+
+    /**
+     * A client that produces the way an idempotent producer configures it: every batch acknowledged by the ISR
+     *
+     * @param array<string, mixed> $overrides
+     */
+    private function idempotentClient(array $overrides = []): Client
+    {
+        return $this->client($overrides + [ProducerConfig::ACKS => ProducerConfig::ACKS_ALL]);
     }
 
     /**

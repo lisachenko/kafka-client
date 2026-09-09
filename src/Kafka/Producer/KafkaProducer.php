@@ -30,6 +30,7 @@ use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\RecordV2;
+use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use React\Promise\Deferred;
 use React\Promise\Promise;
@@ -87,6 +88,22 @@ use React\Promise\Promise;
  * only there: a batch of the formats v0 and v1 has no place for them and drops them silently, and a consumer only
  * ever sees them in an answer of Fetch v4 or above.
  *
+ * With **`enable.idempotence = true`** (KIP-98, Kafka 0.11) the producer stops writing duplicates when it retries:
+ * it asks a broker for a producer id with its first flush, numbers the batch of every topic-partition with the
+ * next sequence number of that partition and re-sends a batch that failed with those very numbers, so the broker
+ * recognises a batch it has already appended and answers it with the offset of the original append. The guarantee
+ * needs `acks = all` and a non-zero `retries`, which {@see ProducerConfig::resolveIdempotence()} sets when the
+ * caller left them alone and refuses when the caller set them to something else, and it holds for one producer
+ * session: a new {@see KafkaProducer} gets a new producer id and can not deduplicate against what the old one
+ * wrote. Application-level re-sends can not be deduplicated either - only a retry of the very same batch can.
+ *
+ * <code>
+ *   $producer = new KafkaProducer([
+ *       ProducerConfig::BOOTSTRAP_SERVERS   => ['tcp://127.0.0.1:9092'],
+ *       ProducerConfig::ENABLE_IDEMPOTENCE  => true,   // implies acks = all and retries = 3
+ *   ]);
+ * </code>
+ *
  * A broker with a `producer_byte_rate` quota for the `client.id` of this producer does not reject anything: it
  * appends the batch and holds its answer back until the client is inside its quota again. That delay is what
  * {@see RecordMetadata::$throttleTimeMs} reports, and {@see KafkaProducer::flush()} simply takes that much longer.
@@ -112,6 +129,11 @@ class KafkaProducer
      * Low-level kafka client
      */
     private ?Client $client = null;
+
+    /**
+     * Producer state of KIP-98, `null` while `enable.idempotence` is off or nothing has been flushed yet
+     */
+    private ?TransactionManager $transactionManager = null;
 
     /**
      * Instance of partitioner
@@ -158,7 +180,10 @@ class KafkaProducer
      */
     public function __construct(array $configuration = [])
     {
-        $this->configuration = ($configuration + ProducerConfig::getDefaultConfiguration());
+        // `enable.idempotence` overrides `acks` and `retries` when the caller left them alone and refuses a value
+        // the guarantee can not live with, so it has to see the options before the defaults are merged into them
+        $this->configuration = (ProducerConfig::resolveIdempotence($configuration)
+            + ProducerConfig::getDefaultConfiguration());
         $partitioner         = $this->configuration[ProducerConfig::PARTITIONER_CLASS];
 
         if (!is_subclass_of($partitioner, PartitionerInterface::class)) {
@@ -362,7 +387,10 @@ class KafkaProducer
     private function produceBufferedBatch(): array
     {
         try {
-            $produceResult = $this->getClient()->produce($this->topicPartitionMessages);
+            $produceResult = $this->getClient()->produce(
+                $this->topicPartitionMessages,
+                $this->getTransactionManager()
+            );
 
             // A fire-and-forget request is never answered, so the records count as sent as soon as they are written
             if ((int) $this->configuration[ProducerConfig::ACKS] === ProducerConfig::ACKS_NONE) {
@@ -526,6 +554,25 @@ class KafkaProducer
         }
 
         return $this->client;
+    }
+
+    /**
+     * Returns the producer state of KIP-98, or `null` for a producer that is not idempotent.
+     *
+     * The manager is created with the first batch that is flushed, and it asks for the producer id itself when the
+     * first request is built, so a producer that never sends anything never talks to a broker either.
+     */
+    private function getTransactionManager(): ?TransactionManager
+    {
+        if (!ProducerConfig::isIdempotenceEnabled($this->configuration[ProducerConfig::ENABLE_IDEMPOTENCE] ?? false)) {
+            return null;
+        }
+
+        return $this->transactionManager ??= new TransactionManager(
+            $this->getClient(),
+            null,
+            (int) $this->configuration[ProducerConfig::TRANSACTION_TIMEOUT_MS]
+        );
     }
 
     /**

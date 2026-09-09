@@ -125,6 +125,34 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   topics only and refuses a broker resource with 42; `validateOnly` validates without writing. Six
   wire vectors in `docs/protocol/vectors/alter-configs.json`.
 
+- **InitProducerId v0 (key 22, KIP-98)** — `InitProducerIdRequest`/`InitProducerIdResponse` and
+  `Client::initProducerId(?string $transactionalId = null, int $transactionTimeoutMs = 60000)`,
+  which answers a `Producer\Internals\ProducerIdAndEpoch`. A `null` transactional id is asked of
+  any broker of the cluster and answers a fresh producer id with the epoch 0; a real one is sent to
+  `Client::getTransactionCoordinator()` and answers the producer id of that id with its epoch
+  bumped by one. Six wire vectors in `docs/protocol/vectors/init-producer-id.json`.
+- **The idempotent producer (KIP-98)** — `ProducerConfig::ENABLE_IDEMPOTENCE`
+  (`enable.idempotence`, off by default) and `ProducerConfig::TRANSACTION_TIMEOUT_MS`
+  (`transaction.timeout.ms`, 60000). With the option on, `KafkaProducer` keeps a
+  `Producer\Internals\TransactionManager`: it asks for a producer id with the first flush, stamps
+  every batch with the producer id, the epoch and the next sequence number of its topic-partition,
+  and moves that sequence on by the records the broker acknowledged, so a batch that is sent again
+  after a lost acknowledgement is recognised by the broker and answered with the offset of the
+  original append instead of being written twice. `Client::produce()` takes the manager as its
+  second argument, `ProducerConfig::resolveIdempotence()` applies what the guarantee implies —
+  `acks = all` and a non-zero `retries`, both overridden when the caller left them alone and
+  refused when the caller set them to something else; `Client::produce()` refuses producer state
+  next to anything but `acks = all` as well. Four Produce v3 vectors of an idempotent
+  batch, its duplicate and an out-of-order sequence in `docs/protocol/vectors/produce.json`.
+- **The error codes 45, 46 and 47 have a meaning for the producer now.** 47
+  (`ProducerFencedException`) is fatal: the producer refuses everything after it. 45
+  (`OutOfOrderSequenceException`) makes an idempotent producer throw its producer id away and start
+  over with a new one, as the Java `Sender` @ 0.11.0.3 does; a transactional producer keeps it and
+  reports the error. 46 (`DuplicateSequenceNumberException`) counts as an append — its sequence
+  numbers are consumed and the partition is reported as accepted — although a 0.11.0.3 broker never
+  sends it to a client: it answers a duplicate of the last batch with the code **0** and the offset
+  of the original append, and a duplicate of an older one with 45.
+
 ### Changed
 
 - **`docs/protocol/0.11.0.md` is the grammar of Kafka 0.11.0.3.** The api-key table is the literal
