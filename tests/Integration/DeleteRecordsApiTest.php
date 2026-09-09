@@ -235,11 +235,15 @@ final class DeleteRecordsApiTest extends IntegrationTestCase
             self::assertInstanceOf(OffsetOutOfRangeException::class, $exception->getExceptions()[$topic][0]);
         }
 
+        // The five records were produced as one record batch, and a broker never splits a batch: a fetch that
+        // starts inside one is answered with the whole batch, the records below the fetch offset included. Which
+        // of them an application sees is decided by the consumer - `KafkaConsumer::poll()` drops everything below
+        // its position - so the low-level `fetch()` reports the batch as it lies.
         $records = $this->client->fetch([$topic => [0 => 2]], 1000);
-        self::assertCount(
-            self::RECORD_COUNT - 2,
-            $records[$topic][0],
-            'the record at the watermark and everything above it survived'
+        self::assertSame(
+            range(0, self::RECORD_COUNT - 1),
+            array_column($records[$topic][0], 'offset'),
+            'the record at the watermark and everything above it survived, in the batch it was written in'
         );
     }
 
