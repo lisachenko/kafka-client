@@ -242,6 +242,13 @@ final class RecordBatchV2Test extends IntegrationTestCase
             self::assertSame(TimestampType::LOG_APPEND_TIME, $record->timestampType);
             self::assertSame($batch->getMaxTimestamp(), $record->timestamp, 'every record answers the append time');
         }
+
+        // Converted down for a Fetch v3, the batch is rebuilt with a magic 1 builder, which stamps the append time
+        // and bit 3 of the attributes on every single message
+        foreach ($this->fetch(0, 3, 0, $topic)->getRecords() as $record) {
+            self::assertSame(TimestampType::LOG_APPEND_TIME, $record->timestampType);
+            self::assertSame($batch->getMaxTimestamp(), $record->timestamp);
+        }
     }
 
     public function testTheBrokerRefusesABatchWhoseChecksumDoesNotMatchItsContents(): void
