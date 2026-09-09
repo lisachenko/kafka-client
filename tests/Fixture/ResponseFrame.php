@@ -454,6 +454,30 @@ final class ResponseFrame
     }
 
     /**
+     * Builds an InitProducerId response (api key 22, v0)
+     *
+     * <pre>
+     *   InitProducerIdResponse => ThrottleTimeMs ErrorCode ProducerId ProducerEpoch
+     * </pre>
+     *
+     * An answer that carries an error carries -1 as the producer id and as the epoch, which is the default here.
+     */
+    public static function initProducerId(
+        int $correlationId,
+        int $errorCode = 0,
+        int $producerId = -1,
+        int $producerEpoch = -1,
+        int $throttleTimeMs = 0
+    ): string {
+        $body = pack('N', $throttleTimeMs)
+            . pack('n', $errorCode)
+            . pack('J', $producerId)
+            . pack('n', $producerEpoch);
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
      * Builds a ListGroups response (api key 16, v1)
      *
      * <pre>

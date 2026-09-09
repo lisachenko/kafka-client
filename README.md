@@ -112,6 +112,45 @@ $ kafka-configs.sh --zookeeper localhost:2181 --alter \
 
 A runnable version of this is [examples/producer.php](examples/producer.php).
 
+### Idempotent producer
+
+Kafka 0.11 added a delivery guarantee that no release before it had, and one option turns it on:
+
+```php
+$producer = new KafkaProducer([
+    ProducerConfig::BOOTSTRAP_SERVERS  => ['tcp://127.0.0.1:9092'],
+    ProducerConfig::ENABLE_IDEMPOTENCE => true,
+]);
+```
+
+With `enable.idempotence` the producer asks a broker for a **producer id** before its first batch
+(`InitProducerId`, key 22) and numbers the batch of every topic-partition with a gapless sequence
+number. A batch that has to be sent again — a lost acknowledgement, a leader that moved — goes out
+with the very same producer id, epoch and sequence numbers, and the broker recognises it as the
+batch it already holds: it answers the offset of the **original** append and writes nothing. The
+records of a partition therefore reach the log exactly once and in order, however often the client
+had to retry, and nothing about the API changes: `send()` and `flush()` work as before.
+
+The guarantee implies `acks = all` and a non-zero `retries`; both are set for you when you did not
+set them (`retries` becomes 3, where the Java producer, which has a background sender, uses an
+unbounded budget), and a configuration that contradicts them — `acks` of 0 or 1, or `retries` of 0
+— is refused with an `InvalidConfigurationException`. The Java requirement of
+`max.in.flight.requests.per.connection = 1` needs no option here: this client sends one produce
+request at a time.
+
+It holds **within one producer session**: a new `KafkaProducer` gets a new producer id and cannot
+deduplicate against what the previous one wrote, and a record your application sends a second time
+is a new batch, which the broker has no way of recognising. Deduplication across sessions is what a
+`transactional.id` is for.
+
+Two error codes of the broker say that the producer state itself is broken. `47`
+(`ProducerFencedException`) means another producer took the producer id over: the producer is
+finished and refuses every further send. `45` (`OutOfOrderSequenceException`) means the producer
+and the broker no longer agree on what is in the log: the batch that hit it is reported to the
+caller, and the producer starts over with a new producer id — everything written under the old one
+loses its deduplication. Both are documented, with what a real 0.11.0.3 broker answers, in
+[docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), section "The idempotent producer".
+
 Consumer API
 ------------
 

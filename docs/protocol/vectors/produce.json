@@ -313,6 +313,124 @@
                     }
                 }
             }
+        },
+        {
+            "id": "produce.request.v3.idempotent",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "Produce v3 of an idempotent producer: the record batch v2 carries the producer id the broker handed out, the epoch 0 and the base sequence 0 of the two records it holds, and `acks` is -1, which the guarantee of KIP-98 requires. The transactional id of the request stays null - the batch is idempotent, not transactional.",
+            "hex": "0000009f0000000300000005000a74372d766563746f7273ffffffff0000138800000001000a74372d766563746f727300000001000000000000006700000000000000000000005bffffffff020fa44a07000000000001000001a08649bfdc000001a08649bfdc000000000000000b0000000000000000000228000000011c6964656d706f74656e74206f6e650028000002011c6964656d706f74656e742074776f00",
+            "fields": {
+                "messageSize": 159,
+                "apiKey": 0,
+                "apiVersion": 3,
+                "correlationId": 5,
+                "clientId": "t7-vectors",
+                "transactionalId": null,
+                "requiredAcks": -1,
+                "timeout": 5000,
+                "topicMessages": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000005bffffffff020fa44a07000000000001000001a08649bfdc000001a08649bfdc000000000000000b0000000000000000000228000000011c6964656d706f74656e74206f6e650028000002011c6964656d706f74656e742074776f00"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v3.duplicate",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer to the very same batch sent a second time, the retry of a batch whose acknowledgement got lost: the broker recognises the triple (producer id, epoch, sequence range) of the batch it appended last and answers the error code 0 with the offset of that **original** append, without writing anything. The `LogAppendTime` of 1788959375324 gives it away: the topic keeps the CreateTime of the producer, so the first append answered -1 there, while a duplicate is answered with the timestamp the log holds for the batch.",
+            "hex": "000000320000000600000001000a74372d766563746f7273000000010000000000000000000000000000000001a08649bfdc00000000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 6,
+                "topics": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 0,
+                                "logAppendTime": 1788959375324
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
+        },
+        {
+            "id": "produce.request.v3.out-of-order-sequence",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "Produce v3 whose record batch starts at the sequence 9 while the broker expects 2 for this producer id and partition, the gap that an idempotent producer must never leave.",
+            "hex": "000000880000000300000007000a74372d766563746f7273ffffffff0000138800000001000a74372d766563746f7273000000010000000000000050000000000000000000000044ffffffff0225986ce6000000000000000001a08649bfdc000001a08649bfdc000000000000000b000000000009000000012400000001186f7574206f66206f7264657200",
+            "fields": {
+                "messageSize": 136,
+                "apiKey": 0,
+                "apiVersion": 3,
+                "correlationId": 7,
+                "clientId": "t7-vectors",
+                "transactionalId": null,
+                "requiredAcks": -1,
+                "timeout": 5000,
+                "topicMessages": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000044ffffffff0225986ce6000000000000000001a08649bfdc000001a08649bfdc000000000000000b000000000009000000012400000001186f7574206f66206f7264657200"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v3.out-of-order-sequence",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer to a sequence with a gap in it: the error code 45 (OutOfOrderSequenceNumber) and no offset. The same code answers a duplicate of a batch that is not the last one the broker appended, because the duplicate check of a 0.11.0.3 broker only knows that last batch.",
+            "hex": "000000320000000700000001000a74372d766563746f72730000000100000000002dffffffffffffffffffffffffffffffff00000000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 7,
+                "topics": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 45,
+                                "baseOffset": -1,
+                                "logAppendTime": -1
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
         }
     ]
 }

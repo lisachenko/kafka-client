@@ -27,8 +27,10 @@ use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\RecordV2;
 use Protocol\Kafka\Common\Record\TimestampType;
+use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Producer\RecordMetadata;
@@ -640,7 +642,13 @@ final class KafkaProducerTest extends TestCase
     private function producer(array $configuration = [], array $behaviours = []): array
     {
         $configuration += $this->clusterConfiguration;
-        $client = new FakeClient($this->cluster, $configuration, $behaviours);
+        // The real producer hands its *resolved* configuration to `createClient()`, so the double has to see the
+        // `acks = all` that `enable.idempotence` implies as well
+        $client = new FakeClient(
+            $this->cluster,
+            ProducerConfig::resolveIdempotence($configuration) + ProducerConfig::getDefaultConfiguration(),
+            $behaviours
+        );
 
         // The behaviours are bound to the test, so that they can build their answer with the client itself
         $this->fakeClient = $client;
@@ -685,4 +693,126 @@ final class KafkaProducerTest extends TestCase
         return new RecordV2($value, $key)->sizeInBytes();
     }
 
+    public function testAPlainProducerCarriesNoProducerStateAtAll(): void
+    {
+        [$producer, $client] = $this->producer();
+
+        $producer->send(self::TOPIC, Record::fromValue('plain'));
+
+        self::assertSame([], $client->initProducerIdCalls, 'Nothing asks for a producer id');
+        self::assertSame(
+            [
+                'producerId'      => RecordBatch::NO_PRODUCER_ID,
+                'producerEpoch'   => RecordBatch::NO_PRODUCER_EPOCH,
+                'baseSequences'   => [],
+                'transactionalId' => null,
+            ],
+            $client->producerStates[0]
+        );
+    }
+
+    public function testAnIdempotentProducerStampsEveryBatchWithItsProducerState(): void
+    {
+        [$producer, $client] = $this->producer([ProducerConfig::ENABLE_IDEMPOTENCE => true]);
+        $client->producerIds = [new ProducerIdAndEpoch(2000, 0)];
+
+        $producer->send(self::TOPIC, Record::fromValue('one'), 0);
+        $producer->send(self::TOPIC, Record::fromValue('two'), 0);
+        $producer->send(self::TOPIC, Record::fromValue('three'), 1);
+
+        self::assertCount(1, $client->initProducerIdCalls, 'The producer id is asked for once, with the first flush');
+        self::assertSame(
+            ['transactionalId' => null, 'transactionTimeoutMs' => 60000],
+            $client->initProducerIdCalls[0],
+            'An idempotent producer has no transactional id'
+        );
+
+        self::assertSame(2000, $client->producerStates[0]['producerId']);
+        self::assertSame(0, $client->producerStates[0]['producerEpoch']);
+        self::assertNull($client->producerStates[0]['transactionalId']);
+        self::assertSame([self::TOPIC => [0 => 0]], $client->producerStates[0]['baseSequences']);
+        self::assertSame(
+            [self::TOPIC => [0 => 1]],
+            $client->producerStates[1]['baseSequences'],
+            'The second batch of the partition continues where the first one ended'
+        );
+        self::assertSame(
+            [self::TOPIC => [1 => 0]],
+            $client->producerStates[2]['baseSequences'],
+            'Another partition starts at 0 - the broker deduplicates per producer and partition'
+        );
+    }
+
+    public function testABatchThatWasNotAcknowledgedKeepsItsSequenceNumbers(): void
+    {
+        $failure = new NotLeaderForPartitionException(['topic' => self::TOPIC]);
+
+        [$producer, $client] = $this->producer(
+            [ProducerConfig::ENABLE_IDEMPOTENCE => true],
+            [static fn(): array => throw new TopicPartitionRequestException([], [self::TOPIC => [0 => $failure]])]
+        );
+        $client->producerIds = [new ProducerIdAndEpoch(2000, 0)];
+
+        $rejected = null;
+        $producer
+            ->send(self::TOPIC, Record::fromValue('one'), 0)
+            ->then(null, static function (\Throwable $error) use (&$rejected): void {
+                $rejected = $error;
+            });
+        $producer->send(self::TOPIC, Record::fromValue('one again'), 0);
+        $producer->send(self::TOPIC, Record::fromValue('two'), 0);
+
+        self::assertSame($failure, $rejected);
+        self::assertSame([self::TOPIC => [0 => 0]], $client->producerStates[0]['baseSequences']);
+        self::assertSame(
+            [self::TOPIC => [0 => 0]],
+            $client->producerStates[1]['baseSequences'],
+            'Nothing was appended, so the next batch of the partition carries the very same sequence'
+        );
+        self::assertSame(
+            [self::TOPIC => [0 => 1]],
+            $client->producerStates[2]['baseSequences'],
+            'Only an acknowledged batch moves the sequence on'
+        );
+    }
+
+    public function testIdempotenceOverridesTheAcksAndTheRetriesOfTheProducer(): void
+    {
+        $probe = $this->configurationProbe([ProducerConfig::ENABLE_IDEMPOTENCE => true]);
+        $probe->send(self::TOPIC, Record::fromValue('x'));
+
+        self::assertSame(ProducerConfig::ACKS_ALL, $probe->clientConfiguration[ProducerConfig::ACKS]);
+        self::assertSame(
+            ProducerConfig::DEFAULT_IDEMPOTENT_RETRIES,
+            $probe->clientConfiguration[ProducerConfig::RETRIES]
+        );
+    }
+
+    public function testAProducerThatWantsIdempotenceWithoutAcksAllIsRefused(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Must set acks to all in order to use the idempotent producer');
+
+        new TestKafkaProducer(
+            [
+                ProducerConfig::ENABLE_IDEMPOTENCE => true,
+                ProducerConfig::ACKS               => ProducerConfig::ACKS_LEADER,
+            ] + $this->clusterConfiguration,
+            new FakeClient($this->cluster)
+        );
+    }
+
+    public function testAProducerThatWantsIdempotenceWithoutRetriesIsRefused(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Must set retries to non-zero when using the idempotent producer');
+
+        new TestKafkaProducer(
+            [
+                ProducerConfig::ENABLE_IDEMPOTENCE => true,
+                ProducerConfig::RETRIES            => 0,
+            ] + $this->clusterConfiguration,
+            new FakeClient($this->cluster)
+        );
+    }
 }

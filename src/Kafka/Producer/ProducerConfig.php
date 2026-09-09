@@ -28,8 +28,9 @@ use Protocol\Kafka\Common\Record\RecordBatch;
 /**
  * Producer config enumeration class
  *
- * Kafka 0.10.2.2 has neither idempotent nor transactional delivery - both arrived with 0.11 - so this branch carries
- * no `transactional.id` and no `enable.idempotence`.
+ * Kafka 0.11 added the delivery guarantee of KIP-98 to the producer, and with it the option that turns it on:
+ * {@see ProducerConfig::ENABLE_IDEMPOTENCE}, together with the `transaction.timeout.ms` that the transactional
+ * producer of the same KIP states in its `InitProducerId`.
  */
 final class ProducerConfig extends GeneralConfig
 {
@@ -49,6 +50,9 @@ final class ProducerConfig extends GeneralConfig
         ProducerConfig::LINGER_MS              => 0,
         ProducerConfig::MAX_REQUEST_SIZE       => 1048576,
         ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0,
+
+        ProducerConfig::ENABLE_IDEMPOTENCE     => false,
+        ProducerConfig::TRANSACTION_TIMEOUT_MS => 60000,
     ];
 
     /**
@@ -219,6 +223,57 @@ final class ProducerConfig extends GeneralConfig
     public const string MAX_REQUEST_SIZE = 'max.request.size';
 
     /**
+     * When set to `true`, the producer ensures that exactly one copy of each message is written in the stream.
+     *
+     * If `false`, producer retries due to broker failures may write duplicates of the retried message in the
+     * stream. This is set to `false` by default, exactly as in the Java producer of 0.11.
+     *
+     * The guarantee is the one of KIP-98 and it is a guarantee **within one producer session**: the producer asks
+     * a broker for a producer id with its first batch ({@see \Protocol\Kafka\Client::initProducerId()}), numbers
+     * the batches of every topic-partition with gapless sequence numbers, and the broker recognises a batch it has
+     * already appended - a retry after an acknowledgement that got lost - and answers it with the offset of the
+     * original append instead of writing it twice. A producer that is restarted gets a new producer id and can not
+     * deduplicate against what the old one wrote; that is what a `transactional.id` is for.
+     *
+     * Enabling it constrains two other options, and this client validates them exactly as the Java producer does:
+     *
+     * * `acks` must be {@see ProducerConfig::ACKS_ALL}. An explicit `acks` of 0 or 1 together with
+     *   `enable.idempotence = true` is a configuration error; leaving `acks` alone makes it `all`.
+     * * `retries` must not be 0 - a producer that never retries has nothing to deduplicate. An explicit 0 is a
+     *   configuration error; leaving `retries` alone makes it {@see ProducerConfig::DEFAULT_IDEMPOTENT_RETRIES}.
+     *
+     * The Java producer also forces `max.in.flight.requests.per.connection` to 1, because more than one request in
+     * flight can reorder the batches of a partition and every reordering is an out-of-order sequence for the
+     * broker. This client is synchronous - {@see KafkaProducer::flush()} writes one produce request and reads its
+     * answer before the next one - so it has no such option and satisfies the requirement by construction.
+     *
+     * @see docs/protocol/0.11.0.md, section "The idempotent producer"
+     */
+    public const string ENABLE_IDEMPOTENCE = 'enable.idempotence';
+
+    /**
+     * The maximum amount of time in ms that the transaction coordinator will wait for a transaction status update
+     * from the producer before proactively aborting the ongoing transaction.
+     *
+     * It travels in the `InitProducerId` request and is only meaningful for a producer that has a transactional
+     * id: with a `null` one a 0.11.0.3 broker ignores the field entirely. A value above the broker's
+     * `transaction.max.timeout.ms` (900000 by default) is refused with the error code 50
+     * (`InvalidTransactionTimeout`).
+     */
+    public const string TRANSACTION_TIMEOUT_MS = 'transaction.timeout.ms';
+
+    /**
+     * The `retries` an idempotent producer gets when the configuration does not name a value.
+     *
+     * The Java producer overrides the default to `Integer.MAX_VALUE` here, because its background sender bounds a
+     * batch by `request.timeout.ms` rather than by a number of attempts. This client has no sender thread: `retries`
+     * is a loop inside {@see \Protocol\Kafka\Client::produce()} that {@see KafkaProducer::flush()} blocks on, so an
+     * unbounded budget would be an unbounded flush. Three attempts on top of the first one is the deliberate
+     * deviation, and a caller that wants more simply configures `retries`.
+     */
+    public const int DEFAULT_IDEMPOTENT_RETRIES = 3;
+
+    /**
      * Compression codec of every supported value of the `compression.type` option
      *
      * @var array<string, int>
@@ -256,6 +311,82 @@ final class ProducerConfig extends GeneralConfig
     public static function getDefaultConfiguration(): array
     {
         return self::$producerConfiguration + parent::$generalConfiguration;
+    }
+
+    /**
+     * Applies what {@see ProducerConfig::ENABLE_IDEMPOTENCE} implies for `acks` and `retries`.
+     *
+     * The two options are not independent of the guarantee: a batch that only the leader acknowledged can be lost
+     * with that leader, and a producer that never retries has no duplicate to deduplicate. The Java producer of
+     * 0.11 therefore *overrides* both when the caller left them alone and *refuses* the configuration when the
+     * caller set them to something the guarantee can not live with, and this is the same rule - which is why it
+     * takes the options as the caller wrote them, before the defaults have been merged into them.
+     *
+     * @param array<string, mixed> $configuration Options of the caller, without the defaults
+     *
+     * @return array<string, mixed> The same options with the overrides of an idempotent producer applied
+     *
+     * @throws InvalidConfigurationException For an `acks` other than `all` or a `retries` of 0 next to
+     *         `enable.idempotence = true`
+     */
+    public static function resolveIdempotence(array $configuration): array
+    {
+        if (!self::isIdempotenceEnabled($configuration[self::ENABLE_IDEMPOTENCE] ?? false)) {
+            return $configuration;
+        }
+
+        if (array_key_exists(self::ACKS, $configuration)) {
+            $acks = $configuration[self::ACKS];
+            if (self::parseAcks($acks) !== self::ACKS_ALL) {
+                throw new InvalidConfigurationException(
+                    'Must set ' . self::ACKS . ' to all in order to use the idempotent producer, "'
+                    . (is_scalar($acks) ? (string) $acks : get_debug_type($acks)) . '" given'
+                );
+            }
+        }
+        // Also normalizes the string `all` into the -1 of the wire, which is what the request is built from
+        $configuration[self::ACKS] = self::ACKS_ALL;
+
+        if (array_key_exists(self::RETRIES, $configuration)) {
+            if ((int) $configuration[self::RETRIES] === 0) {
+                throw new InvalidConfigurationException(
+                    'Must set ' . self::RETRIES . ' to non-zero when using the idempotent producer'
+                );
+            }
+        } else {
+            $configuration[self::RETRIES] = self::DEFAULT_IDEMPOTENT_RETRIES;
+        }
+
+        return $configuration;
+    }
+
+    /**
+     * Tells whether a value of the `enable.idempotence` option turns the guarantee on.
+     *
+     * The option is a boolean in the Java client, and a configuration that was read out of a `.properties` file
+     * carries it as the string `"true"`, so both spellings are accepted here.
+     */
+    public static function isIdempotenceEnabled(mixed $value): bool
+    {
+        if (is_string($value)) {
+            return strtolower(trim($value)) === 'true';
+        }
+
+        return (bool) $value;
+    }
+
+    /**
+     * Resolves the `acks` option into the number of acknowledgements that goes on the wire
+     *
+     * The Java producer spells "every in-sync replica" as the string `all`, which is the value -1 of the wire.
+     */
+    public static function parseAcks(mixed $acks): int
+    {
+        if (is_string($acks) && strtolower(trim($acks)) === 'all') {
+            return self::ACKS_ALL;
+        }
+
+        return (int) $acks;
     }
 
     /**
