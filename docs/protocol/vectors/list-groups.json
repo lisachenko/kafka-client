@@ -1,13 +1,13 @@
 {
     "api": "list-groups",
     "apiKey": 16,
-    "section": "ListGroups API (key 16, v0)",
-    "description": "Wire vectors of the ListGroups API (key 16, v0), replayed by tests/Compliance.",
+    "section": "ListGroups API (key 16, v0 and v1)",
+    "description": "Wire vectors of the ListGroups API (key 16, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "listgroups.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "ListGroups request v0, which has no body at all: only the common request header.",
@@ -23,7 +23,7 @@
         {
             "id": "listgroups.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "ListGroups response v0 of the coordinator of one consumer group.",
@@ -36,6 +36,47 @@
                     "t4-vectors-group": {
                         "groupId": "t4-vectors-group",
                         "protocolType": "consumer"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ListGroups request v1: the bare request header, exactly as v0.",
+            "hex": "00000021001000010000006400176b61666b612d636c69656e742d74332d766563746f7273",
+            "fields": {
+                "messageSize": 33,
+                "apiKey": 16,
+                "apiVersion": 1,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors"
+            }
+        },
+        {
+            "id": "listgroups.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer v1: the throttle time, the error code and the groups this broker coordinates.",
+            "hex": "000000420000006400000000000000000002001174332d7468726f74746c652d67726f75700008636f6e73756d6572001374332d7468726f74746c652d6f6666736574730000",
+            "fields": {
+                "messageSize": 66,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-throttle-group": {
+                        "groupId": "t3-throttle-group",
+                        "protocolType": "consumer"
+                    },
+                    "t3-throttle-offsets": {
+                        "groupId": "t3-throttle-offsets",
+                        "protocolType": ""
                     }
                 }
             }

@@ -216,7 +216,7 @@ final class SaslTransportTest extends IntegrationTestCase
         self::assertSame(SecurityProtocol::SASL_PLAINTEXT, $connection->getSecurityProtocol());
 
         // ... and that connection really answers, i.e. it was authenticated as well
-        new MetadataRequest([$topic], self::CLIENT_ID, 301)->writeTo($connection);
+        new MetadataRequest([$topic], true, self::CLIENT_ID, 301)->writeTo($connection);
         self::assertSame(301, MetadataResponse::unpack($connection)->getCorrelationId());
 
         // A connection for other credentials is a different connection, never the cached authenticated one
@@ -318,7 +318,7 @@ final class SaslTransportTest extends IntegrationTestCase
 
         $this->expectException(NetworkException::class);
 
-        new MetadataRequest([], self::CLIENT_ID, 421)->writeTo($stream);
+        new MetadataRequest([], true, self::CLIENT_ID, 421)->writeTo($stream);
         MetadataResponse::unpack($stream);
     }
 
@@ -430,7 +430,7 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     private function requestClusterMetadata(Stream $stream, int $correlationId): MetadataResponse
     {
-        new MetadataRequest([], self::CLIENT_ID, $correlationId)->writeTo($stream);
+        new MetadataRequest([], true, self::CLIENT_ID, $correlationId)->writeTo($stream);
         $response = MetadataResponse::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());
 

@@ -52,7 +52,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * {@see ConsumerGroupMemberProcess}.
  *
  * @see docs/protocol/0.11.0.md, sections "Group membership protocol (keys 11 to 14)", "Consumer group protocol
- *      (protocol_type = consumer)" and "DescribeGroups API (key 15, v0)"
+ *      (protocol_type = consumer)" and "DescribeGroups API (key 15, v0 and v1)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(ConsumerCoordinator::class)]

@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Heartbeat, version 0: keeps a member of a group alive and tells it when a rebalance has started.
+ * Heartbeat, version 1: keeps a member of a group alive and tells it when a rebalance has started.
  *
  * Once a member has joined and synced it sends periodic heartbeats; if the coordinator receives none within the
  * `session_timeout` of the JoinGroup request, the member is removed from the group and the group rebalances. PHP has
@@ -25,16 +25,31 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * {@see \Protocol\Kafka\Consumer\ConsumerConfig::HEARTBEAT_INTERVAL_MS} has elapsed.
  *
  * <pre>
- *   Heartbeat Request (Version: 0) => group_id group_generation_id member_id
+ *   Heartbeat Request (Version: 0 and 1) => group_id group_generation_id member_id
  *     group_id            => STRING
  *     group_generation_id => INT32
  *     member_id           => STRING
  * </pre>
  *
- * @see docs/protocol/0.11.0.md, section "Heartbeat API (key 12, v0)"
+ * `HEARTBEAT_REQUEST_V1 = HEARTBEAT_REQUEST_V0` in `Protocol.java` @ 0.11.0.3: version 1 (KIP-124, Kafka 0.11)
+ * changed the answer alone, which gained the leading `throttle_time_ms` ({@see HeartbeatResponse}), so a version 0
+ * request ({@see HeartbeatRequestV0}) puts the same bytes on the wire and only reads its answer with
+ * {@see HeartbeatResponseV0}.
+ *
+ * @see docs/protocol/0.11.0.md, section "Heartbeat API (key 12, v0 and v1)"
  */
 class HeartbeatRequest extends AbstractRequest
 {
+    /**
+     * @inheritdoc
+     */
+    public const int API_KEY = ApiKeys::HEARTBEAT;
+
+    /**
+     * @inheritdoc
+     */
+    public const int VERSION = 1;
+
     public function __construct(
         /**
          * The consumer group id.
@@ -51,7 +66,7 @@ class HeartbeatRequest extends AbstractRequest
         string $clientId = '',
         int $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::HEARTBEAT, $clientId, $correlationId);
+        parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
     /**

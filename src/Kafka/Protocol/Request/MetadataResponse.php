@@ -25,10 +25,11 @@ use Protocol\Kafka\Common\TopicMetadataV0;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Metadata response object, version 2 (key 3)
+ * Metadata response object, version 4 (key 3)
  *
  * <pre>
- *   Metadata Response (Version: 2) => [brokers] cluster_id controller_id [topic_metadata]
+ *   Metadata Response (Version: 3 and 4) => throttle_time_ms [brokers] cluster_id controller_id [topic_metadata]
+ *     throttle_time_ms => INT32     -- since version 3
  *     brokers => node_id host port rack
  *       node_id => INT32
  *       host    => STRING
@@ -43,14 +44,17 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *       partition_metadata => partition_error_code partition_id leader [replicas] [isr]
  * </pre>
  *
- * The three versions of this answer differ in what surrounds the topics, and each field arrived in a different
+ * The five versions of this answer differ in what surrounds the topics, and each field arrived in a different
  * Kafka release: version 1 (Kafka 0.10.0) added `ControllerId`, the `Rack` of every broker and the `IsInternal`
  * flag of every topic; version 2 (Kafka 0.10.1) inserted `ClusterId` BEFORE the controller id, which is why a v2
- * answer can not be read with the v1 class and vice versa. {@see MetadataResponseV1} and {@see MetadataResponseV0}
- * lower the version constant this scheme follows.
+ * answer can not be read with the v1 class and vice versa; version 3 (KIP-124, Kafka 0.11) opened the answer with
+ * a `throttle_time_ms`; and version 4 changed nothing at all here - `METADATA_RESPONSE_V4 = METADATA_RESPONSE_V3`
+ * in `Protocol.java` @ 0.11.0.3 - because what it added, `allow_auto_topic_creation`, is a field of the REQUEST
+ * ({@see MetadataRequest}). {@see MetadataResponseV3}, {@see MetadataResponseV2}, {@see MetadataResponseV1} and
+ * {@see MetadataResponseV0} lower the version constant this scheme follows.
  *
  * `ControllerId` is the broker id of the active controller, or `-1` (`MetadataResponse.NO_CONTROLLER_ID` @
- * 0.10.2.2) while the cluster is electing one; it is what {@see \Protocol\Kafka\Admin\AdminClient::findController()}
+ * 0.11.0.3) while the cluster is electing one; it is what {@see \Protocol\Kafka\Admin\AdminClient::findController()}
  * asks for. `ClusterId` is the identifier that a 0.10.1 broker generates once and keeps in ZooKeeper under
  * `/cluster/id`, so every broker of one cluster answers the same one; it is null when the answer comes from a
  * broker that has none.
@@ -58,7 +62,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/0.11.0.md, sections "Metadata API (key 3, v0, v1 and v2)" and "Cluster readiness"
+ * @see docs/protocol/0.11.0.md, sections "Metadata API (key 3, v0 to v4)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
@@ -67,12 +71,19 @@ class MetadataResponse extends AbstractResponse
     /**
      * Version of the Metadata API that this class unpacks
      */
-    public const int VERSION = 2;
+    public const int VERSION = 4;
 
     /**
      * Broker id that the answer reports while the cluster has no active controller
      */
     public const int NO_CONTROLLER_ID = -1;
+
+    /**
+     * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
+     *
+     * @since Version 3 of protocol
+     */
+    public int $throttleTimeMs = 0;
 
     /**
      * List of broker metadata info, indexed by the node id
@@ -113,7 +124,11 @@ class MetadataResponse extends AbstractResponse
 
         // Both arrays are indexed by the field the cluster looks an entry up by: Cluster::nodeById() resolves a
         // partition leader by its broker id and Cluster::partitionsForTopic() a topic by its name
-        $body = ['brokers' => ['nodeId' => static::nodeClass()]];
+        $body = [];
+        if (static::VERSION >= 3) {
+            $body['throttleTimeMs'] = BinarySchema::TYPE_INT32;
+        }
+        $body['brokers'] = ['nodeId' => static::nodeClass()];
         if (static::VERSION >= 2) {
             $body['clusterId'] = BinarySchema::TYPE_NULLABLE_STRING;
         }

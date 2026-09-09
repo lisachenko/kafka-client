@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * internal when Kafka itself keeps it - `Topic.isInternal` @ 0.10.2.2 knows exactly one, `__consumer_offsets`, the
  * log the group coordinator stores the committed offsets in.
  *
- * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
  */
 class TopicMetadata implements BinarySchemaInterface
 {

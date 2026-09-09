@@ -22,10 +22,11 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * The answer of Kafka 0.10.0: the racks, the controller id and the internal flag of version 1 are all there, only
  * the `ClusterId` that Kafka 0.10.1 inserted between the brokers and the controller id is missing. Reading such an
- * answer with the version 2 class would take the four bytes of the controller id for the length of a cluster id
- * string, so the class of the answer has to match the version of the request that asked for it.
+ * answer with the version 2 class ({@see MetadataResponseV2}) would take the four bytes of the controller id for
+ * the length of a cluster id string, so the class of the answer has to match the version of the request that asked
+ * for it.
  *
- * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
  */
 final class MetadataResponseV1 extends MetadataResponse
 {

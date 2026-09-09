@@ -1,13 +1,13 @@
 {
     "api": "delete-topics",
     "apiKey": 20,
-    "section": "DeleteTopics API (key 20, v0)",
-    "description": "Wire vectors of the DeleteTopics API (key 20, v0), replayed by tests/Compliance.",
+    "section": "DeleteTopics API (key 20, v0 and v1)",
+    "description": "Wire vectors of the DeleteTopics API (key 20, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "deletetopics.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DeleteTopics request v0 that deletes one topic, waiting up to 30 seconds for the controller to finish.",
@@ -27,7 +27,7 @@
         {
             "id": "deletetopics.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "DeleteTopics response v0 of the controller for a topic it deleted within the timeout of the request.",
@@ -46,7 +46,7 @@
         {
             "id": "deletetopics.response.v0.unknown-topic",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "DeleteTopics response v0 for a topic the cluster does not have: the error code 3 (UnknownTopicOrPartition), which the broker answers without ever reaching the deletion itself.",
@@ -58,6 +58,46 @@
                     "t7-vectors-unknown": {
                         "topic": "t7-vectors-unknown",
                         "errorCode": 3
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletetopics.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "DeleteTopics request v1, the frame of v0 with a higher version field.",
+            "hex": "0000003e001400010000006400176b61666b612d636c69656e742d74332d766563746f727300000001001374332d7468726f74746c652d6372656174656400007530",
+            "fields": {
+                "messageSize": 62,
+                "apiKey": 20,
+                "apiVersion": 1,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "topics": [
+                    "t3-throttle-created"
+                ],
+                "timeout": 30000
+            }
+        },
+        {
+            "id": "deletetopics.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer v1: the throttle time in front of the topic error codes of a v0 answer.",
+            "hex": "00000023000000640000000000000001001374332d7468726f74746c652d637265617465640000",
+            "fields": {
+                "messageSize": 35,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-throttle-created": {
+                        "topic": "t3-throttle-created",
+                        "errorCode": 0
                     }
                 }
             }

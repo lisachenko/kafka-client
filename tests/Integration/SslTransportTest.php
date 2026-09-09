@@ -189,7 +189,7 @@ final class SslTransportTest extends IntegrationTestCase
         self::assertSame(SecurityProtocol::SSL, $connection->getSecurityProtocol());
 
         // ... and that connection really answers, i.e. the handshake was performed on it as well
-        new MetadataRequest([$topic], self::CLIENT_ID, 301)->writeTo($connection);
+        new MetadataRequest([$topic], true, self::CLIENT_ID, 301)->writeTo($connection);
         self::assertSame(301, MetadataResponse::unpack($connection)->getCorrelationId());
 
         // A plaintext connection to the same broker is a different connection, never the cached encrypted one
@@ -231,7 +231,7 @@ final class SslTransportTest extends IntegrationTestCase
 
         $this->expectException(NetworkException::class);
 
-        new MetadataRequest([], self::CLIENT_ID, 401)->writeTo($stream);
+        new MetadataRequest([], true, self::CLIENT_ID, 401)->writeTo($stream);
         MetadataResponse::unpack($stream);
     }
 
@@ -270,7 +270,7 @@ final class SslTransportTest extends IntegrationTestCase
      */
     private function requestClusterMetadata(Stream $stream, int $correlationId): MetadataResponse
     {
-        new MetadataRequest([], self::CLIENT_ID, $correlationId)->writeTo($stream);
+        new MetadataRequest([], true, self::CLIENT_ID, $correlationId)->writeTo($stream);
         $response = MetadataResponse::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());
 

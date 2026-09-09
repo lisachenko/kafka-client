@@ -45,6 +45,8 @@ use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -74,7 +76,9 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
  *
  * A topic can also be created through the protocol from Kafka 0.10.1 on (CreateTopics, key 19); until then a topic
  * was created by writing to ZooKeeper, e.g. with `kafka-topics.sh`, or implicitly by asking for its metadata while
- * `auto.create.topics.enable` is on - see {@see self::describeTopics()}.
+ * `auto.create.topics.enable` is on. That accident is over on this line: every metadata request of this class is a
+ * version 4 one with `allow_auto_topic_creation = false`, so an admin never creates a topic by describing it - see
+ * {@see self::describeTopics()}.
  */
 class AdminClient
 {
@@ -147,13 +151,21 @@ class AdminClient
      * else, which is exactly what this method needs. Every broker also reports its `broker.rack` from that version
      * on, so {@see Node::$rack} is filled here whenever the cluster is rack aware.
      *
+     * It is sent as version 4 with `allow_auto_topic_creation = false`, like every metadata request of this class;
+     * an empty topic list names no topic that could be created anyway.
+     *
      * @return array<int, Node>
      */
     public function findAllBrokers(): array
     {
         /** @var MetadataResponse $response */
         $response = $this->sendAnyNode(
-            fn(int $correlationId): MetadataRequest => new MetadataRequest([], $this->clientId(), $correlationId),
+            fn(int $correlationId): MetadataRequest => new MetadataRequest(
+                [],
+                false,
+                $this->clientId(),
+                $correlationId
+            ),
             MetadataResponse::class
         );
 
@@ -176,7 +188,11 @@ class AdminClient
     {
         $lookup = new CoordinatorLookup($this->cluster, $this->configuration);
 
-        return $lookup->findCoordinator($groupId, $timeoutMs > 0 ? $timeoutMs : null);
+        return $lookup->findCoordinator(
+            $groupId,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
+            $timeoutMs > 0 ? $timeoutMs : null
+        );
     }
 
     /**
@@ -192,11 +208,13 @@ class AdminClient
     /**
      * Returns the metadata of the given topics, indexed by the topic name
      *
-     * CAVEAT: asking for a topic that does not exist CREATES it when the broker runs with the default
-     * `auto.create.topics.enable=true`. That first answer carries the topic error code 5 (LeaderNotAvailable) and an
-     * empty partition list, because the controller has not elected the leaders yet; the metadata of the fresh topic
-     * arrives with one of the next requests. This is the only way a 0.8 broker creates a topic - the CreateTopics
-     * api key does not exist before Kafka 0.10.1 ({@see self::createTopics()}).
+     * **Version 4 of the Metadata api (Kafka 0.11) ended the caveat this method used to carry.** Until then, asking
+     * for a topic that does not exist CREATED it whenever the broker ran with the default
+     * `auto.create.topics.enable=true`, and that first answer carried the topic error code 5 (LeaderNotAvailable)
+     * with an empty partition list. This client now sends `allow_auto_topic_creation = false` from the whole
+     * administrative side - an admin must not bring a topic into being by looking at it - so a topic the cluster
+     * does not have is answered with the error code **3** (UnknownTopicOrPartition) and stays non-existent. Use
+     * {@see self::createTopics()} to create one.
      *
      * An empty list asks for every topic of the cluster, the internal ones included: it is sent as the NULL topic
      * array of Metadata v1, because an empty array means "no topic at all" from that version on. Which of the
@@ -213,6 +231,7 @@ class AdminClient
         $response = $this->sendAnyNode(
             fn(int $correlationId): MetadataRequest => new MetadataRequest(
                 $requestedTopics,
+                false,
                 $this->clientId(),
                 $correlationId
             ),
@@ -265,6 +284,7 @@ class AdminClient
                 fn(int $correlationId): OffsetsRequest => new OffsetsRequest(
                     $nodePartitionTimes,
                     OffsetsRequest::CONSUMER_REPLICA_ID,
+                    FetchRequest::READ_UNCOMMITTED,
                     $this->clientId(),
                     $correlationId
                 ),
@@ -668,8 +688,8 @@ class AdminClient
      *
      * Kafka 0.10.1 is the first release in which a client can create a topic without writing to ZooKeeper itself;
      * before it, the only way through the protocol was to ask a broker with `auto.create.topics.enable` for the
-     * metadata of a topic that does not exist yet ({@see self::describeTopics()}), which gives every topic the
-     * defaults of the broker.
+     * metadata of a topic that does not exist yet, which gives every topic the defaults of the broker.
+     * {@see self::describeTopics()} does not do that any more: it asks with `allow_auto_topic_creation = false`.
      *
      * The request is sent to the active controller ({@see self::findController()}), the only broker that serves it,
      * and it is repeated ONCE against a freshly looked up controller when the answer says 41 (NotController) -

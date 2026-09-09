@@ -1,8 +1,8 @@
 {
     "api": "offsets",
     "apiKey": 2,
-    "section": "Offsets API (key 2, v0 and v1), a.k.a. ListOffset",
-    "description": "Wire vectors of the Offsets API (key 2, v0 and v1), a.k.a. ListOffset, replayed by tests/Compliance.",
+    "section": "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset",
+    "description": "Wire vectors of the Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsets.request.v0.latest",
@@ -117,7 +117,7 @@
         {
             "id": "offsets.request.v1.latest",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "Offsets request v1 asking for the latest offset (timestamp = -1) of one partition; the partition entry has no MaxNumberOfOffsets any more.",
@@ -145,7 +145,7 @@
         {
             "id": "offsets.response.v1.latest",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "Offsets response v1 for the latest offset: one offset, the log end offset after five messages, and the timestamp -1, because the broker did not read a message to answer it.",
@@ -171,7 +171,7 @@
         {
             "id": "offsets.request.v1.timestamp",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "Offsets request v1 searching for the first message whose timestamp is at or after 1600000001500, which falls between the second and the third message of the log.",
@@ -199,7 +199,7 @@
         {
             "id": "offsets.response.v1.timestamp",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "Offsets response v1 of a timestamp search: the offset of the first message at or after the target time, together with that message's own timestamp, which is larger than the one that was asked for.",
@@ -225,7 +225,7 @@
         {
             "id": "offsets.response.v1.timestamp-after-last",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "Offsets response v1 for a timestamp above the timestamp of every message of the log: the error code is 0 and both the timestamp and the offset are -1, the unknown values.",
@@ -251,7 +251,7 @@
         {
             "id": "offsets.response.v1.unsupported-for-message-format",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "Offsets response v1 of a timestamp search in a topic with message.format.version=0.9.0: the error code 43, UnsupportedForMessageFormat, because a message format v0 log carries no timestamps to search.",
@@ -268,6 +268,118 @@
                                 "errorCode": 43,
                                 "timestamp": -1,
                                 "offset": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v2.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "Offsets (ListOffset) request v2 for the log end offset, with the isolation level `read_uncommitted`.",
+            "hex": "00000047000200020000006400176b61666b612d636c69656e742d74332d766563746f7273ffffffff0000000001000b74332d7468726f74746c650000000100000000ffffffffffffffff",
+            "fields": {
+                "messageSize": 71,
+                "apiKey": 2,
+                "apiVersion": 2,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t3-throttle": {
+                        "topic": "t3-throttle",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v2.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2: the throttle time in front of the topics of a v1 answer.",
+            "hex": "00000033000000640000000000000001000b74332d7468726f74746c6500000001000000000000ffffffffffffffff0000000000000002",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-throttle": {
+                        "topic": "t3-throttle",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 2
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v2.read-committed",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "The same request with the isolation level `read_committed`, which asks for the last stable offset instead.",
+            "hex": "00000047000200020000006400176b61666b612d636c69656e742d74332d766563746f7273ffffffff0100000001000b74332d7468726f74746c650000000100000000ffffffffffffffff",
+            "fields": {
+                "messageSize": 71,
+                "apiKey": 2,
+                "apiVersion": 2,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "replicaId": -1,
+                "isolationLevel": 1,
+                "topicPartitions": {
+                    "t3-throttle": {
+                        "topic": "t3-throttle",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v2.read-committed",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer to it; without an open transaction the last stable offset is the log end offset.",
+            "hex": "00000033000000640000000000000001000b74332d7468726f74746c6500000001000000000000ffffffffffffffff0000000000000002",
+            "fields": {
+                "messageSize": 51,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-throttle": {
+                        "topic": "t3-throttle",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 2
                             }
                         ]
                     }

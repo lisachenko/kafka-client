@@ -61,6 +61,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
@@ -70,6 +71,7 @@ use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
@@ -86,7 +88,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  *
  * Every api is sent with the highest version a 0.10.2.2 broker serves: Produce v2, whose answer carries the
  * `LogAppendTime` of every partition, Fetch v3, which asks for message format v1 and bounds the whole answer with
- * `fetch.max.bytes`, OffsetCommit v2 with its `retention_time`, and OffsetCommit v0 when the offsets are stored in
+ * `fetch.max.bytes`, OffsetCommit v3 with its `retention_time`, and OffsetCommit v0 when the offsets are stored in
  * ZooKeeper. The lower version classes of those apis stay usable directly, for a client that has to talk to an
  * older broker.
  *
@@ -421,6 +423,7 @@ class Client
             fn(array $nodeTopicRequest, int $correlationId): OffsetsRequest => new OffsetsRequest(
                 $nodeTopicRequest,
                 OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
                 $this->configuration[ConsumerConfig::CLIENT_ID],
                 $correlationId
             ),
@@ -451,12 +454,12 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option: version 2 stores the offsets in the
+     * The version of the request follows the `offsets.storage` option: version 3 stores the offsets in the
      * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group, version 0 stores
      * them in ZooKeeper and is answered by any broker. An offset may be given as a plain integer or as an
      * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch.
      *
-     * `$retentionTimeMs` is the `retention_time` field of the v2 request: with
+     * `$retentionTimeMs` is the `retention_time` field of the v2 request, which v3 sends unchanged: with
      * {@see OffsetCommitRequest::DEFAULT_RETENTION_TIME} the broker keeps the offsets for `offsets.retention.minutes`
      * counted from its receive time, any other value replaces that retention for this commit. The ZooKeeper version
      * has no such field and ignores it. A client that is not a member of a group commits with
@@ -500,7 +503,8 @@ class Client
                     $correlationId
                 )
                 : new OffsetCommitRequestV0($groupId, $topicPartitionOffsets, $clientId, $correlationId),
-            OffsetCommitResponse::class,
+            // The version 3 answer opens with the throttle time of KIP-124, which a version 0 one does not have
+            $this->isOffsetStorageKafka() ? OffsetCommitResponse::class : OffsetCommitResponseV0::class,
             static function (OffsetCommitResponse $response) use ($groupId): void {
                 foreach ($response->topics as $topic => $topicResponse) {
                     /** @var OffsetCommitResponsePartition $partition */
@@ -807,7 +811,37 @@ class Client
      */
     public function getGroupCoordinator(string $groupId): Node
     {
-        return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinator($groupId);
+        return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinator(
+            $groupId,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP
+        );
+    }
+
+    /**
+     * Discovers the coordinator node of a transactional id (ApiKey 10 v1, `coordinator_type = 1`, Kafka 0.11)
+     *
+     * The transaction coordinator is the broker that owns the partition of the internal `__transaction_state` topic
+     * that the transactional id hashes to; it is the one that serves InitProducerId, AddPartitionsToTxn,
+     * AddOffsetsToTxn, EndTxn and TxnOffsetCommit for that producer, and it is looked up with the very same api as
+     * a group coordinator, only with {@see GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION}.
+     *
+     * **The first lookup of any transactional id creates `__transaction_state`**, exactly as the first group lookup
+     * creates `__consumer_offsets`, and is therefore answered with the error code 15
+     * (GroupCoordinatorNotAvailable) while that topic is being created; {@see CoordinatorLookup} retries it. The id
+     * itself is not created or registered by the lookup - the broker only hashes it onto a partition of that topic -
+     * so asking for an id that was never used is a legal question with a normal answer.
+     *
+     * @param string $transactionalId The `transactional.id` of the producer
+     *
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException If the coordinator did not become available
+     * @throws Common\Errors\InvalidRequestException If the broker refuses the coordinator type
+     */
+    public function getTransactionCoordinator(string $transactionalId): Node
+    {
+        return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinator(
+            $transactionalId,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION
+        );
     }
 
     /**
@@ -850,7 +884,7 @@ class Client
     }
 
     /**
-     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v2) instead of ZooKeeper (v0)
+     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v3) instead of ZooKeeper (v0)
      */
     private function isOffsetStorageKafka(): bool
     {

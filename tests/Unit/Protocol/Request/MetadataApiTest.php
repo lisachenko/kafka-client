@@ -25,32 +25,42 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV1;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV2;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
 
 /**
- * Byte-exact tests of the Metadata API, versions 0, 1 and 2.
+ * Byte-exact tests of the Metadata API, versions 0 to 4.
  *
  * <pre>
- *   Metadata Request (Version: 0)      => [TopicName]
- *   Metadata Request (Version: 1, 2)   => [TopicName]                          # the array is nullable
- *   Metadata Response (Version: 0)     => [Broker][TopicMetadata]
- *   Metadata Response (Version: 1)     => [Broker] ControllerId [TopicMetadata]
- *   Metadata Response (Version: 2)     => [Broker] ClusterId ControllerId [TopicMetadata]
+ *   Metadata Request (Version: 0)        => [TopicName]
+ *   Metadata Request (Version: 1, 2, 3)  => [TopicName]                        # the array is nullable
+ *   Metadata Request (Version: 4)        => [TopicName] AllowAutoTopicCreation
+ *   Metadata Response (Version: 0)       => [Broker][TopicMetadata]
+ *   Metadata Response (Version: 1)       => [Broker] ControllerId [TopicMetadata]
+ *   Metadata Response (Version: 2)       => [Broker] ClusterId ControllerId [TopicMetadata]
+ *   Metadata Response (Version: 3, 4)    => ThrottleTimeMs [Broker] ClusterId ControllerId [TopicMetadata]
  *     Broker            => NodeId int32 Host string Port int32 [Rack nullable string]
  *     TopicMetadata     => TopicErrorCode int16 TopicName string [IsInternal boolean] [PartitionMetadata]
  *     PartitionMetadata => PartitionErrorCode int16 PartitionId int32 Leader int32 Replicas [int32] Isr [int32]
  * </pre>
  *
- * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
 #[CoversClass(MetadataRequestV1::class)]
+#[CoversClass(MetadataRequestV2::class)]
+#[CoversClass(MetadataRequestV3::class)]
 #[CoversClass(MetadataResponse::class)]
 #[CoversClass(MetadataResponseV0::class)]
 #[CoversClass(MetadataResponseV1::class)]
+#[CoversClass(MetadataResponseV2::class)]
+#[CoversClass(MetadataResponseV3::class)]
 #[CoversClass(Node::class)]
 #[CoversClass(NodeV0::class)]
 #[CoversClass(TopicMetadata::class)]
@@ -123,11 +133,11 @@ final class MetadataApiTest extends TestCase
 
     public function testRequestWithoutTopicsAsksForEveryTopic(): void
     {
-        //   Size => 18, ApiKey 3, ApiVersion 2, CorrelationId 1, ClientId "test", [TopicName] => null
-        $request = new MetadataRequest(null, 'test', 1);
+        //   Size => 19, ApiKey 3, ApiVersion 4, CorrelationId 1, ClientId "test", [TopicName] => null, allow => 01
+        $request = new MetadataRequest(null, true, 'test', 1);
 
         self::assertSame(
-            '00000012' . '0003' . '0002' . '00000001' . '0004' . '74657374' . 'ffffffff',
+            '00000013' . '0003' . '0004' . '00000001' . '0004' . '74657374' . 'ffffffff' . '01',
             bin2hex((string) $request)
         );
         self::assertNull($request->getTopics(), 'a null topic array is the "every topic" of version 1 and above');
@@ -136,10 +146,10 @@ final class MetadataApiTest extends TestCase
     public function testRequestWithAnEmptyTopicArrayAsksForNoTopicAtAll(): void
     {
         // The very frame version 0 uses for "every topic" means "no topic" from version 1 on
-        $request = new MetadataRequest([], 'test', 1);
+        $request = new MetadataRequest([], true, 'test', 1);
 
         self::assertSame(
-            '00000012' . '0003' . '0002' . '00000001' . '0004' . '74657374' . '00000000',
+            '00000013' . '0003' . '0004' . '00000001' . '0004' . '74657374' . '00000000' . '01',
             bin2hex((string) $request)
         );
         self::assertSame([], $request->getTopics());
@@ -147,26 +157,43 @@ final class MetadataApiTest extends TestCase
 
     public function testRequestPacksEveryRequestedTopicAsAString(): void
     {
-        //   Size => 41, ClientId "php-kafka", [TopicName] => "orders", "payments"
-        $request = new MetadataRequest(['orders', 'payments'], 'php-kafka', 7);
+        //   Size => 42, ClientId "php-kafka", [TopicName] => "orders", "payments"
+        $request = new MetadataRequest(['orders', 'payments'], true, 'php-kafka', 7);
 
         self::assertSame(
-            '00000029' . '0003' . '0002' . '00000007' . '0009' . '7068702d6b61666b61'
-            . '00000002' . '0006' . '6f7264657273' . '0008' . '7061796d656e7473',
+            '0000002a' . '0003' . '0004' . '00000007' . '0009' . '7068702d6b61666b61'
+            . '00000002' . '0006' . '6f7264657273' . '0008' . '7061796d656e7473' . '01',
             bin2hex((string) $request)
         );
         self::assertSame(['orders', 'payments'], $request->getTopics());
     }
 
-    public function testVersionOneSendsTheSameFrameAsVersionTwo(): void
+    public function testTheAutoCreationFlagIsTheLastByteOfAVersionFourFrame(): void
     {
-        // METADATA_REQUEST_V2 = METADATA_REQUEST_V1, only the version field of the header differs
+        $allowed = bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3));
+        $refused = bin2hex((string) new MetadataRequest(['orders'], false, 'test', 3));
+
+        self::assertStringEndsWith('01', $allowed);
+        self::assertStringEndsWith('00', $refused);
+        self::assertSame(substr($allowed, 0, -2), substr($refused, 0, -2), 'the flag is the only difference');
+        self::assertTrue(new MetadataRequest()->isAutoTopicCreationAllowed(), 'true is the behaviour of every older version');
+    }
+
+    public function testTheVersionsOneToThreeSendTheSameFrameWithoutTheAutoCreationFlag(): void
+    {
+        // METADATA_REQUEST_V3 = METADATA_REQUEST_V2 = METADATA_REQUEST_V1, only the version field differs
         $version1 = bin2hex((string) new MetadataRequestV1(['orders'], 'test', 3));
-        $version2 = bin2hex((string) new MetadataRequest(['orders'], 'test', 3));
+        $version2 = bin2hex((string) new MetadataRequestV2(['orders'], 'test', 3));
+        $version3 = bin2hex((string) new MetadataRequestV3(['orders'], 'test', 3));
 
         self::assertSame(str_replace('00030001', '00030002', $version1), $version2);
+        self::assertSame(str_replace('00030001', '00030003', $version1), $version3);
         self::assertSame(1, new MetadataRequestV1()->getApiVersion());
-        self::assertSame(2, new MetadataRequest()->getApiVersion());
+        self::assertSame(2, new MetadataRequestV2()->getApiVersion());
+        self::assertSame(3, new MetadataRequestV3()->getApiVersion());
+        self::assertSame(4, new MetadataRequest()->getApiVersion());
+        self::assertArrayNotHasKey('allowAutoTopicCreation', MetadataRequestV3::getScheme());
+        self::assertArrayHasKey('allowAutoTopicCreation', MetadataRequest::getScheme());
     }
 
     public function testRequestTopicsAreNotNullableInVersionZero(): void
@@ -231,12 +258,22 @@ final class MetadataApiTest extends TestCase
 
     public function testVersionTwoAnswerCarriesTheClusterIdBeforeTheControllerId(): void
     {
-        $response = MetadataResponse::unpack(new StringStream(hex2bin(self::CLUSTER_RESPONSE_V2_HEX)));
+        $response = MetadataResponseV2::unpack(new StringStream(hex2bin(self::CLUSTER_RESPONSE_V2_HEX)));
 
         self::assertSame(
             ['messageSize', 'correlationId', 'brokers', 'clusterId', 'controllerId', 'topics'],
-            array_keys(MetadataResponse::getScheme()),
+            array_keys(MetadataResponseV2::getScheme()),
             'version 2 inserts the cluster id BEFORE the controller id'
+        );
+        self::assertSame(
+            ['messageSize', 'correlationId', 'throttleTimeMs', 'brokers', 'clusterId', 'controllerId', 'topics'],
+            array_keys(MetadataResponse::getScheme()),
+            'version 3 puts the throttle time in front of everything, and version 4 answers the same frame'
+        );
+        self::assertSame(
+            array_keys(MetadataResponse::getScheme()),
+            array_keys(MetadataResponseV3::getScheme()),
+            'METADATA_RESPONSE_V4 = METADATA_RESPONSE_V3'
         );
         self::assertSame('cluster-a', $response->clusterId);
         self::assertSame(1, $response->controllerId);
@@ -285,9 +322,34 @@ final class MetadataApiTest extends TestCase
             . '0000' . '0012' . '5f5f636f6e73756d65725f6f666673657473' . '01' . '00000000'
         );
 
-        $response = MetadataResponse::unpack(new StringStream($frame));
+        $response = MetadataResponseV2::unpack(new StringStream($frame));
 
         self::assertTrue($response->topics['__consumer_offsets']->isInternal);
+    }
+
+    public function testAVersionThreeAnswerStartsWithTheThrottleTime(): void
+    {
+        //   ThrottleTimeMs 0, [Broker] => none, ClusterId null, ControllerId 0, no topics
+        $frame = '00000016' . '0000002a' . '00000000' . '00000000' . 'ffff' . '00000000' . '00000000';
+
+        $response = MetadataResponseV3::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame([], $response->brokers);
+        self::assertNull($response->clusterId);
+        self::assertSame(0, $response->controllerId);
+        self::assertSame($frame, bin2hex((string) $response));
+    }
+
+    public function testAVersionFourAnswerIsReadWithTheVersionThreeLayout(): void
+    {
+        $frame = '00000016' . '0000002a' . '00000000' . '00000000' . 'ffff' . '00000000' . '00000000';
+
+        $versionThree = MetadataResponseV3::unpack(new StringStream((string) hex2bin($frame)));
+        $versionFour  = MetadataResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
+        self::assertSame($versionThree->throttleTimeMs, $versionFour->throttleTimeMs);
     }
 
     public function testControllerIdIsMinusOneWhileTheClusterElectsAController(): void
@@ -295,7 +357,7 @@ final class MetadataApiTest extends TestCase
         //   [Broker] => none, ClusterId null, ControllerId -1, no topics
         $frame = hex2bin('00000012' . '0000002a' . '00000000' . 'ffff' . 'ffffffff' . '00000000');
 
-        $response = MetadataResponse::unpack(new StringStream($frame));
+        $response = MetadataResponseV2::unpack(new StringStream($frame));
 
         self::assertNull($response->clusterId, 'a broker without a cluster id answers a null string');
         self::assertSame(MetadataResponse::NO_CONTROLLER_ID, $response->controllerId);
@@ -304,7 +366,7 @@ final class MetadataApiTest extends TestCase
 
     public function testResponseKeepsTheReplicaAndIsrSetsOfEveryPartition(): void
     {
-        $partitions = MetadataResponse::unpack(new StringStream(hex2bin(self::CLUSTER_RESPONSE_V2_HEX)))
+        $partitions = MetadataResponseV2::unpack(new StringStream(hex2bin(self::CLUSTER_RESPONSE_V2_HEX)))
             ->topics['orders']
             ->partitions;
 
@@ -337,7 +399,7 @@ final class MetadataApiTest extends TestCase
 
     public function testResponseArraysAreIndexedByTheFieldTheClusterLooksThemUpBy(): void
     {
-        $response = MetadataResponse::unpack(new StringStream(hex2bin(self::CLUSTER_RESPONSE_V2_HEX)));
+        $response = MetadataResponseV2::unpack(new StringStream(hex2bin(self::CLUSTER_RESPONSE_V2_HEX)));
 
         foreach ($response->brokers as $nodeId => $broker) {
             self::assertSame($nodeId, $broker->nodeId);
@@ -353,12 +415,12 @@ final class MetadataApiTest extends TestCase
     public function testResponseSurvivesTheMetadataCacheFile(): void
     {
         // Cluster stores the whole response with var_export() and includes it back, see Cluster::reload()
-        $response = MetadataResponse::unpack(new StringStream(hex2bin(self::CLUSTER_RESPONSE_V2_HEX)));
+        $response = MetadataResponseV2::unpack(new StringStream(hex2bin(self::CLUSTER_RESPONSE_V2_HEX)));
 
-        /** @var MetadataResponse $restored */
+        /** @var MetadataResponseV2 $restored */
         $restored = eval('return ' . var_export($response, true) . ';');
 
-        self::assertInstanceOf(MetadataResponse::class, $restored);
+        self::assertInstanceOf(MetadataResponseV2::class, $restored);
         self::assertEquals($response->brokers, $restored->brokers);
         self::assertEquals($response->topics, $restored->topics);
         self::assertSame('cluster-a', $restored->clusterId, 'the cluster id survives the cache file');

@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `consumer` protocol type they hold the `Subscription` the member sent with its JoinGroup request and the
  * `MemberAssignment` the leader published with SyncGroup.
  *
- * @see docs/protocol/0.11.0.md, section "DescribeGroups API (key 15, v0)"
+ * @see docs/protocol/0.11.0.md, section "DescribeGroups API (key 15, v0 and v1)"
  */
 class DescribeGroupResponseMember implements BinarySchemaInterface
 {

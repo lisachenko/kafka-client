@@ -1,13 +1,13 @@
 {
     "api": "join-group",
     "apiKey": 11,
-    "section": "JoinGroup API (key 11, v0 and v1)",
-    "description": "Wire vectors of the JoinGroup API (key 11, v0 and v1), replayed by tests/Compliance.",
+    "section": "JoinGroup API (key 11, v0, v1 and v2)",
+    "description": "Wire vectors of the JoinGroup API (key 11, v0, v1 and v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "joingroup.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV1",
             "version": 1,
             "source": "broker",
             "description": "JoinGroup request v1 of a client that has no member id yet: the rebalance_timeout of Kafka 0.10.1 (30000) sits between the session timeout (10000) and the member id, and it does not have to lie inside the group.min/max.session.timeout.ms of the broker.",
@@ -36,7 +36,7 @@
         {
             "id": "joingroup.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer to the version 1 request: the frame of version 0, unchanged - JOIN_GROUP_RESPONSE_V1 is JOIN_GROUP_RESPONSE_V0 in Protocol.java @ 0.10.2.2 - for the first and only member of a fresh group, which is its leader and therefore receives the metadata of every member.",
@@ -90,7 +90,7 @@
         {
             "id": "joingroup.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV0",
             "version": 0,
             "source": "broker",
             "description": "JoinGroup answer of the first and only member of a group: the assigned member id, the generation 1, the selected protocol and the member itself as the leader, whose answer carries the metadata of every member.",
@@ -144,7 +144,7 @@
         {
             "id": "joingroup.response.v0.invalid-session-timeout",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV0",
             "version": 0,
             "source": "broker",
             "description": "JoinGroup answer for a session timeout the broker does not allow: the error code 26, generation -1 and empty ids.",
@@ -158,6 +158,62 @@
                 "leaderId": "",
                 "memberId": "",
                 "members": []
+            }
+        },
+        {
+            "id": "joingroup.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "JoinGroup request v2 of the first member of a group, the frame of v1 with a higher version field.",
+            "hex": "0000006e000b00020000006400176b61666b612d636c69656e742d74332d766563746f7273001174332d7468726f74746c652d67726f7570000075300000ea6000000008636f6e73756d657200000001000572616e676500000017000000000001000b74332d7468726f74746c6500000000",
+            "fields": {
+                "messageSize": 110,
+                "apiKey": 11,
+                "apiVersion": 2,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "consumerGroup": "t3-throttle-group",
+                "sessionTimeout": 30000,
+                "rebalanceTimeout": 60000,
+                "memberId": "",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000b74332d7468726f74746c6500000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2: the throttle time, and then the generation of a v1 answer with the member as its own leader.",
+            "hex": "000000ee0000006400000000000000000001000572616e6765003c6b61666b612d636c69656e742d74332d766563746f72732d63663861626537662d396231652d343337332d396539392d363063303066613835313038003c6b61666b612d636c69656e742d74332d766563746f72732d63663861626537662d396231652d343337332d396539392d36306330306661383531303800000001003c6b61666b612d636c69656e742d74332d766563746f72732d63663861626537662d396231652d343337332d396539392d36306330306661383531303800000017000000000001000b74332d7468726f74746c6500000000",
+            "fields": {
+                "messageSize": 238,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 1,
+                "groupProtocol": "range",
+                "leaderId": "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108",
+                "memberId": "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108",
+                "members": {
+                    "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108": {
+                        "memberId": "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108",
+                        "metadata": {
+                            "$bytes": "000000000001000b74332d7468726f74746c6500000000"
+                        }
+                    }
+                }
             }
         }
     ]

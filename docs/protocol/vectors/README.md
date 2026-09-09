@@ -15,6 +15,14 @@ broker, and everything Kafka 0.11 adds on the 0.11.0.3 container of `docker-comp
 | File | What was captured on the 0.11.0.3 broker |
 |---|---|
 | `api-versions.json` | ApiVersions **v0 and v1**: the 34 keys the broker serves, in both layouts, and the error code 35 of an unknown version |
+| `metadata.json` | Metadata **v3 and v4**, and the v4 answer of an absent topic asked for with `allow_auto_topic_creation = false` |
+| `offsets.json` | Offsets **v2** in both isolation levels |
+| `offset-commit.json`, `offset-fetch.json` | OffsetCommit **v3** and OffsetFetch **v3** |
+| `group-coordinator.json` | GroupCoordinator **v1** for a consumer group and for a transactional id |
+| `join-group.json`, `sync-group.json`, `heartbeat.json`, `leave-group.json` | The group membership apis one version up: JoinGroup **v2**, SyncGroup/Heartbeat/LeaveGroup **v1** |
+| `describe-groups.json`, `list-groups.json` | DescribeGroups **v1** and ListGroups **v1** |
+| `create-topics.json`, `delete-topics.json` | CreateTopics **v2** and DeleteTopics **v1** |
+| `offset-for-leader-epoch.json` | OffsetForLeaderEpoch **v0** (KIP-101), the epoch of a partition and of one the cluster does not host |
 
 That the older frames are still the current ones is not an assumption:
 `tests/Integration/ApiVersionProbeTest.php` asks the 0.11.0.3 broker with a real **ApiVersions** request
@@ -24,7 +32,7 @@ That the older frames are still the current ones is not an assumption:
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0, v1 and v2)",
+    "section": "Metadata API (key 3, v0 to v4)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

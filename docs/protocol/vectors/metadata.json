@@ -1,8 +1,8 @@
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0, v1 and v2)",
-    "description": "Wire vectors of the Metadata API (key 3, v0, v1 and v2), replayed by tests/Compliance.",
+    "section": "Metadata API (key 3, v0 to v4)",
+    "description": "Wire vectors of the Metadata API (key 3, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
@@ -104,7 +104,7 @@
         {
             "id": "metadata.request.v2.single-topic",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV2",
             "version": 2,
             "source": "broker",
             "description": "Metadata request v2 for one topic; a topic that does not exist yet is created by this request when auto.create.topics.enable is on.",
@@ -123,7 +123,7 @@
         {
             "id": "metadata.response.v2.single-topic",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV2",
             "version": 2,
             "source": "broker",
             "description": "Metadata of a topic with three partitions on a single-broker cluster, with the cluster id and the controller id of version 2 and a broker without a rack.",
@@ -188,7 +188,7 @@
         {
             "id": "metadata.request.v2.all-topics",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV2",
             "version": 2,
             "source": "broker",
             "description": "Metadata request v2 with a null topic array, which asks for every topic of the cluster, the internal ones included.",
@@ -205,7 +205,7 @@
         {
             "id": "metadata.request.v2.no-topics",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV2",
             "version": 2,
             "source": "broker",
             "description": "Metadata request v2 with an empty topic array, which asks for no topic at all: only version 1 and above can express it.",
@@ -222,7 +222,7 @@
         {
             "id": "metadata.response.v2.no-topics",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer to a request for no topic: the brokers of the cluster, the cluster id, the controller id and an empty topic array.",
@@ -329,7 +329,7 @@
         {
             "id": "metadata.response.v2.internal-topic",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The metadata of __consumer_offsets, the only topic a 0.10.2.2 broker flags with is_internal.",
@@ -409,6 +409,229 @@
                                 ]
                             }
                         }
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v3.single-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV3",
+            "version": 3,
+            "source": "broker",
+            "description": "Metadata request v3 for one topic; the frame is the one of v2, only the version field differs.",
+            "hex": "00000032000300030000006400176b61666b612d636c69656e742d74332d766563746f727300000001000b74332d7468726f74746c65",
+            "fields": {
+                "messageSize": 50,
+                "apiKey": 3,
+                "apiVersion": 3,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "topics": [
+                    "t3-throttle"
+                ]
+            }
+        },
+        {
+            "id": "metadata.response.v3.single-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV3",
+            "version": 3,
+            "source": "broker",
+            "description": "Metadata answer v3: the same body as v2, opened by the throttle time that KIP-124 added.",
+            "hex": "000000a30000006400000000000000010000000000093132372e302e302e3100002384ffff00163149674f62497a565155476251766763503445515f6700000000000000010000000b74332d7468726f74746c650000000003000000000002000000000000000100000000000000010000000000000000000100000000000000010000000000000001000000000000000000000000000000000001000000000000000100000000",
+            "fields": {
+                "messageSize": 163,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "1IgObIzVQUGbQvgcP4EQ_g",
+                "controllerId": 0,
+                "topics": {
+                    "t3-throttle": {
+                        "topicErrorCode": 0,
+                        "topic": "t3-throttle",
+                        "isInternal": false,
+                        "partitions": {
+                            "2": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 2,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "1": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 1,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "0": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v4.single-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "Metadata request v4 with `allow_auto_topic_creation = true`, which is what a consumer or a producer sends.",
+            "hex": "00000033000300040000006400176b61666b612d636c69656e742d74332d766563746f727300000001000b74332d7468726f74746c6501",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 3,
+                "apiVersion": 4,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "topics": [
+                    "t3-throttle"
+                ],
+                "allowAutoTopicCreation": true
+            }
+        },
+        {
+            "id": "metadata.response.v4.single-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "Metadata answer v4, byte for byte the layout of v3: what version 4 added is a field of the request.",
+            "hex": "000000a30000006400000000000000010000000000093132372e302e302e3100002384ffff00163149674f62497a565155476251766763503445515f6700000000000000010000000b74332d7468726f74746c650000000003000000000002000000000000000100000000000000010000000000000000000100000000000000010000000000000001000000000000000000000000000000000001000000000000000100000000",
+            "fields": {
+                "messageSize": 163,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "1IgObIzVQUGbQvgcP4EQ_g",
+                "controllerId": 0,
+                "topics": {
+                    "t3-throttle": {
+                        "topicErrorCode": 0,
+                        "topic": "t3-throttle",
+                        "isInternal": false,
+                        "partitions": {
+                            "2": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 2,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "1": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 1,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            },
+                            "0": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v4.no-auto-creation",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "Metadata request v4 with `allow_auto_topic_creation = false` for a topic that does not exist, which is what the AdminClient sends.",
+            "hex": "0000003a000300040000006400176b61666b612d636c69656e742d74332d766563746f727300000001001274332d7468726f74746c652d616273656e7400",
+            "fields": {
+                "messageSize": 58,
+                "apiKey": 3,
+                "apiVersion": 4,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "topics": [
+                    "t3-throttle-absent"
+                ],
+                "allowAutoTopicCreation": false
+            }
+        },
+        {
+            "id": "metadata.response.v4.unknown-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer to it: the error code 3 (UnknownTopicOrPartition) for the topic, which stays uncreated.",
+            "hex": "0000005c0000006400000000000000010000000000093132372e302e302e3100002384ffff00163149674f62497a565155476251766763503445515f6700000000000000010003001274332d7468726f74746c652d616273656e740000000000",
+            "fields": {
+                "messageSize": 92,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "1IgObIzVQUGbQvgcP4EQ_g",
+                "controllerId": 0,
+                "topics": {
+                    "t3-throttle-absent": {
+                        "topicErrorCode": 3,
+                        "topic": "t3-throttle-absent",
+                        "isInternal": false,
+                        "partitions": []
                     }
                 }
             }

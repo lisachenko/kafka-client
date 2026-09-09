@@ -1,13 +1,13 @@
 {
     "api": "describe-groups",
     "apiKey": 15,
-    "section": "DescribeGroups API (key 15, v0)",
-    "description": "Wire vectors of the DescribeGroups API (key 15, v0), replayed by tests/Compliance.",
+    "section": "DescribeGroups API (key 15, v0 and v1)",
+    "description": "Wire vectors of the DescribeGroups API (key 15, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describegroups.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeGroups request v0 asking the coordinator about a single group.",
@@ -26,7 +26,7 @@
         {
             "id": "describegroups.response.v0.stable",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeGroups response v0 for a stable consumer group with one member.",
@@ -61,7 +61,7 @@
         {
             "id": "describegroups.request.v0.unknown-group",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeGroups request v0 for a group the cluster has never seen.",
@@ -80,7 +80,7 @@
         {
             "id": "describegroups.response.v0.dead",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeGroups response v0 for an unknown group: the error code 0 and the state Dead.",
@@ -96,6 +96,61 @@
                         "protocolType": "",
                         "protocol": "",
                         "members": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "describegroups.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "DescribeGroups request v1 for one group, the frame of v0 with a higher version field.",
+            "hex": "00000038000f00010000006400176b61666b612d636c69656e742d74332d766563746f727300000001001174332d7468726f74746c652d67726f7570",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 15,
+                "apiVersion": 1,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "groups": [
+                    "t3-throttle-group"
+                ]
+            }
+        },
+        {
+            "id": "describegroups.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer v1 for a stable group with one member: the throttle time in front of the groups of a v0 answer.",
+            "hex": "000000e80000006400000000000000010000001174332d7468726f74746c652d67726f75700006537461626c650008636f6e73756d6572000572616e676500000001003c6b61666b612d636c69656e742d74332d766563746f72732d63663861626537662d396231652d343337332d396539392d36306330306661383531303800176b61666b612d636c69656e742d74332d766563746f7273000b2f3137322e31382e302e3100000017000000000001000b74332d7468726f74746c650000000000000027000000000001000b74332d7468726f74746c650000000300000000000000010000000200000000",
+            "fields": {
+                "messageSize": 232,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-throttle-group": {
+                        "errorCode": 0,
+                        "groupId": "t3-throttle-group",
+                        "state": "Stable",
+                        "protocolType": "consumer",
+                        "protocol": "range",
+                        "members": {
+                            "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108": {
+                                "memberId": "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108",
+                                "clientId": "kafka-client-t3-vectors",
+                                "clientHost": "/172.18.0.1",
+                                "memberMetadata": {
+                                    "$bytes": "000000000001000b74332d7468726f74746c6500000000"
+                                },
+                                "memberAssignment": {
+                                    "$bytes": "000000000001000b74332d7468726f74746c650000000300000000000000010000000200000000"
+                                }
+                            }
+                        }
                     }
                 }
             }

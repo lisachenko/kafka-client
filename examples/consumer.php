@@ -85,7 +85,7 @@ function awaitTopic(string $brokerAddress, string $topic, array $configuration):
 
     do {
         $stream = new SocketStream($brokerAddress, $configuration, 5.0);
-        new MetadataRequest([$topic], 'kafka-client-example', ++$attempt)->writeTo($stream);
+        new MetadataRequest([$topic], true, 'kafka-client-example', ++$attempt)->writeTo($stream);
         $metadata = MetadataResponse::unpack($stream)->topics[$topic] ?? null;
 
         $hasLeaders = $metadata !== null
