@@ -1,0 +1,125 @@
+{
+    "api": "create-topics",
+    "apiKey": 19,
+    "section": "CreateTopics API (key 19, v0 and v1)",
+    "description": "Wire vectors of the CreateTopics API (key 19, v0 and v1), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "createtopics.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "CreateTopics request v1 that creates one topic with two partitions, one replica per partition, no explicit replica assignment and one topic level option, waiting up to 30 seconds for the controller.",
+            "hex": "0000004e0013000100000064000a74372d766563746f727300000001000a74372d766563746f72730000000200010000000000000001000c726574656e74696f6e2e6d730007333630303030300000753000",
+            "fields": {
+                "messageSize": 78,
+                "apiKey": 19,
+                "apiVersion": 1,
+                "correlationId": 100,
+                "clientId": "t7-vectors",
+                "topics": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "numPartitions": 2,
+                        "replicationFactor": 1,
+                        "replicaAssignment": [],
+                        "configs": {
+                            "retention.ms": {
+                                "configKey": "retention.ms",
+                                "configValue": "3600000"
+                            }
+                        }
+                    }
+                },
+                "timeout": 30000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createtopics.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "CreateTopics response v1 of the controller for a topic it created: error code 0 and a null error message (ff ff), the null of a NULLABLE_STRING.",
+            "hex": "000000180000006400000001000a74372d766563746f72730000ffff",
+            "fields": {
+                "messageSize": 24,
+                "correlationId": 100,
+                "topics": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "createtopics.response.v1.topic-exists",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "CreateTopics response v1 for a topic that already exists: the error code 36 (TopicAlreadyExists) and the message of the exception the controller caught, which only version 1 of the api carries.",
+            "hex": "0000003a0000006500000001000a74372d766563746f727300240022546f706963202774372d766563746f72732720616c7265616479206578697374732e",
+            "fields": {
+                "messageSize": 58,
+                "correlationId": 101,
+                "topics": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "errorCode": 36,
+                        "errorMessage": "Topic 't7-vectors' already exists."
+                    }
+                }
+            }
+        },
+        {
+            "id": "createtopics.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "CreateTopics request v0, the version without the trailing validate_only flag, creating a topic with one partition, one replica and no topic level options.",
+            "hex": "000000360013000000000068000a74372d766563746f727300000001000a74372d766563746f7273000000010001000000000000000000007530",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 19,
+                "apiVersion": 0,
+                "correlationId": 104,
+                "clientId": "t7-vectors",
+                "topics": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "numPartitions": 1,
+                        "replicationFactor": 1,
+                        "replicaAssignment": [],
+                        "configs": []
+                    }
+                },
+                "timeout": 30000
+            }
+        },
+        {
+            "id": "createtopics.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "CreateTopics response v0 of the controller for a topic it created: the bare topic and error code, without the error message of version 1.",
+            "hex": "000000160000006800000001000a74372d766563746f72730000",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 104,
+                "topics": {
+                    "t7-vectors": {
+                        "topic": "t7-vectors",
+                        "errorCode": 0
+                    }
+                }
+            }
+        }
+    ]
+}
