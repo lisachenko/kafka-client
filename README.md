@@ -605,7 +605,7 @@ composer install
 composer check   # coding standards + static analysis + PHPUnit
 ```
 
-The suite is split in three — 1183 unit tests, 129 compliance tests replaying the 120 documented
+The suite is split in three — 1054 unit tests, 127 compliance tests replaying the 120 documented
 wire vectors, and 285 integration tests against a real broker:
 
 ```bash
