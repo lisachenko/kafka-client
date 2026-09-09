@@ -92,10 +92,11 @@ RecordBatch => firstOffset length partitionLeaderEpoch magic(2) crc attributes l
 Rule 4 of `docs/CASCADE.md`: the lower line wins the shared part, the higher line's version-specific additions come
 back on top as fields and constants. Concretely, on a `cascade/0.10.x-into-main` branch created from `main`:
 
-**Close the automatic pull request first.** `.github/workflows/cascade.yml` opened **PR #48** (`0.10.x` → `main`)
-and it conflicts in almost every file, because the two trees share nothing but their history. Close it with a note
-that it is superseded, create `cascade/0.10.x-into-main` from `main`, `git merge origin/0.10.x` into it and resolve
-there; the workflow will then track that branch's PR.
+**Done at the end of the 0.10.x session.** The automatic PR #48 (`0.10.x` → `main`), which conflicted in almost
+every file because the two trees share nothing but their history, was closed as superseded, and the cascade was
+resolved on `cascade/0.10.x-into-main` as this section describes: the merged tree is the `0.10.x` tree plus the
+api-key constants 21–33 of `ApiKeys`; the ten files of `main` that `0.10.x` does not have (listed below) were
+dropped and stay reachable with `git show <merge base>:<path>` for the tickets that re-implement them.
 
 **Keep from `0.10.x`** (the whole tree, in practice): the schema engine and its two fixes (signed `int8`, a null
 byte array as `-1`), the framing, `Client`, `AdminClient`, `KafkaProducer`, `KafkaConsumer` with the group

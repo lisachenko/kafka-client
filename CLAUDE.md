@@ -2,7 +2,7 @@
 
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
-(Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.x, **next**) → `main` (Kafka 0.11). See
+(Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `main` (Kafka 0.11, **next**). See
 `docs/CASCADE.md` and, for the current line, `docs/handoff/<branch>.md`.
 
 ## Hard rules (owner's decisions)
