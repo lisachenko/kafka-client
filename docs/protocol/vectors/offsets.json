@@ -1,13 +1,13 @@
 {
     "api": "offsets",
     "apiKey": 2,
-    "section": "Offsets API (key 2, v0), a.k.a. ListOffset",
-    "description": "Wire vectors of the Offsets API (key 2, v0), a.k.a. ListOffset, replayed by tests/Compliance.",
+    "section": "Offsets API (key 2, v0 and v1), a.k.a. ListOffset",
+    "description": "Wire vectors of the Offsets API (key 2, v0 and v1), a.k.a. ListOffset, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsets.request.v0.latest",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "Offsets request v0 asking for the latest offset (Time = -1) of one partition.",
@@ -36,7 +36,7 @@
         {
             "id": "offsets.response.v0.latest",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "Offsets response v0: the log end offset of the partition after two messages were produced into it.",
@@ -63,7 +63,7 @@
         {
             "id": "offsets.request.v0.earliest-unknown-partition",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "Offsets request v0 asking for the earliest offset (Time = -2) of a partition that the cluster does not host.",
@@ -92,7 +92,7 @@
         {
             "id": "offsets.response.v0.unknown-partition",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "Offsets response v0 with the per-partition error code 3 (UnknownTopicOrPartition) and an empty offset array.",
@@ -110,6 +110,166 @@
                                 "offsets": []
                             }
                         }
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v1.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "Offsets request v1 asking for the latest offset (timestamp = -1) of one partition; the partition entry has no MaxNumberOfOffsets any more.",
+            "hex": "00000045000200010000002900176b61666b612d636c69656e742d74352d766563746f7273ffffffff00000001000a74352d766563746f72730000000100000000ffffffffffffffff",
+            "fields": {
+                "messageSize": 69,
+                "apiKey": 2,
+                "apiVersion": 1,
+                "correlationId": 41,
+                "clientId": "kafka-client-t5-vectors",
+                "replicaId": -1,
+                "topicPartitions": {
+                    "t5-vectors": {
+                        "topic": "t5-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v1.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Offsets response v1 for the latest offset: one offset, the log end offset after five messages, and the timestamp -1, because the broker did not read a message to answer it.",
+            "hex": "0000002e0000002900000001000a74352d766563746f727300000001000000000000ffffffffffffffff0000000000000005",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 41,
+                "topics": {
+                    "t5-vectors": {
+                        "topic": "t5-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 5
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v1.timestamp",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "Offsets request v1 searching for the first message whose timestamp is at or after 1600000001500, which falls between the second and the third message of the log.",
+            "hex": "00000045000200010000002a00176b61666b612d636c69656e742d74352d766563746f7273ffffffff00000001000a74352d766563746f7273000000010000000000000174876e85dc",
+            "fields": {
+                "messageSize": 69,
+                "apiKey": 2,
+                "apiVersion": 1,
+                "correlationId": 42,
+                "clientId": "kafka-client-t5-vectors",
+                "replicaId": -1,
+                "topicPartitions": {
+                    "t5-vectors": {
+                        "topic": "t5-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "timestamp": 1600000001500
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v1.timestamp",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Offsets response v1 of a timestamp search: the offset of the first message at or after the target time, together with that message's own timestamp, which is larger than the one that was asked for.",
+            "hex": "0000002e0000002a00000001000a74352d766563746f72730000000100000000000000000174876e87d00000000000000002",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 42,
+                "topics": {
+                    "t5-vectors": {
+                        "topic": "t5-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": 1600000002000,
+                                "offset": 2
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v1.timestamp-after-last",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Offsets response v1 for a timestamp above the timestamp of every message of the log: the error code is 0 and both the timestamp and the offset are -1, the unknown values.",
+            "hex": "0000002e0000002b00000001000a74352d766563746f727300000001000000000000ffffffffffffffffffffffffffffffff",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 43,
+                "topics": {
+                    "t5-vectors": {
+                        "topic": "t5-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v1.unsupported-for-message-format",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Offsets response v1 of a timestamp search in a topic with message.format.version=0.9.0: the error code 43, UnsupportedForMessageFormat, because a message format v0 log carries no timestamps to search.",
+            "hex": "000000320000002c00000001000e74352d766563746f72732d7630390000000100000000002bffffffffffffffffffffffffffffffff",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 44,
+                "topics": {
+                    "t5-vectors-v09": {
+                        "topic": "t5-vectors-v09",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 43,
+                                "timestamp": -1,
+                                "offset": -1
+                            }
+                        ]
                     }
                 }
             }

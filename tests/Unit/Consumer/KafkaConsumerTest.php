@@ -25,6 +25,7 @@ use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\ConsumerRecord;
@@ -33,11 +34,13 @@ use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Consumer\KafkaConsumer;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
+use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\Consumer\OffsetResetStrategy;
 use Protocol\Kafka\Consumer\RoundRobinAssignor;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
+use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\FakeClient;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\JsonDeserializer;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\RecordingRebalanceListener;
@@ -52,6 +55,7 @@ use Protocol\Kafka\Tests\Unit\Consumer\Fixture\TestKafkaConsumer;
 #[CoversClass(ConsumerCoordinator::class)]
 #[CoversClass(SubscriptionState::class)]
 #[CoversClass(ConsumerRecord::class)]
+#[CoversClass(OffsetAndTimestamp::class)]
 #[CoversClass(ConsumerConfig::class)]
 #[CoversClass(RecordTooLargeException::class)]
 final class KafkaConsumerTest extends TestCase
@@ -395,6 +399,65 @@ final class KafkaConsumerTest extends TestCase
 
         $this->expectException(UnknownTopicOrPartitionException::class);
         $consumer->seekToBeginning(['another-topic' => [0]]);
+    }
+
+    public function testBeginningOffsetsAndEndOffsetsReportTheBoundsOfPartitionsThatAreNotAssigned(): void
+    {
+        $client = $this->clientWithLog([0 => 5, 1 => 2]);
+        $client->logStartOffsets[self::TOPIC][0] = 2;
+
+        // Neither method needs an assignment, exactly as in the Java consumer of Kafka 0.10.1
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+
+        self::assertSame([self::TOPIC => [0 => 2, 1 => 0]], $consumer->beginningOffsets([self::TOPIC => [0, 1]]));
+        self::assertSame([self::TOPIC => [0 => 5, 1 => 2]], $consumer->endOffsets([self::TOPIC => [0, 1]]));
+        self::assertSame(
+            [
+                [self::TOPIC => [0 => OffsetsRequest::EARLIEST, 1 => OffsetsRequest::EARLIEST]],
+                [self::TOPIC => [0 => OffsetsRequest::LATEST, 1 => OffsetsRequest::LATEST]],
+            ],
+            $client->offsetsCalls,
+            'the two special target times of the Offsets api are what the broker is asked for'
+        );
+    }
+
+    public function testBeginningOffsetsAndEndOffsetsOfNothingAskTheBrokerNothing(): void
+    {
+        $client   = $this->clientWithLog([0 => 1]);
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+
+        self::assertSame([], $consumer->beginningOffsets([]));
+        self::assertSame([], $consumer->endOffsets([]));
+        self::assertSame([], $consumer->offsetsForTimes([]));
+        self::assertSame([], $client->offsetsCalls);
+    }
+
+    public function testOffsetsForTimesReturnsTheFirstRecordAtOrAfterTheTimestamp(): void
+    {
+        $client   = $this->clientWithTimestampedLog();
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+
+        $found = $consumer->offsetsForTimes([self::TOPIC => [0 => 1600000001500]]);
+
+        $offsetAndTimestamp = $found[self::TOPIC][0];
+        self::assertInstanceOf(OffsetAndTimestamp::class, $offsetAndTimestamp);
+        self::assertSame(2, $offsetAndTimestamp->offset);
+        self::assertSame(
+            1600000002000,
+            $offsetAndTimestamp->timestamp,
+            'the timestamp of the message that was found, not the one that was searched for'
+        );
+    }
+
+    public function testOffsetsForTimesReportsNullForAPartitionWithoutAMatchingRecord(): void
+    {
+        $client   = $this->clientWithTimestampedLog();
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+
+        // Above the timestamp of every message of the log, which the broker answers with the offset -1 and no error
+        $found = $consumer->offsetsForTimes([self::TOPIC => [0 => 1600000009000]]);
+
+        self::assertNull($found[self::TOPIC][0]);
     }
 
     public function testPausedPartitionIsNotFetchedUntilItIsResumed(): void
@@ -1146,6 +1209,27 @@ final class KafkaConsumerTest extends TestCase
      * @param array<int, int> $partitionRecordCounts Partition id => number of records in it
      * @param int             $firstOffset           Offset of the first record of every partition
      */
+    /**
+     * Builds a client whose only partition holds five records, one second apart, the way a timestamp lookup sees it
+     */
+    private function clientWithTimestampedLog(): FakeClient
+    {
+        $client = new FakeClient();
+        $client->logStartOffsets[self::TOPIC][0] = 0;
+        for ($offset = 0; $offset < 5; $offset++) {
+            $client->log[self::TOPIC][0][] = new Record(
+                'value-' . $offset,
+                null,
+                0,
+                $offset,
+                1600000000000 + $offset * 1000,
+                TimestampType::CREATE_TIME
+            );
+        }
+
+        return $client;
+    }
+
     private function clientWithLog(array $partitionRecordCounts, int $firstOffset = 0): FakeClient
     {
         $client = new FakeClient();

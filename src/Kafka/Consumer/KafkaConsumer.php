@@ -222,6 +222,23 @@ class KafkaConsumer
     }
 
     /**
+     * Get the first offset that is still available in each of the given partitions.
+     *
+     * This is the `beginningOffsets()` of the Java consumer of Kafka 0.10.1: an {@see OffsetsRequest::EARLIEST}
+     * lookup that only reports the offsets and, unlike {@see seekToBeginning()}, moves nothing and needs no
+     * assignment. The offset of a partition whose log was never written to, and of one whose messages have all been
+     * deleted by the retention, is the offset the next produced message will get.
+     *
+     * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to look up
+     *
+     * @return array<string, array<int, int>> [topic: string][partition: int] => first available offset
+     */
+    public function beginningOffsets(array $topicPartitions): array
+    {
+        return $this->listOffsets($topicPartitions, OffsetsRequest::EARLIEST);
+    }
+
+    /**
      * Commit offsets for the assigned list of topics and partitions.
      *
      * Without an argument the current positions of the consumer are committed, which are the offsets of the
@@ -280,6 +297,69 @@ class KafkaConsumer
             $this->requireGroupId(),
             self::normalizeAssignment($topicPartitions)
         );
+    }
+
+    /**
+     * Get the offset the next produced message will get in each of the given partitions.
+     *
+     * This is the `endOffsets()` of the Java consumer of Kafka 0.10.1: an {@see OffsetsRequest::LATEST} lookup that
+     * only reports the offsets and, unlike {@see seekToEnd()}, moves nothing and needs no assignment. The offset is
+     * the high watermark of the partition, i.e. the end of what a consumer is allowed to read, and it is also the
+     * number of messages the partition holds when nothing was ever deleted from it.
+     *
+     * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to look up
+     *
+     * @return array<string, array<int, int>> [topic: string][partition: int] => log end offset
+     */
+    public function endOffsets(array $topicPartitions): array
+    {
+        return $this->listOffsets($topicPartitions, OffsetsRequest::LATEST);
+    }
+
+    /**
+     * Look up the offsets of the given partitions by the timestamps of their messages.
+     *
+     * This is the `offsetsForTimes()` of the Java consumer, which Kafka 0.10.1 added together with version 1 of the
+     * Offsets api (KIP-79): the offset of a partition is the one of the **first message whose own timestamp is at
+     * or after** the timestamp that was searched for, and it comes back with that message's timestamp, which is
+     * therefore usually larger than the one that was asked for. Whether those timestamps are the `CreateTime` of
+     * the producer or the `LogAppendTime` of the broker is the `message.timestamp.type` of the topic.
+     *
+     * A partition that holds no such message - a timestamp above the last message of the log, and any timestamp on
+     * an empty partition - is answered with `null` and no error at all, exactly as in the Java client. A topic whose
+     * `message.format.version` is older than 0.10.0 has no message timestamps to search and makes the broker answer
+     * the error code 43, `UnsupportedForMessageFormat`.
+     *
+     * Nothing is moved by this call: it is a query, and a consumer that wants to read from what it found seeks
+     * there itself.
+     *
+     * ```php
+     * $offsets = $consumer->offsetsForTimes(['my-topic' => [0 => $sinceMs, 1 => $sinceMs]]);
+     * foreach ($offsets as $topic => $partitions) {
+     *     foreach ($partitions as $partition => $found) {
+     *         $consumer->seek($topic, $partition, $found?->offset ?? $consumer->endOffsets([$topic => [$partition]])[$topic][$partition]);
+     *     }
+     * }
+     * ```
+     *
+     * @param array<string, array<int, int>> $timestampsToSearch [topic: string][partition: int] => timestamp in
+     *                                                           milliseconds since the epoch
+     *
+     * @return array<string, array<int, OffsetAndTimestamp|null>> [topic][partition] => offset and the timestamp of
+     *                                                            the message it points at, or null when the
+     *                                                            partition holds no message at or after the time
+     *
+     * @throws TopicPartitionRequestException when a partition was answered with an error code, which is how the
+     *         `UnsupportedForMessageFormatException` of a topic whose `message.format.version` is older than 0.10.0
+     *         arrives
+     */
+    public function offsetsForTimes(array $timestampsToSearch): array
+    {
+        if ($timestampsToSearch === []) {
+            return [];
+        }
+
+        return $this->getClient()->fetchTopicPartitionOffsetsForTimes($timestampsToSearch);
     }
 
     /**
@@ -389,6 +469,9 @@ class KafkaConsumer
     /**
      * Seek to the first available offset of each of the given partitions.
      *
+     * The partitions have to be assigned to this consumer; {@see beginningOffsets()} asks the same question about
+     * any partition of the cluster without moving anything.
+     *
      * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to rewind
      */
     public function seekToBeginning(array $topicPartitions): void
@@ -398,6 +481,9 @@ class KafkaConsumer
 
     /**
      * Seek to the end of each of the given partitions, the offset the next produced message will get.
+     *
+     * The partitions have to be assigned to this consumer; {@see endOffsets()} asks the same question about any
+     * partition of the cluster without moving anything.
      *
      * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to forward
      */
@@ -1043,6 +1129,30 @@ class KafkaConsumer
             'A deserializer has to be an instance of ' . Deserializer::class . ' or the name of a class that '
             . 'implements it, ' . get_debug_type($deserializer) . ' given.'
         );
+    }
+
+    /**
+     * Asks the leaders of the given partitions for one offset each, without touching the position of the consumer
+     *
+     * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to look up
+     * @param int                                         $timestamp       {@see OffsetsRequest::LATEST},
+     *                                                                     {@see OffsetsRequest::EARLIEST} or a
+     *                                                                     timestamp in milliseconds
+     *
+     * @return array<string, array<int, int>> [topic: string][partition: int] => offset
+     */
+    private function listOffsets(array $topicPartitions, int $timestamp): array
+    {
+        if ($topicPartitions === []) {
+            return [];
+        }
+
+        $request = [];
+        foreach (self::normalizePartitionLists($topicPartitions) as $topic => $partitions) {
+            $request[$topic] = array_fill_keys($partitions, $timestamp);
+        }
+
+        return $this->getClient()->fetchTopicPartitionOffsets($request);
     }
 
     /**

@@ -21,8 +21,10 @@ use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\MemberAssignment;
+use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
+use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
@@ -302,20 +304,60 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function fetchTopicPartitionOffsets(array $topicPartitions): array
+    public function fetchTopicPartitionOffsets(array $topicPartitionTimestamps): array
     {
-        $this->offsetsCalls[] = $topicPartitions;
-
         $result = [];
-        foreach ($topicPartitions as $topic => $partitionTimes) {
-            foreach ($partitionTimes as $partition => $time) {
-                $result[$topic][$partition] = $time === OffsetsRequest::EARLIEST
-                    ? $this->logStartOffset($topic, $partition)
-                    : $this->logEndOffset($topic, $partition);
+        foreach ($this->fetchTopicPartitionOffsetsForTimes($topicPartitionTimestamps) as $topic => $partitions) {
+            foreach ($partitions as $partition => $found) {
+                $result[$topic][$partition] = $found?->offset ?? OffsetsResponsePartition::UNKNOWN_OFFSET;
             }
         }
 
         return $result;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function fetchTopicPartitionOffsetsForTimes(array $topicPartitionTimestamps): array
+    {
+        $this->offsetsCalls[] = $topicPartitionTimestamps;
+
+        $result = [];
+        foreach ($topicPartitionTimestamps as $topic => $partitionTimes) {
+            foreach ($partitionTimes as $partition => $time) {
+                $result[$topic][$partition] = match ($time) {
+                    // The two special values never read a message, so the broker answers them without a timestamp
+                    OffsetsRequest::EARLIEST => new OffsetAndTimestamp(
+                        $this->logStartOffset($topic, $partition),
+                        OffsetsResponsePartition::UNKNOWN_TIMESTAMP
+                    ),
+                    OffsetsRequest::LATEST => new OffsetAndTimestamp(
+                        $this->logEndOffset($topic, $partition),
+                        OffsetsResponsePartition::UNKNOWN_TIMESTAMP
+                    ),
+                    default => $this->firstRecordAtOrAfter($topic, $partition, $time),
+                };
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Finds the first record of a partition whose timestamp is at or after the given one, the way a 0.10.1 broker
+     * resolves a timestamp through the time index of the log
+     */
+    private function firstRecordAtOrAfter(string $topic, int $partition, int $timestamp): ?OffsetAndTimestamp
+    {
+        foreach ($this->log[$topic][$partition] ?? [] as $record) {
+            if ($record->timestamp !== null && $record->timestamp >= $timestamp) {
+                return new OffsetAndTimestamp((int) $record->offset, $record->timestamp);
+            }
+        }
+
+        // No message matches, which the broker reports with the offset -1 and no error at all
+        return null;
     }
 
     /**
