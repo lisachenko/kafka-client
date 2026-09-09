@@ -18,9 +18,9 @@ use Exception;
 /**
  * Produce request specified an invalid value for required acks.
  */
-class InvalidRequiredAcksException extends KafkaException
+class InvalidRequiredAcksException extends KafkaException implements ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null)
+    public function __construct(array $context = [], ?Exception $previous = null)
     {
         parent::__construct($context, self::INVALID_REQUIRED_ACKS, $previous);
     }

@@ -17,57 +17,62 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
-use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 
 /**
- * Produce response object
+ * Produce response object, version 1
+ *
+ * <pre>
+ *   ProduceResponse (Version: 1) => [TopicName [Partition ErrorCode Offset]] ThrottleTime
+ *     ThrottleTime => int32
+ * </pre>
+ *
+ * Version 1 of the API added `ThrottleTime` **after** the topics array (`PRODUCE_RESPONSE_V1` in `Protocol.java`
+ * @ 0.9.0.1, `ProducerResponse.writeTo` in `kafka/api/ProducerResponse.scala`): the number of milliseconds the
+ * broker delayed this request because the client exceeded its produce quota. A broker without quotas - the default,
+ * `quota.producer.default` is unlimited - always answers 0.
+ *
+ * The `LogAppendTime` of a partition entry arrived with version 2 (Kafka 0.10.0, message format v1) and does not
+ * exist here. A request with `RequiredAcks = 0` is never answered at all, see
+ * {@see ProduceRequest::expectsResponse()}.
+ *
+ * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
-     * List of broker metadata info
-     *
-     * @var array|ProduceResponsePartition[]
+     * Version of the Produce API that this class decodes the answer of
      */
-    public $topics;
+    public const int VERSION = 1;
 
     /**
-     * Duration in milliseconds for which the request was throttled due to quota violation. (Zero if the request did not violate any quota).
+     * Result for each topic of the request, indexed by the topic name
      *
-     * @var integer
+     * @var array<string, ProduceResponseTopic>
+     */
+    public array $topics = [];
+
+    /**
+     * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
+     *
      * @since Version 1 of protocol
      */
-    public $throttleTime;
+    public int $throttleTime = 0;
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [
-            $self->correlationId,
-            $numberOfTopics,
-        ] = array_values($stream->read('NcorrelationId/NnumberOfTopics'));
-
-        for ($topic = 0; $topic < $numberOfTopics; $topic++) {
-            $topicLength = $stream->read('ntopicLength')['topicLength'];
-            [$topicName, $numberOfPartitions] = array_values($stream->read("a{$topicLength}/NnumberOfPartitions"));
-
-            for ($partition = 0; $partition < $numberOfPartitions; $partition++) {
-                $topicMetadata = ProduceResponsePartition::unpack($stream);
-                $self->topics[$topicName][$topicMetadata->partition] = $topicMetadata;
-            }
-
+        $header = parent::getScheme();
+        $body   = [
+            'topics' => ['topic' => ProduceResponseTopic::class],
+        ];
+        if (static::VERSION >= 1) {
+            $body['throttleTime'] = BinarySchema::TYPE_INT32;
         }
-        $self->throttleTime = $stream->read('NthrottleTime')['throttleTime'];
 
-        return $self;
+        return $header + $body;
     }
 }

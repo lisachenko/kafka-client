@@ -17,8 +17,13 @@ use Exception;
 
 /**
  * The group member's supported protocols are incompatible with those of existing members.
+ *
+ * Listed as INCONSISTENT_PARTITION_ASSIGNMENT_STRATEGY in the comments of kafka/common/ErrorMapping.scala @ 0.9.0.1.
  */
-class InconsistentGroupProtocolException extends KafkaException
+class InconsistentGroupProtocolException extends KafkaException implements ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::INCONSISTENT_GROUP_PROTOCOL, $previous);
+    }
 }

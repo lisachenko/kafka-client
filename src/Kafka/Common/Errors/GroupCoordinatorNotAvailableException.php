@@ -17,8 +17,13 @@ use Exception;
 
 /**
  * The group coordinator is not available.
+ *
+ * Named ConsumerCoordinatorNotAvailableCode (15) in kafka/common/ErrorMapping.scala @ 0.9.0.1.
  */
-class GroupCoordinatorNotAvailableException extends KafkaException implements RetriableException
+class GroupCoordinatorNotAvailableException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::GROUP_COORDINATOR_NOT_AVAILABLE, $previous);
+    }
 }

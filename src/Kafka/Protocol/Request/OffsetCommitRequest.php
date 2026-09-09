@@ -10,101 +10,174 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Protocol\ApiKeys;
-use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV0;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
 
 /**
- * OffsetCommit
+ * OffsetCommit, version 2: the offsets are stored in the `__consumer_offsets` topic of the cluster.
  *
  * This api saves out the consumer's position in the stream for one or more partitions. In the scala API this happens
  * when the consumer calls commit() or in the background if "autocommit" is enabled. This is the position the consumer
  * will pick up from if it crashes before its next commit().
+ *
+ * <pre>
+ *   OffsetCommit Request (Version: 2) => group_id generation_id member_id retention_time [topics]
+ *     group_id       => STRING
+ *     generation_id  => INT32
+ *     member_id      => STRING
+ *     retention_time => INT64
+ *     topics         => topic [partitions]
+ *       topic      => STRING
+ *       partitions => partition offset metadata
+ *         partition => INT32
+ *         offset    => INT64
+ *         metadata  => NULLABLE_STRING
+ * </pre>
+ *
+ * Version 2 replaced the per-partition `timestamp` of version 1 with one `retention_time` for the whole request
+ * (`OFFSET_COMMIT_REQUEST_V2` in `Protocol.java` @ 0.9.0.1). With {@see self::DEFAULT_RETENTION_TIME} the broker
+ * keeps the offsets for `offsets.retention.minutes`, otherwise for the given number of milliseconds counted from
+ * the moment it received the commit, see `KafkaApis.handleOffsetCommitRequest`. A 0.9.0.1 broker asserts that the
+ * version is 0, 1 or 2 and closes the connection on anything above.
+ *
+ * The three versions differ in their scheme, and a scheme is a static property of a class, so each of them has a
+ * class of its own that only lowers {@see OffsetCommitRequest::VERSION}: {@see OffsetCommitRequestV1} and
+ * {@see OffsetCommitRequestV0}. Everything else - the fields, the class names and the way the topic-partitions are
+ * packed - is shared.
+ *
+ * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
-    public const VERSION = 2;
+    public const int API_KEY = ApiKeys::OFFSET_COMMIT;
 
     /**
-     * @param string $consumerGroup
-     * @param int $generationId
-     * @param string $memberName
-     * @param int $retentionTime
+     * Generation id for a consumer that is not a member of a group.
+     *
+     * A consumer that joined a group through the JoinGroup api (key 11, Kafka 0.9) has to commit with the generation
+     * the coordinator assigned to it, otherwise the commit is refused with the error code 22 (IllegalGeneration).
+     */
+    public const int DEFAULT_GENERATION_ID = -1;
+
+    /**
+     * Consumer id of a consumer that is not a member of a group: empty, and never null.
+     */
+    public const string DEFAULT_MEMBER_NAME = '';
+
+    /**
+     * Asks the broker to keep the offsets for `offsets.retention.minutes` instead of a retention of its own.
+     *
+     * @since Version 2 of protocol
+     */
+    public const int DEFAULT_RETENTION_TIME = -1;
+
+    /**
+     * @inheritdoc
+     */
+    public const int VERSION = 2;
+
+    /**
+     * Offsets to commit, indexed by the topic they belong to.
+     *
+     * @var array<string, OffsetCommitRequestTopic>
+     */
+    protected readonly array $topicPartitions;
+
+    /**
+     * A value of the `$topicPartitions` map is either a plain offset, an {@see OffsetAndMetadata} or an already
+     * built {@see OffsetCommitRequestPartition}.
+     *
+     * @param string $consumerGroup   The consumer group id
+     * @param int    $generationId    The generation of the group, {@see self::DEFAULT_GENERATION_ID} without one
+     * @param string $memberName      The member id assigned by the coordinator, empty without one
+     * @param int    $retentionTime   How long to keep the offsets, {@see self::DEFAULT_RETENTION_TIME} for the
+     *                                retention configured on the broker
+     * @param array<string, array<int, int|OffsetAndMetadata|OffsetCommitRequestPartition>> $topicPartitions Offsets
+     * @param string $clientId        Unique client identifier
+     * @param int    $correlationId   Correlated request id
      */
     public function __construct(
         /**
          * The consumer group id.
          */
-        private $consumerGroup,
+        protected readonly string $consumerGroup,
         /**
          * The generation of the group.
          *
          * @since Version 1 of protocol
          */
-        private $generationId,
+        protected readonly int $generationId,
         /**
          * The member id assigned by the group coordinator.
          *
          * @since Version 1 of protocol
          */
-        private $memberName,
+        protected readonly string $memberName,
         /**
          * Time period in ms to retain the offset.
          *
          * @since Version 2 of protocol
          */
-        private $retentionTime,
-        private readonly array $topicPartitions,
-        $clientId = '',
-        $correlationId = 0
+        protected readonly int $retentionTime,
+        array $topicPartitions,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
+        $topicClass            = static::topicClass();
+        $packedTopicPartitions = [];
+        foreach ($topicPartitions as $topic => $partitions) {
+            $packedTopicPartitions[$topic] = $partitions instanceof OffsetCommitRequestTopic
+                ? $partitions
+                : new $topicClass((string) $topic, $partitions);
+        }
+        $this->topicPartitions = $packedTopicPartitions;
 
-        parent::__construct(ApiKeys::OFFSET_COMMIT, $clientId, $correlationId);
+        parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload      = parent::packPayload();
-        $groupLength  = strlen($this->consumerGroup);
-        $memberLength = strlen($this->memberName);
-        $totalTopics  = count($this->topicPartitions);
-
-        $payload .= pack(
-            "na{$groupLength}Nna{$memberLength}JN",
-            $groupLength,
-            $this->consumerGroup,
-            $this->generationId,
-            $memberLength,
-            $this->memberName,
-            $this->retentionTime,
-            $totalTopics
-        );
-
-        foreach ($this->topicPartitions as $topic => $partitions) {
-            $topicLength = strlen($topic);
-            $payload    .= pack("na{$topicLength}N", $topicLength, $topic, count($partitions));
-            /** @var OffsetCommitResponsePartition $partition */
-            foreach ($partitions as $partitionId => $partition) {
-                if (!is_object($partition)) {
-                    // short-cut to store only offsetst, in this case $partition is offset
-                    $partition = OffsetCommitResponsePartition::fromPartitionOffset($partitionId, $partition);
-                }
-                $payload .= (string) $partition;
-            }
+        $header = parent::getScheme();
+        $body   = [
+            'consumerGroup' => BinarySchema::TYPE_STRING,
+        ];
+        if (static::VERSION >= 1) {
+            $body['generationId'] = BinarySchema::TYPE_INT32;
+            $body['memberName']   = BinarySchema::TYPE_STRING;
         }
+        if (static::VERSION >= 2) {
+            $body['retentionTime'] = BinarySchema::TYPE_INT64;
+        }
+        $body['topicPartitions'] = ['topic' => static::topicClass()];
 
-        return $payload;
+        return $header + $body;
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this class sends
+     *
+     * @return class-string<OffsetCommitRequestTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return match (true) {
+            static::VERSION >= 2  => OffsetCommitRequestTopic::class,
+            static::VERSION === 1 => OffsetCommitRequestTopicV1::class,
+            default               => OffsetCommitRequestTopicV0::class,
+        };
     }
 }

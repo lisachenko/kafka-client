@@ -10,40 +10,40 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 14.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
-use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\AbstractProtocolMessage;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Leave group response
+ * LeaveGroup response, version 0.
+ *
+ * <pre>
+ *   LeaveGroup Response (Version: 0) => error_code
+ *     error_code => INT16
+ * </pre>
+ *
+ * A member id the coordinator does not know - because the member was already removed, or because the group does not
+ * exist at all - is answered with the error code 25 (UnknownMemberId).
+ *
+ * @see docs/protocol/0.9.0.md, section "LeaveGroup API (key 13, v0)"
  */
 class LeaveGroupResponse extends AbstractResponse
 {
     /**
      * Error code.
-     *
-     * @var integer
      */
-    public $errorCode;
+    public int $errorCode;
 
     /**
-     * Method to unpack the payload for the record
-     *
-     * @param AbstractProtocolMessage|static $self   Instance of current frame
-     * @param Stream $stream Binary data
-     *
-     * @return AbstractProtocolMessage
+     * @inheritdoc
      */
-    protected static function unpackPayload(AbstractProtocolMessage $self, Stream $stream): AbstractProtocolMessage
+    public static function getScheme(): array
     {
-        [$self->correlationId, $self->errorCode] = array_values($stream->read('NcorrelationId/nerrorCode'));
+        $header = parent::getScheme();
 
-        return $self;
+        return $header + [
+            'errorCode' => BinarySchema::TYPE_INT16,
+        ];
     }
 }

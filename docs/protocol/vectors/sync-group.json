@@ -1,0 +1,89 @@
+{
+    "api": "sync-group",
+    "apiKey": 14,
+    "section": "SyncGroup API (key 14, v0)",
+    "description": "Wire vectors of the SyncGroup API (key 14, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "syncgroup.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "SyncGroup request v0 of the leader of the group, which carries the assignment of every member as opaque bytes.",
+            "hex": "0000009a000e00000000002b00027433001074332d766563746f72732d67726f757000000001002774332d30363966346231342d363837382d343037652d613730382d61393238386361386232353100000001002774332d30363966346231342d363837382d343037652d613730382d6139323838636138623235310000001e000000000001000a74332d766563746f72730000000100000000ffffffff",
+            "fields": {
+                "messageSize": 154,
+                "apiKey": 14,
+                "apiVersion": 0,
+                "correlationId": 43,
+                "clientId": "t3",
+                "consumerGroup": "t3-vectors-group",
+                "generationId": 1,
+                "memberId": "t3-069f4b14-6878-407e-a708-a9288ca8b251",
+                "groupAssignments": {
+                    "t3-069f4b14-6878-407e-a708-a9288ca8b251": {
+                        "memberId": "t3-069f4b14-6878-407e-a708-a9288ca8b251",
+                        "assignment": {
+                            "$bytes": "000000000001000a74332d766563746f72730000000100000000ffffffff"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "SyncGroup answer with the assignment of the member that sent the request.",
+            "hex": "000000280000002b00000000001e000000000001000a74332d766563746f72730000000100000000ffffffff",
+            "fields": {
+                "messageSize": 40,
+                "correlationId": 43,
+                "errorCode": 0,
+                "memberAssignment": {
+                    "$bytes": "000000000001000a74332d766563746f72730000000100000000ffffffff"
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v0.illegal-generation",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "SyncGroup request v0 that names a generation of the group that is over.",
+            "hex": "0000004f000e00000000002f00027433001074332d766563746f72732d67726f75700000000b002774332d30363966346231342d363837382d343037652d613730382d61393238386361386232353100000000",
+            "fields": {
+                "messageSize": 79,
+                "apiKey": 14,
+                "apiVersion": 0,
+                "correlationId": 47,
+                "clientId": "t3",
+                "consumerGroup": "t3-vectors-group",
+                "generationId": 11,
+                "memberId": "t3-069f4b14-6878-407e-a708-a9288ca8b251",
+                "groupAssignments": []
+            }
+        },
+        {
+            "id": "syncgroup.response.v0.illegal-generation",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "SyncGroup answer for a generation that is not the current one: the error code 22 and an empty assignment.",
+            "hex": "0000000a0000002f001600000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 47,
+                "errorCode": 22,
+                "memberAssignment": {
+                    "$bytes": ""
+                }
+            }
+        }
+    ]
+}

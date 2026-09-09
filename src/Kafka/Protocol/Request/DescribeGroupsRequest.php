@@ -10,51 +10,70 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 28.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * DescribeGroups Request
+ * This API describes the groups that the broker it is sent to is the coordinator of.
  *
- * This API can be used to describe the current groups managed by a broker. To get a list of all groups in the cluster, you
- * must send DescribeGroups to all brokers.
+ * A group has to be asked from its own coordinator ({@see GroupCoordinatorRequest}): another broker answers the
+ * group with the error code 16 (NotCoordinatorForGroup) and an empty description. An empty group array is legal and
+ * is answered with an empty group array.
+ *
+ * <pre>
+ *   DescribeGroupsRequest => [GroupId]
+ *     GroupId => string
+ * </pre>
+ *
+ * @see docs/protocol/0.9.0.md, section "DescribeGroups API (key 15, v0)"
  */
 class DescribeGroupsRequest extends AbstractRequest
 {
     /**
-     * {@inheritdoc}
+     * @inheritdoc
      */
-    public function __construct(/**
-     * List of groups to describe
+    public const int API_KEY = ApiKeys::DESCRIBE_GROUPS;
+
+    /**
+     * @inheritdoc
      */
-        private readonly array $groups,
-        $clientId = '',
-        $correlationId = 0
+    public const int VERSION = 0;
+
+    /**
+     * @param list<string> $groups        Groups to describe, an empty list is answered with an empty description
+     * @param string       $clientId      A user specified identifier for the client making the request
+     * @param int          $correlationId A user-supplied value that the broker passes back unmodified
+     */
+    public function __construct(
+        protected array $groups,
+        string $clientId = '',
+        int $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::DESCRIBE_GROUPS, $clientId, $correlationId);
+        parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
     /**
-     * @inheritDoc
-     * DescribeGroupsRequest => [GroupId]
-     *   GroupId => string
+     * @inheritdoc
      */
-    protected function packPayload(): string
+    public static function getScheme(): array
     {
-        $payload      = parent::packPayload();
-        $payload .= pack('N', count($this->groups));
+        $header = parent::getScheme();
 
-        foreach ($this->groups as $group) {
-            $groupLength = strlen($group);
-            $payload .= pack("na{$groupLength}", $groupLength, $group);
-        }
+        return $header + [
+            'groups' => [BinarySchema::TYPE_STRING],
+        ];
+    }
 
-        return $payload;
+    /**
+     * Returns the groups this request asks the description of
+     *
+     * @return list<string>
+     */
+    public function getGroups(): array
+    {
+        return $this->groups;
     }
 }

@@ -18,7 +18,10 @@ use Exception;
 /**
  * Not authorized to access topics
  */
-class TopicAuthorizationFailedException extends KafkaException
+class TopicAuthorizationFailedException extends KafkaException implements ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::TOPIC_AUTHORIZATION_FAILED, $previous);
+    }
 }

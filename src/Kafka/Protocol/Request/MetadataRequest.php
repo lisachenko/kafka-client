@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
  * This API answers the following questions:
@@ -37,49 +38,61 @@ use Protocol\Kafka\Protocol\ApiKeys;
  *
  * Note: If "auto.create.topics.enable" is set in the broker configuration, a topic metadata request will create the
  * topic with the default replication factor and number of partitions.
+ *
+ * <pre>
+ *   TopicMetadataRequest => [TopicName]
+ *     TopicName => string
+ * </pre>
+ *
+ * In version 0 of this API the topic array is not nullable: an EMPTY array asks for every topic of the cluster.
+ * The nullable array of the later protocol lines arrived with version 1 (Kafka 0.10.0).
+ *
+ * @see docs/protocol/0.9.0.md, section "Metadata API (key 3, v0)"
  */
 class MetadataRequest extends AbstractRequest
 {
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
-    public const VERSION = 2;
+    public const int API_KEY = ApiKeys::METADATA;
 
-    public function __construct(/**
-     * An array of topics to fetch metadata for. If no topics are specified fetch metadata for all topics.
+    /**
+     * @inheritdoc
      */
+    public const int VERSION = 0;
+
+    /**
+     * @param list<string> $topics        Topics to fetch the metadata for, empty asks for every topic
+     * @param string       $clientId      A user specified identifier for the client making the request
+     * @param int          $correlationId A user-supplied value that the broker passes back unmodified
+     */
+    public function __construct(
         protected array $topics = [],
-        $clientId = '',
-        $correlationId = 0
+        string $clientId = '',
+        int $correlationId = 0
     ) {
-        parent::__construct(ApiKeys::METADATA, $clientId, $correlationId);
+        parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
     /**
-     * @return array
+     * @inheritdoc
+     */
+    public static function getScheme(): array
+    {
+        $header = parent::getScheme();
+
+        return $header + [
+            'topics' => [BinarySchema::TYPE_STRING],
+        ];
+    }
+
+    /**
+     * Returns the list of topics this request asks the metadata for, empty means "every topic"
+     *
+     * @return list<string>
      */
     public function getTopics(): array
     {
-        return explode(' ', $this->topics);
-    }
-
-    /**
-     * @inheritDoc
-     */
-    protected function packPayload(): string
-    {
-        $payload = parent::packPayload();
-
-        $totalTopics = count($this->topics);
-        if ($totalTopics === 0) {
-            $totalTopics = -1; // Since v1 we should use null for special value
-        }
-        $payload .= pack('N', $totalTopics);
-        foreach ($this->topics as $topic) {
-            $length = strlen($topic);
-            $payload .= pack("na{$length}", $length, $topic);
-        }
-
-        return $payload;
+        return $this->topics;
     }
 }

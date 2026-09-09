@@ -10,94 +10,98 @@
  */
 
 declare(strict_types=1);
-/**
- * @author Alexander.Lisachenko
- * @date 28.07.2016
- */
 
 namespace Protocol\Kafka\Protocol\Data;
 
-use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * DescribeGroup metadata DTO
+ * Description of a single group, as reported by the DescribeGroups API
+ *
+ * <pre>
+ *   DescribeGroupResponseMetadata => ErrorCode GroupId State ProtocolType Protocol [Members]
+ *     ErrorCode    => int16
+ *     GroupId      => string
+ *     State        => string
+ *     ProtocolType => string
+ *     Protocol     => string
+ *     Members      => MemberId ClientId ClientHost MemberMetadata MemberAssignment
+ * </pre>
+ *
+ * The state is one of the constants below; `kafka/coordinator/GroupMetadata.scala` @ 0.9.0.1 defines exactly the
+ * four states, and the coordinator answers a group it does not know with {@see self::STATE_DEAD} and the error
+ * code 0, not with an error - a group only exists while it has members or committed offsets.
+ *
+ * @see docs/protocol/0.9.0.md, section "DescribeGroups API (key 15, v0)"
  */
-class DescribeGroupResponseMetadata
+class DescribeGroupResponseMetadata implements BinarySchemaInterface
 {
     /**
-     * Error code for the group
-     *
-     * @var integer
+     * The coordinator is collecting the members of the group and waits for their JoinGroup requests
      */
-    public $errorCode;
+    public const string STATE_PREPARING_REBALANCE = 'PreparingRebalance';
+
+    /**
+     * Every member has joined and the coordinator waits for the SyncGroup request of the leader
+     */
+    public const string STATE_AWAITING_SYNC = 'AwaitingSync';
+
+    /**
+     * The members have their assignment and only send heartbeats
+     */
+    public const string STATE_STABLE = 'Stable';
+
+    /**
+     * The group has no members left, or the coordinator has never heard of it
+     */
+    public const string STATE_DEAD = 'Dead';
+
+    /**
+     * Error code for the group
+     */
+    public int $errorCode;
 
     /**
      * Name of the group
-     *
-     * @var string
      */
-    public $groupId;
+    public string $groupId;
 
     /**
-     * The current state of the group
-     * (one of: Dead, Stable, AwaitingSync, or PreparingRebalance, or empty if there is no active group)
-     *
-     * @var string
+     * The current state of the group, one of the `STATE_*` constants, or an empty string when the broker that
+     * answered is not the coordinator of the group and therefore knows nothing about it
      */
-    public $state;
+    public string $state;
 
     /**
-     * The current group protocol type (will be empty if there is no active group)
-     *
-     * @var string
+     * The current group protocol type (empty if there is no active group), `consumer` for a consumer group
      */
-    public $protocolType;
+    public string $protocolType;
 
     /**
-     * The current group protocol (only provided if the group is Stable)
-     *
-     * @var string
+     * The current group protocol, i.e. the assignor the members agreed on (only provided if the group is stable)
      */
-    public $protocol;
+    public string $protocol;
 
     /**
-     * Current group members (only provided if the group is not Dead)
+     * Current group members, indexed by the member id (only provided if the group is not dead)
      *
-     * @var array
+     * @var array<string, DescribeGroupResponseMember>
      */
-    public $members = [];
+    public array $members = [];
 
     /**
-     * Unpacks the DTO from the binary buffer
-     *
-     * @param Stream $stream Binary buffer
-     *
-     * @return static
-     *
-     * DescibeGroupMetadata => error_code group_id state protocol_type protocol [members]
-     *   error_code => INT16
-     *   group_id => STRING
-     *   state => STRING
-     *   protocol_type => STRING
-     *   protocol => STRING
-     *   members => member_id client_id client_host member_metadata member_assignment
+     * @inheritdoc
      */
-    public static function unpack(Stream $stream): static
+    public static function getScheme(): array
     {
-        $groupMetadata = new static();
-
-        $groupMetadata->errorCode    = $stream->read('nerrorCode')['errorCode'];
-        $groupMetadata->groupId      = $stream->readString();
-        $groupMetadata->state        = $stream->readString();
-        $groupMetadata->protocolType = $stream->readString();
-        $groupMetadata->protocol     = $stream->readString();
-
-        $membersCount = $stream->read('NmembersCount')['membersCount'];
-        for ($memberIndex = 0; $memberIndex < $membersCount; $memberIndex++) {
-            $member = DescribeGroupResponseMember::unpack($stream);
-            $groupMetadata->members[$member->memberId] = $member;
-        }
-
-        return $groupMetadata;
+        return [
+            'errorCode'    => BinarySchema::TYPE_INT16,
+            'groupId'      => BinarySchema::TYPE_STRING,
+            'state'        => BinarySchema::TYPE_STRING,
+            'protocolType' => BinarySchema::TYPE_STRING,
+            'protocol'     => BinarySchema::TYPE_STRING,
+            'members'      => ['memberId' => DescribeGroupResponseMember::class],
+        ];
     }
 }

@@ -17,8 +17,13 @@ use Exception;
 
 /**
  * Specified group generation id is not valid.
+ *
+ * Listed as IllegalConsumerGeneration in the comments of kafka/common/ErrorMapping.scala @ 0.9.0.1.
  */
-class IllegalGenerationException extends KafkaException
+class IllegalGenerationException extends KafkaException implements ServerExceptionInterface
 {
-    public function __construct(array $context, ?Exception $previous = null) {}
+    public function __construct(array $context = [], ?Exception $previous = null)
+    {
+        parent::__construct($context, self::ILLEGAL_GENERATION, $previous);
+    }
 }
