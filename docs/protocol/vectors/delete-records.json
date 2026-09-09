@@ -11,16 +11,16 @@
             "version": 0,
             "source": "broker",
             "description": "DeleteRecords request v0 that deletes the records below the offset 2 of the single partition of a topic, waiting up to 30 seconds for the new low watermark.",
-            "hex": "000000380015000000000015000a74352d766563746f727300000001000a74352d766563746f72730000000100000000000000000000000200007530",
+            "hex": "0000003c0015000000000015000874352d61646d696e00000001001074352d61646d696e2d766563746f72730000000100000000000000000000000200007530",
             "fields": {
-                "messageSize": 56,
+                "messageSize": 60,
                 "apiKey": 21,
                 "apiVersion": 0,
                 "correlationId": 21,
-                "clientId": "t5-vectors",
+                "clientId": "t5-admin",
                 "topics": {
-                    "t5-vectors": {
-                        "topic": "t5-vectors",
+                    "t5-admin-vectors": {
+                        "topic": "t5-admin-vectors",
                         "partitions": [
                             {
                                 "partition": 0,
@@ -39,14 +39,14 @@
             "version": 0,
             "source": "broker",
             "description": "DeleteRecords response v0 of the leader: the error code 0 and the new low watermark 2, the offset of the first record that is still readable.",
-            "hex": "0000002a000000150000000000000001000a74352d766563746f7273000000010000000000000000000000020000",
+            "hex": "00000030000000150000000000000001001074352d61646d696e2d766563746f7273000000010000000000000000000000020000",
             "fields": {
-                "messageSize": 42,
+                "messageSize": 48,
                 "correlationId": 21,
                 "throttleTimeMs": 0,
                 "topics": {
-                    "t5-vectors": {
-                        "topic": "t5-vectors",
+                    "t5-admin-vectors": {
+                        "topic": "t5-admin-vectors",
                         "partitions": [
                             {
                                 "partition": 0,
@@ -65,16 +65,16 @@
             "version": 0,
             "source": "broker",
             "description": "DeleteRecords request v0 with the offset 100, which is above the high watermark of the partition.",
-            "hex": "000000380015000000000016000a74352d766563746f727300000001000a74352d766563746f72730000000100000000000000000000006400007530",
+            "hex": "0000003c0015000000000016000874352d61646d696e00000001001074352d61646d696e2d766563746f72730000000100000000000000000000006400007530",
             "fields": {
-                "messageSize": 56,
+                "messageSize": 60,
                 "apiKey": 21,
                 "apiVersion": 0,
                 "correlationId": 22,
-                "clientId": "t5-vectors",
+                "clientId": "t5-admin",
                 "topics": {
-                    "t5-vectors": {
-                        "topic": "t5-vectors",
+                    "t5-admin-vectors": {
+                        "topic": "t5-admin-vectors",
                         "partitions": [
                             {
                                 "partition": 0,
@@ -93,14 +93,14 @@
             "version": 0,
             "source": "broker",
             "description": "DeleteRecords response v0 for an offset above the high watermark: the error code 1 (OffsetOutOfRange) and the low watermark -1, which is INVALID_LOW_WATERMARK.",
-            "hex": "0000002a000000160000000000000001000a74352d766563746f72730000000100000000ffffffffffffffff0001",
+            "hex": "00000030000000160000000000000001001074352d61646d696e2d766563746f72730000000100000000ffffffffffffffff0001",
             "fields": {
-                "messageSize": 42,
+                "messageSize": 48,
                 "correlationId": 22,
                 "throttleTimeMs": 0,
                 "topics": {
-                    "t5-vectors": {
-                        "topic": "t5-vectors",
+                    "t5-admin-vectors": {
+                        "topic": "t5-admin-vectors",
                         "partitions": [
                             {
                                 "partition": 0,
@@ -119,16 +119,16 @@
             "version": 0,
             "source": "broker",
             "description": "DeleteRecords request v0 for a topic that the cluster does not have.",
-            "hex": "0000003e0015000000000017000a74352d766563746f727300000001001074352d6e6f2d737563682d746f7069630000000100000000000000000000000100007530",
+            "hex": "000000420015000000000017000874352d61646d696e00000001001674352d61646d696e2d6e6f2d737563682d746f7069630000000100000000000000000000000100007530",
             "fields": {
-                "messageSize": 62,
+                "messageSize": 66,
                 "apiKey": 21,
                 "apiVersion": 0,
                 "correlationId": 23,
-                "clientId": "t5-vectors",
+                "clientId": "t5-admin",
                 "topics": {
-                    "t5-no-such-topic": {
-                        "topic": "t5-no-such-topic",
+                    "t5-admin-no-such-topic": {
+                        "topic": "t5-admin-no-such-topic",
                         "partitions": [
                             {
                                 "partition": 0,
@@ -147,14 +147,14 @@
             "version": 0,
             "source": "broker",
             "description": "DeleteRecords response v0 for an unknown topic: the error code 3 (UnknownTopicOrPartition) per requested partition, and the topic is not created by the request.",
-            "hex": "00000030000000170000000000000001001074352d6e6f2d737563682d746f7069630000000100000000ffffffffffffffff0003",
+            "hex": "00000036000000170000000000000001001674352d61646d696e2d6e6f2d737563682d746f7069630000000100000000ffffffffffffffff0003",
             "fields": {
-                "messageSize": 48,
+                "messageSize": 54,
                 "correlationId": 23,
                 "throttleTimeMs": 0,
                 "topics": {
-                    "t5-no-such-topic": {
-                        "topic": "t5-no-such-topic",
+                    "t5-admin-no-such-topic": {
+                        "topic": "t5-admin-no-such-topic",
                         "partitions": [
                             {
                                 "partition": 0,

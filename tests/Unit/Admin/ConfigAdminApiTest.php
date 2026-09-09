@@ -47,7 +47,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 #[CoversClass(Client::class)]
 final class ConfigAdminApiTest extends TestCase
 {
-    private const string TOPIC = 't5-vectors';
+    private const string TOPIC = 't5-admin-vectors';
 
     private const string BOOTSTRAP_ADDRESS = 'tcp://bootstrap:9092';
 
