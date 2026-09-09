@@ -27,8 +27,8 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
-use Protocol\Kafka\Protocol\Request\FetchRequest;
-use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\FetchRequestV1;
+use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -41,8 +41,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  *
  * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0)" and "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
-#[CoversClass(FetchRequest::class)]
-#[CoversClass(FetchResponse::class)]
+#[CoversClass(FetchRequestV1::class)]
+#[CoversClass(FetchResponseV1::class)]
 #[CoversClass(FetchRequestTopic::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
 #[CoversClass(FetchResponseTopic::class)]
@@ -391,7 +391,7 @@ final class FetchOffsetsTest extends IntegrationTestCase
             $maxWaitTime,
             $minBytes
         ): FetchResponsePartition {
-            new FetchRequest(
+            new FetchRequestV1(
                 [$topic => [self::PARTITION => $fetchOffset]],
                 $maxWaitTime,
                 $minBytes,
@@ -401,7 +401,7 @@ final class FetchOffsetsTest extends IntegrationTestCase
                 11
             )->writeTo($stream);
 
-            $response = FetchResponse::unpack($stream);
+            $response = FetchResponseV1::unpack($stream);
             self::assertSame(11, $response->getCorrelationId());
             self::assertArrayHasKey($topic, $response->topics);
 

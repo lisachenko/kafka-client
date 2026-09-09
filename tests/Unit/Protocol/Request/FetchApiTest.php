@@ -25,21 +25,33 @@ use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV0;
+use Protocol\Kafka\Protocol\Request\FetchRequestV1;
+use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV0;
+use Protocol\Kafka\Protocol\Request\FetchResponseV1;
+use Protocol\Kafka\Protocol\Request\FetchResponseV2;
 
 /**
- * Byte-exact tests for the Fetch API v0.
+ * Byte-exact tests for the Fetch API, versions 0 to 3.
  *
  * <pre>
- *   FetchRequest  => ReplicaId MaxWaitTime MinBytes [TopicName [Partition FetchOffset MaxBytes]]
- *   FetchResponse => [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet]]
+ *   FetchRequest v0, v1, v2 => ReplicaId MaxWaitTime MinBytes [TopicName [Partition FetchOffset MaxBytes]]
+ *   FetchRequest v3         => ReplicaId MaxWaitTime MinBytes MaxBytes [TopicName [Partition FetchOffset MaxBytes]]
+ *   FetchResponse v0        => [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet]]
+ *   FetchResponse v1 to v3  => ThrottleTimeMs [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0)" and "MessageSet and Message"
+ * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 to v3)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
+#[CoversClass(FetchRequestV2::class)]
+#[CoversClass(FetchRequestV1::class)]
+#[CoversClass(FetchRequestV0::class)]
 #[CoversClass(FetchResponse::class)]
+#[CoversClass(FetchResponseV2::class)]
+#[CoversClass(FetchResponseV1::class)]
+#[CoversClass(FetchResponseV0::class)]
 #[CoversClass(FetchRequestTopic::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
 #[CoversClass(FetchResponseTopic::class)]
@@ -47,24 +59,45 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV0;
 final class FetchApiTest extends TestCase
 {
     /**
-     * Fetch request v1 for one topic and two of its partitions, client id "test", correlation id 1.
+     * Fetch request v3 for one topic and two of its partitions, client id "test", correlation id 1.
      *
-     *   Size          => 00 00 00 49 (73 bytes)
+     *   Size          => 00 00 00 4d (77 bytes)
      *   ApiKey        => 00 01
-     *   ApiVersion    => 00 01
+     *   ApiVersion    => 00 03
      *   CorrelationId => 00 00 00 01
      *   ClientId      => 00 04 "test"
      *   ReplicaId     => ff ff ff ff (-1, an ordinary consumer)
      *   MaxWaitTime   => 00 00 00 64 (100 ms)
      *   MinBytes      => 00 00 00 01
+     *   MaxBytes      => 00 10 00 00 (1 MiB for the whole answer, since v3)
      *   [TopicName]   => 00 00 00 01, 00 05 "topic"
      *     [Partition] => 00 00 00 02
      *       0 => FetchOffset 0,  MaxBytes 1024
      *       1 => FetchOffset 42, MaxBytes 1024
      */
-    private const string FETCH_REQUEST_HEX = '00000049'
+    private const string FETCH_REQUEST_HEX = '0000004d'
         . '0001'
+        . '0003'
+        . '00000001'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00000064'
+        . '00000001'
+        . '00100000'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000002'
+        . '00000000' . '0000000000000000' . '00000400'
+        . '00000001' . '000000000000002a' . '00000400';
+
+    /**
+     * The same request without the request-level MaxBytes, which is what the versions 0 to 2 send
+     *
+     *   Size => 00 00 00 49 (73 bytes), ApiVersion => 00 02
+     */
+    private const string FETCH_REQUEST_V2_HEX = '00000049'
         . '0001'
+        . '0002'
         . '00000001'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -100,10 +133,52 @@ final class FetchApiTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new FetchRequest(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1);
+        $request = new FetchRequest(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
 
         self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
-        self::assertSame(73, $request->getMessageSize());
+        self::assertSame(77, $request->getMessageSize());
+    }
+
+    public function testTheRequestLevelMaxBytesDefaultsToTheFiftyMegabytesOfTheJavaConsumer(): void
+    {
+        $request = new FetchRequest(['topic' => [0 => 0]], 100, 1, 1024, -1, 'test', 1);
+
+        self::assertSame(52428800, FetchRequest::DEFAULT_MAX_BYTES);
+        // 00 03 20 00 00 = the 50 MiB of `fetch.max.bytes` behind MinBytes
+        self::assertStringContainsString('00000001' . '03200000' . '00000001' . '0005746f706963', bin2hex((string) $request));
+    }
+
+    public function testTheOrderOfTheRequestedPartitionsIsKept(): void
+    {
+        // The broker fills the answer of a v3 request in the order of its partitions until MaxBytes are used up,
+        // so a consumer that rotates them relies on this order reaching the wire unchanged
+        $request = new FetchRequest(['topic' => [1 => 42, 0 => 0]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        self::assertStringEndsWith(
+            '00000002'
+            . '00000001' . '000000000000002a' . '00000400'
+            . '00000000' . '0000000000000000' . '00000400',
+            bin2hex((string) $request)
+        );
+    }
+
+    public function testVersion2RequestIsTheVersionOneFrameWithAnotherApiVersion(): void
+    {
+        $request = new FetchRequestV2(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1);
+
+        // Version 2 is the statement "I understand message format v1" and nothing else: the frame is the one of
+        // version 1, without the request-level MaxBytes that version 3 added
+        self::assertSame(self::FETCH_REQUEST_V2_HEX, bin2hex((string) $request));
+        self::assertSame(2, $request->getApiVersion());
+        self::assertArrayNotHasKey('maxBytes', FetchRequestV2::getScheme());
+    }
+
+    public function testVersion1RequestIsTheVersionTwoFrameWithAnotherApiVersion(): void
+    {
+        $request = new FetchRequestV1(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1);
+
+        self::assertSame(substr_replace(self::FETCH_REQUEST_V2_HEX, '0001', 12, 4), bin2hex((string) $request));
+        self::assertSame(1, $request->getApiVersion());
     }
 
     public function testRequestAcceptsStructuredTopicPartitions(): void
@@ -118,7 +193,8 @@ final class FetchApiTest extends TestCase
             1024,
             -1,
             'test',
-            1
+            1,
+            1048576
         );
 
         self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
@@ -128,9 +204,10 @@ final class FetchApiTest extends TestCase
     {
         $request = new FetchRequestV0(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1);
 
-        // The very same bytes, with the api version 0 in the header: the body of the request did not change in v1
+        // The very same bytes, with the api version 0 in the header: the body of the request did not change until
+        // version 3 added the request-level MaxBytes
         self::assertSame(
-            substr_replace(self::FETCH_REQUEST_HEX, '0000', 12, 4),
+            substr_replace(self::FETCH_REQUEST_V2_HEX, '0000', 12, 4),
             bin2hex((string) $request)
         );
         self::assertSame(0, $request->getApiVersion());
@@ -140,9 +217,15 @@ final class FetchApiTest extends TestCase
     {
         $scheme = FetchRequest::getScheme();
 
+        // The request-level MaxBytes of v3 stands between MinBytes and the topics; the IsolationLevel of v4 and the
+        // LogStartOffset of v5 belong to Kafka 0.11 and are absent
+        self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'topicPartitions'],
+            array_keys($scheme)
+        );
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'topicPartitions'],
-            array_keys($scheme)
+            array_keys(FetchRequestV2::getScheme())
         );
         self::assertSame(['topic' => FetchRequestTopic::class], $scheme['topicPartitions']);
         self::assertSame(
@@ -257,6 +340,23 @@ final class FetchApiTest extends TestCase
 
         self::assertSame(250, $response->throttleTimeMs);
         self::assertSame(['topic'], array_keys($response->topics));
+    }
+
+    public function testTheAnswerOfTheVersions1To3IsTheSameFrame(): void
+    {
+        $frame = self::responseFrame(self::MESSAGE_SET_HEX, 0, 0, 2);
+
+        foreach ([FetchResponse::class, FetchResponseV2::class, FetchResponseV1::class] as $responseClass) {
+            $response = $responseClass::unpack(new StringStream($frame));
+
+            self::assertSame(
+                ['messageSize', 'correlationId', 'throttleTimeMs', 'topics'],
+                array_keys($responseClass::getScheme()),
+                "{$responseClass} reads the throttle time between the header and the topics"
+            );
+            self::assertSame(2, $response->topics['topic']->partitions[0]->highWaterMarkOffset);
+            self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
+        }
     }
 
     public function testVersion0ResponseHasNoThrottleTimePrefix(): void

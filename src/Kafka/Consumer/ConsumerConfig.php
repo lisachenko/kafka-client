@@ -25,9 +25,10 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
  *
  * Kafka 0.9.0.1 brings the broker-side group management, so the options that drive it exist here: session.timeout.ms,
  * heartbeat.interval.ms and partition.assignment.strategy, plus offset.retention.ms for the `retention_time` of the
- * OffsetCommit v2 request. What arrived later is absent: rebalance.timeout.ms (JoinGroup v1, Kafka 0.10.1) and
- * isolation.level (the transactional protocol of 0.11). The `offsets.storage` option of the general config
- * ({@see GeneralConfig::OFFSETS_STORAGE}) still selects where the committed offsets live (OffsetCommit v0 vs v2).
+ * OffsetCommit v2 request. Kafka 0.10.1 adds fetch.max.bytes, the request-level bound of a Fetch v3 answer. What
+ * arrived later is absent: isolation.level (the transactional protocol of 0.11). The `offsets.storage` option of
+ * the general config ({@see GeneralConfig::OFFSETS_STORAGE}) still selects where the committed offsets live
+ * (OffsetCommit v0 vs v2).
  *
  * A consumer overrides one option of the general config: `request.timeout.ms` defaults to 40000 instead of 30000,
  * as it does in the Java consumer of 0.9.0.1, because it has to be larger than `session.timeout.ms` - the socket
@@ -48,6 +49,7 @@ final class ConsumerConfig extends GeneralConfig
         ConsumerConfig::SESSION_TIMEOUT_MS            => 30000,
         ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 3000,
         ConsumerConfig::FETCH_MIN_BYTES               => 1,
+        ConsumerConfig::FETCH_MAX_BYTES               => 52428800,
         ConsumerConfig::FETCH_MAX_WAIT_MS             => 500,
         ConsumerConfig::MAX_PARTITION_FETCH_BYTES     => 65536,
         ConsumerConfig::AUTO_OFFSET_RESET             => OffsetResetStrategy::LATEST,
@@ -112,6 +114,22 @@ final class ConsumerConfig extends GeneralConfig
      * at the cost of some additional latency.
      */
     public const string FETCH_MIN_BYTES = 'fetch.min.bytes';
+
+    /**
+     * The maximum amount of data the server should return for a fetch request, over all of its partitions.
+     *
+     * It is the request-level `MaxBytes` that version 3 of the Fetch API added (Kafka 0.10.1, KIP-74), 50 MiB by
+     * default as in the Java consumer. The broker fills the partitions of a request in the order they were asked
+     * for and stops once this budget is used up, so a consumer that fetches many partitions has to rotate their
+     * order to be fair - {@see KafkaConsumer::poll()} does exactly that.
+     *
+     * The limit is not absolute: if the first message of the first non-empty partition is larger than this value,
+     * it is returned anyway, so that the consumer can always make progress. `max.partition.fetch.bytes` keeps its
+     * own, per-partition meaning next to it.
+     *
+     * @see \Protocol\Kafka\Protocol\Request\FetchRequest::$maxBytes
+     */
+    public const string FETCH_MAX_BYTES = 'fetch.max.bytes';
 
     /**
      * The maximum amount of time the server will block before answering the fetch request if there isn't sufficient

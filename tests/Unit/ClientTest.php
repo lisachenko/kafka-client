@@ -521,10 +521,13 @@ final class ClientTest extends TestCase
         self::assertCount(1, $partition->getRecords());
     }
 
-    public function testAMessageThatDoesNotFitIntoTheFetchSizeIsVisibleWithoutASecondRequest(): void
+    public function testAPartitionWithoutACompleteMessageIsNotReportedAsStuckByAVersionThreeFetch(): void
     {
-        // A 0.9.0.1 broker cuts the set off at MaxBytes without guaranteeing progress: the answer carries no
-        // complete message at all although the high water mark shows that there is something to read
+        // Up to version 2 an answer without a single complete message meant "the next message does not fit into
+        // MaxBytes"; the version 3 request that this client sends has no such state, because the broker returns
+        // the first message of the answer whatever its size is. An empty partition below the high water mark now
+        // means that the `fetch.max.bytes` of the answer were used up by the partitions in front of it, so the
+        // client must not turn it into a RecordTooLargeException any more
         $truncated = substr(MessageSet::fromRecords([new Record(str_repeat('x', 512))])->toBuffer(), 0, 40);
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -535,9 +538,37 @@ final class ClientTest extends TestCase
 
         $partition = $this->client()->fetchPartitions([self::TOPIC => [0 => 0]], 200)[self::TOPIC][0];
 
-        self::assertTrue($partition->isSingleMessageTooLarge());
+        self::assertFalse($partition->isSingleMessageTooLarge());
         self::assertTrue($partition->isEmpty());
         self::assertSame(0, $partition->getNextOffset(), 'a partition without a record keeps its fetch offset');
+    }
+
+    public function testTheFetchRequestCarriesTheConfiguredFetchMaxBytesAndTheOrderOfTheGivenPartitions(): void
+    {
+        // Both partitions are led by the same broker, so that they travel in one request
+        $metadata   = ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], [self::TOPIC => [0 => 0, 1 => 0]]);
+        $connection = new BrokerConnection(ResponseFrame::fetch(0, [
+            self::TOPIC => [1 => [0, 1, ''], 0 => [0, 1, '']],
+        ]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($metadata))
+            ->on(self::FIRST_LEADER, $connection)
+            ->install();
+
+        $this->client([ConsumerConfig::FETCH_MAX_BYTES => 1048576])
+            ->fetchPartitions([self::TOPIC => [1 => 7, 0 => 3]], 200);
+
+        $request = bin2hex($connection->getReceivedFrames()[0]);
+
+        // ApiKey 1, ApiVersion 3, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`
+        self::assertStringStartsWith('00010003', $request, 'the Fetch api is spoken in version 3');
+        self::assertStringContainsString('00100000', $request, 'fetch.max.bytes reached the frame');
+        // The partitions travel in the order they were given, which is the order the broker fills the answer in
+        self::assertStringEndsWith(
+            '00000001' . '0000000000000007' . '00010000'
+            . '00000000' . '0000000000000003' . '00010000',
+            $request
+        );
     }
 
     public function testTheChecksumOfEveryMessageIsVerifiedUnlessTheConsumerOptsOut(): void
