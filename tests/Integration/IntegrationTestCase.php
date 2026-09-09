@@ -52,6 +52,24 @@ abstract class IntegrationTestCase extends TestCase
     private const string DEFAULT_SSL_BOOTSTRAP_SERVER = '127.0.0.1:9093';
 
     /**
+     * Name of the environment variable that holds the `host:port` of the SASL_PLAINTEXT listener of the broker
+     *
+     * Unlike the SSL one it has no default: a broker without `sasl.enabled.mechanisms` and without a JAAS
+     * configuration does not bind a SASL listener at all, so the tests that need one are skipped unless this
+     * variable names it explicitly.
+     *
+     * @see \Protocol\Kafka\Tests\Integration\SaslTransportTest
+     */
+    public const string SASL_BOOTSTRAP_SERVERS_ENV = 'KAFKA_SASL_BOOTSTRAP_SERVERS';
+
+    /**
+     * Name of the environment variable that holds the `host:port` of the SASL_SSL listener of the same broker
+     *
+     * @see \Protocol\Kafka\Tests\Integration\SaslTransportTest
+     */
+    public const string SASL_SSL_BOOTSTRAP_SERVERS_ENV = 'KAFKA_SASL_SSL_BOOTSTRAP_SERVERS';
+
+    /**
      * How long to wait for a booting broker to publish its metadata, in seconds
      */
     private const float CLUSTER_TIMEOUT = 60.0;
@@ -148,6 +166,35 @@ abstract class IntegrationTestCase extends TestCase
         $value = getenv(self::SSL_BOOTSTRAP_SERVERS_ENV);
         if ($value === false || trim($value) === '') {
             return self::DEFAULT_SSL_BOOTSTRAP_SERVER;
+        }
+
+        return trim(explode(',', $value)[0]);
+    }
+
+    /**
+     * Returns the `host:port` of the SASL_PLAINTEXT listener of the broker under test, or an empty string
+     */
+    final protected static function saslBootstrapServer(): string
+    {
+        return self::firstAddressOf(self::SASL_BOOTSTRAP_SERVERS_ENV);
+    }
+
+    /**
+     * Returns the `host:port` of the SASL_SSL listener of the broker under test, or an empty string
+     */
+    final protected static function saslSslBootstrapServer(): string
+    {
+        return self::firstAddressOf(self::SASL_SSL_BOOTSTRAP_SERVERS_ENV);
+    }
+
+    /**
+     * Returns the first `host:port` of a comma-separated environment variable, or an empty string when it is unset
+     */
+    private static function firstAddressOf(string $variable): string
+    {
+        $value = getenv($variable);
+        if ($value === false || trim($value) === '') {
+            return '';
         }
 
         return trim(explode(',', $value)[0]);

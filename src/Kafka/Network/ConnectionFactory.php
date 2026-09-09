@@ -155,17 +155,25 @@ final class ConnectionFactory
      * for a plaintext one, so the transport is part of the key. `tcp://host:port` stays the key of a plaintext
      * connection, which is what {@see self::close()} was always called with.
      *
+     * A SASL connection carries an authenticated identity as well - it is established once, for the user of
+     * `sasl.username`, and stays that user for its whole lifetime - so the user name is part of the key too.
+     *
      * @param string               $address       Address of the broker, e.g. `tcp://127.0.0.1:9092`
      * @param array<string, mixed> $configuration Client configuration
      */
     private static function cacheKey(string $address, array $configuration): string
     {
-        $securityProtocol = $configuration[ClientConfig::SECURITY_PROTOCOL] ?? SecurityProtocol::PLAINTEXT;
+        $securityProtocol = (string) ($configuration[ClientConfig::SECURITY_PROTOCOL] ?? SecurityProtocol::PLAINTEXT);
         if ($securityProtocol === SecurityProtocol::PLAINTEXT) {
             return $address;
         }
 
-        return strtolower((string) $securityProtocol) . '://' . substr($address, strlen('tcp://'));
+        $endpoint = strtolower($securityProtocol) . '://' . substr($address, strlen('tcp://'));
+        if (!SecurityProtocol::isSasl($securityProtocol)) {
+            return $endpoint;
+        }
+
+        return $endpoint . '#' . (string) ($configuration[ClientConfig::SASL_USERNAME] ?? '');
     }
 
     /**

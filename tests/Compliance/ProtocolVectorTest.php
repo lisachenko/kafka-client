@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Compliance;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Security\SaslToken;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\StringStream;
@@ -160,6 +161,14 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function saslHandshakeVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('metadataVectors')]
@@ -295,6 +304,15 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('saslHandshakeVectors')]
+    public function testSaslHandshakeApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
      * Every vector file has to be replayed by a data provider of this class, so that a new file cannot be forgotten
      *
      * The list of the replayed apis is derived from the providers themselves - a provider is named after the file
@@ -408,17 +426,19 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
-     * Decodes a structure that travels inside a byte array field, compares its fields and encodes it back
+     * Decodes a structure that is not a framed message, compares its fields and encodes it back
      *
      * The payloads of the consumer group protocol are not framed messages of their own: they have no Size field, no
      * header and no api key, and {@see Subscription} and {@see MemberAssignment} read and write them from the plain
-     * bytes of a `member_metadata` or `member_assignment` field.
+     * bytes of a `member_metadata` or `member_assignment` field. The SASL tokens of a `SASL_PLAINTEXT`/`SASL_SSL`
+     * connection are not messages either - a {@see SaslToken} is a bare size-prefixed blob, without the header that
+     * every request and response carries.
      *
      * @param array<string, mixed> $vector
      */
     private function assertStructureIsReplayed(array $vector): void
     {
-        /** @var class-string<MemberAssignment|Subscription> $class */
+        /** @var class-string<MemberAssignment|SaslToken|Subscription> $class */
         $class = $vector['class'];
         $bytes = hex2bin($vector['hex']);
         self::assertIsString($bytes, "Vector {$vector['id']} does not hold valid hex");
@@ -436,10 +456,16 @@ final class ProtocolVectorTest extends TestCase
             bin2hex($structure->pack()),
             "Vector {$vector['id']} does not survive a decode and encode round trip"
         );
-        self::assertSame(
-            $vector['version'],
-            $structure->version,
-            "Vector {$vector['id']} was recorded with another version of the consumer group protocol"
-        );
+
+        // A structure that versions itself - the payloads of the consumer group protocol carry a Version field of
+        // their own - has to be the version the vector was recorded with; a SASL token has no version at all
+        $fields = MessageFields::of($structure);
+        if (isset($fields['version'])) {
+            self::assertSame(
+                $vector['version'],
+                $fields['version'],
+                "Vector {$vector['id']} was recorded with another version of the structure"
+            );
+        }
     }
 }
