@@ -160,6 +160,22 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function createTopicsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteTopicsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('metadataVectors')]
@@ -290,6 +306,24 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('consumerProtocolVectors')]
     public function testConsumerGroupProtocol(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('createTopicsVectors')]
+    public function testCreateTopicsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteTopicsVectors')]
+    public function testDeleteTopicsApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }
