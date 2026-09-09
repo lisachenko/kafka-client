@@ -28,9 +28,9 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
  *
  * The error code belongs to the whole request: the coordinator answers 15 (GroupCoordinatorNotAvailable) while it is
  * shutting down and 14 (GroupLoadInProgress) while it is still reading the `__consumer_offsets` partitions it owns,
- * both with an empty group array (`GroupCoordinator.handleListGroups()` @ 0.9.0.1).
+ * both with an empty group array (`GroupCoordinator.handleListGroups()` @ 0.10.2.2).
  *
- * @see docs/protocol/0.9.0.md, section "ListGroups API (key 16, v0)"
+ * @see docs/protocol/0.10.2.md, section "ListGroups API (key 16, v0)"
  */
 class ListGroupsResponse extends AbstractResponse
 {

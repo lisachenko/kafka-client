@@ -28,10 +28,12 @@ use function strlen;
  * BinarySchema defines the common types and the API for reading and writing the primitive types of the protocol.
  *
  * This is the 0.8 port of the engine of the `main` branch: the type constants keep their numeric values so that the
- * cascade merges upwards stay trivial, but only the types that the 0.8 protocol actually has are implemented.
- * Varints, zigzag encoding and var-arrays arrive with the 0.11 record format and are deliberately absent.
+ * cascade merges upwards stay trivial, but only the types that the protocol of this line actually has are implemented.
+ * Varints, zigzag encoding and var-arrays arrive with the 0.11 record format and are deliberately absent; the boolean
+ * (a single byte, `00` or `01`) arrived with Kafka 0.10 (`is_internal` of Metadata v1, `validate_only` of
+ * CreateTopics v1) and has no counterpart on `main` yet, hence its value outside of main's numbering.
  *
- * @see docs/protocol/0.9.0.md
+ * @see docs/protocol/0.10.2.md
  */
 class BinarySchema
 {
@@ -41,6 +43,7 @@ class BinarySchema
     public const int TYPE_INT64     = 4;
     public const int TYPE_STRING    = 8;  // INT16-encoded length and then bytes of chars
     public const int TYPE_BYTEARRAY = 10; // INT32 size of data, then bytes of data, -1 as size means null
+    public const int TYPE_BOOLEAN   = 20; // A single byte: 0 is false, anything else is true (Kafka 0.10)
 
     /**
      * Use -1 as null array/string
@@ -76,6 +79,9 @@ class BinarySchema
             case self::TYPE_INT32:
             case self::TYPE_INT64:
                 return 2 ** ($schemeType - 1); // We assume the sequence 1..4 and use it as the base for 2^type
+
+            case self::TYPE_BOOLEAN:
+                return 1;
 
             case self::TYPE_STRING:
             case self::TYPE_NULLABLE_STRING:
@@ -226,6 +232,10 @@ class BinarySchema
             case self::TYPE_INT64:
                 return $stream->read('JINT64')['INT64'];
 
+            case self::TYPE_BOOLEAN:
+                // Types.BOOLEAN of the Java client reads any non-zero byte as true and always writes 0 or 1
+                return $stream->read('CBOOLEAN')['BOOLEAN'] !== 0;
+
             case self::TYPE_STRING:
                 return $stream->readString();
 
@@ -298,6 +308,10 @@ class BinarySchema
                 return;
             case self::TYPE_INT64:
                 $stream->write('J', $value);
+
+                return;
+            case self::TYPE_BOOLEAN:
+                $stream->write('C', $value ? 1 : 0);
 
                 return;
             case self::TYPE_STRING:

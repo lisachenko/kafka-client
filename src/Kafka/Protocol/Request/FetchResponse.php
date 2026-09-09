@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 
 /**
- * Fetch response object (key 1), version 1
+ * Fetch response object (key 1), version 3
  *
  * <pre>
- *   FetchResponse (Version: 1) => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset
+ *   FetchResponse (Version: 3) => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset
  *                                                            MessageSetSize MessageSet]]
  *     ThrottleTimeMs      => int32
  *     TopicName           => string
@@ -31,22 +31,29 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
  * </pre>
  *
  * Version 1 of the API added `ThrottleTimeMs` **before** the topics array - the opposite end of the response from
- * where the Produce API put it (`FETCH_RESPONSE_V1` in `Protocol.java` @ 0.9.0.1, `FetchResponse.readFrom` in
+ * where the Produce API put it (`FETCH_RESPONSE_V1` in `Protocol.java` @ 0.10.2.2, `FetchResponse.readFrom` in
  * `kafka/api/FetchResponse.scala`, which reads the field only when the request version is greater than 0). It is
  * the number of milliseconds the broker delayed the request because the client exceeded its fetch quota; a broker
  * without quotas - the default - always answers 0.
  *
- * The `LastStableOffset`, `LogStartOffset` and `AbortedTransactions` fields of the later protocol lines arrived with
- * Kafka 0.11, and the returned message sets are always message format v0 in 0.9.
+ * The versions 2 and 3 did not change the frame at all (`FETCH_RESPONSE_V3` is `FETCH_RESPONSE_V2` is
+ * `FETCH_RESPONSE_V1`): version 2 only tells the broker that the client understands message format v1, so the
+ * message sets of the answer are no longer converted down to format v0, and version 3 only added the request-level
+ * `MaxBytes`, see {@see FetchRequest}. What the answer of every version does have to match is the *version of the
+ * request it belongs to*, which is why {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0}
+ * exist - the last one is the only frame that really differs, it has no `ThrottleTimeMs` at all.
  *
- * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
+ * The `LastStableOffset`, `LogStartOffset` and `AbortedTransactions` fields of the later protocol lines arrived with
+ * Kafka 0.11.
+ *
+ * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 1;
+    public const int VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

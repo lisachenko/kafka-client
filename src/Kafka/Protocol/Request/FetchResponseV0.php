@@ -21,10 +21,10 @@ namespace Protocol\Kafka\Protocol\Request;
  * </pre>
  *
  * The answer of a version 0 request has no `ThrottleTimeMs` prefix, so this class only lowers the version constant
- * that {@see FetchResponse::getScheme()} follows. Reading a version 0 answer with the version 1 class would take
- * the size of the topics array for the throttle time and desynchronize the whole frame.
+ * that {@see FetchResponse::getScheme()} follows. Reading a version 0 answer with any higher version class would
+ * take the size of the topics array for the throttle time and desynchronize the whole frame.
  *
- * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
  */
 final class FetchResponseV0 extends FetchResponse
 {

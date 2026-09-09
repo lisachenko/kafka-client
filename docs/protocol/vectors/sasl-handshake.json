@@ -1,0 +1,104 @@
+{
+    "api": "sasl-handshake",
+    "apiKey": 17,
+    "section": "Transport security (SSL)",
+    "description": "Wire vectors of the SaslHandshake API (key 17, v0, Kafka 0.10.0 / KIP-43) and of the SASL/PLAIN token frames that follow it, replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "saslhandshake.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "SaslHandshake request v0 selecting the PLAIN mechanism, sent as the very first frame of a connection to the SASL_PLAINTEXT listener.",
+            "hex": "000000130011000000000011000274380005504c41494e",
+            "fields": {
+                "messageSize": 19,
+                "apiKey": 17,
+                "apiVersion": 0,
+                "correlationId": 17,
+                "clientId": "t8",
+                "mechanism": "PLAIN"
+            }
+        },
+        {
+            "id": "saslhandshake.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of a broker that accepted the mechanism: error code 0 and its sasl.enabled.mechanisms.",
+            "hex": "00000011000000110000000000010005504c41494e",
+            "fields": {
+                "messageSize": 17,
+                "correlationId": 17,
+                "errorCode": 0,
+                "enabledMechanisms": [
+                    "PLAIN"
+                ]
+            }
+        },
+        {
+            "id": "saslplain.token.client",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Security\\SaslToken",
+            "version": 0,
+            "source": "broker",
+            "description": "The initial response of the PLAIN mechanism, `authzid \\0 authcid \\0 passwd` for the user kafkatest: a bare size-prefixed frame, with no request header and no correlation id - the SaslAuthenticate request that wraps it is Kafka 1.0.",
+            "hex": "0000001b006b61666b6174657374006b61666b61746573742d736563726574",
+            "fields": {
+                "token": {
+                    "$bytes": "006b61666b6174657374006b61666b61746573742d736563726574"
+                }
+            }
+        },
+        {
+            "id": "saslplain.token.server",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Security\\SaslToken",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of a completed PLAIN exchange: the empty token that PlainSaslServer.evaluateResponse() returns, i.e. a frame of four zero bytes. Ordinary requests follow it on the same connection.",
+            "hex": "00000000",
+            "fields": {
+                "token": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "saslhandshake.request.v0.unsupported-mechanism",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "SaslHandshake request v0 asking for GSSAPI on a broker whose sasl.enabled.mechanisms is PLAIN.",
+            "hex": "000000140011000000000012000274380006475353415049",
+            "fields": {
+                "messageSize": 20,
+                "apiKey": 17,
+                "apiVersion": 0,
+                "correlationId": 18,
+                "clientId": "t8",
+                "mechanism": "GSSAPI"
+            }
+        },
+        {
+            "id": "saslhandshake.response.v0.unsupported-mechanism",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer to a mechanism the broker has not enabled: error code 33 (UnsupportedSaslMechanism) together with the mechanisms it has. The broker closes the connection right after this frame.",
+            "hex": "00000011000000120021000000010005504c41494e",
+            "fields": {
+                "messageSize": 17,
+                "correlationId": 18,
+                "errorCode": 33,
+                "enabledMechanisms": [
+                    "PLAIN"
+                ]
+            }
+        }
+    ]
+}

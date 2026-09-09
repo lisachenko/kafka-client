@@ -24,18 +24,27 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Topic metadata DTO
  *
  * <pre>
- *   TopicMetadata => TopicErrorCode TopicName [PartitionMetadata]
+ *   TopicMetadata => TopicErrorCode TopicName IsInternal [PartitionMetadata]
  *     TopicErrorCode => int16
  *     TopicName      => string
+ *     IsInternal     => boolean
  * </pre>
  *
- * The `IsInternal` flag only exists from version 1 of the Metadata API (Kafka 0.10.0) onwards.
+ * `TOPIC_METADATA_V1` in `Protocol.java` @ 0.10.2.2: version 1 of the Metadata API (Kafka 0.10.0) inserted the
+ * `IsInternal` flag between the topic name and its partitions, which {@see TopicMetadataV0} still lacks. A topic is
+ * internal when Kafka itself keeps it - `Topic.isInternal` @ 0.10.2.2 knows exactly one, `__consumer_offsets`, the
+ * log the group coordinator stores the committed offsets in.
  *
- * @see docs/protocol/0.9.0.md, section "Metadata API (key 3, v0)"
+ * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0, v1 and v2)"
  */
 class TopicMetadata implements BinarySchemaInterface
 {
     use RestorableTrait;
+
+    /**
+     * Version of the Metadata API that this entry is unpacked from
+     */
+    public const int VERSION = 1;
 
     /**
      * The error code for the given topic.
@@ -51,6 +60,13 @@ class TopicMetadata implements BinarySchemaInterface
     public string $topic = '';
 
     /**
+     * Whether the topic is considered a Kafka internal topic, null when the answer was a version 0 one.
+     *
+     * @since Version 1 of protocol
+     */
+    public ?bool $isInternal = null;
+
+    /**
      * Metadata for each partition of the topic, indexed by the partition id.
      *
      * @var array<int, PartitionMetadata>
@@ -62,12 +78,17 @@ class TopicMetadata implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'topicErrorCode' => BinarySchema::TYPE_INT16,
             'topic'          => BinarySchema::TYPE_STRING,
-            // A broker does not promise any ordering for the partitions, so they are indexed by their id: the
-            // cluster looks a partition up by number, see Cluster::partition() and Cluster::leaderFor()
-            'partitions'     => ['partitionId' => PartitionMetadata::class],
         ];
+        if (static::VERSION >= 1) {
+            $scheme['isInternal'] = BinarySchema::TYPE_BOOLEAN;
+        }
+        // A broker does not promise any ordering for the partitions, so they are indexed by their id: the
+        // cluster looks a partition up by number, see Cluster::partition() and Cluster::leaderFor()
+        $scheme['partitions'] = ['partitionId' => PartitionMetadata::class];
+
+        return $scheme;
     }
 }

@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Consumes a topic of a Kafka 0.9.0.1 cluster with the partitions picked by hand, see {@see KafkaConsumer}.
+ * Consumes a topic of a Kafka 0.10.2.2 cluster with the partitions picked by hand, see {@see KafkaConsumer}.
  *
  * Start the broker of this repository and run the example against it:
  *
@@ -33,6 +33,7 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\ConsumerRecord;
@@ -56,7 +57,7 @@ $shouldProduce    = !in_array('--no-produce', $argv, true);
 $configuration = [
     ClientConfig::BOOTSTRAP_SERVERS => [$brokerAddress],
     ClientConfig::CLIENT_ID         => 'kafka-client-example',
-    // Where the committed offsets live: `kafka` uses the coordinator of the group (OffsetCommit v2, OffsetFetch v1),
+    // Where the committed offsets live: `kafka` uses the coordinator of the group (OffsetCommit v2, OffsetFetch v2),
     // `zookeeper` keeps them where the consumers of Kafka 0.8.1 did (v0). The two storages are independent.
     ClientConfig::OFFSETS_STORAGE   => ClientConfig::OFFSETS_STORAGE_KAFKA,
 
@@ -106,10 +107,15 @@ function produceDemoRecords(string $brokerAddress, string $topic, array $configu
 {
     $records = [];
     for ($index = 0; $index < $count; $index++) {
-        $records[] = new Record(
+        $record = new Record(
             sprintf('Hello from the example #%d, produced at %s', $index, date(DATE_ATOM)),
             'key-' . $index
         );
+        // Message format v1 (Kafka 0.10.0) carries a timestamp per record. KafkaProducer::send() stamps the create
+        // time of every record that has none; this example builds its own request, so it stamps them itself - a
+        // record without a timestamp is written with -1 and read back with `null` here.
+        $record->timestamp = (int) (microtime(true) * 1000);
+        $records[]         = $record;
     }
 
     $stream = new SocketStream($brokerAddress, $configuration, 5.0);
@@ -168,11 +174,17 @@ while ($emptyPolls < 3) {
                 $received++;
 
                 $value = $record instanceof ConsumerRecord ? $record->deserializedValue : $record->value;
+                // The timestamp and its type come from message format v1 (Kafka 0.10.0); a record of a topic that
+                // still uses the format of 0.9 has no timestamp at all, and this client reports null for it
+                $timestamp = $record->timestamp === null
+                    ? 'no timestamp'
+                    : date('H:i:s', intdiv($record->timestamp, 1000)) . ' (' . TimestampType::name($record->timestampType) . ')';
                 printf(
-                    '%s:%d@%d key=%s value=%s%s',
+                    '%s:%d@%d %s key=%s value=%s%s',
                     $polledTopic,
                     $partitionId,
                     (int) $record->offset,
+                    $timestamp,
                     $record->key ?? '<null>',
                     is_string($value) ? $value : var_export($value, true),
                     PHP_EOL

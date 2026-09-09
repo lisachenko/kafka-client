@@ -28,11 +28,11 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The per-partition `timestamp` exists in **version 1 only**: version 0 never had it and version 2 replaced it with
  * the single `retention_time` field of the request (`OFFSET_COMMIT_REQUEST_PARTITION_V2` in `Protocol.java`
- * @ 0.9.0.1, `OffsetCommitRequest.readFrom` reads it for `versionId == 1`). The layout of version 2 is therefore
+ * @ 0.10.2.2, `OffsetCommitRequest.readFrom` reads it for `versionId == 1`). The layout of version 2 is therefore
  * the layout of version 0 again, and the odd one out lives in {@see OffsetCommitRequestPartitionV1}; the scheme is
  * selected by {@see OffsetCommitRequestPartition::VERSION}.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
+ * @see docs/protocol/0.10.2.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitRequestPartition implements BinarySchemaInterface
 {

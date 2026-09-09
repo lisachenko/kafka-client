@@ -19,17 +19,25 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\TopicMetadata;
+use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises the AdminClient against a real Kafka 0.9.0.1 broker.
+ * Exercises the AdminClient against a real Kafka 0.10.2.2 broker.
  *
- * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "ApiVersions API (key 18, v0)"
  */
 #[CoversClass(AdminClient::class)]
+#[CoversClass(ApiVersionsRequest::class)]
+#[CoversClass(ApiVersionsResponse::class)]
+#[CoversClass(ApiVersionsResponseMetadata::class)]
 #[CoversClass(ControlledShutdownRequest::class)]
 #[CoversClass(ControlledShutdownRequestV0::class)]
 #[CoversClass(ControlledShutdownResponse::class)]
@@ -109,8 +117,8 @@ final class AdminApiTest extends IntegrationTestCase
 
         self::assertSame([$topic], array_keys($latest));
         foreach ($partitions as $partition) {
-            self::assertSame([0], $latest[$topic][$partition], 'nothing was produced into the topic yet');
-            self::assertSame([0], $earliest[$topic][$partition]);
+            self::assertSame(0, $latest[$topic][$partition], 'nothing was produced into the topic yet');
+            self::assertSame(0, $earliest[$topic][$partition]);
         }
     }
 
@@ -135,7 +143,7 @@ final class AdminApiTest extends IntegrationTestCase
         self::assertSame([$topic], array_keys($topics));
         foreach ($topics[$topic]->partitions as $partition) {
             self::assertSame(-1, $partition->offset, 'an uncommitted partition comes back with the offset -1');
-            self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, 'version 1 reports no error for it');
+            self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, 'the kafka storage reports no error');
         }
     }
 
@@ -150,10 +158,25 @@ final class AdminApiTest extends IntegrationTestCase
         $this->admin->controlledShutdown(self::UNKNOWN_BROKER_ID);
     }
 
-    public function testBothVersionsOfControlledShutdownAreServedByTheBroker(): void
+    public function testTheBrokerAnnouncesOnlyVersionOneOfControlledShutdown(): void
     {
-        // The AdminClient sends v1; v0, the version without a client id in its header, is still answered as well,
-        // and both report the very same error code for a broker id the controller does not know
+        // A 0.10.2.2 broker reports `minVersion = 1` for key 7: version 0 uses a request header without a client id,
+        // which the Java client of 0.10 cannot build any more, so the protocol retires it.
+        $nodes       = $this->cluster->nodes();
+        $apiVersions = $this->admin->getApiVersions(reset($nodes));
+
+        self::assertSame(1, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->minVersion);
+        self::assertSame(1, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->maxVersion);
+    }
+
+    public function testBothVersionsOfControlledShutdownAreStillServedByTheBroker(): void
+    {
+        // ...and yet the retired version still works, because key 7 is the last api a 0.10.2.2 broker parses with
+        // its Scala class: `RequestChannel.Request` calls `ControlledShutdownRequest.readFrom()` for it before the
+        // header is parsed at all, and that parser only asks whether the version is above 0, to decide whether a
+        // client id follows. Every other key or version the broker does not serve closes the connection, so this is
+        // one of the two exceptions of the whole protocol - the other one is ApiVersions itself. The AdminClient
+        // sends v1, which is what the api table promises; v0 is kept for the 0.8/0.9 lines and their vectors.
         $stream = $this->connect();
 
         new ControlledShutdownRequestV0(self::UNKNOWN_BROKER_ID, 4200)->writeTo($stream);

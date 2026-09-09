@@ -20,22 +20,33 @@ namespace Protocol\Kafka\IO;
 
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Errors\SaslAuthenticationException;
+use Protocol\Kafka\Common\Security\SaslMechanism;
+use Protocol\Kafka\Common\Security\SaslToken;
 use Protocol\Kafka\Common\Security\SecurityProtocol;
 use Protocol\Kafka\Common\Security\SslProtocol;
+use Protocol\Kafka\Network\ResponseValidator;
+use Protocol\Kafka\Protocol\Request\AbstractRequest;
+use Protocol\Kafka\Protocol\Request\SaslHandshakeRequest;
+use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
 
 /**
- * Implementation of the binary stream on top of a TCP socket, optionally wrapped in TLS.
+ * Implementation of the binary stream on top of a TCP socket, optionally wrapped in TLS and authenticated with SASL.
  *
- * Kafka 0.9.0.0 introduced listeners per security protocol: the very same request bytes are exchanged whether the
- * connection is plain or encrypted, so the transport is handled entirely here and nothing above this class knows
- * about it. With `security.protocol = SSL` the socket is connected first and the TLS handshake is performed on it
- * afterwards ({@see stream_socket_enable_crypto}), which is what a Kafka broker expects on its SSL listener: it
- * speaks TLS from the very first byte of the connection, there is no protocol-level upgrade.
+ * Kafka 0.9.0.0 introduced listeners per security protocol: the very same request bytes are exchanged whatever the
+ * listener is, so the transport is handled entirely here and nothing above this class knows about it. With
+ * `security.protocol = SSL` the socket is connected first and the TLS handshake is performed on it afterwards
+ * ({@see stream_socket_enable_crypto}), which is what a Kafka broker expects on its SSL listener: it speaks TLS from
+ * the very first byte of the connection, there is no protocol-level upgrade.
  *
- * SASL is not implemented; see {@see SecurityProtocol} for why 0.9 cannot support it.
+ * `SASL_PLAINTEXT` and `SASL_SSL` add an authentication exchange to that, right after the connection is opened and,
+ * for `SASL_SSL`, right after the TLS handshake: one `SaslHandshake` request that names the mechanism, and then the
+ * tokens of that mechanism as bare size-prefixed frames ({@see SocketStream::authenticate()}). Only the PLAIN
+ * mechanism is implemented, see {@see SaslMechanism}.
  *
- * @see docs/protocol/0.9.0.md, section "Transport security (SSL)"
+ * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
  */
 class SocketStream extends AbstractStream
 {
@@ -72,6 +83,22 @@ class SocketStream extends AbstractStream
     protected string $securityProtocol;
 
     /**
+     * Mechanism the connection authenticates with, one of the implemented {@see SaslMechanism} values
+     *
+     * Only meaningful for a SASL transport; it stays at the configured value for the others, which never look at it.
+     */
+    protected string $saslMechanism;
+
+    /**
+     * Guard against a transparent reconnect while the authentication of a connection is still running
+     *
+     * The read and write loops re-open a connection that dropped before the first byte of a frame, which is exactly
+     * what a broker does to reject credentials - without this flag the rejection would reconnect and authenticate
+     * again, endlessly.
+     */
+    private bool $isAuthenticating = false;
+
+    /**
      * Socket stream constructor
      *
      * @param string               $tcpAddress        Tcp address for connection
@@ -89,6 +116,7 @@ class SocketStream extends AbstractStream
         // ini_get() returns a string, whereas stream_socket_client() declares a float parameter
         $this->timeout          = (float) ($connectionTimeout ?? ini_get('default_socket_timeout'));
         $this->securityProtocol = self::resolveSecurityProtocol($configuration);
+        $this->saslMechanism    = self::resolveSaslMechanism($this->securityProtocol, $configuration);
     }
 
     /**
@@ -97,6 +125,14 @@ class SocketStream extends AbstractStream
     public function getSecurityProtocol(): string
     {
         return $this->securityProtocol;
+    }
+
+    /**
+     * Returns the SASL mechanism this stream authenticates with, for a SASL transport
+     */
+    public function getSaslMechanism(): string
+    {
+        return $this->saslMechanism;
     }
 
     public function write(string $format, ...$arguments): void
@@ -113,7 +149,7 @@ class SocketStream extends AbstractStream
             $result = @fwrite($this->streamSocket, substr($packedData, $written));
             if ($result === false || $result === 0) {
                 // Nothing has been sent yet, so a dropped connection can still be retried transparently
-                if (!$isReconnected && $written === 0 && !$this->isConnected()) {
+                if (!$isReconnected && !$this->isAuthenticating && $written === 0 && !$this->isConnected()) {
                     $this->connect();
                     $isReconnected = true;
                     continue;
@@ -213,7 +249,7 @@ class SocketStream extends AbstractStream
                 }
                 // Only a connection that dropped before the first byte of a frame can be retried transparently,
                 // reconnecting in the middle of a frame would resume the parser at an arbitrary offset
-                if (!$isReconnected && $received === 0 && !$this->isConnected()) {
+                if (!$isReconnected && !$this->isAuthenticating && $received === 0 && !$this->isConnected()) {
                     $this->connect();
                     $isReconnected = true;
                     continue;
@@ -274,12 +310,24 @@ class SocketStream extends AbstractStream
         // The TLS handshake happens before a single Kafka byte is exchanged, so it is bounded by the connection
         // timeout of this stream, not by `request.timeout.ms` - that is how the underlying OpenSSL loop of PHP
         // behaves, it keeps the deadline the socket was created with.
-        if ($this->securityProtocol === SecurityProtocol::SSL) {
+        if (SecurityProtocol::isEncrypted($this->securityProtocol)) {
             $this->encryptChannel($streamSocket);
         }
 
         $this->streamSocket = $streamSocket;
         $this->isConnected  = true;
+
+        // The authentication is an exchange of ordinary frames, so it runs on the connected stream itself; a
+        // failure leaves no usable connection behind, therefore the socket is dropped with it.
+        if (SecurityProtocol::isSasl($this->securityProtocol)) {
+            try {
+                $this->authenticate();
+            } catch (\Throwable $exception) {
+                $this->disconnect();
+
+                throw $exception;
+            }
+        }
     }
 
     /**
@@ -301,6 +349,98 @@ class SocketStream extends AbstractStream
     }
 
     /**
+     * Authenticates the freshly opened connection with SASL, as `SaslServerAuthenticator` @ 0.10.2.2 expects it.
+     *
+     * The exchange has two halves, and only the first one is a Kafka request: `SaslHandshake` (api key 17, v0) names
+     * the mechanism and is answered with the error code and the mechanisms the broker enabled. Everything after it
+     * is the mechanism's own token exchange, framed by nothing but the 4-byte length prefix that every Kafka frame
+     * carries - there is no header, no api key and no correlation id, because the request that wraps the tokens
+     * (`SaslAuthenticate`, api key 36) only arrived with Kafka 1.0. For PLAIN the exchange is a single round trip:
+     * the client sends `\0<username>\0<password>` and the broker answers with an empty token, after which the
+     * connection carries ordinary requests.
+     *
+     * A broker that refuses the credentials simply closes the connection - `PlainSaslServer` throws a
+     * `SaslException`, which reaches the socket layer as an `IOException` and has no error code before Kafka 1.0.
+     *
+     * @throws SaslAuthenticationException When the broker rejected the credentials by closing the connection
+     * @throws KafkaException When the broker refused the mechanism (error code 33)
+     */
+    private function authenticate(): void
+    {
+        $clientId      = (string) ($this->configuration[ClientConfig::CLIENT_ID] ?? '');
+        $correlationId = AbstractRequest::nextCorrelationId();
+
+        $this->isAuthenticating = true;
+
+        try {
+            new SaslHandshakeRequest($this->saslMechanism, $clientId, $correlationId)->writeTo($this);
+            $response = ResponseValidator::read(
+                SaslHandshakeResponse::class,
+                $this,
+                $correlationId,
+                ['host' => $this->host, 'port' => $this->port]
+            );
+
+            if ($response->errorCode !== 0) {
+                // 33 UnsupportedSaslMechanism is the only code a 0.10.2.2 broker answers here; the connection is
+                // closed by the broker right afterwards, so there is nothing to recover on it
+                throw KafkaException::fromCode($response->errorCode, [
+                    'mechanism'         => $this->saslMechanism,
+                    'enabledMechanisms' => $response->enabledMechanisms,
+                    'host'              => $this->host,
+                    'port'              => $this->port,
+                ]);
+            }
+
+            $this->exchangePlainToken();
+        } finally {
+            $this->isAuthenticating = false;
+        }
+    }
+
+    /**
+     * Performs the token exchange of the PLAIN mechanism on an already handshaken connection
+     *
+     * @throws SaslAuthenticationException When the broker rejected the credentials by closing the connection
+     */
+    private function exchangePlainToken(): void
+    {
+        $username = (string) $this->configuration[ClientConfig::SASL_USERNAME];
+        $password = (string) $this->configuration[ClientConfig::SASL_PASSWORD];
+
+        SaslToken::ofPlainCredentials($username, $password)->writeTo($this);
+
+        try {
+            $answer = SaslToken::readFrom($this);
+        } catch (NetworkException $exception) {
+            throw new SaslAuthenticationException(
+                [
+                    'error'     => 'The broker closed the connection during the SASL token exchange, which is how a '
+                        . 'Kafka 0.10 broker rejects credentials - there is no error code for it before Kafka 1.0',
+                    'mechanism' => $this->saslMechanism,
+                    'username'  => $username,
+                    'host'      => $this->host,
+                    'port'      => $this->port,
+                ],
+                $exception
+            );
+        }
+
+        // PLAIN has exactly one round trip: `PlainSaslServer.evaluateResponse()` answers with `new byte[0]` and
+        // marks the exchange complete. Anything else would mean that the broker expects another token.
+        if (!$answer->isEmpty()) {
+            throw new SaslAuthenticationException([
+                'error'     => 'The broker answered the PLAIN token with a non-empty token, which the mechanism '
+                    . 'does not define',
+                'mechanism' => $this->saslMechanism,
+                'answer'    => bin2hex((string) $answer->token),
+                'host'      => $this->host,
+                'port'      => $this->port,
+            ]);
+        }
+    }
+
+    /**
      * Validates the configured `security.protocol` and returns it
      *
      * @param array<string, mixed> $configuration Configuration options
@@ -315,19 +455,65 @@ class SocketStream extends AbstractStream
             return $securityProtocol;
         }
 
-        if (in_array($securityProtocol, SecurityProtocol::all(), true)) {
-            throw new InvalidConfigurationException(
-                "The security protocol {$securityProtocol} is not supported for Kafka 0.9: SASL is Kerberos-only "
-                . 'there and is negotiated outside the Kafka protocol, the SaslHandshake request only exists from '
-                . 'Kafka 0.10.0 on. Use ' . SecurityProtocol::PLAINTEXT . ' or ' . SecurityProtocol::SSL . '.'
-            );
-        }
-
         $known = implode(', ', SecurityProtocol::all());
 
         throw new InvalidConfigurationException(
             "Unknown security protocol {$securityProtocol}, expected one of: {$known}."
         );
+    }
+
+    /**
+     * Validates the configured `sasl.mechanism` and its credentials, and returns the mechanism
+     *
+     * Nothing is validated for a transport that does not authenticate: a `sasl.*` option next to
+     * `security.protocol = PLAINTEXT` is as meaningless as an `ssl.*` one and is ignored the same way.
+     *
+     * @param string               $securityProtocol Transport the stream connects with
+     * @param array<string, mixed> $configuration    Configuration options
+     */
+    private static function resolveSaslMechanism(string $securityProtocol, array $configuration): string
+    {
+        $mechanism = $configuration[ClientConfig::SASL_MECHANISM] ?? SaslMechanism::PLAIN;
+        if (!is_string($mechanism)) {
+            $mechanism = get_debug_type($mechanism);
+        }
+        if (!SecurityProtocol::isSasl($securityProtocol)) {
+            return $mechanism;
+        }
+
+        if (!in_array($mechanism, SaslMechanism::implemented(), true)) {
+            throw new InvalidConfigurationException(self::unsupportedMechanismMessage($mechanism));
+        }
+
+        foreach ([ClientConfig::SASL_USERNAME, ClientConfig::SASL_PASSWORD] as $option) {
+            $value = $configuration[$option] ?? null;
+            if (!is_string($value) || $value === '') {
+                throw new InvalidConfigurationException(
+                    "The SASL mechanism {$mechanism} needs a non-empty {$option}: the broker splits the token into "
+                    . 'the authorization id, the user name and the password, and refuses an empty one.'
+                );
+            }
+        }
+
+        return $mechanism;
+    }
+
+    /**
+     * Explains why a mechanism that a Kafka 0.10.2.2 broker knows is not available in this client
+     */
+    private static function unsupportedMechanismMessage(string $mechanism): string
+    {
+        $implemented = implode(', ', SaslMechanism::implemented());
+
+        $reason = match ($mechanism) {
+            SaslMechanism::GSSAPI => 'GSSAPI is Kerberos, and PHP has no GSS-API binding in core to produce the '
+                . 'tokens a broker would accept',
+            SaslMechanism::SCRAM_SHA_256, SaslMechanism::SCRAM_SHA_512 => 'the SCRAM mechanisms of Kafka 0.10.2 '
+                . '(KIP-84) need the multi-round exchange of RFC 5802, which this client does not perform',
+            default => 'a Kafka 0.10.2.2 broker only knows ' . implode(', ', SaslMechanism::all()),
+        };
+
+        return "The SASL mechanism {$mechanism} is not implemented: {$reason}. Use {$implemented}.";
     }
 
     /**
@@ -340,7 +526,7 @@ class SocketStream extends AbstractStream
      */
     private function createStreamContext()
     {
-        if ($this->securityProtocol !== SecurityProtocol::SSL) {
+        if (!SecurityProtocol::isEncrypted($this->securityProtocol)) {
             return stream_context_create();
         }
 

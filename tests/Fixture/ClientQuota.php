@@ -16,12 +16,12 @@ namespace Protocol\Kafka\Tests\Fixture;
 use function sprintf;
 
 /**
- * Sets and removes the client quotas of a Kafka 0.9.0.1 broker that runs in a Docker container.
+ * Sets and removes the client quotas of a Kafka 0.10.2.2 broker that runs in a Docker container.
  *
  * Quotas are the only way to make a broker answer with a non-zero `ThrottleTime`, and Kafka 0.9 has no api to
  * configure them: they live in ZooKeeper under `/config/clients/<client id>` and are written with the
  * `kafka-configs.sh` tool of the distribution, which the broker picks up through a watch within milliseconds
- * (`kafka/server/ConfigHandler.scala` @ 0.9.0.1). This fixture therefore shells out into the container of
+ * (`kafka/server/ConfigHandler.scala` @ 0.10.2.2). This fixture therefore shells out into the container of
  * `docker-compose.yml`:
  *
  * <code>
@@ -41,7 +41,7 @@ use function sprintf;
  * {@see self::isSupported()} tells whether the tool can be reached at all, so that a suite which runs against a
  * broker outside of Docker skips those tests instead of failing them.
  *
- * @see docs/protocol/0.9.0.md, section "Quotas and throttle time"
+ * @see docs/protocol/0.10.2.md, section "Quotas and throttle time"
  */
 final class ClientQuota
 {
@@ -53,7 +53,7 @@ final class ClientQuota
     /**
      * Container of `docker-compose.yml`, used when the environment variable is not set
      */
-    private const string DEFAULT_CONTAINER = 'kafka-0-9-0-1';
+    private const string DEFAULT_CONTAINER = 'kafka-0-10-2-2';
 
     /**
      * Path of the configuration tool inside the container

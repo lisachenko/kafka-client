@@ -27,11 +27,11 @@ use Protocol\Kafka\IO\SocketStream;
 /**
  * Tests the TLS transport of the socket stream against a local TLS server.
  *
- * The certificate is the one the test broker presents on its SSL listener (`docker/kafka-0.9.0.1/ssl`), so the
+ * The certificate is the one the test broker presents on its SSL listener (`docker/kafka-0.10.2.2/ssl`), so the
  * handshake performed here is the very same one the integration suite performs against Kafka.
  *
  * @see \Protocol\Kafka\Tests\Integration\SslTransportTest for the same handshake against a real broker
- * @see docs/protocol/0.9.0.md, section "Transport security (SSL)"
+ * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
  */
 #[CoversClass(SocketStream::class)]
 #[CoversClass(AbstractStream::class)]
@@ -62,7 +62,7 @@ final class SocketStreamSslTest extends TestCase
             self::markTestSkipped('The openssl extension is required for the SSL transport');
         }
         if (!is_readable(self::certificateFile()) || !is_readable(self::keyFile())) {
-            self::markTestSkipped('The test certificate of docker/kafka-0.9.0.1/ssl is not available');
+            self::markTestSkipped('The test certificate of docker/kafka-0.10.2.2/ssl is not available');
         }
     }
 
@@ -86,32 +86,14 @@ final class SocketStreamSslTest extends TestCase
     }
 
     /**
-     * Kafka 0.9 authenticates with Kerberos outside the protocol; the SaslHandshake request arrived in 0.10.0
+     * The TLS half of `SASL_SSL` is the very same handshake, performed before the SASL exchange
+     *
+     * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the authentication that follows it
      */
-    #[DataProvider('saslProtocols')]
-    public function testSaslTransportsAreRejectedWithAnExplanation(string $securityProtocol): void
+    public function testSaslOverTlsEncryptsTheChannelAsWell(): void
     {
-        $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('SaslHandshake request only exists from Kafka 0.10.0 on');
-
-        new SocketStream('tcp://127.0.0.1:9092', [ClientConfig::SECURITY_PROTOCOL => $securityProtocol]);
-    }
-
-    /**
-     * @return iterable<string, array{string}>
-     */
-    public static function saslProtocols(): iterable
-    {
-        yield 'SASL over plaintext' => [SecurityProtocol::SASL_PLAINTEXT];
-        yield 'SASL over TLS'       => [SecurityProtocol::SASL_SSL];
-    }
-
-    public function testUnknownTransportIsRejected(): void
-    {
-        $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('Unknown security protocol TLS, expected one of: PLAINTEXT, SSL');
-
-        new SocketStream('tcp://127.0.0.1:9092', [ClientConfig::SECURITY_PROTOCOL => 'TLS']);
+        self::assertTrue(SecurityProtocol::isEncrypted(SecurityProtocol::SASL_SSL));
+        self::assertFalse(SecurityProtocol::isEncrypted(SecurityProtocol::SASL_PLAINTEXT));
     }
 
     #[DataProvider('inaccessibleFiles')]
@@ -254,12 +236,12 @@ final class SocketStreamSslTest extends TestCase
      */
     private static function certificateFile(): string
     {
-        return dirname(__DIR__, 3) . '/docker/kafka-0.9.0.1/ssl/broker.crt';
+        return dirname(__DIR__, 3) . '/docker/kafka-0.10.2.2/ssl/broker.crt';
     }
 
     private static function keyFile(): string
     {
-        return dirname(__DIR__, 3) . '/docker/kafka-0.9.0.1/ssl/broker.key';
+        return dirname(__DIR__, 3) . '/docker/kafka-0.10.2.2/ssl/broker.key';
     }
 
     /**

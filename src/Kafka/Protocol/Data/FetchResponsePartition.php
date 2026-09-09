@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * One partition of a Fetch response v0
+ * One partition of a Fetch response
  *
  * <pre>
  *   FetchResponsePartition => Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet
@@ -32,9 +32,9 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * BYTEARRAY type; decoding those bytes into messages is the job of the record layer.
  *
  * `LastStableOffset`, `LogStartOffset` and `AbortedTransactions` belong to the transactional protocol of 0.11 and do
- * not exist in v0.
+ * not exist in any version a 0.10.2.2 broker serves, in which the partition entry is the same in v0 to v3.
  *
- * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0)" and "MessageSet and Message"
+ * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 to v3)" and "MessageSet and Message"
  */
 class FetchResponsePartition implements BinarySchemaInterface
 {
@@ -98,11 +98,19 @@ class FetchResponsePartition implements BinarySchemaInterface
     /**
      * Tells whether a single message of this partition is bigger than the MaxBytes that were asked for.
      *
-     * A 0.9.0.1 broker cuts the message set off at `MaxBytes` and does not guarantee any progress, unlike the later
-     * protocol versions: when the message at `FetchOffset` is bigger than that limit, the partition comes back
-     * without an error and with a message set that holds no complete message at all - either nothing or the first
-     * bytes of that one message - while its high water mark shows that there is something to read. A consumer that
-     * keeps fetching the same offset would spin forever, so it has to raise `max.partition.fetch.bytes` instead.
+     * **This is the answer of a Fetch request below version 3 only.** Up to version 2 the broker cuts the message
+     * set off at `MaxBytes` and guarantees no progress: when the message at `FetchOffset` is bigger than that
+     * limit, the partition comes back without an error and with a message set that holds no complete message at
+     * all - either nothing or the first bytes of that one message - while its high water mark shows that there is
+     * something to read. A consumer that keeps fetching the same offset would spin forever, so it has to raise
+     * `max.partition.fetch.bytes` instead.
+     *
+     * Version 3 (KIP-74) removed that state: the first non-empty partition of an answer ignores both size limits
+     * and returns at least one complete message, and an incomplete set is replaced with an empty one
+     * (`ReplicaManager.readFromLocalLog` @ 0.10.2.2: `!hardMaxBytesLimit && fetch.firstEntryIncomplete`). An empty
+     * partition below the high water mark is then perfectly normal - the budget of the answer was used up by the
+     * partitions in front of it - so this question must not be asked about a version 3 answer, which is why
+     * {@see \Protocol\Kafka\Client::fetchPartitions()} only asks it for the lower versions.
      *
      * @param int $fetchOffset The offset that was requested for this partition
      */

@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 /**
  * Discovers the broker that holds the committed offsets of a consumer group (api key 10, ConsumerMetadata in 0.8.2).
  *
- * The lookup has to be retried: a 0.9.0.1 broker creates the internal `__consumer_offsets` topic lazily, when the
+ * The lookup has to be retried: a 0.10.2.2 broker creates the internal `__consumer_offsets` topic lazily, when the
  * first coordinator request for any group arrives, and answers that first request - and every request that arrives
  * while the topic is being created - with the error code 15 (GroupCoordinatorNotAvailable). Error code 14
  * (GroupLoadInProgress) means the coordinator is still reading the offsets of the group out of that topic and is
@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
  * This mirrors the retry behaviour of `AdminClient::findCoordinator()` on branch `main`, which the 0.8 line has no
  * AdminClient for; the group membership APIs that would use it (api keys 11-14) only arrived in Kafka 0.9.
  *
- * @see docs/protocol/0.9.0.md, section "GroupCoordinator API (key 10, v0)"
+ * @see docs/protocol/0.10.2.md, section "GroupCoordinator API (key 10, v0)"
  */
 final class CoordinatorLookup
 {

@@ -20,7 +20,7 @@ use Protocol\Kafka\Tests\Fixture\BrokerRecord;
 use Protocol\Kafka\Tests\Fixture\ClusterReadinessProbe;
 
 /**
- * Base class for the tests that talk to a real Kafka 0.9.0.1 broker.
+ * Base class for the tests that talk to a real Kafka 0.10.2.2 broker.
  *
  * The whole suite is skipped unless the KAFKA_BOOTSTRAP_SERVERS environment variable points at a running broker,
  * e.g. the one started by `docker compose up`:
@@ -37,7 +37,7 @@ abstract class IntegrationTestCase extends TestCase
     /**
      * Name of the environment variable that holds the `host:port` of the SSL listener of the same broker
      *
-     * The broker of `docker/kafka-0.9.0.1` binds `PLAINTEXT://0.0.0.0:9092` and `SSL://0.0.0.0:9093`, so the SSL
+     * The broker of `docker/kafka-0.10.2.2` binds `PLAINTEXT://0.0.0.0:9092` and `SSL://0.0.0.0:9093`, so the SSL
      * endpoint is derived from the default rather than configured separately; the variable only exists for a broker
      * that publishes its SSL listener somewhere else. The tests that need it are still skipped together with the
      * rest of the suite, i.e. when KAFKA_BOOTSTRAP_SERVERS is unset.
@@ -50,6 +50,24 @@ abstract class IntegrationTestCase extends TestCase
      * The SSL listener of the bundled broker, used when SSL_BOOTSTRAP_SERVERS_ENV is not set
      */
     private const string DEFAULT_SSL_BOOTSTRAP_SERVER = '127.0.0.1:9093';
+
+    /**
+     * Name of the environment variable that holds the `host:port` of the SASL_PLAINTEXT listener of the broker
+     *
+     * Unlike the SSL one it has no default: a broker without `sasl.enabled.mechanisms` and without a JAAS
+     * configuration does not bind a SASL listener at all, so the tests that need one are skipped unless this
+     * variable names it explicitly.
+     *
+     * @see \Protocol\Kafka\Tests\Integration\SaslTransportTest
+     */
+    public const string SASL_BOOTSTRAP_SERVERS_ENV = 'KAFKA_SASL_BOOTSTRAP_SERVERS';
+
+    /**
+     * Name of the environment variable that holds the `host:port` of the SASL_SSL listener of the same broker
+     *
+     * @see \Protocol\Kafka\Tests\Integration\SaslTransportTest
+     */
+    public const string SASL_SSL_BOOTSTRAP_SERVERS_ENV = 'KAFKA_SASL_SSL_BOOTSTRAP_SERVERS';
 
     /**
      * How long to wait for a booting broker to publish its metadata, in seconds
@@ -154,14 +172,43 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /**
+     * Returns the `host:port` of the SASL_PLAINTEXT listener of the broker under test, or an empty string
+     */
+    final protected static function saslBootstrapServer(): string
+    {
+        return self::firstAddressOf(self::SASL_BOOTSTRAP_SERVERS_ENV);
+    }
+
+    /**
+     * Returns the `host:port` of the SASL_SSL listener of the broker under test, or an empty string
+     */
+    final protected static function saslSslBootstrapServer(): string
+    {
+        return self::firstAddressOf(self::SASL_SSL_BOOTSTRAP_SERVERS_ENV);
+    }
+
+    /**
+     * Returns the first `host:port` of a comma-separated environment variable, or an empty string when it is unset
+     */
+    private static function firstAddressOf(string $variable): string
+    {
+        $value = getenv($variable);
+        if ($value === false || trim($value) === '') {
+            return '';
+        }
+
+        return trim(explode(',', $value)[0]);
+    }
+
+    /**
      * Returns the certificate the broker presents on its SSL listener, to be used as the trust anchor of a client
      *
-     * It is the self-signed certificate that `docker/kafka-0.9.0.1` puts into the keystore of the broker
+     * It is the self-signed certificate that `docker/kafka-0.10.2.2` puts into the keystore of the broker
      * (CN=localhost, with `localhost` and `127.0.0.1` as subject alternative names).
      */
     final protected static function brokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-0.9.0.1/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-0.10.2.2/ssl/broker.crt';
     }
 
     /**

@@ -17,16 +17,19 @@ namespace Protocol\Kafka\Common\Security;
  * Possible values for the `security.protocol` configuration parameter
  *
  * Kafka 0.9.0.0 is the release that introduced pluggable listeners: a broker binds one listener per security
- * protocol (`listeners=PLAINTEXT://...,SSL://...`) and every listener answers the very same request set. The
- * protocol is therefore purely a property of the transport, it never changes a single byte of a request.
+ * protocol (`listeners=PLAINTEXT://...,SSL://...,SASL_PLAINTEXT://...,SASL_SSL://...`) and every listener answers
+ * the very same request set. The protocol is therefore a property of the transport, it never changes a single byte
+ * of a request - the SASL listeners only prepend an authentication exchange to the connection.
  *
- * This client implements PLAINTEXT and SSL. The two SASL protocols are rejected by {@see \Protocol\Kafka\IO\SocketStream}:
- * SASL in 0.9 is Kerberos (GSSAPI) only and is negotiated *outside* the Kafka protocol - the broker expects the raw
- * GSSAPI token exchange on a freshly opened connection, and the `SaslHandshake` request that made the mechanism
- * negotiable only arrived with Kafka 0.10.0 (api key 17).
+ * All four protocols are implemented on this branch. `SASL_PLAINTEXT` and `SASL_SSL` became implementable with
+ * Kafka 0.10.0 (KIP-43), which added the `SaslHandshake` request (api key 17) and with it the PLAIN mechanism: in
+ * 0.9 SASL meant Kerberos, negotiated *outside* the Kafka protocol, and PHP has no GSSAPI binding.
+ * {@see \Protocol\Kafka\IO\SocketStream} performs the handshake and the token exchange of the PLAIN mechanism right
+ * after the connection - and, for `SASL_SSL`, right after the TLS handshake - so that nothing above it notices.
  *
- * @see docs/protocol/0.9.0.md, section "Transport security (SSL)"
+ * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
  * @see \Protocol\Kafka\Common\ClientConfig::SECURITY_PROTOCOL
+ * @see \Protocol\Kafka\Common\Security\SaslMechanism for the mechanisms of the two SASL protocols
  */
 final class SecurityProtocol
 {
@@ -41,12 +44,12 @@ final class SecurityProtocol
     public const string SSL = 'SSL';
 
     /**
-     * SASL over plain TCP - not implemented, see the class docblock
+     * SASL authentication over plain TCP, i.e. credentials that travel in clear text with the PLAIN mechanism
      */
     public const string SASL_PLAINTEXT = 'SASL_PLAINTEXT';
 
     /**
-     * SASL over TLS - not implemented, see the class docblock
+     * SASL authentication inside a TLS channel, the only sound transport for the PLAIN mechanism
      */
     public const string SASL_SSL = 'SASL_SSL';
 
@@ -57,16 +60,32 @@ final class SecurityProtocol
      */
     public static function implemented(): array
     {
-        return [self::PLAINTEXT, self::SSL];
+        return [self::PLAINTEXT, self::SSL, self::SASL_PLAINTEXT, self::SASL_SSL];
     }
 
     /**
-     * Returns every protocol a Kafka 0.9.0.1 broker can bind a listener for
+     * Returns every protocol a Kafka 0.10.2.2 broker can bind a listener for
      *
      * @return list<string>
      */
     public static function all(): array
     {
         return [self::PLAINTEXT, self::SSL, self::SASL_PLAINTEXT, self::SASL_SSL];
+    }
+
+    /**
+     * Tells whether the given protocol authenticates the client with SASL
+     */
+    public static function isSasl(string $securityProtocol): bool
+    {
+        return $securityProtocol === self::SASL_PLAINTEXT || $securityProtocol === self::SASL_SSL;
+    }
+
+    /**
+     * Tells whether the given protocol encrypts the connection with TLS
+     */
+    public static function isEncrypted(string $securityProtocol): bool
+    {
+        return $securityProtocol === self::SSL || $securityProtocol === self::SASL_SSL;
     }
 }

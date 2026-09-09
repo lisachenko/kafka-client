@@ -43,9 +43,9 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
  * </pre>
  *
  * Version 2 replaced the per-partition `timestamp` of version 1 with one `retention_time` for the whole request
- * (`OFFSET_COMMIT_REQUEST_V2` in `Protocol.java` @ 0.9.0.1). With {@see self::DEFAULT_RETENTION_TIME} the broker
+ * (`OFFSET_COMMIT_REQUEST_V2` in `Protocol.java` @ 0.10.2.2). With {@see self::DEFAULT_RETENTION_TIME} the broker
  * keeps the offsets for `offsets.retention.minutes`, otherwise for the given number of milliseconds counted from
- * the moment it received the commit, see `KafkaApis.handleOffsetCommitRequest`. A 0.9.0.1 broker asserts that the
+ * the moment it received the commit, see `KafkaApis.handleOffsetCommitRequest`. A 0.10.2.2 broker asserts that the
  * version is 0, 1 or 2 and closes the connection on anything above.
  *
  * The three versions differ in their scheme, and a scheme is a static property of a class, so each of them has a
@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
  * {@see OffsetCommitRequestV0}. Everything else - the fields, the class names and the way the topic-partitions are
  * packed - is shared.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
+ * @see docs/protocol/0.10.2.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {

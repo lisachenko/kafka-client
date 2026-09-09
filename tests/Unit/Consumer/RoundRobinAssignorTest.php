@@ -26,7 +26,7 @@ use Protocol\Kafka\Consumer\Subscription;
  * assignment - the Java suite compares the lists themselves here, because the round-robin walk is ordered: the
  * topics are sorted lexicographically, their partitions numerically, and the members lexicographically by member id.
  *
- * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 #[CoversClass(RoundRobinAssignor::class)]
 #[CoversClass(AbstractPartitionAssignor::class)]

@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 
 /**
- * JoinGroup response, version 0.
+ * JoinGroup response, versions 0 and 1.
  *
  * <pre>
- *   JoinGroup Response (Version: 0) => error_code generation_id group_protocol leader_id member_id [members]
+ *   JoinGroup Response (Version: 0 and 1) => error_code generation_id group_protocol leader_id member_id [members]
  *     error_code     => INT16
  *     generation_id  => INT32
  *     group_protocol => STRING
@@ -37,13 +37,16 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
  *
  * The generation starts at 1 for the first generation of a group and is incremented on every rebalance. An answer
  * that carries an error code reports the generation **0** - not the `UNKNOWN_GENERATION_ID` of -1 that the Java
- * client uses, `GroupCoordinator.joinError` @ 0.9.0.1 builds it with `generationId = 0` - together with an empty
+ * client uses, `GroupCoordinator.joinError` @ 0.10.2.2 builds it with `generationId = 0` - together with an empty
  * group protocol, an empty leader id, an empty member array and the member id that was sent.
  *
  * The order of {@see self::$members} is the order of the internal map of the coordinator and is **not** the order
  * in which the members joined; a leader that needs a stable order has to sort the array itself.
  *
- * @see docs/protocol/0.9.0.md, section "JoinGroup API (key 11, v0)"
+ * The `rebalance_timeout` of the version 1 request did not change the answer at all: `JOIN_GROUP_RESPONSE_V1 =
+ * JOIN_GROUP_RESPONSE_V0` in `Protocol.java` @ 0.10.2.2, so this one class decodes both versions.
+ *
+ * @see docs/protocol/0.10.2.md, section "JoinGroup API (key 11, v0 and v1)"
  */
 class JoinGroupResponse extends AbstractResponse
 {

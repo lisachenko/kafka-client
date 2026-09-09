@@ -18,7 +18,7 @@ use Exception;
 /**
  * The coordinator is not aware of this member.
  *
- * Listed as UNKNOWN_CONSUMER_ID in the comments of kafka/common/ErrorMapping.scala @ 0.9.0.1.
+ * Listed as UNKNOWN_CONSUMER_ID in the comments of kafka/common/ErrorMapping.scala @ 0.10.2.2.
  */
 class UnknownMemberIdException extends KafkaException implements ServerExceptionInterface
 {

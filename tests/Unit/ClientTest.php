@@ -22,6 +22,7 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
+use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
@@ -57,7 +58,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * Tests the low-level client against scripted brokers: the fan-out to the partition leaders, the correlation of the
  * answers, the retries after a metadata refresh and the reporting of a partially failed request.
  *
- * @see docs/protocol/0.9.0.md
+ * @see docs/protocol/0.10.2.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(RetryPolicy::class)]
@@ -402,12 +403,12 @@ final class ClientTest extends TestCase
             ->install();
 
         try {
-            // 0.9.0.1 knows the lz4 codec, but this client neither writes nor reads it
-            $this->client([ProducerConfig::COMPRESSION_TYPE => 'lz4'])
+            // zstd is the codec of Kafka 2.1 and the message format v2, not of this protocol line
+            $this->client([ProducerConfig::COMPRESSION_TYPE => 'zstd'])
                 ->produce([self::TOPIC => [0 => [new Record('never sent')]]]);
             self::fail('An unsupported compression type has to be rejected');
         } catch (InvalidConfigurationException $exception) {
-            self::assertStringContainsString('lz4', $exception->getMessage());
+            self::assertStringContainsString('zstd', $exception->getMessage());
         }
 
         self::assertSame(0, $leader->getRequestCount());
@@ -447,8 +448,8 @@ final class ClientTest extends TestCase
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($metadata))
             ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::offsets(0, [
-                // v0 answers with the list of segment offsets, the newest one first
-                self::TOPIC => [0 => [0, [64, 32, 0]], 1 => [0, []]],
+                // v1 answers one offset per partition; a request for the latest offset carries the timestamp -1
+                self::TOPIC => [0 => [0, -1, 64], 1 => [0, -1, 0]],
             ])))
             ->install();
 
@@ -521,10 +522,13 @@ final class ClientTest extends TestCase
         self::assertCount(1, $partition->getRecords());
     }
 
-    public function testAMessageThatDoesNotFitIntoTheFetchSizeIsVisibleWithoutASecondRequest(): void
+    public function testAPartitionWithoutACompleteMessageIsNotReportedAsStuckByAVersionThreeFetch(): void
     {
-        // A 0.9.0.1 broker cuts the set off at MaxBytes without guaranteeing progress: the answer carries no
-        // complete message at all although the high water mark shows that there is something to read
+        // Up to version 2 an answer without a single complete message meant "the next message does not fit into
+        // MaxBytes"; the version 3 request that this client sends has no such state, because the broker returns
+        // the first message of the answer whatever its size is. An empty partition below the high water mark now
+        // means that the `fetch.max.bytes` of the answer were used up by the partitions in front of it, so the
+        // client must not turn it into a RecordTooLargeException any more
         $truncated = substr(MessageSet::fromRecords([new Record(str_repeat('x', 512))])->toBuffer(), 0, 40);
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -535,9 +539,37 @@ final class ClientTest extends TestCase
 
         $partition = $this->client()->fetchPartitions([self::TOPIC => [0 => 0]], 200)[self::TOPIC][0];
 
-        self::assertTrue($partition->isSingleMessageTooLarge());
+        self::assertFalse($partition->isSingleMessageTooLarge());
         self::assertTrue($partition->isEmpty());
         self::assertSame(0, $partition->getNextOffset(), 'a partition without a record keeps its fetch offset');
+    }
+
+    public function testTheFetchRequestCarriesTheConfiguredFetchMaxBytesAndTheOrderOfTheGivenPartitions(): void
+    {
+        // Both partitions are led by the same broker, so that they travel in one request
+        $metadata   = ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], [self::TOPIC => [0 => 0, 1 => 0]]);
+        $connection = new BrokerConnection(ResponseFrame::fetch(0, [
+            self::TOPIC => [1 => [0, 1, ''], 0 => [0, 1, '']],
+        ]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($metadata))
+            ->on(self::FIRST_LEADER, $connection)
+            ->install();
+
+        $this->client([ConsumerConfig::FETCH_MAX_BYTES => 1048576])
+            ->fetchPartitions([self::TOPIC => [1 => 7, 0 => 3]], 200);
+
+        $request = bin2hex($connection->getReceivedFrames()[0]);
+
+        // ApiKey 1, ApiVersion 3, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`
+        self::assertStringStartsWith('00010003', $request, 'the Fetch api is spoken in version 3');
+        self::assertStringContainsString('00100000', $request, 'fetch.max.bytes reached the frame');
+        // The partitions travel in the order they were given, which is the order the broker fills the answer in
+        self::assertStringEndsWith(
+            '00000001' . '0000000000000007' . '00010000'
+            . '00000000' . '0000000000000003' . '00010000',
+            $request
+        );
     }
 
     public function testTheChecksumOfEveryMessageIsVerifiedUnlessTheConsumerOptsOut(): void
@@ -647,7 +679,7 @@ final class ClientTest extends TestCase
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
         self::assertSame(2, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 2');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(1, $this->apiVersionOf($frames[1]), 'OffsetFetch did not change in Kafka 0.9');
+        self::assertSame(2, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 2');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -684,6 +716,43 @@ final class ClientTest extends TestCase
 
         $this->expectException(KafkaException::class);
         $client->commitGroupOffsets($coordinator, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
+    }
+
+    public function testEveryCommittedOffsetOfAGroupIsFetchedWithTheNullTopicArray(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client();
+        $node   = $client->getGroupCoordinator('t7-group');
+
+        self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
+
+        $frame = $coordinator->getReceivedFrames()[0];
+        self::assertSame(2, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2');
+        self::assertStringEndsWith('ffffffff', bin2hex($frame), 'the topic array of the request is the null one');
+    }
+
+    public function testAGroupLevelErrorOfOffsetFetchVersionTwoIsReported(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+                ResponseFrame::offsetFetch(0, [], KafkaException::GROUP_AUTHORIZATION_FAILED)
+            ))
+            ->install();
+
+        $client = $this->client();
+
+        $this->expectException(GroupAuthorizationFailedException::class);
+        $client->fetchGroupOffsets($client->getGroupCoordinator('t7-group'), 't7-group', null);
     }
 
     public function testANeverCommittedPartitionComesBackWithTheOffsetMinusOne(): void
@@ -737,23 +806,59 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(0, $this->apiVersionOf($frame), 'JoinGroup v1 with its rebalance timeout is Kafka 0.10.1');
+        self::assertSame(1, $this->apiVersionOf($frame), 'JoinGroup v1 carries the rebalance timeout of 0.10.1');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(
             [
-                'consumerGroup'  => 't3-group',
-                'sessionTimeout' => 12000,
-                'memberId'       => '',
-                'protocolType'   => 'consumer',
+                'consumerGroup'    => 't3-group',
+                'sessionTimeout'   => 12000,
+                'rebalanceTimeout' => ConsumerConfig::DEFAULT_MAX_POLL_INTERVAL_MS,
+                'memberId'         => '',
+                'protocolType'     => 'consumer',
             ],
             array_intersect_key(MessageFields::of($sent), array_flip([
                 'consumerGroup',
                 'sessionTimeout',
+                'rebalanceTimeout',
                 'memberId',
                 'protocolType',
             ])),
-            'the session timeout of the request is session.timeout.ms of the configuration'
+            'the two timeouts come from session.timeout.ms and max.poll.interval.ms of the configuration'
+        );
+    }
+
+    public function testTheRebalanceTimeoutOfAJoinFollowsTheConfigurationAndTheExplicitArgument(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::joinGroup(0, 0, 1, 'range', 'one-1', 'one-1', ['one-1' => 'metadata']),
+            ResponseFrame::joinGroup(0, 0, 1, 'range', 'one-1', 'one-1', ['one-1' => 'metadata'])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client([
+            ConsumerConfig::SESSION_TIMEOUT_MS   => 12000,
+            ConsumerConfig::MAX_POLL_INTERVAL_MS => 45000,
+        ]);
+        $node   = $client->getGroupCoordinator('t3-group');
+
+        $client->joinGroup($node, 't3-group', '', 'consumer', ['range' => 'metadata']);
+        $client->joinGroup($node, 't3-group', '', 'consumer', ['range' => 'metadata'], 7000);
+
+        $timeouts = [];
+        foreach ($coordinator->getReceivedFrames() as $frame) {
+            $sent       = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
+            $timeouts[] = MessageFields::of($sent)['rebalanceTimeout'];
+        }
+
+        self::assertSame(
+            [45000, 7000],
+            $timeouts,
+            'null takes max.poll.interval.ms of the configuration, an explicit value wins over it'
         );
     }
 

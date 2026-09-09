@@ -25,6 +25,7 @@ use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\ConsumerRecord;
@@ -33,11 +34,13 @@ use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Consumer\KafkaConsumer;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
+use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\Consumer\OffsetResetStrategy;
 use Protocol\Kafka\Consumer\RoundRobinAssignor;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
+use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\FakeClient;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\JsonDeserializer;
 use Protocol\Kafka\Tests\Unit\Consumer\Fixture\RecordingRebalanceListener;
@@ -52,6 +55,7 @@ use Protocol\Kafka\Tests\Unit\Consumer\Fixture\TestKafkaConsumer;
 #[CoversClass(ConsumerCoordinator::class)]
 #[CoversClass(SubscriptionState::class)]
 #[CoversClass(ConsumerRecord::class)]
+#[CoversClass(OffsetAndTimestamp::class)]
 #[CoversClass(ConsumerConfig::class)]
 #[CoversClass(RecordTooLargeException::class)]
 final class KafkaConsumerTest extends TestCase
@@ -397,6 +401,65 @@ final class KafkaConsumerTest extends TestCase
         $consumer->seekToBeginning(['another-topic' => [0]]);
     }
 
+    public function testBeginningOffsetsAndEndOffsetsReportTheBoundsOfPartitionsThatAreNotAssigned(): void
+    {
+        $client = $this->clientWithLog([0 => 5, 1 => 2]);
+        $client->logStartOffsets[self::TOPIC][0] = 2;
+
+        // Neither method needs an assignment, exactly as in the Java consumer of Kafka 0.10.1
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+
+        self::assertSame([self::TOPIC => [0 => 2, 1 => 0]], $consumer->beginningOffsets([self::TOPIC => [0, 1]]));
+        self::assertSame([self::TOPIC => [0 => 5, 1 => 2]], $consumer->endOffsets([self::TOPIC => [0, 1]]));
+        self::assertSame(
+            [
+                [self::TOPIC => [0 => OffsetsRequest::EARLIEST, 1 => OffsetsRequest::EARLIEST]],
+                [self::TOPIC => [0 => OffsetsRequest::LATEST, 1 => OffsetsRequest::LATEST]],
+            ],
+            $client->offsetsCalls,
+            'the two special target times of the Offsets api are what the broker is asked for'
+        );
+    }
+
+    public function testBeginningOffsetsAndEndOffsetsOfNothingAskTheBrokerNothing(): void
+    {
+        $client   = $this->clientWithLog([0 => 1]);
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+
+        self::assertSame([], $consumer->beginningOffsets([]));
+        self::assertSame([], $consumer->endOffsets([]));
+        self::assertSame([], $consumer->offsetsForTimes([]));
+        self::assertSame([], $client->offsetsCalls);
+    }
+
+    public function testOffsetsForTimesReturnsTheFirstRecordAtOrAfterTheTimestamp(): void
+    {
+        $client   = $this->clientWithTimestampedLog();
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+
+        $found = $consumer->offsetsForTimes([self::TOPIC => [0 => 1600000001500]]);
+
+        $offsetAndTimestamp = $found[self::TOPIC][0];
+        self::assertInstanceOf(OffsetAndTimestamp::class, $offsetAndTimestamp);
+        self::assertSame(2, $offsetAndTimestamp->offset);
+        self::assertSame(
+            1600000002000,
+            $offsetAndTimestamp->timestamp,
+            'the timestamp of the message that was found, not the one that was searched for'
+        );
+    }
+
+    public function testOffsetsForTimesReportsNullForAPartitionWithoutAMatchingRecord(): void
+    {
+        $client   = $this->clientWithTimestampedLog();
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+
+        // Above the timestamp of every message of the log, which the broker answers with the offset -1 and no error
+        $found = $consumer->offsetsForTimes([self::TOPIC => [0 => 1600000009000]]);
+
+        self::assertNull($found[self::TOPIC][0]);
+    }
+
     public function testPausedPartitionIsNotFetchedUntilItIsResumed(): void
     {
         $client   = $this->clientWithLog([0 => 2, 1 => 2]);
@@ -559,6 +622,76 @@ final class KafkaConsumerTest extends TestCase
         $consumer->poll(10);
 
         self::assertSame(2, $consumer->position(self::TOPIC, 0));
+    }
+
+    public function testThePartitionsThatReturnedRecordsAreAskedForLastInTheNextPoll(): void
+    {
+        // A Fetch v3 request is bounded by `fetch.max.bytes` for the whole answer and the broker fills the
+        // partitions in the order of the request, so a consumer that always asked in the same order would starve
+        // the partitions at its end. Every partition that returned records therefore moves behind the ones that
+        // did not, which is what the Java consumer does with `SubscriptionState.movePartitionToEnd`.
+        $client = $this->clientWithLog([0 => 1, 1 => 1]);
+        // The third partition exists but its log is empty, so it is the one that comes back without records
+        $client->logStartOffsets[self::TOPIC][2] = 0;
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([self::TOPIC => [0, 1, 2]]);
+
+        $consumer->poll(10);
+        $consumer->poll(10);
+
+        self::assertSame([0, 1, 2], array_keys($client->fetchCalls[0][self::TOPIC]));
+        self::assertSame(
+            [2, 0, 1],
+            array_keys($client->fetchCalls[1][self::TOPIC]),
+            'the partition that had nothing to give is asked first, the served ones keep their relative order'
+        );
+    }
+
+    public function testAPartitionOfAFreshAssignmentIsAppendedBehindTheKnownOrder(): void
+    {
+        $client   = $this->clientWithLog([0 => 1, 1 => 1]);
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([self::TOPIC => [0, 1]]);
+        $consumer->poll(10);
+
+        $client->append(self::TOPIC, 2, ['value-0']);
+        $consumer->assign([self::TOPIC => [0, 1, 2]]);
+        $consumer->poll(10);
+
+        self::assertSame(
+            [0, 1, 2],
+            array_keys($client->fetchCalls[1][self::TOPIC]),
+            'a partition this consumer never fetched is asked for behind the ones it knows'
+        );
+    }
+
+    public function testAPausedPartitionKeepsItsPlaceInTheFetchOrder(): void
+    {
+        $client   = $this->clientWithLog([0 => 1, 1 => 1]);
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([self::TOPIC => [0, 1]]);
+        $consumer->pause([self::TOPIC => [1]]);
+
+        $consumer->poll(10);
+        $consumer->resume([self::TOPIC => [1]]);
+        $consumer->poll(10);
+
+        self::assertSame([0], array_keys($client->fetchCalls[0][self::TOPIC]), 'a paused partition is not fetched');
+        self::assertSame(
+            [1, 0],
+            array_keys($client->fetchCalls[1][self::TOPIC]),
+            'the partition that was served goes behind the one that was paused'
+        );
     }
 
     public function testDeserializersAreAppliedToTheKeyAndTheValue(): void
@@ -1101,6 +1234,21 @@ final class KafkaConsumerTest extends TestCase
         $consumer->subscribe([self::TOPIC]);
     }
 
+    public function testSubscribeRefusesARequestTimeoutThatIsNotAboveTheMaxPollInterval(): void
+    {
+        // A JoinGroup blocks for up to the rebalance timeout, which is what max.poll.interval.ms is sent as
+        $consumer = $this->consumer(new FakeClient(), [
+            ConsumerConfig::ENABLE_AUTO_COMMIT   => false,
+            ConsumerConfig::REQUEST_TIMEOUT_MS   => 40000,
+            ConsumerConfig::SESSION_TIMEOUT_MS   => 10000,
+            ConsumerConfig::MAX_POLL_INTERVAL_MS => 300000,
+        ]);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/max\.poll\.interval\.ms/');
+        $consumer->subscribe([self::TOPIC]);
+    }
+
     public function testTheDefaultConfigurationLetsAConsumerSubscribe(): void
     {
         $configuration = ConsumerConfig::getDefaultConfiguration();
@@ -1109,6 +1257,33 @@ final class KafkaConsumerTest extends TestCase
             $configuration[ConsumerConfig::SESSION_TIMEOUT_MS],
             $configuration[ConsumerConfig::REQUEST_TIMEOUT_MS],
             'a JoinGroup that waits for a whole rebalance must not run into the socket timeout'
+        );
+        self::assertGreaterThan(
+            $configuration[ConsumerConfig::MAX_POLL_INTERVAL_MS],
+            $configuration[ConsumerConfig::REQUEST_TIMEOUT_MS],
+            'the coordinator holds a JoinGroup for a whole rebalance timeout, i.e. max.poll.interval.ms'
+        );
+        self::assertSame(300000, $configuration[ConsumerConfig::MAX_POLL_INTERVAL_MS], 'as in the Java consumer');
+        self::assertSame(10000, $configuration[ConsumerConfig::SESSION_TIMEOUT_MS], 'as in the Java consumer');
+    }
+
+    public function testTheJoinGroupOfAPollCarriesTheConfiguredMaxPollInterval(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ENABLE_AUTO_COMMIT   => false,
+            ConsumerConfig::MAX_POLL_INTERVAL_MS => 45000,
+            ConsumerConfig::REQUEST_TIMEOUT_MS   => 50000,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+
+        self::assertSame(
+            45000,
+            $client->joins[0]['rebalanceTimeout'],
+            'the consumer sends max.poll.interval.ms as the rebalance_timeout of its JoinGroup v1'
         );
     }
 
@@ -1146,6 +1321,27 @@ final class KafkaConsumerTest extends TestCase
      * @param array<int, int> $partitionRecordCounts Partition id => number of records in it
      * @param int             $firstOffset           Offset of the first record of every partition
      */
+    /**
+     * Builds a client whose only partition holds five records, one second apart, the way a timestamp lookup sees it
+     */
+    private function clientWithTimestampedLog(): FakeClient
+    {
+        $client = new FakeClient();
+        $client->logStartOffsets[self::TOPIC][0] = 0;
+        for ($offset = 0; $offset < 5; $offset++) {
+            $client->log[self::TOPIC][0][] = new Record(
+                'value-' . $offset,
+                null,
+                0,
+                $offset,
+                1600000000000 + $offset * 1000,
+                TimestampType::CREATE_TIME
+            );
+        }
+
+        return $client;
+    }
+
     private function clientWithLog(array $partitionRecordCounts, int $firstOffset = 0): FakeClient
     {
         $client = new FakeClient();

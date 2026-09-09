@@ -52,6 +52,16 @@ final class Cluster
     private const int DEFAULT_BACKOFF_MS = 100;
 
     /**
+     * Configuration key that hides the internal topics of Kafka from {@see self::topics()}
+     *
+     * The key is the `exclude.internal.topics` of the consumer, declared as
+     * {@see \Protocol\Kafka\Consumer\ConsumerConfig::EXCLUDE_INTERNAL_TOPICS}; it is spelled out here so that the
+     * Common layer does not have to depend on the Consumer one. It defaults to `false`, i.e. `topics()` lists
+     * every topic the cluster answered with, as it always did.
+     */
+    private const string EXCLUDE_INTERNAL_TOPICS = 'exclude.internal.topics';
+
+    /**
      * List of broker nodes, indexed by the node id
      *
      * @var array<int, Node>
@@ -64,6 +74,20 @@ final class Cluster
      * @var array<string, TopicMetadata>
      */
     private array $topicPartitions = [];
+
+    /**
+     * Identifier of the cluster, null while the metadata was never fetched or came from a broker without one
+     *
+     * @since Version 2 of the Metadata API (Kafka 0.10.1)
+     */
+    private ?string $clusterId = null;
+
+    /**
+     * Broker id of the active controller, null while the metadata was never fetched, -1 while no broker leads
+     *
+     * @since Version 1 of the Metadata API (Kafka 0.10.0)
+     */
+    private ?int $controllerId = null;
 
     /**
      * Point in time the metadata of this cluster was fetched at, as a unix timestamp in milliseconds
@@ -90,17 +114,20 @@ final class Cluster
      * yet", never "the cluster has no brokers", so the metadata is requested again with `retry.backoff.ms` in
      * between until `metadata.fetch.timeout.ms` runs out.
      *
-     * On a cluster that does not host a single topic yet the controller never publishes anything, and a Metadata
-     * request with an empty topic list keeps answering with zero brokers indefinitely. Naming a topic breaks that
-     * deadlock, because `auto.create.topics.enable` makes the broker create the topic and elect a leader for it;
-     * a caller that knows which topic it is going to work with should therefore pass it.
+     * On the lines below 0.10 that answer never came at all on a cluster without a single topic, because the
+     * controller published nothing before the first topic existed; naming a topic broke the deadlock, since
+     * `auto.create.topics.enable` makes the broker create it and elect a leader for it. A 0.10.2.2 broker fills
+     * its cache with the alive brokers as soon as the controller has elected itself, so naming a topic is no
+     * longer needed for the bootstrap - it still saves the caller the metadata of every topic of the cluster.
+     *
+     * The metadata is asked for with version 2 of the api, i.e. with a `null` topic array when no topic is named.
      *
      * @param array<string, mixed> $configuration Broker client configuration
      * @param string|null          $topic         Topic to ask the metadata for, `null` asks for every topic
      *
      * @throws AllBrokersNotAvailableException If the cluster did not advertise a single broker in time
      *
-     * @see docs/protocol/0.9.0.md, section "Cluster readiness"
+     * @see docs/protocol/0.10.2.md, section "Cluster readiness"
      */
     public static function bootstrap(array $configuration, ?string $topic = null): Cluster
     {
@@ -111,7 +138,8 @@ final class Cluster
             return $cluster;
         }
 
-        $topics    = $topic !== null ? [$topic] : [];
+        // A null topic list is the "every topic" of Metadata v1 and above; an EMPTY list would ask for no topic
+        $topics    = $topic !== null ? [$topic] : null;
         $timeoutMs = (int) ($configuration[ClientConfig::METADATA_FETCH_TIMEOUT_MS] ?? self::DEFAULT_FETCH_TIMEOUT_MS);
         $backoffMs = (int) ($configuration[ClientConfig::RETRY_BACKOFF_MS] ?? self::DEFAULT_BACKOFF_MS);
         $deadline  = microtime(true) + $timeoutMs / 1000;
@@ -266,12 +294,15 @@ final class Cluster
      * list has not received the metadata of the cluster from the controller yet and is treated as unavailable, see
      * {@see Cluster::bootstrap()}.
      *
-     * @param list<string> $topics Topics to ask the metadata for, an empty list asks for every topic
+     * The request is version 2 of the Metadata API, so `null` asks for every topic of the cluster and an EMPTY
+     * list asks for none of them - two intentions that version 0 had to express with the same empty array.
+     *
+     * @param list<string>|null $topics Topics to ask the metadata for, `null` asks for every topic
      *
      * @throws UnknownErrorException If not a single bootstrap server answered
      * @throws AllBrokersNotAvailableException If the cluster answered without advertising a broker
      */
-    public function reload(array $topics = []): void
+    public function reload(?array $topics = null): void
     {
         $brokerAddresses = $this->configuration[ClientConfig::BOOTSTRAP_SERVERS] ?? [];
         $clientId        = (string) ($this->configuration[ClientConfig::CLIENT_ID] ?? '');
@@ -320,6 +351,8 @@ final class Cluster
         $this->fetchedAtMs     = (int) (microtime(true) * 1e3);
         $this->nodes           = $metadata->brokers;
         $this->topicPartitions = $metadata->topics;
+        $this->clusterId       = $metadata->clusterId;
+        $this->controllerId    = $metadata->controllerId;
 
         $isCacheEnabled = !empty($this->configuration[ClientConfig::METADATA_CACHE_FILE]);
         if ($isCacheEnabled) {
@@ -335,13 +368,64 @@ final class Cluster
     /**
      * Get all topics
      *
+     * A topic is internal when Kafka itself keeps it - `__consumer_offsets`, the log of the committed offsets - and
+     * the answer says so from version 1 of the Metadata API on ({@see TopicMetadata::$isInternal}). Whether they
+     * are listed here follows the `exclude.internal.topics` of the configuration by default, so a consumer that
+     * sets the option never sees them; an explicit argument overrules it.
+     *
+     * @param bool|null $excludeInternalTopics Hide the internal topics, `null` follows `exclude.internal.topics`
+     *
      * @return list<string>
      */
-    public function topics(): array
+    public function topics(?bool $excludeInternalTopics = null): array
     {
         $this->refreshIfStale();
 
-        return array_keys($this->topicPartitions);
+        $excludeInternalTopics ??= (bool) ($this->configuration[self::EXCLUDE_INTERNAL_TOPICS] ?? false);
+        if (!$excludeInternalTopics) {
+            return array_keys($this->topicPartitions);
+        }
+
+        $topics = array_filter(
+            $this->topicPartitions,
+            static fn(TopicMetadata $metadata): bool => $metadata->isInternal !== true
+        );
+
+        return array_keys($topics);
+    }
+
+    /**
+     * Returns the identifier of this cluster, or null when the brokers do not have one
+     *
+     * The cluster id is generated by the first broker of a cluster that runs Kafka 0.10.1 or newer and stored in
+     * ZooKeeper (`KafkaServer.getOrGenerateClusterId` @ 0.10.2.2), so every broker of the cluster answers the same
+     * 22 character string. It only travels in version 2 of the Metadata API and is therefore null for a cluster
+     * whose metadata was read with an older version.
+     */
+    public function clusterId(): ?string
+    {
+        $this->refreshIfStale();
+
+        return $this->clusterId;
+    }
+
+    /**
+     * Returns the broker that is the active controller of the cluster, or null while there is none
+     *
+     * The controller is the broker that elects the partition leaders and the only one that serves the topic
+     * administration apis ({@see \Protocol\Kafka\Admin\AdminClient::findController()}). Its id arrives with every
+     * Metadata answer from version 1 on; `-1` is what a broker reports while the cluster is electing a new
+     * controller, and it is answered here as null, exactly like a controller that is not among the alive brokers.
+     */
+    public function controller(): ?Node
+    {
+        $this->refreshIfStale();
+
+        if ($this->controllerId === null || $this->controllerId === MetadataResponse::NO_CONTROLLER_ID) {
+            return null;
+        }
+
+        return $this->nodeById($this->controllerId);
     }
 
     /**
@@ -400,6 +484,9 @@ final class Cluster
                 $this->fetchedAtMs     = $cachePutTimeMs;
                 $this->nodes           = $metadata->brokers;
                 $this->topicPartitions = $metadata->topics;
+                // A file that was written before this client knew the fields of Metadata v1 and v2 has neither
+                $this->clusterId    = $metadata->clusterId ?? null;
+                $this->controllerId = $metadata->controllerId ?? null;
 
                 return true;
             }

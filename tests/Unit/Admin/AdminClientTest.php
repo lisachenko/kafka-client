@@ -16,16 +16,25 @@ namespace Protocol\Kafka\Tests\Unit\Admin;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
+use Protocol\Kafka\Common\Errors\TopicExistsException;
+use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
@@ -35,6 +44,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Tests\Compliance\VectorFile;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
+use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 
 /**
@@ -45,7 +55,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * disagree about what a broker says. The scripted connection echoes the correlation id of each request the way a
  * broker does, which is what the client validates the answer against.
  *
- * @see docs/protocol/0.9.0.md, section "Wire vectors"
+ * @see docs/protocol/0.10.2.md, section "Wire vectors"
  */
 #[CoversClass(AdminClient::class)]
 final class AdminClientTest extends TestCase
@@ -59,6 +69,11 @@ final class AdminClientTest extends TestCase
      * Name of the consumer group the wire vectors were recorded for
      */
     private const string GROUP = 't10-vectors-group';
+
+    /**
+     * Name of the topic the OffsetFetch v2 vectors were recorded for, on the 0.10.2.2 container
+     */
+    private const string VECTOR_TOPIC = 't6-vectors';
 
     /**
      * Name of the consumer group that the DescribeGroups and ListGroups vectors were recorded for
@@ -96,6 +111,11 @@ final class AdminClientTest extends TestCase
      */
     private const string BROKER_ADDRESS = 'tcp://127.0.0.1:9092';
 
+    /**
+     * Address of the second broker of the two-broker cluster that the controller lookup is exercised on
+     */
+    private const string SECOND_BROKER_ADDRESS = 'tcp://127.0.0.1:9093';
+
     private ScriptedConnections $brokers;
 
     protected function setUp(): void
@@ -110,7 +130,7 @@ final class AdminClientTest extends TestCase
 
     public function testFindAllBrokersReturnsTheBrokersOfTheMetadataResponse(): void
     {
-        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v0.single-topic'));
+        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v2.single-topic'));
         $admin  = $this->adminClient();
 
         $brokers = $admin->findAllBrokers();
@@ -121,20 +141,20 @@ final class AdminClientTest extends TestCase
         self::assertSame(
             [self::requestFrame(new MetadataRequest([], 't10', $broker->getReceivedCorrelationIds()[0]))],
             $broker->getReceivedFrames(),
-            'findAllBrokers() asks for every topic with an empty topic array'
+            'findAllBrokers() asks for NO topic at all, which version 1 of the api writes as an empty array'
         );
     }
 
     public function testListTopicsReturnsTheTopicNames(): void
     {
-        $this->scriptBroker(self::vector('metadata', 'metadata.response.v0.single-topic'));
+        $this->scriptBroker(self::vector('metadata', 'metadata.response.v2.single-topic'));
 
         self::assertSame([self::TOPIC], $this->adminClient()->listTopics());
     }
 
     public function testDescribeTopicsReturnsTheMetadataOfEachTopic(): void
     {
-        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v0.single-topic'));
+        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v2.single-topic'));
 
         $topics = $this->adminClient()->describeTopics([self::TOPIC]);
 
@@ -150,16 +170,16 @@ final class AdminClientTest extends TestCase
 
     public function testListOffsetsMapsThePartitionOffsetsOfEveryTopic(): void
     {
-        $broker = $this->scriptBroker(self::vector('offsets', 'offsets.response.v0.latest'));
+        // Version 1 answers one offset per partition; the latest offset comes with the timestamp -1
+        $broker = $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [0, -1, 2]]]));
 
         $offsets = $this->adminClient()->listOffsets([self::TOPIC => [0]]);
 
-        self::assertSame([self::TOPIC => [0 => [2]]], $offsets, 'the log end offset of the partition');
+        self::assertSame([self::TOPIC => [0 => 2]], $offsets, 'the log end offset of the partition');
         self::assertSame(
             [self::requestFrame(new OffsetsRequest(
                 [self::TOPIC => [0 => OffsetsRequest::LATEST]],
-                1,
-                -1,
+                OffsetsRequest::CONSUMER_REPLICA_ID,
                 't10',
                 $broker->getReceivedCorrelationIds()[0]
             ))],
@@ -168,9 +188,27 @@ final class AdminClientTest extends TestCase
         );
     }
 
+    public function testListOffsetsReportsAnOffsetOfMinusOneWhenNoMessageMatchesTheTimestamp(): void
+    {
+        $broker = $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [0, -1, -1]]]));
+
+        $offsets = $this->adminClient()->listOffsets([self::TOPIC => [0]], 1600000000000);
+
+        self::assertSame([self::TOPIC => [0 => -1]], $offsets, 'nothing matched, and that is not an error');
+        self::assertSame(
+            [self::requestFrame(new OffsetsRequest(
+                [self::TOPIC => [0 => 1600000000000]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                't10',
+                $broker->getReceivedCorrelationIds()[0]
+            ))],
+            $broker->getReceivedFrames()
+        );
+    }
+
     public function testListOffsetsThrowsThePartitionErrorOfTheBroker(): void
     {
-        $this->scriptBroker(self::vector('offsets', 'offsets.response.v0.unknown-partition'));
+        $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [3, -1, -1]]]));
 
         $this->expectExceptionMessage('This server does not host this topic-partition');
 
@@ -178,29 +216,72 @@ final class AdminClientTest extends TestCase
         $this->adminClient()->listOffsets([self::TOPIC => [0]]);
     }
 
+    public function testListOffsetsThrowsWhenTheTopicHasNoMessageTimestampsToSearch(): void
+    {
+        // Error code 43, UnsupportedForMessageFormat: the topic runs with message.format.version below 0.10.0
+        $this->scriptBroker(ResponseFrame::offsets(1, [self::TOPIC => [0 => [43, -1, -1]]]));
+
+        $this->expectException(UnsupportedForMessageFormatException::class);
+
+        $this->adminClient()->listOffsets([self::TOPIC => [0]], 1600000000000);
+    }
+
     public function testListGroupOffsetsAsksTheCoordinatorAndReturnsTheCommittedOffsets(): void
     {
         $broker = $this->scriptBroker(
             self::vector('group-coordinator', 'groupcoordinator.response.v0'),
-            self::vector('offset-fetch', 'offsetfetch.response.v1')
+            self::vector('offset-fetch', 'offsetfetch.response.v2')
         );
 
-        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::TOPIC => [0]]);
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [0]]);
 
-        self::assertSame([self::TOPIC], array_keys($topics));
-        self::assertSame(1, $topics[self::TOPIC]->partitions[0]->offset);
-        self::assertSame(0, $topics[self::TOPIC]->partitions[0]->errorCode);
+        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
+        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+        self::assertSame(0, $topics[self::VECTOR_TOPIC]->partitions[0]->errorCode);
 
         [$lookupId, $fetchId] = $broker->getReceivedCorrelationIds();
         self::assertSame(
             [
                 self::requestFrame(new GroupCoordinatorRequest(self::GROUP, 't10', $lookupId)),
-                self::requestFrame(new OffsetFetchRequest(self::GROUP, [self::TOPIC => [0]], 't10', $fetchId)),
+                self::requestFrame(new OffsetFetchRequest(self::GROUP, [self::VECTOR_TOPIC => [0]], 't10', $fetchId)),
             ],
             $broker->getReceivedFrames(),
-            'the coordinator lookup comes first, the OffsetFetch v1 goes to the coordinator it named'
+            'the coordinator lookup comes first, the OffsetFetch v2 goes to the coordinator it named'
         );
         self::assertNotSame($lookupId, $fetchId, 'every request carries its own correlation id');
+    }
+
+    public function testListGroupOffsetsAsksForEveryTopicOfTheGroupWithoutPartitions(): void
+    {
+        $broker = $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('offset-fetch', 'offsetfetch.response.v2.all-topics')
+        );
+
+        // main's shape: the group alone, which the nullable topic array of the version 2 makes possible
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP);
+
+        self::assertSame([self::VECTOR_TOPIC], array_keys($topics));
+        self::assertSame(1, $topics[self::VECTOR_TOPIC]->partitions[0]->offset);
+
+        [, $fetchId] = $broker->getReceivedCorrelationIds();
+        self::assertSame(
+            self::requestFrame(new OffsetFetchRequest(self::GROUP, null, 't10', $fetchId)),
+            $broker->getReceivedFrames()[1],
+            'the topic array of the request is the null one, ff ff ff ff'
+        );
+    }
+
+    public function testListGroupOffsetsReportsTheGroupLevelErrorOfVersionTwo(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('offset-fetch', 'offsetfetch.response.v2.group-error')
+        );
+
+        $this->expectException(NotCoordinatorForGroupException::class);
+
+        $this->adminClient()->listGroupOffsets(self::GROUP);
     }
 
     public function testListGroupOffsetsAcceptsAPartitionThatWasNeverCommitted(): void
@@ -259,7 +340,7 @@ final class AdminClientTest extends TestCase
         // The metadata answer names one broker, and nothing is scripted for it: connecting to it fails
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(
-                self::vector('metadata', 'metadata.response.v0.single-topic')
+                self::vector('metadata', 'metadata.response.v2.single-topic')
             ))
             ->install();
 
@@ -271,7 +352,7 @@ final class AdminClientTest extends TestCase
     public function testListGroupsReturnsTheGroupsTheBrokerCoordinates(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('metadata', 'metadata.response.v0.single-topic'),
+            self::vector('metadata', 'metadata.response.v2.single-topic'),
             self::vector('list-groups', 'listgroups.response.v0')
         );
         $admin  = $this->adminClient();
@@ -291,7 +372,7 @@ final class AdminClientTest extends TestCase
     public function testListGroupsThrowsTheErrorCodeOfTheCoordinator(): void
     {
         $this->scriptBroker(
-            self::vector('metadata', 'metadata.response.v0.single-topic'),
+            self::vector('metadata', 'metadata.response.v2.single-topic'),
             (string) hex2bin(self::LOADING_GROUPS_RESPONSE)
         );
         $admin = $this->adminClient();
@@ -305,7 +386,7 @@ final class AdminClientTest extends TestCase
     {
         // The metadata vector announces a single broker, which is the only one that has to be asked
         $broker = $this->scriptBroker(
-            self::vector('metadata', 'metadata.response.v0.single-topic'),
+            self::vector('metadata', 'metadata.response.v2.single-topic'),
             self::vector('list-groups', 'listgroups.response.v0')
         );
 
@@ -392,6 +473,243 @@ final class AdminClientTest extends TestCase
         self::assertSame(2, $broker->getRequestCount(), 'one coordinator lookup and one DescribeGroups request');
     }
 
+    public function testFindControllerReturnsTheBrokerTheMetadataNamesAsTheController(): void
+    {
+        [$first, $second] = $this->scriptCluster([], [], self::metadataResponse(1));
+
+        $controller = $this->adminClient()->findController();
+
+        self::assertSame(1, $controller->nodeId, 'the ControllerId of the Metadata answer names the controller');
+        self::assertSame(0, $first->getRequestCount(), 'no broker is probed any more, the answer already said it');
+        self::assertSame(0, $second->getRequestCount());
+        self::assertSame(
+            1,
+            $this->brokers->getConnectionCount(self::BOOTSTRAP_ADDRESS),
+            'the metadata of the bootstrap is enough, the lookup opens no further connection'
+        );
+    }
+
+    public function testFindControllerAsksForTheMetadataOnceMoreWhenItNamesNoController(): void
+    {
+        // -1 is what a broker answers while the cluster is electing a controller, so the client asks once more
+        $this->scriptCluster([], [], self::metadataResponse(-1), self::metadataResponse(1));
+
+        self::assertSame(1, $this->adminClient()->findController()->nodeId);
+    }
+
+    public function testFindControllerFailsWhileTheClusterHasNoController(): void
+    {
+        $this->scriptCluster([], [], self::metadataResponse(-1), self::metadataResponse(-1));
+
+        $this->expectException(NotControllerException::class);
+
+        $this->adminClient()->findController();
+    }
+
+    public function testCreateTopicsReportsTheErrorOfEveryTopicOfTheAnswer(): void
+    {
+        [$controller] = $this->scriptCluster(
+            [
+                self::createTopicsResponse([
+                    't7-created' => [KafkaException::NO_ERROR, null],
+                    't7-exists'  => [KafkaException::TOPIC_ALREADY_EXISTS, "Topic 't7-exists' already exists."],
+                ]),
+            ],
+            []
+        );
+
+        $result = $this->adminClient()->createTopics([
+            new NewTopic('t7-created', 1, 1),
+            new NewTopic('t7-exists', 1, 1),
+        ]);
+
+        self::assertSame(['t7-created', 't7-exists'], array_keys($result), 'in the order of the request');
+        self::assertNull($result['t7-created']);
+        self::assertInstanceOf(TopicExistsException::class, $result['t7-exists']);
+        self::assertSame(
+            ['topic' => 't7-exists', 'error' => "Topic 't7-exists' already exists."],
+            $result['t7-exists']->getContext(),
+            'the error message of version 1 travels into the context of the exception'
+        );
+        self::assertSame(
+            self::requestFrame(
+                new CreateTopicsRequest(
+                    [new NewTopic('t7-created', 1, 1), new NewTopic('t7-exists', 1, 1)],
+                    30000,
+                    false,
+                    't10',
+                    $controller->getReceivedCorrelationIds()[0]
+                )
+            ),
+            $controller->getReceivedFrames()[0],
+            'the request goes out as CreateTopics v1 with the default timeout'
+        );
+    }
+
+    public function testCreateTopicsIsRepeatedOnceAgainstAFreshlyLookedUpController(): void
+    {
+        // The controller moved between the lookup and the request: the answer is 41 for every topic, and a second
+        // lookup finds the broker that is the controller now
+        [$first, $second] = $this->scriptCluster(
+            [self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]])],
+            [self::createTopicsResponse(['t7-moved' => [KafkaException::NO_ERROR, null]])],
+            self::metadataResponse(0),
+            self::metadataResponse(1)
+        );
+
+        $result = $this->adminClient()->createTopics([new NewTopic('t7-moved', 1, 1)]);
+
+        self::assertSame(['t7-moved' => null], $result);
+        self::assertSame(1, $first->getRequestCount(), 'the broker that was the controller answered 41 once');
+        self::assertSame(1, $second->getRequestCount(), 'and the repeated request went to the new controller');
+        self::assertSame(
+            2,
+            $this->brokers->getConnectionCount(self::BOOTSTRAP_ADDRESS),
+            'the 41 proves the ControllerId is stale, so the metadata is fetched again before the second lookup'
+        );
+    }
+
+    public function testTheAnswerOfTheSecondControllerIsReportedAsItIs(): void
+    {
+        [$first] = $this->scriptCluster(
+            [
+                self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]]),
+                self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]]),
+            ],
+            [],
+            self::metadataResponse(0),
+            self::metadataResponse(0)
+        );
+
+        $result = $this->adminClient()->createTopics([new NewTopic('t7-moved', 1, 1)]);
+
+        self::assertInstanceOf(NotControllerException::class, $result['t7-moved']);
+        self::assertSame(2, $first->getRequestCount(), 'the request was repeated once and not a third time');
+    }
+
+    public function testDeleteTopicsReportsTheErrorOfEveryTopicOfTheAnswer(): void
+    {
+        [$controller] = $this->scriptCluster(
+            [
+                self::deleteTopicsResponse([
+                    't7-deleted' => KafkaException::NO_ERROR,
+                    't7-unknown' => KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+                ]),
+            ],
+            []
+        );
+
+        $result = $this->adminClient()->deleteTopics(['t7-deleted', 't7-unknown'], 5000);
+
+        self::assertSame(['t7-deleted', 't7-unknown'], array_keys($result));
+        self::assertNull($result['t7-deleted']);
+        self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result['t7-unknown']);
+        self::assertSame(
+            self::requestFrame(
+                new DeleteTopicsRequest(
+                    ['t7-deleted', 't7-unknown'],
+                    5000,
+                    't10',
+                    $controller->getReceivedCorrelationIds()[0]
+                )
+            ),
+            $controller->getReceivedFrames()[0]
+        );
+    }
+
+    public function testATopicTheControllerDidNotAnswerForIsNotReportedAsCreated(): void
+    {
+        $this->scriptCluster([self::createTopicsResponse([])], []);
+
+        $result = $this->adminClient()->createTopics([new NewTopic('t7-missing', 1, 1)]);
+
+        self::assertInstanceOf(UnknownErrorException::class, $result['t7-missing']);
+    }
+
+    /**
+     * Scripts a cluster of two brokers and returns the connections that will be handed out for them
+     *
+     * The Metadata answers go to the BOOTSTRAP connection, because that is where the cluster asks for them - the
+     * one of the bootstrap plus one for every refresh the test expects. The brokers themselves are only sent the
+     * requests of the api under test: which of them is the controller is part of the metadata now, so nothing is
+     * sent to a broker just to find that out.
+     *
+     * @param list<string> $firstBrokerResponses  Answers of the broker with the node id 0
+     * @param list<string> $secondBrokerResponses Answers of the broker with the node id 1
+     * @param string       ...$metadataAnswers    Metadata answers of the bootstrap, in order
+     *
+     * @return array{0: BrokerConnection, 1: BrokerConnection}
+     */
+    private function scriptCluster(
+        array $firstBrokerResponses,
+        array $secondBrokerResponses,
+        string ...$metadataAnswers
+    ): array {
+        $first     = new BrokerConnection(...$firstBrokerResponses);
+        $second    = new BrokerConnection(...$secondBrokerResponses);
+        $answers   = $metadataAnswers !== [] ? $metadataAnswers : [self::metadataResponse()];
+        // Cluster::reload() opens a connection of its own for every attempt, so each answer needs one
+        $bootstrap = array_map(
+            static fn(string $answer): BrokerConnection => new BrokerConnection($answer),
+            $answers
+        );
+
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, ...$bootstrap)
+            ->on(self::BROKER_ADDRESS, $first)
+            ->on(self::SECOND_BROKER_ADDRESS, $second)
+            ->install();
+
+        return [$first, $second];
+    }
+
+    /**
+     * Builds the Metadata answer of a cluster of two brokers without a single topic
+     *
+     * @param int $controllerId Broker id the answer names as the controller, -1 for a cluster that elects one
+     */
+    private static function metadataResponse(int $controllerId = 0): string
+    {
+        return ResponseFrame::metadata(
+            0,
+            [[0, '127.0.0.1', 9092], [1, '127.0.0.1', 9093]],
+            controllerId: $controllerId
+        );
+    }
+
+    /**
+     * Builds a CreateTopics answer of version 1
+     *
+     * @param array<string, array{0: int, 1: string|null}> $topics Error code and message of every topic
+     */
+    private static function createTopicsResponse(array $topics): string
+    {
+        $body = pack('N', count($topics));
+        foreach ($topics as $topic => [$errorCode, $errorMessage]) {
+            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
+            $body .= $errorMessage === null
+                ? pack('n', 0xFFFF)
+                : pack('n', strlen($errorMessage)) . $errorMessage;
+        }
+
+        return ResponseFrame::of(0, $body);
+    }
+
+    /**
+     * Builds a DeleteTopics answer of version 0
+     *
+     * @param array<string, int> $topics Error code of every topic
+     */
+    private static function deleteTopicsResponse(array $topics): string
+    {
+        $body = pack('N', count($topics));
+        foreach ($topics as $topic => $errorCode) {
+            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
+        }
+
+        return ResponseFrame::of(0, $body);
+    }
+
     /**
      * Scripts the answers of the single broker of the cluster and installs the connections
      */
@@ -400,7 +718,7 @@ final class AdminClientTest extends TestCase
         $broker = new BrokerConnection(...$responses);
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(
-                self::vector('metadata', 'metadata.response.v0.single-topic')
+                self::vector('metadata', 'metadata.response.v2.single-topic')
             ))
             ->on(self::BROKER_ADDRESS, $broker)
             ->install();

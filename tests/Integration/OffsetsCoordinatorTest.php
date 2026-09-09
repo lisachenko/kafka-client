@@ -24,6 +24,7 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartitionV1;
@@ -44,6 +45,8 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
+use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 
 /**
  * Verifies the GroupCoordinator, OffsetCommit and OffsetFetch APIs against a real Kafka 0.9.0.1 broker.
@@ -53,8 +56,8 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
  * are exercised here, because version 0 and version 2 are reachable through the `offsets.storage` option of the
  * client and version 1 is the version a 0.8 broker expects.
  *
- * @see docs/protocol/0.9.0.md, sections "GroupCoordinator API (key 10, v0)",
- *      "OffsetCommit API (key 8, v0, v1 and v2)" and "OffsetFetch API (key 9, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, sections "GroupCoordinator API (key 10, v0)",
+ *      "OffsetCommit API (key 8, v0, v1 and v2)" and "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]
@@ -72,6 +75,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]
 #[CoversClass(OffsetFetchResponse::class)]
+#[CoversClass(OffsetFetchResponseV0::class)]
 #[CoversClass(OffsetFetchResponseTopic::class)]
 #[CoversClass(OffsetFetchResponsePartition::class)]
 final class OffsetsCoordinatorTest extends IntegrationTestCase
@@ -146,12 +150,109 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         $this->commitInKafka($stream, $groupId, [$topic => [0 => 21, 1 => 42]]);
 
-        $offsets = $this->fetchV1($stream, $groupId, [$topic => [0, 1]]);
+        $offsets = $this->fetchInKafka($stream, $groupId, [$topic => [0, 1]]);
 
         self::assertSame(21, $offsets[$topic]->partitions[0]->offset);
         self::assertSame(0, $offsets[$topic]->partitions[0]->errorCode);
         self::assertSame(42, $offsets[$topic]->partitions[1]->offset);
         self::assertSame(0, $offsets[$topic]->partitions[1]->errorCode);
+    }
+
+    /**
+     * The nullable topic array of version 2 (Kafka 0.10.2, KIP-88): null is every topic, [] is none
+     */
+    public function testVersionTwoAnswersEveryCommittedTopicOfTheGroupForANullTopicArray(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $topic   = $this->createTopic();
+        $stream  = $this->coordinatorStream($groupId);
+
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => 11, 2 => 33]]);
+
+        $allTopics = $this->fetchInKafka($stream, $groupId, null);
+
+        self::assertSame([$topic], array_keys($allTopics), 'the answer names the topics the group committed');
+        self::assertSame([0, 2], array_keys($allTopics[$topic]->partitions), 'and only the committed partitions');
+        self::assertSame(11, $allTopics[$topic]->partitions[0]->offset);
+        self::assertSame(33, $allTopics[$topic]->partitions[2]->offset);
+    }
+
+    public function testAnEmptyTopicArrayOfVersionTwoIsNotTheNullOne(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $topic   = $this->createTopic();
+        $stream  = $this->coordinatorStream($groupId);
+
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => 17]]);
+
+        self::assertSame(
+            [],
+            $this->fetchInKafka($stream, $groupId, []),
+            'an empty topic array names no topic at all, although the group has a committed offset'
+        );
+        self::assertNotSame([], $this->fetchInKafka($stream, $groupId, null), 'while a null array names all of them');
+    }
+
+    /**
+     * A group the coordinator never heard of is not an error, it is a group without offsets
+     *
+     * `GroupCoordinator.handleFetchOffsets` @ 0.10.2.2 "returns offsets blindly regardless the current group state",
+     * so an unknown group answers an empty topics array with the group-level error code 0. A client cannot tell an
+     * unknown group from a group without offsets through this api - DescribeGroups is where the state of a group is.
+     */
+    public function testAnUnknownGroupAnswersNoTopicAndNoGroupError(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $stream  = $this->coordinatorStream($groupId);
+
+        $response = $this->fetchInKafkaResponse($stream, $groupId, null);
+
+        self::assertSame([], $response->topics);
+        self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
+    }
+
+    /**
+     * The nullable topic array is version 2 only: the broker closes the connection on a `-1` array of version 1
+     *
+     * The request class of this client refuses to build that frame ({@see OffsetFetchRequest::__construct()}), so
+     * the probe hand-builds it - and the broker answers the way it answers every frame it cannot parse on this line.
+     */
+    public function testVersionOneCanNotSendTheNullTopicArray(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $probe   = new RawApiProbe(self::firstBootstrapServer());
+
+        try {
+            $nullTopicArray = pack('n', strlen($groupId)) . $groupId . pack('N', -1);
+            $versionOne     = $probe->send(ApiKeys::OFFSET_FETCH, 1, $nullTopicArray, 33);
+
+            self::assertSame(
+                RawApiProbe::CLOSED,
+                $versionOne['status'],
+                'a -1 topic array is a SchemaException for version 1, and a 0.10 broker closes the socket for it'
+            );
+        } finally {
+            $probe->close();
+        }
+    }
+
+    /**
+     * The same frame with the version 2 in its header is a perfectly ordinary request
+     */
+    public function testTheSameFrameIsAcceptedByVersionTwo(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $probe   = new RawApiProbe(self::firstBootstrapServer());
+
+        try {
+            $nullTopicArray = pack('n', strlen($groupId)) . $groupId . pack('N', -1);
+            $answer         = $probe->send(ApiKeys::OFFSET_FETCH, 2, $nullTopicArray, 34);
+
+            self::assertSame(RawApiProbe::ANSWERED, $answer['status']);
+            self::assertSame(34, $answer['correlationId']);
+        } finally {
+            $probe->close();
+        }
     }
 
     public function testOffsetsCommittedInZooKeeperStorageAreFetchedBackFromAnyBroker(): void
@@ -168,7 +269,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         self::assertSame(0, $commitResponse->topics[$topic]->partitions[0]->errorCode);
 
         new OffsetFetchRequestV0($groupId, [$topic => [0]], 'kafka-client-t6', 12)->writeTo($stream);
-        $fetchResponse = OffsetFetchResponse::unpack($stream);
+        $fetchResponse = OffsetFetchResponseV0::unpack($stream);
 
         self::assertSame(12, $fetchResponse->getCorrelationId());
         self::assertSame(7, $fetchResponse->topics[$topic]->partitions[0]->offset);
@@ -185,9 +286,9 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         new OffsetCommitRequestV0($groupId, [$topic => [0 => 5]], 'kafka-client-t6', 21)->writeTo($stream);
         OffsetCommitResponse::unpack($stream);
 
-        $fromKafka = $this->fetchV1($stream, $groupId, [$topic => [0]]);
+        $fromKafka = $this->fetchInKafka($stream, $groupId, [$topic => [0]]);
         new OffsetFetchRequestV0($groupId, [$topic => [0]], 'kafka-client-t6', 22)->writeTo($stream);
-        $fromZooKeeper = OffsetFetchResponse::unpack($stream)->topics;
+        $fromZooKeeper = OffsetFetchResponseV0::unpack($stream)->topics;
 
         self::assertSame(1000, $fromKafka[$topic]->partitions[0]->offset);
         self::assertSame(5, $fromZooKeeper[$topic]->partitions[0]->offset);
@@ -199,7 +300,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $topic   = $this->createTopic();
         $stream  = $this->coordinatorStream($groupId);
 
-        $fromKafka = $this->fetchV1($stream, $groupId, [$topic => [0]]);
+        $fromKafka = $this->fetchInKafka($stream, $groupId, [$topic => [0]]);
 
         self::assertSame(-1, $fromKafka[$topic]->partitions[0]->offset);
         self::assertSame(
@@ -209,7 +310,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         );
 
         new OffsetFetchRequestV0($groupId, [$topic => [0]], 'kafka-client-t6', 31)->writeTo($stream);
-        $fromZooKeeper = OffsetFetchResponse::unpack($stream)->topics;
+        $fromZooKeeper = OffsetFetchResponseV0::unpack($stream)->topics;
 
         self::assertSame(-1, $fromZooKeeper[$topic]->partitions[0]->offset);
         self::assertSame(
@@ -236,7 +337,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $missingPartition = 4242;
         $stream           = $this->coordinatorStream($groupId);
 
-        $fromKafka = $this->fetchV1($stream, $groupId, [$topic => [$missingPartition]]);
+        $fromKafka = $this->fetchInKafka($stream, $groupId, [$topic => [$missingPartition]]);
 
         // A 0.9.0.1 broker answers "never committed" here, where 0.8.2.2 answered 3 (UnknownTopicOrPartition):
         // `KafkaApis.handleOffsetFetchRequest` @ 0.9.0.1 hands the version 1 request straight to the coordinator
@@ -250,7 +351,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         new OffsetFetchRequestV0($groupId, [$topic => [$missingPartition]], 'kafka-client-t6', 32)
             ->writeTo($stream);
-        $fromZooKeeper = OffsetFetchResponse::unpack($stream)->topics;
+        $fromZooKeeper = OffsetFetchResponseV0::unpack($stream)->topics;
 
         self::assertSame(
             KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
@@ -268,7 +369,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $metadata = 'committed by ' . __FUNCTION__;
 
         $this->commitInKafka($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(64, $metadata)]]);
-        $offsets = $this->fetchV1($stream, $groupId, [$topic => [0]]);
+        $offsets = $this->fetchInKafka($stream, $groupId, [$topic => [0]]);
 
         self::assertSame(64, $offsets[$topic]->partitions[0]->offset);
         self::assertSame($metadata, $offsets[$topic]->partitions[0]->metadata);
@@ -314,7 +415,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $metadata = str_repeat('m', self::OFFSET_METADATA_MAX_BYTES);
 
         $this->commitInKafka($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(2, $metadata)]]);
-        $offsets = $this->fetchV1($stream, $groupId, [$topic => [0]]);
+        $offsets = $this->fetchInKafka($stream, $groupId, [$topic => [0]]);
 
         self::assertSame(2, $offsets[$topic]->partitions[0]->offset);
         self::assertSame($metadata, $offsets[$topic]->partitions[0]->metadata);
@@ -339,7 +440,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::NO_ERROR, $response->topics[$topic]->partitions[0]->errorCode);
 
-        $offsets = $this->fetchV1($stream, $groupId, [$topic => [0]]);
+        $offsets = $this->fetchInKafka($stream, $groupId, [$topic => [0]]);
 
         self::assertSame(77, $offsets[$topic]->partitions[0]->offset);
         self::assertSame('by version 1', $offsets[$topic]->partitions[0]->metadata);
@@ -377,12 +478,13 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         );
     }
 
-    public function testVersion3OfTheOffsetCommitApiIsDroppedWithoutAnAnswer(): void
+    public function testVersion3OfTheOffsetCommitApiClosesTheConnection(): void
     {
-        // `OffsetCommitRequest.readFrom` @ 0.9.0.1 asserts that the version is 0, 1 or 2. A frame it cannot parse is
-        // not refused, it is silently dropped: the socket stays open and the request is simply never answered, see
-        // "An api the broker does not serve is dropped, not refused" in the protocol document. The client has no
-        // class for the version, so the frame is built by hand here.
+        // OffsetCommit stops at v2 in Kafka 0.10.2.2 - v3, which carries a throttle time in its answer, is 0.11 -
+        // and `AbstractRequest.getRequest()` throws for it. A 0.10 broker does not drop such a frame the way a
+        // 0.9.0.1 broker did: `SocketServer.processCompletedReceives` catches the `InvalidRequestException` and
+        // CLOSES the connection, see "An api the broker does not serve closes the connection" in the protocol
+        // document. The client has no class for the version, so the frame is built by hand here.
         $groupId = self::uniqueGroupName();
         $topic   = $this->createTopic();
         $body    = pack('n', 8) . pack('n', 3) . pack('N', 91) . pack('n', 0)
@@ -399,8 +501,13 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             self::assertStringContainsString('stream', strtolower($exception->getMessage()));
         }
 
-        // The connection is still perfectly usable: the next well-formed request on it is answered normally
-        $accepted = $this->commitInKafka($stream, $groupId, [$topic => [0 => 3]]);
+        // The connection is gone with the frame, so the commit that follows needs a new one - which is answered
+        // normally, the broker itself is unaffected
+        $accepted = $this->commitInKafka(
+            $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 1000]),
+            $groupId,
+            [$topic => [0 => 3]]
+        );
 
         self::assertSame(KafkaException::NO_ERROR, $accepted->topics[$topic]->partitions[0]->errorCode);
     }
@@ -500,17 +607,38 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
     }
 
     /**
-     * Fetches offsets with a version 1 request
+     * Fetches the offsets that live in `__consumer_offsets` with a version 2 request
      *
-     * @param array<string, list<int>> $topicPartitions Partitions to fetch, per topic
+     * @param array<string, list<int>>|null $topicPartitions Partitions to fetch, per topic, or null for all topics
      *
      * @return array<string, OffsetFetchResponseTopic>
      */
-    private function fetchV1(Stream $stream, string $groupId, array $topicPartitions): array
+    private function fetchInKafka(Stream $stream, string $groupId, ?array $topicPartitions): array
     {
+        $response = $this->fetchInKafkaResponse($stream, $groupId, $topicPartitions);
+
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $response->errorCode,
+            'the group-level error code of the version 2 answer'
+        );
+
+        return $response->topics;
+    }
+
+    /**
+     * The whole version 2 answer, group-level error code included
+     *
+     * @param array<string, list<int>>|null $topicPartitions Partitions to fetch, per topic, or null for all topics
+     */
+    private function fetchInKafkaResponse(
+        Stream $stream,
+        string $groupId,
+        ?array $topicPartitions
+    ): OffsetFetchResponse {
         new OffsetFetchRequest($groupId, $topicPartitions, 'kafka-client-t6', 2)->writeTo($stream);
 
-        return OffsetFetchResponse::unpack($stream)->topics;
+        return OffsetFetchResponse::unpack($stream);
     }
 
     /**

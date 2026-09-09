@@ -17,14 +17,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * One topic of a Fetch request v0
+ * One topic of a Fetch request
  *
  * <pre>
  *   FetchRequestTopic => TopicName [Partition FetchOffset MaxBytes]
  *     TopicName => string
  * </pre>
  *
- * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
  */
 class FetchRequestTopic implements BinarySchemaInterface
 {

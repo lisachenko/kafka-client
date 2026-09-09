@@ -51,7 +51,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * first one until a session timeout expires. The second member therefore runs in a child process, see
  * {@see ConsumerGroupMemberProcess}.
  *
- * @see docs/protocol/0.9.0.md, sections "Group membership protocol (keys 11 to 14)", "Consumer group protocol
+ * @see docs/protocol/0.10.2.md, sections "Group membership protocol (keys 11 to 14)", "Consumer group protocol
  *      (protocol_type = consumer)" and "DescribeGroups API (key 15, v0)"
  */
 #[CoversClass(KafkaConsumer::class)]
@@ -77,6 +77,15 @@ final class ConsumerGroupTest extends IntegrationTestCase
      * Session timeout of the members here; `group.min.session.timeout.ms` of the container is 1000
      */
     private const int SESSION_TIMEOUT_MS = 6000;
+
+    /**
+     * Rebalance timeout of the members here, sent as the `rebalance_timeout` of their JoinGroup v1 requests
+     *
+     * The coordinator waits this long for a member to rejoin a rebalance, so it bounds every JoinGroup and has to
+     * stay below {@see self::REQUEST_TIMEOUT_MS}; the default of `max.poll.interval.ms` is five minutes, which a
+     * test can not wait for.
+     */
+    private const int MAX_POLL_INTERVAL_MS = 10000;
 
     /**
      * Read timeout of the sockets, which has to cover a JoinGroup that waits for a whole rebalance
@@ -235,10 +244,13 @@ final class ConsumerGroupTest extends IntegrationTestCase
 
         $consumer->unsubscribe();
 
-        // The coordinator removes a group whose last member left, and reports it as Dead from then on
+        // The coordinator of Kafka 0.10.1 and later keeps a group whose last member left: it moves to `Empty` and
+        // lingers there with its committed offsets until `offsets.retention.minutes` expires them, where a 0.9.0.1
+        // coordinator dropped it at once and answered `Dead`. That is what makes a restarted consumer of the same
+        // group resume where the group committed instead of starting over.
         $description = $this->describeGroup($groupId);
 
-        self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $description->state);
+        self::assertSame(DescribeGroupResponseMetadata::STATE_EMPTY, $description->state);
         self::assertSame([], $description->members);
         self::assertSame([], $consumer->subscription());
         self::assertSame([], $consumer->assignment());
@@ -420,6 +432,7 @@ final class ConsumerGroupTest extends IntegrationTestCase
             'groupId'             => $groupId,
             'strategy'            => $strategy,
             'sessionTimeoutMs'    => self::SESSION_TIMEOUT_MS,
+            'maxPollIntervalMs'   => self::MAX_POLL_INTERVAL_MS,
             'heartbeatIntervalMs' => 500,
             'requestTimeoutMs'    => self::REQUEST_TIMEOUT_MS,
             'durationSeconds'     => 2 * self::REBALANCE_TIMEOUT,
@@ -450,7 +463,12 @@ final class ConsumerGroupTest extends IntegrationTestCase
     {
         $configuration = $this->configuration();
 
-        return new AdminClient(Cluster::bootstrap($configuration), $configuration)->describeGroup($groupId);
+        // Bootstrapped with the topic of this class only: a metadata request for every topic of a cluster that
+        // thousands of test runs filled takes longer than the one-second session timeout some tests use here, and
+        // the member they describe would be gone before the answer arrives
+        $cluster = Cluster::bootstrap($configuration, $this->topic);
+
+        return new AdminClient($cluster, $configuration)->describeGroup($groupId);
     }
 
     /**
@@ -482,6 +500,7 @@ final class ConsumerGroupTest extends IntegrationTestCase
             ClientConfig::REQUEST_TIMEOUT_MS        => self::REQUEST_TIMEOUT_MS,
 
             ConsumerConfig::SESSION_TIMEOUT_MS      => self::SESSION_TIMEOUT_MS,
+            ConsumerConfig::MAX_POLL_INTERVAL_MS    => self::MAX_POLL_INTERVAL_MS,
             ConsumerConfig::HEARTBEAT_INTERVAL_MS   => 500,
             ConsumerConfig::FETCH_MAX_WAIT_MS       => 250,
             ConsumerConfig::AUTO_OFFSET_RESET       => OffsetResetStrategy::EARLIEST,

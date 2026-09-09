@@ -24,14 +24,22 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Produce response Topic DTO
  *
  * <pre>
- *   TopicName [Partition ErrorCode Offset]
+ *   TopicName [Partition ErrorCode Offset LogAppendTime]
  *     TopicName => string
  * </pre>
  *
- * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
+ * The partition entries of a version 0 or 1 answer carry no `LogAppendTime`, which is what the version constant of
+ * this DTO selects, see {@see ProduceResponseTopicV0}.
+ *
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 class ProduceResponseTopic implements BinarySchemaInterface
 {
+    /**
+     * Version of the Produce API that this DTO is unpacked from
+     */
+    public const int VERSION = 2;
+
     /**
      * The name of the topic
      */
@@ -51,7 +59,17 @@ class ProduceResponseTopic implements BinarySchemaInterface
     {
         return [
             'topic'      => BinarySchema::TYPE_STRING,
-            'partitions' => ['partition' => ProduceResponsePartition::class],
+            'partitions' => ['partition' => static::partitionClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a partition entry for the version of the API that this DTO belongs to
+     *
+     * @return class-string<ProduceResponsePartition>
+     */
+    protected static function partitionClass(): string
+    {
+        return static::VERSION >= 2 ? ProduceResponsePartition::class : ProduceResponsePartitionV0::class;
     }
 }

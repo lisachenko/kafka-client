@@ -19,6 +19,7 @@ namespace Protocol\Kafka;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
@@ -38,6 +39,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
+use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
@@ -51,6 +53,12 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
+use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
@@ -65,6 +73,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
@@ -73,12 +82,13 @@ use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 
 /**
- * Low-level client for the Kafka 0.9.0.1 protocol.
+ * Low-level client for the Kafka 0.10.2.2 protocol.
  *
- * Every api is sent with the highest version a 0.9.0.1 broker serves: Produce v1 and Fetch v1, whose answers carry
- * the throttle time of a quota, OffsetCommit v2 with its `retention_time`, and OffsetCommit v0 when the offsets are
- * stored in ZooKeeper. The version 0 classes of those apis stay usable directly, for a client that has to talk to a
- * 0.8 broker.
+ * Every api is sent with the highest version a 0.10.2.2 broker serves: Produce v2, whose answer carries the
+ * `LogAppendTime` of every partition, Fetch v3, which asks for message format v1 and bounds the whole answer with
+ * `fetch.max.bytes`, OffsetCommit v2 with its `retention_time`, and OffsetCommit v0 when the offsets are stored in
+ * ZooKeeper. The lower version classes of those apis stay usable directly, for a client that has to talk to an
+ * older broker.
  *
  * Every request that addresses topic-partitions is split by their current leader and sent to all of those brokers
  * at once; the answers are collected with `stream_select()` as they arrive. A topic-partition whose leader answered
@@ -87,7 +97,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/0.9.0.md
+ * @see docs/protocol/0.10.2.md
  */
 class Client
 {
@@ -108,10 +118,46 @@ class Client
     ) {}
 
     /**
+     * Asks one broker which api keys and versions it serves (ApiKey 18, Kafka 0.10.0 and later)
+     *
+     * This is the answer to "what does the broker on the other side speak": the 0.8 and 0.9 lines of this client had
+     * to probe it by sending a request of every key and version, because the api did not exist yet. A 0.10.2.2
+     * broker reports the 21 keys 0 to 20 with the version ranges of the api-key table of the protocol document, and
+     * answers before any authentication has happened on a SASL listener.
+     *
+     * The client itself does **not** negotiate with the answer - like the `0.9.x` line it sends the fixed versions
+     * that a broker of its own Kafka release serves - so this is an api for callers that want to know what they are
+     * talking to, and the material a later line can build a negotiation on.
+     *
+     * The request is the one frame of the protocol whose *unsupported version* is answered instead of costing the
+     * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion) with an
+     * empty api array, which is reported here as it arrives and not raised as an exception - version 0 is the only
+     * version this client sends, so a 35 means the peer is older than Kafka 0.10.0.
+     *
+     * @param Node $node Broker to ask; every broker of a cluster answers for itself
+     *
+     * @throws NetworkException If the connection to the broker dropped
+     */
+    public function apiVersions(Node $node): ApiVersionsResponse
+    {
+        return $this->coordinatorRequest(
+            $node,
+            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest(
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            ApiVersionsResponse::class,
+            static fn(ApiVersionsResponse $response): ApiVersionsResponse => $response
+        );
+    }
+
+    /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as Produce v1, so every accepted partition also carries the `throttleTimeMs` the broker
-     * reported for the answer it arrived in; without a `producer_byte_rate` quota that is always 0.
+     * The request goes out as Produce v2, so every accepted partition carries two values the broker reported next
+     * to its base offset: the `logAppendTime` the broker stamped on the whole batch, which is -1 unless the topic
+     * is configured with `message.timestamp.type=LogAppendTime`, and the `throttleTimeMs` of the answer it arrived
+     * in, which is 0 without a `producer_byte_rate` quota.
      *
      * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
      *        each topic and partition
@@ -121,7 +167,8 @@ class Client
      *         which the broker never answers
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
-     * @throws InvalidConfigurationException  For a `compression.type` that this client can not write
+     * @throws InvalidConfigurationException  For a `compression.type` or a `message.format.version` that this client
+     *         can not write
      */
     public function produce(array $topicPartitionMessages): array
     {
@@ -131,14 +178,19 @@ class Client
         $compressionCodec = ProducerConfig::compressionCodec(
             $this->configuration[ProducerConfig::COMPRESSION_TYPE] ?? ProducerConfig::COMPRESSION_TYPE_NONE
         );
+        // `message.format.version` decides which of the two message formats of this line the batch is written in
+        $messageFormatMagic = ProducerConfig::messageFormatMagic(
+            $this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION] ?? ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0
+        );
 
-        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.9.0.md
+        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.10.2.md
         $topicPartitionMessageSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
                 $topicPartitionMessageSets[$topic][$partition] = MessageSet::fromRecords(
                     self::toRecords($messages),
-                    $compressionCodec
+                    $compressionCodec,
+                    $messageFormatMagic
                 );
             }
         }
@@ -216,12 +268,21 @@ class Client
      * Fetches messages together with the state of each topic-partition they came from.
      *
      * A consumer needs more than the records to drive its fetch loop: the high water mark of a partition tells it
-     * how far behind the end of the log it is, and a message that is larger than `max.partition.fetch.bytes` makes
-     * the broker answer without an error and without a single complete message, which would turn a naive fetch loop
-     * into an endless one, see {@see FetchedPartition::isSingleMessageTooLarge()}.
+     * how far behind the end of the log it is, and up to version 2 of the api a message that is larger than
+     * `max.partition.fetch.bytes` makes the broker answer without an error and without a single complete message,
+     * which would turn a naive fetch loop into an endless one, see
+     * {@see FetchedPartition::isSingleMessageTooLarge()}.
      *
-     * The request goes out as Fetch v1, so every returned partition also carries the `throttleTimeMs` the broker
-     * reported for the answer it belongs to; without quotas that is always 0.
+     * The request goes out as **Fetch v3**, which means three things:
+     *
+     * * the message sets come back in the format the log holds them in - a broker converts them down to message
+     *   format v0 only for a request below version 2 - so the records carry the timestamps of format v1;
+     * * the whole answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`.
+     *   The broker fills the partitions **in the order of `$topicPartitionOffsets`** and stops once that budget is
+     *   used up, so the partitions at the end of a large fetch come back empty; a caller that fetches more than one
+     *   partition has to rotate their order between calls, as {@see \Protocol\Kafka\Consumer\KafkaConsumer} does;
+     * * the first non-empty partition of the answer ignores both limits and carries at least one complete message,
+     *   so a partition can no longer be stuck on a message that is too large and this client never reports one.
      *
      * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
      * @param int                            $timeout               Timeout in ms to wait for fetching
@@ -245,7 +306,8 @@ class Client
                 $this->configuration[ConsumerConfig::MAX_PARTITION_FETCH_BYTES],
                 -1,
                 $this->configuration[ConsumerConfig::CLIENT_ID],
-                $correlationId
+                $correlationId,
+                (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES] ?? FetchRequest::DEFAULT_MAX_BYTES)
             ),
             FetchResponse::class,
             static function (array $result, FetchResponse $response, array &$errors) use (
@@ -279,7 +341,10 @@ class Client
                             $responsePartition->errorCode,
                             $responsePartition->highWaterMarkOffset,
                             $messageSet,
-                            $responsePartition->isSingleMessageTooLarge($fetchOffset),
+                            // From version 3 on the broker guarantees that the first non-empty partition of an
+                            // answer holds a complete message, and an empty partition simply means that the
+                            // `fetch.max.bytes` of the answer were used up by the ones in front of it
+                            FetchRequest::VERSION < 3 && $responsePartition->isSingleMessageTooLarge($fetchOffset),
                             $response->throttleTimeMs
                         );
                     }
@@ -292,24 +357,64 @@ class Client
     }
 
     /**
-     * Requests all offsets for the list of topic partitions
+     * Requests one offset for each of the given topic partitions
      *
-     * This query will be made over the current cluster by checking the metadata for each topic partition
+     * This query will be made over the current cluster by checking the metadata for each topic partition; the
+     * Offsets api is served by the leader of a partition alone.
      *
-     * @param array<string, array<int, int>> $topicPartitions Target times of each topic partition
+     * A target time is {@see OffsetsRequest::LATEST} for the log end offset - the offset the next produced message
+     * will get - {@see OffsetsRequest::EARLIEST} for the first offset that is still on disk, or a timestamp in
+     * milliseconds, which version 1 of the api (Kafka 0.10.1) answers with the offset of the first message whose own
+     * timestamp is at or after it. A timestamp that no message of a partition matches is not an error: the offset of
+     * that partition is then {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1. Use
+     * {@see self::fetchTopicPartitionOffsetsForTimes()} to receive the timestamp of the message that was found
+     * together with its offset.
+     *
+     * @param array<string, array<int, int>> $topicPartitionTimestamps Target times of each topic partition
      *
      * @return array<string, array<int, int>> Array in the form: [topic => [partition => offset]]
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
      */
-    public function fetchTopicPartitionOffsets(array $topicPartitions): array
+    public function fetchTopicPartitionOffsets(array $topicPartitionTimestamps): array
+    {
+        $found = $this->fetchTopicPartitionOffsetsForTimes($topicPartitionTimestamps);
+
+        $result = [];
+        foreach ($found as $topic => $partitionOffsets) {
+            foreach ($partitionOffsets as $partitionId => $offsetAndTimestamp) {
+                $result[$topic][$partitionId] = $offsetAndTimestamp?->offset ?? OffsetsResponsePartition::UNKNOWN_OFFSET;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Looks the offsets of the given topic partitions up and reports the timestamp of every message that was found
+     *
+     * The timestamp-based version 1 of the Offsets api answers each partition with one offset and the timestamp of
+     * the message it points at. A partition whose log holds no message at or after the target time - and every
+     * partition of an empty log - is answered with the error code 0 and the offset -1, which arrives here as `null`.
+     * {@see OffsetsRequest::LATEST} and {@see OffsetsRequest::EARLIEST} always find an offset, and the broker
+     * answers them with the timestamp {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP}, because it does not read
+     * the message the offset points at.
+     *
+     * @param array<string, array<int, int>> $topicPartitionTimestamps Target times of each topic partition
+     *
+     * @return array<string, array<int, OffsetAndTimestamp|null>> [topic => [partition => offset and timestamp]]
+     *
+     * @throws TopicPartitionRequestException If a partition was answered with an error code - which is how the
+     *         `UnsupportedForMessageFormatException` of a topic whose `message.format.version` is older than 0.10.0
+     *         arrives, since such a log has no message timestamps to search
+     */
+    public function fetchTopicPartitionOffsetsForTimes(array $topicPartitionTimestamps): array
     {
         return $this->clusterRequest(
-            $topicPartitions,
+            $topicPartitionTimestamps,
             fn(array $nodeTopicRequest, int $correlationId): OffsetsRequest => new OffsetsRequest(
                 $nodeTopicRequest,
-                1,
-                -1,
+                OffsetsRequest::CONSUMER_REPLICA_ID,
                 $this->configuration[ConsumerConfig::CLIENT_ID],
                 $correlationId
             ),
@@ -325,8 +430,10 @@ class Client
                             );
                             continue;
                         }
-                        // v0 answers with a list of segment offsets, the newest one first
-                        $result[$topic][$partitionId] = $partitionMetadata->offsets[0] ?? 0;
+                        // "No message matches that timestamp" is answered with the offset -1 and no error at all
+                        $result[$topic][$partitionId] = $partitionMetadata->offset === OffsetsResponsePartition::UNKNOWN_OFFSET
+                            ? null
+                            : new OffsetAndTimestamp($partitionMetadata->offset, $partitionMetadata->timestamp);
                     }
                 }
 
@@ -408,22 +515,30 @@ class Client
      * Fetches the offsets for topic partition for the concrete consumer group
      *
      * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}
-     * - OffsetFetch itself did not change in 0.9, its v2 is Kafka 0.10.2. A topic-partition that has never been
-     * committed comes back with the offset -1: as the error code 0 from the `__consumer_offsets` topic (v1), and as
-     * the error code 3 from ZooKeeper (v0).
+     * - `kafka` reads them out of `__consumer_offsets` with the version 2 of the api, `zookeeper` with the version 0.
+     * A topic-partition that has never been committed comes back with the offset -1: as the error code 0 from the
+     * `__consumer_offsets` topic (v1 and v2), and as the error code 3 from ZooKeeper (v0).
      *
-     * @param Node                          $coordinatorNode Current offset coordinator for $groupId
-     * @param string                        $groupId         Name of the group
-     * @param array<string, array<int, int>> $topicPartitions List of topic => partitions for fetching information
+     * `$topicPartitions` of **null** asks the coordinator for every topic-partition the group has a committed offset
+     * for, which the nullable topic array of the version 2 (Kafka 0.10.2) makes possible; an **empty** array names no
+     * topic at all and is answered with an empty result. Reading all topics needs the Kafka storage: version 0 has no
+     * nullable array and refuses it with an {@see Common\Errors\UnsupportedVersionException}.
+     *
+     * @param Node                                $coordinatorNode Current offset coordinator for $groupId
+     * @param string                              $groupId         Name of the group
+     * @param array<string, array<int, int>>|null $topicPartitions List of topic => partitions for fetching
+     *        information, or null for every topic of the group
      *
      * @return array<string, array<int, int>> Committed offsets in the form [topic => [partition => offset]]
      *
      * Exception UnknownTopicOrPartition is ignored and silenced, offset -1 will be returned
      *
      * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitions): array
+    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, ?array $topicPartitions): array
     {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
@@ -432,8 +547,13 @@ class Client
             fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
                 ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId)
                 : new OffsetFetchRequestV0($groupId, $topicPartitions, $clientId, $correlationId),
-            OffsetFetchResponse::class,
+            $this->isOffsetStorageKafka() ? OffsetFetchResponse::class : OffsetFetchResponseV0::class,
             static function (OffsetFetchResponse $response) use ($groupId): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    // Version 2 reports what is wrong with the group itself here, and answers no topic at all
+                    throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
+                }
+
                 $result = [];
                 foreach ($response->topics as $topic => $topicResponse) {
                     /** @var OffsetFetchResponsePartition $partition */
@@ -464,16 +584,20 @@ class Client
      * publishes it with {@see self::syncGroup()}; only that member receives the `members` array.
      *
      * **The coordinator holds this request until the rebalance is over**, i.e. until every known member of the
-     * group has rejoined or has missed its session timeout. `request.timeout.ms` - the read timeout of the socket -
-     * therefore has to be larger than {@see ConsumerConfig::SESSION_TIMEOUT_MS}, which is where the session timeout
-     * of the request comes from.
+     * group has rejoined or has run out of time. How much time each of them gets is the `rebalance_timeout` of the
+     * version 1 request (Kafka 0.10.1): the coordinator waits the **largest** rebalance timeout of the members of
+     * the group, not their session timeout. `request.timeout.ms` - the read timeout of the socket - therefore has to
+     * be larger than both {@see ConsumerConfig::SESSION_TIMEOUT_MS} and {@see ConsumerConfig::MAX_POLL_INTERVAL_MS},
+     * which are where the two timeouts of the request come from.
      *
-     * @param Node                  $coordinatorNode Current group coordinator for $groupId
-     * @param string                $groupId         Name of the group
-     * @param string                $memberId        Name of the group member, empty when it has none yet
-     * @param string                $protocolType    Type of protocol to use for joining, e.g. `consumer`
-     * @param array<string, string> $groupProtocols  Metadata of every supported protocol, by protocol name; opaque
+     * @param Node                  $coordinatorNode   Current group coordinator for $groupId
+     * @param string                $groupId           Name of the group
+     * @param string                $memberId          Name of the group member, empty when it has none yet
+     * @param string                $protocolType      Type of protocol to use for joining, e.g. `consumer`
+     * @param array<string, string> $groupProtocols    Metadata of every supported protocol, by protocol name; opaque
      *        bytes to this api - a `consumer` member sends its `Subscription` here
+     * @param int|null              $rebalanceTimeoutMs How long the coordinator may wait for this member to rejoin a
+     *        rebalance, null for the configured `max.poll.interval.ms`
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -489,16 +613,21 @@ class Client
         string $groupId,
         string $memberId,
         string $protocolType,
-        array $groupProtocols
+        array $groupProtocols,
+        ?int $rebalanceTimeoutMs = null
     ): JoinGroupResponse {
-        $clientId       = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
-        $sessionTimeout = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
+        $clientId         = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+        $sessionTimeout   = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
+        $rebalanceTimeout = $rebalanceTimeoutMs
+            ?? (int) ($this->configuration[ConsumerConfig::MAX_POLL_INTERVAL_MS]
+                ?? ConsumerConfig::DEFAULT_MAX_POLL_INTERVAL_MS);
 
         return $this->groupRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => new JoinGroupRequest(
                 $groupId,
                 $sessionTimeout,
+                $rebalanceTimeout,
                 $memberId,
                 $protocolType,
                 $groupProtocols,
@@ -725,7 +854,8 @@ class Client
     }
 
     /**
-     * Sends one request to the coordinator of a group and hands its answer to the given reader.
+     * Sends one request to a single known broker - the coordinator of a group, or the node an api like
+     * ApiVersions addresses directly - and hands its answer to the given reader.
      *
      * A dropped connection is the only failure that is worth another attempt here: every error code of the
      * OffsetCommit and OffsetFetch APIs is either final or has to be answered by looking the coordinator up again,
@@ -1112,5 +1242,161 @@ class Client
         }
 
         return $result;
+    }
+
+    /**
+     * Asks the controller to create the given topics (ApiKey 19, Kafka 0.10.1)
+     *
+     * The request goes out as CreateTopics v1, the highest version a 0.10.2.2 broker serves, so `$validateOnly` is
+     * available and the answer carries the `error_message` of every topic that failed. Only the ACTIVE CONTROLLER
+     * serves this api: `$controller` has to be the node that
+     * {@see \Protocol\Kafka\Admin\AdminClient::findController()} returned, and a broker that is not (or is no
+     * longer) the controller reports the error code 41 (NotController) for every topic of the request, which is
+     * handed back as a {@see Common\Errors\NotControllerException} of that topic instead of being thrown - the
+     * caller looks the controller up again and repeats the request.
+     *
+     * `$timeoutMs` is the time the controller waits for the topics to exist before it answers. A value of 0 answers
+     * immediately, and every accepted topic then carries the error code 7 (RequestTimedOut) although its creation
+     * has been scheduled and will finish shortly afterwards.
+     *
+     * @param Node           $controller   Active controller of the cluster
+     * @param list<NewTopic> $newTopics    Topics to create
+     * @param int            $timeoutMs    How long the controller waits for the topics to be created
+     * @param bool           $validateOnly Validate the request without creating anything
+     *
+     * @return array<string, KafkaException|null> Error of every requested topic, null when it was created
+     */
+    public function createTopics(
+        Node $controller,
+        array $newTopics,
+        int $timeoutMs = 30000,
+        bool $validateOnly = false
+    ): array {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+        $topics   = array_values($newTopics);
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new CreateTopicsRequest(
+                $topics,
+                $timeoutMs,
+                $validateOnly,
+                $clientId,
+                $correlationId
+            ),
+            CreateTopicsResponse::class,
+            static function (CreateTopicsResponse $response) use ($topics): array {
+                $result = [];
+                foreach ($topics as $newTopic) {
+                    $topicResult             = $response->topics[$newTopic->topic] ?? null;
+                    $result[$newTopic->topic] = self::topicError(
+                        $newTopic->topic,
+                        $topicResult?->errorCode,
+                        $topicResult?->errorMessage
+                    );
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Asks the controller to delete the given topics (ApiKey 20, Kafka 0.10.1)
+     *
+     * Deletion is asynchronous: `AdminUtils.deleteTopic` only marks the topic in ZooKeeper and the controller then
+     * removes its partitions from the brokers, so `$timeoutMs` is how long the controller waits for that to finish
+     * before it answers - a value of 0 answers immediately with the error code 7 (RequestTimedOut) for every topic
+     * whose deletion was started. A topic that is unknown to the broker is reported with 3
+     * (UnknownTopicOrPartition), and a broker that is not the active controller answers 41 (NotController) for
+     * every topic, exactly like {@see self::createTopics()}.
+     *
+     * The api key exists whatever `delete.topic.enable` says; with the Kafka 0.10 default of `false` the topic is
+     * accepted here and never actually removed.
+     *
+     * @param Node         $controller Active controller of the cluster
+     * @param list<string> $topics     Names of the topics to delete
+     * @param int          $timeoutMs  How long the controller waits for the topics to be deleted
+     *
+     * @return array<string, KafkaException|null> Error of every requested topic, null when it was deleted
+     */
+    public function deleteTopics(Node $controller, array $topics, int $timeoutMs = 30000): array
+    {
+        $clientId    = (string) $this->configuration[ClientConfig::CLIENT_ID];
+        $topicNames  = array_values(array_map(strval(...), $topics));
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new DeleteTopicsRequest(
+                $topicNames,
+                $timeoutMs,
+                $clientId,
+                $correlationId
+            ),
+            DeleteTopicsResponse::class,
+            static function (DeleteTopicsResponse $response) use ($topicNames): array {
+                $result = [];
+                foreach ($topicNames as $topic) {
+                    $result[$topic] = self::topicError($topic, $response->topics[$topic]->errorCode ?? null);
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Sends one request of the topic administration apis to the active controller and hands its answer to a reader.
+     *
+     * The transport is the one of {@see self::coordinatorRequest()} - a single request to one named broker, with a
+     * fresh correlation id, and with the `retries` and `retry.backoff.ms` of {@see RetryPolicy} for a connection
+     * that dropped in between. The error codes of CreateTopics and DeleteTopics are reported per topic and never
+     * repeated here: 41 NotController is the business of the caller, which has to look the controller up again.
+     *
+     * @template T
+     *
+     * @param Node                           $controller    Active controller of the cluster
+     * @param Closure(int): AbstractRequest  $createRequest Builds the request for a correlation id
+     * @param class-string<AbstractResponse> $responseClass Class of the expected response
+     * @param Closure(mixed): T              $readResponse  Turns the response into the result
+     *
+     * @return T
+     */
+    private function controllerRequest(
+        Node $controller,
+        Closure $createRequest,
+        string $responseClass,
+        Closure $readResponse
+    ): mixed {
+        return $this->coordinatorRequest($controller, $createRequest, $responseClass, $readResponse);
+    }
+
+    /**
+     * Turns the error code of one topic of a CreateTopics or DeleteTopics answer into the exception of the caller
+     *
+     * A topic that the controller did not report on at all is an answer this client can not interpret, so it
+     * becomes an {@see UnknownErrorException} instead of a silent success.
+     *
+     * @param string      $topic        Name of the topic the entry belongs to
+     * @param int|null    $errorCode    Error code of the topic, null when the answer has no entry for it
+     * @param string|null $errorMessage Message the broker sent along with the code (CreateTopics v1 only)
+     */
+    private static function topicError(string $topic, ?int $errorCode, ?string $errorMessage = null): ?KafkaException
+    {
+        if ($errorCode === null) {
+            return new UnknownErrorException(
+                ['topic' => $topic, 'error' => 'The controller sent no result for this topic']
+            );
+        }
+        if ($errorCode === KafkaException::NO_ERROR) {
+            return null;
+        }
+
+        $context = ['topic' => $topic];
+        if ($errorMessage !== null) {
+            $context['error'] = $errorMessage;
+        }
+
+        return KafkaException::fromCode($errorCode, $context);
     }
 }

@@ -1,25 +1,43 @@
-Wire vectors of the Kafka 0.9.0.1 protocol
-==========================================
+Wire vectors of the Kafka 0.10.2.2 protocol
+===========================================
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
-machine-readable half of [`../0.9.0.md`](../0.9.0.md), whose "Wire vectors" section shows the same bytes as annotated
+machine-readable half of [`../0.10.2.md`](../0.10.2.md), whose "Wire vectors" section shows the same bytes as annotated
 hex dumps.
 
-The vectors that this branch inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker; Kafka 0.9.0.1 does not
-change the frames of those api versions, and `tests/Integration/ApiVersionProbeTest.php` verifies against a 0.9.0.1
-broker that it still serves exactly them. Everything that 0.9 adds - Produce v1, Fetch v1, OffsetCommit v2,
-ControlledShutdown v1 and the group apis - is captured on the 0.9.0.1 container of `docker-compose.yml`.
+A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
+frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
+- Produce v1, Fetch v1, OffsetCommit v2, ControlledShutdown v1, the group membership apis and the consumer protocol
+structures - on a 0.9.0.1 broker, and everything Kafka 0.10 adds on the 0.10.2.2 container of `docker-compose.yml`:
+
+| File | What was captured on the 0.10.2.2 broker |
+|---|---|
+| `api-versions.json` | ApiVersions v0, the 21 keys the broker serves, and the error code 35 of an unknown version |
+| `message-format.json` | seven message sets of format v1 and the format v0 the broker converts an lz4 set down to |
+| `metadata.json` | Metadata v1 and v2 - `rack`, `is_internal`, `controller_id`, `cluster_id` - next to the v0 frames |
+| `produce.json` | Produce v2 with the `log_append_time` of a `LogAppendTime` topic |
+| `fetch.json` | Fetch v2 and v3, including the request-level `max_bytes` of v3 |
+| `offsets.json` | Offsets v1: by timestamp, one offset per partition, and the 43 of a message-format-v0 topic |
+| `offset-fetch.json` | OffsetFetch v2: named topics, `null` (all topics), `[]` (no topic), and the group error code |
+| `join-group.json` | JoinGroup v1 with the `rebalance_timeout` |
+| `create-topics.json` | CreateTopics v0 and v1, including the `error_message` of v1 |
+| `delete-topics.json` | DeleteTopics v0, including the answer for a topic the cluster does not have |
+| `sasl-handshake.json` | SaslHandshake v0 and the two frames of the PLAIN token exchange (`kind: structure`) |
+
+That the older frames are still the current ones is not an assumption:
+`tests/Integration/ApiVersionProbeTest.php` asks the 0.10.2.2 broker with a real **ApiVersions** request
+(`api-versions.json`) which versions it serves, and sends a frame of every one of them.
 
 ```json
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0)",
+    "section": "Metadata API (key 3, v0, v1 and v2)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV0",
             "version": 0,
             "source": "broker",
             "description": "…",

@@ -16,8 +16,11 @@ namespace Protocol\Kafka\Producer;
 /**
  * The metadata for a record that has been acknowledged by the broker.
  *
- * The `$timestamp` of a record is the `LogAppendTime` of version 2 of the Produce API (Kafka 0.10.0, message format
- * v1) and is therefore always `null` here: a 0.9.0.1 broker never reports one.
+ * The `$timestamp` is the timestamp the log holds for that record: the `CreateTime` that the producer stamped on the
+ * first record of the batch - the record whose offset the answer reports - or, for a topic configured with
+ * `message.timestamp.type=LogAppendTime`, the `LogAppendTime` that version 2 of the Produce API reports for the
+ * whole batch, because the broker overwrote every timestamp of it with that value. `null` means that the batch
+ * carried no timestamp at all, i.e. that it was written in message format v0.
  *
  * `$throttleTimeMs` is the `ThrottleTime` that version 1 of the Produce API added to the answer (Kafka 0.9): the
  * number of milliseconds the broker delayed the response of the batch because the client exceeded its
@@ -25,7 +28,7 @@ namespace Protocol\Kafka\Producer;
  * which is not answered at all.
  *
  * @see \Protocol\Kafka\Client::produce()
- * @see docs/protocol/0.9.0.md, section "Quotas and throttle time"
+ * @see docs/protocol/0.10.2.md, section "Quotas and throttle time"
  */
 final class RecordMetadata
 {
@@ -33,7 +36,8 @@ final class RecordMetadata
      * @param string   $topic          Topic the records were appended to
      * @param int      $partition      Partition of that topic
      * @param int      $offset         Offset the first record of the batch was appended at, -1 with `acks = 0`
-     * @param int|null $timestamp      Always null in 0.9, the broker reports no `LogAppendTime`
+     * @param int|null $timestamp      Timestamp of the first record of the batch: the CreateTime the producer
+     *                                 stamped on it, or the LogAppendTime the broker answered with
      * @param int      $throttleTimeMs Milliseconds the broker delayed this answer because of a produce quota
      */
     public function __construct(

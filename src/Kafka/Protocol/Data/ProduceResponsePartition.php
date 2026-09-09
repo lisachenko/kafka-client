@@ -24,18 +24,30 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Produce response partition DTO
  *
  * <pre>
- *   Partition ErrorCode Offset
- *     Partition => int32
- *     ErrorCode => int16
- *     Offset    => int64
+ *   Partition ErrorCode Offset LogAppendTime
+ *     Partition     => int32
+ *     ErrorCode     => int16
+ *     Offset        => int64
+ *     LogAppendTime => int64
  * </pre>
  *
- * The `LogAppendTime` of the later protocol lines arrived with version 2 of this API (Kafka 0.10.0).
+ * `LogAppendTime` arrived with version 2 of this API (Kafka 0.10.0, message format v1) and is absent from the
+ * answer of a version 0 or 1 request, which is what {@see ProduceResponsePartitionV0} decodes.
  *
- * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {
+    /**
+     * Version of the Produce API that this DTO is unpacked from
+     */
+    public const int VERSION = 2;
+
+    /**
+     * Value of `LogAppendTime` for a topic that stamps its records with a `CreateTime`, i.e. "no append time"
+     */
+    public const int NO_LOG_APPEND_TIME = -1;
+
     /**
      * The partition this response entry corresponds to.
      */
@@ -55,6 +67,22 @@ class ProduceResponsePartition implements BinarySchemaInterface
     public int $baseOffset = 0;
 
     /**
+     * Time the broker assigned to every message of the appended set, or -1 when it kept the producer's timestamps.
+     *
+     * With `message.timestamp.type=LogAppendTime` on the topic the broker overwrites the timestamp of every message
+     * it appends with its own clock and reports that value here, once for the whole set - every message of the set
+     * carries it. With the default `CreateTime` the field is `-1` ({@see self::NO_LOG_APPEND_TIME}) and the producer
+     * may assume that the timestamps it sent have been stored as they were.
+     *
+     * Unit is milliseconds since the beginning of the epoch (midnight Jan 1, 1970 UTC).
+     *
+     * @since Version 2 of protocol
+     *
+     * @see \Protocol\Kafka\Producer\RecordMetadata::$timestamp
+     */
+    public int $logAppendTime = self::NO_LOG_APPEND_TIME;
+
+    /**
      * Milliseconds the broker delayed the answer this partition arrived in, because of a produce quota.
      *
      * This is **not** a field of the wire format - the Produce API reports its `ThrottleTime` once per response,
@@ -63,7 +91,7 @@ class ProduceResponsePartition implements BinarySchemaInterface
      * those answers carries a throttle time of its own.
      *
      * @see \Protocol\Kafka\Producer\RecordMetadata::$throttleTimeMs
-     * @see docs/protocol/0.9.0.md, section "Quotas and throttle time"
+     * @see docs/protocol/0.10.2.md, section "Quotas and throttle time"
      */
     public int $throttleTimeMs = 0;
 
@@ -72,10 +100,15 @@ class ProduceResponsePartition implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'partition'  => BinarySchema::TYPE_INT32,
             'errorCode'  => BinarySchema::TYPE_INT16,
             'baseOffset' => BinarySchema::TYPE_INT64,
         ];
+        if (static::VERSION >= 2) {
+            $scheme['logAppendTime'] = BinarySchema::TYPE_INT64;
+        }
+
+        return $scheme;
     }
 }

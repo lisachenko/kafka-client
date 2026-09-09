@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Throwable;
 
 /**
- * A Kafka client that consumes records from a Kafka 0.9.0.1 cluster.
+ * A Kafka client that consumes records from a Kafka 0.10.2.2 cluster.
  *
  * Kafka 0.9 moved the coordination of a consumer group out of ZooKeeper into the broker, so this consumer knows
  * both ways of getting partitions, and they are mutually exclusive, exactly as in the Java client:
@@ -55,9 +55,10 @@ use Throwable;
  *     ConsumerConfig::BOOTSTRAP_SERVERS  => ['tcp://127.0.0.1:9092'],
  *     ConsumerConfig::GROUP_ID           => 'my-group',
  *     ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
- *     ConsumerConfig::SESSION_TIMEOUT_MS => 10000,
- *     // request.timeout.ms has to be larger, a JoinGroup blocks until the whole rebalance is over
- *     ClientConfig::REQUEST_TIMEOUT_MS   => 30000,
+ *     ConsumerConfig::SESSION_TIMEOUT_MS   => 10000,
+ *     ConsumerConfig::MAX_POLL_INTERVAL_MS => 30000,
+ *     // request.timeout.ms has to be larger than both, a JoinGroup blocks until the rebalance is over
+ *     ClientConfig::REQUEST_TIMEOUT_MS     => 40000,
  * ]);
  *
  * $consumer->subscribe(['my-topic']);
@@ -81,19 +82,32 @@ use Throwable;
  * the next poll() notices that from the error code of its heartbeat (25/22/27) and rejoins the group. An
  * application whose processing of a batch can take longer than the session timeout therefore has to raise
  * `session.timeout.ms` - within the `group.min.session.timeout.ms`/`group.max.session.timeout.ms` of the broker -
- * or poll more often. There is no `max.poll.interval.ms` on this line, that is Kafka 0.10.1.
+ * or poll more often.
+ *
+ * `max.poll.interval.ms` (Kafka 0.10.1) is the second half of that story, and it works differently here than it
+ * does in Java. Its value is sent to the coordinator as the `rebalance_timeout` of every JoinGroup v1 request, so
+ * it really is what the coordinator waits for this member in a rebalance; but the Java consumer *also* leaves the
+ * group by itself when the application does not call poll() within that interval, which it can only do because its
+ * heartbeats come from a thread of their own. **This consumer has no such thread**: an application that stops
+ * polling stops heartbeating, and the coordinator drops the member when `session.timeout.ms` expires. What
+ * `max.poll.interval.ms` therefore buys here is the time the *rest* of the group is willing to wait for this member
+ * in a rebalance - and the requirement that `request.timeout.ms` exceed it, because a JoinGroup blocks that long.
  *
  * Where the committed offsets are kept is chosen with `offsets.storage`: `kafka` commits them to the coordinator
  * of the group with the version 2 of the OffsetCommit api, which carries the member id and the generation of this
  * consumer, `zookeeper` uses the version 0, which is what the consumers of Kafka 0.8.1 did. The two storages are
  * independent, so a group has one position per storage.
  *
- * What arrived after 0.9.0.1 is absent: `rebalance.timeout.ms` and `max.poll.interval.ms` (JoinGroup v1, Kafka
- * 0.10.1), the `isolation.level` of the transactional protocol of 0.11 and the message format v1 with timestamps.
+ * What arrived after 0.10.2.2 is absent: the `isolation.level` of the transactional protocol of 0.11.
  *
- * A message that does not fit into `max.partition.fetch.bytes` is refused with a {@see RecordTooLargeException}
- * rather than silently stalling the partition, because a 0.9.0.1 broker cuts a message set off at that size
- * without guaranteeing that a single message fits into it.
+ * The records are fetched with **Fetch v3**, so they carry the timestamps of message format v1 and the whole
+ * answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`. The broker fills
+ * the partitions in the order of the request until that budget is used up, so this consumer rotates the order of
+ * its partitions after every poll: a partition that returned records is moved behind the ones that did not, which
+ * is what the Java consumer of 0.10.2 does as well (`Fetcher.parseCompletedFetch` ⇒
+ * `SubscriptionState.movePartitionToEnd`). A single message that is larger than either limit is returned in full
+ * as long as it is the first one of the answer, so a partition can no longer be stuck on it - the
+ * {@see RecordTooLargeException} of the lower Fetch versions is not raised by a 0.10.2 broker any more.
  */
 class KafkaConsumer
 {
@@ -138,6 +152,18 @@ class KafkaConsumer
      * Last commit time in ms
      */
     private ?int $lastAutoCommitMs = null;
+
+    /**
+     * Order in which the assigned topic-partitions are asked for, as a list of `[topic, partition]` pairs
+     *
+     * Version 3 of the Fetch API bounds the whole answer with `fetch.max.bytes` and the broker fills the
+     * partitions in the order of the request, so the ones at its end come back empty while the ones in front of
+     * them carry data. Rotating this order after every poll - the partitions that returned something move behind
+     * the ones that did not - is what keeps every partition of a large assignment served.
+     *
+     * @var list<array{string, int}>
+     */
+    private array $fetchOrder = [];
 
     /**
      * Deserializer for the record keys, or null to keep them as raw byte strings
@@ -222,6 +248,23 @@ class KafkaConsumer
     }
 
     /**
+     * Get the first offset that is still available in each of the given partitions.
+     *
+     * This is the `beginningOffsets()` of the Java consumer of Kafka 0.10.1: an {@see OffsetsRequest::EARLIEST}
+     * lookup that only reports the offsets and, unlike {@see seekToBeginning()}, moves nothing and needs no
+     * assignment. The offset of a partition whose log was never written to, and of one whose messages have all been
+     * deleted by the retention, is the offset the next produced message will get.
+     *
+     * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to look up
+     *
+     * @return array<string, array<int, int>> [topic: string][partition: int] => first available offset
+     */
+    public function beginningOffsets(array $topicPartitions): array
+    {
+        return $this->listOffsets($topicPartitions, OffsetsRequest::EARLIEST);
+    }
+
+    /**
      * Commit offsets for the assigned list of topics and partitions.
      *
      * Without an argument the current positions of the consumer are committed, which are the offsets of the
@@ -265,6 +308,10 @@ class KafkaConsumer
      * A topic-partition that the group has never committed comes back with the offset -1, whichever storage the
      * `offsets.storage` option selects.
      *
+     * The partitions are always named explicitly here, as they are in the Java consumer. "Every topic the group
+     * committed" is what the nullable topic array of OffsetFetch v2 asks for, and it is an administrative question
+     * rather than a consumer one: {@see \Protocol\Kafka\Admin\AdminClient::listGroupOffsets()} answers it.
+     *
      * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions of that topic
      *
      * @return array<string, array<int, int>> [topic: string][partition: int] => committed offset, or -1
@@ -280,6 +327,69 @@ class KafkaConsumer
             $this->requireGroupId(),
             self::normalizeAssignment($topicPartitions)
         );
+    }
+
+    /**
+     * Get the offset the next produced message will get in each of the given partitions.
+     *
+     * This is the `endOffsets()` of the Java consumer of Kafka 0.10.1: an {@see OffsetsRequest::LATEST} lookup that
+     * only reports the offsets and, unlike {@see seekToEnd()}, moves nothing and needs no assignment. The offset is
+     * the high watermark of the partition, i.e. the end of what a consumer is allowed to read, and it is also the
+     * number of messages the partition holds when nothing was ever deleted from it.
+     *
+     * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to look up
+     *
+     * @return array<string, array<int, int>> [topic: string][partition: int] => log end offset
+     */
+    public function endOffsets(array $topicPartitions): array
+    {
+        return $this->listOffsets($topicPartitions, OffsetsRequest::LATEST);
+    }
+
+    /**
+     * Look up the offsets of the given partitions by the timestamps of their messages.
+     *
+     * This is the `offsetsForTimes()` of the Java consumer, which Kafka 0.10.1 added together with version 1 of the
+     * Offsets api (KIP-79): the offset of a partition is the one of the **first message whose own timestamp is at
+     * or after** the timestamp that was searched for, and it comes back with that message's timestamp, which is
+     * therefore usually larger than the one that was asked for. Whether those timestamps are the `CreateTime` of
+     * the producer or the `LogAppendTime` of the broker is the `message.timestamp.type` of the topic.
+     *
+     * A partition that holds no such message - a timestamp above the last message of the log, and any timestamp on
+     * an empty partition - is answered with `null` and no error at all, exactly as in the Java client. A topic whose
+     * `message.format.version` is older than 0.10.0 has no message timestamps to search and makes the broker answer
+     * the error code 43, `UnsupportedForMessageFormat`.
+     *
+     * Nothing is moved by this call: it is a query, and a consumer that wants to read from what it found seeks
+     * there itself.
+     *
+     * ```php
+     * $offsets = $consumer->offsetsForTimes(['my-topic' => [0 => $sinceMs, 1 => $sinceMs]]);
+     * foreach ($offsets as $topic => $partitions) {
+     *     foreach ($partitions as $partition => $found) {
+     *         $consumer->seek($topic, $partition, $found?->offset ?? $consumer->endOffsets([$topic => [$partition]])[$topic][$partition]);
+     *     }
+     * }
+     * ```
+     *
+     * @param array<string, array<int, int>> $timestampsToSearch [topic: string][partition: int] => timestamp in
+     *                                                           milliseconds since the epoch
+     *
+     * @return array<string, array<int, OffsetAndTimestamp|null>> [topic][partition] => offset and the timestamp of
+     *                                                            the message it points at, or null when the
+     *                                                            partition holds no message at or after the time
+     *
+     * @throws TopicPartitionRequestException when a partition was answered with an error code, which is how the
+     *         `UnsupportedForMessageFormatException` of a topic whose `message.format.version` is older than 0.10.0
+     *         arrives
+     */
+    public function offsetsForTimes(array $timestampsToSearch): array
+    {
+        if ($timestampsToSearch === []) {
+            return [];
+        }
+
+        return $this->getClient()->fetchTopicPartitionOffsetsForTimes($timestampsToSearch);
     }
 
     /**
@@ -321,6 +431,10 @@ class KafkaConsumer
      * are committed once `auto.commit.interval.ms` has passed since the last commit, and always right before the
      * consumer gives its partitions up in a rebalance.
      *
+     * The partitions are asked for in a **rotating order**: a Fetch v3 request is bounded by `fetch.max.bytes`
+     * for the whole answer and the broker serves the partitions in the order it was asked, so every partition
+     * that returned records in this poll() is moved behind the ones that did not before the next one is sent.
+     *
      * @param int $timeout The time, in milliseconds, spent waiting in poll if data is not available. If 0, returns
      *                     immediately with any records that are available now. The broker never waits longer than
      *                     `fetch.max.wait.ms` and answers as soon as `fetch.min.bytes` are available.
@@ -339,7 +453,7 @@ class KafkaConsumer
             $this->ensureActiveGroup($milliSeconds);
         }
 
-        $activeTopicPartitionOffsets = $this->subscriptionState->fetchablePartitions();
+        $activeTopicPartitionOffsets = $this->inFetchOrder($this->subscriptionState->fetchablePartitions());
         if ($activeTopicPartitionOffsets === []) {
             return [];
         }
@@ -348,6 +462,7 @@ class KafkaConsumer
         $result            = $this->collectRecords($fetchedPartitions);
 
         $this->updateFetchPositions($fetchedPartitions);
+        $this->rotateFetchOrder($fetchedPartitions);
 
         if ($this->isAutoCommitEnabled()) {
             $elapsedInterval = $milliSeconds - (int) $this->lastAutoCommitMs;
@@ -389,6 +504,9 @@ class KafkaConsumer
     /**
      * Seek to the first available offset of each of the given partitions.
      *
+     * The partitions have to be assigned to this consumer; {@see beginningOffsets()} asks the same question about
+     * any partition of the cluster without moving anything.
+     *
      * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to rewind
      */
     public function seekToBeginning(array $topicPartitions): void
@@ -398,6 +516,9 @@ class KafkaConsumer
 
     /**
      * Seek to the end of each of the given partitions, the offset the next produced message will get.
+     *
+     * The partitions have to be assigned to this consumer; {@see endOffsets()} asks the same question about any
+     * partition of the cluster without moving anything.
      *
      * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to forward
      */
@@ -426,8 +547,9 @@ class KafkaConsumer
      * @param list<string>                  $topics   List of topics to subscribe to
      * @param ConsumerRebalanceListener|null $listener Observer of the rebalances of this consumer, if any
      *
-     * @throws InvalidConfigurationException when `request.timeout.ms` does not exceed `session.timeout.ms`, which
-     *                                       a JoinGroup that waits for the whole rebalance needs it to
+     * @throws InvalidConfigurationException when `request.timeout.ms` does not exceed both `session.timeout.ms` and
+     *                                       `max.poll.interval.ms`, which a JoinGroup that waits for the whole
+     *                                       rebalance needs it to
      */
     public function subscribe(array $topics, ?ConsumerRebalanceListener $listener = null): void
     {
@@ -443,7 +565,7 @@ class KafkaConsumer
         }
 
         $this->requireGroupId();
-        $this->requireRequestTimeoutAboveSessionTimeout();
+        $this->requireRequestTimeoutAboveTheBlockingTimeouts();
 
         $this->rebalanceListener = $listener;
         $this->subscriptionState->subscribeByTopics($topicNames);
@@ -691,8 +813,9 @@ class KafkaConsumer
         $result = [];
         foreach ($fetchedPartitions as $topic => $partitions) {
             foreach ($partitions as $partitionId => $fetchedPartition) {
-                // A 0.9.0.1 broker fills the answer up to MaxBytes without guaranteeing that one message fits, so
-                // a partition whose next message is bigger would come back empty forever
+                // Up to version 2 of the Fetch API the broker fills the answer up to MaxBytes without
+                // guaranteeing that one message fits, so a partition whose next message is bigger would come
+                // back empty forever; version 3, which this consumer sends, always returns that message instead
                 if ($fetchedPartition->isSingleMessageTooLarge()) {
                     throw new RecordTooLargeException(
                         (string) $topic,
@@ -712,6 +835,87 @@ class KafkaConsumer
         }
 
         return $result;
+    }
+
+    /**
+     * Puts the fetchable positions into the order in which this consumer asks the broker for them
+     *
+     * The order is the one of the last poll(), with the partitions that were served moved to its end; a partition
+     * of a fresh assignment is appended behind everything that is already known, and one that is not assigned any
+     * more is dropped. A paused partition keeps its place, it is only left out of the request itself. Because the
+     * wire format groups the partitions of a topic together, a partition can only be moved behind the other
+     * partitions of its own topic; that is the very same approximation the Java consumer makes
+     * (`org.apache.kafka.common.internals.PartitionStates` @ 0.10.2.2).
+     *
+     * @param array<string, array<int, int>> $fetchablePartitions Positions of the partitions that may be fetched
+     *
+     * @return array<string, array<int, int>> The same positions, in the order they are asked for
+     */
+    private function inFetchOrder(array $fetchablePartitions): array
+    {
+        $assignment = $this->subscriptionState->getAssignment();
+
+        $order = $seen = [];
+        foreach ($this->fetchOrder as [$topic, $partition]) {
+            if (isset($assignment[$topic][$partition])) {
+                $order[]                    = [$topic, $partition];
+                $seen[$topic][$partition] = true;
+            }
+        }
+        // Everything this consumer has not fetched yet - a fresh assignment - goes behind what it already knows
+        foreach ($assignment as $topic => $partitions) {
+            foreach (array_keys($partitions) as $partition) {
+                if (!isset($seen[$topic][$partition])) {
+                    $order[] = [(string) $topic, (int) $partition];
+                }
+            }
+        }
+        $this->fetchOrder = $order;
+
+        $ordered = [];
+        foreach ($order as [$topic, $partition]) {
+            if (isset($fetchablePartitions[$topic][$partition])) {
+                $ordered[$topic][$partition] = $fetchablePartitions[$topic][$partition];
+            }
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * Moves every partition that the broker served behind the partitions that it did not serve
+     *
+     * A partition that came back with records had its share of the `fetch.max.bytes` of the answer, so it goes to
+     * the end of the queue; the ones that came back empty stay in front and are the first to be served by the
+     * next request. This is the rule of the Java consumer, whose `Fetcher` moves a partition to the end of its
+     * assignment as soon as the answer carried bytes for it or reported an error.
+     *
+     * @param array<string, array<int, FetchedPartition>> $fetchedPartitions Partitions of one poll()
+     */
+    private function rotateFetchOrder(array $fetchedPartitions): void
+    {
+        $served = [];
+        foreach ($fetchedPartitions as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $fetchedPartition) {
+                if ($fetchedPartition->count() > 0 || $fetchedPartition->errorCode !== 0) {
+                    $served[$topic][$partitionId] = true;
+                }
+            }
+        }
+        if ($served === []) {
+            return;
+        }
+
+        $waiting = $rotated = [];
+        foreach ($this->fetchOrder as [$topic, $partition]) {
+            if (isset($served[$topic][$partition])) {
+                $rotated[] = [$topic, $partition];
+            } else {
+                $waiting[] = [$topic, $partition];
+            }
+        }
+
+        $this->fetchOrder = array_merge($waiting, $rotated);
     }
 
     /**
@@ -945,7 +1149,8 @@ class KafkaConsumer
             $this->requireGroupId(),
             $this->assignor,
             (int) $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS],
-            (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100)
+            (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
+            $this->rebalanceTimeoutMs()
         );
     }
 
@@ -967,31 +1172,54 @@ class KafkaConsumer
     /**
      * Refuses a group membership whose JoinGroup could time out before the rebalance it waits for is over
      *
-     * The coordinator answers a JoinGroup only once every member of the group has rejoined or has missed its
-     * session timeout, so a socket read timeout - `request.timeout.ms` - that is not larger than
-     * `session.timeout.ms` turns a perfectly normal rebalance into a network error. The Java consumer of 0.9.0.1
-     * refuses that combination in its constructor, and this one refuses it when a group is actually joined.
+     * The coordinator answers a JoinGroup only once every member of the group has rejoined or has run out of time,
+     * so a socket read timeout - `request.timeout.ms` - that is not larger than the time it may wait turns a
+     * perfectly normal rebalance into a network error.
+     *
+     * Two options bound that wait since Kafka 0.10.1, and the request timeout has to exceed **both**:
+     * `session.timeout.ms`, after which a member that stopped sending heartbeats is dropped, and
+     * `max.poll.interval.ms`, which this consumer sends as the `rebalance_timeout` of its JoinGroup v1 request and
+     * which is what the coordinator really waits for a member of the group to rejoin (`GroupMetadata` @ 0.10.2.2
+     * takes the largest rebalance timeout of the members). The Java consumer refuses the combination in its
+     * constructor and picks its `request.timeout.ms` default of 305000 for exactly this reason; this one refuses it
+     * when a group is actually joined.
      *
      * @throws InvalidConfigurationException
      */
-    private function requireRequestTimeoutAboveSessionTimeout(): void
+    private function requireRequestTimeoutAboveTheBlockingTimeouts(): void
     {
         $requestTimeoutMs = (int) $this->configuration[ConsumerConfig::REQUEST_TIMEOUT_MS];
-        $sessionTimeoutMs = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
-        if ($requestTimeoutMs > $sessionTimeoutMs) {
-            return;
-        }
+        $blockingTimeouts = [
+            ConsumerConfig::SESSION_TIMEOUT_MS   => (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS],
+            ConsumerConfig::MAX_POLL_INTERVAL_MS => $this->rebalanceTimeoutMs(),
+        ];
 
-        throw new InvalidConfigurationException(
-            sprintf(
-                '%s (%d) has to be greater than %s (%d): the coordinator answers the JoinGroup request of a '
-                . 'member only once the whole rebalance is over, which can take a full session timeout.',
-                ConsumerConfig::REQUEST_TIMEOUT_MS,
-                $requestTimeoutMs,
-                ConsumerConfig::SESSION_TIMEOUT_MS,
-                $sessionTimeoutMs
-            )
-        );
+        foreach ($blockingTimeouts as $option => $timeoutMs) {
+            if ($requestTimeoutMs > $timeoutMs) {
+                continue;
+            }
+
+            throw new InvalidConfigurationException(
+                sprintf(
+                    '%s (%d) has to be greater than %s (%d): the coordinator answers the JoinGroup request of a '
+                    . 'member only once the whole rebalance is over, which can take a full %s.',
+                    ConsumerConfig::REQUEST_TIMEOUT_MS,
+                    $requestTimeoutMs,
+                    $option,
+                    $timeoutMs,
+                    $option
+                )
+            );
+        }
+    }
+
+    /**
+     * Returns the `rebalance_timeout` this consumer sends with its JoinGroup requests, `max.poll.interval.ms`
+     */
+    private function rebalanceTimeoutMs(): int
+    {
+        return (int) ($this->configuration[ConsumerConfig::MAX_POLL_INTERVAL_MS]
+            ?? ConsumerConfig::DEFAULT_MAX_POLL_INTERVAL_MS);
     }
 
     /**
@@ -1043,6 +1271,30 @@ class KafkaConsumer
             'A deserializer has to be an instance of ' . Deserializer::class . ' or the name of a class that '
             . 'implements it, ' . get_debug_type($deserializer) . ' given.'
         );
+    }
+
+    /**
+     * Asks the leaders of the given partitions for one offset each, without touching the position of the consumer
+     *
+     * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Topic name => partitions to look up
+     * @param int                                         $timestamp       {@see OffsetsRequest::LATEST},
+     *                                                                     {@see OffsetsRequest::EARLIEST} or a
+     *                                                                     timestamp in milliseconds
+     *
+     * @return array<string, array<int, int>> [topic: string][partition: int] => offset
+     */
+    private function listOffsets(array $topicPartitions, int $timestamp): array
+    {
+        if ($topicPartitions === []) {
+            return [];
+        }
+
+        $request = [];
+        foreach (self::normalizePartitionLists($topicPartitions) as $topic => $partitions) {
+            $request[$topic] = array_fill_keys($partitions, $timestamp);
+        }
+
+        return $this->getClient()->fetchTopicPartitionOffsets($request);
     }
 
     /**

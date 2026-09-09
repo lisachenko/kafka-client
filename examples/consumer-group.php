@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Consumes a topic as a member of a consumer group of a Kafka 0.9.0.1 cluster.
+ * Consumes a topic as a member of a consumer group of a Kafka 0.10.2.2 cluster.
  *
  * Kafka 0.9 moved the coordination of a group into the broker, so the partitions are not chosen by the application
  * any more ({@see examples/consumer.php} does that with `assign()`): the consumer subscribes to topics, the group
@@ -66,8 +66,8 @@ $shouldProduce    = !in_array('--no-produce', $argv, true);
 $configuration = [
     ClientConfig::BOOTSTRAP_SERVERS => [$brokerAddress],
     ClientConfig::CLIENT_ID         => 'kafka-client-example',
-    // The coordinator answers a JoinGroup only once the whole rebalance is over, which can take a full session
-    // timeout, so the read timeout of the socket has to be larger than session.timeout.ms
+    // The coordinator answers a JoinGroup only once the whole rebalance is over, which can take a full rebalance
+    // timeout, so the read timeout of the socket has to be larger than session.timeout.ms and max.poll.interval.ms
     ClientConfig::REQUEST_TIMEOUT_MS => 40000,
 
     ConsumerConfig::GROUP_ID                      => $groupId,
@@ -75,6 +75,9 @@ $configuration = [
     // every member of a group has to offer the same one, the coordinator refuses the join otherwise (error 23)
     ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => RangeAssignor::NAME,
     ConsumerConfig::SESSION_TIMEOUT_MS            => 10000,
+    // The `rebalance_timeout` of the JoinGroup v1 request (Kafka 0.10.1): how long the coordinator waits for this
+    // member to rejoin a rebalance. The default of 300000 would need a request.timeout.ms above five minutes.
+    ConsumerConfig::MAX_POLL_INTERVAL_MS          => 30000,
     ConsumerConfig::HEARTBEAT_INTERVAL_MS         => 3000,
     ConsumerConfig::AUTO_OFFSET_RESET             => OffsetResetStrategy::EARLIEST,
     // The positions are committed by hand below, with the member id and the generation of this consumer

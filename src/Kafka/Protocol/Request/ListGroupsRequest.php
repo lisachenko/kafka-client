@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
  *   ListGroupsRequest =>
  * </pre>
  *
- * @see docs/protocol/0.9.0.md, section "ListGroups API (key 16, v0)"
+ * @see docs/protocol/0.10.2.md, section "ListGroups API (key 16, v0)"
  */
 class ListGroupsRequest extends AbstractRequest
 {

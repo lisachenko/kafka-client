@@ -34,7 +34,7 @@ namespace Protocol\Kafka\Consumer;
  * function of its arguments and can be unit tested without a broker.
  *
  * @see \Protocol\Kafka\Consumer\AbstractPartitionAssignor for the base class of the built-in assignors
- * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 interface PartitionAssignorInterface
 {

@@ -26,9 +26,9 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * </pre>
  *
  * The class is named after the `main` branch; the Kafka sources call the structure
- * `LIST_GROUPS_RESPONSE_GROUP_V0` (Protocol.java @ 0.9.0.1) and `GroupOverview` (kafka/coordinator/GroupMetadata.scala).
+ * `LIST_GROUPS_RESPONSE_GROUP_V0` (Protocol.java @ 0.10.2.2) and `GroupOverview` (kafka/coordinator/GroupMetadata.scala).
  *
- * @see docs/protocol/0.9.0.md, section "ListGroups API (key 16, v0)"
+ * @see docs/protocol/0.10.2.md, section "ListGroups API (key 16, v0)"
  */
 class ListGroupResponseProtocol implements BinarySchemaInterface
 {

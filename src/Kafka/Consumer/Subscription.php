@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The structure travels as an opaque byte array in the `member_metadata` field of JoinGroup and comes back to the
  * leader of the group in the `members` array of the JoinGroup response, which is where the assignor reads it.
- * Kafka 0.9.0.1 knows exactly one version of it, {@see Subscription::VERSION}; the Java client of 0.9 parses a
+ * Kafka 0.10.2.2 knows exactly one version of it, {@see Subscription::VERSION}; the Java client of 0.10 parses a
  * higher version with the layout of version 0, so new versions may only append fields.
  *
  * The `UserData` is what a custom assignor forwards to the leader - a rack id, the number of cpus of the machine,
@@ -38,13 +38,13 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the empty byte array that the Java client sends, `PartitionAssignor.Subscription` defaulting the field to
  * `ByteBuffer.wrap(new byte[0])`.
  *
- * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
  * @see \Protocol\Kafka\Consumer\PartitionAssignorInterface::subscription()
  */
 class Subscription implements BinarySchemaInterface
 {
     /**
-     * Version of the consumer group protocol that Kafka 0.9.0.1 speaks
+     * Version of the consumer group protocol that Kafka 0.10.2.2 speaks
      */
     public const int VERSION = 0;
 
@@ -67,7 +67,7 @@ class Subscription implements BinarySchemaInterface
 
     /**
      * @param list<string> $topics   Topics that the member subscribes to
-     * @param int          $version  Version of the structure, 0 in Kafka 0.9.0.1
+     * @param int          $version  Version of the structure, 0 in Kafka 0.10.2.2
      * @param string|null  $userData Data that the assignor of the leader receives together with the topics
      */
     public function __construct(array $topics, int $version = self::VERSION, ?string $userData = '')

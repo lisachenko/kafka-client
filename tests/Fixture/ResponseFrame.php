@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Tests\Fixture;
  * The correlation id given here is only a placeholder: {@see BrokerConnection} replaces it with the one of the
  * request it answers, the same way a broker echoes it back.
  *
- * @see docs/protocol/0.9.0.md
+ * @see docs/protocol/0.10.2.md
  */
 final class ResponseFrame
 {
@@ -40,35 +40,56 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Metadata response (api key 3, v0)
+     * Cluster id that {@see self::metadata()} answers with, 22 characters like the one a 0.10.1 broker generates
+     */
+    public const string CLUSTER_ID = 'kafka-client-test-clst';
+
+    /**
+     * Builds a Metadata response (api key 3, v2)
      *
      * <pre>
-     *   MetadataResponse => [Broker][TopicMetadata]
-     *     Broker            => NodeId int32 Host string Port int32
-     *     TopicMetadata     => TopicErrorCode int16 TopicName string [PartitionMetadata]
+     *   MetadataResponse => [Broker] ClusterId ControllerId [TopicMetadata]
+     *     Broker            => NodeId int32 Host string Port int32 Rack nullable string
+     *     ClusterId         => nullable string
+     *     ControllerId      => int32
+     *     TopicMetadata     => TopicErrorCode int16 TopicName string IsInternal boolean [PartitionMetadata]
      *     PartitionMetadata => PartitionErrorCode int16 PartitionId int32 Leader int32 Replicas [int32] Isr [int32]
      * </pre>
      *
-     * @param list<array{int, string, int}>                          $brokers nodeId, host, port
-     * @param array<string, array<int, int>>                         $topics  topic => partition => leader node id
-     * @param array<string, int>                                     $topicErrorCodes  Error code of a topic, if any
-     * @param array<string, array<int, int>>                         $partitionErrorCodes Error code of a partition
+     * The first broker of the list is the controller unless `$controllerId` says otherwise, and no broker declares
+     * a rack - the answer of the container of `docker-compose.yml`, which runs a single broker without
+     * `broker.rack`. A topic counts as internal when its name is in `$internalTopics`, i.e. `__consumer_offsets`
+     * and nothing else on a 0.10.2.2 cluster.
+     *
+     * @param list<array{int, string, int}>  $brokers             nodeId, host, port
+     * @param array<string, array<int, int>> $topics              topic => partition => leader node id
+     * @param array<string, int>             $topicErrorCodes     Error code of a topic, if any
+     * @param array<string, array<int, int>> $partitionErrorCodes Error code of a partition
+     * @param list<string>                   $internalTopics      Topics to flag with `is_internal`
+     * @param int|null                       $controllerId        Controller of the cluster, -1 while it elects one
      */
     public static function metadata(
         int $correlationId,
         array $brokers,
         array $topics = [],
         array $topicErrorCodes = [],
-        array $partitionErrorCodes = []
+        array $partitionErrorCodes = [],
+        array $internalTopics = [],
+        ?int $controllerId = null
     ): string {
         $body = pack('N', count($brokers));
         foreach ($brokers as [$nodeId, $host, $port]) {
-            $body .= pack('N', $nodeId) . self::string($host) . pack('N', $port);
+            // The rack of the broker, null for a cluster that is not rack aware
+            $body .= pack('N', $nodeId) . self::string($host) . pack('N', $port) . pack('n', 0xFFFF);
         }
+
+        $body .= self::string(self::CLUSTER_ID);
+        $body .= pack('N', $controllerId ?? $brokers[0][0] ?? -1);
 
         $body .= pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= pack('n', $topicErrorCodes[$topic] ?? 0) . self::string((string) $topic);
+            $body .= pack('C', in_array((string) $topic, $internalTopics, true) ? 1 : 0);
             $body .= pack('N', count($partitions));
             foreach ($partitions as $partitionId => $leader) {
                 $replicas = $leader < 0 ? [] : [$leader];
@@ -84,44 +105,88 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Produce response (api key 0, v1)
+     * Builds a Produce response (api key 0, v2)
      *
      * <pre>
-     *   ProduceResponse => [TopicName [Partition ErrorCode Offset]] ThrottleTime
+     *   ProduceResponse => [TopicName [Partition ErrorCode Offset LogAppendTime]] ThrottleTime
      * </pre>
      *
-     * @param array<string, array<int, array{int, int}>> $topics       topic => partition => [errorCode, baseOffset]
-     * @param int                                        $throttleTime Milliseconds the broker delayed the request
+     * @param array<string, array<int, array{int, int}>> $topics        topic => partition => [errorCode, baseOffset]
+     * @param int                                        $throttleTime  Milliseconds the broker delayed the request
+     * @param int                                        $logAppendTime Time the broker stamped the batch with, -1
+     *        for a topic that keeps the `CreateTime` of the producer
      */
-    public static function produce(int $correlationId, array $topics, int $throttleTime = 0): string
+    public static function produce(
+        int $correlationId,
+        array $topics,
+        int $throttleTime = 0,
+        int $logAppendTime = -1
+    ): string {
+        // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it
+        $body = self::produceTopics($topics, $logAppendTime) . pack('N', $throttleTime);
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds a Produce response of version 0, i.e. the same answer without `LogAppendTime` and `ThrottleTime`
+     *
+     * @param array<string, array<int, array{int, int}>> $topics topic => partition => [errorCode, baseOffset]
+     */
+    public static function produceV0(int $correlationId, array $topics): string
+    {
+        return self::of($correlationId, self::produceTopics($topics, null));
+    }
+
+    /**
+     * Builds the topics array of a Produce response
+     *
+     * @param array<string, array<int, array{int, int}>> $topics        topic => partition => [errorCode, baseOffset]
+     * @param int|null                                   $logAppendTime Append time of every partition entry, or
+     *        null for the versions 0 and 1, which do not carry that field at all
+     */
+    private static function produceTopics(array $topics, ?int $logAppendTime): string
     {
         $body = pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $baseOffset]) {
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $baseOffset);
+                if ($logAppendTime !== null) {
+                    $body .= pack('J', $logAppendTime);
+                }
             }
         }
-        // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it
-        $body .= pack('N', $throttleTime);
+
+        return $body;
+    }
+
+    /**
+     * Builds an Offsets (ListOffset) response (api key 2, v1)
+     *
+     * <pre>
+     *   ListOffsets Response (Version: 1) => [responses]
+     *     partition_responses => partition error_code timestamp offset
+     * </pre>
+     *
+     * @param array<string, array<int, array{int, int, int}>> $topics topic => partition =>
+     *        [errorCode, timestamp, offset]
+     */
+    public static function offsets(int $correlationId, array $topics): string
+    {
+        $body = pack('N', count($topics));
+        foreach ($topics as $topic => $partitions) {
+            $body .= self::string((string) $topic) . pack('N', count($partitions));
+            foreach ($partitions as $partitionId => [$errorCode, $timestamp, $offset]) {
+                $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $timestamp) . pack('J', $offset);
+            }
+        }
 
         return self::of($correlationId, $body);
     }
 
     /**
-     * Builds a Produce response of version 0, i.e. the same answer without the trailing `ThrottleTime`
-     *
-     * @param array<string, array<int, array{int, int}>> $topics topic => partition => [errorCode, baseOffset]
-     */
-    public static function produceV0(int $correlationId, array $topics): string
-    {
-        $frame = self::produce($correlationId, $topics);
-
-        return self::of($correlationId, substr($frame, 8, -4));
-    }
-
-    /**
-     * Builds an Offsets (ListOffset) response (api key 2, v0)
+     * Builds an Offsets (ListOffset) response of version 0, which answers a list of segment offsets per partition
      *
      * <pre>
      *   OffsetResponse => [TopicName [PartitionOffsets]]
@@ -130,7 +195,7 @@ final class ResponseFrame
      *
      * @param array<string, array<int, array{int, list<int>}>> $topics topic => partition => [errorCode, offsets]
      */
-    public static function offsets(int $correlationId, array $topics): string
+    public static function offsetsV0(int $correlationId, array $topics): string
     {
         $body = pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
@@ -209,12 +274,13 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetFetch response (api key 9, v0 and v1 share the response format)
+     * Builds an OffsetFetch response (api key 9; v0 and v1 share the response format, v2 appends a group error)
      *
      * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
      *        [errorCode, offset, metadata]
+     * @param int|null $groupErrorCode The group-level error code of version 2, null for a version 0 or 1 answer
      */
-    public static function offsetFetch(int $correlationId, array $topics): string
+    public static function offsetFetch(int $correlationId, array $topics, ?int $groupErrorCode = 0): string
     {
         $body = pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
@@ -225,6 +291,9 @@ final class ResponseFrame
                     . self::string($metadata)
                     . pack('n', $errorCode);
             }
+        }
+        if ($groupErrorCode !== null) {
+            $body .= pack('n', $groupErrorCode);
         }
 
         return self::of($correlationId, $body);

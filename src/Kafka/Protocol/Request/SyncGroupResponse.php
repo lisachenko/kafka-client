@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * the coordinator for it; a member the leader did not mention receives an empty byte array, and an answer with an
  * error code carries an empty one as well.
  *
- * @see docs/protocol/0.9.0.md, section "SyncGroup API (key 14, v0)"
+ * @see docs/protocol/0.10.2.md, section "SyncGroup API (key 14, v0)"
  */
 class SyncGroupResponse extends AbstractResponse
 {

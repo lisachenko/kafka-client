@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A member id the coordinator does not know - because the member was already removed, or because the group does not
  * exist at all - is answered with the error code 25 (UnknownMemberId).
  *
- * @see docs/protocol/0.9.0.md, section "LeaveGroup API (key 13, v0)"
+ * @see docs/protocol/0.10.2.md, section "LeaveGroup API (key 13, v0)"
  */
 class LeaveGroupResponse extends AbstractResponse
 {

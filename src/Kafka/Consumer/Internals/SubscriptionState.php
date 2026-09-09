@@ -21,15 +21,17 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * Bookkeeping of the partitions a consumer works on: which ones are assigned, where it reads them and which of
  * them are paused.
  *
- * Kafka 0.9.0.1 knows two ways to get partitions, and they are mutually exclusive, exactly as in the Java client:
+ * Kafka 0.10.2.2 knows two ways to get partitions, and they are mutually exclusive, exactly as in the Java client:
  * {@see assignFromUser()} for the partitions an application picked itself ({@see \Protocol\Kafka\Consumer\KafkaConsumer::assign()})
  * and {@see subscribeByTopics()} plus {@see assignFromSubscribed()} for the ones the group coordinator handed out
  * through JoinGroup/SyncGroup ({@see \Protocol\Kafka\Consumer\KafkaConsumer::subscribe()}). The pattern subscription
- * of the Java client (`TYPE_AUTO_PATTERN`) is not implemented on this line: it is a client-side concern - the
- * consumer matches the pattern against the topics of the cluster metadata - and no wire structure of Kafka 0.9
- * carries it.
+ * of the Java client (`TYPE_AUTO_PATTERN`) is not implemented here, exactly as it is not implemented on `main`: it
+ * is a client-side concern - the consumer matches the pattern against the topics of the cluster metadata - and no
+ * wire structure carries it. Kafka 0.10 gives it the piece it was missing, the "every topic" metadata refresh that
+ * the nullable topic array of Metadata v1 asks for ({@see \Protocol\Kafka\Common\Cluster::topics()}), so the day it
+ * is implemented `exclude.internal.topics` is what decides whether a pattern may match `__consumer_offsets`.
  *
- * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 final class SubscriptionState
 {

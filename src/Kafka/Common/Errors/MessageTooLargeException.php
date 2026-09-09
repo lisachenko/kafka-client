@@ -18,7 +18,7 @@ use Exception;
 /**
  * The request included a message larger than the max message size the server will accept.
  *
- * Named MessageSizeTooLargeCode (10) in kafka/common/ErrorMapping.scala @ 0.9.0.1.
+ * Named MessageSizeTooLargeCode (10) in kafka/common/ErrorMapping.scala @ 0.10.2.2.
  */
 class MessageTooLargeException extends KafkaException implements ServerExceptionInterface
 {

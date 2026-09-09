@@ -30,9 +30,13 @@ use Protocol\Kafka\Tests\Fixture\ClientQuota;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the throttle time of Produce v1 and Fetch v1 against a real Kafka 0.9.0.1 broker with client quotas.
+ * Verifies the throttle time of Produce v2 and Fetch v3 against a real Kafka 0.10.2.2 broker with client quotas.
  *
- * Quotas are the only thing that makes a 0.9 broker report a throttle time, and there is no api to configure them:
+ * The throttle time did not move when the two apis gained their versions of Kafka 0.10: the Produce answer carries
+ * it behind the topics array, where version 1 put it, now behind the `LogAppendTime` of every partition, and the
+ * Fetch answer still opens with it.
+ *
+ * Quotas are the only thing that makes a broker report a throttle time, and there is no api to configure them:
  * they are written into ZooKeeper with the `kafka-configs.sh` tool of the distribution, which {@see ClientQuota}
  * runs inside the broker container. These tests are therefore skipped when Docker is not available, exactly like
  * the whole suite is skipped without a broker.
@@ -40,7 +44,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every test uses a client id of its own - the broker enforces a quota for whoever sends that id, and this broker
  * is shared with the other suites - and removes its quota in a `finally` block, also when it fails.
  *
- * @see docs/protocol/0.9.0.md, section "Quotas and throttle time"
+ * @see docs/protocol/0.10.2.md, section "Quotas and throttle time"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(KafkaProducer::class)]
@@ -170,7 +174,7 @@ final class QuotaThrottleTest extends IntegrationTestCase
                 )
             );
             self::assertGreaterThan(0, $throttled->throttleTimeMs);
-            self::assertNull($throttled->timestamp, 'a 0.9 broker reports no LogAppendTime');
+            self::assertNotNull($throttled->timestamp, 'the CreateTime the producer stamped on the batch');
 
             // The broker throttles by holding the answer back, so the round trip took at least that long
             self::assertGreaterThanOrEqual(

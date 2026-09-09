@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Talks to the SSL listener of a Kafka 0.9.0.1 cluster.
+ * Talks to the SSL listener of a Kafka 0.10.2.2 cluster.
  *
  * Kafka 0.9 is the release that added transport security: a broker binds one listener per security protocol
  * (`listeners=PLAINTEXT://...,SSL://...`) and every listener serves the identical request set, so encryption changes
@@ -20,21 +20,22 @@ declare(strict_types=1);
  * `security.protocol`, and the producer, the consumer and the admin client of this package work exactly as they do
  * over plaintext.
  *
- * The broker of this repository advertises PLAINTEXT on 9092 and SSL on 9093 with the self-signed test certificate
- * of `docker/kafka-0.9.0.1/ssl/broker.crt`, which is also the CA file the client verifies it against:
+ * The broker of this repository advertises PLAINTEXT on 9092, SSL on 9093, SASL_PLAINTEXT on 9094 and SASL_SSL on
+ * 9095, with the self-signed test certificate of `docker/kafka-0.10.2.2/ssl/broker.crt`, which is also the CA file
+ * the client verifies it against:
  *
  *   docker compose up -d
  *   php examples/ssl.php
  *   php examples/ssl.php my-topic                                   # another topic
  *   KAFKA_SSL_BOOTSTRAP_SERVERS=127.0.0.1:9093 php examples/ssl.php
  *
- * Note what the Metadata answer below reports: version 0 of the api - the only one Kafka 0.9 has - carries exactly
- * one host/port per broker, and a 0.9 broker fills it with the endpoint of the listener the request arrived on. A
- * client that bootstraps over TLS therefore discovers the TLS endpoints of the whole cluster and keeps talking TLS
- * to every broker it learns about; one that bootstraps in plaintext learns the plaintext ones. The two never mix.
+ * Note what the Metadata answer below reports: every version of the api carries exactly one host/port per broker,
+ * and the broker fills it with the endpoint of the listener the request arrived on. A client that bootstraps over
+ * TLS therefore discovers the TLS endpoints of the whole cluster and keeps talking TLS to every broker it learns
+ * about; one that bootstraps in plaintext learns the plaintext ones. They never mix.
  *
- * SASL is out of scope on this branch: Kafka 0.9 has GSSAPI only and negotiates it outside the Kafka protocol, so
- * `security.protocol = SASL_PLAINTEXT` and `SASL_SSL` raise an InvalidConfigurationException.
+ * Authentication is a separate option and lives in {@see examples/sasl.php}: Kafka 0.10.0 added the SaslHandshake
+ * request and the PLAIN mechanism, so `security.protocol = SASL_SSL` is this example plus three options.
  */
 
 use Protocol\Kafka\Admin\AdminClient;
@@ -57,7 +58,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 $sslBootstrapServer = getenv('KAFKA_SSL_BOOTSTRAP_SERVERS') ?: '127.0.0.1:9093';
 $brokerAddress      = 'tcp://' . trim(explode(',', $sslBootstrapServer)[0]);
 $topic              = $argv[1] ?? 'kafka-client-example-ssl';
-$certificate        = dirname(__DIR__) . '/docker/kafka-0.9.0.1/ssl/broker.crt';
+$certificate        = dirname(__DIR__) . '/docker/kafka-0.10.2.2/ssl/broker.crt';
 
 if (!extension_loaded('openssl')) {
     echo "The openssl extension is required for security.protocol = SSL\n";
@@ -79,7 +80,7 @@ $configuration = [
     // ClientConfig::SSL_KEY_LOCATION         => '/etc/kafka/client.key',
     // ClientConfig::SSL_KEY_PASSWORD         => 'secret',
     // `ssl.protocol` offers a single TLS version instead of "any" (SslProtocol::TLSv1_2 and friends); note that
-    // OpenSSL 3 refuses TLSv1_1 outright, even though a 0.9 broker still offers it.
+    // OpenSSL 3 refuses TLSv1_1 outright, even though the broker still offers it.
     ClientConfig::REQUEST_TIMEOUT_MS => 10000,
 ];
 

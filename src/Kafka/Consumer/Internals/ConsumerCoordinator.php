@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 /**
  * Membership of one consumer group: the member id, the generation and the rebalance that produces them.
  *
- * This is the state machine of `AbstractCoordinator`/`ConsumerCoordinator` of the Java client of 0.9.0.1, reduced
+ * This is the state machine of `AbstractCoordinator`/`ConsumerCoordinator` of the Java client of 0.10.2.2, reduced
  * to what a client without threads can do:
  *
  * ```
@@ -49,7 +49,13 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * a rejoin with the member id of the previous generation, 25 (UnknownMemberId) for a rejoin without one, and 15/16
  * (GroupCoordinatorNotAvailable, NotCoordinatorForGroup) for another coordinator lookup.
  *
- * @see docs/protocol/0.9.0.md, sections "Group membership protocol (keys 11 to 14)" and "Consumer group protocol"
+ * Every JoinGroup carries the `rebalance_timeout` of Kafka 0.10.1 - `max.poll.interval.ms` - which is how long the
+ * coordinator waits for this member to rejoin a rebalance. Nothing else of KIP-62 applies to a client without
+ * threads: the Java consumer leaves the group by itself when the application does not come back to poll() in time,
+ * this one simply stops sending heartbeats and is dropped when its session timeout expires.
+ *
+ * @see docs/protocol/0.10.2.md, sections "Group membership protocol (keys 11 to 14)" and
+ *      "Consumer group protocol (protocol_type = consumer)"
  * @see \Protocol\Kafka\Consumer\KafkaConsumer::poll()
  */
 final class ConsumerCoordinator
@@ -99,13 +105,16 @@ final class ConsumerCoordinator
      * @param PartitionAssignorInterface $assignor            Assignor this member offers as its group protocol
      * @param int                        $heartbeatIntervalMs `heartbeat.interval.ms`, the poll-driven interval
      * @param int                        $retryBackoffMs      `retry.backoff.ms`, waited before a rebalance retry
+     * @param int|null                   $rebalanceTimeoutMs  `max.poll.interval.ms`, the `rebalance_timeout` of the
+     *        JoinGroup v1 request, null to let the client take it from its own configuration
      */
     public function __construct(
         private readonly Client $client,
         private readonly string $groupId,
         private readonly PartitionAssignorInterface $assignor,
         private readonly int $heartbeatIntervalMs,
-        private readonly int $retryBackoffMs = 100
+        private readonly int $retryBackoffMs = 100,
+        private readonly ?int $rebalanceTimeoutMs = null
     ) {}
 
     /**
@@ -289,7 +298,8 @@ final class ConsumerCoordinator
             $this->groupId,
             $this->memberId,
             self::PROTOCOL_TYPE,
-            [$this->assignor->name() => $subscription->pack()]
+            [$this->assignor->name() => $subscription->pack()],
+            $this->rebalanceTimeoutMs
         );
 
         $this->memberId     = $joinResponse->memberId;

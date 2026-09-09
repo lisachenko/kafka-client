@@ -22,11 +22,12 @@ namespace Protocol\Kafka\Protocol\Request;
  *     Timeout      => int32
  * </pre>
  *
- * The bytes of a version 0 request are the bytes of a version 1 request with another value in the `ApiVersion`
+ * The bytes of a version 0 request are the bytes of a version 2 request with another value in the `ApiVersion`
  * field of the header, so this class only lowers the version constant. What the version does change is the answer:
- * a version 0 request is answered without the `ThrottleTime` field, see {@see ProduceResponseV0}.
+ * a version 0 request is answered without the `ThrottleTime` field and without the `LogAppendTime` of a partition,
+ * see {@see ProduceResponseV0}.
  *
- * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 final class ProduceRequestV0 extends ProduceRequest
 {

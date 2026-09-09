@@ -21,7 +21,9 @@ namespace Protocol\Kafka\Protocol\Request;
  * visible to a client: any broker of the cluster answers the request, and a topic-partition without a committed
  * offset comes back with the error code 3 (UnknownTopicOrPartition) instead of a plain offset of -1.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetFetch API (key 9, v0 and v1)"
+ * The nullable topic array of version 2 does not exist here either, see {@see OffsetFetchRequestV1}.
+ *
+ * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 final class OffsetFetchRequestV0 extends OffsetFetchRequest
 {

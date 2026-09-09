@@ -17,34 +17,43 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
+use Protocol\Kafka\Common\Record\Lz4;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\Snappy;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
-use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV0;
-use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV0;
+use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Produces message sets to a real Kafka 0.9.0.1 broker and fetches them back.
+ * Produces message sets to a real Kafka 0.10.2.2 broker and fetches them back.
  *
  * The broker is the authority on the message format: it validates the checksum of every message it appends, it
  * decompresses a compressed set to assign the offsets of its inner messages, and it recompresses it with the codec
  * the producer chose. A set that survives this round trip is a set that Kafka itself accepts.
  *
- * @see docs/protocol/0.9.0.md, section "MessageSet and Message"
+ * The batches of this suite are written in message format v1 - the default of the producer - and read back with a
+ * Fetch request of version 1, which makes the broker convert its answer down to message format v0: the values, the
+ * keys and the offsets survive that conversion, the timestamps do not. What the log really holds and what a Fetch
+ * v2 request answers is the subject of {@see MessageFormatV1Test}.
+ *
+ * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]
 #[CoversClass(CompressionCodec::class)]
 #[CoversClass(Snappy::class)]
+#[CoversClass(Lz4::class)]
+#[CoversClass(FetchRequestV1::class)]
 #[CoversClass(FetchRequestV0::class)]
+#[CoversClass(FetchResponseV1::class)]
 #[CoversClass(FetchResponseV0::class)]
 #[CoversClass(FetchResponsePartition::class)]
 final class MessageSetProduceFetchTest extends IntegrationTestCase
@@ -86,6 +95,7 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
         yield 'uncompressed' => [CompressionCodec::NONE];
         yield 'gzip'         => [CompressionCodec::GZIP];
         yield 'snappy'       => [CompressionCodec::SNAPPY];
+        yield 'lz4'          => [CompressionCodec::LZ4];
     }
 
     #[DataProvider('compressionCodecs')]
@@ -164,9 +174,9 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
         $baseOffset = $this->produce(MessageSet::fromRecords([new Record('throttle', 'probe')]));
         $stream     = $this->connect();
 
-        new FetchRequest([$this->topic => [self::PARTITION => $baseOffset]], 1000, 1, 65536, -1, self::CLIENT_ID, 51)
+        new FetchRequestV1([$this->topic => [self::PARTITION => $baseOffset]], 1000, 1, 65536, -1, self::CLIENT_ID, 51)
             ->writeTo($stream);
-        $versionOne = FetchResponse::unpack($stream);
+        $versionOne = FetchResponseV1::unpack($stream);
 
         self::assertSame(51, $versionOne->getCorrelationId());
         self::assertSame(0, $versionOne->throttleTimeMs, 'the test broker enforces no consumer quota');
@@ -225,10 +235,10 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     private function fetchPartition(int $offset, int $maxBytes = 65536): FetchResponsePartition
     {
         $stream = $this->connect();
-        new FetchRequest([$this->topic => [self::PARTITION => $offset]], 1000, 1, $maxBytes, -1, self::CLIENT_ID, 2)
+        new FetchRequestV1([$this->topic => [self::PARTITION => $offset]], 1000, 1, $maxBytes, -1, self::CLIENT_ID, 2)
             ->writeTo($stream);
 
-        $partition = FetchResponse::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
+        $partition = FetchResponseV1::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode($partition->errorCode, ['topic' => $this->topic, 'partitionId' => self::PARTITION]);
         }

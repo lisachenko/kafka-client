@@ -34,10 +34,10 @@ use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
  *       member_assignment => BYTES
  * </pre>
  *
- * Version 0 is the only version a Kafka 0.9.0.1 broker serves; the `throttle_time_ms` that the answer of version 1
+ * Version 0 is the only version a Kafka 0.10.2.2 broker serves; the `throttle_time_ms` that the answer of version 1
  * carries arrived with Kafka 0.10.1.
  *
- * @see docs/protocol/0.9.0.md, section "SyncGroup API (key 14, v0)"
+ * @see docs/protocol/0.10.2.md, section "SyncGroup API (key 14, v0)"
  */
 class SyncGroupRequest extends AbstractRequest
 {

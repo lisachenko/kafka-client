@@ -15,10 +15,10 @@ namespace Protocol\Kafka\Tests\Fixture;
 
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\IO\Stream;
-use Protocol\Kafka\Protocol\Request\MetadataRequest;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
 
 /**
- * Waits until a Kafka 0.8 broker has published its metadata cache.
+ * Waits until a Kafka broker has published its metadata cache.
  *
  * A broker that has just booted answers a Metadata request with an EMPTY broker array: the alive-broker set of its
  * metadata cache is only filled once the controller has pushed an UpdateMetadata request to it, and on a cluster
@@ -27,7 +27,12 @@ use Protocol\Kafka\Protocol\Request\MetadataRequest;
  *
  * An empty broker array is therefore "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/0.9.0.md, section "Cluster readiness"
+ * The probe deliberately stays on VERSION 0 of the Metadata api, the one every Kafka release from 0.8 on serves:
+ * it is the very first frame the suite sends to a broker that may still be booting, and its answer
+ * ({@see ClusterMetadataResponse}) only has to say whether a broker was advertised. Nothing of what the later
+ * versions add - the cluster id, the controller id, the racks - is of any use before the cluster is up.
+ *
+ * @see docs/protocol/0.10.2.md, section "Cluster readiness"
  */
 final class ClusterReadinessProbe
 {
@@ -65,7 +70,7 @@ final class ClusterReadinessProbe
             $this->attempts++;
             try {
                 $stream = ($this->streamFactory)();
-                new MetadataRequest([$probeTopic], $this->clientId, $this->attempts)->writeTo($stream);
+                new MetadataRequestV0([$probeTopic], $this->clientId, $this->attempts)->writeTo($stream);
 
                 $response = ClusterMetadataResponse::unpack($stream);
                 if ($response->brokers !== []) {

@@ -23,6 +23,6 @@ namespace Protocol\Kafka\Common\Errors;
  *
  * This is a client-side condition, it has no wire error code in `kafka/common/ErrorMapping.scala`.
  *
- * @see docs/protocol/0.9.0.md, section "Responses"
+ * @see docs/protocol/0.10.2.md, section "Responses"
  */
 class CorrelationIdMismatchException extends KafkaException implements ClientExceptionInterface {}

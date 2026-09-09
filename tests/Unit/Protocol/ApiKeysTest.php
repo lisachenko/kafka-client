@@ -30,11 +30,11 @@ use ReflectionClass;
 final class ApiKeysTest extends TestCase
 {
     /**
-     * Every api key of Kafka 0.9.0.1, in the order of RequestKeys.scala
+     * Every api key of Kafka 0.10.2.2, in the order of org.apache.kafka.common.protocol.ApiKeys
      *
      * @var array<string, int>
      */
-    private const array KEYS_OF_KAFKA_0_9_0_1 = [
+    private const array KEYS_OF_KAFKA_0_10_2_2 = [
         'PRODUCE'             => 0,
         'FETCH'               => 1,
         'OFFSETS'             => 2,
@@ -52,14 +52,18 @@ final class ApiKeysTest extends TestCase
         'SYNC_GROUP'          => 14,
         'DESCRIBE_GROUPS'     => 15,
         'LIST_GROUPS'         => 16,
+        'SASL_HANDSHAKE'      => 17,
+        'API_VERSIONS'        => 18,
+        'CREATE_TOPICS'       => 19,
+        'DELETE_TOPICS'       => 20,
     ];
 
-    public function testTheApiKeysAreExactlyTheOnesOfKafka0901(): void
+    public function testTheApiKeysAreExactlyTheOnesOfKafka01022(): void
     {
         self::assertSame(
-            self::KEYS_OF_KAFKA_0_9_0_1,
+            self::KEYS_OF_KAFKA_0_10_2_2,
             new ReflectionClass(ApiKeys::class)->getConstants(),
-            'The branch declares an api key that Kafka 0.9.0.1 does not have, or misses one that it has'
+            'The branch declares an api key that Kafka 0.10.2.2 does not have, or misses one that it has'
         );
     }
 
@@ -74,14 +78,25 @@ final class ApiKeysTest extends TestCase
     }
 
     /**
-     * SaslHandshake (17) and ApiVersions (18) arrived with Kafka 0.10 and must not appear on this branch
+     * SaslHandshake (17), ApiVersions (18), CreateTopics (19) and DeleteTopics (20) arrived with Kafka 0.10
+     */
+    public function testTheKeysOfKafka010AreDeclared(): void
+    {
+        self::assertSame(17, ApiKeys::SASL_HANDSHAKE);
+        self::assertSame(18, ApiKeys::API_VERSIONS);
+        self::assertSame(19, ApiKeys::CREATE_TOPICS);
+        self::assertSame(20, ApiKeys::DELETE_TOPICS);
+    }
+
+    /**
+     * DeleteRecords (21) and everything above it arrived with Kafka 0.11 and must not appear on this branch
      */
     public function testNoApiKeyOfALaterKafkaIsDeclared(): void
     {
         $keys = new ReflectionClass(ApiKeys::class)->getConstants();
 
-        self::assertSame(range(0, 16), array_values($keys));
-        self::assertNotContains('SASL_HANDSHAKE', array_keys($keys));
-        self::assertNotContains('API_VERSIONS', array_keys($keys));
+        self::assertSame(range(0, 20), array_values($keys));
+        self::assertNotContains('DELETE_RECORDS', array_keys($keys));
+        self::assertNotContains('INIT_PRODUCER_ID', array_keys($keys));
     }
 }

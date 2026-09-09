@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
  * that very first request announces the topic with error 5 (LeaderNotAvailable) and no partitions at all: the
  * controller elects the leaders afterwards, so a client has to ask again.
  *
- * @see docs/protocol/0.9.0.md, section "Metadata API (key 3, v0)"
+ * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0, v1 and v2)"
  */
 final class TopicMetadataProbe
 {

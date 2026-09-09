@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API, version 1
+ * The produce API, version 2
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -32,18 +32,25 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * time of the send the producer is free to fill in that field in any way it likes.
  *
  * <pre>
- *   ProduceRequest (Version: 1) => RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
+ *   ProduceRequest (Version: 2) => RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
  *     RequiredAcks => int16
  *     Timeout      => int32
  * </pre>
  *
- * `PRODUCE_REQUEST_V1` of Kafka 0.9.0.1 is `PRODUCE_REQUEST_V0`: the body of the request did not change, only the
- * answer of the broker gained the `ThrottleTime` field, see {@see ProduceResponse}. The version therefore only
- * selects the layout of the response, and {@see ProduceRequestV0} keeps the version 0 pair available.
+ * The body of this request has not changed since version 0: `PRODUCE_REQUEST_V2` is `PRODUCE_REQUEST_V1` is
+ * `PRODUCE_REQUEST_V0` in `Protocol.java` @ 0.10.2.2. What a version does select is the layout of the answer -
+ * version 1 (Kafka 0.9) appended `ThrottleTime` to it and version 2 (Kafka 0.10.0) added the `LogAppendTime` of
+ * every partition, see {@see ProduceResponse} - and, since Kafka 0.10.0, what the broker does with the message set
+ * it is given: a version 2 request may carry message format v1, while a batch of a version 0 or 1 request is
+ * expected to be message format v0. The broker converts either of them into the `message.format.version` of the
+ * topic, so a magic 0 batch of a version 2 request is accepted and stored as v1 with the timestamp -1
+ * (`Log.append` @ 0.10.2.2, verified against the broker).
+ *
+ * {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower pairs available.
  *
  * The `TransactionalId` of the later protocol lines arrived with version 3 of this API (Kafka 0.11.0).
  *
- * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -55,7 +62,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all

@@ -48,7 +48,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  * member and its assignment - are opaque byte arrays to these apis, so arbitrary bytes are used for them here; the
  * `consumer` structures that really go in there belong to another ticket.
  *
- * @see docs/protocol/0.9.0.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0)",
+ * @see docs/protocol/0.10.2.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 and v1)",
  *      "SyncGroup API (key 14, v0)", "Heartbeat API (key 12, v0)" and "LeaveGroup API (key 13, v0)"
  */
 #[CoversClass(Client::class)]
@@ -79,6 +79,14 @@ final class GroupMembershipApiTest extends IntegrationTestCase
      * Session timeout of every member here: `group.min.session.timeout.ms` of the container is 1000
      */
     private const int SESSION_TIMEOUT_MS = 6000;
+
+    /**
+     * Rebalance timeout of every member here, the `rebalance_timeout` of the JoinGroup v1 request
+     *
+     * The coordinator waits this long - not the session timeout - for a member to rejoin a rebalance, so it bounds
+     * every JoinGroup this class sends and has to stay below {@see self::REQUEST_TIMEOUT_MS}.
+     */
+    private const int REBALANCE_TIMEOUT_MS = 8000;
 
     /**
      * Read timeout of the connections, which has to cover a JoinGroup that waits for the whole rebalance
@@ -165,6 +173,7 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         new JoinGroupRequest(
             $groupId,
             self::SESSION_TIMEOUT_MS,
+            self::REBALANCE_TIMEOUT_MS,
             JoinGroupRequest::DEFAULT_MEMBER_ID,
             self::PROTOCOL_TYPE,
             [self::PROTOCOL_NAME => 'second'],
@@ -232,6 +241,7 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         new JoinGroupRequest(
             $groupId,
             1,
+            self::REBALANCE_TIMEOUT_MS,
             JoinGroupRequest::DEFAULT_MEMBER_ID,
             self::PROTOCOL_TYPE,
             [self::PROTOCOL_NAME => 'metadata'],
@@ -249,6 +259,103 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         self::assertSame('', $response->groupProtocol);
         self::assertSame('', $response->leaderId);
         self::assertSame([], $response->members);
+    }
+
+    /**
+     * The rebalance timeout of version 1 is not validated at all - only the session timeout is
+     *
+     * `group.max.session.timeout.ms` of the container is 60000, and `GroupCoordinator.handleJoinGroup` @ 0.10.2.2
+     * checks nothing but the session timeout against it: a rebalance timeout far above that bound is accepted, and
+     * so is a rebalance timeout of 0.
+     */
+    public function testTheRebalanceTimeoutOfVersionOneIsNotBoundedByTheBroker(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $stream  = $this->coordinatorStream($groupId);
+
+        foreach ([300000, 0] as $index => $rebalanceTimeoutMs) {
+            new JoinGroupRequest(
+                $groupId,
+                self::SESSION_TIMEOUT_MS,
+                $rebalanceTimeoutMs,
+                JoinGroupRequest::DEFAULT_MEMBER_ID,
+                self::PROTOCOL_TYPE,
+                [self::PROTOCOL_NAME => 'metadata'],
+                $this->clientId(),
+                310 + $index
+            )->writeTo($stream);
+            $response = JoinGroupResponse::unpack($stream);
+
+            self::assertSame(
+                KafkaException::NO_ERROR,
+                $response->errorCode,
+                "a rebalance timeout of {$rebalanceTimeoutMs} ms is accepted, however group.max.session.timeout.ms "
+                . 'is configured'
+            );
+            $this->leave($stream, $groupId, $response->memberId);
+        }
+    }
+
+    /**
+     * The coordinator holds a JoinGroup for the REBALANCE timeout of the members, not for their session timeout
+     *
+     * Two connections, because a JoinGroup blocks the one it was sent on: the first member joins with a session
+     * timeout far above its rebalance timeout and then goes silent, the second member joins and starts a rebalance
+     * that the first one never rejoins. The answer of the second join is what measures the wait.
+     */
+    public function testTheCoordinatorWaitsTheRebalanceTimeoutForAMemberThatDoesNotRejoin(): void
+    {
+        $groupId       = self::uniqueGroupName();
+        $sessionMs     = 30000;
+        $rebalanceMs   = 3000;
+        $firstStream   = $this->coordinatorStream($groupId);
+
+        new JoinGroupRequest(
+            $groupId,
+            $sessionMs,
+            $rebalanceMs,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            self::PROTOCOL_TYPE,
+            [self::PROTOCOL_NAME => 'first'],
+            $this->clientId(),
+            320
+        )->writeTo($firstStream);
+        $first = JoinGroupResponse::unpack($firstStream);
+        self::assertSame(KafkaException::NO_ERROR, $first->errorCode);
+        $this->sync($firstStream, $groupId, $first->memberId, $first->generationId, [
+            $first->memberId => 'everything',
+        ]);
+
+        // The first member now stops talking; the second one joins and waits for it to rejoin
+        $secondStream = $this->newCoordinatorStream($groupId);
+        $startedAt    = microtime(true);
+        new JoinGroupRequest(
+            $groupId,
+            $sessionMs,
+            $rebalanceMs,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            self::PROTOCOL_TYPE,
+            [self::PROTOCOL_NAME => 'second'],
+            $this->clientId(),
+            321
+        )->writeTo($secondStream);
+        $second  = JoinGroupResponse::unpack($secondStream);
+        $waitedS = microtime(true) - $startedAt;
+
+        self::assertSame(KafkaException::NO_ERROR, $second->errorCode);
+        self::assertSame(2, $second->generationId, 'the rebalance produced the next generation');
+        self::assertGreaterThanOrEqual(
+            $rebalanceMs / 1000 * 0.8,
+            $waitedS,
+            'the coordinator held the join until the rebalance timeout of the silent member had expired'
+        );
+        self::assertLessThan(
+            $sessionMs / 1000,
+            $waitedS,
+            'and it did not wait for the session timeout, which is what a version 0 join would have cost'
+        );
+
+        $this->leave($secondStream, $groupId, $second->memberId);
     }
 
     public function testAMemberIdTheGroupDoesNotHaveIsRefusedByEveryApiOfTheProtocol(): void
@@ -430,6 +537,7 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         new JoinGroupRequest(
             $groupId,
             self::SESSION_TIMEOUT_MS,
+            self::REBALANCE_TIMEOUT_MS,
             $memberId,
             self::PROTOCOL_TYPE,
             [self::PROTOCOL_NAME => $metadata],
@@ -556,6 +664,7 @@ final class GroupMembershipApiTest extends IntegrationTestCase
             ClientConfig::REQUEST_TIMEOUT_MS        => self::REQUEST_TIMEOUT_MS,
 
             ConsumerConfig::SESSION_TIMEOUT_MS      => self::SESSION_TIMEOUT_MS,
+            ConsumerConfig::MAX_POLL_INTERVAL_MS    => self::REBALANCE_TIMEOUT_MS,
         ] + ConsumerConfig::getDefaultConfiguration();
     }
 

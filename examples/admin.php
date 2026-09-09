@@ -10,7 +10,7 @@
  */
 
 /**
- * Admin API example for the Kafka 0.9.0.1 protocol.
+ * Admin API example for the Kafka 0.10.2.2 protocol.
  *
  * Start the broker of docker-compose.yml and run:
  *
@@ -33,17 +33,29 @@ $groupId = $argv[2] ?? 'example-group';
 $configuration = [
     ClientConfig::BOOTSTRAP_SERVERS => ['tcp://' . (getenv('KAFKA_BOOTSTRAP_SERVERS') ?: '127.0.0.1:9092')],
     ClientConfig::CLIENT_ID         => 'admin-example',
-    // Where the group offsets live: `kafka` uses OffsetFetch v1, `zookeeper` the ZooKeeper-backed v0
+    // Where the group offsets live: `kafka` uses OffsetFetch v2, `zookeeper` the ZooKeeper-backed v0
     ClientConfig::OFFSETS_STORAGE   => ClientConfig::OFFSETS_STORAGE_KAFKA,
 ];
 
 $cluster = Cluster::bootstrap($configuration);
 $admin   = new AdminClient($cluster, $configuration);
 
-echo "Brokers\n";
+// Metadata v1 and v2 (Kafka 0.10.0 / 0.10.1) added the identity of the cluster and of its controller, and a rack
+// for every broker; a cluster that is still electing a controller answers null for it.
+echo "Cluster {$cluster->clusterId()}\n";
+echo 'Controller: ' . ($cluster->controller()?->nodeId ?? 'none yet') . "\n";
+
+echo "\nBrokers\n";
 foreach ($admin->findAllBrokers() as $broker) {
-    echo "  {$broker->nodeId}: {$broker->host}:{$broker->port}\n";
+    $rack = $broker->rack === null ? 'no rack' : "rack {$broker->rack}";
+    echo "  {$broker->nodeId}: {$broker->host}:{$broker->port} ({$rack})\n";
 }
+
+// ApiVersions (key 18) is what Kafka 0.10.0 added so that a client can ask what the broker speaks
+echo "\nApis of the first broker\n";
+$brokers = $admin->findAllBrokers();
+$apis    = $admin->getApiVersions(reset($brokers));
+echo '  ' . count($apis) . " api keys, Produce up to v{$apis[0]->maxVersion}, Fetch up to v{$apis[1]->maxVersion}\n";
 
 echo "\nTopics\n";
 foreach ($admin->listTopics() as $name) {
@@ -51,9 +63,9 @@ foreach ($admin->listTopics() as $name) {
 }
 
 // CAVEAT: a topic that does not exist yet is CREATED by this call when the broker runs with
-// auto.create.topics.enable=true. Kafka 0.9 has no CreateTopics api - that arrived in 0.10.1 - so a Metadata
-// request is the only way a client can create a topic at all. The first answer reports the topic error code 5
-// (LeaderNotAvailable) and no partitions until the controller has elected the partition leaders.
+// auto.create.topics.enable=true, and the first answer reports the topic error code 5 (LeaderNotAvailable) and no
+// partitions until the controller has elected the partition leaders. Kafka 0.10.1 added the explicit way of doing
+// it, which reports what went wrong instead - see examples/create-topic.php.
 echo "\nPartitions of {$topic}\n";
 $metadata = $admin->describeTopics([$topic])[$topic] ?? null;
 if ($metadata === null || $metadata->partitions === []) {
@@ -70,21 +82,21 @@ foreach ($metadata->partitions as $partition) {
 $cluster->reload();
 $partitions = array_keys($metadata->partitions);
 
+// Version 1 of the Offsets api (Kafka 0.10.1) answers ONE offset per partition, not a list of segment offsets
 echo "\nOffsets of {$topic}\n";
 $earliest = $admin->listOffsets([$topic => $partitions], OffsetsRequest::EARLIEST);
 $latest   = $admin->listOffsets([$topic => $partitions]);
 foreach ($partitions as $partition) {
-    $first = $earliest[$topic][$partition][0] ?? 0;
-    $last  = $latest[$topic][$partition][0] ?? 0;
+    $first = $earliest[$topic][$partition] ?? 0;
+    $last  = $latest[$topic][$partition] ?? 0;
     echo "  {$partition}: {$first} .. {$last} (" . ($last - $first) . " messages)\n";
 }
 
-// 0.9 has no "every topic of this group" request - the nullable topic array of OffsetFetch is version 2 of that
-// api and arrived with Kafka 0.10.2 - so the partitions whose committed offsets are wanted have to be named
-// explicitly.
+// OffsetFetch v2 (Kafka 0.10.2) made the topic array nullable: without a partition list the coordinator answers
+// every topic-partition this group has ever committed, which is what listGroupOffsets() asks for by default.
 echo "\nCommitted offsets of the group {$groupId}\n";
 echo "  coordinator: node " . $admin->findCoordinator($groupId)->nodeId . "\n";
-foreach ($admin->listGroupOffsets($groupId, [$topic => $partitions]) as $topicOffsets) {
+foreach ($admin->listGroupOffsets($groupId) as $topicOffsets) {
     foreach ($topicOffsets->partitions as $partitionId => $partition) {
         $committed = $partition->offset === -1 ? 'nothing committed yet' : (string) $partition->offset;
         echo "  {$topicOffsets->topic}-{$partitionId}: {$committed}\n";
@@ -116,4 +128,5 @@ foreach ($description->members as $memberId => $member) {
 
 // The remaining admin call, controlledShutdown(), asks the controller to move every leader off a broker. It is what
 // kafka-server-stop.sh triggers, and it really does stop serving that broker - only send it to a broker you want to
-// shut down. There is no ApiVersions api to call here: that is key 18 and arrived with Kafka 0.10.
+// shut down. Creating and deleting topics is in examples/create-topic.php, the offsets by timestamp of Kafka 0.10.1
+// in examples/offsets-for-times.php.
