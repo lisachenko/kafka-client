@@ -30,9 +30,11 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Serialization\Deserializer;
+use Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter;
 use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Throwable;
 
@@ -108,6 +110,16 @@ use Throwable;
  * `SubscriptionState.movePartitionToEnd`). A single message that is larger than either limit is returned in full
  * as long as it is the first one of the answer, so a partition can no longer be stuck on it - the
  * {@see RecordTooLargeException} of the lower Fetch versions is not raised by a 0.11 broker any more.
+ *
+ * **`isolation.level = read_committed`** ({@see ConsumerConfig::ISOLATION_LEVEL}, KIP-98) makes this consumer the
+ * read side of the transactional producer: the Fetch and the Offsets request state the level, so the broker stops
+ * the answer at the *last stable offset* of a partition instead of at its high watermark - nothing of a
+ * transaction that is still open is shown, and `endOffsets()` reports the offset a `read_committed` reader can
+ * really reach - and the records of the transactions the answer reports as **aborted** are dropped by
+ * {@see \Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter} before poll() returns, because a 0.11.0.3
+ * broker sends them and only names them. The default is `read_uncommitted`, which shows every record of the log.
+ *
+ * @see docs/protocol/0.11.0.md, section "Transactions"
  */
 class KafkaConsumer
 {
@@ -826,9 +838,15 @@ class KafkaConsumer
                     );
                 }
 
-                $fetchOffset                  = $fetchedPartition->fetchOffset;
+                $fetchOffset = $fetchedPartition->fetchOffset;
+                // A `read_committed` consumer drops the records of the transactions the answer reports as aborted
+                // itself: the broker only bounds the answer by the last stable offset and names those transactions
+                $visibleRecords = $this->isReadCommitted()
+                    ? AbortedTransactionFilter::committedRecords($fetchedPartition)
+                    : $fetchedPartition->getRecords();
+
                 $result[$topic][$partitionId] = array_values(array_filter(
-                    $fetchedPartition->getRecords(),
+                    $visibleRecords,
                     static fn(Record $record): bool => $record->offset === null || $record->offset >= $fetchOffset
                 ));
             }
@@ -1228,6 +1246,25 @@ class KafkaConsumer
     private function isAutoCommitEnabled(): bool
     {
         return (bool) $this->configuration[ConsumerConfig::ENABLE_AUTO_COMMIT];
+    }
+
+    /**
+     * Tells whether this consumer only sees the records of committed transactions.
+     *
+     * The option is read here exactly as {@see Client} reads it for the Fetch and the Offsets request it builds -
+     * either of the two strings of the Java consumer, or the wire value itself - so that the level a request
+     * states and the level the fetch loop filters with can never disagree.
+     */
+    private function isReadCommitted(): bool
+    {
+        $configured = $this->configuration[ConsumerConfig::ISOLATION_LEVEL]
+            ?? ConsumerConfig::ISOLATION_LEVEL_READ_UNCOMMITTED;
+
+        if (is_int($configured)) {
+            return $configured === FetchRequest::READ_COMMITTED;
+        }
+
+        return strtolower(trim((string) $configured)) === ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED;
     }
 
     /**

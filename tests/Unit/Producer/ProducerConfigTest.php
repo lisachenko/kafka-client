@@ -53,10 +53,16 @@ final class ProducerConfigTest extends TestCase
         self::assertArrayHasKey(ClientConfig::BOOTSTRAP_SERVERS, $configuration);
     }
 
-    public function testKafka08HasNoTransactionalDelivery(): void
+    public function testTheTransactionalDeliveryOfKafka011IsOffByDefault(): void
     {
-        // The transactional.id of the later protocol lines arrived with Kafka 0.11
-        self::assertArrayNotHasKey('transactional.id', ProducerConfig::getDefaultConfiguration());
+        // `transactional.id` arrived with Kafka 0.11 (KIP-98) and the option exists on this line, but a producer
+        // that does not name one is not transactional at all
+        $configuration = ProducerConfig::getDefaultConfiguration();
+
+        self::assertArrayHasKey(ProducerConfig::TRANSACTIONAL_ID, $configuration);
+        self::assertNull($configuration[ProducerConfig::TRANSACTIONAL_ID]);
+        self::assertFalse($configuration[ProducerConfig::ENABLE_IDEMPOTENCE]);
+        self::assertSame(60000, $configuration[ProducerConfig::TRANSACTION_TIMEOUT_MS]);
     }
 
     /**

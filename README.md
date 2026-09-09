@@ -146,6 +146,79 @@ caller, and the producer starts over with a new producer id — everything writt
 loses its deduplication. Both are documented, with what a real 0.11.0.3 broker answers, in
 [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), section "The idempotent producer".
 
+### Transactions
+
+A `transactional.id` turns the idempotent producer into a **transactional** one: the records of
+several partitions — and the committed offsets of a consumer group — become one unit that a
+`read_committed` consumer either sees whole or does not see at all, and the guarantee survives a
+restart of the producer, because the id is what the broker remembers it by.
+
+```php
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Producer\KafkaProducer;
+use Protocol\Kafka\Producer\ProducerConfig;
+
+$producer = new KafkaProducer([
+    ProducerConfig::BOOTSTRAP_SERVERS => ['tcp://127.0.0.1:9092'],
+    ProducerConfig::TRANSACTIONAL_ID  => 'orders-etl-1',   // implies enable.idempotence
+]);
+
+$producer->initTransactions();          // once, before the first send
+
+$producer->beginTransaction();
+try {
+    $producer->send('orders', Record::fromValue('one'));
+    $producer->send('audit',  Record::fromValue('one accepted'));
+    $producer->commitTransaction();     // flushes what is buffered, then EndTxn
+} catch (KafkaException $error) {
+    $producer->abortTransaction();      // the only way out of a failed transaction
+}
+```
+
+`initTransactions()` asks the **transaction coordinator** of the id for a producer id and an epoch
+one higher than the previous incarnation used, which fences that incarnation for good and rolls
+back whatever transaction it left open — so a transactional id must be used by one producer at a
+time, and a crashed producer never blocks a reader for longer than its `transaction.timeout.ms`.
+A `send()` outside a transaction is refused, and so is one after an error that only an abort can
+clean up; `commitTransaction()` flushes the buffer before it ends the transaction and
+`abortTransaction()` throws it away.
+
+The read side is one consumer option:
+
+```php
+$consumer = new KafkaConsumer([
+    ConsumerConfig::BOOTSTRAP_SERVERS  => ['tcp://127.0.0.1:9092'],
+    ConsumerConfig::GROUP_ID           => 'orders-readers',
+    ConsumerConfig::ISOLATION_LEVEL    => ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED,
+]);
+```
+
+With `read_committed` the broker answers only up to the **last stable offset** of a partition, so
+nothing of a transaction that is still open is shown, `endOffsets()` reports the offset such a
+reader can really reach, and the records of transactions the broker names as **aborted** are
+dropped by the consumer before `poll()` returns — a 0.11 broker sends them and only names them.
+The COMMIT and ABORT control batches of a transaction never reach an application in either level.
+
+The **consume-transform-produce** loop is what all of this exists for: the consumer hands its
+offsets to the producer instead of committing them itself, so reading the input and writing the
+output either both happen or neither does.
+
+```php
+$producer->beginTransaction();
+foreach ($consumer->poll(1000)['input'][0] ?? [] as $record) {
+    $producer->send('output', Record::fromValue(strtoupper((string) $record->value)));
+}
+$producer->flush();
+$producer->sendOffsetsToTransaction(['input' => [0 => $consumer->position('input', 0)]], 'my-group');
+$producer->commitTransaction();
+```
+
+The consumer of that loop runs with `enable.auto.commit = false` and `read_committed`. A runnable
+version is [examples/transactional-producer.php](examples/transactional-producer.php); the wire
+protocol behind it — the five apis 24 to 28, the control batches and the last stable offset — is in
+[docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), section "Transactions".
+
 Consumer API
 ------------
 

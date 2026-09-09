@@ -52,14 +52,20 @@ use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
+use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
@@ -68,6 +74,8 @@ use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
+use Protocol\Kafka\Protocol\Request\EndTxnRequest;
+use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
@@ -95,6 +103,8 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 
 /**
  * Low-level client for the Kafka 0.11.0.3 protocol.
@@ -647,7 +657,7 @@ class Client
             fn(array $nodeTopicRequest, int $correlationId): OffsetsRequest => new OffsetsRequest(
                 $nodeTopicRequest,
                 OffsetsRequest::CONSUMER_REPLICA_ID,
-                FetchRequest::READ_UNCOMMITTED,
+                $this->isolationLevel(),
                 $this->configuration[ConsumerConfig::CLIENT_ID],
                 $correlationId
             ),
@@ -1189,20 +1199,25 @@ class Client
     }
 
     /**
-     * Returns the `isolation.level` a Fetch request of this client states.
+     * Returns the `isolation.level` that a Fetch and an Offsets request of this client state.
      *
-     * The option is the one of the Java consumer - the strings `read_uncommitted` and `read_committed`, or the
-     * wire value itself - and a client that does not configure it reads uncommitted, which is what every broker
-     * below 0.11 did and what the versions below 4 of the Fetch api do.
+     * The option is the one of the Java consumer ({@see ConsumerConfig::ISOLATION_LEVEL}) - the strings
+     * `read_uncommitted` and `read_committed`, or the wire value itself - and a client that does not configure it
+     * reads uncommitted, which is what every broker below 0.11 did and what the versions below 4 of the Fetch api
+     * do.
+     *
+     * The level travels in **both** apis on purpose: a `read_committed` consumer whose `endOffsets()` answered the
+     * high watermark would wait for records that it is never going to be shown, so version 2 of the Offsets api
+     * (KIP-98) carries the field as well and answers the last stable offset for `LATEST`.
      */
     private function isolationLevel(): int
     {
-        $configured = $this->configuration['isolation.level'] ?? FetchRequest::READ_UNCOMMITTED;
+        $configured = $this->configuration[ConsumerConfig::ISOLATION_LEVEL] ?? FetchRequest::READ_UNCOMMITTED;
         if (is_int($configured)) {
             return $configured;
         }
 
-        return strtolower(trim((string) $configured)) === 'read_committed'
+        return strtolower(trim((string) $configured)) === ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED
             ? FetchRequest::READ_COMMITTED
             : FetchRequest::READ_UNCOMMITTED;
     }
@@ -1824,6 +1839,206 @@ class Client
                 }
 
                 return $result;
+            }
+        );
+    }
+
+    /**
+     * Enrols topic-partitions into the open transaction of a producer (ApiKey 24, Kafka 0.11, KIP-98)
+     *
+     * The request goes to the **transaction coordinator** of the transactional id, and it has to be answered before
+     * the first Produce request that writes into one of those partitions: the coordinator keeps the list of
+     * partitions of a transaction and writes a control batch into every one of them when the transaction ends, so
+     * a partition that was never added would keep its records uncommitted forever. The first call of a transaction
+     * is also the one that *starts* it on the broker - the protocol has no "BeginTransaction" request.
+     *
+     * There is no top-level error code in the answer: a failure of the transaction itself - 47 for a fenced epoch,
+     * 48 for a state that may not add partitions, 49 for a producer id the coordinator does not hold, 51 while the
+     * previous transaction is still being completed - is repeated on every partition, so the first error code of
+     * the answer is the one that is reported here.
+     *
+     * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
+     * @param string             $transactionalId    `transactional.id` of the producer
+     * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
+     * @param array<string, list<int>> $topicPartitions Partitions to add, as topic => list of partition ids
+     *
+     * @throws KafkaException The error code of the first partition that was refused
+     */
+    public function addPartitionsToTxn(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        array $topicPartitions
+    ): void {
+        $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AddPartitionsToTxnRequest => new AddPartitionsToTxnRequest(
+                $transactionalId,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $topicPartitions,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            AddPartitionsToTxnResponse::class,
+            static function (AddPartitionsToTxnResponse $response) use ($transactionalId): void {
+                foreach ($response->errors as $topic => $topicErrors) {
+                    /** @var AddPartitionsToTxnResponsePartition $partitionError */
+                    foreach ($topicErrors->partitionErrors as $partitionId => $partitionError) {
+                        if ($partitionError->errorCode !== KafkaException::NO_ERROR) {
+                            throw KafkaException::fromCode($partitionError->errorCode, [
+                                'transactionalId' => $transactionalId,
+                                'topic'           => $topic,
+                                'partitionId'     => $partitionId,
+                            ]);
+                        }
+                    }
+                }
+            }
+        );
+    }
+
+    /**
+     * Enrols the offsets of a consumer group into the open transaction (ApiKey 25, Kafka 0.11, KIP-98)
+     *
+     * The first half of `sendOffsetsToTransaction()`: the request goes to the **transaction coordinator** and puts
+     * the partition of `__consumer_offsets` that the group hashes to on the list of partitions of the transaction,
+     * so that the commit marker reaches it as well. The offsets themselves travel in the
+     * {@see self::txnOffsetCommit()} that has to follow it, and that goes to the group coordinator instead.
+     *
+     * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
+     * @param string             $transactionalId    `transactional.id` of the producer
+     * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
+     * @param string             $groupId            Consumer group whose offsets become part of the transaction
+     *
+     * @throws KafkaException The error code of the answer
+     */
+    public function addOffsetsToTxn(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        string $groupId
+    ): void {
+        $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AddOffsetsToTxnRequest => new AddOffsetsToTxnRequest(
+                $transactionalId,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $groupId,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            AddOffsetsToTxnResponse::class,
+            static function (AddOffsetsToTxnResponse $response) use ($transactionalId, $groupId): void {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['transactionalId' => $transactionalId, 'groupId' => $groupId]
+                    );
+                }
+            }
+        );
+    }
+
+    /**
+     * Commits or aborts the open transaction of a producer (ApiKey 26, Kafka 0.11, KIP-98)
+     *
+     * The last request of a transaction, sent to the **transaction coordinator**. The answer means that the
+     * coordinator has *decided* the outcome and written it into `__transaction_state`, not that the control batches
+     * are in the partitions: those are written afterwards, with a `WriteTxnMarkers` request per partition leader, so
+     * a `read_committed` consumer sees the records of a committed transaction a moment after this call returns.
+     *
+     * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
+     * @param string             $transactionalId    `transactional.id` of the producer
+     * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
+     * @param bool               $transactionResult  {@see EndTxnRequest::COMMIT} or {@see EndTxnRequest::ABORT}
+     *
+     * @throws KafkaException The error code of the answer
+     */
+    public function endTxn(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        bool $transactionResult
+    ): void {
+        $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): EndTxnRequest => new EndTxnRequest(
+                $transactionalId,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $transactionResult,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            EndTxnResponse::class,
+            static function (EndTxnResponse $response) use ($transactionalId, $transactionResult): void {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode($response->errorCode, [
+                        'transactionalId'   => $transactionalId,
+                        'transactionResult' => $transactionResult ? 'commit' : 'abort',
+                    ]);
+                }
+            }
+        );
+    }
+
+    /**
+     * Commits consumer offsets inside the open transaction (ApiKey 28, Kafka 0.11, KIP-98)
+     *
+     * The second half of `sendOffsetsToTransaction()` and the only request of the transaction protocol that goes to
+     * the **group coordinator** ({@see self::getGroupCoordinator()}), because that is the broker which owns
+     * `__consumer_offsets`. It has to follow an {@see self::addOffsetsToTxn()} for the same group, otherwise the
+     * group coordinator answers 48 (`InvalidTxnState`) - a transactional write into a partition that is not part of
+     * an open transaction.
+     *
+     * The offsets it writes stay invisible to an OffsetFetch of the group until the transaction is committed; an
+     * aborted transaction leaves the group with the offsets it had before. As in
+     * {@see self::addPartitionsToTxn()} there is no top-level error code, so the first error code of the answer is
+     * the one that is reported here.
+     *
+     * @param Node               $coordinatorNode    **Group** coordinator of `$groupId`
+     * @param string             $transactionalId    `transactional.id` of the producer
+     * @param string             $groupId            Consumer group whose offsets are committed
+     * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
+     * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
+     *
+     * @throws KafkaException The error code of the first partition that was refused
+     */
+    public function txnOffsetCommit(
+        Node $coordinatorNode,
+        string $transactionalId,
+        string $groupId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        array $topicPartitionOffsets
+    ): void {
+        $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): TxnOffsetCommitRequest => new TxnOffsetCommitRequest(
+                $transactionalId,
+                $groupId,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $topicPartitionOffsets,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            TxnOffsetCommitResponse::class,
+            static function (TxnOffsetCommitResponse $response) use ($transactionalId, $groupId): void {
+                foreach ($response->topics as $topic => $topicResult) {
+                    /** @var TxnOffsetCommitResponsePartition $partitionResult */
+                    foreach ($topicResult->partitions as $partitionId => $partitionResult) {
+                        if ($partitionResult->errorCode !== KafkaException::NO_ERROR) {
+                            throw KafkaException::fromCode($partitionResult->errorCode, [
+                                'transactionalId' => $transactionalId,
+                                'groupId'         => $groupId,
+                                'topic'           => $topic,
+                                'partitionId'     => $partitionId,
+                            ]);
+                        }
+                    }
+                }
             }
         );
     }

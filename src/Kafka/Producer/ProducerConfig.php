@@ -28,9 +28,10 @@ use Protocol\Kafka\Common\Record\RecordBatch;
 /**
  * Producer config enumeration class
  *
- * Kafka 0.11 added the delivery guarantee of KIP-98 to the producer, and with it the option that turns it on:
- * {@see ProducerConfig::ENABLE_IDEMPOTENCE}, together with the `transaction.timeout.ms` that the transactional
- * producer of the same KIP states in its `InitProducerId`.
+ * Kafka 0.11 added the delivery guarantee of KIP-98 to the producer, and with it the options that turn it on:
+ * {@see ProducerConfig::ENABLE_IDEMPOTENCE} for the idempotent producer, {@see ProducerConfig::TRANSACTIONAL_ID}
+ * for the transactional one - which implies the first - and the {@see ProducerConfig::TRANSACTION_TIMEOUT_MS} that
+ * a transactional `InitProducerId` states.
  */
 final class ProducerConfig extends GeneralConfig
 {
@@ -53,6 +54,7 @@ final class ProducerConfig extends GeneralConfig
 
         ProducerConfig::ENABLE_IDEMPOTENCE     => false,
         ProducerConfig::TRANSACTION_TIMEOUT_MS => 60000,
+        ProducerConfig::TRANSACTIONAL_ID       => null,
     ];
 
     /**
@@ -263,6 +265,31 @@ final class ProducerConfig extends GeneralConfig
     public const string TRANSACTION_TIMEOUT_MS = 'transaction.timeout.ms';
 
     /**
+     * The id that identifies this producer across its restarts, and the option that turns transactions on.
+     *
+     * A producer that carries one is a **transactional producer**: it may group the records of several partitions
+     * - and the offsets of a consumer group - into a transaction that a `read_committed` consumer either sees
+     * whole or does not see at all, with
+     * {@see KafkaProducer::initTransactions()}, {@see KafkaProducer::beginTransaction()},
+     * {@see KafkaProducer::sendOffsetsToTransaction()}, {@see KafkaProducer::commitTransaction()} and
+     * {@see KafkaProducer::abortTransaction()}.
+     *
+     * The id is what makes the guarantee survive a restart: `InitProducerId` answers it with the producer id that
+     * `__transaction_state` holds for it and with an epoch **one higher** than the previous incarnation used, which
+     * fences that incarnation for good, and it aborts whatever transaction that incarnation had left open. Two
+     * producers must therefore never run with the same transactional id at the same time - the second one silently
+     * kills the first.
+     *
+     * A transactional id **implies `enable.idempotence`** ({@see ProducerConfig::resolveIdempotence()}), so it
+     * carries the same constraints: `acks` has to be `all` and `retries` must not be 0. The **empty string** is not
+     * a transactional id - a broker answers it with the error code 42 - and is refused here as a configuration
+     * error.
+     *
+     * @see docs/protocol/0.11.0.md, section "Transactions"
+     */
+    public const string TRANSACTIONAL_ID = 'transactional.id';
+
+    /**
      * The `retries` an idempotent producer gets when the configuration does not name a value.
      *
      * The Java producer overrides the default to `Integer.MAX_VALUE` here, because its background sender bounds a
@@ -322,15 +349,42 @@ final class ProducerConfig extends GeneralConfig
      * caller set them to something the guarantee can not live with, and this is the same rule - which is why it
      * takes the options as the caller wrote them, before the defaults have been merged into them.
      *
+     * A **`transactional.id` implies `enable.idempotence`**, as it does in the Java producer: a transaction is
+     * built on the producer id and the sequence numbers of KIP-98, so there is no such thing as a transactional
+     * producer that is not idempotent. An explicit `enable.idempotence = false` next to a transactional id is
+     * therefore a configuration error, and so is the empty string as an id, which a broker answers with the error
+     * code 42.
+     *
      * @param array<string, mixed> $configuration Options of the caller, without the defaults
      *
      * @return array<string, mixed> The same options with the overrides of an idempotent producer applied
      *
      * @throws InvalidConfigurationException For an `acks` other than `all` or a `retries` of 0 next to
-     *         `enable.idempotence = true`
+     *         `enable.idempotence = true`, and for a `transactional.id` that the guarantee can not live with
      */
     public static function resolveIdempotence(array $configuration): array
     {
+        $transactionalId = $configuration[self::TRANSACTIONAL_ID] ?? null;
+        if ($transactionalId !== null) {
+            if (!is_string($transactionalId) || trim($transactionalId) === '') {
+                throw new InvalidConfigurationException(
+                    self::TRANSACTIONAL_ID . ' must be a non-empty string, "'
+                    . (is_scalar($transactionalId) ? (string) $transactionalId : get_debug_type($transactionalId))
+                    . '" given'
+                );
+            }
+            if (array_key_exists(self::ENABLE_IDEMPOTENCE, $configuration)
+                && !self::isIdempotenceEnabled($configuration[self::ENABLE_IDEMPOTENCE])
+            ) {
+                throw new InvalidConfigurationException(
+                    'Cannot set ' . self::ENABLE_IDEMPOTENCE . ' to false while a ' . self::TRANSACTIONAL_ID
+                    . ' is configured: a transaction is built on the producer id and the sequence numbers of the '
+                    . 'idempotent producer'
+                );
+            }
+            $configuration[self::ENABLE_IDEMPOTENCE] = true;
+        }
+
         if (!self::isIdempotenceEnabled($configuration[self::ENABLE_IDEMPOTENCE] ?? false)) {
             return $configuration;
         }

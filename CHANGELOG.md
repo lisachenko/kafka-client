@@ -168,6 +168,37 @@ this line captured and the 120 of the three lines below, which a 0.11.0.3 broker
   numbers are consumed and the partition is reported as accepted — although a 0.11.0.3 broker never
   sends it to a client: it answers a duplicate of the last batch with the code **0** and the offset
   of the original append, and a duplicate of an older one with 45.
+- **The transactional producer of KIP-98** — the five apis of the transaction protocol
+  (`AddPartitionsToTxnRequest`/`Response` 24, `AddOffsetsToTxnRequest`/`Response` 25,
+  `EndTxnRequest`/`Response` 26, `WriteTxnMarkersRequest`/`Response` 27 — broker to broker, classes
+  and vectors only — and `TxnOffsetCommitRequest`/`Response` 28, with their `Protocol\Data` DTOs),
+  the client methods `Client::addPartitionsToTxn()`, `addOffsetsToTxn()`, `endTxn()` and
+  `txnOffsetCommit()`, and the state machine of `Producer\Internals\TransactionManager` on top of
+  the new `Producer\Internals\TransactionState` enum — `UNINITIALIZED`, `INITIALIZING`, `READY`,
+  `IN_TRANSACTION`, `COMMITTING_TRANSACTION`, `ABORTING_TRANSACTION`, `ABORTABLE_ERROR`,
+  `FATAL_ERROR`, with the transitions of `TransactionManager.State` @ 0.11.0.3. The coordinator
+  codes 14, 15 and 16 make the coordinator be looked up again and 51 (`ConcurrentTransactions`) is
+  retried, both bounded by `metadata.fetch.timeout.ms`; 47, 48, 49 and 53 are fatal and everything
+  else that fails inside a transaction makes it abortable.
+- **`ProducerConfig::TRANSACTIONAL_ID`** (`transactional.id`, default `null`) and the five methods
+  of the Java producer on `KafkaProducer`: `initTransactions()`, `beginTransaction()`,
+  `sendOffsetsToTransaction()`, `commitTransaction()` and `abortTransaction()`. A transactional id
+  implies `enable.idempotence` — and with it `acks = all` and a non-zero `retries` — the empty
+  string is refused as a configuration error, a `send()` outside a transaction is refused,
+  `commitTransaction()` flushes the buffered batch first and `abortTransaction()` discards it.
+- **`ConsumerConfig::ISOLATION_LEVEL`** (`isolation.level`, `read_uncommitted` by default) with the
+  constants `ISOLATION_LEVEL_READ_UNCOMMITTED` and `ISOLATION_LEVEL_READ_COMMITTED`. The level is
+  sent in the Fetch **and** in the Offsets request, so `KafkaConsumer::endOffsets()`, `position()`
+  and `seekToEnd()` of a `read_committed` consumer answer the *last stable offset* instead of the
+  log end offset; `Admin\AdminClient::listOffsets()` deliberately stays at `read_uncommitted`.
+- **`Consumer\Internals\AbortedTransactionFilter`**, the `Fetcher.PartitionRecords` algorithm of
+  the Java consumer: a 0.11.0.3 broker answers a `read_committed` fetch with the records of aborted
+  transactions and their ABORT control batches in it and only *names* the transactions in
+  `aborted_transactions`, so the consumer walks the batches of an answer and drops the ones whose
+  producer id is aborted at that offset. Control batches never reach an application in either
+  isolation level.
+- **`examples/transactional-producer.php`** — the consume-transform-produce loop end to end,
+  verified against the `read_committed` console consumer of the 0.11.0.3 container.
 
 ### Changed
 

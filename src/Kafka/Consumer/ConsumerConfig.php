@@ -19,6 +19,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Consumer;
 
 use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 
 /**
  * Consumer config enumeration class
@@ -27,10 +28,11 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
  * heartbeat.interval.ms and partition.assignment.strategy, plus offset.retention.ms for the `retention_time` of the
  * OffsetCommit v2 request. Kafka 0.10.1 added {@see self::MAX_POLL_INTERVAL_MS}, the application-side half of the
  * `rebalance_timeout` that a JoinGroup v1 request carries, and {@see self::FETCH_MAX_BYTES}, the request-level
- * bound of a Fetch v3 answer, and Kafka 0.11 the `isolation.level` a Fetch v5 request states, which
- * {@see \Protocol\Kafka\Client::fetchPartitions()} reads out of this configuration. The `offsets.storage` option
- * of the general config ({@see GeneralConfig::OFFSETS_STORAGE}) still selects where the committed offsets live
- * (OffsetCommit v0 vs v3).
+ * bound of a Fetch v3 answer. Kafka 0.11 added {@see self::ISOLATION_LEVEL}, the option of the transactional
+ * protocol of KIP-98, which decides whether a consumer sees the records of a transaction that is still open or
+ * that was aborted; it travels in the Fetch v5 request and in the Offsets v2 request alike. The `offsets.storage`
+ * option of the general config ({@see GeneralConfig::OFFSETS_STORAGE}) still selects where the committed offsets
+ * live (OffsetCommit v0 vs v3).
  *
  * A consumer overrides one option of the general config: `request.timeout.ms` defaults to 305000 instead of 30000,
  * as it does in the Java consumer of 0.10.1 and above ("chosen to be higher than the default of
@@ -62,6 +64,7 @@ final class ConsumerConfig extends GeneralConfig
         ConsumerConfig::AUTO_COMMIT_INTERVAL_MS       => 0, // Commit always after each poll()
         ConsumerConfig::OFFSET_RETENTION_MS           => -1, // Use the broker retention time for offsets
         ConsumerConfig::CHECK_CRCS                    => true,
+        ConsumerConfig::ISOLATION_LEVEL               => ConsumerConfig::ISOLATION_LEVEL_READ_UNCOMMITTED,
         ConsumerConfig::KEY_DESERIALIZER              => null,
         ConsumerConfig::VALUE_DESERIALIZER            => null,
     ];
@@ -233,6 +236,41 @@ final class ConsumerConfig extends GeneralConfig
      * checksum does not match is reported as a CorruptMessageException for its own partition.
      */
     public const string CHECK_CRCS = 'check.crcs';
+
+    /**
+     * Which records of a transactional topic this consumer is allowed to see (KIP-98, Kafka 0.11).
+     *
+     * The two values are the ones of the Java consumer, `read_uncommitted` and `read_committed`, and the wire
+     * values behind them are {@see FetchRequest::READ_UNCOMMITTED} (0) and {@see FetchRequest::READ_COMMITTED} (1);
+     * this client accepts either spelling. The default is `read_uncommitted`, which is what every broker below
+     * 0.11 did and what the versions below 4 of the Fetch api do.
+     *
+     * With `read_committed` three things change at once:
+     *
+     * * the Fetch request states the level, and the broker answers **only up to the last stable offset** of a
+     *   partition - the first offset of the oldest transaction that is still open - so the records of a running
+     *   transaction are invisible, however far the high watermark has moved past them;
+     * * the answer carries the transactions that were **aborted** in the range it covers, and the consumer drops
+     *   the records of those producers itself: a 0.11.0.3 broker does *not* filter them out, it only names them;
+     * * `endOffsets()` and the `Offsets` api answer the last stable offset instead of the high watermark, so a
+     *   consumer that waits for the end of the log does not wait for records it will never be shown.
+     *
+     * A control batch - the COMMIT or ABORT marker the transaction coordinator appends - is never handed to an
+     * application in either level.
+     *
+     * @see docs/protocol/0.11.0.md, section "Transactions"
+     */
+    public const string ISOLATION_LEVEL = 'isolation.level';
+
+    /**
+     * `isolation.level` of a consumer that sees every record of the log, the default
+     */
+    public const string ISOLATION_LEVEL_READ_UNCOMMITTED = 'read_uncommitted';
+
+    /**
+     * `isolation.level` of a consumer that only sees the records of committed transactions
+     */
+    public const string ISOLATION_LEVEL_READ_COMMITTED = 'read_committed';
 
     public const string EXCLUDE_INTERNAL_TOPICS = 'exclude.internal.topics';
     public const string MAX_POLL_RECORDS        = 'max.poll.records';

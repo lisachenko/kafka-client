@@ -815,4 +815,112 @@ final class KafkaProducerTest extends TestCase
             new FakeClient($this->cluster)
         );
     }
+
+    public function testATransactionalIdImpliesIdempotenceAndItsConstraints(): void
+    {
+        $probe = $this->configurationProbe([ProducerConfig::TRANSACTIONAL_ID => 'tx-1']);
+        // The client is built by the first transactional call, which is the first one a transactional producer makes
+        $probe->initTransactions();
+
+        self::assertTrue($probe->clientConfiguration[ProducerConfig::ENABLE_IDEMPOTENCE]);
+        self::assertSame(ProducerConfig::ACKS_ALL, $probe->clientConfiguration[ProducerConfig::ACKS]);
+        self::assertSame(
+            ProducerConfig::DEFAULT_IDEMPOTENT_RETRIES,
+            $probe->clientConfiguration[ProducerConfig::RETRIES]
+        );
+    }
+
+    public function testATransactionalIdNextToDisabledIdempotenceIsRefused(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Cannot set enable.idempotence to false while a transactional.id');
+
+        new TestKafkaProducer(
+            [
+                ProducerConfig::TRANSACTIONAL_ID   => 'tx-1',
+                ProducerConfig::ENABLE_IDEMPOTENCE => false,
+            ] + $this->clusterConfiguration,
+            new FakeClient($this->cluster)
+        );
+    }
+
+    public function testTheEmptyStringIsNotATransactionalId(): void
+    {
+        // A broker answers the empty id with the error code 42, so the producer refuses it before it sends anything
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('transactional.id must be a non-empty string');
+
+        new TestKafkaProducer(
+            [ProducerConfig::TRANSACTIONAL_ID => ''] + $this->clusterConfiguration,
+            new FakeClient($this->cluster)
+        );
+    }
+
+    public function testTheTransactionalApiIsRefusedWithoutATransactionalId(): void
+    {
+        [$producer] = $this->producer();
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('The transactional API of the producer needs a transactional.id');
+
+        $producer->initTransactions();
+    }
+
+    public function testASendOutsideATransactionIsRefused(): void
+    {
+        [$producer] = $this->producer([ProducerConfig::TRANSACTIONAL_ID => 'tx-1']);
+        $producer->initTransactions();
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Can not send in the state READY');
+
+        $producer->send(self::TOPIC, Record::fromValue('outside'), 0);
+    }
+
+    public function testAWholeTransactionSendsItsRequestsInTheOrderOfTheProtocol(): void
+    {
+        [$producer, $client] = $this->producer([ProducerConfig::TRANSACTIONAL_ID => 'tx-1']);
+
+        $producer->initTransactions();
+        $producer->beginTransaction();
+        $producer->send(self::TOPIC, Record::fromValue('one'), 0);
+        $producer->flush();
+        $producer->sendOffsetsToTransaction([self::TOPIC => [0 => 5]], 'my-group');
+        $producer->commitTransaction();
+
+        self::assertSame(
+            ['addPartitionsToTxn', 'addOffsetsToTxn', 'txnOffsetCommit', 'endTxn'],
+            array_column($client->transactionCalls, 0)
+        );
+        self::assertSame(
+            'tx-1',
+            $client->producerStates[0]['transactionalId'],
+            'the batch of a transaction carries the transactional id into the Produce request'
+        );
+        self::assertTrue($client->transactionCalls[3][2], 'the last request commits');
+    }
+
+    public function testAnAbortThrowsTheBufferedRecordsAwayInsteadOfSendingThem(): void
+    {
+        // A batch size that the record does not fill, so that `send()` does not flush it right away
+        [$producer, $client] = $this->producer([
+            ProducerConfig::TRANSACTIONAL_ID => 'tx-1',
+            ProducerConfig::BATCH_SIZE       => 65536,
+        ]);
+
+        $producer->initTransactions();
+        $producer->beginTransaction();
+        $rejected = null;
+        $producer->send(self::TOPIC, Record::fromValue('never written'), 0)
+            ->then(null, static function (\Throwable $error) use (&$rejected): void {
+                $rejected = $error;
+            });
+
+        $producer->abortTransaction();
+
+        self::assertSame([], $client->produceCalls, 'nothing of an aborted transaction is sent');
+        self::assertSame([['endTxn', 'tx-1', false]], $client->transactionCalls);
+        self::assertInstanceOf(\RuntimeException::class, $rejected);
+        self::assertStringContainsString('The transaction was aborted', $rejected->getMessage());
+    }
 }
