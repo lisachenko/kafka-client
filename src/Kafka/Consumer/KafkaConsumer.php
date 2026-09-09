@@ -98,16 +98,16 @@ use Throwable;
  * consumer, `zookeeper` uses the version 0, which is what the consumers of Kafka 0.8.1 did. The two storages are
  * independent, so a group has one position per storage.
  *
- * What arrived after 0.10.2.2 is absent: the `isolation.level` of the transactional protocol of 0.11.
- *
- * The records are fetched with **Fetch v3**, so they carry the timestamps of message format v1 and the whole
- * answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`. The broker fills
- * the partitions in the order of the request until that budget is used up, so this consumer rotates the order of
- * its partitions after every poll: a partition that returned records is moved behind the ones that did not, which
- * is what the Java consumer of 0.10.2 does as well (`Fetcher.parseCompletedFetch` ⇒
+ * The records are fetched with **Fetch v5**, so a 0.11 broker answers with the log as it lies: record batches of
+ * the message format v2, whose records carry their timestamps and their headers ({@see Record::$headers}, KIP-82),
+ * and the control markers of a transaction are dropped by the record layer before a record ever reaches poll().
+ * The whole answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`; the
+ * broker fills the partitions in the order of the request until that budget is used up, so this consumer rotates
+ * the order of its partitions after every poll: a partition that returned records is moved behind the ones that
+ * did not, which is what the Java consumer does as well (`Fetcher.parseCompletedFetch` ⇒
  * `SubscriptionState.movePartitionToEnd`). A single message that is larger than either limit is returned in full
  * as long as it is the first one of the answer, so a partition can no longer be stuck on it - the
- * {@see RecordTooLargeException} of the lower Fetch versions is not raised by a 0.10.2 broker any more.
+ * {@see RecordTooLargeException} of the lower Fetch versions is not raised by a 0.11 broker any more.
  */
 class KafkaConsumer
 {
@@ -431,7 +431,7 @@ class KafkaConsumer
      * are committed once `auto.commit.interval.ms` has passed since the last commit, and always right before the
      * consumer gives its partitions up in a rebalance.
      *
-     * The partitions are asked for in a **rotating order**: a Fetch v3 request is bounded by `fetch.max.bytes`
+     * The partitions are asked for in a **rotating order**: a Fetch v5 request is bounded by `fetch.max.bytes`
      * for the whole answer and the broker serves the partitions in the order it was asked, so every partition
      * that returned records in this poll() is moved behind the ones that did not before the next one is sent.
      *
@@ -815,7 +815,7 @@ class KafkaConsumer
             foreach ($partitions as $partitionId => $fetchedPartition) {
                 // Up to version 2 of the Fetch API the broker fills the answer up to MaxBytes without
                 // guaranteeing that one message fits, so a partition whose next message is bigger would come
-                // back empty forever; version 3, which this consumer sends, always returns that message instead
+                // back empty forever; version 5, which this consumer sends, always returns that message instead
                 if ($fetchedPartition->isSingleMessageTooLarge()) {
                     throw new RecordTooLargeException(
                         (string) $topic,

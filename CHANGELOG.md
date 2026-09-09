@@ -1,6 +1,5 @@
 Changelog
-=========
-
+==
 All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
@@ -74,6 +73,57 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   their four DTOs, with wire vectors in `docs/protocol/vectors/offset-for-leader-epoch.json`. It is
   a broker-to-broker api and this client sends it nowhere; a broker without an authorizer answers an
   ordinary client all the same, which is how the vectors were captured.
+- **Produce v3** (KIP-98) — `ProduceRequest` sends version 3 with the nullable `TransactionalId` in
+  front of `RequiredAcks` and a **record batch of the message format v2** per topic-partition;
+  `ProduceRequestV2` keeps the highest version that may carry a legacy message set, because a
+  0.11.0.3 broker *closes the connection* on a Produce v3 whose magic is below 2. The answer of
+  version 3 is the answer of version 2 byte for byte (`PRODUCE_RESPONSE_V3` **is**
+  `PRODUCE_RESPONSE_V2`), so `ProduceResponse` and the new `ProduceResponseV2` read the same frame;
+  the `log_start_offset` of a produce answer is Kafka 1.0 and is not on this line. Three wire
+  vectors in `docs/protocol/vectors/produce.json`.
+- **Fetch v4 and v5** (KIP-98, KIP-107) — `FetchRequest` sends version 5 with the `IsolationLevel`
+  of the consumer and the per-partition `LogStartOffset`, and its answer carries
+  `LastStableOffset`, `LogStartOffset` and the nullable `AbortedTransactions` array
+  (`Protocol\Data\FetchResponseAbortedTransaction`) of every partition. `FetchRequestV4`/`V3` and
+  `FetchResponseV4`/`V3` keep the lower versions; `FetchResponsePartition::getRecords()` returns a
+  `MemoryRecords` region that reads whichever of the three message formats the broker answered
+  with. Seven wire vectors in `docs/protocol/vectors/fetch.json`, one of them a `read_committed`
+  answer with an aborted transaction in it.
+- **`Common\FetchedPartition` reports the transactional state of a partition** — `$lastStableOffset`,
+  `$logStartOffset` and `$abortedTransactions` next to the high water mark, plus
+  `getMemoryRecords()` and `hasPartialTrailingRecord()`; `getNextOffset()` moves past a control
+  batch, which holds no record an application may see.
+- **Record headers travel end to end** (KIP-82) — `KafkaProducer::send()` writes the
+  `Record::$headers` into the record batch of a Produce v3, and `KafkaConsumer::poll()` reads them
+  back out of a Fetch v5 answer; `Consumer\ConsumerRecord` carries them next to the deserialized
+  key and value. They exist in the message format v2 alone: a Fetch below version 4 of a partition
+  whose records carry headers is answered with the error code -1, because the broker cannot
+  convert them down.
+- **`Client::produceRecords()`** — the one place that turns records into the record set of a
+  Produce request, with the producer id, the producer epoch, the per-topic-partition base sequence
+  and the transactional id of KIP-98 as its parameters (-1, -1, none and `null` for a plain
+  producer). `Client::produce()` is that method without producer state.
+- **DeleteRecords v0 (key 21, KIP-107)** — `DeleteRecordsRequest`/`DeleteRecordsResponse` with
+  their topic and partition DTOs, `Client::deleteRecords()` (split per partition leader, like a
+  produce) and `Admin\AdminClient::deleteRecords()`, which answers the new **low watermark** of
+  every partition as an `Admin\DeletedRecords`. The offset to delete before is a plain integer or
+  an `Admin\RecordsToDelete`; `RecordsToDelete::allRecords()` is the `-1` of the wire, i.e.
+  everything up to the high watermark. Six wire vectors in
+  `docs/protocol/vectors/delete-records.json`.
+- **DescribeConfigs v0 (key 32, KIP-133)** — `DescribeConfigsRequest`/`DescribeConfigsResponse`
+  with their resource and entry DTOs, and `Admin\AdminClient::describeConfigs()`, which reads the
+  configuration of a topic or of a broker into an `Admin\Config` of `Admin\ConfigEntry` objects
+  (`value`, `isDefault`, `isSensitive`, `isReadOnly`). A resource is named with an
+  `Admin\ConfigResource` (`topic()` / `broker()`, the type ids of
+  `org.apache.kafka.common.requests.ResourceType` @ 0.11.0.3) and addressed in the result by its
+  `key()`; a **broker** resource is sent to the broker it names, a topic resource to any broker.
+  Six wire vectors in `docs/protocol/vectors/describe-configs.json`.
+- **AlterConfigs v0 (key 33, KIP-133)** — `AlterConfigsRequest`/`AlterConfigsResponse` with their
+  DTOs and `Admin\AdminClient::alterConfigs()`, which **replaces** the whole configuration of a
+  topic (an option left out is reset to its default, which is what `Config::nonDefaultValues()`
+  exists for) and reports the error of every resource instead of throwing. A 0.11 broker alters
+  topics only and refuses a broker resource with 42; `validateOnly` validates without writing. Six
+  wire vectors in `docs/protocol/vectors/alter-configs.json`.
 
 ### Changed
 
@@ -93,6 +143,16 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   `Unknown Log configuration <name>.` to `Unknown topic config name: <name>`
   (`LogConfig.validateNames()` @ 0.11.0.3); the error code 40 and the shape of the answer are
   unchanged.
+- **`ProducerConfig::MESSAGE_FORMAT_VERSION` defaults to `0.11.0`**, the record batch of the
+  message format v2 (`ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0`), which is what the producer
+  writes and what a Produce v3 request carries. `0.10.x` and `0.9.0` keep writing the message sets
+  of the formats v1 and v0, and a client that configures one of them sends **Produce v2**, because
+  a version 3 request accepts the message format v2 alone. Only the message format v2 has a place
+  for record headers, for the producer id and the sequence numbers of an idempotent producer and
+  for a transaction.
+- **`Client::fetchPartitions()` sends Fetch v5** with the `isolation.level` of the configuration
+  (`read_uncommitted` unless it says otherwise), so the records of a poll come back in the format
+  the log holds them in instead of the message format v1 a version 3 answer was converted down to.
 - **The container name of the test fixtures** is `kafka-0-11-0-3`, so the quota tests and the
   message-format tests that create a topic with `kafka-topics.sh` run again instead of skipping.
 

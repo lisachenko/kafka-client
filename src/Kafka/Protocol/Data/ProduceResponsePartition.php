@@ -32,9 +32,12 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * </pre>
  *
  * `LogAppendTime` arrived with version 2 of this API (Kafka 0.10.0, message format v1) and is absent from the
- * answer of a version 0 or 1 request, which is what {@see ProduceResponsePartitionV0} decodes.
+ * answer of a version 0 or 1 request, which is what {@see ProduceResponsePartitionV0} decodes. Version 3 of the
+ * api (Kafka 0.11.0) left the partition entry untouched - `PRODUCE_RESPONSE_V3` **is** `PRODUCE_RESPONSE_V2` in
+ * `Protocol.java` @ 0.11.0.3, verified against the broker - so there is no partition class of version 3: the
+ * `LogStartOffset` that the Produce answer eventually got belongs to Kafka 1.0 (Produce v5).
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {

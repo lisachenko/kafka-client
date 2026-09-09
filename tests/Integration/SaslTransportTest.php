@@ -33,8 +33,8 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeRequest;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
@@ -113,7 +113,9 @@ final class SaslTransportTest extends IntegrationTestCase
         $stream  = $this->connectWithSasl($listener);
         $records = [[null, 'authenticated'], ['key', 'with SASL/PLAIN']];
 
-        new ProduceRequest(
+        // The batch is a message set of the specification, which only a request below version 3 may carry: a
+        // Produce v3 accepts the message format v2 alone, see docs/protocol/0.11.0.md
+        new ProduceRequestV2(
             [$topic => [0 => SpecMessageSet::of($records)]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -121,7 +123,7 @@ final class SaslTransportTest extends IntegrationTestCase
             201
         )->writeTo($stream);
 
-        $produced = ProduceResponse::unpack($stream);
+        $produced = ProduceResponseV2::unpack($stream);
         self::assertSame(201, $produced->getCorrelationId());
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->errorCode);
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->baseOffset);
@@ -130,7 +132,7 @@ final class SaslTransportTest extends IntegrationTestCase
 
         $fetched   = FetchResponse::unpack($stream)->topics[$topic]->partitions[0];
         $delivered = [];
-        foreach ($fetched->getMessageSet()->getRecords() as $message) {
+        foreach ($fetched->getRecords()->getRecords() as $message) {
             $delivered[] = [$message->key, $message->value];
         }
 

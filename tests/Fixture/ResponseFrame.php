@@ -113,6 +113,9 @@ final class ResponseFrame
     /**
      * Builds a Produce response (api key 0, v2)
      *
+     * The frame of a version 3 answer is the frame of a version 2 one, byte for byte: version 3 of the Produce api
+     * added nothing to the response (`PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` @ 0.11.0.3).
+     *
      * <pre>
      *   ProduceResponse => [TopicName [Partition ErrorCode Offset LogAppendTime]] ThrottleTime
      * </pre>
@@ -221,21 +224,59 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Fetch response (api key 1, v1)
+     * Builds a Fetch response (api key 1, v5)
      *
      * <pre>
-     *   FetchResponse => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize
-     *                                               MessageSet]]
+     *   FetchResponse => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset LastStableOffset
+     *                                               LogStartOffset [AbortedTransactions] RecordSetSize RecordSet]]
      * </pre>
+     *
+     * The last stable offset defaults to the high water mark and the aborted transactions to `null`, which is what
+     * a `read_uncommitted` fetch of a partition without transactions is answered with.
+     *
+     * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
+     *        [errorCode, highWaterMarkOffset, record set bytes]
+     * @param int                                                $throttleTimeMs Milliseconds the broker delayed the
+     *        request
+     * @param array<string, array<int, array{int, int, list<array{int, int}>|null}>> $transactionState topic =>
+     *        partition => [lastStableOffset, logStartOffset, aborted transactions as [producerId, firstOffset]]
+     */
+    public static function fetch(
+        int $correlationId,
+        array $topics,
+        int $throttleTimeMs = 0,
+        array $transactionState = []
+    ): string {
+        // The throttle time of v1 opens the response, before the topics array
+        $body = pack('N', $throttleTimeMs) . pack('N', count($topics));
+        foreach ($topics as $topic => $partitions) {
+            $body .= self::string((string) $topic) . pack('N', count($partitions));
+            foreach ($partitions as $partitionId => [$errorCode, $highWaterMark, $messageSet]) {
+                [$lastStableOffset, $logStartOffset, $aborted] =
+                    $transactionState[$topic][$partitionId] ?? [$highWaterMark, 0, null];
+
+                $body .= pack('N', $partitionId)
+                    . pack('n', $errorCode)
+                    . pack('J', $highWaterMark)
+                    . pack('J', $lastStableOffset)
+                    . pack('J', $logStartOffset)
+                    . self::abortedTransactions($aborted)
+                    . pack('N', strlen($messageSet))
+                    . $messageSet;
+            }
+        }
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds a Fetch response of the versions 1 to 3, whose partition entries carry none of the fields of 0.11
      *
      * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
      *        [errorCode, highWaterMarkOffset, message set bytes]
-     * @param int                                                $throttleTimeMs Milliseconds the broker delayed the
-     *        request
      */
-    public static function fetch(int $correlationId, array $topics, int $throttleTimeMs = 0): string
+    public static function fetchV3(int $correlationId, array $topics, int $throttleTimeMs = 0): string
     {
-        // The throttle time of v1 opens the response, before the topics array
         $body = pack('N', $throttleTimeMs) . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
@@ -252,16 +293,35 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Fetch response of version 0, i.e. the same answer without the leading `ThrottleTimeMs`
+     * Builds a Fetch response of version 0, i.e. the version 1 to 3 answer without the leading `ThrottleTimeMs`
      *
      * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
      *        [errorCode, highWaterMarkOffset, message set bytes]
      */
     public static function fetchV0(int $correlationId, array $topics): string
     {
-        $frame = self::fetch($correlationId, $topics);
+        $frame = self::fetchV3($correlationId, $topics);
 
         return self::of($correlationId, substr($frame, 12));
+    }
+
+    /**
+     * Encodes the nullable aborted-transactions array of a Fetch v4/v5 partition, `null` as the element count -1
+     *
+     * @param list<array{int, int}>|null $abortedTransactions Producer id and first offset of every transaction
+     */
+    private static function abortedTransactions(?array $abortedTransactions): string
+    {
+        if ($abortedTransactions === null) {
+            return pack('N', -1);
+        }
+
+        $body = pack('N', count($abortedTransactions));
+        foreach ($abortedTransactions as [$producerId, $firstOffset]) {
+            $body .= pack('J', $producerId) . pack('J', $firstOffset);
+        }
+
+        return $body;
     }
 
     /**

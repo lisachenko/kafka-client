@@ -27,9 +27,9 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
-use Protocol\Kafka\Protocol\Request\FetchResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\FetchResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -422,7 +422,9 @@ final class MessageFormatV1Test extends IntegrationTestCase
     {
         $topic ??= $this->topic;
         $stream = $this->connect();
-        new ProduceRequest(
+        // A message set of the formats v0 and v1 may only travel in a request below version 3, see
+        // docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
+        new ProduceRequestV2(
             [$topic => [self::PARTITION => $messageSet]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -430,7 +432,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
             1
         )->writeTo($stream);
 
-        $partition = ProduceResponse::unpack($stream)->topics[$topic]->partitions[self::PARTITION];
+        $partition = ProduceResponseV2::unpack($stream)->topics[$topic]->partitions[self::PARTITION];
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode(
                 $partition->errorCode,
@@ -467,7 +469,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
         new $requestClass([$topic => [self::PARTITION => $offset]], 1000, 1, 1048576, -1, self::CLIENT_ID, 2)
             ->writeTo($stream);
 
-        $partition = FetchResponse::unpack($stream)->topics[$topic]->partitions[self::PARTITION];
+        $partition = FetchResponseV2::unpack($stream)->topics[$topic]->partitions[self::PARTITION];
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode(
                 $partition->errorCode,

@@ -23,6 +23,7 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Message;
+use Protocol\Kafka\Common\Record\RecordBatch;
 
 /**
  * Producer config enumeration class
@@ -47,7 +48,7 @@ final class ProducerConfig extends GeneralConfig
         ProducerConfig::COMPRESSION_TYPE       => ProducerConfig::COMPRESSION_TYPE_NONE,
         ProducerConfig::LINGER_MS              => 0,
         ProducerConfig::MAX_REQUEST_SIZE       => 1048576,
-        ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
+        ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0,
     ];
 
     /**
@@ -161,14 +162,19 @@ final class ProducerConfig extends GeneralConfig
     /**
      * The message format this producer writes, named after the Kafka release that introduced it.
      *
-     * It is the client-side counterpart of the `message.format.version` of a topic: a 0.10.2 broker stores what it
+     * It is the client-side counterpart of the `message.format.version` of a topic: a 0.11 broker stores what it
      * is configured to store and converts whatever the producer sent, so the option does not change what ends up in
      * the log - it only decides whether the broker has to convert the batch on append. Leave it at
-     * {@see ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0} (message format v1, with timestamps) unless the topic is
-     * configured with `message.format.version=0.9.0` or lower, where writing message format v0 straight away saves
-     * the broker the conversion.
+     * {@see ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0} (message format v2, the record batch) unless the topic
+     * is configured with an older `message.format.version`, where writing that format straight away saves the
+     * broker the conversion.
      *
-     * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
+     * The format also decides the **version of the Produce request** the client sends, and with it what a record
+     * may carry: only the message format v2 travels in a Produce v3 request, and only it has a place for record
+     * headers, for the producer id and the sequence numbers of an idempotent producer and for a transactional id.
+     * A batch of the formats v0 and v1 is sent as Produce v2 and its headers are dropped.
+     *
+     * @see docs/protocol/0.11.0.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
      */
     public const string MESSAGE_FORMAT_VERSION = 'message.format.version';
 
@@ -181,6 +187,11 @@ final class ProducerConfig extends GeneralConfig
      * Message format v1: an int64 timestamp, a timestamp type and relative inner offsets, since Kafka 0.10.0
      */
     public const string MESSAGE_FORMAT_VERSION_0_10_0 = '0.10.0';
+
+    /**
+     * Message format v2: the record batch with headers, producer ids and transactions, since Kafka 0.11.0
+     */
+    public const string MESSAGE_FORMAT_VERSION_0_11_0 = '0.11.0';
 
     /**
      * The producer groups together any records that arrive in between request transmissions into a single batched
@@ -231,9 +242,10 @@ final class ProducerConfig extends GeneralConfig
         '0.8.1'                            => Message::MAGIC_V0,
         '0.8.2'                            => Message::MAGIC_V0,
         self::MESSAGE_FORMAT_VERSION_0_9_0 => Message::MAGIC_V0,
-        '0.10.0'                           => Message::MAGIC_V1,
-        '0.10.1'                           => Message::MAGIC_V1,
-        '0.10.2'                           => Message::MAGIC_V1,
+        '0.10.0'                            => Message::MAGIC_V1,
+        '0.10.1'                            => Message::MAGIC_V1,
+        '0.10.2'                            => Message::MAGIC_V1,
+        self::MESSAGE_FORMAT_VERSION_0_11_0 => RecordBatch::MAGIC,
     ];
 
     /**
@@ -280,8 +292,8 @@ final class ProducerConfig extends GeneralConfig
     /**
      * Resolves the `message.format.version` option into the magic byte that the messages of a batch carry.
      *
-     * The value is a Kafka release, the way the broker spells the same option, or a magic byte; only the two formats
-     * of this protocol line exist, so everything up to 0.9.0 is message format v0 and 0.10.x is message format v1.
+     * The value is a Kafka release, the way the broker spells the same option, or a magic byte: everything up to
+     * 0.9.0 is message format v0, 0.10.x is message format v1 and 0.11.0 is the record batch of message format v2.
      *
      * @param string|int $messageFormatVersion Name of a Kafka release, or one of the {@see Message} magic constants
      *
@@ -290,7 +302,7 @@ final class ProducerConfig extends GeneralConfig
     public static function messageFormatMagic(string|int $messageFormatVersion): int
     {
         if (is_int($messageFormatVersion)) {
-            if ($messageFormatVersion !== Message::MAGIC_V0 && $messageFormatVersion !== Message::MAGIC_V1) {
+            if (!in_array($messageFormatVersion, [Message::MAGIC_V0, Message::MAGIC_V1, RecordBatch::MAGIC], true)) {
                 throw new InvalidConfigurationException(
                     "Unsupported message format magic {$messageFormatVersion} configured for the producer"
                 );

@@ -21,7 +21,7 @@ use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Node;
-use Protocol\Kafka\Common\Record\MessageSet;
+use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\ApiKeys;
@@ -680,7 +680,9 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         $entries = [];
         foreach ($response->topics[self::OFFSETS_TOPIC]->partitions ?? [] as $responsePartition) {
-            foreach (MessageSet::fromBuffer((string) $responsePartition->messageSet, false)->getRecords() as $record) {
+            // The internal topic is written in the `log.message.format.version` of the broker, 0.11.0 here, so
+            // its entries are record batches: the reader has to be the one that takes any of the three formats
+            foreach (MemoryRecords::fromBuffer((string) $responsePartition->messageSet, false)->getRecords() as $record) {
                 $entry = self::decodeOffsetEntry((string) $record->key, $record->value);
                 if ($entry !== null && $entry[0] === $groupId && $entry[1] === $topic && $entry[2] === $partition) {
                     $entries[] = $entry[3];

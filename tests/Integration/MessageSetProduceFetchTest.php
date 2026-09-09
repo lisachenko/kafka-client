@@ -28,8 +28,8 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV0;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV0;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -155,8 +155,8 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
         // MaxBytes below the size of the first message: the broker answers with a message it cut short
         $partition = $this->fetchPartition($baseOffset, 64);
 
-        self::assertSame([], $partition->getMessageSet()->getRecords(), 'the partial message is dropped');
-        self::assertTrue($partition->getMessageSet()->hasPartialTrailingMessage());
+        self::assertSame([], $partition->getRecords()->getRecords(), 'the partial message is dropped');
+        self::assertTrue($partition->getRecords()->hasPartialTrailingRecord());
         self::assertTrue($partition->isSingleMessageTooLarge($baseOffset));
         self::assertCount(1, $this->fetch($baseOffset));
     }
@@ -203,7 +203,9 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     private function produce(MessageSet $messageSet): int
     {
         $stream = $this->connect();
-        new ProduceRequest(
+        // A message set of the formats v0 and v1 may only travel in a request below version 3, see
+        // docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
+        new ProduceRequestV2(
             [$this->topic => [self::PARTITION => $messageSet]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -211,7 +213,7 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
             1
         )->writeTo($stream);
 
-        $partition = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
+        $partition = ProduceResponseV2::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode($partition->errorCode, ['topic' => $this->topic, 'partitionId' => self::PARTITION]);
         }
@@ -226,7 +228,7 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
      */
     private function fetch(int $offset, int $maxBytes = 65536): array
     {
-        return $this->fetchPartition($offset, $maxBytes)->getMessageSet()->getRecords();
+        return $this->fetchPartition($offset, $maxBytes)->getRecords()->getRecords();
     }
 
     /**

@@ -1,6 +1,5 @@
 Wire vectors of the Kafka 0.11.0.3 protocol
-===========================================
-
+====================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../0.11.0.md`](../0.11.0.md), whose "Wire vectors" section shows the same bytes as annotated
 hex dumps.
@@ -23,6 +22,8 @@ broker, and everything Kafka 0.11 adds on the 0.11.0.3 container of `docker-comp
 | `describe-groups.json`, `list-groups.json` | DescribeGroups **v1** and ListGroups **v1** |
 | `create-topics.json`, `delete-topics.json` | CreateTopics **v2** and DeleteTopics **v1** |
 | `offset-for-leader-epoch.json` | OffsetForLeaderEpoch **v0** (KIP-101), the epoch of a partition and of one the cluster does not host |
+| `produce.json` | Produce **v3**: the request with its nullable `transactional_id` and a record batch v2, and the two answers of a `CreateTime` and a `LogAppendTime` topic - which are the version 2 frame, because `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` |
+| `fetch.json` | Fetch **v4 and v5**: both versions at both isolation levels, which is where the `last_stable_offset = -1` and the null `aborted_transactions` of a `read_uncommitted` answer come from, plus a `read_committed` answer of a partition whose only transaction was aborted |
 
 That the older frames are still the current ones is not an assumption:
 `tests/Integration/ApiVersionProbeTest.php` asks the 0.11.0.3 broker with a real **ApiVersions** request

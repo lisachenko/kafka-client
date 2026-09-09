@@ -214,6 +214,30 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteRecordsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeConfigsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function alterConfigsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('apiVersionsVectors')]
@@ -507,6 +531,33 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('offsetForLeaderEpochVectors')]
     public function testOffsetForLeaderEpochApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteRecordsVectors')]
+    public function testDeleteRecordsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeConfigsVectors')]
+    public function testDescribeConfigsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('alterConfigsVectors')]
+    public function testAlterConfigsApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

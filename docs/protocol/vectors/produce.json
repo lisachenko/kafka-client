@@ -1,13 +1,99 @@
 {
     "api": "produce",
     "apiKey": 0,
-    "section": "Produce API (key 0, v0, v1 and v2)",
-    "description": "Wire vectors of the Produce API (key 0, v0, v1 and v2), replayed by tests/Compliance.",
+    "section": "Produce API (key 0, v0 to v3)",
+    "description": "Wire vectors of the Produce API (key 0, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
+        {
+            "id": "produce.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "Produce request v3 with RequiredAcks = 1, the null TransactionalId of a producer that is not in a transaction, and a record batch of the message format v2 with two records - the first of them with a key and two headers, the second without either. Version 3 is the only version that can carry any of the three.",
+            "hex": "000000c4000000030000001500027434ffff0001000005dc00000001000a74342d766563746f7273000000010000000000000094000000000000000000000088ffffffff02fdd43d16000000000001000001a085feba41000001a085feba4bffffffffffffffffffffffffffff00000002800100000002311c766563746f722d76616c75652d310418636f6e74656e742d74797065206170706c69636174696f6e2f6a736f6e1074726163652d69640661626328001402011c766563746f722d76616c75652d3200",
+            "fields": {
+                "messageSize": 196,
+                "apiKey": 0,
+                "apiVersion": 3,
+                "correlationId": 21,
+                "clientId": "t4",
+                "transactionalId": null,
+                "requiredAcks": 1,
+                "timeout": 1500,
+                "topicMessages": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000088ffffffff02fdd43d16000000000001000001a085feba41000001a085feba4bffffffffffffffffffffffffffff00000002800100000002311c766563746f722d76616c75652d310418636f6e74656e742d74797065206170706c69636174696f6e2f6a736f6e1074726163652d69640661626328001402011c766563746f722d76616c75652d3200"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "Produce response v3 of a topic that keeps the CreateTime of the producer. The frame is the one of version 2, byte for byte - PRODUCE_RESPONSE_V3 is PRODUCE_RESPONSE_V2 in Protocol.java @ 0.11.0.3 - so it carries the base offset the batch was appended at, the LogAppendTime -1 of a CreateTime topic and the ThrottleTime of version 1, and no log_start_offset: that field is Kafka 1.0.",
+            "hex": "000000320000001500000001000a74342d766563746f7273000000010000000000000000000000000000ffffffffffffffff00000000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 21,
+                "topics": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 0,
+                                "logAppendTime": -1
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
+        },
+        {
+            "id": "produce.response.v3.log-append-time",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer of the same request for a topic created with message.timestamp.type=LogAppendTime: the broker overwrote the timestamps of the whole batch with its own clock and reports that value as the LogAppendTime of the partition.",
+            "hex": "000000360000001600000001000e74342d766563746f72732d6c6174000000010000000000000000000000000000000001a085feba4d00000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 22,
+                "topics": {
+                    "t4-vectors-lat": {
+                        "topic": "t4-vectors-lat",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 0,
+                                "logAppendTime": 1788954458701
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
+        },
         {
             "id": "produce.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV2",
             "version": 2,
             "source": "broker",
             "description": "Produce request v2 with RequiredAcks = 1 and a message set of two uncompressed messages of message format v1, the second one without a key. The body is byte for byte the one of v0 and v1, only the api version of the header differs.",
@@ -38,7 +124,7 @@
         {
             "id": "produce.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV2",
             "version": 2,
             "source": "broker",
             "description": "Produce response v2 of a topic that keeps the CreateTime of the producer: the base offset the message set was appended at, the LogAppendTime that version 2 added behind it - -1, \"the broker stamped nothing\" - and the ThrottleTime of version 1, which closes the answer.",
@@ -65,7 +151,7 @@
         {
             "id": "produce.response.v2.log-append-time",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer of the same request for a topic created with message.timestamp.type=LogAppendTime: the broker overwrote the timestamp of every message of the batch with its own clock and reports that value as the LogAppendTime of the partition, 1788933842981 = 2026-09-09T06:04:02.981Z.",
