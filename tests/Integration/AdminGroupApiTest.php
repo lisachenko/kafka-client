@@ -187,24 +187,35 @@ final class AdminGroupApiTest extends IntegrationTestCase
         self::assertSame(DescribeGroupResponseMetadata::STATE_STABLE, $groups[$second]->state);
     }
 
-    public function testAGroupIsForgottenWhenItsLastMemberLeaves(): void
+    public function testAGroupStaysBehindEmptyWhenItsLastMemberLeaves(): void
     {
+        // Kafka 0.10.1 gave the coordinator a fifth group state. A 0.9.0.1 coordinator dropped a group the moment
+        // its last member left, so the group vanished from ListGroups and DescribeGroups answered `Dead` for it.
+        // From 0.10.1 on the group moves to `Empty` instead and keeps its committed offsets until
+        // `offsets.retention.minutes` expires them; only the expiry makes it `Dead` and removes it
+        // (`GroupMetadata`/`GroupCoordinator` @ 0.10.2.2). It is therefore still listed here.
         $groupId = $this->uniqueGroupId();
         $member  = $this->joinGroup($groupId, 't4-leaving-member');
 
         $member->leave();
 
         $coordinator = $this->admin->findCoordinator($groupId);
-        self::assertArrayNotHasKey(
+        self::assertArrayHasKey(
             $groupId,
             $this->admin->listGroups($coordinator),
-            'the coordinator drops a group that has no members left'
+            'the coordinator keeps a group that has no members left'
         );
+
+        $description = $this->admin->describeGroup($groupId);
+
         self::assertSame(
-            DescribeGroupResponseMetadata::STATE_DEAD,
-            $this->admin->describeGroup($groupId)->state,
-            'and describes it exactly like a group it has never heard of'
+            DescribeGroupResponseMetadata::STATE_EMPTY,
+            $description->state,
+            'and describes it as Empty, not as Dead - a client can tell "everybody left" from "never existed"'
         );
+        self::assertSame([], $description->members, 'an empty group reports no members');
+        self::assertSame('consumer', $description->protocolType, 'the protocol type of the group survives');
+        self::assertSame('', $description->protocol, 'the protocol is only reported while the group is stable');
     }
 
     /**

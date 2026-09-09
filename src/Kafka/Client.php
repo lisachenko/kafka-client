@@ -52,6 +52,8 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
@@ -111,6 +113,40 @@ class Client
          */
         private array $configuration = []
     ) {}
+
+    /**
+     * Asks one broker which api keys and versions it serves (ApiKey 18, Kafka 0.10.0 and later)
+     *
+     * This is the answer to "what does the broker on the other side speak": the 0.8 and 0.9 lines of this client had
+     * to probe it by sending a request of every key and version, because the api did not exist yet. A 0.10.2.2
+     * broker reports the 21 keys 0 to 20 with the version ranges of the api-key table of the protocol document, and
+     * answers before any authentication has happened on a SASL listener.
+     *
+     * The client itself does **not** negotiate with the answer - like the `0.9.x` line it sends the fixed versions
+     * that a broker of its own Kafka release serves - so this is an api for callers that want to know what they are
+     * talking to, and the material a later line can build a negotiation on.
+     *
+     * The request is the one frame of the protocol whose *unsupported version* is answered instead of costing the
+     * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion) with an
+     * empty api array, which is reported here as it arrives and not raised as an exception - version 0 is the only
+     * version this client sends, so a 35 means the peer is older than Kafka 0.10.0.
+     *
+     * @param Node $node Broker to ask; every broker of a cluster answers for itself
+     *
+     * @throws NetworkException If the connection to the broker dropped
+     */
+    public function apiVersions(Node $node): ApiVersionsResponse
+    {
+        return $this->coordinatorRequest(
+            $node,
+            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest(
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            ApiVersionsResponse::class,
+            static fn(ApiVersionsResponse $response): ApiVersionsResponse => $response
+        );
+    }
 
     /**
      * Produce messages to the specific topic partition
@@ -730,7 +766,8 @@ class Client
     }
 
     /**
-     * Sends one request to the coordinator of a group and hands its answer to the given reader.
+     * Sends one request to a single known broker - the coordinator of a group, or the node an api like
+     * ApiVersions addresses directly - and hands its answer to the given reader.
      *
      * A dropped connection is the only failure that is worth another attempt here: every error code of the
      * OffsetCommit and OffsetFetch APIs is either final or has to be answered by looking the coordinator up again,

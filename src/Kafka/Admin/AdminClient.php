@@ -30,6 +30,7 @@ use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
+use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
@@ -38,6 +39,8 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
@@ -66,16 +69,13 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
  * {@see self::describeGroup()} reports the state, the protocol and the members of one of them. The committed offsets
  * of a group are still read with {@see self::listGroupOffsets()}.
  *
- * Absent on this branch, because the api keys do not exist in 0.9.0.1 (the broker drops such a request without an
- * answer, see the protocol document):
+ * Kafka 0.10.0 added the api that says what a broker speaks: {@see self::getApiVersions()} (key 18) reports the
+ * version range of every api of one broker, which is the only way to tell one release of the protocol from another
+ * without guessing. A broker of a line below answers nothing at all for that key and closes or drops the frame.
  *
- * | Method of `main`   | Api key          | Arrived in |
- * |--------------------|------------------|------------|
- * | `getApiVersions()` | 18 (ApiVersions) | Kafka 0.10 |
- *
- * There is no CreateTopics api key either (that is Kafka 0.10.1): a topic is created by writing to ZooKeeper, e.g.
- * with `kafka-topics.sh`, or implicitly by asking for its metadata while `auto.create.topics.enable` is on -
- * see {@see self::describeTopics()}.
+ * A topic can also be created through the protocol from Kafka 0.10.1 on (CreateTopics, key 19); until then a topic
+ * was created by writing to ZooKeeper, e.g. with `kafka-topics.sh`, or implicitly by asking for its metadata while
+ * `auto.create.topics.enable` is on - see {@see self::describeTopics()}.
  */
 class AdminClient
 {
@@ -95,6 +95,41 @@ class AdminClient
         array $configuration = []
     ) {
         $this->configuration = $configuration + ClientConfig::getDefaultConfiguration();
+    }
+
+    /**
+     * Returns the version range of every api one broker serves, indexed by the api key (ApiKey 18)
+     *
+     * The method carries the name it has on the `main` branch. Every broker answers for itself, so a rolling upgrade
+     * is visible here as brokers that report different ranges; ask each of them with {@see self::findAllBrokers()}.
+     *
+     * A 0.10.2.2 broker reports the keys 0 to 20 - the table of the "API keys" section of the protocol document -
+     * and its answer is authoritative for two things the wire format does not show: ControlledShutdown (key 7) is
+     * reported with `minVersion = 1`, because version 0 uses a header without a client id, and every key above 20
+     * is simply absent instead of being reported with an empty range.
+     *
+     * @param Node $node Broker to ask
+     *
+     * @throws KafkaException If the broker answered the error code 35 (UnsupportedVersion), i.e. it is older than
+     *                        Kafka 0.10.0 and does not serve version 0 of this api either
+     *
+     * @return array<int, ApiVersionsResponseMetadata> Version range of each api, indexed by the api key
+     */
+    public function getApiVersions(Node $node): array
+    {
+        /** @var ApiVersionsResponse $response */
+        $response = $this->sendTo(
+            $node->getConnection($this->configuration),
+            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest($this->clientId(), $correlationId),
+            ApiVersionsResponse::class,
+            ['node' => $node->nodeId]
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['node' => $node->nodeId]);
+        }
+
+        return $response->apiVersions;
     }
 
     /**
