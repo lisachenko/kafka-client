@@ -200,9 +200,10 @@ this line captured and the 120 of the three lines below, which a 0.11.0.3 broker
 - **The container name of the test fixtures** is `kafka-0-11-0-3`, so the quota tests and the
   message-format tests that create a topic with `kafka-topics.sh` run again instead of skipping.
 - **`main` carries only the broker of its own line.** `docker/kafka-0.10.2.2/` — a byte-identical copy
-  of the 0.11 image but for its Kafka version — was removed, and every reference to its `ssl/broker.crt`
-  and `jaas.conf` in the tests and the examples now points at `docker/kafka-0.11.0.3/`. The image of the
-  0.10 line lives on the `0.10.x` branch, where its tests need it.
+  of the 0.11 image but for its Kafka version — and `docker/kafka-0.9.0.1/`, which nothing on this branch
+  used at all, were removed, so `docker/` holds `kafka-0.11.0.3/` alone. Every reference to a
+  `ssl/broker.crt` or a `jaas.conf` in the tests and the examples points at `docker/kafka-0.11.0.3/` now.
+  The images of the lower lines live on the `0.10.x` and `0.9.x` branches, where their tests need them.
 - **The examples were brought to the protocol of the line.** `consumer.php` and `consumer-group.php`
   write a `RecordBatch` instead of a `MessageSet`, because the `ProduceRequest` they use is version 3
   now and a 0.11 broker closes the connection on a lower magic; `admin.php`, `ssl.php` and `sasl.php`
