@@ -18,6 +18,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common;
 
+use Protocol\Kafka\Common\Security\SaslMechanism;
 use Protocol\Kafka\Common\Security\SecurityProtocol;
 use Protocol\Kafka\Common\Security\SslProtocol;
 
@@ -25,8 +26,9 @@ use Protocol\Kafka\Common\Security\SslProtocol;
  * General config, suitable for both producer and consumer
  *
  * Kafka 0.9.0.0 is the release that gave a broker more than one listener: `security.protocol` selects the transport
- * this client connects with, and the `ssl.*` options configure the TLS handshake it performs before the first
- * request. Authentication (SASL/GSSAPI) is deliberately absent - it has no handshake api before Kafka 0.10.0.
+ * this client connects with, the `ssl.*` options configure the TLS handshake it performs before the first request,
+ * and the `sasl.*` options configure the authentication exchange that Kafka 0.10.0 made part of the protocol
+ * (`SaslHandshake`, api key 17).
  *
  * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
  */
@@ -48,6 +50,10 @@ class ClientConfig
         ClientConfig::SSL_CLIENT_CERT_LOCATION     => null,
         ClientConfig::SSL_KEY_LOCATION             => null,
         ClientConfig::SSL_KEY_PASSWORD             => null,
+
+        ClientConfig::SASL_MECHANISM               => SaslMechanism::PLAIN,
+        ClientConfig::SASL_USERNAME                => null,
+        ClientConfig::SASL_PASSWORD                => null,
 
         ClientConfig::CONNECTIONS_MAX_IDLE_MS   => 540000,
         ClientConfig::REQUEST_TIMEOUT_MS        => 30000,
@@ -183,8 +189,10 @@ class ClientConfig
     /**
      * Protocol used to communicate with brokers. Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
      *
-     * Implemented values: PLAINTEXT, SSL. A broker of Kafka 0.9.0.1 binds one listener per protocol and answers the
-     * identical request set on each of them, so this option only selects the transport - never the wire format.
+     * A broker of Kafka 0.10.2.2 binds one listener per protocol and answers the identical request set on each of
+     * them, so this option only selects the transport - never the wire format. The two SASL protocols additionally
+     * authenticate the connection with `sasl.mechanism`, `sasl.username` and `sasl.password` before the first
+     * ordinary request is sent.
      *
      * @see \Protocol\Kafka\Common\Security\SecurityProtocol
      */
@@ -239,6 +247,41 @@ class ClientConfig
      * The password of the private key. This is optional for client.
      */
     public const SSL_KEY_PASSWORD = 'ssl.key.password';
+
+    /**
+     * SASL mechanism used for client connections, the `Mechanism` of the SaslHandshake request.
+     *
+     * The default is `PLAIN`, which is also the only mechanism this client implements; a Kafka 0.10.2.2 broker can
+     * enable GSSAPI, PLAIN and the two SCRAM mechanisms, and answers a mechanism it has not enabled with the error
+     * code 33 (UnsupportedSaslMechanism) plus the list of the ones it has.
+     *
+     * Only meaningful together with `security.protocol = SASL_PLAINTEXT` or `SASL_SSL`.
+     *
+     * @see \Protocol\Kafka\Common\Security\SaslMechanism
+     */
+    public const SASL_MECHANISM = 'sasl.mechanism';
+
+    /**
+     * User name of the SASL/PLAIN credentials, the `authcid` of the token (`user_<name>` in the JAAS file of a broker).
+     *
+     * The Java client carries the credentials in a JAAS configuration - a `sasl.jaas.config` entry or the
+     * `java.security.auth.login.config` system property naming a `KafkaClient` login module. That file format is
+     * not reproduced here: PHP has no JAAS, and a login module is a Java class. The two options below are the whole
+     * equivalent of the `username`/`password` of `PlainLoginModule`.
+     *
+     * (PHP Only option)
+     */
+    public const SASL_USERNAME = 'sasl.username';
+
+    /**
+     * Password of the SASL/PLAIN credentials, sent in clear text inside the token.
+     *
+     * With `SASL_PLAINTEXT` it travels over an unencrypted connection - use it on a trusted network only, and
+     * prefer `SASL_SSL`, which performs the very same exchange inside the TLS channel.
+     *
+     * (PHP Only option)
+     */
+    public const SASL_PASSWORD = 'sasl.password';
 
     /**
      * Returns default configuration

@@ -45,6 +45,10 @@ byte in [docs/protocol/0.10.2.md](docs/protocol/0.10.2.md).
   `Admin\AdminClient::getApiVersions(Node $node)` the indexed array — the name it has on `main`.
   This is the first line of the client that can ask a broker what it speaks instead of probing
   it frame by frame; the client itself still sends the fixed versions of its Kafka release.
+- **SASL/PLAIN** — `SaslHandshakeRequest`/`SaslHandshakeResponse` (key 17, v0), the raw token
+  exchange that follows it on the same socket, `Common\Security\{SaslMechanism,SaslToken}` and
+  the `security.protocol = SASL_PLAINTEXT` / `SASL_SSL` listeners with `sasl.mechanism`,
+  `sasl.username` and `sasl.password`.
 - **Wire vectors of the ApiVersions api** — `docs/protocol/vectors/api-versions.json` with
   `apiversions.request.v0`, `apiversions.response.v0` (the 21 keys of a 0.10.2.2 broker) and
   `apiversions.response.v0.unsupported-version` (the error code 35 with an empty api array),

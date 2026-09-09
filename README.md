@@ -332,12 +332,13 @@ plaintext ones. The two never mix, and there is no way to ask one listener about
 [examples/ssl.php](examples/ssl.php) produces and consumes over the SSL listener of `docker-compose.yml`, whose
 self-signed certificate is checked in as `docker/kafka-0.9.0.1/ssl/broker.crt`.
 
-**SASL is out of scope on this branch.** Kafka 0.9 does have SASL, but only GSSAPI (Kerberos)
-and it is negotiated *outside* the Kafka protocol: the broker expects the raw token exchange on
-a freshly opened connection, with no request to introduce it. The `SaslHandshake` request that
-made the mechanism negotiable is api key 17 and arrived with Kafka 0.10.0, so
-`security.protocol = SASL_PLAINTEXT` and `SASL_SSL` raise an `InvalidConfigurationException`
-that says so.
+**SASL/PLAIN works on this branch.** Kafka 0.9 did have SASL, but only GSSAPI (Kerberos) and
+negotiated *outside* the Kafka protocol; Kafka 0.10.0 added the `SaslHandshake` request (api key
+17) and the PLAIN mechanism, which is what makes authentication implementable in pure PHP.
+`security.protocol = SASL_PLAINTEXT` or `SASL_SSL` together with `sasl.mechanism`,
+`sasl.username` and `sasl.password` authenticates the connection before the first ordinary
+request — see [examples/sasl.php](examples/sasl.php) and the "SASL/PLAIN" section of the
+protocol document.
 
 Supported Kafka protocol versions
 ----------------------------------
@@ -372,7 +373,7 @@ version marked `planned (T<n>)` has its ticket open and is not merged yet.
 | 14      | SyncGroup          | v0                   | yes           | yes                             |
 | 15      | DescribeGroups     | v0                   | yes           | yes                             |
 | 16      | ListGroups         | v0                   | yes           | yes                             |
-| 17      | SaslHandshake      | v0                   | yes           | planned (T8)                    |
+| 17      | SaslHandshake      | v0                   | yes           | yes                             |
 | 18      | ApiVersions        | v0                   | yes           | yes                             |
 | 19      | CreateTopics       | v0, v1               | controller    | planned (T7)                    |
 | 20      | DeleteTopics       | v0                   | controller    | planned (T7)                    |
@@ -382,7 +383,7 @@ What the 0.10 line adds beyond the api versions themselves:
 | Feature                                              | Arrived in | On this branch          |
 |------------------------------------------------------|------------|-------------------------|
 | Message format v1 (timestamps, LZ4, relative offsets) | 0.10.0     | planned (T2)            |
-| SASL/PLAIN over `SASL_PLAINTEXT` and `SASL_SSL`       | 0.10.0     | planned (T8)            |
+| SASL/PLAIN over `SASL_PLAINTEXT` and `SASL_SSL`       | 0.10.0     | yes                     |
 | `controller_id`, broker `rack`, `is_internal`         | 0.10.0     | planned (T3)            |
 | `cluster_id` of Metadata v2                           | 0.10.1     | planned (T3)            |
 | Offsets by timestamp, `offsetsForTimes()`             | 0.10.1     | planned (T5)            |
