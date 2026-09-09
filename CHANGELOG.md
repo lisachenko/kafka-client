@@ -1,17 +1,86 @@
 Changelog
 =========
 
-All notable changes to the `0.10.x` line of `lisachenko/kafka-client` are documented in this file.
+All notable changes to `lisachenko/kafka-client` are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this line
-follows the Apache Kafka release it speaks rather than semantic versioning of its own: every
-`0.10.x` release implements the **Kafka 0.10.2.2 wire protocol** — the last release of the 0.10
-line — and nothing above it. The lines below it are `0.9.x` (Kafka 0.9.0.1) and `0.8.x`
-(Kafka 0.8.2.2), the one above is `main` (Kafka 0.11), and every line is merged upwards into the
-next one.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
+this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
+own: `main` implements the **Kafka 0.11.0.3 wire protocol** — the last release of the 0.11 line —
+and nothing above it. The lines below it are `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1)
+and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards into the next one, so the sections
+below accumulate: what a line added stays true of every line above it.
 
-Unreleased — the 0.10.x line
-----------------------------
+Unreleased — the main line (Kafka 0.11.0.3)
+-------------------------------------------
+
+The 0.11 line, built on top of the `0.10.x` line it was cascade-merged from. Everything below was
+verified against a real Apache **0.11.0.3** broker (`docker/kafka-0.11.0.3/`, four listeners) and
+is documented byte for byte in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), whose wire
+vectors [`tests/Compliance`](tests/Compliance) replays through the protocol classes — including
+all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
+
+### Added
+
+- **The Kafka 0.11.0.3 broker of the line** — `docker/kafka-0.11.0.3/` with the four listeners of
+  the 0.10 image (PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL 9095) plus
+  `transaction.state.log.replication.factor=1` and `transaction.state.log.min.isr=1`, without
+  which the `__transaction_state` topic cannot be created on a one-broker cluster;
+  `docker-compose.yml` builds it as the container `kafka-0-11-0-3`.
+- **Api keys 21-33** — `DELETE_RECORDS` (21), `INIT_PRODUCER_ID` (22), `OFFSET_FOR_LEADER_EPOCH`
+  (23), `ADD_PARTITIONS_TO_TXN` (24), `ADD_OFFSETS_TO_TXN` (25), `END_TXN` (26),
+  `WRITE_TXN_MARKERS` (27), `TXN_OFFSET_COMMIT` (28), `DESCRIBE_ACLS` (29), `CREATE_ACLS` (30),
+  `DELETE_ACLS` (31), `DESCRIBE_CONFIGS` (32) and `ALTER_CONFIGS` (33). `Protocol\ApiKeys` now ends
+  at 33; everything above it is Kafka 1.0.
+- **Error codes 45-55** — `OutOfOrderSequenceException` (45), `DuplicateSequenceException` (46),
+  `ProducerFencedException` (47), `InvalidTxnStateException` (48), `InvalidPidMappingException`
+  (49), `InvalidTxnTimeoutException` (50), `ConcurrentTransactionsException` (51),
+  `TransactionCoordinatorFencedException` (52), `TransactionalIdAuthorizationException` (53),
+  `SecurityDisabledException` (54) and `OperationNotAttemptedException` (55), with their constants
+  on `KafkaException` and their entries in the code map. None of them is retriable on this branch.
+- **The zigzag varint family of the record batch v2 in the schema engine** —
+  `BinarySchema::TYPE_VARINT_ZIGZAG` (11), `TYPE_VARLONG_ZIGZAG` (12), `TYPE_VARCHAR_ZIGZAG` (13)
+  and `FLAG_VARARRAY` (14), with `Common\Utils\ByteUtils` for the zigzag and CRC-32C helpers of
+  `org.apache.kafka.common.utils.ByteUtils` and `Stream::readVarint()`/`writeVarint()` for the byte
+  loop. No request or response body of Kafka 0.11 uses them — only the records inside a batch do.
+- **ApiVersions v1 (key 18)** — `ApiVersionsRequest` now sends **version 1** and
+  `ApiVersionsResponse` reads its trailing `throttleTimeMs`; `ApiVersionsRequestV0` and
+  `ApiVersionsResponseV0` keep the version 0 frames, which is also the layout the broker answers an
+  unknown version in. `Client::apiVersions()` and `Admin\AdminClient::getApiVersions()` send v1 and
+  report the 34 api keys a 0.11.0.3 broker serves. Five wire vectors in
+  `docs/protocol/vectors/api-versions.json`, captured on the container.
+- **`FetchRequest::READ_UNCOMMITTED` / `READ_COMMITTED`** — the isolation levels of Fetch v4
+  (KIP-98), under the identifiers of the pre-schema `main`.
+
+### Changed
+
+- **`docs/protocol/0.11.0.md` is the grammar of Kafka 0.11.0.3.** The api-key table is the literal
+  ApiVersions answer of the container (34 keys), the error-code table runs to 55, the sources are
+  the ones at `0.11.0.3-rc0` — the Apache repository has no `0.11.0.3` tag — and the "Broker quirks
+  and observations" section records what 0.11 changed against 0.10.2.2.
+- **The raw varint type numbers 5, 6 and 7 are reserved.** They were `TYPE_VARINT`, `TYPE_VARLONG`
+  and `TYPE_VARCHAR` of the pre-schema `main`, which wrote non-zigzag varints — an encoding that is
+  on the wire of no api of Kafka 0.11 — and they stay free so that an old scheme cannot be mistaken
+  for a new one.
+- **The version that costs the connection moved with the release.** A 0.11.0.3 broker serves the
+  versions a 0.10.2.2 broker closed the socket for (OffsetCommit v3, Metadata v3, JoinGroup v2 …)
+  and closes it one version higher, and for the api key 34. The integration tests that pin that
+  behaviour derive their frames from the served api table instead of hard-coding versions.
+- **The `ErrorMessage` of an unknown topic-level option changed** from
+  `Unknown Log configuration <name>.` to `Unknown topic config name: <name>`
+  (`LogConfig.validateNames()` @ 0.11.0.3); the error code 40 and the shape of the answer are
+  unchanged.
+- **The container name of the test fixtures** is `kafka-0-11-0-3`, so the quota tests and the
+  message-format tests that create a topic with `kafka-topics.sh` run again instead of skipping.
+
+### Notes
+
+- The ACL apis 29, 30 and 31 are **not** implemented: a broker without an `authorizer.class.name`
+  answers all three with the error code 54 (`SecurityDisabled`), and every wire vector of this
+  repository comes from a real broker.
+- `SaslAuthenticate` (key 36) and the error code 56 are Kafka 1.0 and stay out of this line.
+
+Previous line — 0.10.x (Kafka 0.10.2.2)
+----------------------------------------
 
 Everything a Kafka 0.10.2.2 broker speaks, built on top of the `0.9.x` line it was merged from.
 Every wire format below was verified against a real 0.10.2.2 broker and is documented byte for
@@ -165,8 +234,8 @@ protocol classes.
   api and version over the three protocol branches, a configuration reference for every option, and
   the four listeners of the integration suite.
 
-Unreleased — the 0.9.x line
----------------------------
+Previous line — 0.9.x (Kafka 0.9.0.1)
+-------------------------------------
 
 Everything a Kafka 0.9.0.1 broker speaks, built on top of the `0.8.x` line it was merged from: the six group
 apis the release added, the higher versions of the four apis it raised, the consumer group protocol with its
@@ -294,8 +363,8 @@ verified against a real 0.9.0.1 broker and is documented byte for byte in
 - `StaleLeaderEpochException` and the `STALE_LEADER_EPOCH` constant, whose code 13 belongs to
   `NetworkException` from Kafka 0.9 onwards.
 
-Unreleased — the 0.8.x line
----------------------------
+Previous line — 0.8.x (Kafka 0.8.2.2)
+-------------------------------------
 
 The history below is the one of the `0.8.x` branch, which this line was merged from: its first
 release, a rewrite of the client onto the declarative binary schema engine of `main`, with every

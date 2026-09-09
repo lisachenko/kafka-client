@@ -121,9 +121,13 @@ class Client
      * Asks one broker which api keys and versions it serves (ApiKey 18, Kafka 0.10.0 and later)
      *
      * This is the answer to "what does the broker on the other side speak": the 0.8 and 0.9 lines of this client had
-     * to probe it by sending a request of every key and version, because the api did not exist yet. A 0.10.2.2
-     * broker reports the 21 keys 0 to 20 with the version ranges of the api-key table of the protocol document, and
+     * to probe it by sending a request of every key and version, because the api did not exist yet. A 0.11.0.3
+     * broker reports the 34 keys 0 to 33 with the version ranges of the api-key table of the protocol document, and
      * answers before any authentication has happened on a SASL listener.
+     *
+     * The request goes out as **version 1**, the version Kafka 0.11 added: its frame is the one of version 0 - the
+     * header and nothing else - and the answer gains a trailing `throttleTimeMs`, which is 0 without a
+     * `request_percentage` quota.
      *
      * The client itself does **not** negotiate with the answer - like the `0.9.x` line it sends the fixed versions
      * that a broker of its own Kafka release serves - so this is an api for callers that want to know what they are
@@ -131,8 +135,10 @@ class Client
      *
      * The request is the one frame of the protocol whose *unsupported version* is answered instead of costing the
      * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion) with an
-     * empty api array, which is reported here as it arrives and not raised as an exception - version 0 is the only
-     * version this client sends, so a 35 means the peer is older than Kafka 0.10.0.
+     * empty api array. That answer always arrives in the **version 0** layout, without the throttle time, so a peer
+     * older than Kafka 0.11 has to be asked with a {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0} and
+     * read with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0}; this line speaks to a 0.11.0.3
+     * broker, which serves both versions.
      *
      * @param Node $node Broker to ask; every broker of a cluster answers for itself
      *

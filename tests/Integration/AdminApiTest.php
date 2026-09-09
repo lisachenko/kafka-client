@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * Exercises the AdminClient against a real Kafka 0.10.2.2 broker.
  *
  * @see docs/protocol/0.11.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
- * @see docs/protocol/0.11.0.md, section "ApiVersions API (key 18, v0)"
+ * @see docs/protocol/0.11.0.md, section "ApiVersions API (key 18, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ApiVersionsRequest::class)]

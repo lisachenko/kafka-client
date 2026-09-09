@@ -37,7 +37,7 @@ final class DocumentationSyncTest extends TestCase
      * Matches a section reference of a docblock: the name of the protocol document, `, section` or `, sections`,
      * and the rest of the line, which is where the quoted heading - or the two of an `"a" and "b"` reference - sits
      */
-    private const string SECTION_REFERENCE_PATTERN = '/0\.10\.2\.md, sections? (?P<sections>.+)$/m';
+    private const string SECTION_REFERENCE_PATTERN = '/0\.11\.0\.md, sections? (?P<sections>.+)$/m';
 
     /**
      * Directories whose PHP files may reference a section of the protocol document

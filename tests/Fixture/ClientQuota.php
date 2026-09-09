@@ -53,7 +53,7 @@ final class ClientQuota
     /**
      * Container of `docker-compose.yml`, used when the environment variable is not set
      */
-    private const string DEFAULT_CONTAINER = 'kafka-0-10-2-2';
+    private const string DEFAULT_CONTAINER = 'kafka-0-11-0-3';
 
     /**
      * Path of the configuration tool inside the container

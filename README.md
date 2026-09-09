@@ -1,8 +1,8 @@
-PHP Native Apache Kafka Client — 0.10.x
-========================================
+PHP Native Apache Kafka Client — main (Kafka 0.11.0.3)
+=======================================================
 
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lisachenko/kafka-client/ci.yml?branch=0.10.x)
-[![Code Coverage](https://img.shields.io/codecov/c/github/lisachenko/kafka-client/0.10.x)](https://app.codecov.io/gh/lisachenko/kafka-client)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lisachenko/kafka-client/ci.yml?branch=main)
+[![Code Coverage](https://img.shields.io/codecov/c/github/lisachenko/kafka-client/main)](https://app.codecov.io/gh/lisachenko/kafka-client)
 [![Minimum PHP Version](http://img.shields.io/badge/php-%3E%3D%208.4-8892BF.svg)](https://www.php.net/supported-versions.php)
 [![License](https://img.shields.io/packagist/l/lisachenko/kafka-client.svg)](https://packagist.org/packages/lisachenko/kafka-client)
 
@@ -11,18 +11,25 @@ protocol — no `ext-rdkafka` required. It ships a Producer, a Consumer and a lo
 client, designed to stay close in spirit to the official Java client's API while feeling
 natural in PHP.
 
-**This branch speaks the Apache Kafka 0.10.2.2 wire protocol** — the last release of the 0.10
-line, so it covers everything 0.10.0, 0.10.1 and 0.10.2 added — and nothing else. The API of the
-classes is the one of the `main` branch wherever 0.10 has the same concept, so code written
-against `main` mostly compiles here; what the 0.10 protocol cannot do is simply absent, and
+**This branch speaks the Apache Kafka 0.11.0.3 wire protocol** — the last release of the 0.11
+line, so it covers everything 0.11.0.0 added, and nothing later. It is the top of the cascade of
+this repository: the frozen protocol snapshots of the lines below live on `0.10.x` (Kafka
+0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every wire vector they
+captured is replayed against the classes of this branch, because a 0.11.0.3 broker still speaks
+all of it. What the 0.11 protocol cannot do is simply absent, and
 [what that is](#supported-kafka-protocol-versions) is listed below. The grammar this branch
 implements is written down, byte for byte, in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md).
+
+> **The 0.11 line is being implemented right now.** The api versions Kafka 0.11 added are landing
+> ticket by ticket; a row marked "planned (T*n*)" in the table below is a version this branch does
+> not send yet, and the client falls back to the 0.10.2.2 version of that api until the ticket
+> lands.
 
 Installation
 ------------
 
 ```bash
-composer require lisachenko/kafka-client:^0.10
+composer require lisachenko/kafka-client:^0.11@dev
 ```
 
 Producer API
@@ -198,7 +205,7 @@ See the [consumer configuration] reference for the full set of options.
 Admin API
 ---------
 
-The Admin API exposes the low-level cluster operations a 0.10.2.2 broker can serve:
+The Admin API exposes the low-level cluster operations a 0.11.0.3 broker can serve:
 
 ```php
 use Protocol\Kafka\Admin\AdminClient;
@@ -446,7 +453,7 @@ ones, one that authenticates learns the SASL ones. They never mix, and there is 
 listener about another.
 
 [examples/ssl.php](examples/ssl.php) produces and consumes over the SSL listener of `docker-compose.yml`, whose
-self-signed certificate is checked in as `docker/kafka-0.10.2.2/ssl/broker.crt`.
+self-signed certificate is checked in as `docker/kafka-0.11.0.3/ssl/broker.crt`.
 
 **SASL/PLAIN works on this branch.** Kafka 0.9 did have SASL, but only GSSAPI (Kerberos) and
 negotiated *outside* the Kafka protocol; Kafka 0.10.0 (KIP-43) added the `SaslHandshake` request
@@ -476,89 +483,112 @@ and the "SASL/PLAIN" section of the protocol document.
 Supported Kafka protocol versions
 ----------------------------------
 
-This branch tracks the **Kafka 0.10.2.2** wire protocol — the last release of the 0.10 line, so
-it covers what 0.10.0, 0.10.1 and 0.10.2 each added. `main` tracks Kafka 0.11; the frozen
-protocol snapshots of the other lines live on `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2).
+This branch tracks the **Kafka 0.11.0.3** wire protocol — the last release of the 0.11 line, so it
+covers what 0.11.0.0 added; the three bug-fix releases after it changed nothing on the wire. The
+frozen protocol snapshots of the lines below live on `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka
+0.9.0.1) and `0.8.x` (Kafka 0.8.2.2).
 
-Kafka 0.10.0 added the **ApiVersions** request (key 18), so this is the first line that can ask a
-broker what it speaks instead of guessing. The table below is the literal answer of the container,
-read with `Client::apiVersions()` and pinned by `tests/Integration/ApiVersionProbeTest.php`.
+Kafka 0.10.0 added the **ApiVersions** request (key 18), so this line does not have to guess what
+its broker speaks. The table below is the literal answer of the container, read with
+`Client::apiVersions()` and pinned by `tests/Integration/ApiVersionProbeTest.php`.
 
-The whole line is implemented. The "Implemented" column lists the versions this client has a class
-for; the one in **bold** is the version it sends, and the three lines are the three protocol
-branches of this repository.
+The "this branch" column lists the versions this client has a class for; the one in **bold** is the
+version it sends, and "planned (T*n*)" is a version of Kafka 0.11 that the named ticket of the 0.11
+epic still has to add.
 
-| Api key | API                | Versions in 0.10.2.2 | Client-facing | `0.8.x` | `0.9.x` | `0.10.x` (this branch) |
-|---------|--------------------|----------------------|---------------|---------|---------|------------------------|
-| 0       | Produce            | v0, v1, v2           | yes           | v0      | v0, v1  | v0, v1, **v2**         |
-| 1       | Fetch              | v0 … v3              | yes           | v0      | v0, v1  | v0, v1, v2, **v3**     |
-| 2       | Offsets            | v0, v1               | yes           | v0      | v0      | v0, **v1**             |
-| 3       | Metadata           | v0, v1, v2           | yes           | v0      | v0      | v0, v1, **v2**         |
-| 4       | LeaderAndIsr       | v0                   | broker→broker | no      | no      | no                     |
-| 5       | StopReplica        | v0                   | broker→broker | no      | no      | no                     |
-| 6       | UpdateMetadata     | v0 … v3              | broker→broker | no      | no      | no                     |
-| 7       | ControlledShutdown | v1 (v0 still parsed) | controller    | v0      | v0, v1  | v0, **v1**             |
-| 8       | OffsetCommit       | v0, v1, v2           | yes           | v0, v1  | v0, v1, v2 | v0, v1, **v2**      |
-| 9       | OffsetFetch        | v0, v1, v2           | yes           | v0, v1  | v0, v1  | v0, v1, **v2**         |
-| 10      | GroupCoordinator   | v0                   | yes           | **v0**  | **v0**  | **v0**                 |
-| 11      | JoinGroup          | v0, v1               | yes           | –       | v0      | v0, **v1**             |
-| 12      | Heartbeat          | v0                   | yes           | –       | **v0**  | **v0**                 |
-| 13      | LeaveGroup         | v0                   | yes           | –       | **v0**  | **v0**                 |
-| 14      | SyncGroup          | v0                   | yes           | –       | **v0**  | **v0**                 |
-| 15      | DescribeGroups     | v0                   | yes           | –       | **v0**  | **v0**                 |
-| 16      | ListGroups         | v0                   | yes           | –       | **v0**  | **v0**                 |
-| 17      | SaslHandshake      | v0                   | yes           | –       | –       | **v0**                 |
-| 18      | ApiVersions        | v0                   | yes           | –       | –       | **v0**                 |
-| 19      | CreateTopics       | v0, v1               | controller    | –       | –       | v0, **v1**             |
-| 20      | DeleteTopics       | v0                   | controller    | –       | –       | **v0**                 |
+| Api key | API                  | Versions in 0.11.0.3 | Client-facing | `0.9.x` | `0.10.x` | `main` (this branch)         |
+|---------|----------------------|----------------------|---------------|---------|----------|------------------------------|
+| 0       | Produce              | v0 … v3              | yes           | v0, v1  | v0, v1, v2 | v0, v1, **v2**; v3 planned (T4) |
+| 1       | Fetch                | v0 … v5              | yes           | v0, v1  | v0 … v3  | v0, v1, v2, **v3**; v4, v5 planned (T4) |
+| 2       | Offsets              | v0 … v2              | yes           | v0      | v0, v1   | v0, **v1**; v2 planned (T3)  |
+| 3       | Metadata             | v0 … v4              | yes           | v0      | v0, v1, v2 | v0, v1, **v2**; v3, v4 planned (T3) |
+| 4       | LeaderAndIsr         | v0                   | broker→broker | no      | no       | no                           |
+| 5       | StopReplica          | v0                   | broker→broker | no      | no       | no                           |
+| 6       | UpdateMetadata       | v0 … v3              | broker→broker | no      | no       | no                           |
+| 7       | ControlledShutdown   | v1 (v0 still parsed) | controller    | v0, v1  | v0, v1   | v0, **v1**                   |
+| 8       | OffsetCommit         | v0 … v3              | yes           | v0, v1, v2 | v0, v1, v2 | v0, v1, **v2**; v3 planned (T3) |
+| 9       | OffsetFetch          | v0 … v3              | yes           | v0, v1  | v0, v1, v2 | v0, v1, **v2**; v3 planned (T3) |
+| 10      | GroupCoordinator     | v0, v1               | yes           | **v0**  | **v0**   | **v0**; v1 planned (T3)      |
+| 11      | JoinGroup            | v0 … v2              | yes           | v0      | v0, v1   | v0, **v1**; v2 planned (T3)  |
+| 12      | Heartbeat            | v0, v1               | yes           | **v0**  | **v0**   | **v0**; v1 planned (T3)      |
+| 13      | LeaveGroup           | v0, v1               | yes           | **v0**  | **v0**   | **v0**; v1 planned (T3)      |
+| 14      | SyncGroup            | v0, v1               | yes           | **v0**  | **v0**   | **v0**; v1 planned (T3)      |
+| 15      | DescribeGroups       | v0, v1               | yes           | **v0**  | **v0**   | **v0**; v1 planned (T3)      |
+| 16      | ListGroups           | v0, v1               | yes           | **v0**  | **v0**   | **v0**; v1 planned (T3)      |
+| 17      | SaslHandshake        | v0                   | yes           | –       | **v0**   | **v0**                       |
+| 18      | ApiVersions          | v0, v1               | yes           | –       | **v0**   | v0, **v1**                   |
+| 19      | CreateTopics         | v0 … v2              | controller    | –       | v0, v1   | v0, **v1**; v2 planned (T3)  |
+| 20      | DeleteTopics         | v0, v1               | controller    | –       | **v0**   | **v0**; v1 planned (T3)      |
+| 21      | DeleteRecords        | v0                   | yes           | –       | –        | planned (T5)                 |
+| 22      | InitProducerId       | v0                   | yes           | –       | –        | planned (T7)                 |
+| 23      | OffsetForLeaderEpoch | v0                   | broker→broker | –       | –        | planned (T3)                 |
+| 24      | AddPartitionsToTxn   | v0                   | yes           | –       | –        | planned (T8)                 |
+| 25      | AddOffsetsToTxn      | v0                   | yes           | –       | –        | planned (T8)                 |
+| 26      | EndTxn               | v0                   | yes           | –       | –        | planned (T8)                 |
+| 27      | WriteTxnMarkers      | v0                   | broker→broker | –       | –        | planned (T8)                 |
+| 28      | TxnOffsetCommit      | v0                   | yes           | –       | –        | planned (T8)                 |
+| 29      | DescribeAcls         | v0                   | yes           | –       | –        | no, see below                |
+| 30      | CreateAcls           | v0                   | yes           | –       | –        | no, see below                |
+| 31      | DeleteAcls           | v0                   | yes           | –       | –        | no, see below                |
+| 32      | DescribeConfigs      | v0                   | yes           | –       | –        | planned (T5)                 |
+| 33      | AlterConfigs         | v0                   | yes           | –       | –        | planned (T5)                 |
 
 `offsets.storage = zookeeper` sends version 0 of OffsetCommit and OffsetFetch instead of the bold
 ones, and the lower versions of every api are kept because their frames are what the wire vectors
 of the lines below replay.
 
-What the three lines can do beyond the api versions themselves:
+**The three ACL apis (29, 30, 31) are deliberately not implemented.** They do nothing on a broker
+without an `authorizer.class.name` — a 0.11.0.3 broker answers all three with the error code 54,
+`SecurityDisabled` — and every wire vector of this repository is captured from a real broker, so
+they wait for a container that has an authorizer configured.
 
-| Feature                                               | Arrived in | `0.8.x` | `0.9.x` | `0.10.x` |
-|-------------------------------------------------------|------------|---------|---------|----------|
-| Message format v0 (no timestamps)                     | 0.8        | yes     | yes     | yes      |
-| Message format v1 (timestamps, relative inner offsets) | 0.10.0     | –       | –       | **yes**  |
-| Compression `gzip`, `snappy`                          | 0.8        | yes     | yes     | yes      |
-| Compression `lz4`                                     | 0.10.0     | –       | –       | **yes**  |
-| Transport `PLAINTEXT`                                 | 0.8        | yes     | yes     | yes      |
-| Transport `SSL`                                       | 0.9        | –       | yes     | yes      |
-| Transport `SASL_PLAINTEXT` / `SASL_SSL` (PLAIN)       | 0.10.0     | –       | –       | **yes**  |
-| Consumer groups (`subscribe()`, assignors)            | 0.9        | –       | yes     | yes      |
-| The group state `Empty`                               | 0.10.1     | –       | –       | **yes**  |
-| Client quotas and their `throttle_time_ms`            | 0.9        | –       | yes     | yes      |
-| `controller_id`, broker `rack`, `is_internal`         | 0.10.0     | –       | –       | **yes**  |
-| `cluster_id` of Metadata v2                           | 0.10.1     | –       | –       | **yes**  |
-| Offsets by timestamp, `offsetsForTimes()`             | 0.10.1     | –       | –       | **yes**  |
-| `fetch.max.bytes` of Fetch v3                         | 0.10.1     | –       | –       | **yes**  |
-| `max.poll.interval.ms` and the `rebalance_timeout`    | 0.10.1     | –       | –       | **yes**  |
-| Admin: create and delete topics through the protocol  | 0.10.1     | –       | –       | **yes**  |
-| Admin: `getApiVersions()`                             | 0.10.0     | –       | –       | **yes**  |
-| Error codes                                           | –          | -1 … 20 | -1 … 31 | **-1 … 44** |
+What the four lines can do beyond the api versions themselves:
+
+| Feature                                               | Arrived in | `0.8.x` | `0.9.x` | `0.10.x` | `main` |
+|-------------------------------------------------------|------------|---------|---------|----------|--------|
+| Message format v0 (no timestamps)                     | 0.8        | yes     | yes     | yes      | yes    |
+| Message format v1 (timestamps, relative inner offsets) | 0.10.0     | –       | –       | yes      | yes    |
+| Record batch v2 (headers, varints, CRC-32C)           | 0.11       | –       | –       | –        | **planned (T2)** |
+| Compression `gzip`, `snappy`                          | 0.8        | yes     | yes     | yes      | yes    |
+| Compression `lz4`                                     | 0.10.0     | –       | –       | yes      | yes    |
+| Transport `PLAINTEXT`                                 | 0.8        | yes     | yes     | yes      | yes    |
+| Transport `SSL`                                       | 0.9        | –       | yes     | yes      | yes    |
+| Transport `SASL_PLAINTEXT` / `SASL_SSL` (PLAIN)       | 0.10.0     | –       | –       | yes      | yes    |
+| Consumer groups (`subscribe()`, assignors)            | 0.9        | –       | yes     | yes      | yes    |
+| The group state `Empty`                               | 0.10.1     | –       | –       | yes      | yes    |
+| Client quotas and their `throttle_time_ms`            | 0.9        | –       | yes     | yes      | yes    |
+| `throttle_time_ms` in the group and admin apis        | 0.11       | –       | –       | –        | **planned (T3)** |
+| `controller_id`, broker `rack`, `is_internal`         | 0.10.0     | –       | –       | yes      | yes    |
+| `cluster_id` of Metadata v2                           | 0.10.1     | –       | –       | yes      | yes    |
+| Offsets by timestamp, `offsetsForTimes()`             | 0.10.1     | –       | –       | yes      | yes    |
+| `fetch.max.bytes` of Fetch v3                         | 0.10.1     | –       | –       | yes      | yes    |
+| `max.poll.interval.ms` and the `rebalance_timeout`    | 0.10.1     | –       | –       | yes      | yes    |
+| Admin: create and delete topics through the protocol  | 0.10.1     | –       | –       | yes      | yes    |
+| Admin: `getApiVersions()`                             | 0.10.0     | –       | –       | yes      | **yes, v1** |
+| Admin: `DeleteRecords`, `DescribeConfigs`/`AlterConfigs` | 0.11    | –       | –       | –        | **planned (T5)** |
+| Idempotent producer (`enable.idempotence`)            | 0.11       | –       | –       | –        | **planned (T7)** |
+| Transactional producer, `isolation.level`             | 0.11       | –       | –       | –        | **planned (T8)** |
+| Error codes                                           | –          | -1 … 20 | -1 … 31 | -1 … 44  | **-1 … 55** |
 
 Everything a later Kafka added is missing here, by design:
 
-| Feature                                          | Arrived in | On this branch                       |
-|--------------------------------------------------|------------|--------------------------------------|
-| Record batches v2, idempotence, transactions     | 0.11       | no                                   |
-| `throttle_time_ms` in the group apis             | 0.11       | no — Produce v1+ and Fetch v1+ only  |
-| `DeleteRecords`, ACL and config apis (keys 21+)  | 0.11       | no — `ApiKeys` stops at 20           |
-| `isolation_level`, read-committed consumers      | 0.11       | no                                   |
-| `SaslAuthenticate` (key 36)                      | 1.0        | no — the token exchange is unframed  |
-| Error codes above 44                             | 0.11       | no — 0.10.2.2 defines -1 … 44        |
+| Feature                                          | Arrived in | On this branch                        |
+|--------------------------------------------------|------------|---------------------------------------|
+| `SaslAuthenticate` (key 36)                      | 1.0        | no — the token exchange is unframed   |
+| `AlterReplicaLogDirs` (34), `DescribeLogDirs` (35) | 1.0      | no — `ApiKeys` stops at 33            |
+| Error codes above 55                             | 1.0        | no — 0.11.0.3 defines -1 … 55         |
+| Fetch v6, Produce v4, Metadata v5 and later      | 1.0+       | no — the api-key table is the ceiling |
+| Flexible versions and tagged fields              | 2.4        | no — the request header is the plain one |
 
-Four properties of a 0.10.2.2 broker regularly surprise clients, and this implementation deals
+Four properties of a 0.11.0.3 broker regularly surprise clients, and this implementation deals
 with all of them explicitly:
 
 * **An api the broker does not serve costs the connection.** A request whose api key or version
-  a 0.10.2.2 broker cannot parse — and a body that does not match the schema of a version it
+  a 0.11.0.3 broker cannot parse — and a body that does not match the schema of a version it
   does serve — makes it **close the socket**: `Closing socket for … because of error` in the
   broker log, and the end of the stream for the client, reported as a `NetworkException`. A
   0.9.0.1 broker only dropped such a frame and kept the connection open, so code ported from
-  the line below waits for a timeout that will never come. There are exactly two exceptions:
+  that line waits for a timeout that will never come. There are exactly two exceptions:
   **ApiVersions** answers an unknown version with the error code 35 and survives, and
   **ControlledShutdown** answers every version because it is the last api the broker parses with
   a Scala class. This client only ever sends the api versions of the table above.
@@ -612,7 +642,7 @@ wire vectors, and 285 integration tests against a real broker:
 vendor/bin/phpunit --testsuite unit          # pure unit tests, no broker
 vendor/bin/phpunit --testsuite compliance    # replays the documented wire vectors
 
-docker compose up -d                         # Kafka 0.10.2.2: PLAINTEXT 9092, SSL 9093,
+docker compose up -d                         # Kafka 0.11.0.3: PLAINTEXT 9092, SSL 9093,
                                              #                 SASL_PLAINTEXT 9094, SASL_SSL 9095
 KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 vendor/bin/phpunit --testsuite integration
 ```
@@ -624,10 +654,10 @@ is skipped when it is unset:
 | Variable | Default | What it runs |
 |---|---|---|
 | `KAFKA_BOOTSTRAP_SERVERS` | – | the whole integration suite, over the PLAINTEXT listener |
-| `KAFKA_SSL_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | `SslTransportTest`, against the certificate the container was built with (`docker/kafka-0.10.2.2/ssl/broker.crt`) |
+| `KAFKA_SSL_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | `SslTransportTest`, against the certificate the container was built with (`docker/kafka-0.11.0.3/ssl/broker.crt`) |
 | `KAFKA_SASL_BOOTSTRAP_SERVERS` | – | the SASL/PLAIN tests over `SASL_PLAINTEXT` (`127.0.0.1:9094`) |
 | `KAFKA_SASL_SSL_BOOTSTRAP_SERVERS` | – | the same exchange inside TLS (`127.0.0.1:9095`) |
-| `KAFKA_CONTAINER` | `kafka-0-10-2-2` | the container the quota tests run `kafka-configs.sh` in |
+| `KAFKA_CONTAINER` | `kafka-0-11-0-3` | the container the quota tests run `kafka-configs.sh` in |
 
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or

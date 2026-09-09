@@ -478,16 +478,17 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         );
     }
 
-    public function testVersion3OfTheOffsetCommitApiClosesTheConnection(): void
+    public function testVersion4OfTheOffsetCommitApiClosesTheConnection(): void
     {
-        // OffsetCommit stops at v2 in Kafka 0.10.2.2 - v3, which carries a throttle time in its answer, is 0.11 -
-        // and `AbstractRequest.getRequest()` throws for it. A 0.10 broker does not drop such a frame the way a
-        // 0.9.0.1 broker did: `SocketServer.processCompletedReceives` catches the `InvalidRequestException` and
-        // CLOSES the connection, see "An api the broker does not serve closes the connection" in the protocol
-        // document. The client has no class for the version, so the frame is built by hand here.
+        // OffsetCommit stops at v3 in Kafka 0.11.0.3 - v3 is the v2 request with a throttle time in its answer, and
+        // v4 is Kafka 2.0 - so `AbstractRequest.getRequest()` throws for v4. A 0.10 or 0.11 broker does not drop
+        // such a frame the way a 0.9.0.1 broker did: `SocketServer.processCompletedReceives` catches the
+        // `InvalidRequestException` and CLOSES the connection, see "An api the broker does not serve closes the
+        // connection" in the protocol document. The client has no class for the version, so the frame is built by
+        // hand here; its body is the v2/v3 one, which the broker never gets far enough to read.
         $groupId = self::uniqueGroupName();
         $topic   = $this->createTopic();
-        $body    = pack('n', 8) . pack('n', 3) . pack('N', 91) . pack('n', 0)
+        $body    = pack('n', 8) . pack('n', 4) . pack('N', 91) . pack('n', 0)
             . pack('n', strlen($groupId)) . $groupId
             . pack('N', -1) . pack('n', 0) . pack('J', -1) . pack('N', 0);
         $stream  = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 1000]);
@@ -496,7 +497,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         try {
             OffsetCommitResponse::unpack($stream);
-            self::fail('The broker cannot parse an OffsetCommit v3 and must not answer it');
+            self::fail('The broker cannot parse an OffsetCommit v4 and must not answer it');
         } catch (NetworkException $exception) {
             self::assertStringContainsString('stream', strtolower($exception->getMessage()));
         }

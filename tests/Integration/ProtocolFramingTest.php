@@ -105,15 +105,16 @@ final class ProtocolFramingTest extends IntegrationTestCase
     /**
      * A frame the broker cannot parse ends the connection, and the client sees it as a dropped stream
      *
-     * The frame is a Metadata request with the version 3, which Kafka 0.11 has and 0.10.2.2 does not. It is built by
-     * hand, because the point is to send something the request classes of this branch deliberately cannot build.
-     * `RequestChannel.Request` @ 0.10.2.2 throws an `InvalidRequestException` for it and
-     * `SocketServer.processCompletedReceives` closes the channel, so the read of the response runs into the end of
-     * the stream instead of into a timeout - the 0.9.0.1 behaviour this replaces.
+     * The frame is a Metadata request with the version 5, which Kafka 1.0 has and 0.11.0.3 does not - a 0.11.0.3
+     * broker serves Metadata up to v4. It is built by hand, because the point is to send something the request
+     * classes of this branch deliberately cannot build. `RequestChannel.Request` @ 0.11.0.3 throws an
+     * `InvalidRequestException` for it and `SocketServer.processCompletedReceives` closes the channel, so the read
+     * of the response runs into the end of the stream instead of into a timeout - the 0.9.0.1 behaviour this
+     * replaces.
      */
     public function testAFrameTheBrokerCannotParseClosesTheConnection(): void
     {
-        $body   = pack('n', 3) . pack('n', 3) . pack('N', 4243) . pack('n', 0) . pack('N', -1);
+        $body   = pack('n', 3) . pack('n', 5) . pack('N', 4243) . pack('n', 0) . pack('N', -1);
         $stream = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 5000]);
         $stream->write('N', strlen($body));
         $stream->writeBuffer($body);
@@ -128,14 +129,14 @@ final class ProtocolFramingTest extends IntegrationTestCase
      */
     public function testTheNextConnectionIsAnsweredAfterTheBrokerClosedOne(): void
     {
-        $body   = pack('n', 3) . pack('n', 3) . pack('N', 4244) . pack('n', 0) . pack('N', -1);
+        $body   = pack('n', 3) . pack('n', 5) . pack('N', 4244) . pack('n', 0) . pack('N', -1);
         $broken = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 5000]);
         $broken->write('N', strlen($body));
         $broken->writeBuffer($body);
 
         try {
             ClusterMetadataResponse::unpack($broken);
-            self::fail('The broker has to close the connection for a Metadata v3 frame');
+            self::fail('The broker has to close the connection for a Metadata v5 frame');
         } catch (NetworkException) {
             // expected: the broker closed the socket
         }
