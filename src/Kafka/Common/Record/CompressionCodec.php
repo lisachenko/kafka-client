@@ -19,12 +19,16 @@ use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 /**
  * Compression codecs that the Attributes byte of a {@see Message} can announce.
  *
- * The three lowest bits of the Attributes byte hold the codec, every other bit is 0 in message format v0.
- * The 0.9.0.1 broker already knows the LZ4 codec (3), added for the new Java producer, but this client neither
- * produces nor consumes it.
+ * The three lowest bits of the Attributes byte hold the codec; bit 3 is the {@see TimestampType} of message format
+ * v1 and every other bit is 0. All four codecs of Kafka 0.10.2.2 are implemented here, gzip through the zlib
+ * extension of PHP and snappy and lz4 in pure PHP.
+ *
+ * The framing of a codec is not always the one of its own specification: snappy travels in the blocking format of
+ * the xerial library and lz4 in the LZ4 frame format, whose header checksum depends on the message format of the
+ * message that carries it, see {@see Lz4}.
  *
  * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
- * @see kafka/message/CompressionCodec.scala @ 0.9.0.1
+ * @see kafka/message/CompressionCodec.scala @ 0.10.2.2
  */
 final class CompressionCodec
 {
@@ -42,6 +46,11 @@ final class CompressionCodec
      * The Value of the message is an xerial-framed snappy stream wrapping a complete MessageSet
      */
     public const int SNAPPY = 2;
+
+    /**
+     * The Value of the message is an LZ4 frame (the Kafka flavour of it) wrapping a complete MessageSet
+     */
+    public const int LZ4 = 3;
 
     /**
      * Mask of the Attributes bits that hold the codec (bits 0-2)
@@ -71,15 +80,23 @@ final class CompressionCodec
      */
     public static function isSupported(int $codec): bool
     {
-        return $codec === self::NONE || $codec === self::GZIP || $codec === self::SNAPPY;
+        return $codec === self::NONE
+            || $codec === self::GZIP
+            || $codec === self::SNAPPY
+            || $codec === self::LZ4;
     }
 
     /**
      * Compresses the payload of a wrapper message with the given codec
      *
+     * @param int    $codec One of the constants of this class
+     * @param string $data  Serialized message set to compress
+     * @param int    $magic Message format of the wrapper message that will carry the result; it selects the frame
+     *                      descriptor checksum of the lz4 codec, see {@see Lz4}
+     *
      * @throws InvalidConfigurationException for a codec that this client does not implement
      */
-    public static function compress(int $codec, string $data): string
+    public static function compress(int $codec, string $data, int $magic = Message::MAGIC_V1): string
     {
         switch ($codec) {
             case self::NONE:
@@ -95,6 +112,9 @@ final class CompressionCodec
 
             case self::SNAPPY:
                 return Snappy::compress($data);
+
+            case self::LZ4:
+                return Lz4::compress($data, $magic);
         }
 
         throw new InvalidConfigurationException("Unsupported compression codec {$codec} requested");
@@ -122,6 +142,9 @@ final class CompressionCodec
 
             case self::SNAPPY:
                 return Snappy::decompress($data);
+
+            case self::LZ4:
+                return Lz4::decompress($data);
         }
 
         throw new InvalidConfigurationException("Unsupported compression codec {$codec} received");

@@ -17,6 +17,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
+use Protocol\Kafka\Common\Record\Lz4;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
@@ -32,11 +33,16 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Produces message sets to a real Kafka 0.9.0.1 broker and fetches them back.
+ * Produces message sets to a real Kafka 0.10.2.2 broker and fetches them back.
  *
  * The broker is the authority on the message format: it validates the checksum of every message it appends, it
  * decompresses a compressed set to assign the offsets of its inner messages, and it recompresses it with the codec
  * the producer chose. A set that survives this round trip is a set that Kafka itself accepts.
+ *
+ * The batches of this suite are written in message format v1 - the default of the producer - and read back with a
+ * Fetch request of version 1, which makes the broker convert its answer down to message format v0: the values, the
+ * keys and the offsets survive that conversion, the timestamps do not. What the log really holds and what a Fetch
+ * v2 request answers is the subject of {@see MessageFormatV1Test}.
  *
  * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
  */
@@ -44,6 +50,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(Message::class)]
 #[CoversClass(CompressionCodec::class)]
 #[CoversClass(Snappy::class)]
+#[CoversClass(Lz4::class)]
 #[CoversClass(FetchRequestV0::class)]
 #[CoversClass(FetchResponseV0::class)]
 #[CoversClass(FetchResponsePartition::class)]
@@ -86,6 +93,7 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
         yield 'uncompressed' => [CompressionCodec::NONE];
         yield 'gzip'         => [CompressionCodec::GZIP];
         yield 'snappy'       => [CompressionCodec::SNAPPY];
+        yield 'lz4'          => [CompressionCodec::LZ4];
     }
 
     #[DataProvider('compressionCodecs')]

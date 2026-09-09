@@ -19,10 +19,12 @@ use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
+use Protocol\Kafka\Common\Record\Lz4;
+use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\Snappy;
 
 /**
- * The codecs that the Attributes byte of a message can announce in 0.9.0.1
+ * The codecs that the Attributes byte of a message can announce in Kafka 0.10.2.2
  */
 #[CoversClass(CompressionCodec::class)]
 final class CompressionCodecTest extends TestCase
@@ -32,6 +34,7 @@ final class CompressionCodecTest extends TestCase
         self::assertSame(0, CompressionCodec::NONE);
         self::assertSame(1, CompressionCodec::GZIP);
         self::assertSame(2, CompressionCodec::SNAPPY);
+        self::assertSame(3, CompressionCodec::LZ4);
         self::assertSame(0x07, CompressionCodec::MASK);
     }
 
@@ -40,16 +43,19 @@ final class CompressionCodecTest extends TestCase
         self::assertSame(CompressionCodec::NONE, CompressionCodec::fromAttributes(0b0000_0000));
         self::assertSame(CompressionCodec::GZIP, CompressionCodec::fromAttributes(0b0000_0001));
         self::assertSame(CompressionCodec::SNAPPY, CompressionCodec::fromAttributes(0b0000_0010));
-        // The timestamp type bit of the later message formats never changes the codec
+        self::assertSame(CompressionCodec::LZ4, CompressionCodec::fromAttributes(0b0000_0011));
+        // The timestamp type bit of message format v1 never changes the codec
         self::assertSame(CompressionCodec::SNAPPY, CompressionCodec::fromAttributes(0b0000_1010));
     }
 
-    public function testOnlyTheThreeCodecsOfThisClientAreSupported(): void
+    public function testEveryCodecOfKafkaTenIsSupported(): void
     {
         self::assertTrue(CompressionCodec::isSupported(CompressionCodec::NONE));
         self::assertTrue(CompressionCodec::isSupported(CompressionCodec::GZIP));
         self::assertTrue(CompressionCodec::isSupported(CompressionCodec::SNAPPY));
-        self::assertFalse(CompressionCodec::isSupported(3), 'lz4 is not produced or consumed by this client');
+        self::assertTrue(CompressionCodec::isSupported(CompressionCodec::LZ4));
+        // 4 is zstd, which arrives with Kafka 2.1 and the message format v2
+        self::assertFalse(CompressionCodec::isSupported(4));
     }
 
     /**
@@ -60,6 +66,7 @@ final class CompressionCodecTest extends TestCase
         yield 'none'   => [CompressionCodec::NONE];
         yield 'gzip'   => [CompressionCodec::GZIP];
         yield 'snappy' => [CompressionCodec::SNAPPY];
+        yield 'lz4'    => [CompressionCodec::LZ4];
     }
 
     #[DataProvider('codecs')]
@@ -98,17 +105,41 @@ final class CompressionCodecTest extends TestCase
         CompressionCodec::decompress(CompressionCodec::GZIP, 'this is not a gzip stream');
     }
 
+    public function testLz4ProducesTheFrameOfTheBroker(): void
+    {
+        $compressed = CompressionCodec::compress(CompressionCodec::LZ4, 'alpha bravo charlie');
+
+        self::assertStringStartsWith(Lz4::MAGIC, $compressed, 'the magic number of an LZ4 frame');
+        self::assertStringStartsWith(Lz4::frameDescriptor(false), $compressed);
+    }
+
+    public function testTheLz4FrameOfAMessageOfFormatV0CarriesTheBrokenDescriptorChecksum(): void
+    {
+        // KAFKA-3160: the clients before 0.10.0 hashed the magic number together with the frame descriptor, and the
+        // broken checksum stayed the one of message format v0 so that those clients can still read the log
+        $formatV0 = CompressionCodec::compress(CompressionCodec::LZ4, 'alpha bravo charlie', Message::MAGIC_V0);
+        $formatV1 = CompressionCodec::compress(CompressionCodec::LZ4, 'alpha bravo charlie', Message::MAGIC_V1);
+
+        self::assertSame(Lz4::frameDescriptor(true), substr($formatV0, 0, 7));
+        self::assertSame(Lz4::frameDescriptor(false), substr($formatV1, 0, 7));
+        self::assertNotSame($formatV0[6], $formatV1[6], 'only the HC byte of the two frames differs');
+        self::assertSame(substr($formatV0, 7), substr($formatV1, 7));
+        // Both of them are readable, whatever the message format of the message that carries them is
+        self::assertSame('alpha bravo charlie', CompressionCodec::decompress(CompressionCodec::LZ4, $formatV0));
+        self::assertSame('alpha bravo charlie', CompressionCodec::decompress(CompressionCodec::LZ4, $formatV1));
+    }
+
     public function testCompressingWithAnUnknownCodecIsAConfigurationError(): void
     {
         $this->expectException(InvalidConfigurationException::class);
 
-        CompressionCodec::compress(3, 'payload');
+        CompressionCodec::compress(4, 'payload');
     }
 
     public function testDecompressingAnUnknownCodecIsAConfigurationError(): void
     {
         $this->expectException(InvalidConfigurationException::class);
 
-        CompressionCodec::decompress(3, 'payload');
+        CompressionCodec::decompress(4, 'payload');
     }
 }

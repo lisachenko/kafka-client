@@ -16,8 +16,11 @@ namespace Protocol\Kafka\Producer;
 /**
  * The metadata for a record that has been acknowledged by the broker.
  *
- * The `$timestamp` of a record is the `LogAppendTime` of version 2 of the Produce API (Kafka 0.10.0, message format
- * v1) and is therefore always `null` here: a 0.9.0.1 broker never reports one.
+ * The `$timestamp` is the `CreateTime` that the producer stamped on the first record of the batch - the record whose
+ * offset the answer reports - because version 1 of the Produce API says nothing about timestamps. Version 2 of that
+ * API (Kafka 0.10.0) answers with the `LogAppendTime` the broker assigned, which replaces this value for a topic
+ * configured with `message.timestamp.type=LogAppendTime`; `null` means that the batch carried no timestamp at all,
+ * i.e. that it was written in message format v0.
  *
  * `$throttleTimeMs` is the `ThrottleTime` that version 1 of the Produce API added to the answer (Kafka 0.9): the
  * number of milliseconds the broker delayed the response of the batch because the client exceeded its
@@ -33,7 +36,7 @@ final class RecordMetadata
      * @param string   $topic          Topic the records were appended to
      * @param int      $partition      Partition of that topic
      * @param int      $offset         Offset the first record of the batch was appended at, -1 with `acks = 0`
-     * @param int|null $timestamp      Always null in 0.9, the broker reports no `LogAppendTime`
+     * @param int|null $timestamp      CreateTime the producer stamped on the first record of the batch
      * @param int      $throttleTimeMs Milliseconds the broker delayed this answer because of a produce quota
      */
     public function __construct(

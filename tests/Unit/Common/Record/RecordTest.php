@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Tests\Unit\Common\Record;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\TimestampType;
 
 /**
  * The user-facing record, the value object that the producer and the consumer deal in
@@ -31,6 +32,8 @@ final class RecordTest extends TestCase
         self::assertSame('foo', $record->key);
         self::assertSame(0, $record->attributes);
         self::assertNull($record->offset, 'a record that was not read from a broker has no offset');
+        self::assertNull($record->timestamp, 'a record that the producer did not stamp yet has no timestamp');
+        self::assertSame(TimestampType::NO_TIMESTAMP_TYPE, $record->timestampType);
     }
 
     public function testTheValueIsEnoughToBuildARecord(): void
@@ -53,5 +56,26 @@ final class RecordTest extends TestCase
         $record = new Record('bar', 'foo', 0, 42);
 
         self::assertSame(42, $record->offset);
+    }
+
+    public function testARecordOfAMessageFormatV1LogCarriesATimestampAndItsType(): void
+    {
+        $record = new Record('bar', 'foo', 0, 42, 1489324800000, TimestampType::LOG_APPEND_TIME);
+
+        self::assertSame(1489324800000, $record->timestamp);
+        self::assertSame(TimestampType::LOG_APPEND_TIME, $record->timestampType);
+    }
+
+    public function testStampingARecordWithACreateTimeLeavesTheOriginalAlone(): void
+    {
+        $record = new Record('bar', 'foo');
+
+        $stamped = $record->withCreateTime(1489324800000);
+
+        self::assertNull($record->timestamp);
+        self::assertSame(1489324800000, $stamped->timestamp);
+        self::assertSame(TimestampType::CREATE_TIME, $stamped->timestampType);
+        self::assertSame('bar', $stamped->value);
+        self::assertSame('foo', $stamped->key);
     }
 }
