@@ -26,12 +26,15 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     MaxVersion => int16
  * </pre>
  *
- * Both bounds are inclusive, and both of them matter: a 0.10.2.2 broker reports `MinVersion = 1` for
+ * Both bounds are inclusive, and both of them matter: a 0.11.0.3 broker reports `MinVersion = 1` for
  * ControlledShutdown (key 7), because the version 0 of that request uses a header without a client id that the Java
  * client cannot build. The class is named after the `main` branch; the Kafka sources call the structure
- * `API_VERSIONS_V0` / `ApiVersionsResponse.ApiVersion` (`clients/.../requests/ApiVersionsResponse.java` @ 0.10.2.2).
+ * `API_VERSIONS_V0` / `ApiVersionsResponse.ApiVersion` (`clients/.../requests/ApiVersionsResponse.java` @ 0.11.0.3).
  *
- * @see docs/protocol/0.11.0.md, section "ApiVersions API (key 18, v0)"
+ * The entry itself has no version of its own: `API_VERSIONS_RESPONSE_V1` reuses the `API_VERSIONS_V0` schema of the
+ * version 0 answer, so the same class reads both versions of the api.
+ *
+ * @see docs/protocol/0.11.0.md, section "ApiVersions API (key 18, v0 and v1)"
  */
 class ApiVersionsResponseMetadata implements BinarySchemaInterface
 {
