@@ -28,6 +28,8 @@ use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\Common\Record\RecordV2;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use React\Promise\Deferred;
 use React\Promise\Promise;
@@ -77,9 +79,13 @@ use React\Promise\Promise;
  *
  * Every record is stamped with a **CreateTime** - the current time in milliseconds - unless it already carries a
  * {@see Record::$timestamp}, and the batch is written in the message format that `message.format.version` selects,
- * v1 (with timestamps) by default. {@see RecordMetadata::$timestamp} reports the create time of the first record of
- * the acknowledged batch; the `LogAppendTime` that a broker assigns to a topic configured for it is only visible
- * through version 2 of the Produce API.
+ * v2 (the record batch) by default. {@see RecordMetadata::$timestamp} reports the create time of the first record
+ * of the acknowledged batch; the `LogAppendTime` that a broker assigns to a topic configured for it is only
+ * visible through version 2 of the Produce API and above.
+ *
+ * The **headers** of a record ({@see Record::withHeaders()}, KIP-82) travel with it in the message format v2 and
+ * only there: a batch of the formats v0 and v1 has no place for them and drops them silently, and a consumer only
+ * ever sees them in an answer of Fetch v4 or above.
  *
  * A broker with a `producer_byte_rate` quota for the `client.id` of this producer does not reject anything: it
  * appends the batch and holds its answer back until the client is inside its quota again. That delay is what
@@ -297,15 +303,21 @@ class KafkaProducer
     }
 
     /**
-     * Returns the number of bytes that a record takes in a produce request, its entry of the message set.
+     * Returns the number of bytes that a record takes in a produce request, its entry of the record set.
      *
      * The size of the *uncompressed* record is the one that `batch.size` and `max.request.size` are measured in,
-     * because the compression ratio of a batch is only known once the batch is complete. Message format v1 adds the
-     * eight bytes of the timestamp to every record, so the size depends on the format the producer writes.
+     * because the compression ratio of a batch is only known once the batch is complete. What one record costs
+     * depends on the message format: v1 adds the eight bytes of a timestamp to the fixed overhead of v0, while a
+     * record of the message format v2 stores its numbers as varints and its headers next to the key and the value,
+     * so its size is the one of the {@see RecordV2} it becomes. The header of the batch around it is not counted
+     * here, exactly as `AbstractRecords.estimateSizeInBytesUpperBound()` of the Java producer does not count it.
      */
     private function recordSize(Record $message): int
     {
         $magic = ProducerConfig::messageFormatMagic($this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION]);
+        if ($magic >= RecordBatch::MAGIC) {
+            return new RecordV2($message->value, $message->key, array_values($message->headers))->sizeInBytes();
+        }
 
         return MessageSet::ENTRY_OVERHEAD
             + Message::ofMagic($magic, $message->value, $message->key)->sizeInBytes();

@@ -20,6 +20,7 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Message;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Producer\DefaultPartitioner;
 use Protocol\Kafka\Producer\ProducerConfig;
 
@@ -117,33 +118,38 @@ final class ProducerConfigTest extends TestCase
         self::assertSame($expected, ProducerConfig::messageFormatMagic($version));
     }
 
-    public function testTheProducerWritesMessageFormatV1ByDefault(): void
+    public function testTheProducerWritesTheRecordBatchOfMessageFormatV2ByDefault(): void
     {
         $configuration = ProducerConfig::getDefaultConfiguration();
 
         self::assertSame(
-            ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
+            ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0,
             $configuration[ProducerConfig::MESSAGE_FORMAT_VERSION]
         );
         self::assertSame(
-            Message::MAGIC_V1,
+            RecordBatch::MAGIC,
             ProducerConfig::messageFormatMagic($configuration[ProducerConfig::MESSAGE_FORMAT_VERSION])
+        );
+        self::assertSame(
+            Message::MAGIC_V1,
+            ProducerConfig::messageFormatMagic(ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0),
+            'the message format of Kafka 0.10 stays available for a topic that is configured for it'
         );
     }
 
     public function testAnUnsupportedMessageFormatVersionIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);
-        // The record batch v2 of Kafka 0.11 is not a message format of this protocol line
-        $this->expectExceptionMessage('0.11.0');
+        // Kafka 1.0 kept the message format v2, but this client only names the releases it knows
+        $this->expectExceptionMessage('1.0.0');
 
-        ProducerConfig::messageFormatMagic('0.11.0');
+        ProducerConfig::messageFormatMagic('1.0.0');
     }
 
     public function testAnUnsupportedMagicByteIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);
 
-        ProducerConfig::messageFormatMagic(2);
+        ProducerConfig::messageFormatMagic(3);
     }
 }

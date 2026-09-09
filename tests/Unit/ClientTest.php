@@ -35,9 +35,12 @@ use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Record\CompressionCodec;
+use Protocol\Kafka\Common\Record\Header;
+use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\StringStream;
@@ -53,6 +56,7 @@ use Protocol\Kafka\Tests\Compliance\MessageFields;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
 use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
+use Protocol\Kafka\Tests\Unit\Fixture\TransactionalTestClient;
 
 /**
  * Tests the low-level client against scripted brokers: the fan-out to the partition leaders, the correlation of the
@@ -354,8 +358,10 @@ final class ClientTest extends TestCase
             new Record(str_repeat('a repetitive value ', 32)),
         ];
 
-        $this->client([ProducerConfig::COMPRESSION_TYPE => $compressionType])
-            ->produce([self::TOPIC => [0 => $records]]);
+        $this->client([
+            ProducerConfig::COMPRESSION_TYPE       => $compressionType,
+            ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
+        ])->produce([self::TOPIC => [0 => $records]]);
 
         // A compressed batch travels as a message set of exactly one message, whose value is the whole batch
         $messageSetBuffer = self::messageSetOf($leader->getReceivedFrames()[0]);
@@ -385,7 +391,8 @@ final class ClientTest extends TestCase
             ->on(self::FIRST_LEADER, $leader)
             ->install();
 
-        $this->client()->produce([self::TOPIC => [0 => [new Record('as it is', 'a key')]]]);
+        $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
+            ->produce([self::TOPIC => [0 => [new Record('as it is', 'a key')]]]);
 
         $wrapper = self::firstMessageOf(self::messageSetOf($leader->getReceivedFrames()[0]));
 
@@ -497,7 +504,7 @@ final class ClientTest extends TestCase
         self::assertCount(2, $partition->getRecords());
         self::assertSame(2, $partition->count());
         self::assertFalse($partition->isEmpty());
-        self::assertFalse($partition->hasPartialTrailingMessage());
+        self::assertFalse($partition->hasPartialTrailingRecord());
         self::assertFalse($partition->isSingleMessageTooLarge());
         self::assertSame(2, $partition->getNextOffset(), 'the offsets of a produced set count from 0');
         self::assertSame(0, $partition->throttleTimeMs, 'a broker without quotas never throttles');
@@ -561,15 +568,165 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 3, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`
-        self::assertStringStartsWith('00010003', $request, 'the Fetch api is spoken in version 3');
-        self::assertStringContainsString('00100000', $request, 'fetch.max.bytes reached the frame');
-        // The partitions travel in the order they were given, which is the order the broker fills the answer in
+        // ApiKey 1, ApiVersion 5, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes` and
+        // the isolation level `read_uncommitted`
+        self::assertStringStartsWith('00010005', $request, 'the Fetch api is spoken in version 5');
+        self::assertStringContainsString('0010000000', $request, 'fetch.max.bytes and read_uncommitted');
+        // The partitions travel in the order they were given, which is the order the broker fills the answer in;
+        // the -1 in front of every MaxBytes is the LogStartOffset of v5, which only a follower fills in
         self::assertStringEndsWith(
-            '00000001' . '0000000000000007' . '00010000'
-            . '00000000' . '0000000000000003' . '00010000',
+            '00000001' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
+            . '00000000' . '0000000000000003' . 'ffffffffffffffff' . '00010000',
             $request
         );
+    }
+
+    public function testAReadCommittedFetchReportsTheLastStableOffsetAndTheAbortedTransactions(): void
+    {
+        $recordSet = MemoryRecords::fromRecordBatch(RecordBatch::fromRecords([new Record('committed')]))->toBuffer();
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::fetch(
+                0,
+                [self::TOPIC => [0 => [0, 40, $recordSet]]],
+                0,
+                [self::TOPIC => [0 => [37, 4, [[1000, 12]]]]]
+            )))
+            ->install();
+
+        $client    = $this->client(['isolation.level' => 'read_committed']);
+        $partition = $client->fetchPartitions([self::TOPIC => [0 => 12]], 200)[self::TOPIC][0];
+
+        self::assertSame(37, $partition->lastStableOffset, 'a read_committed fetch stops at the LSO');
+        self::assertSame(4, $partition->logStartOffset);
+        self::assertCount(1, (array) $partition->abortedTransactions);
+        self::assertSame(1000, $partition->abortedTransactions[0]->producerId);
+        self::assertSame(12, $partition->abortedTransactions[0]->firstOffset);
+        self::assertSame(['committed'], array_column($partition->getRecords(), 'value'));
+    }
+
+    /**
+     * @param string|null $isolationLevel The `isolation.level` of the configuration, null for a client without one
+     * @param string      $expectedByte   Hexadecimal of the `IsolationLevel` byte the request has to carry
+     */
+    #[DataProvider('isolationLevels')]
+    public function testTheIsolationLevelOfTheConfigurationReachesTheFetchRequest(
+        ?string $isolationLevel,
+        string $expectedByte
+    ): void {
+        $connection = new BrokerConnection(ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 0, '']]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $connection)
+            ->install();
+
+        $overrides = $isolationLevel === null ? [] : ['isolation.level' => $isolationLevel];
+        $this->client($overrides)->fetchPartitions([self::TOPIC => [0 => 0]], 200);
+
+        // The isolation level is the single byte behind the request-level MaxBytes, here the 50 MiB default
+        self::assertStringContainsString(
+            '03200000' . $expectedByte,
+            bin2hex($connection->getReceivedFrames()[0])
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string|null, 1: string}>
+     */
+    public static function isolationLevels(): iterable
+    {
+        yield 'not configured'   => [null, '00'];
+        yield 'read_uncommitted' => ['read_uncommitted', '00'];
+        yield 'read_committed'   => ['read_committed', '01'];
+    }
+
+    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionThreeRecordBatch(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $record = new Record('with a header', 'a key')->withHeaders(new Header('trace-id', 'abc'));
+        $this->client()->produce([self::TOPIC => [0 => [$record]]]);
+
+        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        // ApiKey 0, ApiVersion 3, correlation id, client id, then the null transactional id of a plain producer
+        self::assertStringStartsWith('00000003', $frame, 'the Produce api is spoken in version 3');
+        self::assertStringContainsString('74372d636c69656e74' . 'ffff', $frame, 'no transactional id is sent');
+
+        $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
+        self::assertSame(RecordBatch::MAGIC, $records->getMagic());
+        self::assertSame('with a header', $records->getRecords()[0]->value);
+        self::assertSame('trace-id', $records->getRecords()[0]->headers[0]->key);
+        self::assertSame('abc', $records->getRecords()[0]->headers[0]->value);
+    }
+
+    public function testAMessageFormatBelowTheRecordBatchIsSentAsAProduceVersionTwo(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $record = new Record('dropped headers', 'a key')->withHeaders(new Header('trace-id', 'abc'));
+        $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
+            ->produce([self::TOPIC => [0 => [$record]]]);
+
+        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        self::assertStringStartsWith('00000002', $frame, 'a message set can only be sent below version 3');
+
+        $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
+        self::assertSame(Message::MAGIC_V1, $records->getMagic());
+        self::assertSame([], $records->getRecords()[0]->headers, 'a message set has no place for headers');
+    }
+
+    public function testTheProducerStateOfABatchTravelsInItsRecordBatch(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        // This is the plug of T7 and T8: the producer id, the epoch, the sequence of every topic-partition and the
+        // transactional id are the only things the bookkeeping of KIP-98 has to add to a produce call
+        $this->transactionalClient()->produceRecordsWith(
+            [self::TOPIC => [0 => [new Record('in a transaction')]]],
+            1000,
+            3,
+            [self::TOPIC => [0 => 42]],
+            'tx-1'
+        );
+
+        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        self::assertStringContainsString('0004' . '74782d31', $frame, 'the transactional id reached the frame');
+
+        $batch = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]))->getBatches()[0];
+        self::assertInstanceOf(RecordBatch::class, $batch);
+        self::assertSame(1000, $batch->producerId);
+        self::assertSame(3, $batch->producerEpoch);
+        self::assertSame(42, $batch->baseSequence);
+        self::assertTrue($batch->isTransactional());
+    }
+
+    public function testATransactionalIdNeedsTheMessageFormatOfTheRecordBatch(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection())
+            ->install();
+
+        $client = $this->transactionalClient(
+            [ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0]
+        );
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('A transactional producer needs the message format 0.11.0');
+
+        $client->produceRecordsWith([self::TOPIC => [0 => [new Record('never sent')]]], 1000, 3, [], 'tx-1');
     }
 
     public function testTheChecksumOfEveryMessageIsVerifiedUnlessTheConsumerOptsOut(): void
@@ -1062,17 +1219,26 @@ final class ClientTest extends TestCase
     }
 
     /**
-     * Returns the message set of the only topic-partition of a produce request frame.
+     * Returns the record set of the only topic-partition of a produce request frame.
      *
      * <pre>
-     *   ApiKey ApiVersion CorrelationId ClientId RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
+     *   ApiKey ApiVersion CorrelationId ClientId [TransactionalId] RequiredAcks Timeout
+     *   [TopicName [Partition RecordSetSize RecordSet]]
      * </pre>
      */
     private static function messageSetOf(string $frame): string
     {
-        /** @var array{clientIdLength: int} $header */
+        /** @var array{apiVersion: int, clientIdLength: int} $header */
         $header = unpack('napiKey/napiVersion/NcorrelationId/nclientIdLength', $frame);
         $offset = 2 + 2 + 4 + 2 + $header['clientIdLength'];
+
+        // The nullable TransactionalId that version 3 put in front of RequiredAcks: -1 is null and has no bytes
+        if ($header['apiVersion'] >= 3) {
+            /** @var array{transactionalIdLength: int} $transactionalId */
+            $transactionalId = unpack('ntransactionalIdLength', $frame, $offset);
+            $length          = $transactionalId['transactionalIdLength'];
+            $offset          += 2 + ($length === 0xFFFF ? 0 : $length);
+        }
 
         // requiredAcks, timeout and the number of topics of the request
         $offset += 2 + 4 + 4;
@@ -1108,7 +1274,21 @@ final class ClientTest extends TestCase
      */
     private function client(array $overrides = []): Client
     {
-        $configuration = $overrides + [
+        $configuration = self::configuration($overrides);
+
+        return new Client(Cluster::bootstrap($configuration), $configuration);
+    }
+
+    /**
+     * The configuration of the client above
+     *
+     * @param array<string, mixed> $overrides
+     *
+     * @return array<string, mixed>
+     */
+    private static function configuration(array $overrides = []): array
+    {
+        return $overrides + [
             ClientConfig::BOOTSTRAP_SERVERS         => [self::BOOTSTRAP_ADDRESS],
             ClientConfig::CLIENT_ID                 => 't7-client',
             ClientConfig::REQUEST_TIMEOUT_MS        => 500,
@@ -1125,8 +1305,18 @@ final class ClientTest extends TestCase
             ConsumerConfig::FETCH_MIN_BYTES           => 1,
             ConsumerConfig::MAX_PARTITION_FETCH_BYTES => 65536,
         ];
+    }
 
-        return new Client(Cluster::bootstrap($configuration), $configuration);
+    /**
+     * A client that exposes the producer state of {@see Client::produceRecords()}, the way T7 and T8 will fill it
+     *
+     * @param array<string, mixed> $overrides
+     */
+    private function transactionalClient(array $overrides = []): TransactionalTestClient
+    {
+        $configuration = self::configuration($overrides);
+
+        return new TransactionalTestClient(Cluster::bootstrap($configuration), $configuration);
     }
 
     /**

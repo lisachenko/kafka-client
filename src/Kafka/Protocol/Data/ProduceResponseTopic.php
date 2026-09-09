@@ -28,10 +28,11 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     TopicName => string
  * </pre>
  *
- * The partition entries of a version 0 or 1 answer carry no `LogAppendTime`, which is what the version constant of
- * this DTO selects, see {@see ProduceResponseTopicV0}.
+ * The topic entry itself never changed; what a version selects is the shape of its partition entries - a version 0
+ * or 1 answer carries no `LogAppendTime` ({@see ProduceResponseTopicV0}) - which is what the version constant of
+ * this DTO picks in {@see self::partitionClass()}. Version 3 changed nothing about the answer at all.
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
  */
 class ProduceResponseTopic implements BinarySchemaInterface
 {

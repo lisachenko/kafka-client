@@ -22,6 +22,7 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
+use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\TimestampType;
@@ -34,8 +35,8 @@ use Protocol\Kafka\Consumer\OffsetResetStrategy;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -48,7 +49,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * there. The broker-side group membership of Kafka 0.9 - subscribe(), the rebalance and the heartbeats - is driven
  * by {@see ConsumerGroupTest}.
  *
- * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v3)", "Offsets API (key 2, v0), a.k.a.
+ * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v5)", "Offsets API (key 2, v0), a.k.a.
  *      ListOffset" and "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 #[CoversClass(KafkaConsumer::class)]
@@ -365,6 +366,60 @@ final class KafkaConsumerTest extends IntegrationTestCase
         self::assertSame('payload', $record->deserializedValue);
     }
 
+    public function testTheHeadersOfARecordTravelFromTheProducerToThePoll(): void
+    {
+        $producer = new KafkaProducer([
+            ClientConfig::BOOTSTRAP_SERVERS => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID         => self::CLIENT_ID,
+            ProducerConfig::ACKS            => 1,
+            ProducerConfig::TIMEOUT_MS      => 5000,
+        ]);
+        $producer->send(
+            $this->topic,
+            Record::fromKeyValue('a key', 'with headers')
+                ->withHeaders(new Header('content-type', 'application/json'), new Header('empty')),
+            0
+        );
+        $producer->flush();
+
+        $consumer = $this->consumer(self::uniqueGroupName(), [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([$this->topic => [0]]);
+
+        $records = $this->recordsOf($this->pollUntil($consumer, 1), 0);
+
+        self::assertCount(1, $records);
+        self::assertSame('with headers', $records[0]->value);
+        self::assertSame(['content-type', 'empty'], array_map(
+            static fn(Header $header): string => $header->key,
+            $records[0]->headers
+        ));
+        self::assertSame(['application/json', null], array_map(
+            static fn(Header $header): ?string => $header->value,
+            $records[0]->headers
+        ));
+    }
+
+    public function testAReadCommittedConsumerReadsTheSameRecordsOfATopicWithoutTransactions(): void
+    {
+        $this->produce(0, ['first', 'second']);
+
+        // `isolation.level` only decides where the fetch stops and whether the broker reports the transactions it
+        // aborted; a partition that no transaction ever touched answers the very same records either way
+        $consumer = $this->consumer(self::uniqueGroupName(), [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+            'isolation.level'                  => 'read_committed',
+        ]);
+        $consumer->assign([$this->topic => [0]]);
+
+        $records = $this->recordsOf($this->pollUntil($consumer, 2), 0);
+
+        self::assertSame(['first', 'second'], array_column($records, 'value'));
+    }
+
     public function testAPausedPartitionIsNotConsumedUntilItIsResumed(): void
     {
         $this->produce(0, ['p0']);
@@ -618,7 +673,7 @@ final class KafkaConsumerTest extends IntegrationTestCase
 
         do {
             $stream = $this->connect();
-            new ProduceRequest(
+            new ProduceRequestV2(
                 [$topic => [$partition => $messageSet]],
                 1,
                 self::PRODUCE_TIMEOUT_MS,
@@ -626,7 +681,7 @@ final class KafkaConsumerTest extends IntegrationTestCase
                 1
             )->writeTo($stream);
 
-            $errorCode = ProduceResponse::unpack($stream)->topics[$topic]->partitions[$partition]->errorCode;
+            $errorCode = ProduceResponseV2::unpack($stream)->topics[$topic]->partitions[$partition]->errorCode;
             if ($errorCode === 0) {
                 return;
             }
