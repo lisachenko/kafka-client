@@ -25,6 +25,11 @@ use Protocol\Kafka\Common\Record\Record;
  * spin forever, so {@see FetchedPartition::isSingleMessageTooLarge()} exists to make that state visible without a
  * second round trip to the broker.
  *
+ * The records of a partition carry the timestamp and the {@see \Protocol\Kafka\Common\Record\TimestampType} of
+ * the message format they arrived in. A Fetch request below version 2 makes the broker convert its answer down to
+ * message format v0, which has no timestamps at all, so a record read that way has a `null` timestamp whatever the
+ * log itself holds.
+ *
  * Version 1 of the Fetch API (Kafka 0.9) added the throttle time of the answer, which every partition of that answer
  * carries here; it is 0 unless the client exceeded a fetch quota of the broker. A `consumer_byte_rate` quota does
  * not shorten an answer and never fails a fetch: the broker holds the complete answer back for that many

@@ -170,7 +170,7 @@ final class QuotaThrottleTest extends IntegrationTestCase
                 )
             );
             self::assertGreaterThan(0, $throttled->throttleTimeMs);
-            self::assertNull($throttled->timestamp, 'a 0.9 broker reports no LogAppendTime');
+            self::assertNotNull($throttled->timestamp, 'the CreateTime the producer stamped on the batch');
 
             // The broker throttles by holding the answer back, so the round trip took at least that long
             self::assertGreaterThanOrEqual(

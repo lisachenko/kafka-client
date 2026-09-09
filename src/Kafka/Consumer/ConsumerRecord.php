@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Consumer;
 
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\TimestampType;
 
 /**
  * A record that {@see KafkaConsumer::poll()} received, together with the values a deserializer made out of it.
@@ -24,6 +25,11 @@ use Protocol\Kafka\Common\Record\Record;
  * of a poll() stays a list of records whatever the deserializers return.
  *
  * Records of a poll() are only wrapped into this class when at least one deserializer is configured.
+ *
+ * The `$timestamp` and the `$timestampType` that a record carries come from the message format the answer was in:
+ * message format v1 (Kafka 0.10.0) has them, message format v0 does not, and neither does an answer that the broker
+ * down-converted to v0 for a Fetch request below version 2 - a record read that way has a `null` timestamp and
+ * {@see TimestampType::NO_TIMESTAMP_TYPE}.
  */
 class ConsumerRecord extends Record
 {
@@ -36,6 +42,8 @@ class ConsumerRecord extends Record
      * @param int|null    $offset            Offset of this record in the log
      * @param mixed       $deserializedKey   Key as `key.deserializer` returned it, the raw key without one
      * @param mixed       $deserializedValue Value as `value.deserializer` returned it, the raw value without one
+     * @param int|null    $timestamp         Timestamp of the record, null for a record of message format v0
+     * @param int         $timestampType     One of the {@see TimestampType} constants
      */
     public function __construct(
         public readonly string $topic,
@@ -46,8 +54,10 @@ class ConsumerRecord extends Record
         ?int $offset = null,
         public readonly mixed $deserializedKey = null,
         public readonly mixed $deserializedValue = null,
+        ?int $timestamp = null,
+        int $timestampType = TimestampType::NO_TIMESTAMP_TYPE,
     ) {
-        parent::__construct($value, $key, $attributes, $offset);
+        parent::__construct($value, $key, $attributes, $offset, $timestamp, $timestampType);
     }
 
     /**
@@ -68,7 +78,9 @@ class ConsumerRecord extends Record
             $record->attributes,
             $record->offset,
             $deserializedKey,
-            $deserializedValue
+            $deserializedValue,
+            $record->timestamp,
+            $record->timestampType
         );
     }
 }

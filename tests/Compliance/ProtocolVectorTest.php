@@ -15,6 +15,8 @@ namespace Protocol\Kafka\Tests\Compliance;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Record\MessageSet;
+use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Security\SaslToken;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\Subscription;
@@ -164,6 +166,14 @@ final class ProtocolVectorTest extends TestCase
      * @return iterable<string, array{0: array<string, mixed>}>
      */
     public static function listGroupsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function messageFormatVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
     }
@@ -337,6 +347,62 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * Replays a message set: the byte region that a Produce or a Fetch partition carries.
+     *
+     * A message set is neither a framed message nor a structure with a version, so it has its own replay: the
+     * shallow read has to reproduce the captured bytes exactly - which is the only way to check the wrapper message
+     * of a compressed set - and the deep read has to produce the records the vector documents, with the absolute
+     * offsets, the timestamps and the timestamp types that the message format prescribes.
+     *
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('messageFormatVectors')]
+    public function testMessageFormat(array $vector): void
+    {
+        $bytes = hex2bin($vector['hex']);
+        self::assertIsString($bytes, "Vector {$vector['id']} does not hold valid hex");
+
+        $shallow = MessageSet::shallowFromBuffer($bytes);
+        $deep    = MessageSet::fromBuffer($bytes);
+
+        self::assertSame(
+            $vector['fields']['shallow'],
+            array_map(
+                static fn(array $entry): array => [
+                    'offset'  => $entry[0],
+                    'message' => MessageFields::of($entry[1]),
+                ],
+                $shallow->getMessages()
+            ),
+            "Vector {$vector['id']} decodes into other messages than the ones it documents"
+        );
+        self::assertSame(
+            $vector['fields']['records'],
+            array_map(
+                static fn(Record $record): array => [
+                    'offset'        => $record->offset,
+                    'key'           => self::bytesOf($record->key),
+                    'value'         => self::bytesOf($record->value),
+                    'timestamp'     => $record->timestamp,
+                    'timestampType' => $record->timestampType,
+                ],
+                $deep->getRecords()
+            ),
+            "Vector {$vector['id']} decodes into other records than the ones it documents"
+        );
+        self::assertSame(
+            $vector['hex'],
+            bin2hex($shallow->toBuffer()),
+            "Vector {$vector['id']} does not survive a decode and encode round trip"
+        );
+        self::assertSame(
+            $vector['magic'],
+            $shallow->getMagic(),
+            "Vector {$vector['id']} was recorded in another message format"
+        );
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('saslHandshakeVectors')]
@@ -428,6 +494,16 @@ final class ProtocolVectorTest extends TestCase
         sort($apis);
 
         return $apis;
+    }
+
+    /**
+     * Renders a raw byte field the way a vector file stores it
+     *
+     * @return array{'$bytes': string}|null
+     */
+    private static function bytesOf(?string $value): ?array
+    {
+        return $value === null ? null : [MessageFields::BYTES_KEY => bin2hex($value)];
     }
 
     /**
