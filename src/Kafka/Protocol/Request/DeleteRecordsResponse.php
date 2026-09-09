@@ -38,12 +38,12 @@ use Protocol\Kafka\Protocol\Data\DeleteRecordsResponseTopic;
  * | Code | Name                     | Meaning                                                                     |
  * |------|--------------------------|-----------------------------------------------------------------------------|
  * | 0    | None                     | The records below the offset were deleted, `lowWatermark` is the new start   |
- * | 1    | OffsetOutOfRange         | The offset is above the high watermark of the partition                     |
+ * | 1    | OffsetOutOfRange         | The offset is above the high watermark, or negative and not -1              |
  * | 3    | UnknownTopicOrPartition  | The metadata cache of the broker has no such topic, or the topic has no such partition |
  * | 6    | NotLeaderForPartition    | The broker that was asked does not lead the partition                       |
  * | 7    | RequestTimedOut          | The new low watermark was not acknowledged by the ISR within `timeout`      |
+ * | 17   | InvalidTopic             | An internal topic, e.g. `__consumer_offsets`                                |
  * | 29   | TopicAuthorizationFailed | The client may describe the topic but not delete from it                    |
- * | 42   | InvalidRequest           | A negative offset other than -1                                             |
  *
  * @see docs/protocol/0.11.0.md, section "DeleteRecords API (key 21, v0)"
  */
