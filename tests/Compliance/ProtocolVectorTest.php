@@ -17,6 +17,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Security\SaslToken;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\StringStream;
@@ -24,10 +25,10 @@ use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 
 /**
- * Replays every documented wire vector of the Kafka 0.9.0.1 protocol through the request and response classes.
+ * Replays every documented wire vector of the Kafka 0.10.2.2 protocol through the request and response classes.
  *
- * Each vector is a frame that a Kafka broker really sent or really accepted - 0.9.0.1 for everything the release
- * added, 0.8.2.2 for the version 0 apis whose frames 0.9 does not change - stored as hex in
+ * Each vector is a frame that a Kafka broker really sent or really accepted - 0.10.2.2 for everything the 0.10 line
+ * added, 0.9.0.1 and 0.8.2.2 for the api versions whose frames the later lines do not change - stored as hex in
  * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/0.10.2.md`. For every one of them
  * this suite checks four things:
  *
@@ -41,6 +42,14 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
  */
 final class ProtocolVectorTest extends TestCase
 {
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function apiVersionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
@@ -167,6 +176,39 @@ final class ProtocolVectorTest extends TestCase
     public static function messageFormatVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function saslHandshakeVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function createTopicsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteTopicsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('apiVersionsVectors')]
+    public function testApiVersionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
     }
 
     /**
@@ -361,13 +403,30 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
-     * Renders a raw byte field the way a vector file stores it
-     *
-     * @return array{'$bytes': string}|null
+     * @param array<string, mixed> $vector
      */
-    private static function bytesOf(?string $value): ?array
+    #[DataProvider('saslHandshakeVectors')]
+    public function testSaslHandshakeApi(array $vector): void
     {
-        return $value === null ? null : [MessageFields::BYTES_KEY => bin2hex($value)];
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('createTopicsVectors')]
+    public function testCreateTopicsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteTopicsVectors')]
+    public function testDeleteTopicsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
     }
 
     /**
@@ -438,6 +497,16 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * Renders a raw byte field the way a vector file stores it
+     *
+     * @return array{'$bytes': string}|null
+     */
+    private static function bytesOf(?string $value): ?array
+    {
+        return $value === null ? null : [MessageFields::BYTES_KEY => bin2hex($value)];
+    }
+
+    /**
      * Decodes a vector, compares its fields and encodes it back
      *
      * @param array<string, mixed> $vector
@@ -484,17 +553,19 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
-     * Decodes a structure that travels inside a byte array field, compares its fields and encodes it back
+     * Decodes a structure that is not a framed message, compares its fields and encodes it back
      *
      * The payloads of the consumer group protocol are not framed messages of their own: they have no Size field, no
      * header and no api key, and {@see Subscription} and {@see MemberAssignment} read and write them from the plain
-     * bytes of a `member_metadata` or `member_assignment` field.
+     * bytes of a `member_metadata` or `member_assignment` field. The SASL tokens of a `SASL_PLAINTEXT`/`SASL_SSL`
+     * connection are not messages either - a {@see SaslToken} is a bare size-prefixed blob, without the header that
+     * every request and response carries.
      *
      * @param array<string, mixed> $vector
      */
     private function assertStructureIsReplayed(array $vector): void
     {
-        /** @var class-string<MemberAssignment|Subscription> $class */
+        /** @var class-string<MemberAssignment|SaslToken|Subscription> $class */
         $class = $vector['class'];
         $bytes = hex2bin($vector['hex']);
         self::assertIsString($bytes, "Vector {$vector['id']} does not hold valid hex");
@@ -512,10 +583,16 @@ final class ProtocolVectorTest extends TestCase
             bin2hex($structure->pack()),
             "Vector {$vector['id']} does not survive a decode and encode round trip"
         );
-        self::assertSame(
-            $vector['version'],
-            $structure->version,
-            "Vector {$vector['id']} was recorded with another version of the consumer group protocol"
-        );
+
+        // A structure that versions itself - the payloads of the consumer group protocol carry a Version field of
+        // their own - has to be the version the vector was recorded with; a SASL token has no version at all
+        $fields = MessageFields::of($structure);
+        if (isset($fields['version'])) {
+            self::assertSame(
+                $vector['version'],
+                $fields['version'],
+                "Vector {$vector['id']} was recorded with another version of the structure"
+            );
+        }
     }
 }

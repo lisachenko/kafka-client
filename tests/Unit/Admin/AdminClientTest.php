@@ -16,16 +16,24 @@ namespace Protocol\Kafka\Tests\Unit\Admin;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
+use Protocol\Kafka\Common\Errors\TopicExistsException;
+use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
@@ -35,6 +43,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Tests\Compliance\VectorFile;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
+use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 
 /**
@@ -95,6 +104,16 @@ final class AdminClientTest extends TestCase
      * Address of the single broker that the metadata vector announces
      */
     private const string BROKER_ADDRESS = 'tcp://127.0.0.1:9092';
+
+    /**
+     * Address of the second broker of the two-broker cluster that the controller lookup is exercised on
+     */
+    private const string SECOND_BROKER_ADDRESS = 'tcp://127.0.0.1:9093';
+
+    /**
+     * Topic name that {@see AdminClient::findController()} probes every broker of the cluster with
+     */
+    private const string PROBE_TOPIC = '#kafka-client-controller-probe#';
 
     private ScriptedConnections $brokers;
 
@@ -390,6 +409,239 @@ final class AdminClientTest extends TestCase
 
         self::assertSame([self::ADMIN_GROUP], array_keys($groups), 'a group is asked about only once');
         self::assertSame(2, $broker->getRequestCount(), 'one coordinator lookup and one DescribeGroups request');
+    }
+
+    public function testFindControllerSkipsTheBrokerThatAnswersNotController(): void
+    {
+        [$first, $second] = $this->scriptCluster(
+            [self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::NOT_CONTROLLER])],
+            [self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION])]
+        );
+
+        $controller = $this->adminClient()->findController();
+
+        self::assertSame(1, $controller->nodeId, 'the first broker that does not answer 41 is the controller');
+        self::assertSame(
+            self::requestFrame(
+                new DeleteTopicsRequest([self::PROBE_TOPIC], 0, 't10', $first->getReceivedCorrelationIds()[1])
+            ),
+            $first->getReceivedFrames()[1],
+            'the probe names a topic that can never be legal and asks with a timeout of 0'
+        );
+        self::assertSame(1, $second->getRequestCount());
+    }
+
+    public function testFindControllerFailsWhenEveryBrokerAnswersNotController(): void
+    {
+        $this->scriptCluster(
+            [self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::NOT_CONTROLLER])],
+            [self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::NOT_CONTROLLER])]
+        );
+
+        $this->expectException(NotControllerException::class);
+
+        $this->adminClient()->findController();
+    }
+
+    public function testCreateTopicsReportsTheErrorOfEveryTopicOfTheAnswer(): void
+    {
+        [$controller] = $this->scriptCluster(
+            [
+                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
+                self::createTopicsResponse([
+                    't7-created' => [KafkaException::NO_ERROR, null],
+                    't7-exists'  => [KafkaException::TOPIC_ALREADY_EXISTS, "Topic 't7-exists' already exists."],
+                ]),
+            ],
+            []
+        );
+
+        $result = $this->adminClient()->createTopics([
+            new NewTopic('t7-created', 1, 1),
+            new NewTopic('t7-exists', 1, 1),
+        ]);
+
+        self::assertSame(['t7-created', 't7-exists'], array_keys($result), 'in the order of the request');
+        self::assertNull($result['t7-created']);
+        self::assertInstanceOf(TopicExistsException::class, $result['t7-exists']);
+        self::assertSame(
+            ['topic' => 't7-exists', 'error' => "Topic 't7-exists' already exists."],
+            $result['t7-exists']->getContext(),
+            'the error message of version 1 travels into the context of the exception'
+        );
+        self::assertSame(
+            self::requestFrame(
+                new CreateTopicsRequest(
+                    [new NewTopic('t7-created', 1, 1), new NewTopic('t7-exists', 1, 1)],
+                    30000,
+                    false,
+                    't10',
+                    $controller->getReceivedCorrelationIds()[2]
+                )
+            ),
+            $controller->getReceivedFrames()[2],
+            'the request goes out as CreateTopics v1 with the default timeout'
+        );
+    }
+
+    public function testCreateTopicsIsRepeatedOnceAgainstAFreshlyLookedUpController(): void
+    {
+        // The controller moved between the lookup and the request: the answer is 41 for every topic, and a second
+        // lookup finds the broker that is the controller now
+        [$first, $second] = $this->scriptCluster(
+            [
+                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
+                self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]]),
+                self::metadataResponse(),
+                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::NOT_CONTROLLER]),
+            ],
+            [
+                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
+                self::createTopicsResponse(['t7-moved' => [KafkaException::NO_ERROR, null]]),
+            ]
+        );
+
+        $result = $this->adminClient()->createTopics([new NewTopic('t7-moved', 1, 1)]);
+
+        self::assertSame(['t7-moved' => null], $result);
+        self::assertSame(
+            5,
+            $first->getRequestCount(),
+            'metadata, probe, create, and then the metadata and the probe of the second lookup'
+        );
+        self::assertSame(2, $second->getRequestCount(), 'the probe of the second lookup and the repeated request');
+    }
+
+    public function testTheAnswerOfTheSecondControllerIsReportedAsItIs(): void
+    {
+        [$first] = $this->scriptCluster(
+            [
+                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
+                self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]]),
+                self::metadataResponse(),
+                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
+                self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]]),
+            ],
+            []
+        );
+
+        $result = $this->adminClient()->createTopics([new NewTopic('t7-moved', 1, 1)]);
+
+        self::assertInstanceOf(NotControllerException::class, $result['t7-moved']);
+        self::assertSame(6, $first->getRequestCount(), 'the request was repeated once and not a third time');
+    }
+
+    public function testDeleteTopicsReportsTheErrorOfEveryTopicOfTheAnswer(): void
+    {
+        [$controller] = $this->scriptCluster(
+            [
+                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
+                self::deleteTopicsResponse([
+                    't7-deleted' => KafkaException::NO_ERROR,
+                    't7-unknown' => KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+                ]),
+            ],
+            []
+        );
+
+        $result = $this->adminClient()->deleteTopics(['t7-deleted', 't7-unknown'], 5000);
+
+        self::assertSame(['t7-deleted', 't7-unknown'], array_keys($result));
+        self::assertNull($result['t7-deleted']);
+        self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result['t7-unknown']);
+        self::assertSame(
+            self::requestFrame(
+                new DeleteTopicsRequest(
+                    ['t7-deleted', 't7-unknown'],
+                    5000,
+                    't10',
+                    $controller->getReceivedCorrelationIds()[2]
+                )
+            ),
+            $controller->getReceivedFrames()[2]
+        );
+    }
+
+    public function testATopicTheControllerDidNotAnswerForIsNotReportedAsCreated(): void
+    {
+        $this->scriptCluster(
+            [
+                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
+                self::createTopicsResponse([]),
+            ],
+            []
+        );
+
+        $result = $this->adminClient()->createTopics([new NewTopic('t7-missing', 1, 1)]);
+
+        self::assertInstanceOf(UnknownErrorException::class, $result['t7-missing']);
+    }
+
+    /**
+     * Scripts a cluster of two brokers and returns the connections that will be handed out for them
+     *
+     * The Metadata answer of `findAllBrokers()` is prepended to the script of the first broker, because that is the
+     * first thing every controller lookup sends; a lookup that happens a second time needs one more of them, which
+     * the caller puts into the script itself.
+     *
+     * @param list<string> $firstBrokerResponses  Answers of the broker with the node id 0
+     * @param list<string> $secondBrokerResponses Answers of the broker with the node id 1
+     *
+     * @return array{0: BrokerConnection, 1: BrokerConnection}
+     */
+    private function scriptCluster(array $firstBrokerResponses, array $secondBrokerResponses): array
+    {
+        $first  = new BrokerConnection(self::metadataResponse(), ...$firstBrokerResponses);
+        $second = new BrokerConnection(...$secondBrokerResponses);
+
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(self::metadataResponse()))
+            ->on(self::BROKER_ADDRESS, $first)
+            ->on(self::SECOND_BROKER_ADDRESS, $second)
+            ->install();
+
+        return [$first, $second];
+    }
+
+    /**
+     * Builds the Metadata answer of a cluster of two brokers without a single topic
+     */
+    private static function metadataResponse(): string
+    {
+        return ResponseFrame::metadata(0, [[0, '127.0.0.1', 9092], [1, '127.0.0.1', 9093]]);
+    }
+
+    /**
+     * Builds a CreateTopics answer of version 1
+     *
+     * @param array<string, array{0: int, 1: string|null}> $topics Error code and message of every topic
+     */
+    private static function createTopicsResponse(array $topics): string
+    {
+        $body = pack('N', count($topics));
+        foreach ($topics as $topic => [$errorCode, $errorMessage]) {
+            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
+            $body .= $errorMessage === null
+                ? pack('n', 0xFFFF)
+                : pack('n', strlen($errorMessage)) . $errorMessage;
+        }
+
+        return ResponseFrame::of(0, $body);
+    }
+
+    /**
+     * Builds a DeleteTopics answer of version 0
+     *
+     * @param array<string, int> $topics Error code of every topic
+     */
+    private static function deleteTopicsResponse(array $topics): string
+    {
+        $body = pack('N', count($topics));
+        foreach ($topics as $topic => $errorCode) {
+            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
+        }
+
+        return ResponseFrame::of(0, $body);
     }
 
     /**

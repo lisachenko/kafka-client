@@ -29,9 +29,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     Members      => MemberId ClientId ClientHost MemberMetadata MemberAssignment
  * </pre>
  *
- * The state is one of the constants below; `kafka/coordinator/GroupMetadata.scala` @ 0.9.0.1 defines exactly the
- * four states, and the coordinator answers a group it does not know with {@see self::STATE_DEAD} and the error
- * code 0, not with an error - a group only exists while it has members or committed offsets.
+ * The state is one of the constants below; `kafka/coordinator/GroupMetadata.scala` @ 0.10.2.2 defines exactly the
+ * five states, and the coordinator answers a group it does not know with {@see self::STATE_DEAD} and the error
+ * code 0, not with an error.
+ *
+ * Kafka 0.10.1 split "the group is gone" in two. A group whose last member left is no longer dropped at once, it
+ * moves to {@see self::STATE_EMPTY} and lingers there with its committed offsets until `offsets.retention.minutes`
+ * expires them; only then does it become {@see self::STATE_DEAD} and disappear from ListGroups. A 0.9.0.1
+ * coordinator had no such state and answered `Dead` from the moment the last member had left.
  *
  * @see docs/protocol/0.10.2.md, section "DescribeGroups API (key 15, v0)"
  */
@@ -53,7 +58,16 @@ class DescribeGroupResponseMetadata implements BinarySchemaInterface
     public const string STATE_STABLE = 'Stable';
 
     /**
-     * The group has no members left, or the coordinator has never heard of it
+     * The group has no members left but still holds committed offsets (Kafka 0.10.1 and later)
+     *
+     * A group reaches this state when its last member leaves, and a group that only uses Kafka to store offsets and
+     * never joins is in it from the start. It answers JoinGroup normally, every other membership api with 25
+     * (UnknownMemberId), and it is still listed by ListGroups.
+     */
+    public const string STATE_EMPTY = 'Empty';
+
+    /**
+     * The coordinator has never heard of the group, or has forgotten it because its offsets expired
      */
     public const string STATE_DEAD = 'Dead';
 

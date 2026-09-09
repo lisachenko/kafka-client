@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Admin;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
@@ -22,12 +23,14 @@ use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
+use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
@@ -36,8 +39,12 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
@@ -62,16 +69,13 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
  * {@see self::describeGroup()} reports the state, the protocol and the members of one of them. The committed offsets
  * of a group are still read with {@see self::listGroupOffsets()}.
  *
- * Absent on this branch, because the api keys do not exist in 0.9.0.1 (the broker drops such a request without an
- * answer, see the protocol document):
+ * Kafka 0.10.0 added the api that says what a broker speaks: {@see self::getApiVersions()} (key 18) reports the
+ * version range of every api of one broker, which is the only way to tell one release of the protocol from another
+ * without guessing. A broker of a line below answers nothing at all for that key and closes or drops the frame.
  *
- * | Method of `main`   | Api key          | Arrived in |
- * |--------------------|------------------|------------|
- * | `getApiVersions()` | 18 (ApiVersions) | Kafka 0.10 |
- *
- * There is no CreateTopics api key either (that is Kafka 0.10.1): a topic is created by writing to ZooKeeper, e.g.
- * with `kafka-topics.sh`, or implicitly by asking for its metadata while `auto.create.topics.enable` is on -
- * see {@see self::describeTopics()}.
+ * A topic can also be created through the protocol from Kafka 0.10.1 on (CreateTopics, key 19); until then a topic
+ * was created by writing to ZooKeeper, e.g. with `kafka-topics.sh`, or implicitly by asking for its metadata while
+ * `auto.create.topics.enable` is on - see {@see self::describeTopics()}.
  */
 class AdminClient
 {
@@ -91,6 +95,41 @@ class AdminClient
         array $configuration = []
     ) {
         $this->configuration = $configuration + ClientConfig::getDefaultConfiguration();
+    }
+
+    /**
+     * Returns the version range of every api one broker serves, indexed by the api key (ApiKey 18)
+     *
+     * The method carries the name it has on the `main` branch. Every broker answers for itself, so a rolling upgrade
+     * is visible here as brokers that report different ranges; ask each of them with {@see self::findAllBrokers()}.
+     *
+     * A 0.10.2.2 broker reports the keys 0 to 20 - the table of the "API keys" section of the protocol document -
+     * and its answer is authoritative for two things the wire format does not show: ControlledShutdown (key 7) is
+     * reported with `minVersion = 1`, because version 0 uses a header without a client id, and every key above 20
+     * is simply absent instead of being reported with an empty range.
+     *
+     * @param Node $node Broker to ask
+     *
+     * @throws KafkaException If the broker answered the error code 35 (UnsupportedVersion), i.e. it is older than
+     *                        Kafka 0.10.0 and does not serve version 0 of this api either
+     *
+     * @return array<int, ApiVersionsResponseMetadata> Version range of each api, indexed by the api key
+     */
+    public function getApiVersions(Node $node): array
+    {
+        /** @var ApiVersionsResponse $response */
+        $response = $this->sendTo(
+            $node->getConnection($this->configuration),
+            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest($this->clientId(), $correlationId),
+            ApiVersionsResponse::class,
+            ['node' => $node->nodeId]
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['node' => $node->nodeId]);
+        }
+
+        return $response->apiVersions;
     }
 
     /**
@@ -592,5 +631,189 @@ class AdminClient
         $storage = $this->configuration[ClientConfig::OFFSETS_STORAGE] ?? ClientConfig::OFFSETS_STORAGE_KAFKA;
 
         return $storage === ClientConfig::OFFSETS_STORAGE_KAFKA;
+    }
+
+    /**
+     * Topic name that {@see self::findController()} probes the brokers with
+     *
+     * `#` is not one of the characters a Kafka topic name may contain (`Topic.validate` @ 0.10.2.2 allows
+     * `[a-zA-Z0-9._-]` only), so no cluster can ever hold a topic of this name and the probe can not delete
+     * anything by accident.
+     */
+    private const string CONTROLLER_PROBE_TOPIC = '#kafka-client-controller-probe#';
+
+    /**
+     * Low-level client of this cluster, built by {@see self::client()} when a topic api is used for the first time
+     */
+    private ?Client $kafkaClient = null;
+
+    /**
+     * Creates the given topics on the cluster (ApiKey 19, Kafka 0.10.1)
+     *
+     * Kafka 0.10.1 is the first release in which a client can create a topic without writing to ZooKeeper itself;
+     * before it, the only way through the protocol was to ask a broker with `auto.create.topics.enable` for the
+     * metadata of a topic that does not exist yet ({@see self::describeTopics()}), which gives every topic the
+     * defaults of the broker.
+     *
+     * The request is sent to the active controller ({@see self::findController()}), the only broker that serves it,
+     * and it is repeated ONCE against a freshly looked up controller when the answer says 41 (NotController) -
+     * which is what a client sees when the controller moved between the lookup and the request.
+     *
+     * Every requested topic gets an entry in the result, in the order of `$newTopics`: `null` when the topic was
+     * created (or validated, with `$validateOnly`), otherwise the exception of its error code - 36 TopicExists,
+     * 37 InvalidPartitions, 38 InvalidReplicationFactor, 39 InvalidReplicaAssignment, 40 InvalidConfig, 42
+     * InvalidRequest, 44 PolicyViolation - whose context carries the `error_message` the controller sent with it.
+     * Nothing is thrown for a topic that could not be created: one failing topic of a request does not say anything
+     * about the others, and a caller that wants an exception raises the one of the topic it cares about.
+     *
+     * CAVEAT: `$timeoutMs` is the time the CONTROLLER waits for the topic to exist before it answers, so a value of
+     * 0 answers immediately, with the error code 7 (RequestTimedOut) for every topic - their creation has been
+     * scheduled and finishes shortly afterwards. With the default of 30 seconds a successful answer means that the
+     * topic exists on the controller; the other brokers learn about it with the next metadata update, so a Metadata
+     * request may still answer 5 (LeaderNotAvailable) for a moment.
+     *
+     * @param list<NewTopic> $newTopics    Topics to create
+     * @param int            $timeoutMs    How long the controller waits for the topics to be created
+     * @param bool           $validateOnly Validate the request without creating anything (CreateTopics v1)
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws NotControllerException If no broker of the cluster is the active controller
+     *
+     * @return array<string, KafkaException|null> Error of every requested topic, null when it was created
+     */
+    public function createTopics(array $newTopics, int $timeoutMs = 30000, bool $validateOnly = false): array
+    {
+        return $this->onController(
+            fn(Node $controller): array => $this->client()
+                ->createTopics($controller, $newTopics, $timeoutMs, $validateOnly)
+        );
+    }
+
+    /**
+     * Deletes the given topics from the cluster (ApiKey 20, Kafka 0.10.1)
+     *
+     * The request is sent to the active controller and repeated once on 41 (NotController), exactly like
+     * {@see self::createTopics()}. Every requested topic gets an entry in the result, in the order of `$topics`:
+     * `null` when it was deleted, the exception of the error code otherwise - 3 UnknownTopicOrPartition for a topic
+     * the cluster does not have, 29 TopicAuthorizationFailed when the client may not delete it.
+     *
+     * CAVEAT: deleting a topic is ASYNCHRONOUS. The controller writes the topic into `/admin/delete_topics` in
+     * ZooKeeper and then removes its partitions from the brokers; `$timeoutMs` is how long it waits for that before
+     * it answers, and with a timeout of 0 every topic comes back with the error code 7 (RequestTimedOut) although
+     * its deletion is under way. Even a successful answer only means that the controller is done with it - the
+     * topic disappears from the metadata of the other brokers a moment later, so a caller that waits for it should
+     * poll {@see self::listTopics()}. A cluster whose brokers run with `delete.topic.enable=false` - the default of
+     * Kafka 0.10 - accepts the request and never carries the deletion out.
+     *
+     * @param list<string> $topics    Names of the topics to delete
+     * @param int          $timeoutMs How long the controller waits for the topics to be deleted
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws NotControllerException If no broker of the cluster is the active controller
+     *
+     * @return array<string, KafkaException|null> Error of every requested topic, null when it was deleted
+     */
+    public function deleteTopics(array $topics, int $timeoutMs = 30000): array
+    {
+        return $this->onController(
+            fn(Node $controller): array => $this->client()->deleteTopics($controller, $topics, $timeoutMs)
+        );
+    }
+
+    /**
+     * Returns the broker that is the active controller of the cluster
+     *
+     * The topic administration apis are served by the active controller alone, and version 0 of the Metadata api -
+     * the only one a 0.9 broker had - does not say which broker that is: the `controller_id` field arrived with
+     * Metadata v1 in Kafka 0.10.0 and replaces the body of this method in the ticket that implements it. Until
+     * then the controller is found by asking: every broker of {@see self::findAllBrokers()} is sent a probe of the
+     * DeleteTopics api, and the first one that does not answer 41 (NotController) is the controller.
+     *
+     * The probe deletes NOTHING. It names one topic whose name can never be a legal Kafka topic
+     * ({@see self::CONTROLLER_PROBE_TOPIC} - `Topic.validate` only allows `[a-zA-Z0-9._-]`), so the controller
+     * cannot find it in its metadata cache and answers the error code 3 (UnknownTopicOrPartition) without touching
+     * ZooKeeper, while every other broker answers 41 for it. A request with an EMPTY topic array - the obvious
+     * probe - can NOT be used: `KafkaApis.handleDeleteTopicsRequest` @ 0.10.2.2 builds the answer by mapping over
+     * the topics of the REQUEST, so an empty request is answered with an empty array by the controller and by every
+     * follower alike, and the answer would never carry the 41 the lookup is looking for. That was verified against
+     * the 0.10.2.2 broker, see the "DeleteTopics API" section of the protocol document.
+     *
+     * @throws AllBrokersNotAvailableException If not a single broker of the cluster answered the probe
+     * @throws NotControllerException If every broker of the cluster answered 41, i.e. the cluster is electing a
+     *         controller right now
+     */
+    public function findController(): Node
+    {
+        $lastException = null;
+        $refusedNodes  = [];
+        foreach ($this->findAllBrokers() as $node) {
+            try {
+                /** @var DeleteTopicsResponse $response */
+                $response = $this->sendTo(
+                    $node->getConnection($this->configuration),
+                    fn(int $correlationId): DeleteTopicsRequest => new DeleteTopicsRequest(
+                        [self::CONTROLLER_PROBE_TOPIC],
+                        0,
+                        $this->clientId(),
+                        $correlationId
+                    ),
+                    DeleteTopicsResponse::class,
+                    ['node' => $node->nodeId]
+                );
+            } catch (Exception $exception) {
+                $lastException = $exception;
+
+                continue;
+            }
+
+            $errorCode = $response->topics[self::CONTROLLER_PROBE_TOPIC]->errorCode ?? KafkaException::NO_ERROR;
+            if ($errorCode !== KafkaException::NOT_CONTROLLER) {
+                return $node;
+            }
+            $refusedNodes[] = $node->nodeId;
+        }
+
+        if ($refusedNodes !== []) {
+            throw new NotControllerException(
+                ['nodes' => $refusedNodes, 'error' => 'No broker of the cluster is the active controller']
+            );
+        }
+
+        throw new AllBrokersNotAvailableException(
+            ['error' => 'No broker of the cluster answered the controller lookup'],
+            KafkaException::UNKNOWN,
+            $lastException
+        );
+    }
+
+    /**
+     * Runs a request against the active controller and repeats it once if the answer says 41 (NotController)
+     *
+     * A controller election between the lookup and the request is the one failure of the topic administration apis
+     * that a client can fix by itself, and one more lookup is enough for it: the answer of the second attempt is
+     * reported as it is, whatever it says.
+     *
+     * @param Closure(Node): array<string, KafkaException|null> $request Sends the request to the given controller
+     *
+     * @return array<string, KafkaException|null>
+     */
+    private function onController(Closure $request): array
+    {
+        $result = $request($this->findController());
+        foreach ($result as $error) {
+            if ($error instanceof NotControllerException) {
+                return $request($this->findController());
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns a low-level client for the cluster this instance administers
+     */
+    private function client(): Client
+    {
+        return $this->kafkaClient ??= new Client($this->cluster, $this->configuration);
     }
 }

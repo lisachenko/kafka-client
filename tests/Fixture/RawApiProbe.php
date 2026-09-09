@@ -16,19 +16,25 @@ namespace Protocol\Kafka\Tests\Fixture;
 use RuntimeException;
 
 /**
- * Sends hand-built request frames to a real broker to find out which api keys and versions it serves.
+ * Sends hand-built request frames to a real broker to find out what it does with a frame the client cannot build.
  *
  * The protocol classes of this branch can not be used for that: the whole point of the probe is to send frames that
- * the branch does not implement - an api key it does not know, or a version above the highest one it declares - and
- * to see what the broker does with them. Everything here is therefore raw `pack()` on a plain socket.
+ * the branch does not implement - an api key it does not know, a version above the highest one it declares, or a
+ * body that deliberately does not match its schema - and to see what the broker does with them. Everything here is
+ * therefore raw `pack()` on a plain socket. What the broker *does* serve is no longer probed at all on this line:
+ * a 0.10 broker answers that with ApiVersions (key 18).
  *
- * A Kafka 0.9.0.1 broker has three answers to such a frame, and the probe tells them apart:
+ * A broker has three answers to such a frame, and the probe tells them apart:
  *
  * * {@see self::ANSWERED} - a complete response frame came back.
- * * {@see self::SILENT} - nothing came back and the connection stayed open. This is what an unknown api key or an
- *   unsupported version looks like: the network thread logs "Processor got uncaught exception" and drops the
- *   request, so the client waits for its own timeout.
- * * {@see self::CLOSED} - the broker closed the connection.
+ * * {@see self::CLOSED} - the broker closed the connection. On **Kafka 0.10** this is what an unknown api key, an
+ *   unsupported version or a body that does not match the schema looks like: `SocketServer.processCompletedReceives`
+ *   @ 0.10.2.2 catches the `InvalidRequestException`/`SchemaException` of the parser and closes the channel, and the
+ *   broker log carries "Closing socket for ... because of error" with the reason.
+ * * {@see self::SILENT} - nothing came back and the connection stayed open. This is the answer of a **0.9.0.1**
+ *   broker to a frame it cannot parse: the network thread logs "Processor got uncaught exception", drops the
+ *   request and goes on, so the client waits for its own timeout. A 0.10.2.2 broker never does this, and the status
+ *   is kept both to tell a hung connection from a closed one and because the fixture is cascaded upwards unchanged.
  *
  * @see \Protocol\Kafka\Tests\Integration\ApiVersionProbeTest
  */
