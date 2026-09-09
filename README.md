@@ -241,7 +241,7 @@ foreach ($group->members as $memberId => $member) {
 | `getApiVersions()`                           | ApiVersions v0          | The version range of every api of **one** broker, indexed by api key  |
 | `findAllBrokers()`                           | Metadata v2             | An empty result means "the cluster is not ready yet", see below      |
 | `listTopics()` / `describeTopics()`          | Metadata v2             | **Creates** an unknown topic when `auto.create.topics.enable` is on; `describeTopics([])` asks for every topic (the `null` array of v1) |
-| `findController()`                          | Metadata v2             | The `controller_id` of the answer; the two topic apis below need it   |
+| `findController()`                           | Metadata v2             | The `controller_id` of the answer; the two topic apis below need it   |
 | `createTopics()`                             | CreateTopics v1         | `NewTopic` with partitions/factor or an explicit assignment, plus topic configs; `validateOnly` checks without creating |
 | `deleteTopics()`                             | DeleteTopics v0         | Needs `delete.topic.enable=true` on the broker                        |
 | `listOffsets()`                              | Offsets v1              | Earliest, latest or by message timestamp; **one** offset per partition, sent to the partition leader |
