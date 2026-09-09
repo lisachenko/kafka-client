@@ -57,6 +57,17 @@ interface Stream
     public function readByteArray(): ?string;
 
     /**
+     * Reads a raw (unsigned, not zigzag-decoded) varint of at most 5 bytes: 7 bits per byte, least significant
+     * group first, the high bit set on every byte but the last (Kafka 0.11, record batch v2)
+     */
+    public function readVarint(): int;
+
+    /**
+     * Reads a raw varint of at most 10 bytes, the encoding of an int64
+     */
+    public function readVarlong(): int;
+
+    /**
      * Writes a non-nullable string to the stream: int16 length prefix followed by the content
      */
     public function writeString(string $string): void;
@@ -65,6 +76,16 @@ interface Stream
      * Writes a byte array to the stream: int32 length prefix followed by the content, null is written as -1
      */
     public function writeByteArray(?string $data): void;
+
+    /**
+     * Writes an unsigned value as a raw varint (the caller zigzag-encodes a signed one first)
+     */
+    public function writeVarint(int $value): void;
+
+    /**
+     * Writes an unsigned 64-bit value as a raw varint of up to 10 bytes
+     */
+    public function writeVarlong(int $value): void;
 
     /**
      * Writes the raw buffer into the stream as-is

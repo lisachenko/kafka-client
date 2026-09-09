@@ -59,6 +59,23 @@ final class StringStreamTest extends TestCase
         self::assertTrue(new StringStream()->isConnected());
     }
 
+    public function testRawVarintsRoundTripAndAreBounded(): void
+    {
+        $stream = new StringStream();
+        $stream->writeVarint(300);
+        $stream->writeVarlong(0xFFFFFFFF);
+        $stream->writeVarlong(-1);
+        self::assertSame('ac02ffffffff0fffffffffffffffffff01', bin2hex($stream->getBuffer()));
+
+        self::assertSame(300, $stream->readVarint());
+        self::assertSame(0xFFFFFFFF, $stream->readVarlong());
+        self::assertSame(-1, $stream->readVarlong());
+        self::assertTrue($stream->isEmpty());
+
+        $this->expectException(NetworkException::class);
+        new StringStream("\xff\xff\xff\xff\xff\x01")->readVarint();
+    }
+
     public function testReadingPastTheEndOfTheBufferIsAnError(): void
     {
         $stream = new StringStream(hex2bin('0003'));

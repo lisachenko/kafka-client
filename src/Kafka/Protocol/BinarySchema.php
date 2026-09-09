@@ -19,6 +19,7 @@ use function is_array;
 use function is_string;
 use function key;
 
+use Protocol\Kafka\Common\Utils\ByteUtils;
 use Protocol\Kafka\IO\Stream;
 use ReflectionClass;
 
@@ -27,13 +28,15 @@ use function strlen;
 /**
  * BinarySchema defines the common types and the API for reading and writing the primitive types of the protocol.
  *
- * This is the engine of the `0.8.x` line carried up through the cascade: the type constants keep the numeric values
- * of the pre-schema `main`, and every line implements only the types its protocol has. The boolean (a single byte,
- * `00` or `01`) arrived with Kafka 0.10 (`is_internal` of Metadata v1, `validate_only` of CreateTopics v1). Kafka
- * 0.11 adds the three types of the record batch v2 - `TYPE_VARINT`, `TYPE_VARLONG` and `TYPE_VARINT_BYTEARRAY`, all
- * of them zigzag-encoded as `org.apache.kafka.common.utils.ByteUtils` writes them - and the varint-counted array
- * (`FLAG_VARINT_COUNT`) that the headers of a record are; no request or response of 0.11 uses them, only the
- * records inside a batch do.
+ * This is the engine of the `0.8.x` line carried up through the cascade: the type constants keep the names and the
+ * numeric values of the pre-schema `main`, and every line implements only the types its protocol has. The boolean
+ * (a single byte, `00` or `01`) arrived with Kafka 0.10 (`is_internal` of Metadata v1, `validate_only` of
+ * CreateTopics v1). Kafka 0.11 adds the zigzag varints of the record batch v2 - `TYPE_VARINT_ZIGZAG`,
+ * `TYPE_VARLONG_ZIGZAG` and `TYPE_VARCHAR_ZIGZAG`, encoded as `org.apache.kafka.common.utils.ByteUtils` writes them,
+ * with {@see \Protocol\Kafka\Common\Utils\ByteUtils} for the zigzag step and {@see Stream::readVarint()} for the
+ * bytes - and the varint-counted array (`FLAG_VARARRAY`) that the headers of a record are. No request or response of
+ * 0.11 uses them, only the records inside a batch do; the *raw* varints of `main` (`TYPE_VARINT` 5, `TYPE_VARLONG` 6,
+ * `TYPE_VARCHAR` 7) are not on the wire of any api of 0.11 and stay reserved numbers here.
  *
  * @see docs/protocol/0.11.0.md
  */
@@ -43,28 +46,23 @@ class BinarySchema
     public const int TYPE_INT16     = 2;
     public const int TYPE_INT32     = 3;
     public const int TYPE_INT64     = 4;
-    public const int TYPE_VARINT    = 5;  // Zigzag-encoded int32 in 1 to 5 bytes of 7 bits, low bits first (Kafka 0.11)
-    public const int TYPE_VARLONG   = 6;  // Zigzag-encoded int64 in 1 to 10 bytes (Kafka 0.11)
+    // 5, 6 and 7 are TYPE_VARINT, TYPE_VARLONG and TYPE_VARCHAR of `main`: raw varints, not on the wire of Kafka 0.11
     public const int TYPE_STRING    = 8;  // INT16-encoded length and then bytes of chars
     public const int TYPE_BYTEARRAY = 10; // INT32 size of data, then bytes of data, -1 as size means null
-    public const int TYPE_VARINT_BYTEARRAY = 13; // VARINT size of data, then bytes of data, -1 as size means null
+    public const int TYPE_VARINT_ZIGZAG  = 11; // Zigzag-encoded int32 as a varint of 1 to 5 bytes (Kafka 0.11)
+    public const int TYPE_VARLONG_ZIGZAG = 12; // Zigzag-encoded int64 as a varint of 1 to 10 bytes (Kafka 0.11)
+    public const int TYPE_VARCHAR_ZIGZAG = 13; // Zigzag varint size of data, then bytes of data, -1 as size means null
     public const int TYPE_BOOLEAN   = 20; // A single byte: 0 is false, anything else is true (Kafka 0.10)
+
+    /**
+     * Array notation key: the element count is a zigzag varint instead of an int32 (the headers of a record, Kafka 0.11)
+     */
+    public const int FLAG_VARARRAY = 14;
 
     /**
      * Use -1 as null array/string
      */
     public const int FLAG_NULLABLE = 128;
-
-    /**
-     * Array notation key: the element count is a zigzag varint instead of an int32 (the headers of a record, Kafka 0.11)
-     */
-    public const int FLAG_VARINT_COUNT = 14;
-
-    /**
-     * Largest number of 7-bit groups of a varint (5 bytes) and of a varlong (10 bytes), as `ByteUtils` @ 0.11 enforces
-     */
-    private const int MAX_VARINT_SHIFT  = 28;
-    private const int MAX_VARLONG_SHIFT = 63;
 
     /**
      * INT16-encoded length and then bytes of chars, -1 as size means null value
@@ -99,11 +97,11 @@ class BinarySchema
             case self::TYPE_BOOLEAN:
                 return 1;
 
-            case self::TYPE_VARINT:
-                return self::sizeOfVarint(self::zigzagEncode((int) $value, 32));
+            case self::TYPE_VARINT_ZIGZAG:
+                return ByteUtils::sizeOfVarint((int) $value);
 
-            case self::TYPE_VARLONG:
-                return self::sizeOfVarint(self::zigzagEncode((int) $value, 64));
+            case self::TYPE_VARLONG_ZIGZAG:
+                return ByteUtils::sizeOfVarlong((int) $value);
 
             case self::TYPE_STRING:
             case self::TYPE_NULLABLE_STRING:
@@ -112,10 +110,10 @@ class BinarySchema
             case self::TYPE_BYTEARRAY:
                 return 4 /* INT32 Size */ + ($value !== null ? strlen((string) $value) : 0);
 
-            case self::TYPE_VARINT_BYTEARRAY:
+            case self::TYPE_VARCHAR_ZIGZAG:
                 $length = $value !== null ? strlen((string) $value) : -1;
 
-                return self::sizeOfVarint(self::zigzagEncode($length, 32)) + max($length, 0);
+                return ByteUtils::sizeOfVarint($length) + max($length, 0);
         }
 
         throw new \RuntimeException("Unknown scheme type {$schemeType}");
@@ -264,11 +262,11 @@ class BinarySchema
                 // Types.BOOLEAN of the Java client reads any non-zero byte as true and always writes 0 or 1
                 return $stream->read('CBOOLEAN')['BOOLEAN'] !== 0;
 
-            case self::TYPE_VARINT:
-                return self::zigzagDecode(self::readVarint($stream, self::MAX_VARINT_SHIFT, $path), 32);
+            case self::TYPE_VARINT_ZIGZAG:
+                return ByteUtils::decodeZigZag($stream->readVarint());
 
-            case self::TYPE_VARLONG:
-                return self::zigzagDecode(self::readVarint($stream, self::MAX_VARLONG_SHIFT, $path), 64);
+            case self::TYPE_VARLONG_ZIGZAG:
+                return ByteUtils::decodeZigZag($stream->readVarlong());
 
             case self::TYPE_STRING:
                 return $stream->readString();
@@ -284,8 +282,8 @@ class BinarySchema
             case self::TYPE_BYTEARRAY:
                 return $stream->readByteArray();
 
-            case self::TYPE_VARINT_BYTEARRAY:
-                $length = self::readSingleType(self::TYPE_VARINT, $stream, "{$path}[size]");
+            case self::TYPE_VARCHAR_ZIGZAG:
+                $length = self::readSingleType(self::TYPE_VARINT_ZIGZAG, $stream, "{$path}[size]");
                 if ($length < 0) {
                     return null;
                 }
@@ -357,12 +355,12 @@ class BinarySchema
                 $stream->write('C', $value ? 1 : 0);
 
                 return;
-            case self::TYPE_VARINT:
-                self::writeVarint(self::zigzagEncode((int) $value, 32), $stream);
+            case self::TYPE_VARINT_ZIGZAG:
+                $stream->writeVarint(ByteUtils::encodeZigZag((int) $value, 32));
 
                 return;
-            case self::TYPE_VARLONG:
-                self::writeVarint(self::zigzagEncode((int) $value, 64), $stream);
+            case self::TYPE_VARLONG_ZIGZAG:
+                $stream->writeVarlong(ByteUtils::encodeZigZag((int) $value, 64));
 
                 return;
             case self::TYPE_STRING:
@@ -382,14 +380,14 @@ class BinarySchema
                 $stream->writeByteArray($value);
 
                 return;
-            case self::TYPE_VARINT_BYTEARRAY:
+            case self::TYPE_VARCHAR_ZIGZAG:
                 if ($value === null) {
-                    self::writeSingleType(self::TYPE_VARINT, -1, $stream);
+                    self::writeSingleType(self::TYPE_VARINT_ZIGZAG, -1, $stream);
 
                     return;
                 }
                 $value = (string) $value;
-                self::writeSingleType(self::TYPE_VARINT, strlen($value), $stream);
+                self::writeSingleType(self::TYPE_VARINT_ZIGZAG, strlen($value), $stream);
                 $stream->writeBuffer($value);
 
                 return;
@@ -399,85 +397,15 @@ class BinarySchema
     }
 
     /**
-     * Zigzag-encodes a signed value into the unsigned one that goes into a varint: 0 → 0, -1 → 1, 1 → 2, -2 → 3 …
+     * Returns the type of the element count of an array notation: an int32 unless FLAG_VARARRAY is set
      *
-     * @param int $bits 32 for a varint, 64 for a varlong; the result of the 32-bit form is masked to 32 bits
-     */
-    public static function zigzagEncode(int $value, int $bits): int
-    {
-        if ($bits === 32) {
-            return (($value << 1) ^ ($value >> 31)) & 0xFFFFFFFF;
-        }
-
-        return ($value << 1) ^ ($value >> 63);
-    }
-
-    /**
-     * Reverses {@see zigzagEncode()}: the unsigned value read out of a varint becomes the signed one it stands for
-     */
-    public static function zigzagDecode(int $encoded, int $bits): int
-    {
-        if ($bits === 32) {
-            return (($encoded >> 1) & 0x7FFFFFFF) ^ -($encoded & 1);
-        }
-
-        return (($encoded >> 1) & PHP_INT_MAX) ^ -($encoded & 1);
-    }
-
-    /**
-     * Returns the number of bytes a varint of the given unsigned value occupies (1 to 5, a varlong 1 to 10)
-     */
-    public static function sizeOfVarint(int $unsigned): int
-    {
-        $bytes = 1;
-        while (($unsigned & ~0x7F) !== 0) {
-            $bytes++;
-            $unsigned = ($unsigned >> 7) & (PHP_INT_MAX >> 6);
-        }
-
-        return $bytes;
-    }
-
-    /**
-     * Writes an unsigned value as a varint: 7 bits per byte, least significant group first, the high bit set on
-     * every byte but the last (`ByteUtils.writeVarint`/`writeVarlong` @ 0.11 after the zigzag step)
-     */
-    private static function writeVarint(int $unsigned, Stream $stream): void
-    {
-        while (($unsigned & ~0x7F) !== 0) {
-            $stream->write('C', ($unsigned & 0x7F) | 0x80);
-            $unsigned = ($unsigned >> 7) & (PHP_INT_MAX >> 6);
-        }
-        $stream->write('C', $unsigned);
-    }
-
-    /**
-     * Reads the unsigned value of a varint, refusing one that runs past the size of its type
-     *
-     * @param int $maxShift 28 for a varint, 63 for a varlong: a group of 7 bits that starts above it is illegal
-     */
-    private static function readVarint(Stream $stream, int $maxShift, string $path): int
-    {
-        $value = 0;
-        $shift = 0;
-        while ((($byte = $stream->read('Cbyte')['byte']) & 0x80) !== 0) {
-            $value |= ($byte & 0x7F) << $shift;
-            $shift += 7;
-            if ($shift > $maxShift) {
-                throw new \RuntimeException("Varint is too long at {$path}");
-            }
-        }
-
-        return $value | ($byte << $shift);
-    }
-
-    /**
-     * Returns the type of the element count of an array notation: an int32 unless FLAG_VARINT_COUNT is set
+     * A var-array counts its elements with a *zigzag* varint (`DefaultRecord.writeTo` @ 0.11.0.3 writes the number
+     * of headers with `ByteUtils.writeVarint`), so three headers are `06`, not `03`.
      *
      * @param array<mixed> $schemeType
      */
     private static function arrayCountType(array $schemeType): int
     {
-        return empty($schemeType[self::FLAG_VARINT_COUNT]) ? self::TYPE_INT32 : self::TYPE_VARINT;
+        return empty($schemeType[self::FLAG_VARARRAY]) ? self::TYPE_INT32 : self::TYPE_VARINT_ZIGZAG;
     }
 }
