@@ -111,11 +111,6 @@ final class AdminClientTest extends TestCase
      */
     private const string SECOND_BROKER_ADDRESS = 'tcp://127.0.0.1:9093';
 
-    /**
-     * Topic name that {@see AdminClient::findController()} probes every broker of the cluster with
-     */
-    private const string PROBE_TOPIC = '#kafka-client-controller-probe#';
-
     private ScriptedConnections $brokers;
 
     protected function setUp(): void
@@ -130,7 +125,7 @@ final class AdminClientTest extends TestCase
 
     public function testFindAllBrokersReturnsTheBrokersOfTheMetadataResponse(): void
     {
-        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v0.single-topic'));
+        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v2.single-topic'));
         $admin  = $this->adminClient();
 
         $brokers = $admin->findAllBrokers();
@@ -141,20 +136,20 @@ final class AdminClientTest extends TestCase
         self::assertSame(
             [self::requestFrame(new MetadataRequest([], 't10', $broker->getReceivedCorrelationIds()[0]))],
             $broker->getReceivedFrames(),
-            'findAllBrokers() asks for every topic with an empty topic array'
+            'findAllBrokers() asks for NO topic at all, which version 1 of the api writes as an empty array'
         );
     }
 
     public function testListTopicsReturnsTheTopicNames(): void
     {
-        $this->scriptBroker(self::vector('metadata', 'metadata.response.v0.single-topic'));
+        $this->scriptBroker(self::vector('metadata', 'metadata.response.v2.single-topic'));
 
         self::assertSame([self::TOPIC], $this->adminClient()->listTopics());
     }
 
     public function testDescribeTopicsReturnsTheMetadataOfEachTopic(): void
     {
-        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v0.single-topic'));
+        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v2.single-topic'));
 
         $topics = $this->adminClient()->describeTopics([self::TOPIC]);
 
@@ -307,7 +302,7 @@ final class AdminClientTest extends TestCase
         // The metadata answer names one broker, and nothing is scripted for it: connecting to it fails
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(
-                self::vector('metadata', 'metadata.response.v0.single-topic')
+                self::vector('metadata', 'metadata.response.v2.single-topic')
             ))
             ->install();
 
@@ -319,7 +314,7 @@ final class AdminClientTest extends TestCase
     public function testListGroupsReturnsTheGroupsTheBrokerCoordinates(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('metadata', 'metadata.response.v0.single-topic'),
+            self::vector('metadata', 'metadata.response.v2.single-topic'),
             self::vector('list-groups', 'listgroups.response.v0')
         );
         $admin  = $this->adminClient();
@@ -339,7 +334,7 @@ final class AdminClientTest extends TestCase
     public function testListGroupsThrowsTheErrorCodeOfTheCoordinator(): void
     {
         $this->scriptBroker(
-            self::vector('metadata', 'metadata.response.v0.single-topic'),
+            self::vector('metadata', 'metadata.response.v2.single-topic'),
             (string) hex2bin(self::LOADING_GROUPS_RESPONSE)
         );
         $admin = $this->adminClient();
@@ -353,7 +348,7 @@ final class AdminClientTest extends TestCase
     {
         // The metadata vector announces a single broker, which is the only one that has to be asked
         $broker = $this->scriptBroker(
-            self::vector('metadata', 'metadata.response.v0.single-topic'),
+            self::vector('metadata', 'metadata.response.v2.single-topic'),
             self::vector('list-groups', 'listgroups.response.v0')
         );
 
@@ -440,32 +435,33 @@ final class AdminClientTest extends TestCase
         self::assertSame(2, $broker->getRequestCount(), 'one coordinator lookup and one DescribeGroups request');
     }
 
-    public function testFindControllerSkipsTheBrokerThatAnswersNotController(): void
+    public function testFindControllerReturnsTheBrokerTheMetadataNamesAsTheController(): void
     {
-        [$first, $second] = $this->scriptCluster(
-            [self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::NOT_CONTROLLER])],
-            [self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION])]
-        );
+        [$first, $second] = $this->scriptCluster([], [], self::metadataResponse(1));
 
         $controller = $this->adminClient()->findController();
 
-        self::assertSame(1, $controller->nodeId, 'the first broker that does not answer 41 is the controller');
+        self::assertSame(1, $controller->nodeId, 'the ControllerId of the Metadata answer names the controller');
+        self::assertSame(0, $first->getRequestCount(), 'no broker is probed any more, the answer already said it');
+        self::assertSame(0, $second->getRequestCount());
         self::assertSame(
-            self::requestFrame(
-                new DeleteTopicsRequest([self::PROBE_TOPIC], 0, 't10', $first->getReceivedCorrelationIds()[1])
-            ),
-            $first->getReceivedFrames()[1],
-            'the probe names a topic that can never be legal and asks with a timeout of 0'
+            1,
+            $this->brokers->getConnectionCount(self::BOOTSTRAP_ADDRESS),
+            'the metadata of the bootstrap is enough, the lookup opens no further connection'
         );
-        self::assertSame(1, $second->getRequestCount());
     }
 
-    public function testFindControllerFailsWhenEveryBrokerAnswersNotController(): void
+    public function testFindControllerAsksForTheMetadataOnceMoreWhenItNamesNoController(): void
     {
-        $this->scriptCluster(
-            [self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::NOT_CONTROLLER])],
-            [self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::NOT_CONTROLLER])]
-        );
+        // -1 is what a broker answers while the cluster is electing a controller, so the client asks once more
+        $this->scriptCluster([], [], self::metadataResponse(-1), self::metadataResponse(1));
+
+        self::assertSame(1, $this->adminClient()->findController()->nodeId);
+    }
+
+    public function testFindControllerFailsWhileTheClusterHasNoController(): void
+    {
+        $this->scriptCluster([], [], self::metadataResponse(-1), self::metadataResponse(-1));
 
         $this->expectException(NotControllerException::class);
 
@@ -476,7 +472,6 @@ final class AdminClientTest extends TestCase
     {
         [$controller] = $this->scriptCluster(
             [
-                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
                 self::createTopicsResponse([
                     't7-created' => [KafkaException::NO_ERROR, null],
                     't7-exists'  => [KafkaException::TOPIC_ALREADY_EXISTS, "Topic 't7-exists' already exists."],
@@ -505,10 +500,10 @@ final class AdminClientTest extends TestCase
                     30000,
                     false,
                     't10',
-                    $controller->getReceivedCorrelationIds()[2]
+                    $controller->getReceivedCorrelationIds()[0]
                 )
             ),
-            $controller->getReceivedFrames()[2],
+            $controller->getReceivedFrames()[0],
             'the request goes out as CreateTopics v1 with the default timeout'
         );
     }
@@ -518,53 +513,46 @@ final class AdminClientTest extends TestCase
         // The controller moved between the lookup and the request: the answer is 41 for every topic, and a second
         // lookup finds the broker that is the controller now
         [$first, $second] = $this->scriptCluster(
-            [
-                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
-                self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]]),
-                self::metadataResponse(),
-                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::NOT_CONTROLLER]),
-            ],
-            [
-                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
-                self::createTopicsResponse(['t7-moved' => [KafkaException::NO_ERROR, null]]),
-            ]
+            [self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]])],
+            [self::createTopicsResponse(['t7-moved' => [KafkaException::NO_ERROR, null]])],
+            self::metadataResponse(0),
+            self::metadataResponse(1)
         );
 
         $result = $this->adminClient()->createTopics([new NewTopic('t7-moved', 1, 1)]);
 
         self::assertSame(['t7-moved' => null], $result);
+        self::assertSame(1, $first->getRequestCount(), 'the broker that was the controller answered 41 once');
+        self::assertSame(1, $second->getRequestCount(), 'and the repeated request went to the new controller');
         self::assertSame(
-            5,
-            $first->getRequestCount(),
-            'metadata, probe, create, and then the metadata and the probe of the second lookup'
+            2,
+            $this->brokers->getConnectionCount(self::BOOTSTRAP_ADDRESS),
+            'the 41 proves the ControllerId is stale, so the metadata is fetched again before the second lookup'
         );
-        self::assertSame(2, $second->getRequestCount(), 'the probe of the second lookup and the repeated request');
     }
 
     public function testTheAnswerOfTheSecondControllerIsReportedAsItIs(): void
     {
         [$first] = $this->scriptCluster(
             [
-                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
                 self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]]),
-                self::metadataResponse(),
-                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
                 self::createTopicsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]]),
             ],
-            []
+            [],
+            self::metadataResponse(0),
+            self::metadataResponse(0)
         );
 
         $result = $this->adminClient()->createTopics([new NewTopic('t7-moved', 1, 1)]);
 
         self::assertInstanceOf(NotControllerException::class, $result['t7-moved']);
-        self::assertSame(6, $first->getRequestCount(), 'the request was repeated once and not a third time');
+        self::assertSame(2, $first->getRequestCount(), 'the request was repeated once and not a third time');
     }
 
     public function testDeleteTopicsReportsTheErrorOfEveryTopicOfTheAnswer(): void
     {
         [$controller] = $this->scriptCluster(
             [
-                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
                 self::deleteTopicsResponse([
                     't7-deleted' => KafkaException::NO_ERROR,
                     't7-unknown' => KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
@@ -584,22 +572,16 @@ final class AdminClientTest extends TestCase
                     ['t7-deleted', 't7-unknown'],
                     5000,
                     't10',
-                    $controller->getReceivedCorrelationIds()[2]
+                    $controller->getReceivedCorrelationIds()[0]
                 )
             ),
-            $controller->getReceivedFrames()[2]
+            $controller->getReceivedFrames()[0]
         );
     }
 
     public function testATopicTheControllerDidNotAnswerForIsNotReportedAsCreated(): void
     {
-        $this->scriptCluster(
-            [
-                self::deleteTopicsResponse([self::PROBE_TOPIC => KafkaException::UNKNOWN_TOPIC_OR_PARTITION]),
-                self::createTopicsResponse([]),
-            ],
-            []
-        );
+        $this->scriptCluster([self::createTopicsResponse([])], []);
 
         $result = $this->adminClient()->createTopics([new NewTopic('t7-missing', 1, 1)]);
 
@@ -609,22 +591,33 @@ final class AdminClientTest extends TestCase
     /**
      * Scripts a cluster of two brokers and returns the connections that will be handed out for them
      *
-     * The Metadata answer of `findAllBrokers()` is prepended to the script of the first broker, because that is the
-     * first thing every controller lookup sends; a lookup that happens a second time needs one more of them, which
-     * the caller puts into the script itself.
+     * The Metadata answers go to the BOOTSTRAP connection, because that is where the cluster asks for them - the
+     * one of the bootstrap plus one for every refresh the test expects. The brokers themselves are only sent the
+     * requests of the api under test: which of them is the controller is part of the metadata now, so nothing is
+     * sent to a broker just to find that out.
      *
      * @param list<string> $firstBrokerResponses  Answers of the broker with the node id 0
      * @param list<string> $secondBrokerResponses Answers of the broker with the node id 1
+     * @param string       ...$metadataAnswers    Metadata answers of the bootstrap, in order
      *
      * @return array{0: BrokerConnection, 1: BrokerConnection}
      */
-    private function scriptCluster(array $firstBrokerResponses, array $secondBrokerResponses): array
-    {
-        $first  = new BrokerConnection(self::metadataResponse(), ...$firstBrokerResponses);
-        $second = new BrokerConnection(...$secondBrokerResponses);
+    private function scriptCluster(
+        array $firstBrokerResponses,
+        array $secondBrokerResponses,
+        string ...$metadataAnswers
+    ): array {
+        $first     = new BrokerConnection(...$firstBrokerResponses);
+        $second    = new BrokerConnection(...$secondBrokerResponses);
+        $answers   = $metadataAnswers !== [] ? $metadataAnswers : [self::metadataResponse()];
+        // Cluster::reload() opens a connection of its own for every attempt, so each answer needs one
+        $bootstrap = array_map(
+            static fn(string $answer): BrokerConnection => new BrokerConnection($answer),
+            $answers
+        );
 
         $this->brokers
-            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(self::metadataResponse()))
+            ->on(self::BOOTSTRAP_ADDRESS, ...$bootstrap)
             ->on(self::BROKER_ADDRESS, $first)
             ->on(self::SECOND_BROKER_ADDRESS, $second)
             ->install();
@@ -634,10 +627,16 @@ final class AdminClientTest extends TestCase
 
     /**
      * Builds the Metadata answer of a cluster of two brokers without a single topic
+     *
+     * @param int $controllerId Broker id the answer names as the controller, -1 for a cluster that elects one
      */
-    private static function metadataResponse(): string
+    private static function metadataResponse(int $controllerId = 0): string
     {
-        return ResponseFrame::metadata(0, [[0, '127.0.0.1', 9092], [1, '127.0.0.1', 9093]]);
+        return ResponseFrame::metadata(
+            0,
+            [[0, '127.0.0.1', 9092], [1, '127.0.0.1', 9093]],
+            controllerId: $controllerId
+        );
     }
 
     /**
@@ -681,7 +680,7 @@ final class AdminClientTest extends TestCase
         $broker = new BrokerConnection(...$responses);
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(
-                self::vector('metadata', 'metadata.response.v0.single-topic')
+                self::vector('metadata', 'metadata.response.v2.single-topic')
             ))
             ->on(self::BROKER_ADDRESS, $broker)
             ->install();
