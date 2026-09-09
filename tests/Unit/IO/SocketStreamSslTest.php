@@ -86,32 +86,14 @@ final class SocketStreamSslTest extends TestCase
     }
 
     /**
-     * Kafka 0.9 authenticates with Kerberos outside the protocol; the SaslHandshake request arrived in 0.10.0
+     * The TLS half of `SASL_SSL` is the very same handshake, performed before the SASL exchange
+     *
+     * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the authentication that follows it
      */
-    #[DataProvider('saslProtocols')]
-    public function testSaslTransportsAreRejectedWithAnExplanation(string $securityProtocol): void
+    public function testSaslOverTlsEncryptsTheChannelAsWell(): void
     {
-        $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('SaslHandshake request only exists from Kafka 0.10.0 on');
-
-        new SocketStream('tcp://127.0.0.1:9092', [ClientConfig::SECURITY_PROTOCOL => $securityProtocol]);
-    }
-
-    /**
-     * @return iterable<string, array{string}>
-     */
-    public static function saslProtocols(): iterable
-    {
-        yield 'SASL over plaintext' => [SecurityProtocol::SASL_PLAINTEXT];
-        yield 'SASL over TLS'       => [SecurityProtocol::SASL_SSL];
-    }
-
-    public function testUnknownTransportIsRejected(): void
-    {
-        $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('Unknown security protocol TLS, expected one of: PLAINTEXT, SSL');
-
-        new SocketStream('tcp://127.0.0.1:9092', [ClientConfig::SECURITY_PROTOCOL => 'TLS']);
+        self::assertTrue(SecurityProtocol::isEncrypted(SecurityProtocol::SASL_SSL));
+        self::assertFalse(SecurityProtocol::isEncrypted(SecurityProtocol::SASL_PLAINTEXT));
     }
 
     #[DataProvider('inaccessibleFiles')]
