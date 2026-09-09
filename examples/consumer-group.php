@@ -95,7 +95,7 @@ function awaitTopic(string $brokerAddress, string $topic, array $configuration):
 
     do {
         $stream = new SocketStream($brokerAddress, $configuration, 5.0);
-        new MetadataRequest([$topic], 'kafka-client-example', ++$attempt)->writeTo($stream);
+        new MetadataRequest([$topic], true, 'kafka-client-example', ++$attempt)->writeTo($stream);
         $metadata = MetadataResponse::unpack($stream)->topics[$topic] ?? null;
 
         $hasLeaders = $metadata !== null
@@ -116,7 +116,7 @@ function awaitTopic(string $brokerAddress, string $topic, array $configuration):
 function produceDemoRecords(string $brokerAddress, string $topic, array $configuration, int $perPartition): void
 {
     $stream = new SocketStream($brokerAddress, $configuration, 5.0);
-    new MetadataRequest([$topic], 'kafka-client-example', 1)->writeTo($stream);
+    new MetadataRequest([$topic], true, 'kafka-client-example', 1)->writeTo($stream);
     $partitionIds = array_keys(MetadataResponse::unpack($stream)->topics[$topic]->partitions);
 
     $topicPartitions = [];

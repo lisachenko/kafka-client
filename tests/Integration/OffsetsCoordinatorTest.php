@@ -42,6 +42,8 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
@@ -56,8 +58,8 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * are exercised here, because version 0 and version 2 are reachable through the `offsets.storage` option of the
  * client and version 1 is the version a 0.8 broker expects.
  *
- * @see docs/protocol/0.11.0.md, sections "GroupCoordinator API (key 10, v0)",
- *      "OffsetCommit API (key 8, v0, v1 and v2)" and "OffsetFetch API (key 9, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, sections "GroupCoordinator API (key 10, v0 and v1)",
+ *      "OffsetCommit API (key 8, v0 to v3)" and "OffsetFetch API (key 9, v0 to v3)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]
@@ -72,6 +74,8 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 #[CoversClass(OffsetCommitRequestTopic::class)]
 #[CoversClass(OffsetCommitRequestTopicV1::class)]
 #[CoversClass(OffsetCommitResponse::class)]
+#[CoversClass(OffsetCommitResponseV0::class)]
+#[CoversClass(OffsetCommitResponseV1::class)]
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]
 #[CoversClass(OffsetFetchResponse::class)]
@@ -124,7 +128,12 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         // lookup must not be: whatever the very first answer is, it ends up with a coordinator
         $groupId  = self::uniqueGroupName();
         $stream   = $this->connect();
-        new GroupCoordinatorRequest($groupId, 'kafka-client-t6', 1)->writeTo($stream);
+        new GroupCoordinatorRequest(
+            $groupId,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
+            'kafka-client-t6',
+            1
+        )->writeTo($stream);
         $rawFirst = GroupCoordinatorResponse::unpack($stream);
 
         self::assertContains(
@@ -263,7 +272,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $stream  = $this->connect();
 
         new OffsetCommitRequestV0($groupId, [$topic => [0 => 7]], 'kafka-client-t6', 11)->writeTo($stream);
-        $commitResponse = OffsetCommitResponse::unpack($stream);
+        $commitResponse = OffsetCommitResponseV0::unpack($stream);
 
         self::assertSame(11, $commitResponse->getCorrelationId());
         self::assertSame(0, $commitResponse->topics[$topic]->partitions[0]->errorCode);
@@ -284,7 +293,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         $this->commitInKafka($stream, $groupId, [$topic => [0 => 1000]]);
         new OffsetCommitRequestV0($groupId, [$topic => [0 => 5]], 'kafka-client-t6', 21)->writeTo($stream);
-        OffsetCommitResponse::unpack($stream);
+        OffsetCommitResponseV0::unpack($stream);
 
         $fromKafka = $this->fetchInKafka($stream, $groupId, [$topic => [0]]);
         new OffsetFetchRequestV0($groupId, [$topic => [0]], 'kafka-client-t6', 22)->writeTo($stream);
@@ -399,7 +408,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             'kafka-client-t6',
             41
         )->writeTo($stream);
-        $inZooKeeper = OffsetCommitResponse::unpack($stream);
+        $inZooKeeper = OffsetCommitResponseV0::unpack($stream);
 
         self::assertSame(
             KafkaException::OFFSET_METADATA_TOO_LARGE,
@@ -436,7 +445,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             'kafka-client-t6',
             1
         )->writeTo($stream);
-        $response = OffsetCommitResponse::unpack($stream);
+        $response = OffsetCommitResponseV1::unpack($stream);
 
         self::assertSame(KafkaException::NO_ERROR, $response->topics[$topic]->partitions[0]->errorCode);
 
@@ -771,7 +780,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         do {
             $stream = $this->connect();
-            new MetadataRequest([$topic], 'kafka-client-t6', ++$attempt)->writeTo($stream);
+            new MetadataRequest([$topic], true, 'kafka-client-t6', ++$attempt)->writeTo($stream);
             $metadata = MetadataResponse::unpack($stream)->topics[$topic] ?? null;
 
             $isReady = $metadata !== null

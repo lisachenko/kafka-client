@@ -147,7 +147,7 @@ final class ProduceApiTest extends IntegrationTestCase
         $request->writeTo($stream);
 
         // Nothing at all comes back for that request: the next answer on this connection belongs to the next request
-        new MetadataRequest([$this->topic], self::CLIENT_ID, 32)->writeTo($stream);
+        new MetadataRequest([$this->topic], true, self::CLIENT_ID, 32)->writeTo($stream);
         self::assertSame(32, MetadataResponse::unpack($stream)->getCorrelationId());
 
         // ... and the two messages were nevertheless appended, so the next batch starts at offset 2

@@ -1,13 +1,13 @@
 {
     "api": "leave-group",
     "apiKey": 13,
-    "section": "LeaveGroup API (key 13, v0)",
-    "description": "Wire vectors of the LeaveGroup API (key 13, v0), replayed by tests/Compliance.",
+    "section": "LeaveGroup API (key 13, v0 and v1)",
+    "description": "Wire vectors of the LeaveGroup API (key 13, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "leavegroup.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequestV0",
             "version": 0,
             "source": "broker",
             "description": "LeaveGroup request v0 of a member that shuts down in an orderly way.",
@@ -25,7 +25,7 @@
         {
             "id": "leavegroup.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponseV0",
             "version": 0,
             "source": "broker",
             "description": "LeaveGroup answer of a coordinator that removed the member from the group.",
@@ -39,7 +39,7 @@
         {
             "id": "leavegroup.request.v0.unknown-member",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequestV0",
             "version": 0,
             "source": "broker",
             "description": "LeaveGroup request v0 with a member id the group does not have.",
@@ -57,7 +57,7 @@
         {
             "id": "leavegroup.response.v0.unknown-member",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponseV0",
             "version": 0,
             "source": "broker",
             "description": "LeaveGroup answer for a member id the group does not have: the error code 25.",
@@ -66,6 +66,39 @@
                 "messageSize": 6,
                 "correlationId": 49,
                 "errorCode": 25
+            }
+        },
+        {
+            "id": "leavegroup.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "LeaveGroup request v1, the frame of v0 with a higher version field.",
+            "hex": "00000072000d00010000006400176b61666b612d636c69656e742d74332d766563746f7273001174332d7468726f74746c652d67726f7570003c6b61666b612d636c69656e742d74332d766563746f72732d63663861626537662d396231652d343337332d396539392d363063303066613835313038",
+            "fields": {
+                "messageSize": 114,
+                "apiKey": 13,
+                "apiVersion": 1,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "consumerGroup": "t3-throttle-group",
+                "memberId": "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108"
+            }
+        },
+        {
+            "id": "leavegroup.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer v1: a throttle time and an error code.",
+            "hex": "0000000a00000064000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "errorCode": 0
             }
         }
     ]

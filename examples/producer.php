@@ -58,7 +58,7 @@ function awaitTopic(string $address, string $topic, string $clientId, float $tim
     do {
         $attempt++;
         $stream = new SocketStream($address, [ClientConfig::REQUEST_TIMEOUT_MS => 5000], 5.0);
-        new MetadataRequest([$topic], $clientId, $attempt)->writeTo($stream);
+        new MetadataRequest([$topic], true, $clientId, $attempt)->writeTo($stream);
 
         $topicMetadata = MetadataResponse::unpack($stream)->topics[$topic] ?? null;
         $leaderless    = array_filter(

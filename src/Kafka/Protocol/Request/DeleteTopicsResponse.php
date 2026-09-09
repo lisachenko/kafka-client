@@ -13,19 +13,23 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
 
 /**
- * DeleteTopics response object, version 0 (key 20)
+ * DeleteTopics response object, version 1 (key 20)
  *
  * <pre>
- *   DeleteTopics Response (Version: 0) => [topic_error_codes]
+ *   DeleteTopics Response (Version: 1) => throttle_time_ms [topic_error_codes]
+ *     throttle_time_ms => INT32     -- since version 1
  *     topic_error_codes => topic error_code
  *       topic      => STRING
  *       error_code => INT16
  * </pre>
  *
- * One entry per topic of the request and nothing else. The error codes a 0.10.2.2 controller reports here are:
+ * One entry per topic of the request, behind the `throttle_time_ms` that version 1 (KIP-124, Kafka 0.11) added;
+ * {@see DeleteTopicsResponseV0} is the same array without it. The error codes a 0.11.0.3 controller reports here
+ * are:
  *
  * | Code | Name                     | Meaning                                                                    |
  * |------|--------------------------|----------------------------------------------------------------------------|
@@ -36,10 +40,22 @@ use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
  * | 29   | TopicAuthorizationFailed | The client may describe the topic but not delete it                        |
  * | 41   | NotController            | The broker that was asked is not the active controller                     |
  *
- * @see docs/protocol/0.11.0.md, section "DeleteTopics API (key 20, v0)"
+ * @see docs/protocol/0.11.0.md, section "DeleteTopics API (key 20, v0 and v1)"
  */
 class DeleteTopicsResponse extends AbstractResponse
 {
+    /**
+     * Version of the DeleteTopics API that this class decodes the answer of
+     */
+    public const int VERSION = 1;
+
+    /**
+     * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
+     *
+     * @since Version 1 of protocol
+     */
+    public int $throttleTimeMs = 0;
+
     /**
      * Result of every topic of the request, indexed by the topic name
      *
@@ -53,9 +69,12 @@ class DeleteTopicsResponse extends AbstractResponse
     public static function getScheme(): array
     {
         $header = parent::getScheme();
+        $body   = [];
+        if (static::VERSION >= 1) {
+            $body['throttleTimeMs'] = BinarySchema::TYPE_INT32;
+        }
+        $body['topics'] = ['topic' => DeleteTopicsResponseTopic::class];
 
-        return $header + [
-            'topics' => ['topic' => DeleteTopicsResponseTopic::class],
-        ];
+        return $header + $body;
     }
 }

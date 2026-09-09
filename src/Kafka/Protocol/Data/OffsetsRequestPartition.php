@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * per partition and dropped the field. The odd version out therefore lives in {@see OffsetsRequestPartitionV0} and
  * the scheme is selected by {@see OffsetsRequestPartition::VERSION}.
  *
- * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
+ * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
  */
 class OffsetsRequestPartition implements BinarySchemaInterface
 {

@@ -36,6 +36,7 @@ use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -86,20 +87,20 @@ final class AdminClientTest extends TestCase
     private const string UNKNOWN_GROUP = 't4-vectors-unknown-group';
 
     /**
-     * ListGroups answer of a coordinator that is still reading `__consumer_offsets`: error code 14, no groups
+     * ListGroups answer v1 of a coordinator that is still reading `__consumer_offsets`: error code 14, no groups
      */
-    private const string LOADING_GROUPS_RESPONSE = '0000000a' . '00000000' . '000e' . '00000000';
+    private const string LOADING_GROUPS_RESPONSE = '0000000e' . '00000000' . '00000000' . '000e' . '00000000';
 
     /**
-     * DescribeGroups answer of a broker that is not the coordinator of `t4-vectors-group`: the group error code 16
+     * DescribeGroups answer v1 of a broker that is not the coordinator of `t4-vectors-group`: group error 16
      */
-    private const string NOT_COORDINATOR_RESPONSE = '00000026' . '00000000' . '00000001'
+    private const string NOT_COORDINATOR_RESPONSE = '0000002a' . '00000000' . '00000000' . '00000001'
         . '0010' . '0010' . '74342d766563746f72732d67726f7570' . '0000' . '0000' . '0000' . '00000000';
 
     /**
      * DescribeGroups answer without an entry for the group that was asked about
      */
-    private const string EMPTY_GROUPS_RESPONSE = '00000008' . '00000000' . '00000000';
+    private const string EMPTY_GROUPS_RESPONSE = '0000000c' . '00000000' . '00000000' . '00000000';
 
     /**
      * Address the cluster is bootstrapped from
@@ -130,7 +131,7 @@ final class AdminClientTest extends TestCase
 
     public function testFindAllBrokersReturnsTheBrokersOfTheMetadataResponse(): void
     {
-        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v2.single-topic'));
+        $broker = $this->scriptBroker(self::topicMetadata());
         $admin  = $this->adminClient();
 
         $brokers = $admin->findAllBrokers();
@@ -139,7 +140,7 @@ final class AdminClientTest extends TestCase
         self::assertSame('127.0.0.1', $brokers[0]->host);
         self::assertSame(9092, $brokers[0]->port);
         self::assertSame(
-            [self::requestFrame(new MetadataRequest([], 't10', $broker->getReceivedCorrelationIds()[0]))],
+            [self::requestFrame(new MetadataRequest([], false, 't10', $broker->getReceivedCorrelationIds()[0]))],
             $broker->getReceivedFrames(),
             'findAllBrokers() asks for NO topic at all, which version 1 of the api writes as an empty array'
         );
@@ -147,14 +148,14 @@ final class AdminClientTest extends TestCase
 
     public function testListTopicsReturnsTheTopicNames(): void
     {
-        $this->scriptBroker(self::vector('metadata', 'metadata.response.v2.single-topic'));
+        $this->scriptBroker(self::topicMetadata());
 
         self::assertSame([self::TOPIC], $this->adminClient()->listTopics());
     }
 
     public function testDescribeTopicsReturnsTheMetadataOfEachTopic(): void
     {
-        $broker = $this->scriptBroker(self::vector('metadata', 'metadata.response.v2.single-topic'));
+        $broker = $this->scriptBroker(self::topicMetadata());
 
         $topics = $this->adminClient()->describeTopics([self::TOPIC]);
 
@@ -163,8 +164,13 @@ final class AdminClientTest extends TestCase
         self::assertSame([2, 1, 0], array_keys($topics[self::TOPIC]->partitions));
         self::assertSame(0, $topics[self::TOPIC]->partitions[0]->leader);
         self::assertSame(
-            [self::requestFrame(new MetadataRequest([self::TOPIC], 't10', $broker->getReceivedCorrelationIds()[0]))],
-            $broker->getReceivedFrames()
+            [
+                self::requestFrame(
+                    new MetadataRequest([self::TOPIC], false, 't10', $broker->getReceivedCorrelationIds()[0])
+                ),
+            ],
+            $broker->getReceivedFrames(),
+            'the administrative side never lets the broker create the topic it asks about'
         );
     }
 
@@ -180,6 +186,7 @@ final class AdminClientTest extends TestCase
             [self::requestFrame(new OffsetsRequest(
                 [self::TOPIC => [0 => OffsetsRequest::LATEST]],
                 OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
                 't10',
                 $broker->getReceivedCorrelationIds()[0]
             ))],
@@ -199,6 +206,7 @@ final class AdminClientTest extends TestCase
             [self::requestFrame(new OffsetsRequest(
                 [self::TOPIC => [0 => 1600000000000]],
                 OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
                 't10',
                 $broker->getReceivedCorrelationIds()[0]
             ))],
@@ -229,8 +237,8 @@ final class AdminClientTest extends TestCase
     public function testListGroupOffsetsAsksTheCoordinatorAndReturnsTheCommittedOffsets(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
-            self::vector('offset-fetch', 'offsetfetch.response.v2')
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]])
         );
 
         $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [0]]);
@@ -242,7 +250,12 @@ final class AdminClientTest extends TestCase
         [$lookupId, $fetchId] = $broker->getReceivedCorrelationIds();
         self::assertSame(
             [
-                self::requestFrame(new GroupCoordinatorRequest(self::GROUP, 't10', $lookupId)),
+                self::requestFrame(new GroupCoordinatorRequest(
+                    self::GROUP,
+                    GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
+                    't10',
+                    $lookupId
+                )),
                 self::requestFrame(new OffsetFetchRequest(self::GROUP, [self::VECTOR_TOPIC => [0]], 't10', $fetchId)),
             ],
             $broker->getReceivedFrames(),
@@ -254,8 +267,8 @@ final class AdminClientTest extends TestCase
     public function testListGroupOffsetsAsksForEveryTopicOfTheGroupWithoutPartitions(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
-            self::vector('offset-fetch', 'offsetfetch.response.v2.all-topics')
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]])
         );
 
         // main's shape: the group alone, which the nullable topic array of the version 2 makes possible
@@ -275,8 +288,8 @@ final class AdminClientTest extends TestCase
     public function testListGroupOffsetsReportsTheGroupLevelErrorOfVersionTwo(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
-            self::vector('offset-fetch', 'offsetfetch.response.v2.group-error')
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            ResponseFrame::offsetFetch(0, [], KafkaException::NOT_COORDINATOR_FOR_GROUP)
         );
 
         $this->expectException(NotCoordinatorForGroupException::class);
@@ -306,7 +319,7 @@ final class AdminClientTest extends TestCase
 
     public function testFindCoordinatorResolvesTheNodeOfTheCluster(): void
     {
-        $this->scriptBroker(self::vector('group-coordinator', 'groupcoordinator.response.v0'));
+        $this->scriptBroker(self::vector('group-coordinator', 'groupcoordinator.response.v1'));
 
         $coordinator = $this->adminClient()->findCoordinator(self::GROUP);
 
@@ -339,9 +352,7 @@ final class AdminClientTest extends TestCase
     {
         // The metadata answer names one broker, and nothing is scripted for it: connecting to it fails
         $this->brokers
-            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(
-                self::vector('metadata', 'metadata.response.v2.single-topic')
-            ))
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(self::topicMetadata()))
             ->install();
 
         $this->expectException(AllBrokersNotAvailableException::class);
@@ -352,8 +363,8 @@ final class AdminClientTest extends TestCase
     public function testListGroupsReturnsTheGroupsTheBrokerCoordinates(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('metadata', 'metadata.response.v2.single-topic'),
-            self::vector('list-groups', 'listgroups.response.v0')
+            self::topicMetadata(),
+            ResponseFrame::listGroups(0, [self::ADMIN_GROUP => 'consumer'])
         );
         $admin  = $this->adminClient();
         $node   = $admin->findAllBrokers()[0];
@@ -372,7 +383,7 @@ final class AdminClientTest extends TestCase
     public function testListGroupsThrowsTheErrorCodeOfTheCoordinator(): void
     {
         $this->scriptBroker(
-            self::vector('metadata', 'metadata.response.v2.single-topic'),
+            self::topicMetadata(),
             (string) hex2bin(self::LOADING_GROUPS_RESPONSE)
         );
         $admin = $this->adminClient();
@@ -386,8 +397,8 @@ final class AdminClientTest extends TestCase
     {
         // The metadata vector announces a single broker, which is the only one that has to be asked
         $broker = $this->scriptBroker(
-            self::vector('metadata', 'metadata.response.v2.single-topic'),
-            self::vector('list-groups', 'listgroups.response.v0')
+            self::topicMetadata(),
+            ResponseFrame::listGroups(0, [self::ADMIN_GROUP => 'consumer'])
         );
 
         $groups = $this->adminClient()->listAllGroups();
@@ -399,8 +410,8 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupAsksTheCoordinatorOfTheGroup(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
-            self::vector('describe-groups', 'describegroups.response.v0.stable')
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::stableGroup(self::ADMIN_GROUP)
         );
 
         $group = $this->adminClient()->describeGroup(self::ADMIN_GROUP);
@@ -414,7 +425,12 @@ final class AdminClientTest extends TestCase
         [$lookupId, $describeId] = $broker->getReceivedCorrelationIds();
         self::assertSame(
             [
-                self::requestFrame(new GroupCoordinatorRequest(self::ADMIN_GROUP, 't10', $lookupId)),
+                self::requestFrame(new GroupCoordinatorRequest(
+                    self::ADMIN_GROUP,
+                    GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
+                    't10',
+                    $lookupId
+                )),
                 self::requestFrame(new DescribeGroupsRequest([self::ADMIN_GROUP], 't10', $describeId)),
             ],
             $broker->getReceivedFrames(),
@@ -425,8 +441,8 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupReportsAnUnknownGroupAsDead(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
-            self::vector('describe-groups', 'describegroups.response.v0.dead')
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            ResponseFrame::describeGroups(0, [self::UNKNOWN_GROUP => [0, 'Dead', '', '', []]])
         );
 
         $group = $this->adminClient()->describeGroup(self::UNKNOWN_GROUP);
@@ -439,7 +455,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupThrowsTheErrorCodeOfTheGroup(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
             (string) hex2bin(self::NOT_COORDINATOR_RESPONSE)
         );
 
@@ -451,7 +467,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupThrowsWhenTheAnswerHasNoEntryForTheGroup(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
             (string) hex2bin(self::EMPTY_GROUPS_RESPONSE)
         );
 
@@ -463,8 +479,8 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupsAsksTheGroupsOfOneCoordinatorWithASingleRequest(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v0'),
-            self::vector('describe-groups', 'describegroups.response.v0.stable')
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::stableGroup(self::ADMIN_GROUP)
         );
 
         $groups = $this->adminClient()->describeGroups([self::ADMIN_GROUP, self::ADMIN_GROUP]);
@@ -678,13 +694,13 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a CreateTopics answer of version 1
+     * Builds a CreateTopics answer of version 2, i.e. the entries of version 1 behind the throttle time
      *
      * @param array<string, array{0: int, 1: string|null}> $topics Error code and message of every topic
      */
     private static function createTopicsResponse(array $topics): string
     {
-        $body = pack('N', count($topics));
+        $body = pack('N', 0) . pack('N', count($topics));
         foreach ($topics as $topic => [$errorCode, $errorMessage]) {
             $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
             $body .= $errorMessage === null
@@ -696,13 +712,13 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a DeleteTopics answer of version 0
+     * Builds a DeleteTopics answer of version 1, i.e. the entries of version 0 behind the throttle time
      *
      * @param array<string, int> $topics Error code of every topic
      */
     private static function deleteTopicsResponse(array $topics): string
     {
-        $body = pack('N', count($topics));
+        $body = pack('N', 0) . pack('N', count($topics));
         foreach ($topics as $topic => $errorCode) {
             $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
         }
@@ -717,9 +733,7 @@ final class AdminClientTest extends TestCase
     {
         $broker = new BrokerConnection(...$responses);
         $this->brokers
-            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(
-                self::vector('metadata', 'metadata.response.v2.single-topic')
-            ))
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(self::topicMetadata()))
             ->on(self::BROKER_ADDRESS, $broker)
             ->install();
 
@@ -749,6 +763,33 @@ final class AdminClientTest extends TestCase
     private static function requestFrame(AbstractRequest $request): string
     {
         return substr((string) $request, 4);
+    }
+
+    /**
+     * Builds a DescribeGroups answer for one stable group with a single member
+     */
+    private static function stableGroup(string $groupId): string
+    {
+        return ResponseFrame::describeGroups(
+            0,
+            [$groupId => [0, 'Stable', 'consumer', 'range', ['member-42' => ["\xde\xad", "\xbe\xef"]]]]
+        );
+    }
+
+    /**
+     * Builds the Metadata answer of the single-broker cluster these tests run against, in the v4 layout
+     *
+     * The `metadata.response.v2.single-topic` vector describes the same cluster, but it can not be replayed here
+     * any more: this client asks with version 4, whose answer opens with the `ThrottleTimeMs` of KIP-124, and the
+     * partitions come back in the order the broker sent them.
+     */
+    private static function topicMetadata(): string
+    {
+        return ResponseFrame::metadata(
+            0,
+            [[0, '127.0.0.1', 9092]],
+            [self::TOPIC => [2 => 0, 1 => 0, 0 => 0]]
+        );
     }
 
     /**

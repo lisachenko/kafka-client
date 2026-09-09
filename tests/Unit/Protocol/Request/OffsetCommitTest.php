@@ -30,17 +30,28 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV2;
 
 /**
- * Byte-exact tests for the OffsetCommit API (key 8), versions 0, 1 and 2.
+ * Byte-exact tests for the OffsetCommit API (key 8), versions 0 to 3.
  *
- * @see docs/protocol/0.11.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
+ * Version 3 (KIP-124, Kafka 0.11) is the leading `ThrottleTimeMs` of the answer and nothing else: the request of
+ * v2 and v3 is one and the same body, and the three lower versions of the answer are one and the same layout.
+ *
+ * @see docs/protocol/0.11.0.md, section "OffsetCommit API (key 8, v0 to v3)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]
 #[CoversClass(OffsetCommitRequestV1::class)]
+#[CoversClass(OffsetCommitRequestV2::class)]
 #[CoversClass(OffsetCommitResponse::class)]
+#[CoversClass(OffsetCommitResponseV0::class)]
+#[CoversClass(OffsetCommitResponseV1::class)]
+#[CoversClass(OffsetCommitResponseV2::class)]
 #[CoversClass(OffsetCommitRequestTopic::class)]
 #[CoversClass(OffsetCommitRequestTopicV0::class)]
 #[CoversClass(OffsetCommitRequestTopicV1::class)]
@@ -52,11 +63,11 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 final class OffsetCommitTest extends TestCase
 {
     /**
-     * OffsetCommit request v2, group "my-group", offset 42 of "topic"-0, without metadata.
+     * OffsetCommit request v3, group "my-group", offset 42 of "topic"-0, without metadata.
      *
      *   Size          => 00 00 00 43 (67 bytes)
      *   ApiKey        => 00 08
-     *   ApiVersion    => 00 02
+     *   ApiVersion    => 00 03
      *   CorrelationId => 00 00 00 01
      *   ClientId      => 00 04 "test"
      *   ConsumerGroup => 00 08 "my-group"
@@ -73,9 +84,9 @@ final class OffsetCommitTest extends TestCase
      * The per-partition TimeStamp of v1 is gone, the request-wide RetentionTime took its place; both are eight
      * bytes wide, so the two frames happen to be the same length.
      */
-    private const string REQUEST_V2_HEX = '00000043'
+    private const string REQUEST_V3_HEX = '00000043'
         . '0008'
-        . '0002'
+        . '0003'
         . '00000001'
         . '0004' . '74657374'
         . '0008' . '6d792d67726f7570'
@@ -194,7 +205,7 @@ final class OffsetCommitTest extends TestCase
         . '00000000'
         . '0000';
 
-    public function testVersion2RequestIsPackedAccordingToTheSpec(): void
+    public function testVersion3RequestIsPackedAccordingToTheSpec(): void
     {
         $request = new OffsetCommitRequest(
             'my-group',
@@ -206,9 +217,29 @@ final class OffsetCommitTest extends TestCase
             1
         );
 
-        self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
+        self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::OFFSET_COMMIT, $request->getApiKey());
+        self::assertSame(3, $request->getApiVersion());
+    }
+
+    public function testVersion2RequestSendsTheSameBodyAsVersion3(): void
+    {
+        $request = new OffsetCommitRequestV2(
+            'my-group',
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME,
+            ['topic' => [0 => 42]],
+            'test',
+            1
+        );
+
         self::assertSame(2, $request->getApiVersion());
+        self::assertSame(
+            substr(self::REQUEST_V3_HEX, 16),
+            substr(bin2hex((string) $request), 16),
+            'OFFSET_COMMIT_REQUEST_V3 = OFFSET_COMMIT_REQUEST_V2'
+        );
     }
 
     public function testExplicitRetentionTimeIsPackedInVersion2(): void
@@ -217,7 +248,7 @@ final class OffsetCommitTest extends TestCase
         $request = new OffsetCommitRequest('my-group', -1, '', 3600000, ['topic' => [0 => 42]], 'test', 1);
 
         self::assertSame(
-            str_replace('ffffffffffffffff' . '00000001', '000000000036ee80' . '00000001', self::REQUEST_V2_HEX),
+            str_replace('ffffffffffffffff' . '00000001', '000000000036ee80' . '00000001', self::REQUEST_V3_HEX),
             bin2hex((string) $request)
         );
     }
@@ -287,8 +318,8 @@ final class OffsetCommitTest extends TestCase
         // 1451606400000 ms, i.e. 2016-01-01T00:00:00Z, as an INT64
         self::assertStringEndsWith('00000151fa7bdc00' . 'ffff', bin2hex((string) $request));
 
-        // Version 2 has no field for it: the very same timestamp simply does not reach the wire
-        $v2 = new OffsetCommitRequest(
+        // Version 3 has no field for it: the very same timestamp simply does not reach the wire
+        $v3 = new OffsetCommitRequest(
             'my-group',
             -1,
             '',
@@ -298,7 +329,7 @@ final class OffsetCommitTest extends TestCase
             1
         );
 
-        self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $v2));
+        self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $v3));
     }
 
     public function testVersion0RequestIsPackedAccordingToTheSpec(): void
@@ -382,7 +413,7 @@ final class OffsetCommitTest extends TestCase
 
     public function testResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = OffsetCommitResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = OffsetCommitResponseV2::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(1, $response->getCorrelationId());
         self::assertSame(['topic'], array_keys($response->topics));
@@ -390,6 +421,38 @@ final class OffsetCommitTest extends TestCase
         self::assertSame([0], array_keys($response->topics['topic']->partitions));
         self::assertSame(0, $response->topics['topic']->partitions[0]->partition);
         self::assertSame(0, $response->topics['topic']->partitions[0]->errorCode);
+        self::assertSame(0, $response->throttleTimeMs, 'the field arrived with the version 3');
+    }
+
+    public function testTheThreeLowerVersionsOfTheAnswerAreOneAndTheSameLayout(): void
+    {
+        $frame = (string) hex2bin(self::RESPONSE_HEX);
+
+        foreach ([OffsetCommitResponseV0::class, OffsetCommitResponseV1::class, OffsetCommitResponseV2::class] as $class) {
+            $response = $class::unpack(new StringStream($frame));
+
+            self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
+            self::assertSame([0], array_keys($response->topics['topic']->partitions));
+        }
+    }
+
+    public function testTheVersion3AnswerStartsWithTheThrottleTime(): void
+    {
+        $frame = '0000001d'
+            . '00000001'
+            . '00000000'
+            . '00000001'
+            . '0005' . '746f706963'
+            . '00000001'
+            . '00000000'
+            . '0000';
+
+        $response = OffsetCommitResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(['topic'], array_keys($response->topics));
+        self::assertSame(0, $response->topics['topic']->partitions[0]->errorCode);
+        self::assertSame($frame, bin2hex((string) $response));
     }
 
     public function testPartitionErrorCodeIsReadAsASignedInteger(): void
@@ -402,7 +465,7 @@ final class OffsetCommitTest extends TestCase
             . '00000000'
             . '000c'; // 12, OffsetMetadataTooLarge
 
-        $response = OffsetCommitResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = OffsetCommitResponseV2::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(12, $response->topics['topic']->partitions[0]->errorCode);
     }

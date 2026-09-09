@@ -801,7 +801,7 @@ final class ClientTest extends TestCase
         }
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionTwo(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionThree(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -834,9 +834,9 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(2, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 2');
+        self::assertSame(3, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 3');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(2, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 2');
+        self::assertSame(3, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 3');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -892,7 +892,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(2, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2');
+        self::assertSame(3, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
         self::assertStringEndsWith('ffffffff', bin2hex($frame), 'the topic array of the request is the null one');
     }
 
@@ -963,7 +963,7 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(1, $this->apiVersionOf($frame), 'JoinGroup v1 carries the rebalance timeout of 0.10.1');
+        self::assertSame(2, $this->apiVersionOf($frame), 'JoinGroup v2 is v1 plus the throttle time of KIP-124');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(
@@ -1041,7 +1041,7 @@ final class ClientTest extends TestCase
 
         self::assertSame('my-share', $response->memberAssignment);
         self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($coordinator->getReceivedFrames()[0]));
-        self::assertSame(0, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
+        self::assertSame(1, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
     }
 
     public function testAHeartbeatAndALeaveAreSentToTheCoordinatorAndReportNothingWhenTheySucceed(): void

@@ -21,37 +21,57 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
+use Protocol\Kafka\Protocol\Request\HeartbeatRequestV0;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
+use Protocol\Kafka\Protocol\Request\HeartbeatResponseV0;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV0;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequestV1;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponseV0;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponseV1;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
+use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
+use Protocol\Kafka\Protocol\Request\SyncGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
+use Protocol\Kafka\Protocol\Request\SyncGroupResponseV0;
 
 /**
  * Byte-exact tests for the four apis of the group membership protocol (keys 11 to 14).
  *
- * JoinGroup is the only one of them that Kafka 0.10 changed: its version 1 inserted the `RebalanceTimeout` after
- * the `SessionTimeout`, and SyncGroup, Heartbeat and LeaveGroup are still at version 0.
+ * Two releases changed them. Kafka 0.10.1 inserted the `RebalanceTimeout` after the `SessionTimeout` of JoinGroup,
+ * which is its version 1; Kafka 0.11 added the leading `ThrottleTimeMs` to the ANSWER of all four (KIP-124), which
+ * is JoinGroup v2 and SyncGroup, Heartbeat and LeaveGroup v1 - and left their requests byte for byte alone, so a
+ * lower-version request differs from the current one in the version field of its header only.
  *
  * The member metadata of JoinGroup and the assignments of SyncGroup are opaque byte arrays to these apis - the
  * coordinator never parses them - so every test here uses arbitrary bytes for them, including a NUL byte, and only
  * checks that they survive the round trip untouched.
  *
- * @see docs/protocol/0.11.0.md, sections "JoinGroup API (key 11, v0 and v1)", "SyncGroup API (key 14, v0)",
- *      "Heartbeat API (key 12, v0)" and "LeaveGroup API (key 13, v0)"
+ * @see docs/protocol/0.11.0.md, sections "JoinGroup API (key 11, v0, v1 and v2)", "SyncGroup API (key 14, v0 and v1)",
+ *      "Heartbeat API (key 12, v0 and v1)" and "LeaveGroup API (key 13, v0 and v1)"
  */
 #[CoversClass(JoinGroupRequest::class)]
 #[CoversClass(JoinGroupRequestV0::class)]
+#[CoversClass(JoinGroupRequestV1::class)]
 #[CoversClass(JoinGroupResponse::class)]
+#[CoversClass(JoinGroupResponseV0::class)]
+#[CoversClass(JoinGroupResponseV1::class)]
 #[CoversClass(SyncGroupRequest::class)]
+#[CoversClass(SyncGroupRequestV0::class)]
 #[CoversClass(SyncGroupResponse::class)]
+#[CoversClass(SyncGroupResponseV0::class)]
 #[CoversClass(HeartbeatRequest::class)]
+#[CoversClass(HeartbeatRequestV0::class)]
 #[CoversClass(HeartbeatResponse::class)]
+#[CoversClass(HeartbeatResponseV0::class)]
 #[CoversClass(LeaveGroupRequest::class)]
+#[CoversClass(LeaveGroupRequestV0::class)]
 #[CoversClass(LeaveGroupResponse::class)]
+#[CoversClass(LeaveGroupResponseV0::class)]
 #[CoversClass(JoinGroupRequestProtocol::class)]
 #[CoversClass(JoinGroupResponseMember::class)]
 #[CoversClass(SyncGroupRequestMember::class)]
@@ -68,11 +88,11 @@ final class GroupMembershipTest extends TestCase
     private const string ASSIGNMENT = "\x01\x00\x02";
 
     /**
-     * JoinGroup request v0 for the group "my-group", correlation id 1, client id "test".
+     * JoinGroup request v2 for the group "my-group", correlation id 1, client id "test".
      *
      *   Size             => 00 00 00 3d (61 bytes)
      *   ApiKey           => 00 0b
-     *   ApiVersion       => 00 01
+     *   ApiVersion       => 00 02
      *   CorrelationId    => 00 00 00 01
      *   ClientId         => 00 04 "test"
      *   GroupId          => 00 08 "my-group"
@@ -85,6 +105,23 @@ final class GroupMembershipTest extends TestCase
      *     ProtocolMetadata => 00 00 00 02 00 ff
      */
     private const string JOIN_REQUEST_HEX = '0000003d'
+        . '000b'
+        . '0002'
+        . '00000001'
+        . '0004' . '74657374'
+        . '0008' . '6d792d67726f7570'
+        . '00007530'
+        . '000493e0'
+        . '0000'
+        . '0008' . '636f6e73756d6572'
+        . '00000001'
+        . '0005' . '72616e6765'
+        . '00000002' . '00ff';
+
+    /**
+     * The same request as a version 1 frame, which is the same body with the version field 1
+     */
+    private const string JOIN_REQUEST_V1_HEX = '0000003d'
         . '000b'
         . '0001'
         . '00000001'
@@ -115,7 +152,7 @@ final class GroupMembershipTest extends TestCase
         . '00000002' . '00ff';
 
     /**
-     * JoinGroup response v0 for the leader of a group of two members.
+     * JoinGroup response v0/v1 for the leader of a group of two members.
      *
      *   Size          => 00 00 00 3b (59 bytes)
      *   CorrelationId => 00 00 00 01
@@ -140,11 +177,26 @@ final class GroupMembershipTest extends TestCase
         . '0005' . '74776f2d32' . '00000000';
 
     /**
-     * SyncGroup request v0 of the leader, which assigns three bytes to itself.
+     * The same answer as version 2: four bytes longer, because the throttle time opens the body
+     */
+    private const string JOIN_RESPONSE_V2_HEX = '0000003f'
+        . '00000001'
+        . '00000000'
+        . '0000'
+        . '00000002'
+        . '0005' . '72616e6765'
+        . '0005' . '6f6e652d31'
+        . '0005' . '6f6e652d31'
+        . '00000002'
+        . '0005' . '6f6e652d31' . '00000002' . '00ff'
+        . '0005' . '74776f2d32' . '00000000';
+
+    /**
+     * SyncGroup request v1 of the leader, which assigns three bytes to itself.
      *
      *   Size            => 00 00 00 35 (53 bytes)
      *   ApiKey          => 00 0e
-     *   ApiVersion      => 00 00
+     *   ApiVersion      => 00 01
      *   CorrelationId   => 00 00 00 02
      *   ClientId        => 00 04 "test"
      *   GroupId         => 00 08 "my-group"
@@ -155,6 +207,20 @@ final class GroupMembershipTest extends TestCase
      *     MemberAssignment => 00 00 00 03 01 00 02
      */
     private const string SYNC_REQUEST_HEX = '00000035'
+        . '000e'
+        . '0001'
+        . '00000002'
+        . '0004' . '74657374'
+        . '0008' . '6d792d67726f7570'
+        . '00000002'
+        . '0005' . '6f6e652d31'
+        . '00000001'
+        . '0005' . '6f6e652d31' . '00000003' . '010002';
+
+    /**
+     * The very same body as a version 0 frame
+     */
+    private const string SYNC_REQUEST_V0_HEX = '00000035'
         . '000e'
         . '0000'
         . '00000002'
@@ -173,14 +239,19 @@ final class GroupMembershipTest extends TestCase
      *   ErrorCode        => 00 00
      *   MemberAssignment => 00 00 00 03 01 00 02
      */
-    private const string SYNC_RESPONSE_HEX = '0000000d' . '00000002' . '0000' . '00000003' . '010002';
+    private const string SYNC_RESPONSE_V0_HEX = '0000000d' . '00000002' . '0000' . '00000003' . '010002';
 
     /**
-     * Heartbeat request v0 of the member "one-1" in the generation 2.
+     * The same answer as version 1, with the throttle time in front of the error code
+     */
+    private const string SYNC_RESPONSE_HEX = '00000011' . '00000002' . '00000000' . '0000' . '00000003' . '010002';
+
+    /**
+     * Heartbeat request v1 of the member "one-1" in the generation 2.
      *
      *   Size              => 00 00 00 23 (35 bytes)
      *   ApiKey            => 00 0c
-     *   ApiVersion        => 00 00
+     *   ApiVersion        => 00 01
      *   CorrelationId     => 00 00 00 03
      *   ClientId          => 00 04 "test"
      *   GroupId           => 00 08 "my-group"
@@ -188,6 +259,18 @@ final class GroupMembershipTest extends TestCase
      *   MemberId          => 00 05 "one-1"
      */
     private const string HEARTBEAT_REQUEST_HEX = '00000023'
+        . '000c'
+        . '0001'
+        . '00000003'
+        . '0004' . '74657374'
+        . '0008' . '6d792d67726f7570'
+        . '00000002'
+        . '0005' . '6f6e652d31';
+
+    /**
+     * The very same body as a version 0 frame
+     */
+    private const string HEARTBEAT_REQUEST_V0_HEX = '00000023'
         . '000c'
         . '0000'
         . '00000003'
@@ -197,17 +280,28 @@ final class GroupMembershipTest extends TestCase
         . '0005' . '6f6e652d31';
 
     /**
-     * LeaveGroup request v0 of the member "one-1".
+     * LeaveGroup request v1 of the member "one-1".
      *
      *   Size          => 00 00 00 1f (31 bytes)
      *   ApiKey        => 00 0d
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 04
      *   ClientId      => 00 04 "test"
      *   GroupId       => 00 08 "my-group"
      *   MemberId      => 00 05 "one-1"
      */
     private const string LEAVE_REQUEST_HEX = '0000001f'
+        . '000d'
+        . '0001'
+        . '00000004'
+        . '0004' . '74657374'
+        . '0008' . '6d792d67726f7570'
+        . '0005' . '6f6e652d31';
+
+    /**
+     * The very same body as a version 0 frame
+     */
+    private const string LEAVE_REQUEST_V0_HEX = '0000001f'
         . '000d'
         . '0000'
         . '00000004'
@@ -230,7 +324,29 @@ final class GroupMembershipTest extends TestCase
 
         self::assertSame(self::JOIN_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::JOIN_GROUP, $request->getApiKey());
-        self::assertSame(1, $request->getApiVersion(), 'the RebalanceTimeout of Kafka 0.10.1 makes this version 1');
+        self::assertSame(2, $request->getApiVersion(), 'the throttle time of KIP-124 makes this version 2');
+    }
+
+    public function testJoinGroupRequestV1SendsTheSameBodyAsVersionTwo(): void
+    {
+        $request = new JoinGroupRequestV1(
+            'my-group',
+            30000,
+            300000,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            'consumer',
+            ['range' => self::METADATA],
+            'test',
+            1
+        );
+
+        self::assertSame(self::JOIN_REQUEST_V1_HEX, bin2hex((string) $request));
+        self::assertSame(1, $request->getApiVersion());
+        self::assertSame(
+            substr(self::JOIN_REQUEST_HEX, 16),
+            substr(self::JOIN_REQUEST_V1_HEX, 16),
+            'JOIN_GROUP_REQUEST_V2 = JOIN_GROUP_REQUEST_V1: only the version field of the header differs'
+        );
     }
 
     public function testJoinGroupRequestV0CarriesNoRebalanceTimeout(): void
@@ -250,7 +366,7 @@ final class GroupMembershipTest extends TestCase
         self::assertArrayNotHasKey(
             'rebalanceTimeout',
             JoinGroupRequestV0::getScheme(),
-            'the field arrived with the version 1, and a 0.10.2.2 broker then uses the session timeout instead'
+            'the field arrived with the version 1, and a 0.11.0.3 broker then uses the session timeout instead'
         );
         self::assertArrayHasKey('rebalanceTimeout', JoinGroupRequest::getScheme());
     }
@@ -295,7 +411,7 @@ final class GroupMembershipTest extends TestCase
 
     public function testJoinGroupResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = JoinGroupResponse::unpack(new StringStream((string) hex2bin(self::JOIN_RESPONSE_HEX)));
+        $response = JoinGroupResponseV1::unpack(new StringStream((string) hex2bin(self::JOIN_RESPONSE_HEX)));
 
         self::assertSame(1, $response->getCorrelationId());
         self::assertSame(0, $response->errorCode);
@@ -306,6 +422,33 @@ final class GroupMembershipTest extends TestCase
         self::assertSame(['one-1', 'two-2'], array_keys($response->members));
         self::assertSame(self::METADATA, $response->members['one-1']->metadata);
         self::assertSame('', $response->members['two-2']->metadata, 'an empty byte array is not null');
+        self::assertSame(0, $response->throttleTimeMs, 'the field is not on the wire below version 2');
+    }
+
+    public function testTheVersionZeroAndVersionOneAnswersAreTheSameBytes(): void
+    {
+        $frame = (string) hex2bin(self::JOIN_RESPONSE_HEX);
+
+        $versionZero = JoinGroupResponseV0::unpack(new StringStream($frame));
+        $versionOne  = JoinGroupResponseV1::unpack(new StringStream($frame));
+
+        self::assertSame(bin2hex((string) $versionZero), bin2hex((string) $versionOne));
+        self::assertSame($versionZero->memberId, $versionOne->memberId);
+    }
+
+    public function testJoinGroupResponseOfVersionTwoStartsWithTheThrottleTime(): void
+    {
+        $response = JoinGroupResponse::unpack(new StringStream((string) hex2bin(self::JOIN_RESPONSE_V2_HEX)));
+
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(0, $response->errorCode);
+        self::assertSame(2, $response->generationId);
+        self::assertSame(['one-1', 'two-2'], array_keys($response->members));
+        self::assertSame(
+            self::JOIN_RESPONSE_V2_HEX,
+            bin2hex((string) $response),
+            'the answer survives a decode and encode round trip'
+        );
     }
 
     /**
@@ -323,7 +466,7 @@ final class GroupMembershipTest extends TestCase
             . '0005' . '74776f2d32'
             . '00000000';
 
-        $response = JoinGroupResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = JoinGroupResponseV1::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame('one-1', $response->leaderId);
         self::assertSame('two-2', $response->memberId);
@@ -339,7 +482,7 @@ final class GroupMembershipTest extends TestCase
     {
         $frame = '00000014' . '00000001' . '001a' . '00000000' . '0000' . '0000' . '0000' . '00000000';
 
-        $response = JoinGroupResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = JoinGroupResponseV0::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(26, $response->errorCode, 'the session timeout was outside the range of the broker');
         self::assertSame(0, $response->generationId);
@@ -355,7 +498,19 @@ final class GroupMembershipTest extends TestCase
 
         self::assertSame(self::SYNC_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::SYNC_GROUP, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(1, $request->getApiVersion());
+    }
+
+    public function testSyncGroupRequestV0SendsTheSameBodyAsVersionOne(): void
+    {
+        $request = new SyncGroupRequestV0('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2);
+
+        self::assertSame(self::SYNC_REQUEST_V0_HEX, bin2hex((string) $request));
+        self::assertSame(
+            substr(self::SYNC_REQUEST_HEX, 16),
+            substr(self::SYNC_REQUEST_V0_HEX, 16),
+            'SYNC_GROUP_REQUEST_V1 = SYNC_GROUP_REQUEST_V0'
+        );
     }
 
     public function testSyncGroupRequestAcceptsAnAlreadyBuiltMember(): void
@@ -378,7 +533,7 @@ final class GroupMembershipTest extends TestCase
 
         $expected = '00000027'
             . '000e'
-            . '0000'
+            . '0001'
             . '00000002'
             . '0004' . '74657374'
             . '0008' . '6d792d67726f7570'
@@ -389,13 +544,25 @@ final class GroupMembershipTest extends TestCase
         self::assertSame($expected, bin2hex((string) $request));
     }
 
-    public function testSyncGroupResponseIsUnpackedWithoutAThrottleTime(): void
+    public function testSyncGroupResponseOfVersionZeroIsUnpackedWithoutAThrottleTime(): void
     {
-        $response = SyncGroupResponse::unpack(new StringStream((string) hex2bin(self::SYNC_RESPONSE_HEX)));
+        $response = SyncGroupResponseV0::unpack(new StringStream((string) hex2bin(self::SYNC_RESPONSE_V0_HEX)));
 
         self::assertSame(2, $response->getCorrelationId());
         self::assertSame(0, $response->errorCode);
         self::assertSame(self::ASSIGNMENT, $response->memberAssignment);
+        self::assertSame(0, $response->throttleTimeMs);
+    }
+
+    public function testSyncGroupResponseOfVersionOneStartsWithTheThrottleTime(): void
+    {
+        $response = SyncGroupResponse::unpack(new StringStream((string) hex2bin(self::SYNC_RESPONSE_HEX)));
+
+        self::assertSame(2, $response->getCorrelationId());
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(0, $response->errorCode);
+        self::assertSame(self::ASSIGNMENT, $response->memberAssignment);
+        self::assertSame(self::SYNC_RESPONSE_HEX, bin2hex((string) $response));
     }
 
     /**
@@ -404,7 +571,7 @@ final class GroupMembershipTest extends TestCase
      */
     public function testSyncGroupResponseWithoutAnAssignmentIsUnpackedAsAnEmptyString(): void
     {
-        $response = SyncGroupResponse::unpack(
+        $response = SyncGroupResponseV0::unpack(
             new StringStream((string) hex2bin('0000000a' . '00000002' . '0016' . '00000000'))
         );
 
@@ -418,17 +585,41 @@ final class GroupMembershipTest extends TestCase
 
         self::assertSame(self::HEARTBEAT_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::HEARTBEAT, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(1, $request->getApiVersion());
     }
 
-    public function testHeartbeatResponseIsUnpackedAccordingToTheSpec(): void
+    public function testHeartbeatRequestV0SendsTheSameBodyAsVersionOne(): void
     {
-        $response = HeartbeatResponse::unpack(
+        $request = new HeartbeatRequestV0('my-group', 2, 'one-1', 'test', 3);
+
+        self::assertSame(self::HEARTBEAT_REQUEST_V0_HEX, bin2hex((string) $request));
+        self::assertSame(
+            substr(self::HEARTBEAT_REQUEST_HEX, 16),
+            substr(self::HEARTBEAT_REQUEST_V0_HEX, 16),
+            'HEARTBEAT_REQUEST_V1 = HEARTBEAT_REQUEST_V0'
+        );
+    }
+
+    public function testHeartbeatResponseOfVersionZeroIsTheErrorCodeAlone(): void
+    {
+        $response = HeartbeatResponseV0::unpack(
             new StringStream((string) hex2bin('00000006' . '00000003' . '001b'))
         );
 
         self::assertSame(3, $response->getCorrelationId());
         self::assertSame(27, $response->errorCode, 'the group is rebalancing, the member has to rejoin');
+        self::assertSame(0, $response->throttleTimeMs);
+    }
+
+    public function testHeartbeatResponseOfVersionOneStartsWithTheThrottleTime(): void
+    {
+        $frame    = '0000000a' . '00000003' . '00000000' . '001b';
+        $response = HeartbeatResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(3, $response->getCorrelationId());
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(27, $response->errorCode);
+        self::assertSame($frame, bin2hex((string) $response));
     }
 
     public function testLeaveGroupRequestIsPackedAccordingToTheSpec(): void
@@ -437,16 +628,39 @@ final class GroupMembershipTest extends TestCase
 
         self::assertSame(self::LEAVE_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::LEAVE_GROUP, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(1, $request->getApiVersion());
     }
 
-    public function testLeaveGroupResponseIsUnpackedAccordingToTheSpec(): void
+    public function testLeaveGroupRequestV0SendsTheSameBodyAsVersionOne(): void
     {
-        $response = LeaveGroupResponse::unpack(
+        $request = new LeaveGroupRequestV0('my-group', 'one-1', 'test', 4);
+
+        self::assertSame(self::LEAVE_REQUEST_V0_HEX, bin2hex((string) $request));
+        self::assertSame(
+            substr(self::LEAVE_REQUEST_HEX, 16),
+            substr(self::LEAVE_REQUEST_V0_HEX, 16),
+            'LEAVE_GROUP_REQUEST_V1 = LEAVE_GROUP_REQUEST_V0'
+        );
+    }
+
+    public function testLeaveGroupResponseOfVersionZeroIsTheErrorCodeAlone(): void
+    {
+        $response = LeaveGroupResponseV0::unpack(
             new StringStream((string) hex2bin('00000006' . '00000004' . '0019'))
         );
 
         self::assertSame(4, $response->getCorrelationId());
         self::assertSame(25, $response->errorCode, 'the coordinator does not know this member');
+        self::assertSame(0, $response->throttleTimeMs);
+    }
+
+    public function testLeaveGroupResponseOfVersionOneStartsWithTheThrottleTime(): void
+    {
+        $frame    = '0000000a' . '00000004' . '00000000' . '0019';
+        $response = LeaveGroupResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(25, $response->errorCode);
+        self::assertSame($frame, bin2hex((string) $response));
     }
 }

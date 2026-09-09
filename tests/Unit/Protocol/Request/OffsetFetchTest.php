@@ -25,21 +25,25 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV1;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV1;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV2;
 
 /**
  * Byte-exact tests for the OffsetFetch API (key 9), versions 0, 1 and 2.
  *
- * @see docs/protocol/0.11.0.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "OffsetFetch API (key 9, v0 to v3)"
  */
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]
 #[CoversClass(OffsetFetchRequestV1::class)]
+#[CoversClass(OffsetFetchRequestV2::class)]
 #[CoversClass(OffsetFetchResponse::class)]
 #[CoversClass(OffsetFetchResponseV0::class)]
 #[CoversClass(OffsetFetchResponseV1::class)]
+#[CoversClass(OffsetFetchResponseV2::class)]
 #[CoversClass(OffsetFetchResponseTopic::class)]
 #[CoversClass(OffsetFetchResponsePartition::class)]
 #[CoversClass(PartitionsForTopic::class)]
@@ -60,7 +64,7 @@ final class OffsetFetchTest extends TestCase
      *       Partition => 00 00 00 00
      *       Partition => 00 00 00 01
      *
-     * The three versions of the request are byte for byte the same as long as the topics are named explicitly;
+     * The four versions of the request are byte for byte the same as long as the topics are named explicitly;
      * only the ApiVersion field of the header differs.
      */
     private const string REQUEST_BODY_HEX = '00000001'
@@ -71,6 +75,8 @@ final class OffsetFetchTest extends TestCase
         . '00000002'
         . '00000000'
         . '00000001';
+
+    private const string REQUEST_V3_HEX = '0000002f' . '0009' . '0003' . self::REQUEST_BODY_HEX;
 
     private const string REQUEST_V2_HEX = '0000002f' . '0009' . '0002' . self::REQUEST_BODY_HEX;
 
@@ -89,8 +95,8 @@ final class OffsetFetchTest extends TestCase
      *   ConsumerGroup => 00 08 "my-group"
      *   [Topic]       => ff ff ff ff (null)
      */
-    private const string REQUEST_V2_ALL_TOPICS_HEX = '0000001c'
-        . '0009' . '0002'
+    private const string REQUEST_V3_ALL_TOPICS_HEX = '0000001c'
+        . '0009' . '0003'
         . '00000001'
         . '0004' . '74657374'
         . '0008' . '6d792d67726f7570'
@@ -99,8 +105,8 @@ final class OffsetFetchTest extends TestCase
     /**
      * The same request with an EMPTY topic array, which names no topic at all and is not the same request
      */
-    private const string REQUEST_V2_NO_TOPICS_HEX = '0000001c'
-        . '0009' . '0002'
+    private const string REQUEST_V3_NO_TOPICS_HEX = '0000001c'
+        . '0009' . '0003'
         . '00000001'
         . '0004' . '74657374'
         . '0008' . '6d792d67726f7570'
@@ -171,13 +177,26 @@ final class OffsetFetchTest extends TestCase
         . '00000000'
         . '0010';
 
-    public function testVersion2RequestIsPackedAccordingToTheSpec(): void
+    public function testVersion3RequestIsPackedAccordingToTheSpec(): void
     {
         $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1);
 
-        self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
+        self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::OFFSET_FETCH, $request->getApiKey());
+        self::assertSame(3, $request->getApiVersion());
+    }
+
+    public function testVersion2RequestOnlyDiffersInTheVersionFieldOfTheHeader(): void
+    {
+        $request = new OffsetFetchRequestV2('my-group', ['topic' => [0, 1]], 'test', 1);
+
+        self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
         self::assertSame(2, $request->getApiVersion());
+        self::assertSame(
+            OffsetFetchRequest::getScheme(),
+            OffsetFetchRequestV2::getScheme(),
+            'OFFSET_FETCH_REQUEST_V3 = OFFSET_FETCH_REQUEST_V2'
+        );
     }
 
     public function testVersion1RequestOnlyDiffersInTheVersionFieldOfTheHeader(): void
@@ -222,22 +241,22 @@ final class OffsetFetchTest extends TestCase
     {
         $request = new OffsetFetchRequest('my-group', null, 'test', 1);
 
-        self::assertSame(self::REQUEST_V2_ALL_TOPICS_HEX, bin2hex((string) $request));
+        self::assertSame(self::REQUEST_V3_ALL_TOPICS_HEX, bin2hex((string) $request));
     }
 
     public function testForAllTopicsBuildsTheNullTopicArrayRequest(): void
     {
         $request = OffsetFetchRequest::forAllTopics('my-group', 'test', 1);
 
-        self::assertSame(self::REQUEST_V2_ALL_TOPICS_HEX, bin2hex((string) $request));
+        self::assertSame(self::REQUEST_V3_ALL_TOPICS_HEX, bin2hex((string) $request));
     }
 
     public function testAnEmptyTopicArrayIsADifferentRequestFromTheNullOne(): void
     {
         $request = new OffsetFetchRequest('my-group', [], 'test', 1);
 
-        self::assertSame(self::REQUEST_V2_NO_TOPICS_HEX, bin2hex((string) $request));
-        self::assertNotSame(self::REQUEST_V2_ALL_TOPICS_HEX, bin2hex((string) $request));
+        self::assertSame(self::REQUEST_V3_NO_TOPICS_HEX, bin2hex((string) $request));
+        self::assertNotSame(self::REQUEST_V3_ALL_TOPICS_HEX, bin2hex((string) $request));
     }
 
     public function testVersionOneCanNotAskForEveryTopicOfTheGroup(): void
@@ -263,7 +282,7 @@ final class OffsetFetchTest extends TestCase
             1
         );
 
-        self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
+        self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $request));
     }
 
     public function testSeveralTopicsAreRequestedInOneMessage(): void
@@ -280,7 +299,7 @@ final class OffsetFetchTest extends TestCase
 
     public function testVersion2ResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = OffsetFetchResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+        $response = OffsetFetchResponseV2::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
 
         self::assertSame(1, $response->getCorrelationId());
         self::assertSame(['topic'], array_keys($response->topics));
@@ -292,12 +311,36 @@ final class OffsetFetchTest extends TestCase
         self::assertSame(42, $partition->offset);
         self::assertSame('meta', $partition->metadata);
         self::assertSame(0, $partition->errorCode);
+        self::assertSame(0, $response->throttleTimeMs, 'the throttle time arrived with the version 3');
+    }
+
+    public function testVersion3PutsTheThrottleTimeInFrontOfTheTopicsAndKeepsTheGroupErrorLast(): void
+    {
+        $frame = '0000002d'
+            . '00000001'
+            . '00000000'
+            . '00000001'
+            . '0005' . '746f706963'
+            . '00000001'
+            . '00000000'
+            . '000000000000002a'
+            . '0004' . '6d657461'
+            . '0000'
+            . '0000';
+
+        $response = OffsetFetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(['topic'], array_keys($response->topics));
+        self::assertSame(42, $response->topics['topic']->partitions[0]->offset);
+        self::assertSame(0, $response->errorCode, 'the group-level code still closes the answer');
+        self::assertSame($frame, bin2hex((string) $response));
     }
 
     public function testAGroupLevelErrorOfVersionTwoComesWithoutAnyTopic(): void
     {
         $frame    = (string) hex2bin(self::RESPONSE_V2_GROUP_ERROR_HEX);
-        $response = OffsetFetchResponse::unpack(new StringStream($frame));
+        $response = OffsetFetchResponseV2::unpack(new StringStream($frame));
 
         self::assertSame(16, $response->errorCode);
         self::assertSame([], $response->topics);
@@ -362,7 +405,7 @@ final class OffsetFetchTest extends TestCase
             . '0000'
             . '0000';
 
-        $response = OffsetFetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = OffsetFetchResponseV2::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame('', $response->topics['topic']->partitions[0]->metadata);
     }

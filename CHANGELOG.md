@@ -1,6 +1,5 @@
 Changelog
-=========
-
+==
 All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
@@ -50,6 +49,30 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   `docs/protocol/vectors/api-versions.json`, captured on the container.
 - **`FetchRequest::READ_UNCOMMITTED` / `READ_COMMITTED`** — the isolation levels of Fetch v4
   (KIP-98), under the identifiers of the pre-schema `main`.
+- **The throttle time of KIP-124 on fourteen apis** — the client now sends Metadata **v4**, Offsets
+  **v2**, OffsetCommit **v3**, OffsetFetch **v3**, GroupCoordinator **v1**, JoinGroup **v2**,
+  Heartbeat **v1**, LeaveGroup **v1**, SyncGroup **v1**, DescribeGroups **v1**, ListGroups **v1**,
+  CreateTopics **v2** and DeleteTopics **v1**, and every one of those answers is read with a leading
+  `throttleTimeMs`. Each lower version keeps a class of its own (`…RequestV<n>` / `…ResponseV<n>`),
+  so the class of an answer always names the version of the request that asked for it, and the
+  vectors of the lines below replay unchanged.
+- **GroupCoordinator v1 (key 10, FindCoordinator in the 0.11 sources)** — the request gained
+  `coordinator_type` (`GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP` /
+  `COORDINATOR_TYPE_TRANSACTION`) and the answer a `throttleTimeMs` and a nullable `errorMessage`.
+  `Common\CoordinatorLookup::findCoordinator(string $key, int $coordinatorType = …)` takes the type,
+  and `Client::getTransactionCoordinator(string $transactionalId)` looks a transactional id up with
+  it — the request a transactional producer has to send before anything else.
+- **`allow_auto_topic_creation` of Metadata v4 (KIP-4)** — `Common\Cluster` sends `true`, which is
+  what every version below 4 does implicitly, while `Admin\AdminClient::describeTopics()`,
+  `listTopics()` and `findAllBrokers()` send `false`: an administrator no longer creates a topic by
+  asking about it, and an absent topic is answered with the error code 3.
+- **`isolation_level` of Offsets v2 (KIP-98)** — `OffsetsRequest` takes it as its third argument and
+  defaults to `FetchRequest::READ_UNCOMMITTED`; with `READ_COMMITTED` the broker answers the last
+  stable offset instead of the log end offset.
+- **OffsetForLeaderEpoch (key 23, v0, KIP-101)** — `OffsetForLeaderEpochRequest`/`Response` and
+  their four DTOs, with wire vectors in `docs/protocol/vectors/offset-for-leader-epoch.json`. It is
+  a broker-to-broker api and this client sends it nowhere; a broker without an authorizer answers an
+  ordinary client all the same, which is how the vectors were captured.
 - **Produce v3** (KIP-98) — `ProduceRequest` sends version 3 with the nullable `TransactionalId` in
   front of `RequiredAcks` and a **record batch of the message format v2** per topic-partition;
   `ProduceRequestV2` keeps the highest version that may carry a legacy message set, because a

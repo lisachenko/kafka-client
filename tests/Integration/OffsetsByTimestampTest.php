@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * 1600000004000, so that the answer of the broker is fully determined by the timestamp that is searched for. What
  * the tests assert is the table of "What a 0.10.2.2 broker answers" in the protocol document.
  *
- * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
+ * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]

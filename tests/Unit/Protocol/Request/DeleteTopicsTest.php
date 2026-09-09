@@ -20,24 +20,31 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsRequestV0;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV0;
 
 /**
- * Byte-exact tests for the DeleteTopics API of Kafka 0.10.1 (api key 20, v0).
+ * Byte-exact tests for the DeleteTopics API of Kafka 0.10.1 (api key 20), raised to version 1 by KIP-124.
  *
- * @see docs/protocol/0.11.0.md, section "DeleteTopics API (key 20, v0)"
+ * The request of the two versions is one and the same body - `DELETE_TOPICS_REQUEST_V1 = DELETE_TOPICS_REQUEST_V0`
+ * - and only the answer of version 1 opens with the `ThrottleTimeMs`.
+ *
+ * @see docs/protocol/0.11.0.md, section "DeleteTopics API (key 20, v0 and v1)"
  */
 #[CoversClass(DeleteTopicsRequest::class)]
+#[CoversClass(DeleteTopicsRequestV0::class)]
 #[CoversClass(DeleteTopicsResponse::class)]
+#[CoversClass(DeleteTopicsResponseV0::class)]
 #[CoversClass(DeleteTopicsResponseTopic::class)]
 final class DeleteTopicsTest extends TestCase
 {
     /**
-     * DeleteTopics request v0 for two topics.
+     * DeleteTopics request v1 for two topics.
      *
      *   Size          => 00 00 00 24 (36 bytes)
      *   ApiKey        => 00 14 (20)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 03
      *   ClientId      => 00 04 "test"
      *   Topics        => 00 00 00 02
@@ -47,7 +54,7 @@ final class DeleteTopicsTest extends TestCase
      */
     private const string REQUEST_HEX = '00000024'
         . '0014'
-        . '0000'
+        . '0001'
         . '00000003'
         . '0004' . '74657374'
         . '00000002'
@@ -60,7 +67,7 @@ final class DeleteTopicsTest extends TestCase
      *
      *   Size          => 00 00 00 37 (55 bytes)
      *   ApiKey        => 00 14 (20)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 04
      *   ClientId      => 00 04 "test"
      *   Topics        => 00 00 00 01
@@ -69,7 +76,7 @@ final class DeleteTopicsTest extends TestCase
      */
     private const string PROBE_REQUEST_HEX = '00000037'
         . '0014'
-        . '0000'
+        . '0001'
         . '00000004'
         . '0004' . '74657374'
         . '00000001'
@@ -105,14 +112,41 @@ final class DeleteTopicsTest extends TestCase
      */
     private const string EMPTY_RESPONSE_HEX = '00000008' . '00000003' . '00000000';
 
+    /**
+     * The same answer as version 1: the topic error codes behind the throttle time KIP-124 added.
+     *
+     *   Size            => 00 00 00 1e (30 bytes)
+     *   CorrelationId   => 00 00 00 03
+     *   ThrottleTimeMs  => 00 00 00 00
+     *   TopicErrorCodes => 00 00 00 02
+     */
+    private const string RESPONSE_V1_HEX = '0000001e'
+        . '00000003'
+        . '00000000'
+        . '00000002'
+        . '0005' . '746f706963' . '0000'
+        . '0005' . '6f74686572' . '0003';
+
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
         $request = new DeleteTopicsRequest(['topic', 'other'], 30000, 'test', 3);
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DELETE_TOPICS, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'a 0.10.2.2 broker only serves version 0');
+        self::assertSame(1, $request->getApiVersion(), 'a 0.11.0.3 broker serves v0 and v1');
         self::assertSame(36, $request->getMessageSize());
+    }
+
+    public function testTheVersionZeroRequestIsTheSameBody(): void
+    {
+        $request = new DeleteTopicsRequestV0(['topic', 'other'], 30000, 'test', 3);
+
+        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(
+            substr(self::REQUEST_HEX, 16),
+            substr(bin2hex((string) $request), 16),
+            'DELETE_TOPICS_REQUEST_V1 = DELETE_TOPICS_REQUEST_V0'
+        );
     }
 
     public function testTheTopicsAreAPlainStringArrayAndNotAStructure(): void
@@ -133,17 +167,18 @@ final class DeleteTopicsTest extends TestCase
 
     public function testResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = DeleteTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = DeleteTopicsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(3, $response->getCorrelationId());
         self::assertSame(['topic', 'other'], array_keys($response->topics), 'topics are keyed by their name');
+        self::assertSame(0, $response->throttleTimeMs, 'version 0 has no throttle time');
         self::assertSame(KafkaException::NO_ERROR, $response->topics['topic']->errorCode);
         self::assertSame(KafkaException::UNKNOWN_TOPIC_OR_PARTITION, $response->topics['other']->errorCode);
     }
 
     public function testABrokerThatIsNotTheControllerReportsFortyOneForEveryTopic(): void
     {
-        $response = DeleteTopicsResponse::unpack(
+        $response = DeleteTopicsResponseV0::unpack(
             new StringStream((string) hex2bin(self::NOT_CONTROLLER_RESPONSE_HEX))
         );
 
@@ -156,14 +191,25 @@ final class DeleteTopicsTest extends TestCase
     {
         // Which is why findController() can not probe with an empty request: a follower answers it exactly like the
         // controller does, see KafkaApis.handleDeleteTopicsRequest @ 0.10.2.2
-        $response = DeleteTopicsResponse::unpack(new StringStream((string) hex2bin(self::EMPTY_RESPONSE_HEX)));
+        $response = DeleteTopicsResponseV0::unpack(new StringStream((string) hex2bin(self::EMPTY_RESPONSE_HEX)));
 
         self::assertSame([], $response->topics);
     }
 
+    public function testTheVersionOneAnswerStartsWithTheThrottleTime(): void
+    {
+        $response = DeleteTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+
+        self::assertSame(3, $response->getCorrelationId());
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(['topic', 'other'], array_keys($response->topics));
+        self::assertSame(KafkaException::UNKNOWN_TOPIC_OR_PARTITION, $response->topics['other']->errorCode);
+        self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $response));
+    }
+
     public function testResponseSurvivesARoundTrip(): void
     {
-        $response = DeleteTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = DeleteTopicsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
     }

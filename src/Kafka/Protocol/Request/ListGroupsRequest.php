@@ -23,10 +23,14 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * {@see \Protocol\Kafka\Admin\AdminClient::listAllGroups()}.
  *
  * <pre>
- *   ListGroupsRequest =>
+ *   ListGroups Request (Version: 0 and 1) =>
  * </pre>
  *
- * @see docs/protocol/0.11.0.md, section "ListGroups API (key 16, v0)"
+ * `LIST_GROUPS_REQUEST_V1 = LIST_GROUPS_REQUEST_V0` in `Protocol.java` @ 0.11.0.3 - both versions are an empty
+ * body - and version 1 (KIP-124, Kafka 0.11) added the `throttle_time_ms` to the ANSWER alone
+ * ({@see ListGroupsResponse}), so {@see ListGroupsRequestV0} differs in the version field of the header only.
+ *
+ * @see docs/protocol/0.11.0.md, section "ListGroups API (key 16, v0 and v1)"
  */
 class ListGroupsRequest extends AbstractRequest
 {
@@ -38,7 +42,7 @@ class ListGroupsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @param string $clientId      A user specified identifier for the client making the request

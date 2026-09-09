@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 
 /**
- * JoinGroup, version 1: the request with which a client becomes a member of a group (Kafka 0.10.1)
+ * JoinGroup, version 2: the request with which a client becomes a member of a group (Kafka 0.11)
  *
  * When new members join an existing group, all previous members are required to rejoin by sending a new join group
  * request. When a member first joins the group, the member id will be empty ({@see self::DEFAULT_MEMBER_ID}), and
@@ -26,8 +26,8 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * previous generation, otherwise it is answered with the error code 25 (UnknownMemberId).
  *
  * <pre>
- *   JoinGroup Request (Version: 1) => group_id session_timeout rebalance_timeout member_id protocol_type
- *                                     [group_protocols]
+ *   JoinGroup Request (Version: 1 and 2) => group_id session_timeout rebalance_timeout member_id protocol_type
+ *                                           [group_protocols]
  *     group_id          => STRING
  *     session_timeout   => INT32
  *     rebalance_timeout => INT32     -- since version 1
@@ -39,7 +39,11 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * </pre>
  *
  * Version 1 (KIP-62, Kafka 0.10.1) inserted `rebalance_timeout` **after** `session_timeout`, and that is its only
- * change; the response did not change at all. The two timeouts answer two different questions:
+ * change; the response did not change at all. Version 2 (KIP-124, Kafka 0.11) changed the request no further -
+ * `JOIN_GROUP_REQUEST_V2 = JOIN_GROUP_REQUEST_V1` in `Protocol.java` @ 0.11.0.3 - and only added the leading
+ * `throttle_time_ms` to the answer, which is why a version 1 request needs the answer class
+ * {@see JoinGroupResponseV1} while this one is read with {@see JoinGroupResponse}. The two timeouts answer two
+ * different questions:
  *
  * * `session_timeout` is how long the coordinator keeps a member that does not send a heartbeat. It has to lie
  *   between `group.min.session.timeout.ms` and `group.max.session.timeout.ms` of the broker, otherwise the request
@@ -62,7 +66,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * and the rebalance timeout, exactly as in the Java client, whose `request.timeout.ms` defaults to 305000 against a
  * `max.poll.interval.ms` of 300000.
  *
- * @see docs/protocol/0.11.0.md, section "JoinGroup API (key 11, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "JoinGroup API (key 11, v0, v1 and v2)"
  */
 class JoinGroupRequest extends AbstractRequest
 {
@@ -81,7 +85,7 @@ class JoinGroupRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * List of protocols that the member supports, indexed by the protocol name
