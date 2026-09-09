@@ -1,0 +1,182 @@
+{
+    "api": "describe-configs",
+    "apiKey": 32,
+    "section": "DescribeConfigs API (key 32, v0)",
+    "description": "Wire vectors of the DescribeConfigs API (key 32, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describeconfigs.request.v0.topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeConfigs request v0 for two named options of a topic resource (resource_type 2).",
+            "hex": "000000470020000000000020000a74352d766563746f72730000000102000a74352d766563746f727300000002000e636c65616e75702e706f6c696379000c726574656e74696f6e2e6d73",
+            "fields": {
+                "messageSize": 71,
+                "apiKey": 32,
+                "apiVersion": 0,
+                "correlationId": 32,
+                "clientId": "t5-vectors",
+                "resources": [
+                    {
+                        "resourceType": 2,
+                        "resourceName": "t5-vectors",
+                        "configNames": [
+                            "cleanup.policy",
+                            "retention.ms"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeconfigs.response.v0.topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeConfigs response v0 of a topic that has no option of its own: both entries carry the value the broker defaults imply, is_default = 01 and read_only = 00.",
+            "hex": "000000580000002000000000000000010000ffff02000a74352d766563746f727300000002000e636c65616e75702e706f6c696379000664656c657465000100000c726574656e74696f6e2e6d730009363034383030303030000100",
+            "fields": {
+                "messageSize": 88,
+                "correlationId": 32,
+                "throttleTimeMs": 0,
+                "resources": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "resourceType": 2,
+                        "resourceName": "t5-vectors",
+                        "configEntries": {
+                            "cleanup.policy": {
+                                "configName": "cleanup.policy",
+                                "configValue": "delete",
+                                "readOnly": false,
+                                "isDefault": true,
+                                "isSensitive": false
+                            },
+                            "retention.ms": {
+                                "configName": "retention.ms",
+                                "configValue": "604800000",
+                                "readOnly": false,
+                                "isDefault": true,
+                                "isSensitive": false
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeconfigs.request.v0.broker",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeConfigs request v0 for two named options of the broker resource (resource_type 4), whose name is the broker id as text.",
+            "hex": "000000420020000000000021000a74352d766563746f7273000000010400013000000002000962726f6b65722e6964001573736c2e6b657973746f72652e70617373776f7264",
+            "fields": {
+                "messageSize": 66,
+                "apiKey": 32,
+                "apiVersion": 0,
+                "correlationId": 33,
+                "clientId": "t5-vectors",
+                "resources": [
+                    {
+                        "resourceType": 4,
+                        "resourceName": "0",
+                        "configNames": [
+                            "broker.id",
+                            "ssl.keystore.password"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeconfigs.response.v0.broker",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeConfigs response v0 of the broker that answered: every entry is read_only, and the value of the sensitive ssl.keystore.password is the null string ff ff.",
+            "hex": "000000450000002100000000000000010000ffff0400013000000002001573736c2e6b657973746f72652e70617373776f7264ffff010001000962726f6b65722e6964000130010000",
+            "fields": {
+                "messageSize": 69,
+                "correlationId": 33,
+                "throttleTimeMs": 0,
+                "resources": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "resourceType": 4,
+                        "resourceName": "0",
+                        "configEntries": {
+                            "ssl.keystore.password": {
+                                "configName": "ssl.keystore.password",
+                                "configValue": null,
+                                "readOnly": true,
+                                "isDefault": false,
+                                "isSensitive": true
+                            },
+                            "broker.id": {
+                                "configName": "broker.id",
+                                "configValue": "0",
+                                "readOnly": true,
+                                "isDefault": false,
+                                "isSensitive": false
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeconfigs.request.v0.unknown-broker",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeConfigs request v0 for every option (config_names = null, ff ff ff ff) of a broker that is not the one the request was sent to.",
+            "hex": "000000200020000000000022000a74352d766563746f72730000000104000137ffffffff",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 32,
+                "apiVersion": 0,
+                "correlationId": 34,
+                "clientId": "t5-vectors",
+                "resources": [
+                    {
+                        "resourceType": 4,
+                        "resourceName": "7",
+                        "configNames": null
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeconfigs.response.v0.unknown-broker",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeConfigs response v0 for a broker id that the broker that answers does not have: the error code 42 (InvalidRequest) with the message of the exception and an empty entry list.",
+            "hex": "00000048000000220000000000000001002a0030556e65787065637465642062726f6b65722069642c20657870656374656420302c2062757420726563656976656420370400013700000000",
+            "fields": {
+                "messageSize": 72,
+                "correlationId": 34,
+                "throttleTimeMs": 0,
+                "resources": [
+                    {
+                        "errorCode": 42,
+                        "errorMessage": "Unexpected broker id, expected 0, but received 7",
+                        "resourceType": 4,
+                        "resourceName": "7",
+                        "configEntries": []
+                    }
+                ]
+            }
+        }
+    ]
+}

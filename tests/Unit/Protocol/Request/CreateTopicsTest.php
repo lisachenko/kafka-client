@@ -26,18 +26,25 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopic;
 use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV0;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV0;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV1;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV0;
+use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV1;
 
 /**
- * Byte-exact tests for the CreateTopics API of Kafka 0.10.1 (api key 19, v0 and v1).
+ * Byte-exact tests for the CreateTopics API of Kafka 0.10.1 (api key 19), raised to version 2 by KIP-124.
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * The request of version 2 is the request of version 1 - `CREATE_TOPICS_REQUEST_V2 = CREATE_TOPICS_REQUEST_V1` -
+ * and the answer only gained the leading `ThrottleTimeMs`; the topic entries are the ones of version 1.
+ *
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0, v1 and v2)"
  */
 #[CoversClass(CreateTopicsRequest::class)]
 #[CoversClass(CreateTopicsRequestV0::class)]
+#[CoversClass(CreateTopicsRequestV1::class)]
 #[CoversClass(CreateTopicsResponse::class)]
 #[CoversClass(CreateTopicsResponseV0::class)]
+#[CoversClass(CreateTopicsResponseV1::class)]
 #[CoversClass(CreateTopicsRequestTopic::class)]
 #[CoversClass(CreateTopicsRequestReplicaAssignment::class)]
 #[CoversClass(CreateTopicsRequestConfig::class)]
@@ -47,11 +54,11 @@ use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV0;
 final class CreateTopicsTest extends TestCase
 {
     /**
-     * CreateTopics request v1 that creates `topic` with two partitions and one topic level option.
+     * CreateTopics request v2 that creates `topic` with two partitions and one topic level option.
      *
      *   Size              => 00 00 00 43 (67 bytes)
      *   ApiKey            => 00 13 (19)
-     *   ApiVersion        => 00 01
+     *   ApiVersion        => 00 02
      *   CorrelationId     => 00 00 00 07
      *   ClientId          => 00 04 "test"
      *   Topics            => 00 00 00 01
@@ -65,9 +72,9 @@ final class CreateTopicsTest extends TestCase
      *   Timeout           => 00 00 75 30 (30000)
      *   ValidateOnly      => 00
      */
-    private const string REQUEST_V1_HEX = '00000043'
+    private const string REQUEST_V2_HEX = '00000043'
         . '0013'
-        . '0001'
+        . '0002'
         . '00000007'
         . '0004' . '74657374'
         . '00000001'
@@ -86,7 +93,7 @@ final class CreateTopicsTest extends TestCase
      *
      *   Size              => 00 00 00 40 (64 bytes)
      *   ApiKey            => 00 13 (19)
-     *   ApiVersion        => 00 01
+     *   ApiVersion        => 00 02
      *   CorrelationId     => 00 00 00 08
      *   ClientId          => 00 04 "test"
      *   Topics            => 00 00 00 01
@@ -100,9 +107,9 @@ final class CreateTopicsTest extends TestCase
      *   Timeout           => 00 00 75 30 (30000)
      *   ValidateOnly      => 01
      */
-    private const string REQUEST_V1_ASSIGNMENT_HEX = '00000040'
+    private const string REQUEST_V2_ASSIGNMENT_HEX = '00000040'
         . '0013'
-        . '0001'
+        . '0002'
         . '00000008'
         . '0004' . '74657374'
         . '00000001'
@@ -117,7 +124,7 @@ final class CreateTopicsTest extends TestCase
         . '01';
 
     /**
-     * The same request as version 0, i.e. without the trailing `ValidateOnly` byte.
+     * The same request as version 0, i.e. without the trailing `ValidateOnly` byte that version 1 added.
      */
     private const string REQUEST_V0_HEX = '00000042'
         . '0013'
@@ -172,7 +179,26 @@ final class CreateTopicsTest extends TestCase
         . '0005' . '746f706963' . '0000'
         . '0005' . '6f74686572' . '0024';
 
-    public function testRequestOfVersionOneIsPackedAccordingToTheSpec(): void
+    /**
+     * The same answer as version 2: the topic errors of version 1 behind the throttle time KIP-124 added.
+     *
+     *   Size           => 00 00 00 37 (55 bytes)
+     *   CorrelationId  => 00 00 00 07
+     *   ThrottleTimeMs => 00 00 00 00
+     *   TopicErrors    => (the entries of version 1)
+     */
+    private const string RESPONSE_V2_HEX = '00000037'
+        . '00000007'
+        . '00000000'
+        . '00000002'
+        . '0005' . '746f706963'
+        . '0000'
+        . 'ffff'
+        . '0005' . '6f74686572'
+        . '0024'
+        . '0015' . '546f70696320276f7468657227206578697374732e';
+
+    public function testRequestOfVersionTwoIsPackedAccordingToTheSpec(): void
     {
         $request = new CreateTopicsRequest(
             [new NewTopic('topic', 2, 1, configs: ['retention.ms' => '3600000'])],
@@ -182,9 +208,27 @@ final class CreateTopicsTest extends TestCase
             7
         );
 
-        self::assertSame(self::REQUEST_V1_HEX, bin2hex((string) $request));
+        self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::CREATE_TOPICS, $request->getApiKey());
+        self::assertSame(2, $request->getApiVersion());
+    }
+
+    public function testRequestOfVersionOneSendsTheSameBodyAsVersionTwo(): void
+    {
+        $request = new CreateTopicsRequestV1(
+            [new NewTopic('topic', 2, 1, configs: ['retention.ms' => '3600000'])],
+            30000,
+            false,
+            'test',
+            7
+        );
+
         self::assertSame(1, $request->getApiVersion());
+        self::assertSame(
+            substr(self::REQUEST_V2_HEX, 16),
+            substr(bin2hex((string) $request), 16),
+            'CREATE_TOPICS_REQUEST_V2 = CREATE_TOPICS_REQUEST_V1'
+        );
     }
 
     public function testAnExplicitReplicaAssignmentLeavesThePartitionsAndTheFactorUnset(): void
@@ -197,7 +241,7 @@ final class CreateTopicsTest extends TestCase
             8
         );
 
-        self::assertSame(self::REQUEST_V1_ASSIGNMENT_HEX, bin2hex((string) $request));
+        self::assertSame(self::REQUEST_V2_ASSIGNMENT_HEX, bin2hex((string) $request));
         self::assertSame(-1, NewTopic::NO_NUM_PARTITIONS, 'unset is -1 on the wire');
         self::assertSame(-1, NewTopic::NO_REPLICATION_FACTOR);
     }
@@ -214,7 +258,7 @@ final class CreateTopicsTest extends TestCase
         self::assertSame(self::REQUEST_V0_HEX, bin2hex((string) $request));
         self::assertSame(0, $request->getApiVersion());
         self::assertSame(
-            strlen((string) hex2bin(self::REQUEST_V1_HEX)) - 1,
+            strlen((string) hex2bin(self::REQUEST_V2_HEX)) - 1,
             strlen((string) $request),
             'the boolean of version 1 is exactly one byte'
         );
@@ -230,12 +274,12 @@ final class CreateTopicsTest extends TestCase
             7
         );
 
-        self::assertSame(self::REQUEST_V1_HEX, bin2hex((string) $request));
+        self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
     }
 
     public function testResponseOfVersionOneIsUnpackedAccordingToTheSpec(): void
     {
-        $response = CreateTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $response = CreateTopicsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
 
         self::assertSame(7, $response->getCorrelationId());
         self::assertSame(['topic', 'other'], array_keys($response->topics), 'topics are keyed by their name');
@@ -261,13 +305,26 @@ final class CreateTopicsTest extends TestCase
         }
     }
 
+    public function testResponseOfVersionTwoStartsWithTheThrottleTime(): void
+    {
+        $response = CreateTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+
+        self::assertSame(7, $response->getCorrelationId());
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(['topic', 'other'], array_keys($response->topics));
+        self::assertSame("Topic 'other' exists.", $response->topics['other']->errorMessage);
+        self::assertSame(self::RESPONSE_V2_HEX, bin2hex((string) $response));
+    }
+
     public function testEveryVersionOfTheResponseSurvivesARoundTrip(): void
     {
-        $versionOne = CreateTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
-        $versionTwo = CreateTopicsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_V0_HEX)));
+        $versionZero = CreateTopicsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_V0_HEX)));
+        $versionOne  = CreateTopicsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $versionTwo  = CreateTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
 
+        self::assertSame(self::RESPONSE_V0_HEX, bin2hex((string) $versionZero));
         self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $versionOne));
-        self::assertSame(self::RESPONSE_V0_HEX, bin2hex((string) $versionTwo));
+        self::assertSame(self::RESPONSE_V2_HEX, bin2hex((string) $versionTwo));
     }
 
     public function testTheTopicsOfTheRequestAreDeduplicatedByTheirName(): void
@@ -282,6 +339,6 @@ final class CreateTopicsTest extends TestCase
             7
         );
 
-        self::assertSame(self::REQUEST_V1_HEX, bin2hex((string) $request), 'the last entry of a name wins');
+        self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request), 'the last entry of a name wins');
     }
 }

@@ -14,21 +14,33 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use Protocol\Kafka\Client;
+use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\TimestampType;
+use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
+use Protocol\Kafka\Protocol\Request\FetchRequestV3;
+use Protocol\Kafka\Protocol\Request\FetchRequestV4;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
+use Protocol\Kafka\Protocol\Request\FetchResponseV3;
+use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -40,7 +52,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * answer - in the order of the partitions of the request, and always with at least one complete message in the
  * first non-empty one.
  *
- * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
+ * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV2::class)]
@@ -92,11 +104,11 @@ final class FetchApiTest extends IntegrationTestCase
             new Record('and another one', null, 0, null, self::CREATE_TIME + 1),
         ]);
 
-        $stream    = $this->connect();
-        $version2  = $this->fetch($stream, FetchRequestV2::class, FetchResponseV2::class, 0, 61);
-        $records   = $version2->getMessageSet()->getRecords();
+        $stream   = $this->connect();
+        $version2 = $this->fetch($stream, FetchRequestV2::class, FetchResponseV2::class, 0, 61);
+        $records  = $version2->getRecords()->getRecords();
 
-        self::assertSame(Message::MAGIC_V1, $version2->getMessageSet()->getMagic());
+        self::assertSame(Message::MAGIC_V1, $version2->getRecords()->getMagic());
         self::assertSame(
             [self::CREATE_TIME, self::CREATE_TIME + 1],
             array_map(static fn(Record $record): ?int => $record->timestamp, $records),
@@ -111,16 +123,16 @@ final class FetchApiTest extends IntegrationTestCase
         // format v0, which has no timestamps at all
         $version1 = $this->fetch($stream, FetchRequestV1::class, FetchResponseV1::class, 0, 62);
 
-        self::assertSame(Message::MAGIC_V0, $version1->getMessageSet()->getMagic());
+        self::assertSame(Message::MAGIC_V0, $version1->getRecords()->getMagic());
         self::assertSame(
             [null, null],
-            array_map(static fn(Record $record): ?int => $record->timestamp, $version1->getMessageSet()->getRecords())
+            array_map(static fn(Record $record): ?int => $record->timestamp, $version1->getRecords()->getRecords())
         );
         self::assertSame(
             ['with a timestamp', 'and another one'],
             array_map(
                 static fn(Record $record): ?string => $record->value,
-                $version1->getMessageSet()->getRecords()
+                $version1->getRecords()->getRecords()
             ),
             'the records themselves survive the conversion'
         );
@@ -132,10 +144,136 @@ final class FetchApiTest extends IntegrationTestCase
 
         $stream   = $this->connect();
         $version2 = $this->fetch($stream, FetchRequestV2::class, FetchResponseV2::class, 0, 63);
-        $version3 = $this->fetch($stream, FetchRequest::class, FetchResponse::class, 0, 64);
+        $version3 = $this->fetch($stream, FetchRequestV3::class, FetchResponseV3::class, 0, 64);
 
-        self::assertSame($version2->getMessageSet()->toBuffer(), $version3->getMessageSet()->toBuffer());
+        self::assertSame($version2->getRecords()->toBuffer(), $version3->getRecords()->toBuffer());
         self::assertSame($version2->highWaterMarkOffset, $version3->highWaterMarkOffset);
+    }
+
+    public function testTheVersionsFourAndFiveAnswerWithTheRecordBatchTheLogHolds(): void
+    {
+        $timestamp = self::currentTimestampMs();
+        $this->produceRecordBatch(0, [
+            new Record('as it lies', 'key', 0, null, $timestamp)->withHeaders(new Header('trace-id', 'abc')),
+        ]);
+        $this->produceRecordBatch(1, [new Record('without headers', null, 0, null, $timestamp)]);
+
+        $stream   = $this->connect();
+        $version4 = $this->fetchWithIsolationLevel($stream, 4, FetchRequest::READ_UNCOMMITTED, 70);
+        $version5 = $this->fetchWithIsolationLevel($stream, 5, FetchRequest::READ_UNCOMMITTED, 71);
+
+        self::assertSame(RecordBatch::MAGIC, $version4->getRecords()->getMagic());
+        self::assertSame(RecordBatch::MAGIC, $version5->getRecords()->getMagic());
+        self::assertSame(
+            $version4->getRecords()->toBuffer(),
+            $version5->getRecords()->toBuffer(),
+            'the record set of a version 4 and of a version 5 answer are the same bytes'
+        );
+
+        $record = $version5->getRecords()->getRecords()[0];
+        self::assertSame('as it lies', $record->value);
+        self::assertSame($timestamp, $record->timestamp);
+        self::assertSame(['trace-id'], array_map(
+            static fn(Header $header): string => $header->key,
+            $record->headers
+        ));
+
+        // The very same log without the headers, asked for with a version 3 request: converted down to the
+        // message format v1, one message per record, with the timestamp of the record and no headers at all
+        $version3 = $this->fetch($stream, FetchRequestV3::class, FetchResponseV3::class, 1, 72);
+
+        self::assertSame(0, $version3->errorCode);
+        self::assertSame(Message::MAGIC_V1, $version3->getRecords()->getMagic());
+        self::assertSame([], $version3->getRecords()->getRecords()[0]->headers);
+        self::assertSame($timestamp, $version3->getRecords()->getRecords()[0]->timestamp);
+    }
+
+    public function testAPartitionWhoseRecordsCarryHeadersCanNotBeReadByAFetchBelowVersionFour(): void
+    {
+        $this->produceRecordBatch(0, [
+            new Record('with a header', null, 0, null, self::currentTimestampMs())
+                ->withHeaders(new Header('trace-id', 'abc')),
+        ]);
+
+        // `MemoryRecordsBuilder.appendWithOffset` @ 0.11.0.3: "Magic v1 does not support record headers". The
+        // broker can not build the answer of a client that asks below version 4 and reports the partition with the
+        // error code -1, UnknownServerError, and an empty record set - the rest of the answer is a normal frame
+        $stream   = $this->connect();
+        $version3 = $this->fetch($stream, FetchRequestV3::class, FetchResponseV3::class, 0, 79);
+        $version1 = $this->fetch($stream, FetchRequestV1::class, FetchResponseV1::class, 0, 80);
+
+        self::assertSame(KafkaException::UNKNOWN, $version3->errorCode);
+        self::assertSame('', (string) $version3->messageSet);
+        self::assertSame(KafkaException::UNKNOWN, $version1->errorCode);
+
+        // The very same partition is perfectly readable with a version 4 request
+        $version4 = $this->fetchWithIsolationLevel($stream, 4, FetchRequest::READ_UNCOMMITTED, 81);
+
+        self::assertSame(0, $version4->errorCode);
+        self::assertSame(['with a header'], self::valuesOf($version4));
+    }
+
+    public function testTheLastStableOffsetAndTheAbortedTransactionsAreTheAnswerOfAReadCommittedFetchAlone(): void
+    {
+        $this->produce(0, [
+            new Record('committed', null, 0, null, self::currentTimestampMs()),
+            new Record('and another one', null, 0, null, self::currentTimestampMs()),
+        ]);
+
+        $stream         = $this->connect();
+        $uncommittedV4  = $this->fetchWithIsolationLevel($stream, 4, FetchRequest::READ_UNCOMMITTED, 73);
+        $committedV4    = $this->fetchWithIsolationLevel($stream, 4, FetchRequest::READ_COMMITTED, 74);
+        $uncommittedV5  = $this->fetchWithIsolationLevel($stream, 5, FetchRequest::READ_UNCOMMITTED, 75);
+        $committedV5    = $this->fetchWithIsolationLevel($stream, 5, FetchRequest::READ_COMMITTED, 76);
+
+        foreach (['v4' => $uncommittedV4, 'v5' => $uncommittedV5] as $version => $partition) {
+            self::assertSame(
+                FetchResponsePartition::INVALID_LAST_STABLE_OFFSET,
+                $partition->lastStableOffset,
+                "a read_uncommitted {$version} fetch is answered with the last stable offset -1"
+            );
+            self::assertNull(
+                $partition->abortedTransactions,
+                "a read_uncommitted {$version} fetch is answered with a null aborted-transactions array"
+            );
+        }
+
+        foreach (['v4' => $committedV4, 'v5' => $committedV5] as $version => $partition) {
+            self::assertSame(
+                $partition->highWaterMarkOffset,
+                $partition->lastStableOffset,
+                "the LSO of a partition without transactions is its high water mark ({$version})"
+            );
+            self::assertSame(
+                [],
+                $partition->abortedTransactions,
+                "an empty array is not the null of a read_uncommitted fetch ({$version})"
+            );
+        }
+
+        self::assertSame(2, $committedV5->highWaterMarkOffset);
+        self::assertSame(['committed', 'and another one'], self::valuesOf($committedV5));
+    }
+
+    public function testOnlyAVersionFiveAnswerCarriesTheLogStartOffsetOfThePartition(): void
+    {
+        $this->produce(0, [new Record('somewhere in the log', null, 0, null, self::currentTimestampMs())]);
+
+        $stream   = $this->connect();
+        $version5 = $this->fetchWithIsolationLevel($stream, 5, FetchRequest::READ_UNCOMMITTED, 77);
+        $version4 = $this->fetchWithIsolationLevel($stream, 4, FetchRequest::READ_UNCOMMITTED, 78);
+
+        self::assertSame(0, $version5->logStartOffset, 'nothing was deleted from the front of a fresh log');
+        self::assertSame(
+            FetchResponsePartition::INVALID_LOG_START_OFFSET,
+            $version4->logStartOffset,
+            'a version 4 answer does not carry the field at all'
+        );
+        self::assertSame(
+            self::valuesOf($version5),
+            self::valuesOf($version4),
+            'the record set of the two answers is the same, only the partition header differs'
+        );
     }
 
     public function testTheRequestLevelMaxBytesIsSpentOnThePartitionsInTheOrderOfTheRequest(): void
@@ -186,6 +324,59 @@ final class FetchApiTest extends IntegrationTestCase
         self::assertTrue($version1->isSingleMessageTooLarge(0), 'which is what the lower versions answer instead');
     }
 
+    public function testTheClientCarriesTheStateOfEveryPartitionOfAVersionFiveAnswer(): void
+    {
+        $timestamp = self::currentTimestampMs();
+        $this->produceRecordBatch(0, [
+            new Record('through the client', 'key', 0, null, $timestamp)
+                ->withHeaders(new Header('trace-id', 'abc')),
+        ]);
+
+        $uncommitted = $this->client()->fetchPartitions([$this->topic => [0 => 0]], 1000)[$this->topic][0];
+        $committed   = $this->client(['isolation.level' => 'read_committed'])
+            ->fetchPartitions([$this->topic => [0 => 0]], 1000)[$this->topic][0];
+
+        self::assertSame(0, $uncommitted->errorCode);
+        self::assertSame(1, $uncommitted->highWaterMarkOffset);
+        self::assertSame(0, $uncommitted->logStartOffset, 'version 5 reports it for both isolation levels');
+        self::assertSame(-1, $uncommitted->lastStableOffset, 'a read_uncommitted fetch does not ask for the LSO');
+        self::assertNull($uncommitted->abortedTransactions);
+
+        self::assertSame(1, $committed->lastStableOffset, 'without a transaction the LSO is the high water mark');
+        self::assertSame([], $committed->abortedTransactions, 'asked for, and nothing was aborted here');
+        self::assertSame(0, $committed->logStartOffset);
+
+        $records = $committed->getRecords();
+        self::assertCount(1, $records);
+        self::assertSame('through the client', $records[0]->value);
+        self::assertSame($timestamp, $records[0]->timestamp);
+        self::assertSame(['trace-id'], array_map(
+            static fn(Header $header): string => $header->key,
+            $records[0]->headers
+        ), 'the headers survive the whole path through the client');
+        self::assertSame(1, $committed->getNextOffset());
+    }
+
+    /**
+     * A low-level client of the broker under test
+     *
+     * @param array<string, mixed> $overrides Options on top of the defaults of this test
+     */
+    private function client(array $overrides = []): Client
+    {
+        $configuration = $overrides + [
+            ClientConfig::BOOTSTRAP_SERVERS           => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID                   => self::CLIENT_ID,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS   => 30000,
+            ClientConfig::REQUEST_TIMEOUT_MS          => 10000,
+            ConsumerConfig::FETCH_MAX_WAIT_MS         => self::FETCH_MAX_WAIT_MS,
+            ConsumerConfig::FETCH_MIN_BYTES           => 1,
+            ConsumerConfig::MAX_PARTITION_FETCH_BYTES => 65536,
+        ];
+
+        return new Client(Cluster::bootstrap($configuration), $configuration);
+    }
+
     /**
      * Produces the given records into one partition of the topic under test
      *
@@ -194,7 +385,8 @@ final class FetchApiTest extends IntegrationTestCase
     private function produce(int $partition, array $records): void
     {
         $stream = $this->connect();
-        new ProduceRequest(
+        // A message set may only travel in a request below version 3, see docs/protocol/0.11.0.md
+        new ProduceRequestV2(
             [$this->topic => [$partition => MessageSet::fromRecords($records)]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -202,7 +394,7 @@ final class FetchApiTest extends IntegrationTestCase
             1
         )->writeTo($stream);
 
-        $errorCode = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+        $errorCode = ProduceResponseV2::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
         if ($errorCode !== 0) {
             throw KafkaException::fromCode($errorCode, ['topic' => $this->topic, 'partitionId' => $partition]);
         }
@@ -278,7 +470,69 @@ final class FetchApiTest extends IntegrationTestCase
     {
         return array_map(
             static fn(Record $record): ?string => $record->value,
-            $partition->getMessageSet()->getRecords()
+            $partition->getRecords()->getRecords()
         );
+    }
+
+    /**
+     * Produces the given records as a record batch of the message format v2, which needs a version 3 request
+     *
+     * @param list<Record> $records Records to append
+     */
+    private function produceRecordBatch(int $partition, array $records): void
+    {
+        $stream = $this->connect();
+        new ProduceRequest(
+            [$this->topic => [$partition => RecordBatch::fromRecords($records)]],
+            1,
+            self::PRODUCE_TIMEOUT_MS,
+            self::CLIENT_ID,
+            2
+        )->writeTo($stream);
+
+        $errorCode = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+        if ($errorCode !== 0) {
+            throw KafkaException::fromCode($errorCode, ['topic' => $this->topic, 'partitionId' => $partition]);
+        }
+    }
+
+    /**
+     * Fetches one partition with a version 4 or 5 request at the given isolation level
+     */
+    private function fetchWithIsolationLevel(
+        Stream $stream,
+        int $version,
+        int $isolationLevel,
+        int $correlationId,
+        int $partition = 0
+    ): FetchResponsePartition {
+        $requestClass  = $version === 5 ? FetchRequest::class : FetchRequestV4::class;
+        $responseClass = $version === 5 ? FetchResponse::class : FetchResponseV4::class;
+
+        new $requestClass(
+            [$this->topic => [$partition => 0]],
+            self::FETCH_MAX_WAIT_MS,
+            1,
+            65536,
+            -1,
+            self::CLIENT_ID,
+            $correlationId,
+            FetchRequest::DEFAULT_MAX_BYTES,
+            $isolationLevel
+        )->writeTo($stream);
+
+        $response = $responseClass::unpack($stream);
+        self::assertSame($correlationId, $response->getCorrelationId());
+
+        return $response->topics[$this->topic]->partitions[$partition];
+    }
+
+    /**
+     * The current time in milliseconds; a test never stamps a record with a timestamp of the past, because the
+     * retention of the broker deletes a segment by the largest timestamp it holds
+     */
+    private static function currentTimestampMs(): int
+    {
+        return (int) round(microtime(true) * 1000);
     }
 }

@@ -20,19 +20,31 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * One partition of a Fetch request
  *
  * <pre>
- *   FetchRequestTopicPartition => Partition FetchOffset MaxBytes
- *     Partition   => int32
- *     FetchOffset => int64
- *     MaxBytes    => int32
+ *   FetchRequestTopicPartition => Partition FetchOffset LogStartOffset MaxBytes
+ *     Partition      => int32
+ *     FetchOffset    => int64
+ *     LogStartOffset => int64
+ *     MaxBytes       => int32
  * </pre>
  *
- * `LogStartOffset` only exists since FetchRequest v5 (Kafka 0.11) and is therefore absent here. The partition entry
- * itself has not changed in any version a 0.10.2.2 broker serves.
+ * `LogStartOffset` only exists since FetchRequest v5 (Kafka 0.11, KIP-107) and is absent from the versions 0 to 4,
+ * which is what {@see FetchRequestTopicPartitionV0} lowers the version constant for. The partition entry did not
+ * change in any other version.
  *
- * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
+ * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface
 {
+    /**
+     * Version of the Fetch API that this DTO is packed for
+     */
+    public const int VERSION = 5;
+
+    /**
+     * `LogStartOffset` of a consumer, which is not a follower and therefore has no log of its own
+     */
+    public const int INVALID_LOG_START_OFFSET = -1;
+
     /**
      * Id of the partition to fetch from
      */
@@ -55,11 +67,27 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
      */
     public int $maxBytes;
 
-    public function __construct(int $partition, int $fetchOffset, int $maxBytes)
-    {
-        $this->partition   = $partition;
-        $this->fetchOffset = $fetchOffset;
-        $this->maxBytes    = $maxBytes;
+    /**
+     * Earliest offset the *sender* still holds, the field version 5 added (KIP-107).
+     *
+     * It is meant for a **follower** replica, which tells the leader where its own log begins so that the leader
+     * can keep the log start offsets of the partition in step; an ordinary consumer has no log and sends
+     * {@see self::INVALID_LOG_START_OFFSET}, exactly as `FetchRequest.PartitionData` of the Java consumer does.
+     *
+     * @since Version 5 of protocol
+     */
+    public int $logStartOffset = self::INVALID_LOG_START_OFFSET;
+
+    public function __construct(
+        int $partition,
+        int $fetchOffset,
+        int $maxBytes,
+        int $logStartOffset = self::INVALID_LOG_START_OFFSET
+    ) {
+        $this->partition      = $partition;
+        $this->fetchOffset    = $fetchOffset;
+        $this->maxBytes       = $maxBytes;
+        $this->logStartOffset = $logStartOffset;
     }
 
     /**
@@ -67,10 +95,15 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'partition'   => BinarySchema::TYPE_INT32,
             'fetchOffset' => BinarySchema::TYPE_INT64,
-            'maxBytes'    => BinarySchema::TYPE_INT32,
         ];
+        if (static::VERSION >= 5) {
+            $scheme['logStartOffset'] = BinarySchema::TYPE_INT64;
+        }
+        $scheme['maxBytes'] = BinarySchema::TYPE_INT32;
+
+        return $scheme;
     }
 }

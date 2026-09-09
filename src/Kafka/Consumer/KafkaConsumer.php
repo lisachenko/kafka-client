@@ -30,9 +30,11 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Serialization\Deserializer;
+use Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter;
 use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Throwable;
 
@@ -98,16 +100,26 @@ use Throwable;
  * consumer, `zookeeper` uses the version 0, which is what the consumers of Kafka 0.8.1 did. The two storages are
  * independent, so a group has one position per storage.
  *
- * What arrived after 0.10.2.2 is absent: the `isolation.level` of the transactional protocol of 0.11.
- *
- * The records are fetched with **Fetch v3**, so they carry the timestamps of message format v1 and the whole
- * answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`. The broker fills
- * the partitions in the order of the request until that budget is used up, so this consumer rotates the order of
- * its partitions after every poll: a partition that returned records is moved behind the ones that did not, which
- * is what the Java consumer of 0.10.2 does as well (`Fetcher.parseCompletedFetch` ⇒
+ * The records are fetched with **Fetch v5**, so a 0.11 broker answers with the log as it lies: record batches of
+ * the message format v2, whose records carry their timestamps and their headers ({@see Record::$headers}, KIP-82),
+ * and the control markers of a transaction are dropped by the record layer before a record ever reaches poll().
+ * The whole answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`; the
+ * broker fills the partitions in the order of the request until that budget is used up, so this consumer rotates
+ * the order of its partitions after every poll: a partition that returned records is moved behind the ones that
+ * did not, which is what the Java consumer does as well (`Fetcher.parseCompletedFetch` ⇒
  * `SubscriptionState.movePartitionToEnd`). A single message that is larger than either limit is returned in full
  * as long as it is the first one of the answer, so a partition can no longer be stuck on it - the
- * {@see RecordTooLargeException} of the lower Fetch versions is not raised by a 0.10.2 broker any more.
+ * {@see RecordTooLargeException} of the lower Fetch versions is not raised by a 0.11 broker any more.
+ *
+ * **`isolation.level = read_committed`** ({@see ConsumerConfig::ISOLATION_LEVEL}, KIP-98) makes this consumer the
+ * read side of the transactional producer: the Fetch and the Offsets request state the level, so the broker stops
+ * the answer at the *last stable offset* of a partition instead of at its high watermark - nothing of a
+ * transaction that is still open is shown, and `endOffsets()` reports the offset a `read_committed` reader can
+ * really reach - and the records of the transactions the answer reports as **aborted** are dropped by
+ * {@see \Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter} before poll() returns, because a 0.11.0.3
+ * broker sends them and only names them. The default is `read_uncommitted`, which shows every record of the log.
+ *
+ * @see docs/protocol/0.11.0.md, section "Transactions"
  */
 class KafkaConsumer
 {
@@ -431,7 +443,7 @@ class KafkaConsumer
      * are committed once `auto.commit.interval.ms` has passed since the last commit, and always right before the
      * consumer gives its partitions up in a rebalance.
      *
-     * The partitions are asked for in a **rotating order**: a Fetch v3 request is bounded by `fetch.max.bytes`
+     * The partitions are asked for in a **rotating order**: a Fetch v5 request is bounded by `fetch.max.bytes`
      * for the whole answer and the broker serves the partitions in the order it was asked, so every partition
      * that returned records in this poll() is moved behind the ones that did not before the next one is sent.
      *
@@ -815,7 +827,7 @@ class KafkaConsumer
             foreach ($partitions as $partitionId => $fetchedPartition) {
                 // Up to version 2 of the Fetch API the broker fills the answer up to MaxBytes without
                 // guaranteeing that one message fits, so a partition whose next message is bigger would come
-                // back empty forever; version 3, which this consumer sends, always returns that message instead
+                // back empty forever; version 5, which this consumer sends, always returns that message instead
                 if ($fetchedPartition->isSingleMessageTooLarge()) {
                     throw new RecordTooLargeException(
                         (string) $topic,
@@ -826,9 +838,15 @@ class KafkaConsumer
                     );
                 }
 
-                $fetchOffset                  = $fetchedPartition->fetchOffset;
+                $fetchOffset = $fetchedPartition->fetchOffset;
+                // A `read_committed` consumer drops the records of the transactions the answer reports as aborted
+                // itself: the broker only bounds the answer by the last stable offset and names those transactions
+                $visibleRecords = $this->isReadCommitted()
+                    ? AbortedTransactionFilter::committedRecords($fetchedPartition)
+                    : $fetchedPartition->getRecords();
+
                 $result[$topic][$partitionId] = array_values(array_filter(
-                    $fetchedPartition->getRecords(),
+                    $visibleRecords,
                     static fn(Record $record): bool => $record->offset === null || $record->offset >= $fetchOffset
                 ));
             }
@@ -1228,6 +1246,25 @@ class KafkaConsumer
     private function isAutoCommitEnabled(): bool
     {
         return (bool) $this->configuration[ConsumerConfig::ENABLE_AUTO_COMMIT];
+    }
+
+    /**
+     * Tells whether this consumer only sees the records of committed transactions.
+     *
+     * The option is read here exactly as {@see Client} reads it for the Fetch and the Offsets request it builds -
+     * either of the two strings of the Java consumer, or the wire value itself - so that the level a request
+     * states and the level the fetch loop filters with can never disagree.
+     */
+    private function isReadCommitted(): bool
+    {
+        $configured = $this->configuration[ConsumerConfig::ISOLATION_LEVEL]
+            ?? ConsumerConfig::ISOLATION_LEVEL_READ_UNCOMMITTED;
+
+        if (is_int($configured)) {
+            return $configured === FetchRequest::READ_COMMITTED;
+        }
+
+        return strtolower(trim((string) $configured)) === ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED;
     }
 
     /**

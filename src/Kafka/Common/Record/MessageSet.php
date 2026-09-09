@@ -45,7 +45,12 @@ use Protocol\Kafka\IO\StringStream;
  * type of the wrapper applies to every message of the set, and a `LogAppendTime` wrapper replaces the timestamps of
  * all of its inner messages with its own.
  *
- * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+ * The message formats v0 and v1 have no place for the **headers** of a record (KIP-82): a header only exists in the
+ * message format v2, so {@see MessageSet::fromRecords()} silently ignores the headers of the records it is given and
+ * {@see MessageSet::getRecords()} never fills any. A byte region of an unknown format is read by
+ * {@see MemoryRecords}, which dispatches on the magic byte of every entry; this class refuses a magic 2.
+ *
+ * @see docs/protocol/0.11.0.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
  * @see kafka/message/ByteBufferMessageSet.scala @ 0.10.2.2
  */
 final class MessageSet implements \Countable, \Stringable
@@ -78,6 +83,9 @@ final class MessageSet implements \Countable, \Stringable
      * same time. A compressed set becomes a single wrapper message whose offset is the one of the last inner
      * message, the way `MemoryRecordsBuilder` writes it; in message format v1 that wrapper also carries the largest
      * timestamp of the set and the `CreateTime` timestamp type, which is the only type a producer ever writes.
+     *
+     * The headers of a record are ignored here: neither of the two message formats of a message set can carry them,
+     * only the {@see RecordBatch} of the message format v2 can.
      *
      * @param iterable<Record> $records
      * @param int              $compressionCodec One of the {@see CompressionCodec} constants

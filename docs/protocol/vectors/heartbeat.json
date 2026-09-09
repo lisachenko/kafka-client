@@ -1,13 +1,13 @@
 {
     "api": "heartbeat",
     "apiKey": 12,
-    "section": "Heartbeat API (key 12, v0)",
-    "description": "Wire vectors of the Heartbeat API (key 12, v0), replayed by tests/Compliance.",
+    "section": "Heartbeat API (key 12, v0 and v1)",
+    "description": "Wire vectors of the Heartbeat API (key 12, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "heartbeat.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequestV0",
             "version": 0,
             "source": "broker",
             "description": "Heartbeat request v0 of a member of a stable group.",
@@ -26,7 +26,7 @@
         {
             "id": "heartbeat.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponseV0",
             "version": 0,
             "source": "broker",
             "description": "Heartbeat answer of a coordinator that accepted the heartbeat and reset the session timeout of the member.",
@@ -40,7 +40,7 @@
         {
             "id": "heartbeat.request.v0.unknown-member",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequestV0",
             "version": 0,
             "source": "broker",
             "description": "Heartbeat request v0 with a member id that the group does not have.",
@@ -59,7 +59,7 @@
         {
             "id": "heartbeat.response.v0.unknown-member",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponseV0",
             "version": 0,
             "source": "broker",
             "description": "Heartbeat answer for a member id the group does not have: the error code 25.",
@@ -73,7 +73,7 @@
         {
             "id": "heartbeat.request.v0.illegal-generation",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequestV0",
             "version": 0,
             "source": "broker",
             "description": "Heartbeat request v0 that names a generation of the group that is over.",
@@ -92,7 +92,7 @@
         {
             "id": "heartbeat.response.v0.illegal-generation",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponseV0",
             "version": 0,
             "source": "broker",
             "description": "Heartbeat answer for a generation that is not the current one: the error code 22.",
@@ -101,6 +101,40 @@
                 "messageSize": 6,
                 "correlationId": 46,
                 "errorCode": 22
+            }
+        },
+        {
+            "id": "heartbeat.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "Heartbeat request v1, the frame of v0 with a higher version field.",
+            "hex": "00000076000c00010000006400176b61666b612d636c69656e742d74332d766563746f7273001174332d7468726f74746c652d67726f757000000001003c6b61666b612d636c69656e742d74332d766563746f72732d63663861626537662d396231652d343337332d396539392d363063303066613835313038",
+            "fields": {
+                "messageSize": 118,
+                "apiKey": 12,
+                "apiVersion": 1,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "consumerGroup": "t3-throttle-group",
+                "generationId": 1,
+                "memberId": "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108"
+            }
+        },
+        {
+            "id": "heartbeat.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer v1: a throttle time and an error code, where v0 is the error code alone.",
+            "hex": "0000000a00000064000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "errorCode": 0
             }
         }
     ]

@@ -38,7 +38,7 @@ use Throwable;
  * metadata and sending the request again, up to `retries` times with `retry.backoff.ms` in between; every other
  * error is final and is reported to the caller straight away.
  *
- * @see docs/protocol/0.10.2.md, section "Error codes"
+ * @see docs/protocol/0.11.0.md, section "Error codes"
  */
 final class RetryPolicy
 {

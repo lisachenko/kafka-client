@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Common\Security;
  * {@see \Protocol\Kafka\IO\SocketStream} performs the handshake and the token exchange of the PLAIN mechanism right
  * after the connection - and, for `SASL_SSL`, right after the TLS handshake - so that nothing above it notices.
  *
- * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
+ * @see docs/protocol/0.11.0.md, section "Transport security (SSL)"
  * @see \Protocol\Kafka\Common\ClientConfig::SECURITY_PROTOCOL
  * @see \Protocol\Kafka\Common\Security\SaslMechanism for the mechanisms of the two SASL protocols
  */

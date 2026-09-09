@@ -15,8 +15,11 @@ namespace Protocol\Kafka\Tests\Compliance;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Record\Header;
+use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Security\SaslToken;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\Subscription;
@@ -29,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
  *
  * Each vector is a frame that a Kafka broker really sent or really accepted - 0.10.2.2 for everything the 0.10 line
  * added, 0.9.0.1 and 0.8.2.2 for the api versions whose frames the later lines do not change - stored as hex in
- * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/0.10.2.md`. For every one of them
+ * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/0.11.0.md`. For every one of them
  * this suite checks four things:
  *
  * 1. the frame decodes into the class that the vector names;
@@ -203,6 +206,86 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function offsetForLeaderEpochVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteRecordsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeConfigsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function alterConfigsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function initProducerIdVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function addPartitionsToTxnVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function addOffsetsToTxnVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function endTxnVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function writeTxnMarkersVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function txnOffsetCommitVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('apiVersionsVectors')]
@@ -362,6 +445,12 @@ final class ProtocolVectorTest extends TestCase
         $bytes = hex2bin($vector['hex']);
         self::assertIsString($bytes, "Vector {$vector['id']} does not hold valid hex");
 
+        if ($vector['magic'] === RecordBatch::MAGIC) {
+            $this->assertRecordBatchRegionIsReplayed($vector, $bytes);
+
+            return;
+        }
+
         $shallow = MessageSet::shallowFromBuffer($bytes);
         $deep    = MessageSet::fromBuffer($bytes);
 
@@ -378,16 +467,7 @@ final class ProtocolVectorTest extends TestCase
         );
         self::assertSame(
             $vector['fields']['records'],
-            array_map(
-                static fn(Record $record): array => [
-                    'offset'        => $record->offset,
-                    'key'           => self::bytesOf($record->key),
-                    'value'         => self::bytesOf($record->value),
-                    'timestamp'     => $record->timestamp,
-                    'timestampType' => $record->timestampType,
-                ],
-                $deep->getRecords()
-            ),
+            self::recordFieldsOf($deep->getRecords(), false),
             "Vector {$vector['id']} decodes into other records than the ones it documents"
         );
         self::assertSame(
@@ -399,6 +479,71 @@ final class ProtocolVectorTest extends TestCase
             $vector['magic'],
             $shallow->getMagic(),
             "Vector {$vector['id']} was recorded in another message format"
+        );
+
+        // The reader of the 0.11 line dispatches on the magic byte of every entry, so it has to read the two legacy
+        // formats into exactly the same records: a 0.11 broker answers them to every Fetch request below version 4
+        $region = MemoryRecords::fromBuffer($bytes);
+        self::assertSame(
+            $vector['fields']['records'],
+            self::recordFieldsOf($region->getRecords(), false),
+            "Vector {$vector['id']} decodes into other records when it is read as a region of an unknown format"
+        );
+        self::assertSame($vector['hex'], bin2hex($region->toBuffer()));
+        self::assertSame($vector['magic'], $region->getMagic());
+    }
+
+    /**
+     * Replays a byte region of the message format v2, i.e. one or more record batches.
+     *
+     * A record batch is documented on two levels at once: the header fields of every batch, which are what the
+     * broker filled in when it appended it, and the records that its delta encoding stands for. The records of a
+     * **control batch** are documented with their batch and are deliberately missing from the records of the
+     * region, because the region is what a client hands to an application.
+     *
+     * @param array<string, mixed> $vector
+     */
+    private function assertRecordBatchRegionIsReplayed(array $vector, string $bytes): void
+    {
+        $region = MemoryRecords::fromBuffer($bytes);
+
+        $batches = [];
+        foreach ($region->getBatches() as $batch) {
+            self::assertInstanceOf(RecordBatch::class, $batch);
+            $batches[] = [
+                'header'  => MessageFields::of($batch),
+                'records' => self::recordFieldsOf($batch->getRecords(), true),
+            ];
+            self::assertSame(
+                bin2hex($batch->toBuffer()),
+                bin2hex(RecordBatch::fromBuffer($batch->toBuffer())->toBuffer()),
+                "A batch of the vector {$vector['id']} does not survive a decode and encode round trip"
+            );
+        }
+
+        self::assertSame(
+            $vector['fields']['batches'],
+            $batches,
+            "Vector {$vector['id']} decodes into other batches than the ones it documents"
+        );
+        self::assertSame(
+            $vector['fields']['records'],
+            self::recordFieldsOf($region->getRecords(), true),
+            "Vector {$vector['id']} decodes into other records than the ones it documents"
+        );
+        self::assertSame(
+            $vector['hex'],
+            bin2hex($region->toBuffer()),
+            "Vector {$vector['id']} does not survive a decode and encode round trip"
+        );
+        self::assertSame(
+            $vector['magic'],
+            $region->getMagic(),
+            "Vector {$vector['id']} was recorded in another message format"
+        );
+        self::assertFalse(
+            $region->hasPartialTrailingRecord(),
+            "Vector {$vector['id']} ends in the middle of a batch"
         );
     }
 
@@ -425,6 +570,96 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('deleteTopicsVectors')]
     public function testDeleteTopicsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('offsetForLeaderEpochVectors')]
+    public function testOffsetForLeaderEpochApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteRecordsVectors')]
+    public function testDeleteRecordsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeConfigsVectors')]
+    public function testDescribeConfigsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('alterConfigsVectors')]
+    public function testAlterConfigsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('initProducerIdVectors')]
+    public function testInitProducerIdApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('addPartitionsToTxnVectors')]
+    public function testAddPartitionsToTxnApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('addOffsetsToTxnVectors')]
+    public function testAddOffsetsToTxnApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('endTxnVectors')]
+    public function testEndTxnApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('writeTxnMarkersVectors')]
+    public function testWriteTxnMarkersApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('txnOffsetCommitVectors')]
+    public function testTxnOffsetCommitApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }
@@ -494,6 +729,42 @@ final class ProtocolVectorTest extends TestCase
         sort($apis);
 
         return $apis;
+    }
+
+    /**
+     * Renders the records that a vector documents, with their headers for the message format v2
+     *
+     * @param list<Record> $records
+     * @param bool         $withHeaders Whether to document the headers, which only the message format v2 carries
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function recordFieldsOf(array $records, bool $withHeaders): array
+    {
+        return array_map(
+            static function (Record $record) use ($withHeaders): array {
+                $fields = [
+                    'offset'        => $record->offset,
+                    'key'           => self::bytesOf($record->key),
+                    'value'         => self::bytesOf($record->value),
+                    'timestamp'     => $record->timestamp,
+                    'timestampType' => $record->timestampType,
+                ];
+                if (!$withHeaders) {
+                    return $fields;
+                }
+                $fields['headers'] = array_map(
+                    static fn(Header $header): array => [
+                        'key'   => $header->key,
+                        'value' => self::bytesOf($header->value),
+                    ],
+                    $record->headers
+                );
+
+                return $fields;
+            },
+            $records
+        );
     }
 
     /**

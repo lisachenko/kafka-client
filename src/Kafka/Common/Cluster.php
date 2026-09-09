@@ -120,14 +120,15 @@ final class Cluster
      * its cache with the alive brokers as soon as the controller has elected itself, so naming a topic is no
      * longer needed for the bootstrap - it still saves the caller the metadata of every topic of the cluster.
      *
-     * The metadata is asked for with version 2 of the api, i.e. with a `null` topic array when no topic is named.
+     * The metadata is asked for with version 4 of the api, i.e. with a `null` topic array when no topic is named
+     * and with `allow_auto_topic_creation = true`, which is what every version below 4 does implicitly.
      *
      * @param array<string, mixed> $configuration Broker client configuration
      * @param string|null          $topic         Topic to ask the metadata for, `null` asks for every topic
      *
      * @throws AllBrokersNotAvailableException If the cluster did not advertise a single broker in time
      *
-     * @see docs/protocol/0.10.2.md, section "Cluster readiness"
+     * @see docs/protocol/0.11.0.md, section "Cluster readiness"
      */
     public static function bootstrap(array $configuration, ?string $topic = null): Cluster
     {
@@ -294,8 +295,12 @@ final class Cluster
      * list has not received the metadata of the cluster from the controller yet and is treated as unavailable, see
      * {@see Cluster::bootstrap()}.
      *
-     * The request is version 2 of the Metadata API, so `null` asks for every topic of the cluster and an EMPTY
-     * list asks for none of them - two intentions that version 0 had to express with the same empty array.
+     * The request is version 4 of the Metadata API, so `null` asks for every topic of the cluster and an EMPTY
+     * list asks for none of them - two intentions that version 0 had to express with the same empty array - and
+     * `allow_auto_topic_creation` is sent as **true**: a cluster is bootstrapped and reloaded on behalf of a
+     * producer or a consumer, for which a named topic that does not exist yet has always been created by the
+     * broker, and version 4 must not change that. The administrative path asks with `false`, see
+     * {@see \Protocol\Kafka\Admin\AdminClient::describeTopics()}.
      *
      * @param list<string>|null $topics Topics to ask the metadata for, `null` asks for every topic
      *
@@ -313,7 +318,7 @@ final class Cluster
             try {
                 $stream        = ConnectionFactory::open($address, $this->configuration);
                 $correlationId = AbstractRequest::nextCorrelationId();
-                new MetadataRequest($topics, $clientId, $correlationId)->writeTo($stream);
+                new MetadataRequest($topics, true, $clientId, $correlationId)->writeTo($stream);
 
                 $metadata = ResponseValidator::read(
                     MetadataResponse::class,

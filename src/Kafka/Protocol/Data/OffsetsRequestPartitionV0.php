@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Version 0 asks for up to `MaxNumberOfOffsets` segment start offsets, so this class exists solely to raise that
  * field into the scheme that {@see OffsetsRequestPartition::getScheme()} builds.
  *
- * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
+ * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
  */
 final class OffsetsRequestPartitionV0 extends OffsetsRequestPartition
 {

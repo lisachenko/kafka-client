@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`SaslAuthenticate`, api key 36) is Kafka 1.0 and does not exist here - see the "SASL/PLAIN" section of the
  * protocol document for the framing that replaces it.
  *
- * @see docs/protocol/0.10.2.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  * @see \Protocol\Kafka\IO\SocketStream::authenticate() for the exchange this request opens
  */
 class SaslHandshakeRequest extends AbstractRequest

@@ -21,7 +21,7 @@ use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Node;
-use Protocol\Kafka\Common\Record\MessageSet;
+use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\ApiKeys;
@@ -42,6 +42,8 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
@@ -56,8 +58,8 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * are exercised here, because version 0 and version 2 are reachable through the `offsets.storage` option of the
  * client and version 1 is the version a 0.8 broker expects.
  *
- * @see docs/protocol/0.10.2.md, sections "GroupCoordinator API (key 10, v0)",
- *      "OffsetCommit API (key 8, v0, v1 and v2)" and "OffsetFetch API (key 9, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, sections "GroupCoordinator API (key 10, v0 and v1)",
+ *      "OffsetCommit API (key 8, v0 to v3)" and "OffsetFetch API (key 9, v0 to v3)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]
@@ -72,6 +74,8 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 #[CoversClass(OffsetCommitRequestTopic::class)]
 #[CoversClass(OffsetCommitRequestTopicV1::class)]
 #[CoversClass(OffsetCommitResponse::class)]
+#[CoversClass(OffsetCommitResponseV0::class)]
+#[CoversClass(OffsetCommitResponseV1::class)]
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]
 #[CoversClass(OffsetFetchResponse::class)]
@@ -124,7 +128,12 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         // lookup must not be: whatever the very first answer is, it ends up with a coordinator
         $groupId  = self::uniqueGroupName();
         $stream   = $this->connect();
-        new GroupCoordinatorRequest($groupId, 'kafka-client-t6', 1)->writeTo($stream);
+        new GroupCoordinatorRequest(
+            $groupId,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
+            'kafka-client-t6',
+            1
+        )->writeTo($stream);
         $rawFirst = GroupCoordinatorResponse::unpack($stream);
 
         self::assertContains(
@@ -263,7 +272,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $stream  = $this->connect();
 
         new OffsetCommitRequestV0($groupId, [$topic => [0 => 7]], 'kafka-client-t6', 11)->writeTo($stream);
-        $commitResponse = OffsetCommitResponse::unpack($stream);
+        $commitResponse = OffsetCommitResponseV0::unpack($stream);
 
         self::assertSame(11, $commitResponse->getCorrelationId());
         self::assertSame(0, $commitResponse->topics[$topic]->partitions[0]->errorCode);
@@ -284,7 +293,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         $this->commitInKafka($stream, $groupId, [$topic => [0 => 1000]]);
         new OffsetCommitRequestV0($groupId, [$topic => [0 => 5]], 'kafka-client-t6', 21)->writeTo($stream);
-        OffsetCommitResponse::unpack($stream);
+        OffsetCommitResponseV0::unpack($stream);
 
         $fromKafka = $this->fetchInKafka($stream, $groupId, [$topic => [0]]);
         new OffsetFetchRequestV0($groupId, [$topic => [0]], 'kafka-client-t6', 22)->writeTo($stream);
@@ -399,7 +408,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             'kafka-client-t6',
             41
         )->writeTo($stream);
-        $inZooKeeper = OffsetCommitResponse::unpack($stream);
+        $inZooKeeper = OffsetCommitResponseV0::unpack($stream);
 
         self::assertSame(
             KafkaException::OFFSET_METADATA_TOO_LARGE,
@@ -436,7 +445,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             'kafka-client-t6',
             1
         )->writeTo($stream);
-        $response = OffsetCommitResponse::unpack($stream);
+        $response = OffsetCommitResponseV1::unpack($stream);
 
         self::assertSame(KafkaException::NO_ERROR, $response->topics[$topic]->partitions[0]->errorCode);
 
@@ -478,16 +487,17 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         );
     }
 
-    public function testVersion3OfTheOffsetCommitApiClosesTheConnection(): void
+    public function testVersion4OfTheOffsetCommitApiClosesTheConnection(): void
     {
-        // OffsetCommit stops at v2 in Kafka 0.10.2.2 - v3, which carries a throttle time in its answer, is 0.11 -
-        // and `AbstractRequest.getRequest()` throws for it. A 0.10 broker does not drop such a frame the way a
-        // 0.9.0.1 broker did: `SocketServer.processCompletedReceives` catches the `InvalidRequestException` and
-        // CLOSES the connection, see "An api the broker does not serve closes the connection" in the protocol
-        // document. The client has no class for the version, so the frame is built by hand here.
+        // OffsetCommit stops at v3 in Kafka 0.11.0.3 - v3 is the v2 request with a throttle time in its answer, and
+        // v4 is Kafka 2.0 - so `AbstractRequest.getRequest()` throws for v4. A 0.10 or 0.11 broker does not drop
+        // such a frame the way a 0.9.0.1 broker did: `SocketServer.processCompletedReceives` catches the
+        // `InvalidRequestException` and CLOSES the connection, see "An api the broker does not serve closes the
+        // connection" in the protocol document. The client has no class for the version, so the frame is built by
+        // hand here; its body is the v2/v3 one, which the broker never gets far enough to read.
         $groupId = self::uniqueGroupName();
         $topic   = $this->createTopic();
-        $body    = pack('n', 8) . pack('n', 3) . pack('N', 91) . pack('n', 0)
+        $body    = pack('n', 8) . pack('n', 4) . pack('N', 91) . pack('n', 0)
             . pack('n', strlen($groupId)) . $groupId
             . pack('N', -1) . pack('n', 0) . pack('J', -1) . pack('N', 0);
         $stream  = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 1000]);
@@ -496,7 +506,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         try {
             OffsetCommitResponse::unpack($stream);
-            self::fail('The broker cannot parse an OffsetCommit v3 and must not answer it');
+            self::fail('The broker cannot parse an OffsetCommit v4 and must not answer it');
         } catch (NetworkException $exception) {
             self::assertStringContainsString('stream', strtolower($exception->getMessage()));
         }
@@ -670,7 +680,9 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         $entries = [];
         foreach ($response->topics[self::OFFSETS_TOPIC]->partitions ?? [] as $responsePartition) {
-            foreach (MessageSet::fromBuffer((string) $responsePartition->messageSet, false)->getRecords() as $record) {
+            // The internal topic is written in the `log.message.format.version` of the broker, 0.11.0 here, so
+            // its entries are record batches: the reader has to be the one that takes any of the three formats
+            foreach (MemoryRecords::fromBuffer((string) $responsePartition->messageSet, false)->getRecords() as $record) {
                 $entry = self::decodeOffsetEntry((string) $record->key, $record->value);
                 if ($entry !== null && $entry[0] === $groupId && $entry[1] === $topic && $entry[2] === $partition) {
                     $entries[] = $entry[3];
@@ -768,7 +780,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         do {
             $stream = $this->connect();
-            new MetadataRequest([$topic], 'kafka-client-t6', ++$attempt)->writeTo($stream);
+            new MetadataRequest([$topic], true, 'kafka-client-t6', ++$attempt)->writeTo($stream);
             $metadata = MetadataResponse::unpack($stream)->topics[$topic] ?? null;
 
             $isReady = $metadata !== null

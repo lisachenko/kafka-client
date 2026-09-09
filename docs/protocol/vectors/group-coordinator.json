@@ -1,13 +1,13 @@
 {
     "api": "group-coordinator",
     "apiKey": 10,
-    "section": "GroupCoordinator API (key 10, v0)",
-    "description": "Wire vectors of the GroupCoordinator API (key 10, v0), replayed by tests/Compliance.",
+    "section": "GroupCoordinator API (key 10, v0 and v1)",
+    "description": "Wire vectors of the GroupCoordinator API (key 10, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "groupcoordinator.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequestV0",
             "version": 0,
             "source": "broker",
             "description": "GroupCoordinator request v0 (ConsumerMetadataRequest in the 0.8.2 sources).",
@@ -24,7 +24,7 @@
         {
             "id": "groupcoordinator.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponseV0",
             "version": 0,
             "source": "broker",
             "description": "GroupCoordinator response v0 naming the broker that holds the offsets of the group.",
@@ -33,6 +33,84 @@
                 "messageSize": 25,
                 "correlationId": 15,
                 "errorCode": 0,
+                "coordinator": {
+                    "nodeId": 0,
+                    "host": "127.0.0.1",
+                    "port": 9092
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "GroupCoordinator (FindCoordinator) request v1 for a consumer group, with the coordinator type 0.",
+            "hex": "00000035000a00010000006400176b61666b612d636c69656e742d74332d766563746f7273001174332d7468726f74746c652d67726f757000",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 10,
+                "apiVersion": 1,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "consumerGroup": "t3-throttle-group",
+                "coordinatorType": 0
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer v1: the throttle time, the error code, a null error message and the coordinator of the group.",
+            "hex": "0000001f00000064000000000000ffff0000000000093132372e302e302e3100002384",
+            "fields": {
+                "messageSize": 31,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "coordinator": {
+                    "nodeId": 0,
+                    "host": "127.0.0.1",
+                    "port": 9092
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v1.transaction",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "GroupCoordinator request v1 for a transactional id, with the coordinator type 1 (KIP-98).",
+            "hex": "00000033000a00010000006400176b61666b612d636c69656e742d74332d766563746f7273000f74332d7468726f74746c652d74786e01",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 10,
+                "apiVersion": 1,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "consumerGroup": "t3-throttle-txn",
+                "coordinatorType": 1
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v1.transaction",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer for the transactional id: the broker that owns its partition of `__transaction_state`.",
+            "hex": "0000001f00000064000000000000ffff0000000000093132372e302e302e3100002384",
+            "fields": {
+                "messageSize": 31,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
                 "coordinator": {
                     "nodeId": 0,
                     "host": "127.0.0.1",

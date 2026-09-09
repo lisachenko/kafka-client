@@ -1,4 +1,117 @@
-# Handoff: the `main` line (Kafka 0.11)
+# The `main` line (Kafka 0.11.0.3) — release notes
+
+**State: complete.** `main` speaks the Apache Kafka **0.11.0.3** wire protocol — the last release of the 0.11 line,
+so it covers everything 0.11.0.0 added and nothing later — on the `BinarySchema` engine that came up the cascade
+from `0.10.x`. It is the **last line of the cascade**: there is no branch above it, so this file is the release
+record of the package rather than a plan for the next line. The plan the line was built from is kept below, under
+"The original plan", exactly as it was written.
+
+The grammar is [`docs/protocol/0.11.0.md`](../protocol/0.11.0.md), the machine-readable frames are in
+[`docs/protocol/vectors`](../protocol/vectors), and what a client cannot read out of the grammar is in that
+document's "Broker quirks and observations" section.
+
+## What was built
+
+| Ticket | What it delivered |
+|---|---|
+| **T1** #71 | The 0.11.0.3 broker image, the protocol document of the line, the api-key table as the literal ApiVersions answer of the container, **ApiVersions v1**, and the 18 inherited integration failures fixed against the api set a 0.11 broker really serves |
+| **T2** #72 | The **record batch v2**: `RecordBatch`, `RecordV2`, `Header`, `ControlRecordKey`, `ControlRecordType`, `EndTransactionMarker`, `MemoryRecords`, CRC-32C, the delta encoding, control batches and the two down-conversions of a 0.11 broker |
+| **T3** #73 | **The throttle time of KIP-124 on fourteen apis**: Metadata v3/v4, Offsets v2, OffsetCommit v3, OffsetFetch v3, GroupCoordinator v1 (with `coordinator_type`), JoinGroup v2, Heartbeat/LeaveGroup/SyncGroup/DescribeGroups/ListGroups v1, CreateTopics v2, DeleteTopics v1, plus **OffsetForLeaderEpoch** (23) |
+| **T4** #74 | **Produce v3 and Fetch v4/v5**: the transactional id, the isolation level, the last stable offset, the aborted transactions and the log start offset, with the record headers travelling end to end through `KafkaProducer` and `KafkaConsumer` |
+| **T5** #75 | **DeleteRecords** (21), **DescribeConfigs** (32) and **AlterConfigs** (33) with the `AdminClient` methods, `ConfigResource`, `Config`/`ConfigEntry`, `RecordsToDelete` and `DeletedRecords` |
+| **T7** #76 | **The idempotent producer**: InitProducerId (22), `ProducerIdAndEpoch`, `TransactionManager`, the producer id / epoch / per-partition sequence on every batch, `enable.idempotence`, and what a client does with 45, 46 and 47 |
+| **T8** #77 | **The transactional producer**: AddPartitionsToTxn (24), AddOffsetsToTxn (25), EndTxn (26), TxnOffsetCommit (28) and WriteTxnMarkers (27, classes and vectors only), the state machine of `TransactionManager`, `transactional.id` with the five methods of the Java producer, and the `read_committed` consumer with `ConsumerConfig::ISOLATION_LEVEL` and `AbortedTransactionFilter` |
+| **T9** #78 | This file, the consistency pass over the document, the README matrix, the CHANGELOG, the vectors README and the examples |
+
+## How it was verified
+
+Everything was measured against a real Apache Kafka **0.11.0.3** broker (`docker/kafka-0.11.0.3/`, four listeners:
+PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL 9095), never against the specification alone:
+
+* **229 wire vectors** in [`docs/protocol/vectors`](../protocol/vectors) — the **109** frames this line captured
+  from the container plus the 120 of the three lines below, which a 0.11.0.3 broker still answers unchanged. Every
+  one of them is replayed by `tests/Compliance` through the request and response classes, in both directions, and
+  `DocumentationSyncTest` holds the annotated dumps of the document and the vector files together.
+* The **api-key table** of the document is the literal ApiVersions answer of the broker;
+  `tests/Integration/ApiVersionProbeTest.php` sends a real frame of every key and version of it, and one version
+  above each of them to check that the broker really does not serve those.
+* The **integration suite** runs against the container over all four listeners with unique topic, group and
+  transactional-id names per test class: 1487 unit tests, 236 compliance tests and 426 integration tests, without a
+  single skip.
+
+## Deviations from the plan, forced by the broker
+
+* **ApiVersions is v0 and v1**, not v0 alone as the plan assumed, and version 1 **appends** its `throttle_time_ms`
+  where every other api of KIP-124 prepends it: an unknown version is still answered in the version 0 layout, so
+  the leading `error_code` has to stay where a v0 client reads it.
+* **A Produce v3 answer is a Produce v2 answer.** `PRODUCE_RESPONSE_V3` *is* `PRODUCE_RESPONSE_V2` in
+  `Protocol.java` @ 0.11.0.3; the `log_start_offset` the plan asked for on a produce answer is Kafka 1.0 (Produce
+  v5) and is not on this line.
+* **A Produce v3 request accepts the message format v2 and nothing else** — the broker closes the connection on a
+  lower magic — while the versions 0 to 2 accept every magic. That is why `message.format.version` selects the api
+  version the producer sends.
+* **`CONFIG_ENTRY` of CreateTopics carries a nullable value in every version** (it is one shared schema object), and
+  all three versions answer such a topic with the error code -1.
+* **The error code 46 (`DuplicateSequenceNumber`) is unreachable from a client.** The duplicate check of
+  `Log.analyzeAndValidateProducerState` is guarded by `isFromClient` and answers a duplicate of the last batch with
+  the code **0** and the offset of the original append; a duplicate of an older batch is **45**. The class exists
+  and is retriable, as in the Java client, but it is implemented from the specification and observed nowhere.
+* **The retries of the transaction manager are bounded by a deadline, not by `retries`.** The coordinator codes
+  14, 15, 16 and 51 do not say that a request failed, and a producer with the default `retries` would give up on
+  the very first 51 a coordinator answers while it rolls an earlier transaction back, so those four are retried
+  until `metadata.fetch.timeout.ms` instead.
+* **An `InitProducerId` may bump the epoch by more than one.** A coordinator that has to roll an open transaction
+  back bumps it once for the fencing and once for the new producer and answers 51 in between — measured on the
+  container: the epoch 1 of an open transaction, one 51, then the epoch 3. A client reads the epoch it is given.
+* **The ACL apis 29-31 were left out** (decision 3 of the epic): they do nothing on a broker without an
+  `authorizer.class.name` — a 0.11.0.3 broker answers all three with the error code 54 — and every wire vector of
+  this repository comes from a real broker.
+
+## Known limitations
+
+* **No ACL apis** (`DescribeAcls` 29, `CreateAcls` 30, `DeleteAcls` 31). They need a container configured with an
+  authorizer; a follow-up can add them on a second container without touching anything else of the line.
+* **`WriteTxnMarkers` (27) and `OffsetForLeaderEpoch` (23) are broker-to-broker apis.** Their classes and wire
+  vectors are here because they belong to the protocol of 0.11, but this client sends neither and no method of
+  `Client` or `AdminClient` produces one.
+* **`SaslAuthenticate` (key 36) is Kafka 1.0**, so the SASL token exchange of this line is still raw, unframed data
+  on the socket after the handshake, and wrong credentials have no error code — the broker closes the connection.
+  The api keys 34 and 35 and the error code 56 are 1.0 as well.
+* **`retries` defaults to 3 with `enable.idempotence`**, not to the `Integer.MAX_VALUE` of the Java producer: this
+  client has no background sender, so the retry budget is a loop that `flush()` blocks on and an unbounded one would
+  be an unbounded flush. `max.in.flight.requests.per.connection` needs no option here — the client writes one
+  produce request and reads its answer before the next.
+* **A 0.11.0.3 broker deduplicates against one batch per producer id and partition.** The five-batch window of
+  `ProducerStateEntry.NumBatchesToRetain` is Kafka 1.0, so a retry that is not the *last* batch of its partition is
+  answered 45 and not with the offset of the original append. The idempotence guarantee also ends with the producer
+  session: a new `KafkaProducer` gets a new producer id.
+* **Five error codes of the transaction protocol are implemented from the sources and were never observed**: 49
+  (`InvalidProducerIdMapping`), 51 as a stable wire vector (it is transient), 52 (`TransactionCoordinatorFenced`,
+  which needs two coordinators), 53 and 30 (which need an authorizer). The container of this line cannot produce
+  them; the protocol document says so at every one of them.
+* **`AdminClient::listOffsets()` stays at `read_uncommitted`** while `KafkaConsumer` sends its `isolation.level` in
+  the Fetch and in the Offsets request alike: an administrator asks what is in the log, a consumer asks what it may
+  read. That is a deliberate difference, not an omission.
+* **Everything above 0.11.0.3 is out of scope by design**: Fetch v6, Produce v4, Metadata v5, flexible versions and
+  tagged fields, `DeleteGroups`, incremental `AlterConfigs`. The api-key table of the document is the ceiling, and a
+  frame above it costs the connection.
+
+## What a future line would start from
+
+There is no branch above `main`, so a Kafka 1.0 line would be `main` itself, not a cascade merge. The four things
+that would have to happen first: `ApiKeys` beyond 33 and the error code 56, the `SaslAuthenticate` framing of the
+token exchange, the five-batch deduplication window of `ProducerStateManager`, and the `log_start_offset` of a
+Produce v5 answer. Everything else this line built — the schema engine, the record batch v2, the transaction
+protocol, the vectors and the compliance suite — carries over unchanged.
+
+---
+
+# The original plan
+
+Everything below is the handoff that the `0.10.x` line wrote for this one, kept as the record of what was decided
+before the work started. It describes the state **at handoff**, not the state of the branch today.
+
+## Handoff: the `main` line (Kafka 0.11)
 
 State at handoff: the `0.10.x` line is **complete**. Everything a Kafka 0.10.2.2 broker speaks is implemented on the
 `BinarySchema` engine and verified against a real broker — 1054 unit tests, 127 compliance tests replaying the 120

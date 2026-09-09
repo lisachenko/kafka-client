@@ -19,6 +19,7 @@ use function is_array;
 use function is_string;
 use function key;
 
+use Protocol\Kafka\Common\Utils\ByteUtils;
 use Protocol\Kafka\IO\Stream;
 use ReflectionClass;
 
@@ -27,13 +28,17 @@ use function strlen;
 /**
  * BinarySchema defines the common types and the API for reading and writing the primitive types of the protocol.
  *
- * This is the 0.8 port of the engine of the `main` branch: the type constants keep their numeric values so that the
- * cascade merges upwards stay trivial, but only the types that the protocol of this line actually has are implemented.
- * Varints, zigzag encoding and var-arrays arrive with the 0.11 record format and are deliberately absent; the boolean
+ * This is the engine of the `0.8.x` line carried up through the cascade: the type constants keep the names and the
+ * numeric values of the pre-schema `main`, and every line implements only the types its protocol has. The boolean
  * (a single byte, `00` or `01`) arrived with Kafka 0.10 (`is_internal` of Metadata v1, `validate_only` of
- * CreateTopics v1) and has no counterpart on `main` yet, hence its value outside of main's numbering.
+ * CreateTopics v1). Kafka 0.11 adds the zigzag varints of the record batch v2 - `TYPE_VARINT_ZIGZAG`,
+ * `TYPE_VARLONG_ZIGZAG` and `TYPE_VARCHAR_ZIGZAG`, encoded as `org.apache.kafka.common.utils.ByteUtils` writes them,
+ * with {@see \Protocol\Kafka\Common\Utils\ByteUtils} for the zigzag step and {@see Stream::readVarint()} for the
+ * bytes - and the varint-counted array (`FLAG_VARARRAY`) that the headers of a record are. No request or response of
+ * 0.11 uses them, only the records inside a batch do; the *raw* varints of `main` (`TYPE_VARINT` 5, `TYPE_VARLONG` 6,
+ * `TYPE_VARCHAR` 7) are not on the wire of any api of 0.11 and stay reserved numbers here.
  *
- * @see docs/protocol/0.10.2.md
+ * @see docs/protocol/0.11.0.md
  */
 class BinarySchema
 {
@@ -41,9 +46,18 @@ class BinarySchema
     public const int TYPE_INT16     = 2;
     public const int TYPE_INT32     = 3;
     public const int TYPE_INT64     = 4;
+    // 5, 6 and 7 are TYPE_VARINT, TYPE_VARLONG and TYPE_VARCHAR of `main`: raw varints, not on the wire of Kafka 0.11
     public const int TYPE_STRING    = 8;  // INT16-encoded length and then bytes of chars
     public const int TYPE_BYTEARRAY = 10; // INT32 size of data, then bytes of data, -1 as size means null
+    public const int TYPE_VARINT_ZIGZAG  = 11; // Zigzag-encoded int32 as a varint of 1 to 5 bytes (Kafka 0.11)
+    public const int TYPE_VARLONG_ZIGZAG = 12; // Zigzag-encoded int64 as a varint of 1 to 10 bytes (Kafka 0.11)
+    public const int TYPE_VARCHAR_ZIGZAG = 13; // Zigzag varint size of data, then bytes of data, -1 as size means null
     public const int TYPE_BOOLEAN   = 20; // A single byte: 0 is false, anything else is true (Kafka 0.10)
+
+    /**
+     * Array notation key: the element count is a zigzag varint instead of an int32 (the headers of a record, Kafka 0.11)
+     */
+    public const int FLAG_VARARRAY = 14;
 
     /**
      * Use -1 as null array/string
@@ -83,12 +97,23 @@ class BinarySchema
             case self::TYPE_BOOLEAN:
                 return 1;
 
+            case self::TYPE_VARINT_ZIGZAG:
+                return ByteUtils::sizeOfVarint((int) $value);
+
+            case self::TYPE_VARLONG_ZIGZAG:
+                return ByteUtils::sizeOfVarlong((int) $value);
+
             case self::TYPE_STRING:
             case self::TYPE_NULLABLE_STRING:
                 return 2 /* INT16 Size */ + ($value !== null ? strlen((string) $value) : 0);
 
             case self::TYPE_BYTEARRAY:
                 return 4 /* INT32 Size */ + ($value !== null ? strlen((string) $value) : 0);
+
+            case self::TYPE_VARCHAR_ZIGZAG:
+                $length = $value !== null ? strlen((string) $value) : -1;
+
+                return ByteUtils::sizeOfVarint($length) + max($length, 0);
         }
 
         throw new \RuntimeException("Unknown scheme type {$schemeType}");
@@ -103,16 +128,17 @@ class BinarySchema
     public static function getArrayTypeSize(array $schemeType, ?array $value = null): int
     {
         $isNullable    = !empty($schemeType[self::FLAG_NULLABLE]);
+        $countType     = self::arrayCountType($schemeType);
         $arrayItemType = current($schemeType);
         if ($value === null) {
             if (!$isNullable) {
                 throw new \UnexpectedValueException('Received null value for not nullable array');
             }
 
-            return self::getSingleTypeSize(self::TYPE_INT32, -1);
+            return self::getSingleTypeSize($countType, -1);
         }
 
-        $size = self::getSingleTypeSize(self::TYPE_INT32, count($value));
+        $size = self::getSingleTypeSize($countType, count($value));
         foreach ($value as $singleItemValue) {
             $size += self::getSingleTypeSize($arrayItemType, $singleItemValue);
         }
@@ -183,7 +209,7 @@ class BinarySchema
             $arrayItemType = current($schemeType);
             $arrayKeyName  = key($schemeType);
             $isNullable    = !empty($schemeType[self::FLAG_NULLABLE]);
-            $arraySize     = self::readSingleType(self::TYPE_INT32, $stream, "{$path}[size]");
+            $arraySize     = self::readSingleType(self::arrayCountType($schemeType), $stream, "{$path}[size]");
             // Special handling of the null value type
             if ($arraySize === -1 && $isNullable) {
                 return null;
@@ -236,6 +262,12 @@ class BinarySchema
                 // Types.BOOLEAN of the Java client reads any non-zero byte as true and always writes 0 or 1
                 return $stream->read('CBOOLEAN')['BOOLEAN'] !== 0;
 
+            case self::TYPE_VARINT_ZIGZAG:
+                return ByteUtils::decodeZigZag($stream->readVarint());
+
+            case self::TYPE_VARLONG_ZIGZAG:
+                return ByteUtils::decodeZigZag($stream->readVarlong());
+
             case self::TYPE_STRING:
                 return $stream->readString();
 
@@ -249,6 +281,14 @@ class BinarySchema
 
             case self::TYPE_BYTEARRAY:
                 return $stream->readByteArray();
+
+            case self::TYPE_VARCHAR_ZIGZAG:
+                $length = self::readSingleType(self::TYPE_VARINT_ZIGZAG, $stream, "{$path}[size]");
+                if ($length < 0) {
+                    return null;
+                }
+
+                return $length === 0 ? '' : $stream->read("a{$length}data")['data'];
         }
 
         throw new \RuntimeException("Unknown scheme type {$schemeType} received at {$path}");
@@ -263,12 +303,13 @@ class BinarySchema
         if (is_array($schemeType)) {
             $arrayItemType = current($schemeType);
             $isNullable    = !empty($schemeType[self::FLAG_NULLABLE]);
+            $countType     = self::arrayCountType($schemeType);
             // Special handling of null arrays
             if ($value === null) {
                 if (!$isNullable) {
                     throw new \UnexpectedValueException('Received null value for not nullable array');
                 }
-                self::writeSingleType(self::TYPE_INT32, -1, $stream);
+                self::writeSingleType($countType, -1, $stream);
 
                 return;
             }
@@ -278,7 +319,7 @@ class BinarySchema
                 throw new \UnexpectedValueException("Array type should receive only arrays, {$receivedType} received");
             }
 
-            self::writeSingleType(self::TYPE_INT32, count($value), $stream);
+            self::writeSingleType($countType, count($value), $stream);
             foreach ($value as $singleItemValue) {
                 self::writeSingleType($arrayItemType, $singleItemValue, $stream);
             }
@@ -314,6 +355,14 @@ class BinarySchema
                 $stream->write('C', $value ? 1 : 0);
 
                 return;
+            case self::TYPE_VARINT_ZIGZAG:
+                $stream->writeVarint(ByteUtils::encodeZigZag((int) $value, 32));
+
+                return;
+            case self::TYPE_VARLONG_ZIGZAG:
+                $stream->writeVarlong(ByteUtils::encodeZigZag((int) $value, 64));
+
+                return;
             case self::TYPE_STRING:
                 $stream->writeString((string) $value);
 
@@ -331,8 +380,32 @@ class BinarySchema
                 $stream->writeByteArray($value);
 
                 return;
+            case self::TYPE_VARCHAR_ZIGZAG:
+                if ($value === null) {
+                    self::writeSingleType(self::TYPE_VARINT_ZIGZAG, -1, $stream);
+
+                    return;
+                }
+                $value = (string) $value;
+                self::writeSingleType(self::TYPE_VARINT_ZIGZAG, strlen($value), $stream);
+                $stream->writeBuffer($value);
+
+                return;
         }
 
         throw new \RuntimeException("Unknown scheme type {$schemeType}");
+    }
+
+    /**
+     * Returns the type of the element count of an array notation: an int32 unless FLAG_VARARRAY is set
+     *
+     * A var-array counts its elements with a *zigzag* varint (`DefaultRecord.writeTo` @ 0.11.0.3 writes the number
+     * of headers with `ByteUtils.writeVarint`), so three headers are `06`, not `03`.
+     *
+     * @param array<mixed> $schemeType
+     */
+    private static function arrayCountType(array $schemeType): int
+    {
+        return empty($schemeType[self::FLAG_VARARRAY]) ? self::TYPE_INT32 : self::TYPE_VARINT_ZIGZAG;
     }
 }

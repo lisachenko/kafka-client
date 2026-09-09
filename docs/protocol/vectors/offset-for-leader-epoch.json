@@ -1,0 +1,112 @@
+{
+    "api": "offset-for-leader-epoch",
+    "apiKey": 23,
+    "section": "OffsetForLeaderEpoch API (key 23, v0)",
+    "description": "Wire vectors of the OffsetForLeaderEpoch API (key 23, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "offsetforleaderepoch.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "OffsetForLeaderEpoch request v0 asking where the leader epoch 0 of a partition ends (KIP-101).",
+            "hex": "0000003e001700000000006400176b61666b612d636c69656e742d74332d766563746f727300000001000b74332d7468726f74746c65000000010000000000000000",
+            "fields": {
+                "messageSize": 62,
+                "apiKey": 23,
+                "apiVersion": 0,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "topics": {
+                    "t3-throttle": {
+                        "topic": "t3-throttle",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetforleaderepoch.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the leader: the log end offset, because the requested epoch is the one it is still leading.",
+            "hex": "000000270000006400000001000b74332d7468726f74746c65000000010000000000000000000000000002",
+            "fields": {
+                "messageSize": 39,
+                "correlationId": 100,
+                "topics": {
+                    "t3-throttle": {
+                        "topic": "t3-throttle",
+                        "partitions": [
+                            {
+                                "errorCode": 0,
+                                "partition": 0,
+                                "endOffset": 2
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetforleaderepoch.request.v0.unknown-partition",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "OffsetForLeaderEpoch request v0 for a partition the cluster does not host.",
+            "hex": "00000045001700000000006400176b61666b612d636c69656e742d74332d766563746f727300000001001274332d7468726f74746c652d616273656e74000000010000000700000000",
+            "fields": {
+                "messageSize": 69,
+                "apiKey": 23,
+                "apiVersion": 0,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "topics": {
+                    "t3-throttle-absent": {
+                        "topic": "t3-throttle-absent",
+                        "partitions": {
+                            "7": {
+                                "partition": 7,
+                                "leaderEpoch": 0
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetforleaderepoch.response.v0.unknown-partition",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer to it: the error code 3 (UnknownTopicOrPartition) and the undefined end offset -1.",
+            "hex": "0000002e0000006400000001001274332d7468726f74746c652d616273656e7400000001000300000007ffffffffffffffff",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 100,
+                "topics": {
+                    "t3-throttle-absent": {
+                        "topic": "t3-throttle-absent",
+                        "partitions": {
+                            "7": {
+                                "errorCode": 3,
+                                "partition": 7,
+                                "endOffset": -1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

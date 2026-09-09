@@ -38,7 +38,7 @@ use Protocol\Kafka\Common\Record\TimestampType;
  * built straight from the grammar; the message format v1 of a real broker is in
  * `docs/protocol/vectors/message-format.json`, replayed by tests/Compliance.
  *
- * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
  */
 #[CoversClass(Message::class)]
 #[CoversClass(MessageV0::class)]
@@ -155,10 +155,22 @@ final class MessageTest extends TestCase
 
     public function testAnUnknownMagicByteIsReportedAsACorruptMessage(): void
     {
-        // Message format v2 is the record batch of Kafka 0.11, which this protocol line does not know
+        $buffer = substr_replace(new Message('bar')->toBuffer(), "\x07", 4, 1);
+
+        $this->expectException(CorruptMessageException::class);
+        $this->expectExceptionMessageMatches('/Kafka 0\.11\.0\.3 does not know/');
+
+        Message::fromBuffer($buffer, false);
+    }
+
+    public function testTheMagicByteOfARecordBatchTellsTheCallerWhichReaderToUse(): void
+    {
+        // The message format v2 is the RecordBatch of Kafka 0.11, whose fields after the magic byte are not the
+        // ones of a message; a byte region that holds one is read by MemoryRecords
         $buffer = substr_replace(new Message('bar')->toBuffer(), "\x02", 4, 1);
 
         $this->expectException(CorruptMessageException::class);
+        $this->expectExceptionMessageMatches('/MemoryRecords/');
 
         Message::fromBuffer($buffer, false);
     }

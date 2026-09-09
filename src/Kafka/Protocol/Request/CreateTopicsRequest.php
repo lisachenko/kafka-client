@@ -19,15 +19,15 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
 
 /**
- * CreateTopics, version 1: asks the controller to create one or more topics (ApiKey 19, Kafka 0.10.1)
+ * CreateTopics, version 2: asks the controller to create one or more topics (ApiKey 19, Kafka 0.11)
  *
  * Before this api a topic was created by writing to ZooKeeper - with `kafka-topics.sh`, or implicitly by asking a
  * broker with `auto.create.topics.enable` for the metadata of a topic that does not exist yet. Only the ACTIVE
  * CONTROLLER serves the request: every other broker answers each topic of it with the error code 41 (NotController),
- * see `KafkaApis.handleCreateTopicsRequest` @ 0.10.2.2 and {@see \Protocol\Kafka\Admin\AdminClient::findController()}.
+ * see `KafkaApis.handleCreateTopicsRequest` @ 0.11.0.3 and {@see \Protocol\Kafka\Admin\AdminClient::findController()}.
  *
  * <pre>
- *   CreateTopics Request (Version: 1) => [create_topic_requests] timeout validate_only
+ *   CreateTopics Request (Version: 1 and 2) => [create_topic_requests] timeout validate_only
  *     create_topic_requests => topic num_partitions replication_factor [replica_assignment] [configs]
  *       topic              => STRING
  *       num_partitions     => INT32
@@ -45,14 +45,16 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
  * Version 1 added the trailing `validate_only` flag, which lets the controller check the request - the topic name,
  * the replica placement and every topic-level option - and answer without creating anything; version 0
  * ({@see CreateTopicsRequestV0}) has no such flag, and the Java client refuses to build a version 0 request with
- * `validateOnly` set at all.
+ * `validateOnly` set at all. Version 2 (KIP-124, Kafka 0.11) left the request alone -
+ * `CREATE_TOPICS_REQUEST_V2 = CREATE_TOPICS_REQUEST_V1` in `Protocol.java` @ 0.11.0.3 - and only added the leading
+ * `throttle_time_ms` to the answer, so {@see CreateTopicsRequestV1} sends the same bytes as this class.
  *
  * `timeout` is how long the controller waits for the topic to be created on it before it answers. With a timeout of
  * 0 the answer comes back immediately and reports the error code 7 (RequestTimedOut) for every topic that was
  * accepted, while the creation carries on in the background: the request "will trigger topic creation and return
- * immediately", see `AdminManager.createTopics` @ 0.10.2.2.
+ * immediately", see `AdminManager.createTopics` @ 0.11.0.3.
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0, v1 and v2)"
  */
 class CreateTopicsRequest extends AbstractRequest
 {
@@ -64,7 +66,7 @@ class CreateTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Topics to create, indexed by their name

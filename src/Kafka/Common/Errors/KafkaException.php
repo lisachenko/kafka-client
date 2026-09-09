@@ -23,13 +23,14 @@ use RuntimeException;
  * These can be translated by the client into exceptions or whatever the appropriate error handling mechanism in the
  * client language.
  *
- * The constant names are those of the later protocol lines so that the cascade merge stays small; the codes and the
- * set of codes are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 0.10.2.2, which
- * ends at 44: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
+ * The constant names are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 0.11.0.3,
+ * which ends at 55: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
  * 0.10.0, 36-42 (the CreateTopics codes, NOT_CONTROLLER and INVALID_REQUEST) with 0.10.1 and 43-44
- * (UNSUPPORTED_FOR_MESSAGE_FORMAT, POLICY_VIOLATION) with 0.10.2. Code 13 was StaleLeaderEpochCode in the 0.8 line
- * and is NETWORK_EXCEPTION here; NO_ERROR is not part of the mapping. Codes above 44 arrived with Kafka 0.11 and
- * are answered with {@see \Protocol\Kafka\Common\Errors\UnknownErrorException} by {@see self::fromCode()}.
+ * (UNSUPPORTED_FOR_MESSAGE_FORMAT, POLICY_VIOLATION) with 0.10.2; Kafka 0.11 added 45-55, the codes of the
+ * idempotent and transactional producer (KIP-98), of the ACL apis (SECURITY_DISABLED, OPERATION_NOT_ATTEMPTED) and
+ * TRANSACTIONAL_ID_AUTHORIZATION_FAILED; of them only 46 is retriable, as in the Java client. Code 13 was StaleLeaderEpochCode in the 0.8 line and is NETWORK_EXCEPTION
+ * here; NO_ERROR is not part of the mapping. Codes above 55 (KAFKA_STORAGE_ERROR 56 is Kafka 1.0) are answered with
+ * {@see \Protocol\Kafka\Common\Errors\UnknownErrorException} by {@see self::fromCode()}.
  */
 abstract class KafkaException extends RuntimeException
 {
@@ -81,6 +82,17 @@ abstract class KafkaException extends RuntimeException
     public const INVALID_REQUEST                    = 42;
     public const UNSUPPORTED_FOR_MESSAGE_FORMAT     = 43;
     public const POLICY_VIOLATION                   = 44;
+    public const OUT_OF_ORDER_SEQUENCE_NUMBER          = 45;
+    public const DUPLICATE_SEQUENCE_NUMBER             = 46;
+    public const INVALID_PRODUCER_EPOCH                = 47;
+    public const INVALID_TXN_STATE                     = 48;
+    public const INVALID_PRODUCER_ID_MAPPING           = 49;
+    public const INVALID_TRANSACTION_TIMEOUT           = 50;
+    public const CONCURRENT_TRANSACTIONS               = 51;
+    public const TRANSACTION_COORDINATOR_FENCED        = 52;
+    public const TRANSACTIONAL_ID_AUTHORIZATION_FAILED = 53;
+    public const SECURITY_DISABLED                     = 54;
+    public const OPERATION_NOT_ATTEMPTED               = 55;
 
     /**
      * Mapping from the codes to class names
@@ -133,6 +145,17 @@ abstract class KafkaException extends RuntimeException
         self::INVALID_REQUEST                    => InvalidRequestException::class,
         self::UNSUPPORTED_FOR_MESSAGE_FORMAT     => UnsupportedForMessageFormatException::class,
         self::POLICY_VIOLATION                   => PolicyViolationException::class,
+        self::OUT_OF_ORDER_SEQUENCE_NUMBER          => OutOfOrderSequenceException::class,
+        self::DUPLICATE_SEQUENCE_NUMBER             => DuplicateSequenceNumberException::class,
+        self::INVALID_PRODUCER_EPOCH                => ProducerFencedException::class,
+        self::INVALID_TXN_STATE                     => InvalidTxnStateException::class,
+        self::INVALID_PRODUCER_ID_MAPPING           => InvalidPidMappingException::class,
+        self::INVALID_TRANSACTION_TIMEOUT           => InvalidTxnTimeoutException::class,
+        self::CONCURRENT_TRANSACTIONS               => ConcurrentTransactionsException::class,
+        self::TRANSACTION_COORDINATOR_FENCED        => TransactionCoordinatorFencedException::class,
+        self::TRANSACTIONAL_ID_AUTHORIZATION_FAILED => TransactionalIdAuthorizationException::class,
+        self::SECURITY_DISABLED                     => SecurityDisabledException::class,
+        self::OPERATION_NOT_ATTEMPTED               => OperationNotAttemptedException::class,
     ];
 
     /**

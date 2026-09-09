@@ -18,14 +18,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
 
 /**
- * SyncGroup, version 0: the request with which the leader of a group publishes the state of the new generation.
+ * SyncGroup, version 1: the request with which the leader of a group publishes the state of the new generation.
  *
  * All members send SyncGroup immediately after they joined the group, but only the leader provides the assignment
  * of the group; every other member sends an empty assignment array and receives its own share in the answer. The
  * coordinator holds the answers of the followers until the leader has sent its assignment.
  *
  * <pre>
- *   SyncGroup Request (Version: 0) => group_id generation_id member_id [group_assignment]
+ *   SyncGroup Request (Version: 0 and 1) => group_id generation_id member_id [group_assignment]
  *     group_id         => STRING
  *     generation_id    => INT32
  *     member_id        => STRING
@@ -34,13 +34,24 @@ use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
  *       member_assignment => BYTES
  * </pre>
  *
- * Version 0 is the only version a Kafka 0.10.2.2 broker serves; the `throttle_time_ms` that the answer of version 1
- * carries arrived with Kafka 0.10.1.
+ * `SYNC_GROUP_REQUEST_V1 = SYNC_GROUP_REQUEST_V0` in `Protocol.java` @ 0.11.0.3: version 1 (KIP-124, Kafka 0.11)
+ * added the `throttle_time_ms` to the ANSWER alone ({@see SyncGroupResponse}), so {@see SyncGroupRequestV0} puts
+ * the same bytes on the wire and differs in the version field of the header only.
  *
- * @see docs/protocol/0.10.2.md, section "SyncGroup API (key 14, v0)"
+ * @see docs/protocol/0.11.0.md, section "SyncGroup API (key 14, v0 and v1)"
  */
 class SyncGroupRequest extends AbstractRequest
 {
+    /**
+     * @inheritdoc
+     */
+    public const int API_KEY = ApiKeys::SYNC_GROUP;
+
+    /**
+     * @inheritdoc
+     */
+    public const int VERSION = 1;
+
     /**
      * Assignment of each member of the group, indexed by the member id
      *
@@ -85,7 +96,7 @@ class SyncGroupRequest extends AbstractRequest
         }
         $this->groupAssignments = $packedGroupAssignments;
 
-        parent::__construct(ApiKeys::SYNC_GROUP, $clientId, $correlationId);
+        parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
     /**

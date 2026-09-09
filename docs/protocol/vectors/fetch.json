@@ -1,9 +1,242 @@
 {
     "api": "fetch",
     "apiKey": 1,
-    "section": "Fetch API (key 1, v0 to v3)",
-    "description": "Wire vectors of the Fetch API (key 1, v0 to v3), replayed by tests/Compliance.",
+    "section": "Fetch API (key 1, v0 to v5)",
+    "description": "Wire vectors of the Fetch API (key 1, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
+        {
+            "id": "fetch.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV4",
+            "version": 4,
+            "source": "broker",
+            "description": "Fetch request v4, which adds the IsolationLevel byte behind the request-level MaxBytes of version 3 - 0, read_uncommitted. Its partition entries are the ones of version 3: the LogStartOffset only arrived in version 5.",
+            "hex": "00000041000100040000001800027434ffffffff0000006400000001000020000000000001000a74342d766563746f72730000000100000000000000000000000000001000",
+            "fields": {
+                "messageSize": 65,
+                "apiKey": 1,
+                "apiVersion": 4,
+                "correlationId": 24,
+                "clientId": "t4",
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 8192,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "maxBytes": 4096
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV4",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer of that request: the record batch v2 as the log holds it, and the two fields version 4 added to a partition entry. A read_uncommitted fetch is answered with the LastStableOffset -1 and the element count -1 of a null AbortedTransactions array - the broker computes neither of them for a consumer that does not care about transactions.",
+            "hex": "000000ce000000180000000000000001000a74342d766563746f7273000000010000000000000000000000000002ffffffffffffffffffffffff000000940000000000000000000000880000000002fdd43d16000000000001000001a085feba41000001a085feba4bffffffffffffffffffffffffffff00000002800100000002311c766563746f722d76616c75652d310418636f6e74656e742d74797065206170706c69636174696f6e2f6a736f6e1074726163652d69640661626328001402011c766563746f722d76616c75652d3200",
+            "fields": {
+                "messageSize": 206,
+                "correlationId": 24,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": -1,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000880000000002fdd43d16000000000001000001a085feba41000001a085feba4bffffffffffffffffffffffffffff00000002800100000002311c766563746f722d76616c75652d310418636f6e74656e742d74797065206170706c69636174696f6e2f6a736f6e1074726163652d69640661626328001402011c766563746f722d76616c75652d3200"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "Fetch request v5, which adds the LogStartOffset of a partition entry between its FetchOffset and its MaxBytes. Only a follower replica fills it in, an ordinary consumer sends -1.",
+            "hex": "00000049000100050000001900027434ffffffff0000006400000001000020000000000001000a74342d766563746f727300000001000000000000000000000000ffffffffffffffff00001000",
+            "fields": {
+                "messageSize": 73,
+                "apiKey": 1,
+                "apiVersion": 5,
+                "correlationId": 25,
+                "clientId": "t4",
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 8192,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "logStartOffset": -1,
+                                "maxBytes": 4096
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer of that request. The LogStartOffset of the partition - 0, nothing has been deleted from the front of this log - stands between the LastStableOffset and the AbortedTransactions, and it is reported for a read_uncommitted fetch as well, unlike the other two.",
+            "hex": "000000d6000000190000000000000001000a74342d766563746f7273000000010000000000000000000000000002ffffffffffffffff0000000000000000ffffffff000000940000000000000000000000880000000002fdd43d16000000000001000001a085feba41000001a085feba4bffffffffffffffffffffffffffff00000002800100000002311c766563746f722d76616c75652d310418636f6e74656e742d74797065206170706c69636174696f6e2f6a736f6e1074726163652d69640661626328001402011c766563746f722d76616c75652d3200",
+            "fields": {
+                "messageSize": 214,
+                "correlationId": 25,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": -1,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000880000000002fdd43d16000000000001000001a085feba41000001a085feba4bffffffffffffffffffffffffffff00000002800100000002311c766563746f722d76616c75652d310418636f6e74656e742d74797065206170706c69636174696f6e2f6a736f6e1074726163652d69640661626328001402011c766563746f722d76616c75652d3200"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v5.read-committed",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The same request with the IsolationLevel 1, read_committed: the only byte of the frame that differs.",
+            "hex": "00000049000100050000001a00027434ffffffff0000006400000001000020000100000001000a74342d766563746f727300000001000000000000000000000000ffffffffffffffff00001000",
+            "fields": {
+                "messageSize": 73,
+                "apiKey": 1,
+                "apiVersion": 5,
+                "correlationId": 26,
+                "clientId": "t4",
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 8192,
+                "isolationLevel": 1,
+                "topicPartitions": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "logStartOffset": -1,
+                                "maxBytes": 4096
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v5.read-committed",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "What read_committed changes about the answer of a partition that no transaction ever touched: the LastStableOffset is the real one - the high water mark, because everything below it is decided - and the AbortedTransactions array is present and empty, which is not the null of a read_uncommitted answer.",
+            "hex": "000000d60000001a0000000000000001000a74342d766563746f72730000000100000000000000000000000000020000000000000002000000000000000000000000000000940000000000000000000000880000000002fdd43d16000000000001000001a085feba41000001a085feba4bffffffffffffffffffffffffffff00000002800100000002311c766563746f722d76616c75652d310418636f6e74656e742d74797065206170706c69636174696f6e2f6a736f6e1074726163652d69640661626328001402011c766563746f722d76616c75652d3200",
+            "fields": {
+                "messageSize": 214,
+                "correlationId": 26,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-vectors": {
+                        "topic": "t4-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": 2,
+                                "logStartOffset": 0,
+                                "abortedTransactions": [],
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000880000000002fdd43d16000000000001000001a085feba41000001a085feba4bffffffffffffffffffffffffffff00000002800100000002311c766563746f722d76616c75652d310418636f6e74656e742d74797065206170706c69636174696f6e2f6a736f6e1074726163652d69640661626328001402011c766563746f722d76616c75652d3200"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v5.aborted",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "A read_committed answer of a partition whose only transaction was aborted: one entry in AbortedTransactions with the producer id of that transaction and the first offset it wrote. The record set still holds both batches - the transactional data batch at the offset 0 and the control batch with the ABORT marker that the coordinator wrote at the offset 1 - because the broker does not filter anything: dropping the records of an aborted producer is the job of the consumer.",
+            "hex": "000000f40000001b0000000000000001000d74342d766563746f72732d74780000000100000000000000000000000000020000000000000002000000000000000000000001000000000000000300000000000000000000009f0000000000000000000000450000000002616a184d001000000000000001a085feba55000001a085feba5500000000000000030000000000000000000126000000011a61626f727465642d76616c7565000000000000000001000000420000000002ea13d5ac003000000000000001a085feba81000001a085feba8100000000000000030000ffffffff000000012000000008000000000c00000000000000",
+            "fields": {
+                "messageSize": 244,
+                "correlationId": 27,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-vectors-tx": {
+                        "topic": "t4-vectors-tx",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": 2,
+                                "logStartOffset": 0,
+                                "abortedTransactions": [
+                                    {
+                                        "producerId": 3,
+                                        "firstOffset": 0
+                                    }
+                                ],
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000450000000002616a184d001000000000000001a085feba55000001a085feba5500000000000000030000000000000000000126000000011a61626f727465642d76616c7565000000000000000001000000420000000002ea13d5ac003000000000000001a085feba81000001a085feba8100000000000000030000ffffffff000000012000000008000000000c00000000000000"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
         {
             "id": "fetch.request.v2",
             "kind": "request",
@@ -67,7 +300,7 @@
         {
             "id": "fetch.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV3",
             "version": 3,
             "source": "broker",
             "description": "Fetch request v3, which adds the request-level MaxBytes after MinBytes: 8192 bytes for the whole answer, next to the 4096 bytes of the single partition.",
@@ -99,7 +332,7 @@
         {
             "id": "fetch.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer of the version 3 request is the answer of the version 2 one: the response frame did not change between v1, v2 and v3, only the correlation id of this capture differs.",
@@ -128,7 +361,7 @@
         {
             "id": "fetch.request.v3.max-bytes",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV3",
             "version": 3,
             "source": "broker",
             "description": "Fetch request v3 for two partitions of one topic with a request-level MaxBytes of 40 bytes, which is less than a single message of either of them. The order of the partitions in this frame is the order in which the broker fills the answer.",
@@ -165,7 +398,7 @@
         {
             "id": "fetch.response.v3.max-bytes",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV3",
             "version": 3,
             "source": "broker",
             "description": "What the broker answers to it: the first partition ignores the budget and returns its 52-byte message in full, so that the consumer can make progress, and the second one - whose turn comes when the 40 bytes are already used up - comes back with an empty message set although its high water mark shows that there is a message to read.",
@@ -340,6 +573,43 @@
                                 "highWaterMarkOffset": 2,
                                 "messageSet": {
                                     "$bytes": "00000000000000000000001ea65e6c150000000000026b310000000e766563746f722d76616c75652d3100000000000000010000001c7f3aa0fc0000ffffffff0000000e766563746f722d76616c75652d32"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v5.aborted-transactions",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "Fetch v5 answer of a `read_committed` consumer of a partition that holds one **aborted** transaction: the last stable offset is 3, past everything, and `aborted_transactions` names the producer id 2 with the first offset 0. The answer nevertheless carries both aborted records and the ABORT control batch - a 0.11.0.3 broker does not filter them out, it names them and leaves the filtering to the client.",
+            "hex": "00000107000000c70000000000000001001074382d766563746f72732d61626f7274000000010000000000000000000000000003000000000000000300000000000000000000000100000000000000020000000000000000000000af000000000000000000000055000000000262eec1c6001000000001000001a0866f8f71000001a0866f8f7100000000000000020000000000000000000222000000011661626f72746564206f6e650022000002011661626f727465642074776f00000000000000000200000042000000000269a4f27b003000000000000001a0866f939e000001a0866f939e00000000000000020000ffffffff000000012000000008000000000c00000000000000",
+            "fields": {
+                "messageSize": 263,
+                "correlationId": 199,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t8-vectors-abort": {
+                        "topic": "t8-vectors-abort",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 3,
+                                "lastStableOffset": 3,
+                                "logStartOffset": 0,
+                                "abortedTransactions": [
+                                    {
+                                        "producerId": 2,
+                                        "firstOffset": 0
+                                    }
+                                ],
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000055000000000262eec1c6001000000001000001a0866f8f71000001a0866f8f7100000000000000020000000000000000000222000000011661626f72746564206f6e650022000002011661626f727465642074776f00000000000000000200000042000000000269a4f27b003000000000000001a0866f939e000001a0866f939e00000000000000020000ffffffff000000012000000008000000000c00000000000000"
                                 }
                             }
                         ]

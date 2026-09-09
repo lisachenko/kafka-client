@@ -23,12 +23,15 @@ use Protocol\Kafka\Common\ClientConfig as GeneralConfig;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Message;
+use Protocol\Kafka\Common\Record\RecordBatch;
 
 /**
  * Producer config enumeration class
  *
- * Kafka 0.10.2.2 has neither idempotent nor transactional delivery - both arrived with 0.11 - so this branch carries
- * no `transactional.id` and no `enable.idempotence`.
+ * Kafka 0.11 added the delivery guarantee of KIP-98 to the producer, and with it the options that turn it on:
+ * {@see ProducerConfig::ENABLE_IDEMPOTENCE} for the idempotent producer, {@see ProducerConfig::TRANSACTIONAL_ID}
+ * for the transactional one - which implies the first - and the {@see ProducerConfig::TRANSACTION_TIMEOUT_MS} that
+ * a transactional `InitProducerId` states.
  */
 final class ProducerConfig extends GeneralConfig
 {
@@ -47,7 +50,11 @@ final class ProducerConfig extends GeneralConfig
         ProducerConfig::COMPRESSION_TYPE       => ProducerConfig::COMPRESSION_TYPE_NONE,
         ProducerConfig::LINGER_MS              => 0,
         ProducerConfig::MAX_REQUEST_SIZE       => 1048576,
-        ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
+        ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0,
+
+        ProducerConfig::ENABLE_IDEMPOTENCE     => false,
+        ProducerConfig::TRANSACTION_TIMEOUT_MS => 60000,
+        ProducerConfig::TRANSACTIONAL_ID       => null,
     ];
 
     /**
@@ -161,14 +168,19 @@ final class ProducerConfig extends GeneralConfig
     /**
      * The message format this producer writes, named after the Kafka release that introduced it.
      *
-     * It is the client-side counterpart of the `message.format.version` of a topic: a 0.10.2 broker stores what it
+     * It is the client-side counterpart of the `message.format.version` of a topic: a 0.11 broker stores what it
      * is configured to store and converts whatever the producer sent, so the option does not change what ends up in
      * the log - it only decides whether the broker has to convert the batch on append. Leave it at
-     * {@see ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0} (message format v1, with timestamps) unless the topic is
-     * configured with `message.format.version=0.9.0` or lower, where writing message format v0 straight away saves
-     * the broker the conversion.
+     * {@see ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0} (message format v2, the record batch) unless the topic
+     * is configured with an older `message.format.version`, where writing that format straight away saves the
+     * broker the conversion.
      *
-     * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+     * The format also decides the **version of the Produce request** the client sends, and with it what a record
+     * may carry: only the message format v2 travels in a Produce v3 request, and only it has a place for record
+     * headers, for the producer id and the sequence numbers of an idempotent producer and for a transactional id.
+     * A batch of the formats v0 and v1 is sent as Produce v2 and its headers are dropped.
+     *
+     * @see docs/protocol/0.11.0.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
      */
     public const string MESSAGE_FORMAT_VERSION = 'message.format.version';
 
@@ -181,6 +193,11 @@ final class ProducerConfig extends GeneralConfig
      * Message format v1: an int64 timestamp, a timestamp type and relative inner offsets, since Kafka 0.10.0
      */
     public const string MESSAGE_FORMAT_VERSION_0_10_0 = '0.10.0';
+
+    /**
+     * Message format v2: the record batch with headers, producer ids and transactions, since Kafka 0.11.0
+     */
+    public const string MESSAGE_FORMAT_VERSION_0_11_0 = '0.11.0';
 
     /**
      * The producer groups together any records that arrive in between request transmissions into a single batched
@@ -208,6 +225,82 @@ final class ProducerConfig extends GeneralConfig
     public const string MAX_REQUEST_SIZE = 'max.request.size';
 
     /**
+     * When set to `true`, the producer ensures that exactly one copy of each message is written in the stream.
+     *
+     * If `false`, producer retries due to broker failures may write duplicates of the retried message in the
+     * stream. This is set to `false` by default, exactly as in the Java producer of 0.11.
+     *
+     * The guarantee is the one of KIP-98 and it is a guarantee **within one producer session**: the producer asks
+     * a broker for a producer id with its first batch ({@see \Protocol\Kafka\Client::initProducerId()}), numbers
+     * the batches of every topic-partition with gapless sequence numbers, and the broker recognises a batch it has
+     * already appended - a retry after an acknowledgement that got lost - and answers it with the offset of the
+     * original append instead of writing it twice. A producer that is restarted gets a new producer id and can not
+     * deduplicate against what the old one wrote; that is what a `transactional.id` is for.
+     *
+     * Enabling it constrains two other options, and this client validates them exactly as the Java producer does:
+     *
+     * * `acks` must be {@see ProducerConfig::ACKS_ALL}. An explicit `acks` of 0 or 1 together with
+     *   `enable.idempotence = true` is a configuration error; leaving `acks` alone makes it `all`.
+     * * `retries` must not be 0 - a producer that never retries has nothing to deduplicate. An explicit 0 is a
+     *   configuration error; leaving `retries` alone makes it {@see ProducerConfig::DEFAULT_IDEMPOTENT_RETRIES}.
+     *
+     * The Java producer also forces `max.in.flight.requests.per.connection` to 1, because more than one request in
+     * flight can reorder the batches of a partition and every reordering is an out-of-order sequence for the
+     * broker. This client is synchronous - {@see KafkaProducer::flush()} writes one produce request and reads its
+     * answer before the next one - so it has no such option and satisfies the requirement by construction.
+     *
+     * @see docs/protocol/0.11.0.md, section "The idempotent producer"
+     */
+    public const string ENABLE_IDEMPOTENCE = 'enable.idempotence';
+
+    /**
+     * The maximum amount of time in ms that the transaction coordinator will wait for a transaction status update
+     * from the producer before proactively aborting the ongoing transaction.
+     *
+     * It travels in the `InitProducerId` request and is only meaningful for a producer that has a transactional
+     * id: with a `null` one a 0.11.0.3 broker ignores the field entirely. A value above the broker's
+     * `transaction.max.timeout.ms` (900000 by default) is refused with the error code 50
+     * (`InvalidTransactionTimeout`).
+     */
+    public const string TRANSACTION_TIMEOUT_MS = 'transaction.timeout.ms';
+
+    /**
+     * The id that identifies this producer across its restarts, and the option that turns transactions on.
+     *
+     * A producer that carries one is a **transactional producer**: it may group the records of several partitions
+     * - and the offsets of a consumer group - into a transaction that a `read_committed` consumer either sees
+     * whole or does not see at all, with
+     * {@see KafkaProducer::initTransactions()}, {@see KafkaProducer::beginTransaction()},
+     * {@see KafkaProducer::sendOffsetsToTransaction()}, {@see KafkaProducer::commitTransaction()} and
+     * {@see KafkaProducer::abortTransaction()}.
+     *
+     * The id is what makes the guarantee survive a restart: `InitProducerId` answers it with the producer id that
+     * `__transaction_state` holds for it and with an epoch **one higher** than the previous incarnation used, which
+     * fences that incarnation for good, and it aborts whatever transaction that incarnation had left open. Two
+     * producers must therefore never run with the same transactional id at the same time - the second one silently
+     * kills the first.
+     *
+     * A transactional id **implies `enable.idempotence`** ({@see ProducerConfig::resolveIdempotence()}), so it
+     * carries the same constraints: `acks` has to be `all` and `retries` must not be 0. The **empty string** is not
+     * a transactional id - a broker answers it with the error code 42 - and is refused here as a configuration
+     * error.
+     *
+     * @see docs/protocol/0.11.0.md, section "Transactions"
+     */
+    public const string TRANSACTIONAL_ID = 'transactional.id';
+
+    /**
+     * The `retries` an idempotent producer gets when the configuration does not name a value.
+     *
+     * The Java producer overrides the default to `Integer.MAX_VALUE` here, because its background sender bounds a
+     * batch by `request.timeout.ms` rather than by a number of attempts. This client has no sender thread: `retries`
+     * is a loop inside {@see \Protocol\Kafka\Client::produce()} that {@see KafkaProducer::flush()} blocks on, so an
+     * unbounded budget would be an unbounded flush. Three attempts on top of the first one is the deliberate
+     * deviation, and a caller that wants more simply configures `retries`.
+     */
+    public const int DEFAULT_IDEMPOTENT_RETRIES = 3;
+
+    /**
      * Compression codec of every supported value of the `compression.type` option
      *
      * @var array<string, int>
@@ -231,9 +324,10 @@ final class ProducerConfig extends GeneralConfig
         '0.8.1'                            => Message::MAGIC_V0,
         '0.8.2'                            => Message::MAGIC_V0,
         self::MESSAGE_FORMAT_VERSION_0_9_0 => Message::MAGIC_V0,
-        '0.10.0'                           => Message::MAGIC_V1,
-        '0.10.1'                           => Message::MAGIC_V1,
-        '0.10.2'                           => Message::MAGIC_V1,
+        '0.10.0'                            => Message::MAGIC_V1,
+        '0.10.1'                            => Message::MAGIC_V1,
+        '0.10.2'                            => Message::MAGIC_V1,
+        self::MESSAGE_FORMAT_VERSION_0_11_0 => RecordBatch::MAGIC,
     ];
 
     /**
@@ -244,6 +338,109 @@ final class ProducerConfig extends GeneralConfig
     public static function getDefaultConfiguration(): array
     {
         return self::$producerConfiguration + parent::$generalConfiguration;
+    }
+
+    /**
+     * Applies what {@see ProducerConfig::ENABLE_IDEMPOTENCE} implies for `acks` and `retries`.
+     *
+     * The two options are not independent of the guarantee: a batch that only the leader acknowledged can be lost
+     * with that leader, and a producer that never retries has no duplicate to deduplicate. The Java producer of
+     * 0.11 therefore *overrides* both when the caller left them alone and *refuses* the configuration when the
+     * caller set them to something the guarantee can not live with, and this is the same rule - which is why it
+     * takes the options as the caller wrote them, before the defaults have been merged into them.
+     *
+     * A **`transactional.id` implies `enable.idempotence`**, as it does in the Java producer: a transaction is
+     * built on the producer id and the sequence numbers of KIP-98, so there is no such thing as a transactional
+     * producer that is not idempotent. An explicit `enable.idempotence = false` next to a transactional id is
+     * therefore a configuration error, and so is the empty string as an id, which a broker answers with the error
+     * code 42.
+     *
+     * @param array<string, mixed> $configuration Options of the caller, without the defaults
+     *
+     * @return array<string, mixed> The same options with the overrides of an idempotent producer applied
+     *
+     * @throws InvalidConfigurationException For an `acks` other than `all` or a `retries` of 0 next to
+     *         `enable.idempotence = true`, and for a `transactional.id` that the guarantee can not live with
+     */
+    public static function resolveIdempotence(array $configuration): array
+    {
+        $transactionalId = $configuration[self::TRANSACTIONAL_ID] ?? null;
+        if ($transactionalId !== null) {
+            if (!is_string($transactionalId) || trim($transactionalId) === '') {
+                throw new InvalidConfigurationException(
+                    self::TRANSACTIONAL_ID . ' must be a non-empty string, "'
+                    . (is_scalar($transactionalId) ? (string) $transactionalId : get_debug_type($transactionalId))
+                    . '" given'
+                );
+            }
+            if (array_key_exists(self::ENABLE_IDEMPOTENCE, $configuration)
+                && !self::isIdempotenceEnabled($configuration[self::ENABLE_IDEMPOTENCE])
+            ) {
+                throw new InvalidConfigurationException(
+                    'Cannot set ' . self::ENABLE_IDEMPOTENCE . ' to false while a ' . self::TRANSACTIONAL_ID
+                    . ' is configured: a transaction is built on the producer id and the sequence numbers of the '
+                    . 'idempotent producer'
+                );
+            }
+            $configuration[self::ENABLE_IDEMPOTENCE] = true;
+        }
+
+        if (!self::isIdempotenceEnabled($configuration[self::ENABLE_IDEMPOTENCE] ?? false)) {
+            return $configuration;
+        }
+
+        if (array_key_exists(self::ACKS, $configuration)) {
+            $acks = $configuration[self::ACKS];
+            if (self::parseAcks($acks) !== self::ACKS_ALL) {
+                throw new InvalidConfigurationException(
+                    'Must set ' . self::ACKS . ' to all in order to use the idempotent producer, "'
+                    . (is_scalar($acks) ? (string) $acks : get_debug_type($acks)) . '" given'
+                );
+            }
+        }
+        // Also normalizes the string `all` into the -1 of the wire, which is what the request is built from
+        $configuration[self::ACKS] = self::ACKS_ALL;
+
+        if (array_key_exists(self::RETRIES, $configuration)) {
+            if ((int) $configuration[self::RETRIES] === 0) {
+                throw new InvalidConfigurationException(
+                    'Must set ' . self::RETRIES . ' to non-zero when using the idempotent producer'
+                );
+            }
+        } else {
+            $configuration[self::RETRIES] = self::DEFAULT_IDEMPOTENT_RETRIES;
+        }
+
+        return $configuration;
+    }
+
+    /**
+     * Tells whether a value of the `enable.idempotence` option turns the guarantee on.
+     *
+     * The option is a boolean in the Java client, and a configuration that was read out of a `.properties` file
+     * carries it as the string `"true"`, so both spellings are accepted here.
+     */
+    public static function isIdempotenceEnabled(mixed $value): bool
+    {
+        if (is_string($value)) {
+            return strtolower(trim($value)) === 'true';
+        }
+
+        return (bool) $value;
+    }
+
+    /**
+     * Resolves the `acks` option into the number of acknowledgements that goes on the wire
+     *
+     * The Java producer spells "every in-sync replica" as the string `all`, which is the value -1 of the wire.
+     */
+    public static function parseAcks(mixed $acks): int
+    {
+        if (is_string($acks) && strtolower(trim($acks)) === 'all') {
+            return self::ACKS_ALL;
+        }
+
+        return (int) $acks;
     }
 
     /**
@@ -280,8 +477,8 @@ final class ProducerConfig extends GeneralConfig
     /**
      * Resolves the `message.format.version` option into the magic byte that the messages of a batch carry.
      *
-     * The value is a Kafka release, the way the broker spells the same option, or a magic byte; only the two formats
-     * of this protocol line exist, so everything up to 0.9.0 is message format v0 and 0.10.x is message format v1.
+     * The value is a Kafka release, the way the broker spells the same option, or a magic byte: everything up to
+     * 0.9.0 is message format v0, 0.10.x is message format v1 and 0.11.0 is the record batch of message format v2.
      *
      * @param string|int $messageFormatVersion Name of a Kafka release, or one of the {@see Message} magic constants
      *
@@ -290,7 +487,7 @@ final class ProducerConfig extends GeneralConfig
     public static function messageFormatMagic(string|int $messageFormatVersion): int
     {
         if (is_int($messageFormatVersion)) {
-            if ($messageFormatVersion !== Message::MAGIC_V0 && $messageFormatVersion !== Message::MAGIC_V1) {
+            if (!in_array($messageFormatVersion, [Message::MAGIC_V0, Message::MAGIC_V1, RecordBatch::MAGIC], true)) {
                 throw new InvalidConfigurationException(
                     "Unsupported message format magic {$messageFormatVersion} configured for the producer"
                 );

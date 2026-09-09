@@ -13,22 +13,26 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopic;
 use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV0;
 
 /**
- * CreateTopics response object, version 1 (key 19)
+ * CreateTopics response object, version 2 (key 19)
  *
  * <pre>
- *   CreateTopics Response (Version: 1) => [topic_errors]
+ *   CreateTopics Response (Version: 2) => throttle_time_ms [topic_errors]
+ *     throttle_time_ms => INT32     -- since version 2
  *     topic_errors => topic error_code error_message
  *       topic         => STRING
  *       error_code    => INT16
  *       error_message => NULLABLE_STRING
  * </pre>
  *
- * The answer carries one entry per topic of the request and nothing else - no throttle time, which the group apis
- * of Kafka 0.11 added, and no top-level error code. The error codes a 0.10.2.2 controller reports here are:
+ * Version 2 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of the array and left the entries alone;
+ * {@see CreateTopicsResponseV1} is the same array without it, and {@see CreateTopicsResponseV0} the bare
+ * `topic error_code` entries of version 0. There is no top-level error code in any version: the answer carries one
+ * entry per topic of the request. The error codes a 0.11.0.3 controller reports here are:
  *
  * | Code | Name                       | Meaning                                                                   |
  * |------|----------------------------|---------------------------------------------------------------------------|
@@ -44,14 +48,21 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV0;
  *                                     with an explicit assignment                                               |
  * | 44   | PolicyViolation            | A `create.topic.policy.class.name` on the broker refused the topic        |
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0, v1 and v2)"
  */
 class CreateTopicsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
+     *
+     * @since Version 2 of protocol
+     */
+    public int $throttleTimeMs = 0;
 
     /**
      * Result of every topic of the request, indexed by the topic name
@@ -66,10 +77,13 @@ class CreateTopicsResponse extends AbstractResponse
     public static function getScheme(): array
     {
         $header = parent::getScheme();
+        $body   = [];
+        if (static::VERSION >= 2) {
+            $body['throttleTimeMs'] = BinarySchema::TYPE_INT32;
+        }
+        $body['topics'] = ['topic' => static::topicClass()];
 
-        return $header + [
-            'topics' => ['topic' => static::topicClass()],
-        ];
+        return $header + $body;
     }
 
     /**

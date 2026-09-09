@@ -13,15 +13,17 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
 
 /**
- * Offsets (ListOffset) response object (key 2, v1)
+ * Offsets (ListOffset) response object (key 2, v2)
  *
  * <pre>
- *   ListOffsets Response (Version: 1) => [responses]
+ *   ListOffsets Response (Version: 2) => throttle_time_ms [responses]
+ *     throttle_time_ms => INT32     -- since version 2
  *     responses => topic [partition_responses]
  *       topic               => STRING
  *       partition_responses => partition error_code timestamp offset
@@ -32,7 +34,9 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
  * </pre>
  *
  * Version 1 answers one offset per partition together with the timestamp of the message it points at; the offset
- * array of {@see OffsetsResponseV0} is gone. The error codes a 0.10.2.2 broker reports here are:
+ * array of {@see OffsetsResponseV0} is gone. Version 2 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of
+ * the topics array and left the partitions alone, so {@see OffsetsResponseV1} decodes the same entries without it.
+ * The error codes a 0.11.0.3 broker reports here are:
  *
  * | Code | Name                       | Meaning                                                                  |
  * |------|----------------------------|--------------------------------------------------------------------------|
@@ -45,16 +49,24 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
  * A target timestamp that no message matches - one above the timestamp of every message of the log, and any
  * timestamp on an empty log - is **not** an error: the broker answers the code 0 with
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
- * and -1 (`KafkaApis.handleOffsetRequestV1` @ 0.10.2.2).
+ * and -1 (`KafkaApis.fetchOffsetForTimestamp` @ 0.11.0.3).
  *
- * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
+ * @see docs/protocol/0.11.0.md, sections "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset" and
+ *      "Quotas and throttle time"
  */
 class OffsetsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
+     *
+     * @since Version 2 of protocol
+     */
+    public int $throttleTimeMs = 0;
 
     /**
      * Offsets for each of the requested topics, indexed by the topic name
@@ -69,10 +81,13 @@ class OffsetsResponse extends AbstractResponse
     public static function getScheme(): array
     {
         $header = parent::getScheme();
+        $body   = [];
+        if (static::VERSION >= 2) {
+            $body['throttleTimeMs'] = BinarySchema::TYPE_INT32;
+        }
+        $body['topics'] = ['topic' => static::topicClass()];
 
-        return $header + [
-            'topics' => ['topic' => static::topicClass()],
-        ];
+        return $header + $body;
     }
 
     /**

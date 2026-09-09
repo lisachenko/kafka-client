@@ -21,12 +21,12 @@ namespace Protocol\Kafka\Protocol\Request;
  *     topics => NULLABLE_ARRAY of STRING
  * </pre>
  *
- * `METADATA_REQUEST_V2 = METADATA_REQUEST_V1` in `Protocol.java` @ 0.10.2.2: the frame of this class differs from
- * the one of {@see MetadataRequest} in the version field of the header alone. It exists because the ANSWER differs -
- * a version 1 answer has no `ClusterId` ({@see MetadataResponseV1}) - so a client that asks with this class has to
- * read the answer with the matching response class.
+ * `METADATA_REQUEST_V2 = METADATA_REQUEST_V1` in `Protocol.java` @ 0.11.0.3: the frame of this class differs from
+ * the one of {@see MetadataRequestV2} in the version field of the header alone. It exists because the ANSWER
+ * differs - a version 1 answer has no `ClusterId` ({@see MetadataResponseV1}) - so a client that asks with this
+ * class has to read the answer with the matching response class.
  *
- * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
  */
 final class MetadataRequestV1 extends MetadataRequest
 {
@@ -34,4 +34,17 @@ final class MetadataRequestV1 extends MetadataRequest
      * @inheritdoc
      */
     public const int VERSION = 1;
+
+    /**
+     * The `allow_auto_topic_creation` of version 4 is not on the wire in this version, and a broker behaves as if
+     * it were `true`; the constructor therefore does not ask for it.
+     *
+     * @param list<string>|null $topics        Topics to fetch the metadata for, null asks for every topic
+     * @param string            $clientId      A user specified identifier for the client making the request
+     * @param int               $correlationId A user-supplied value that the broker passes back unmodified
+     */
+    public function __construct(?array $topics = null, string $clientId = '', int $correlationId = 0)
+    {
+        parent::__construct($topics, true, $clientId, $correlationId);
+    }
 }

@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * constant to the version of the request it belongs to. What a version 1 answer does carry is a message set that
  * the broker converted down to message format v0, whatever the log holds, see {@see FetchRequestV1}.
  *
- * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
+ * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
  */
 final class FetchResponseV1 extends FetchResponse
 {

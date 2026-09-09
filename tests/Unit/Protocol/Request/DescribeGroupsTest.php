@@ -20,25 +20,32 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV0;
 
 /**
- * Byte-exact tests for the DescribeGroups API of Kafka 0.9 (api key 15, v0).
+ * Byte-exact tests for the DescribeGroups API of Kafka 0.9 (api key 15), raised to version 1 by KIP-124.
  *
- * @see docs/protocol/0.10.2.md, section "DescribeGroups API (key 15, v0)"
+ * The request did not change - `DESCRIBE_GROUPS_REQUEST_V1 = DESCRIBE_GROUPS_REQUEST_V0` - and neither did a group
+ * entry of the answer; version 1 only put the `ThrottleTimeMs` in front of the array.
+ *
+ * @see docs/protocol/0.11.0.md, section "DescribeGroups API (key 15, v0 and v1)"
  */
 #[CoversClass(DescribeGroupsRequest::class)]
+#[CoversClass(DescribeGroupsRequestV0::class)]
 #[CoversClass(DescribeGroupsResponse::class)]
+#[CoversClass(DescribeGroupsResponseV0::class)]
 #[CoversClass(DescribeGroupResponseMetadata::class)]
 #[CoversClass(DescribeGroupResponseMember::class)]
 final class DescribeGroupsTest extends TestCase
 {
     /**
-     * DescribeGroups request v0 for two groups.
+     * DescribeGroups request v1 for two groups.
      *
      *   Size          => 00 00 00 28 (40 bytes)
      *   ApiKey        => 00 0f (15)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 01
      *   ClientId      => 00 04 "test"
      *   Groups        => 00 00 00 02
@@ -46,6 +53,18 @@ final class DescribeGroupsTest extends TestCase
      *     GroupId => 00 0a "other-grou"
      */
     private const string REQUEST_HEX = '00000028'
+        . '000f'
+        . '0001'
+        . '00000001'
+        . '0004' . '74657374'
+        . '00000002'
+        . '0008' . '6d792d67726f7570'
+        . '000a' . '6f746865722d67726f75';
+
+    /**
+     * The very same body as a version 0 frame.
+     */
+    private const string REQUEST_V0_HEX = '00000028'
         . '000f'
         . '0000'
         . '00000001'
@@ -129,20 +148,29 @@ final class DescribeGroupsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DESCRIBE_GROUPS, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(1, $request->getApiVersion());
         self::assertSame(['my-group', 'other-grou'], $request->getGroups());
+    }
+
+    public function testTheVersionZeroRequestIsTheSameBody(): void
+    {
+        $request = new DescribeGroupsRequestV0(['my-group', 'other-grou'], 'test', 1);
+
+        self::assertSame(self::REQUEST_V0_HEX, bin2hex((string) $request));
+        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(substr(self::REQUEST_HEX, 16), substr(self::REQUEST_V0_HEX, 16));
     }
 
     public function testAnEmptyGroupArrayIsPackedAsAnEmptyArray(): void
     {
         $request = new DescribeGroupsRequest([], '', 0);
 
-        self::assertSame('0000000e' . '000f' . '0000' . '00000000' . '0000' . '00000000', bin2hex((string) $request));
+        self::assertSame('0000000e' . '000f' . '0001' . '00000000' . '0000' . '00000000', bin2hex((string) $request));
     }
 
     public function testStableGroupIsUnpackedAccordingToTheSpec(): void
     {
-        $response = DescribeGroupsResponse::unpack(new StringStream((string) hex2bin(self::STABLE_RESPONSE_HEX)));
+        $response = DescribeGroupsResponseV0::unpack(new StringStream((string) hex2bin(self::STABLE_RESPONSE_HEX)));
 
         self::assertSame(['my-group'], array_keys($response->groups), 'groups are keyed by their id');
         $group = $response->groups['my-group'];
@@ -161,7 +189,7 @@ final class DescribeGroupsTest extends TestCase
 
     public function testAnUnknownGroupIsReportedAsDeadWithoutAnError(): void
     {
-        $response = DescribeGroupsResponse::unpack(new StringStream((string) hex2bin(self::DEAD_RESPONSE_HEX)));
+        $response = DescribeGroupsResponseV0::unpack(new StringStream((string) hex2bin(self::DEAD_RESPONSE_HEX)));
         $group    = $response->groups['my-group'];
 
         self::assertSame(0, $group->errorCode, 'a group that does not exist is not an error');
@@ -174,9 +202,30 @@ final class DescribeGroupsTest extends TestCase
     public function testEveryGroupCarriesItsOwnErrorCode(): void
     {
         $frame    = (string) hex2bin(self::NOT_COORDINATOR_RESPONSE_HEX);
-        $response = DescribeGroupsResponse::unpack(new StringStream($frame));
+        $response = DescribeGroupsResponseV0::unpack(new StringStream($frame));
 
         self::assertSame(16, $response->groups['my-group']->errorCode);
         self::assertSame('', $response->groups['my-group']->state, 'a broker that is not the coordinator knows nothing');
+    }
+
+    public function testTheVersionOneAnswerStartsWithTheThrottleTime(): void
+    {
+        $frame = '00000026'
+            . '00000001'
+            . '00000000'
+            . '00000001'
+            . '0000'
+            . '0008' . '6d792d67726f7570'
+            . '0004' . '44656164'
+            . '0000'
+            . '0000'
+            . '00000000';
+
+        $response = DescribeGroupsResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(['my-group'], array_keys($response->groups));
+        self::assertSame(DescribeGroupResponseMetadata::STATE_DEAD, $response->groups['my-group']->state);
+        self::assertSame($frame, bin2hex((string) $response));
     }
 }

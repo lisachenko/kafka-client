@@ -1,13 +1,13 @@
 {
     "api": "sync-group",
     "apiKey": 14,
-    "section": "SyncGroup API (key 14, v0)",
-    "description": "Wire vectors of the SyncGroup API (key 14, v0), replayed by tests/Compliance.",
+    "section": "SyncGroup API (key 14, v0 and v1)",
+    "description": "Wire vectors of the SyncGroup API (key 14, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "syncgroup.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequestV0",
             "version": 0,
             "source": "broker",
             "description": "SyncGroup request v0 of the leader of the group, which carries the assignment of every member as opaque bytes.",
@@ -34,7 +34,7 @@
         {
             "id": "syncgroup.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponseV0",
             "version": 0,
             "source": "broker",
             "description": "SyncGroup answer with the assignment of the member that sent the request.",
@@ -51,7 +51,7 @@
         {
             "id": "syncgroup.request.v0.illegal-generation",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequestV0",
             "version": 0,
             "source": "broker",
             "description": "SyncGroup request v0 that names a generation of the group that is over.",
@@ -71,7 +71,7 @@
         {
             "id": "syncgroup.response.v0.illegal-generation",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponseV0",
             "version": 0,
             "source": "broker",
             "description": "SyncGroup answer for a generation that is not the current one: the error code 22 and an empty assignment.",
@@ -82,6 +82,51 @@
                 "errorCode": 22,
                 "memberAssignment": {
                     "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "SyncGroup request v1 of the leader, which publishes the assignment of the generation.",
+            "hex": "000000e3000e00010000006400176b61666b612d636c69656e742d74332d766563746f7273001174332d7468726f74746c652d67726f757000000001003c6b61666b612d636c69656e742d74332d766563746f72732d63663861626537662d396231652d343337332d396539392d36306330306661383531303800000001003c6b61666b612d636c69656e742d74332d766563746f72732d63663861626537662d396231652d343337332d396539392d36306330306661383531303800000027000000000001000b74332d7468726f74746c650000000300000000000000010000000200000000",
+            "fields": {
+                "messageSize": 227,
+                "apiKey": 14,
+                "apiVersion": 1,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "consumerGroup": "t3-throttle-group",
+                "generationId": 1,
+                "memberId": "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108",
+                "groupAssignments": {
+                    "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108": {
+                        "memberId": "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108",
+                        "assignment": {
+                            "$bytes": "000000000001000b74332d7468726f74746c650000000300000000000000010000000200000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer v1: the throttle time, the error code and the assignment of the member.",
+            "hex": "000000350000006400000000000000000027000000000001000b74332d7468726f74746c650000000300000000000000010000000200000000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "memberAssignment": {
+                    "$bytes": "000000000001000b74332d7468726f74746c650000000300000000000000010000000200000000"
                 }
             }
         }

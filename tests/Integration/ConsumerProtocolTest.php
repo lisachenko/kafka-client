@@ -34,7 +34,7 @@ use RuntimeException;
  * The frames are built by hand ({@see RawApiProbe}) because the request classes of the group apis belong to
  * another ticket; this suite covers the payloads they will carry, not the framing.
  *
- * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.11.0.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 #[CoversClass(Subscription::class)]
 #[CoversClass(MemberAssignment::class)]

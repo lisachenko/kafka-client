@@ -25,6 +25,7 @@ use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Producer\DefaultPartitioner;
 use Protocol\Kafka\Producer\KafkaProducer;
@@ -42,7 +43,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * broker really stored is checked, not what the client believes it sent: the partition a key was placed in, the
  * offsets that the promises were resolved with, and the compression of a batch.
  *
- * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
  */
 #[CoversClass(KafkaProducer::class)]
 #[CoversClass(DefaultPartitioner::class)]
@@ -254,13 +255,15 @@ final class KafkaProducerTest extends IntegrationTestCase
         self::assertInstanceOf(RecordMetadata::class, $metadata);
         self::assertSame(0, $metadata->offset, 'The broker answers with the offset of the first inner record');
 
-        // The log holds a single wrapper message, whose value is the whole batch compressed with the codec
+        // The log holds a single record batch of the message format v2, whose records part is the whole batch
+        // compressed with the codec - there is no wrapper message any more, the 61 header bytes stay plain
         $partition    = $this->fetchPartition(2);
         $storedBuffer = (string) $partition->messageSet;
-        $wrapper      = self::firstMessageOf($storedBuffer);
+        $batch        = $partition->getRecords()->getBatches()[0];
 
-        self::assertTrue($wrapper->isCompressed(), 'The broker stored the batch as it was produced');
-        self::assertSame($expectedCodec, $wrapper->getCompressionCodec());
+        self::assertInstanceOf(RecordBatch::class, $batch);
+        self::assertSame($expectedCodec, $batch->getCompressionCodec(), 'The broker stored the batch as produced');
+        self::assertSame(25, $batch->recordCount, 'the record count of the header is readable without unpacking');
         self::assertLessThan(
             MessageSet::fromRecords(array_map(Record::fromValue(...), $expectedRecords))->sizeInBytes(),
             strlen($storedBuffer),
@@ -268,7 +271,7 @@ final class KafkaProducerTest extends IntegrationTestCase
         );
 
         // ... and it comes back as the records it was built from, with the offsets the broker assigned to them
-        $storedRecords = $partition->getMessageSet()->getRecords();
+        $storedRecords = $partition->getRecords()->getRecords();
 
         self::assertCount(25, $storedRecords);
         self::assertSame($expectedRecords, array_column($storedRecords, 'value'));
@@ -407,7 +410,7 @@ final class KafkaProducerTest extends IntegrationTestCase
      */
     private function fetchRecords(int $partition): array
     {
-        return $this->fetchPartition($partition)->getMessageSet()->getRecords();
+        return $this->fetchPartition($partition)->getRecords()->getRecords();
     }
 
     /**

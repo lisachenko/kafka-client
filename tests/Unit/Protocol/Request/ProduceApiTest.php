@@ -26,36 +26,45 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 
 /**
- * Byte-exact tests of the Produce API, versions 0, 1 and 2.
+ * Byte-exact tests of the Produce API, versions 0 to 3.
  *
  * <pre>
- *   ProduceRequest     => RequiredAcks int16 Timeout int32 [TopicName [Partition int32 MessageSetSize int32
- *                                                                      MessageSet]]
- *   ProduceResponse v0 => [TopicName [Partition int32 ErrorCode int16 Offset int64]]
- *   ProduceResponse v1 => [TopicName [Partition int32 ErrorCode int16 Offset int64]] ThrottleTime int32
- *   ProduceResponse v2 => [TopicName [Partition int32 ErrorCode int16 Offset int64 LogAppendTime int64]]
- *                         ThrottleTime int32
+ *   ProduceRequest v0-v2 => RequiredAcks int16 Timeout int32 [TopicName [Partition int32 MessageSetSize int32
+ *                                                                        MessageSet]]
+ *   ProduceRequest v3    => TransactionalId nullable_string RequiredAcks int16 Timeout int32
+ *                           [TopicName [Partition int32 RecordSetSize int32 RecordSet]]
+ *   ProduceResponse v0   => [TopicName [Partition int32 ErrorCode int16 Offset int64]]
+ *   ProduceResponse v1   => [TopicName [Partition int32 ErrorCode int16 Offset int64]] ThrottleTime int32
+ *   ProduceResponse v2   => [TopicName [Partition int32 ErrorCode int16 Offset int64 LogAppendTime int64]]
+ *                           ThrottleTime int32
+ *   ProduceResponse v3   => the frame of version 2, byte for byte
  * </pre>
  *
- * The body of the request is the same in all three versions; the answer of version 1 carries the throttle time of a
- * quota violation at its very end, and version 2 puts the `LogAppendTime` the broker stamped the batch with behind
- * the offset of every partition.
+ * The body of the request is the same in the versions 0 to 2 and gains the nullable `TransactionalId` in version 3;
+ * the answer of version 1 carries the throttle time of a quota violation at its very end and version 2 puts the
+ * `LogAppendTime` the broker stamped the batch with behind the offset of every partition. Version 3 left the
+ * answer alone - `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` @ 0.11.0.3.
  *
- * The message sets are built by {@see SpecMessageSet} directly from the specification, so that the request classes
- * are never checked against bytes they produced themselves.
+ * The message sets are built by {@see SpecMessageSet} directly from the specification and the record batch is a
+ * captured one, so that the request classes are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/0.10.2.md, sections "Produce API (key 0, v0, v1 and v2)" and "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, sections "Produce API (key 0, v0 to v3)", "MessageSet and Message" and
+ *      "RecordBatch (message format v2)"
  */
 #[CoversClass(ProduceRequest::class)]
+#[CoversClass(ProduceRequestV2::class)]
 #[CoversClass(ProduceRequestV1::class)]
 #[CoversClass(ProduceRequestV0::class)]
 #[CoversClass(ProduceResponse::class)]
+#[CoversClass(ProduceResponseV2::class)]
 #[CoversClass(ProduceResponseV1::class)]
 #[CoversClass(ProduceResponseV0::class)]
 #[CoversClass(ProduceRequestTopic::class)]
@@ -80,6 +89,18 @@ final class ProduceApiTest extends TestCase
         . '87a77ab2' . '00' . '00' . 'ffffffff' . '00000005' . '68656c6c6f';
 
     /**
+     * A record batch of the message format v2 with two records, the second of them with two headers.
+     *
+     * These are the bytes of the vector `messageformat.v2.none.headers`, i.e. a batch that the 0.11.0.3 broker
+     * accepted and answered with; a version 3 request carries such a region where the lower versions carry a
+     * message set, and it is the only shape that has a place for the headers of a record.
+     */
+    private const string RECORD_BATCH_HEX = '000000000000000000000090000000000277ad1da10000000000010000017487'
+        . '6e800000000174876e800affffffffffffffffffffffffffff000000026c000000010a616c7068610418636f6e74656e742d74'
+        . '797065206170706c69636174696f6e2f6a736f6e1074726163652d6964060001024e001402066b65790a627261766f0416656d'
+        . '7074792d76616c756500146e756c6c2d76616c756501';
+
+    /**
      * Header of a produce request for the topic "orders", client id "test", correlation id 5, timeout 1000 ms.
      *
      *   Size          => 00 00 00 4b (75 bytes)
@@ -87,6 +108,11 @@ final class ProduceApiTest extends TestCase
      *   CorrelationId => 00 00 00 05, ClientId => 00 04 "test"
      */
     private const string REQUEST_HEADER_HEX = '0000004b' . '0000' . '0002' . '00000005' . '0004' . '74657374';
+
+    /**
+     * The same header with the api version 3 in it and two bytes more, the `ff ff` of a null `TransactionalId`
+     */
+    private const string REQUEST_HEADER_V3_HEX = '0000004d' . '0000' . '0003' . '00000005' . '0004' . '74657374';
 
     /**
      * The same header with the api version 1 in it, the only byte a version 1 request differs in
@@ -159,14 +185,14 @@ final class ProduceApiTest extends TestCase
             }
         };
 
-        $request = new ProduceRequest(['orders' => [0 => $messageSet]], 1, 1000, 'test', 5);
+        $request = new ProduceRequestV2(['orders' => [0 => $messageSet]], 1, 1000, 'test', 5);
 
         self::assertSame(self::REQUEST_HEADER_HEX . '0001' . self::REQUEST_BODY_HEX, bin2hex((string) $request));
     }
 
     public function testRequestPacksEveryTopicPartitionOfTheBatch(): void
     {
-        $request = new ProduceRequest(
+        $request = new ProduceRequestV2(
             [
                 'orders' => [
                     0 => SpecMessageSet::of([[null, 'hello']]),
@@ -221,6 +247,71 @@ final class ProduceApiTest extends TestCase
 
         self::assertSame(self::REQUEST_HEADER_V0_HEX . '0001' . self::REQUEST_BODY_HEX, bin2hex((string) $request));
         self::assertSame(0, $request->getApiVersion());
+    }
+
+    public function testVersion3RequestPrefixesTheBodyWithANullTransactionalId(): void
+    {
+        $request = new ProduceRequest(
+            ['orders' => [0 => SpecMessageSet::of([[null, 'hello']])]],
+            1,
+            1000,
+            'test',
+            5
+        );
+
+        // `ff ff` is the length -1 of a NULLABLE_STRING, i.e. "this producer is not transactional"; everything
+        // behind it is the body of a version 2 request
+        self::assertSame(
+            self::REQUEST_HEADER_V3_HEX . 'ffff' . '0001' . self::REQUEST_BODY_HEX,
+            bin2hex((string) $request)
+        );
+        self::assertSame(3, $request->getApiVersion());
+        self::assertNull($request->getTransactionalId());
+    }
+
+    public function testVersion3RequestCarriesTheTransactionalIdOfItsProducer(): void
+    {
+        $request = new ProduceRequest(
+            ['orders' => [0 => hex2bin(self::RECORD_BATCH_HEX)]],
+            -1,
+            1000,
+            'test',
+            5,
+            'tx-1'
+        );
+
+        //   Size => 00 00 00 ce (206), ApiVersion => 00 03, TransactionalId => 00 04 "tx-1", RequiredAcks => ff ff
+        //   (all in-sync replicas, the only value a transaction is allowed to use), Timeout => 1000 ms, one topic
+        //   "orders" whose partition 0 carries the 156 bytes of the record batch
+        self::assertSame(
+            '000000ce' . '0000' . '0003' . '00000005' . '0004' . '74657374'
+            . '0004' . '74782d31' . 'ffff' . '000003e8'
+            . '00000001' . '0006' . '6f7264657273'
+            . '00000001' . '00000000' . '0000009c' . self::RECORD_BATCH_HEX,
+            bin2hex((string) $request)
+        );
+        self::assertSame('tx-1', $request->getTransactionalId());
+    }
+
+    public function testVersion2RequestHasNoPlaceForATransactionalId(): void
+    {
+        self::assertArrayHasKey('transactionalId', ProduceRequest::getScheme());
+        self::assertArrayNotHasKey('transactionalId', ProduceRequestV2::getScheme());
+        self::assertArrayNotHasKey('transactionalId', ProduceRequestV1::getScheme());
+        self::assertArrayNotHasKey('transactionalId', ProduceRequestV0::getScheme());
+
+        // The transactional id is simply not written, which is what makes a version 2 request byte-identical to a
+        // version 0 one apart from its api version
+        $request = new ProduceRequestV2(
+            ['orders' => [0 => SpecMessageSet::of([[null, 'hello']])]],
+            1,
+            1000,
+            'test',
+            5,
+            'tx-1'
+        );
+
+        self::assertSame(self::REQUEST_HEADER_HEX . '0001' . self::REQUEST_BODY_HEX, bin2hex((string) $request));
     }
 
     public function testResponseReportsTheBaseOffsetTheErrorAndTheThrottleTimeOfEveryPartition(): void
@@ -292,6 +383,27 @@ final class ProduceApiTest extends TestCase
         self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
     }
 
+    public function testTheAnswerOfAVersion3RequestIsTheFrameOfAVersion2One(): void
+    {
+        // `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` in Protocol.java @ 0.11.0.3, and the broker really answers
+        // a version 3 request with that frame - the `LogStartOffset` of the Produce answer is Kafka 1.0 (v5)
+        $frame = hex2bin(
+            '0000002e' . '00000003'
+            . '00000001' . '0006' . '6f7264657273' . '00000001'
+            . '00000000' . '0000' . '000000000000002a' . 'ffffffffffffffff'
+            . '000000fa'
+        );
+
+        $version3 = ProduceResponse::unpack(new StringStream($frame));
+        $version2 = ProduceResponseV2::unpack(new StringStream($frame));
+
+        self::assertSame(ProduceResponse::getScheme(), ProduceResponseV2::getScheme());
+        self::assertSame(250, $version3->throttleTime);
+        self::assertSame(42, $version3->topics['orders']->partitions[0]->baseOffset);
+        self::assertSame(42, $version2->topics['orders']->partitions[0]->baseOffset);
+        self::assertSame($frame, (string) $version3, 'the response has to survive a round trip');
+    }
+
     public function testVersion1ResponseHasNoLogAppendTimeInItsPartitions(): void
     {
         //   The version 2 answer above without the eight bytes of the LogAppendTime
@@ -346,7 +458,11 @@ final class ProduceApiTest extends TestCase
         self::assertSame(
             ['topic' => ProduceResponseTopic::class],
             ProduceResponse::getScheme()['topics'],
-            'version 2 reads the partition entries with the LogAppendTime'
+            'the versions 2 and 3 read the partition entries with the LogAppendTime'
+        );
+        self::assertSame(
+            ['topic' => ProduceResponseTopic::class],
+            ProduceResponseV2::getScheme()['topics']
         );
         self::assertSame(
             ['topic' => ProduceResponseTopicV0::class],
@@ -360,7 +476,7 @@ final class ProduceApiTest extends TestCase
 
     private function createRequest(int $requiredAcks): ProduceRequest
     {
-        return new ProduceRequest(
+        return new ProduceRequestV2(
             ['orders' => [0 => SpecMessageSet::of([[null, 'hello']])]],
             $requiredAcks,
             1000,

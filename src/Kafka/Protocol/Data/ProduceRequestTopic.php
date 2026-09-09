@@ -24,11 +24,11 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Produce request Topic DTO
  *
  * <pre>
- *   TopicName [Partition MessageSetSize MessageSet]
+ *   TopicName [Partition RecordSetSize RecordSet]
  *     TopicName => string
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
  */
 class ProduceRequestTopic implements BinarySchemaInterface
 {
@@ -46,7 +46,7 @@ class ProduceRequestTopic implements BinarySchemaInterface
 
     /**
      * @param string                              $topic         Name of the topic
-     * @param array<int, ProduceRequestPartition> $partitionData Message sets, indexed by the partition number
+     * @param array<int, ProduceRequestPartition> $partitionData Record sets, indexed by the partition number
      */
     public function __construct(string $topic = '', array $partitionData = [])
     {

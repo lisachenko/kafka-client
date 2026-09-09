@@ -26,24 +26,32 @@ use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
+use Protocol\Kafka\Common\Errors\InvalidTxnTimeoutException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
+use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
+use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Record\CompressionCodec;
+use Protocol\Kafka\Common\Record\Header;
+use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Network\RetryPolicy;
+use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
@@ -53,12 +61,13 @@ use Protocol\Kafka\Tests\Compliance\MessageFields;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
 use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
+use Protocol\Kafka\Tests\Unit\Fixture\TransactionalTestClient;
 
 /**
  * Tests the low-level client against scripted brokers: the fan-out to the partition leaders, the correlation of the
  * answers, the retries after a metadata refresh and the reporting of a partially failed request.
  *
- * @see docs/protocol/0.10.2.md
+ * @see docs/protocol/0.11.0.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(RetryPolicy::class)]
@@ -354,8 +363,10 @@ final class ClientTest extends TestCase
             new Record(str_repeat('a repetitive value ', 32)),
         ];
 
-        $this->client([ProducerConfig::COMPRESSION_TYPE => $compressionType])
-            ->produce([self::TOPIC => [0 => $records]]);
+        $this->client([
+            ProducerConfig::COMPRESSION_TYPE       => $compressionType,
+            ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
+        ])->produce([self::TOPIC => [0 => $records]]);
 
         // A compressed batch travels as a message set of exactly one message, whose value is the whole batch
         $messageSetBuffer = self::messageSetOf($leader->getReceivedFrames()[0]);
@@ -385,7 +396,8 @@ final class ClientTest extends TestCase
             ->on(self::FIRST_LEADER, $leader)
             ->install();
 
-        $this->client()->produce([self::TOPIC => [0 => [new Record('as it is', 'a key')]]]);
+        $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
+            ->produce([self::TOPIC => [0 => [new Record('as it is', 'a key')]]]);
 
         $wrapper = self::firstMessageOf(self::messageSetOf($leader->getReceivedFrames()[0]));
 
@@ -497,7 +509,7 @@ final class ClientTest extends TestCase
         self::assertCount(2, $partition->getRecords());
         self::assertSame(2, $partition->count());
         self::assertFalse($partition->isEmpty());
-        self::assertFalse($partition->hasPartialTrailingMessage());
+        self::assertFalse($partition->hasPartialTrailingRecord());
         self::assertFalse($partition->isSingleMessageTooLarge());
         self::assertSame(2, $partition->getNextOffset(), 'the offsets of a produced set count from 0');
         self::assertSame(0, $partition->throttleTimeMs, 'a broker without quotas never throttles');
@@ -561,15 +573,399 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 3, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`
-        self::assertStringStartsWith('00010003', $request, 'the Fetch api is spoken in version 3');
-        self::assertStringContainsString('00100000', $request, 'fetch.max.bytes reached the frame');
-        // The partitions travel in the order they were given, which is the order the broker fills the answer in
+        // ApiKey 1, ApiVersion 5, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes` and
+        // the isolation level `read_uncommitted`
+        self::assertStringStartsWith('00010005', $request, 'the Fetch api is spoken in version 5');
+        self::assertStringContainsString('0010000000', $request, 'fetch.max.bytes and read_uncommitted');
+        // The partitions travel in the order they were given, which is the order the broker fills the answer in;
+        // the -1 in front of every MaxBytes is the LogStartOffset of v5, which only a follower fills in
         self::assertStringEndsWith(
-            '00000001' . '0000000000000007' . '00010000'
-            . '00000000' . '0000000000000003' . '00010000',
+            '00000001' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
+            . '00000000' . '0000000000000003' . 'ffffffffffffffff' . '00010000',
             $request
         );
+    }
+
+    public function testAReadCommittedFetchReportsTheLastStableOffsetAndTheAbortedTransactions(): void
+    {
+        $recordSet = MemoryRecords::fromRecordBatch(RecordBatch::fromRecords([new Record('committed')]))->toBuffer();
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::fetch(
+                0,
+                [self::TOPIC => [0 => [0, 40, $recordSet]]],
+                0,
+                [self::TOPIC => [0 => [37, 4, [[1000, 12]]]]]
+            )))
+            ->install();
+
+        $client    = $this->client(['isolation.level' => 'read_committed']);
+        $partition = $client->fetchPartitions([self::TOPIC => [0 => 12]], 200)[self::TOPIC][0];
+
+        self::assertSame(37, $partition->lastStableOffset, 'a read_committed fetch stops at the LSO');
+        self::assertSame(4, $partition->logStartOffset);
+        self::assertCount(1, (array) $partition->abortedTransactions);
+        self::assertSame(1000, $partition->abortedTransactions[0]->producerId);
+        self::assertSame(12, $partition->abortedTransactions[0]->firstOffset);
+        self::assertSame(['committed'], array_column($partition->getRecords(), 'value'));
+    }
+
+    /**
+     * @param string|null $isolationLevel The `isolation.level` of the configuration, null for a client without one
+     * @param string      $expectedByte   Hexadecimal of the `IsolationLevel` byte the request has to carry
+     */
+    #[DataProvider('isolationLevels')]
+    public function testTheIsolationLevelOfTheConfigurationReachesTheFetchRequest(
+        ?string $isolationLevel,
+        string $expectedByte
+    ): void {
+        $connection = new BrokerConnection(ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 0, '']]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $connection)
+            ->install();
+
+        $overrides = $isolationLevel === null ? [] : ['isolation.level' => $isolationLevel];
+        $this->client($overrides)->fetchPartitions([self::TOPIC => [0 => 0]], 200);
+
+        // The isolation level is the single byte behind the request-level MaxBytes, here the 50 MiB default
+        self::assertStringContainsString(
+            '03200000' . $expectedByte,
+            bin2hex($connection->getReceivedFrames()[0])
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string|null, 1: string}>
+     */
+    public static function isolationLevels(): iterable
+    {
+        yield 'not configured'   => [null, '00'];
+        yield 'read_uncommitted' => ['read_uncommitted', '00'];
+        yield 'read_committed'   => ['read_committed', '01'];
+    }
+
+    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionThreeRecordBatch(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $record = new Record('with a header', 'a key')->withHeaders(new Header('trace-id', 'abc'));
+        $this->client()->produce([self::TOPIC => [0 => [$record]]]);
+
+        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        // ApiKey 0, ApiVersion 3, correlation id, client id, then the null transactional id of a plain producer
+        self::assertStringStartsWith('00000003', $frame, 'the Produce api is spoken in version 3');
+        self::assertStringContainsString('74372d636c69656e74' . 'ffff', $frame, 'no transactional id is sent');
+
+        $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
+        self::assertSame(RecordBatch::MAGIC, $records->getMagic());
+        self::assertSame('with a header', $records->getRecords()[0]->value);
+        self::assertSame('trace-id', $records->getRecords()[0]->headers[0]->key);
+        self::assertSame('abc', $records->getRecords()[0]->headers[0]->value);
+    }
+
+    public function testAMessageFormatBelowTheRecordBatchIsSentAsAProduceVersionTwo(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $record = new Record('dropped headers', 'a key')->withHeaders(new Header('trace-id', 'abc'));
+        $this->client([ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0])
+            ->produce([self::TOPIC => [0 => [$record]]]);
+
+        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        self::assertStringStartsWith('00000002', $frame, 'a message set can only be sent below version 3');
+
+        $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
+        self::assertSame(Message::MAGIC_V1, $records->getMagic());
+        self::assertSame([], $records->getRecords()[0]->headers, 'a message set has no place for headers');
+    }
+
+    public function testTheProducerStateOfABatchTravelsInItsRecordBatch(): void
+    {
+        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        // This is the plug of T7 and T8: the producer id, the epoch, the sequence of every topic-partition and the
+        // transactional id are the only things the bookkeeping of KIP-98 has to add to a produce call
+        $this->transactionalClient()->produceRecordsWith(
+            [self::TOPIC => [0 => [new Record('in a transaction')]]],
+            1000,
+            3,
+            [self::TOPIC => [0 => 42]],
+            'tx-1'
+        );
+
+        $frame = bin2hex($leader->getReceivedFrames()[0]);
+        self::assertStringContainsString('0004' . '74782d31', $frame, 'the transactional id reached the frame');
+
+        $batch = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]))->getBatches()[0];
+        self::assertInstanceOf(RecordBatch::class, $batch);
+        self::assertSame(1000, $batch->producerId);
+        self::assertSame(3, $batch->producerEpoch);
+        self::assertSame(42, $batch->baseSequence);
+        self::assertTrue($batch->isTransactional());
+    }
+
+    public function testATransactionalIdNeedsTheMessageFormatOfTheRecordBatch(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection())
+            ->install();
+
+        $client = $this->transactionalClient(
+            [ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0]
+        );
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('A transactional producer needs the message format 0.11.0');
+
+        $client->produceRecordsWith([self::TOPIC => [0 => [new Record('never sent')]]], 1000, 3, [], 'tx-1');
+    }
+
+    public function testAProducerIdWithoutATransactionalIdIsAskedOfAnyBroker(): void
+    {
+        $anyBroker = new BrokerConnection(ResponseFrame::initProducerId(0, 0, 2000, 0));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $anyBroker)
+            ->install();
+
+        $producerIdAndEpoch = $this->client()->initProducerId();
+
+        self::assertSame(2000, $producerIdAndEpoch->producerId);
+        self::assertSame(0, $producerIdAndEpoch->epoch);
+        self::assertTrue($producerIdAndEpoch->isValid());
+
+        $frame = $anyBroker->getReceivedFrames()[0];
+
+        self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frame));
+        self::assertSame(0, $this->apiVersionOf($frame));
+        // NullableString -1 followed by the default transaction timeout of one minute
+        self::assertStringEndsWith('ffff' . '0000ea60', bin2hex($frame));
+    }
+
+    public function testAProducerIdOfATransactionalIdIsAskedOfItsTransactionCoordinator(): void
+    {
+        $lookupNode  = new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093));
+        $coordinator = new BrokerConnection(ResponseFrame::initProducerId(0, 0, 4711, 2));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $lookupNode)
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $producerIdAndEpoch = $this->client()->initProducerId('tx-1', 30000);
+
+        self::assertSame(4711, $producerIdAndEpoch->producerId);
+        self::assertSame(2, $producerIdAndEpoch->epoch);
+
+        $lookupFrame = $lookupNode->getReceivedFrames()[0];
+
+        self::assertSame(ApiKeys::GROUP_COORDINATOR, $this->apiKeyOf($lookupFrame));
+        self::assertSame(1, $this->apiVersionOf($lookupFrame), 'Only version 1 carries a coordinator type');
+        // The key "tx-1" and the CoordinatorType 1 of a transactional id
+        self::assertStringEndsWith('0004' . '74782d31' . '01', bin2hex($lookupFrame));
+
+        $initFrame = $coordinator->getReceivedFrames()[0];
+
+        self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($initFrame));
+        self::assertStringEndsWith('0004' . '74782d31' . '00007530', bin2hex($initFrame));
+    }
+
+    public function testAnErrorOfTheProducerIdRequestIsReportedAsItsException(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+                ResponseFrame::initProducerId(0, KafkaException::INVALID_TRANSACTION_TIMEOUT)
+            ))
+            ->install();
+
+        $this->expectException(InvalidTxnTimeoutException::class);
+
+        $this->client()->initProducerId('tx-1', 999999999);
+    }
+
+    public function testAnIdempotentProduceStampsTheBatchesAndMovesTheSequencesOn(): void
+    {
+        $leader = new BrokerConnection(
+            ResponseFrame::initProducerId(0, 0, 2000, 0),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 17]]]),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 19]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        $client->produce([self::TOPIC => [0 => [new Record('one'), new Record('two')]]], $manager);
+        $client->produce([self::TOPIC => [0 => [new Record('three')]]], $manager);
+
+        self::assertSame(2000, $manager->getProducerIdAndEpoch()->producerId);
+        self::assertSame(3, $manager->sequenceNumber(new TopicPartition(self::TOPIC, 0)));
+
+        $frames = $leader->getReceivedFrames();
+
+        self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frames[0]), 'The producer id comes first');
+
+        $first = MemoryRecords::fromBuffer(self::messageSetOf($frames[1]))->getBatches()[0];
+        self::assertInstanceOf(RecordBatch::class, $first);
+        self::assertSame(2000, $first->producerId);
+        self::assertSame(0, $first->producerEpoch);
+        self::assertSame(0, $first->baseSequence);
+        self::assertSame(1, $first->getLastSequence());
+        self::assertFalse($first->isTransactional(), 'An idempotent batch is not a transactional one');
+
+        $second = MemoryRecords::fromBuffer(self::messageSetOf($frames[2]))->getBatches()[0];
+        self::assertInstanceOf(RecordBatch::class, $second);
+        self::assertSame(2, $second->baseSequence, 'The second batch continues where the first one ended');
+    }
+
+    public function testProducerStateNextToAnAcksBelowAllIsRefused(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection())
+            ->install();
+
+        // The default of this fixture is acks = 1, which is exactly what the guarantee can not be built on: a
+        // request that is not answered by the ISR is one whose sequence numbers this client can not move on
+        $client = $this->client();
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('The delivery guarantee of KIP-98 needs acks = all');
+
+        $client->produce([self::TOPIC => [0 => [new Record('never sent')]]], new TransactionManager($client));
+    }
+
+    public function testTheRetryOfABatchIsTheVerySameFrameAgain(): void
+    {
+        $movedLeader = ResponseFrame::metadata(
+            0,
+            [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
+            [self::TOPIC => [0 => 1, 1 => 1]]
+        );
+        $staleLeader = new BrokerConnection(
+            ResponseFrame::initProducerId(0, 0, 2000, 0),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::NOT_LEADER_FOR_PARTITION, -1]]])
+        );
+        $newLeader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 8]]]));
+
+        $this->brokers
+            ->on(
+                self::BOOTSTRAP_ADDRESS,
+                new BrokerConnection($this->clusterMetadata()),
+                new BrokerConnection($movedLeader)
+            )
+            ->on(self::FIRST_LEADER, $staleLeader)
+            ->on(self::SECOND_LEADER, $newLeader)
+            ->install();
+
+        $client  = $this->idempotentClient([ClientConfig::RETRIES => 1]);
+        $manager = new TransactionManager($client);
+        $record  = new Record('exactly once')->withCreateTime(1600000000000);
+
+        $result = $client->produce([self::TOPIC => [0 => [$record]]], $manager);
+
+        self::assertSame(8, $result[self::TOPIC][0]->baseOffset);
+        // The record set is built once and sent to whoever leads the partition, so the retry carries the very same
+        // producer id, epoch and sequence - which is the only reason the broker can recognise it as a duplicate
+        self::assertSame(
+            bin2hex(self::messageSetOf($staleLeader->getReceivedFrames()[1])),
+            bin2hex(self::messageSetOf($newLeader->getReceivedFrames()[0]))
+        );
+        self::assertSame(1, $manager->sequenceNumber(new TopicPartition(self::TOPIC, 0)));
+    }
+
+    public function testADuplicateSequenceIsReportedAsAnAcceptedPartition(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::initProducerId(0, 0, 2000, 0),
+                ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::DUPLICATE_SEQUENCE_NUMBER, -1]]])
+            ))
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        $result = $client->produce([self::TOPIC => [0 => [new Record('already there')]]], $manager);
+
+        self::assertSame(KafkaException::NO_ERROR, $result[self::TOPIC][0]->errorCode);
+        self::assertSame(-1, $result[self::TOPIC][0]->baseOffset, 'The offset of the original append is not in it');
+        self::assertSame(1, $manager->sequenceNumber(new TopicPartition(self::TOPIC, 0)));
+        self::assertFalse($manager->hasFatalError());
+    }
+
+    public function testAnOutOfOrderSequenceThrowsTheProducerIdAwayAndIsReported(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::initProducerId(0, 0, 2000, 0),
+                ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::OUT_OF_ORDER_SEQUENCE_NUMBER, -1]]])
+            ))
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        try {
+            $client->produce([self::TOPIC => [0 => [new Record('a gap')]]], $manager);
+            self::fail('An out of order sequence is expected to be reported to the caller');
+        } catch (TopicPartitionRequestException $exception) {
+            self::assertInstanceOf(
+                OutOfOrderSequenceException::class,
+                $exception->getExceptions()[self::TOPIC][0]
+            );
+        }
+
+        self::assertFalse($manager->hasProducerId(), 'The idempotent producer starts over with a new producer id');
+        self::assertFalse($manager->hasFatalError());
+    }
+
+    public function testAFencedProducerRefusesToSendAnythingElse(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::initProducerId(0, 0, 2000, 0),
+                ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::INVALID_PRODUCER_EPOCH, -1]]])
+            ))
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        try {
+            $client->produce([self::TOPIC => [0 => [new Record('fenced')]]], $manager);
+            self::fail('A fenced producer is expected to report the error of the partition');
+        } catch (TopicPartitionRequestException $exception) {
+            self::assertInstanceOf(ProducerFencedException::class, $exception->getExceptions()[self::TOPIC][0]);
+        }
+
+        self::assertTrue($manager->hasFatalError());
+
+        $this->expectException(ProducerFencedException::class);
+
+        $client->produce([self::TOPIC => [0 => [new Record('never sent')]]], $manager);
     }
 
     public function testTheChecksumOfEveryMessageIsVerifiedUnlessTheConsumerOptsOut(): void
@@ -644,7 +1040,7 @@ final class ClientTest extends TestCase
         }
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionTwo(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionThree(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -677,9 +1073,9 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(2, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 2');
+        self::assertSame(3, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 3');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(2, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 2');
+        self::assertSame(3, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 3');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -735,7 +1131,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(2, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2');
+        self::assertSame(3, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
         self::assertStringEndsWith('ffffffff', bin2hex($frame), 'the topic array of the request is the null one');
     }
 
@@ -806,7 +1202,7 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(1, $this->apiVersionOf($frame), 'JoinGroup v1 carries the rebalance timeout of 0.10.1');
+        self::assertSame(2, $this->apiVersionOf($frame), 'JoinGroup v2 is v1 plus the throttle time of KIP-124');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(
@@ -884,7 +1280,7 @@ final class ClientTest extends TestCase
 
         self::assertSame('my-share', $response->memberAssignment);
         self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($coordinator->getReceivedFrames()[0]));
-        self::assertSame(0, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
+        self::assertSame(1, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
     }
 
     public function testAHeartbeatAndALeaveAreSentToTheCoordinatorAndReportNothingWhenTheySucceed(): void
@@ -1062,17 +1458,26 @@ final class ClientTest extends TestCase
     }
 
     /**
-     * Returns the message set of the only topic-partition of a produce request frame.
+     * Returns the record set of the only topic-partition of a produce request frame.
      *
      * <pre>
-     *   ApiKey ApiVersion CorrelationId ClientId RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
+     *   ApiKey ApiVersion CorrelationId ClientId [TransactionalId] RequiredAcks Timeout
+     *   [TopicName [Partition RecordSetSize RecordSet]]
      * </pre>
      */
     private static function messageSetOf(string $frame): string
     {
-        /** @var array{clientIdLength: int} $header */
+        /** @var array{apiVersion: int, clientIdLength: int} $header */
         $header = unpack('napiKey/napiVersion/NcorrelationId/nclientIdLength', $frame);
         $offset = 2 + 2 + 4 + 2 + $header['clientIdLength'];
+
+        // The nullable TransactionalId that version 3 put in front of RequiredAcks: -1 is null and has no bytes
+        if ($header['apiVersion'] >= 3) {
+            /** @var array{transactionalIdLength: int} $transactionalId */
+            $transactionalId = unpack('ntransactionalIdLength', $frame, $offset);
+            $length          = $transactionalId['transactionalIdLength'];
+            $offset          += 2 + ($length === 0xFFFF ? 0 : $length);
+        }
 
         // requiredAcks, timeout and the number of topics of the request
         $offset += 2 + 4 + 4;
@@ -1108,7 +1513,21 @@ final class ClientTest extends TestCase
      */
     private function client(array $overrides = []): Client
     {
-        $configuration = $overrides + [
+        $configuration = self::configuration($overrides);
+
+        return new Client(Cluster::bootstrap($configuration), $configuration);
+    }
+
+    /**
+     * The configuration of the client above
+     *
+     * @param array<string, mixed> $overrides
+     *
+     * @return array<string, mixed>
+     */
+    private static function configuration(array $overrides = []): array
+    {
+        return $overrides + [
             ClientConfig::BOOTSTRAP_SERVERS         => [self::BOOTSTRAP_ADDRESS],
             ClientConfig::CLIENT_ID                 => 't7-client',
             ClientConfig::REQUEST_TIMEOUT_MS        => 500,
@@ -1125,8 +1544,28 @@ final class ClientTest extends TestCase
             ConsumerConfig::FETCH_MIN_BYTES           => 1,
             ConsumerConfig::MAX_PARTITION_FETCH_BYTES => 65536,
         ];
+    }
 
-        return new Client(Cluster::bootstrap($configuration), $configuration);
+    /**
+     * A client that produces the way an idempotent producer configures it: every batch acknowledged by the ISR
+     *
+     * @param array<string, mixed> $overrides
+     */
+    private function idempotentClient(array $overrides = []): Client
+    {
+        return $this->client($overrides + [ProducerConfig::ACKS => ProducerConfig::ACKS_ALL]);
+    }
+
+    /**
+     * A client that exposes the producer state of {@see Client::produceRecords()}, the way T7 and T8 will fill it
+     *
+     * @param array<string, mixed> $overrides
+     */
+    private function transactionalClient(array $overrides = []): TransactionalTestClient
+    {
+        $configuration = self::configuration($overrides);
+
+        return new TransactionalTestClient(Cluster::bootstrap($configuration), $configuration);
     }
 
     /**

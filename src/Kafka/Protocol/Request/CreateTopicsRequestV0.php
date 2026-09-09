@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
  * `ErrorMessage` either, see {@see CreateTopicsResponseV0}. A 0.10.2.2 broker still serves it, which is what
  * `tests/Integration/TopicAdminApiTest.php` checks.
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0, v1 and v2)"
  */
 final class CreateTopicsRequestV0 extends CreateTopicsRequest
 {

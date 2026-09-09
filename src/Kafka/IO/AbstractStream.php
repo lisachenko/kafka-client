@@ -18,6 +18,8 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\IO;
 
+use Protocol\Kafka\Common\Errors\NetworkException;
+
 /**
  * Common implementation of the Kafka protocol primitive types on top of pack()/unpack().
  *
@@ -80,6 +82,26 @@ abstract class AbstractStream implements Stream
         $this->writeBuffer($data);
     }
 
+    public function readVarint(): int
+    {
+        return $this->readRawVarint(28);
+    }
+
+    public function readVarlong(): int
+    {
+        return $this->readRawVarint(63);
+    }
+
+    public function writeVarint(int $value): void
+    {
+        $this->writeRawVarint($value);
+    }
+
+    public function writeVarlong(int $value): void
+    {
+        $this->writeRawVarint($value);
+    }
+
     public function writeBuffer(?string $buffer): void
     {
         if ($buffer === null || $buffer === '') {
@@ -87,6 +109,40 @@ abstract class AbstractStream implements Stream
         }
 
         $this->write('a' . strlen($buffer), $buffer);
+    }
+
+    /**
+     * Reads the groups of 7 bits of a varint until the byte without the continuation bit, refusing one that runs
+     * past the size of its type (`ByteUtils.readVarint`/`readVarlong` @ 0.11.0.3 throw an IllegalArgumentException)
+     *
+     * @param int $maxShift 28 for a varint (5 bytes), 63 for a varlong (10 bytes)
+     */
+    private function readRawVarint(int $maxShift): int
+    {
+        $value = 0;
+        $shift = 0;
+        while ((($byte = $this->read('Cbyte')['byte']) & 0x80) !== 0) {
+            $value |= ($byte & 0x7F) << $shift;
+            $shift += 7;
+            if ($shift > $maxShift) {
+                throw new NetworkException(['error' => 'A varint of the stream is longer than its type allows']);
+            }
+        }
+
+        return $value | ($byte << $shift);
+    }
+
+    /**
+     * Writes an unsigned value 7 bits per byte, least significant group first, the high bit set on every byte but
+     * the last (`ByteUtils.writeVarint`/`writeVarlong` @ 0.11.0.3 after their zigzag step)
+     */
+    private function writeRawVarint(int $value): void
+    {
+        while (($value & ~0x7F) !== 0) {
+            $this->write('C', ($value & 0x7F) | 0x80);
+            $value = ($value >> 7) & (PHP_INT_MAX >> 6);
+        }
+        $this->write('C', $value);
     }
 
     /**

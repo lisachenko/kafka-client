@@ -1,13 +1,13 @@
 {
     "api": "create-topics",
     "apiKey": 19,
-    "section": "CreateTopics API (key 19, v0 and v1)",
-    "description": "Wire vectors of the CreateTopics API (key 19, v0 and v1), replayed by tests/Compliance.",
+    "section": "CreateTopics API (key 19, v0, v1 and v2)",
+    "description": "Wire vectors of the CreateTopics API (key 19, v0, v1 and v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "createtopics.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "CreateTopics request v1 that creates one topic with two partitions, one replica per partition, no explicit replica assignment and one topic level option, waiting up to 30 seconds for the controller.",
@@ -39,7 +39,7 @@
         {
             "id": "createtopics.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "CreateTopics response v1 of the controller for a topic it created: error code 0 and a null error message (ff ff), the null of a NULLABLE_STRING.",
@@ -59,7 +59,7 @@
         {
             "id": "createtopics.response.v1.topic-exists",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "CreateTopics response v1 for a topic that already exists: the error code 36 (TopicAlreadyExists) and the message of the exception the controller caught, which only version 1 of the api carries.",
@@ -117,6 +117,59 @@
                     "t7-vectors": {
                         "topic": "t7-vectors",
                         "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "createtopics.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "CreateTopics request v2, the frame of v1 with a higher version field.",
+            "hex": "00000063001300020000006400176b61666b612d636c69656e742d74332d766563746f727300000001001374332d7468726f74746c652d637265617465640000000100010000000000000001000c726574656e74696f6e2e6d7300063630303030300000753000",
+            "fields": {
+                "messageSize": 99,
+                "apiKey": 19,
+                "apiVersion": 2,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "topics": {
+                    "t3-throttle-created": {
+                        "topic": "t3-throttle-created",
+                        "numPartitions": 1,
+                        "replicationFactor": 1,
+                        "replicaAssignment": [],
+                        "configs": {
+                            "retention.ms": {
+                                "configKey": "retention.ms",
+                                "configValue": "600000"
+                            }
+                        }
+                    }
+                },
+                "timeout": 30000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createtopics.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2: the throttle time in front of the topic errors of a v1 answer.",
+            "hex": "00000025000000640000000000000001001374332d7468726f74746c652d637265617465640000ffff",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-throttle-created": {
+                        "topic": "t3-throttle-created",
+                        "errorCode": 0,
+                        "errorMessage": null
                     }
                 }
             }

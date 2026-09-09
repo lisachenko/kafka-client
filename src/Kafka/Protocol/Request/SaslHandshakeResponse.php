@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * what it could have asked for. After an error the broker closes the connection instead of waiting for another
  * handshake (`SaslServerAuthenticator.handleKafkaRequest` @ 0.10.2.2).
  *
- * @see docs/protocol/0.10.2.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  */
 class SaslHandshakeResponse extends AbstractResponse
 {

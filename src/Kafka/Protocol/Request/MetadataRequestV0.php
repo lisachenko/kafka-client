@@ -32,7 +32,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * that is currently down, while version 1 and above simply leave that broker out of the replica list
  * (`errorUnavailableEndpoints = requestVersion == 0` in `KafkaApis` @ 0.10.2.2).
  *
- * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
  */
 final class MetadataRequestV0 extends MetadataRequest
 {
@@ -48,7 +48,9 @@ final class MetadataRequestV0 extends MetadataRequest
      */
     public function __construct(?array $topics = [], string $clientId = '', int $correlationId = 0)
     {
-        parent::__construct($topics ?? [], $clientId, $correlationId);
+        // The `allow_auto_topic_creation` of version 4 is not on the wire here, and a broker treats every request
+        // below that version as if it were `true`, which is the value this class passes on
+        parent::__construct($topics ?? [], true, $clientId, $correlationId);
     }
 
     /**

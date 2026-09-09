@@ -2,7 +2,7 @@
     "api": "message-format",
     "apiKey": null,
     "section": "MessageSet and Message",
-    "description": "Wire vectors of the message formats v0 and v1, the byte region that the Produce and the Fetch apis carry, captured from a Kafka 0.10.2.2 broker and replayed by tests/Compliance.",
+    "description": "Wire vectors of the three message formats, the byte region that the Produce and the Fetch apis carry: the formats v0 and v1 captured from a Kafka 0.10.2.2 broker, the record batch v2 and the two down-conversions of it from the Kafka 0.11.0.3 broker of this line. Replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "messageformat.v1.createtime.uncompressed",
@@ -456,6 +456,1179 @@
                         "timestampType": -1
                     }
                 ]
+            }
+        },
+        {
+            "id": "messageformat.v2.none.createtime",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "Three uncompressed records of the message format v2 that the Java console producer wrote into the topic t2-rb-none with the default message.timestamp.type=CreateTime, read out of the log segment of the broker. The three records of the batch differ by their offset and timestamp deltas alone: the batch header carries the base offset, the first timestamp and the largest one, and every record repeats only the difference.",
+            "hex": "00000000000000000000005a00000000026b07fa76000000000002000001a085bee29a000001a085bee2a2ffffffffffffffffffffffffffff0000000316000000010a616c706861001c001002066b65790a627261766f001a001004010e636861726c696500",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 0,
+                            "batchLength": 90,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 1795684982,
+                            "attributes": 0,
+                            "lastOffsetDelta": 2,
+                            "firstTimestamp": 1788950274714,
+                            "maxTimestamp": 1788950274722,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 3
+                        },
+                        "records": [
+                            {
+                                "offset": 0,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "616c706861"
+                                },
+                                "timestamp": 1788950274714,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 1,
+                                "key": {
+                                    "$bytes": "6b6579"
+                                },
+                                "value": {
+                                    "$bytes": "627261766f"
+                                },
+                                "timestamp": 1788950274722,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 2,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "636861726c6965"
+                                },
+                                "timestamp": 1788950274722,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1788950274714,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1788950274722,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1788950274722,
+                        "timestampType": 0,
+                        "headers": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.gzip.createtime",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "The same three records with --compression-codec gzip. Only the records part is compressed: the 61 header bytes up to and including the record count stay plain, so the batch says how many records it holds without being decompressed.",
+            "hex": "00000000000000000000006e0000000002bc751173000100000002000001a085bf194b000001a085bf1952ffffffffffffffffffffffffffff000000031f8b08000000000000001363606060e44acc29c848649061e06162cb4eade44a2a4a2ccb679062e06361e44bce482ccac94c6500006249fed929000000",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 0,
+                            "batchLength": 110,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 3161788787,
+                            "attributes": 1,
+                            "lastOffsetDelta": 2,
+                            "firstTimestamp": 1788950288715,
+                            "maxTimestamp": 1788950288722,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 3
+                        },
+                        "records": [
+                            {
+                                "offset": 0,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "616c706861"
+                                },
+                                "timestamp": 1788950288715,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 1,
+                                "key": {
+                                    "$bytes": "6b6579"
+                                },
+                                "value": {
+                                    "$bytes": "627261766f"
+                                },
+                                "timestamp": 1788950288721,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 2,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "636861726c6965"
+                                },
+                                "timestamp": 1788950288722,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1788950288715,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1788950288721,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1788950288722,
+                        "timestampType": 0,
+                        "headers": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.snappy.createtime",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "The same three records with --compression-codec snappy. The records part is a snappy stream in the blocking format of the xerial library, the same framing the message formats v0 and v1 use.",
+            "hex": "00000000000000000000007000000000027c91c3a0000200000002000001a085bf244f000001a085bf2470ffffffffffffffffffffffffffff0000000382534e415050590000000001000000010000002b29a016000000010a616c706861001c004202066b65790a627261766f001a004204010e636861726c696500",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 0,
+                            "batchLength": 112,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 2089927584,
+                            "attributes": 2,
+                            "lastOffsetDelta": 2,
+                            "firstTimestamp": 1788950291535,
+                            "maxTimestamp": 1788950291568,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 3
+                        },
+                        "records": [
+                            {
+                                "offset": 0,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "616c706861"
+                                },
+                                "timestamp": 1788950291535,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 1,
+                                "key": {
+                                    "$bytes": "6b6579"
+                                },
+                                "value": {
+                                    "$bytes": "627261766f"
+                                },
+                                "timestamp": 1788950291568,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 2,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "636861726c6965"
+                                },
+                                "timestamp": 1788950291568,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1788950291535,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1788950291568,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1788950291568,
+                        "timestampType": 0,
+                        "headers": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.lz4.createtime",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "The same three records with --compression-codec lz4. The frame descriptor checksum is the correct 0x82: the KAFKA-3160 breakage applies to the message format v0 alone, and a batch of the format v2 is never written with the broken one.",
+            "hex": "0000000000000000000000690000000002938ffaa6000300000002000001a085bf3f6c000001a085bf3f7fffffffffffffffffffffffffffff0000000304224d186040822900008016000000010a616c706861001c002602066b65790a627261766f001a002604010e636861726c69650000000000",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 0,
+                            "batchLength": 105,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 2475686566,
+                            "attributes": 3,
+                            "lastOffsetDelta": 2,
+                            "firstTimestamp": 1788950298476,
+                            "maxTimestamp": 1788950298495,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 3
+                        },
+                        "records": [
+                            {
+                                "offset": 0,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "616c706861"
+                                },
+                                "timestamp": 1788950298476,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 1,
+                                "key": {
+                                    "$bytes": "6b6579"
+                                },
+                                "value": {
+                                    "$bytes": "627261766f"
+                                },
+                                "timestamp": 1788950298495,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 2,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "636861726c6965"
+                                },
+                                "timestamp": 1788950298495,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1788950298476,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1788950298495,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1788950298495,
+                        "timestampType": 0,
+                        "headers": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.none.logappendtime",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "The same three records on a topic with message.timestamp.type=LogAppendTime. Bit 3 of the attributes is set and maxTimestamp is the time of the append, which is the timestamp of every record of the batch; the broker leaves firstTimestamp and the timestamp deltas of the producer untouched.",
+            "hex": "00000000000000000000005a000000000293cc6e87000800000002000001a085bf4a8d000001a085bf4aa0ffffffffffffffffffffffffffff0000000316000000010a616c706861001c000e02066b65790a627261766f001a000e04010e636861726c696500",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 0,
+                            "batchLength": 90,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 2479648391,
+                            "attributes": 8,
+                            "lastOffsetDelta": 2,
+                            "firstTimestamp": 1788950301325,
+                            "maxTimestamp": 1788950301344,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 3
+                        },
+                        "records": [
+                            {
+                                "offset": 0,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "616c706861"
+                                },
+                                "timestamp": 1788950301344,
+                                "timestampType": 1,
+                                "headers": []
+                            },
+                            {
+                                "offset": 1,
+                                "key": {
+                                    "$bytes": "6b6579"
+                                },
+                                "value": {
+                                    "$bytes": "627261766f"
+                                },
+                                "timestamp": 1788950301344,
+                                "timestampType": 1,
+                                "headers": []
+                            },
+                            {
+                                "offset": 2,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "636861726c6965"
+                                },
+                                "timestamp": 1788950301344,
+                                "timestampType": 1,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1788950301344,
+                        "timestampType": 1,
+                        "headers": []
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1788950301344,
+                        "timestampType": 1,
+                        "headers": []
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1788950301344,
+                        "timestampType": 1,
+                        "headers": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.none.multi-batch",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "Three batches of one record each, of three different codecs, in a single byte region: the log of the topic t2-rb-multi after three separate runs of the console producer. Each batch carries its own base offset, so a reader walks the region batch by batch.",
+            "hex": "00000000000000000000003d00000000023144e6c4000000000000000001a085bf66b3000001a085bf66b3ffffffffffffffffffffffffffff0000000116000000010a616c70686100000000000000000100000054000000000217f74f3e000100000000000001a085bf6cc8000001a085bf6cc8ffffffffffffffffffffffffffff000000011f8b08000000000000009361606060cb4eade44a2a4a2ccb67000084ffc0e10f00000000000000000000020000005500000000028a796bd0000200000000000001a085bf7291000001a085bf7291ffffffffffffffffffffffffffff0000000182534e41505059000000000100000001000000100e341a000000010e636861726c696500",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 0,
+                            "batchLength": 61,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 826599108,
+                            "attributes": 0,
+                            "lastOffsetDelta": 0,
+                            "firstTimestamp": 1788950308531,
+                            "maxTimestamp": 1788950308531,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 1
+                        },
+                        "records": [
+                            {
+                                "offset": 0,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "616c706861"
+                                },
+                                "timestamp": 1788950308531,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    },
+                    {
+                        "header": {
+                            "baseOffset": 1,
+                            "batchLength": 84,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 402083646,
+                            "attributes": 1,
+                            "lastOffsetDelta": 0,
+                            "firstTimestamp": 1788950310088,
+                            "maxTimestamp": 1788950310088,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 1
+                        },
+                        "records": [
+                            {
+                                "offset": 1,
+                                "key": {
+                                    "$bytes": "6b6579"
+                                },
+                                "value": {
+                                    "$bytes": "627261766f"
+                                },
+                                "timestamp": 1788950310088,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    },
+                    {
+                        "header": {
+                            "baseOffset": 2,
+                            "batchLength": 85,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 2323213264,
+                            "attributes": 2,
+                            "lastOffsetDelta": 0,
+                            "firstTimestamp": 1788950311569,
+                            "maxTimestamp": 1788950311569,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 1
+                        },
+                        "records": [
+                            {
+                                "offset": 2,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "636861726c6965"
+                                },
+                                "timestamp": 1788950311569,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1788950308531,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1788950310088,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1788950311569,
+                        "timestampType": 0,
+                        "headers": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.none.headers",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "Two records with headers (KIP-82), produced with a raw Produce v3 frame and read back with a raw Fetch v4 frame. The headers show the three shapes a header value has: a byte array, an empty one and a null one; a header key is never null.",
+            "hex": "000000000000000000000090000000000277ad1da100000000000100000174876e800000000174876e800affffffffffffffffffffffffffff000000026c000000010a616c7068610418636f6e74656e742d74797065206170706c69636174696f6e2f6a736f6e1074726163652d6964060001024e001402066b65790a627261766f0416656d7074792d76616c756500146e756c6c2d76616c756501",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 0,
+                            "batchLength": 144,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 2007834017,
+                            "attributes": 0,
+                            "lastOffsetDelta": 1,
+                            "firstTimestamp": 1600000000000,
+                            "maxTimestamp": 1600000000010,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 2
+                        },
+                        "records": [
+                            {
+                                "offset": 0,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "616c706861"
+                                },
+                                "timestamp": 1600000000000,
+                                "timestampType": 0,
+                                "headers": [
+                                    {
+                                        "key": "content-type",
+                                        "value": {
+                                            "$bytes": "6170706c69636174696f6e2f6a736f6e"
+                                        }
+                                    },
+                                    {
+                                        "key": "trace-id",
+                                        "value": {
+                                            "$bytes": "000102"
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "offset": 1,
+                                "key": {
+                                    "$bytes": "6b6579"
+                                },
+                                "value": {
+                                    "$bytes": "627261766f"
+                                },
+                                "timestamp": 1600000000010,
+                                "timestampType": 0,
+                                "headers": [
+                                    {
+                                        "key": "empty-value",
+                                        "value": {
+                                            "$bytes": ""
+                                        }
+                                    },
+                                    {
+                                        "key": "null-value",
+                                        "value": null
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1600000000000,
+                        "timestampType": 0,
+                        "headers": [
+                            {
+                                "key": "content-type",
+                                "value": {
+                                    "$bytes": "6170706c69636174696f6e2f6a736f6e"
+                                }
+                            },
+                            {
+                                "key": "trace-id",
+                                "value": {
+                                    "$bytes": "000102"
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1600000000010,
+                        "timestampType": 0,
+                        "headers": [
+                            {
+                                "key": "empty-value",
+                                "value": {
+                                    "$bytes": ""
+                                }
+                            },
+                            {
+                                "key": "null-value",
+                                "value": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.none.nullable",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "Three records that use every combination of an empty and an absent key and value: the varint length -1 is null and the length 0 is the empty byte array, and the broker stores both as they were sent.",
+            "hex": "0000000000000000000000460000000002e64444ee00000000000200000174876e800000000174876e8000ffffffffffffffffffffffffffff000000030c0000000001000c0000020100000c000004010100",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 0,
+                            "batchLength": 70,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 3863233774,
+                            "attributes": 0,
+                            "lastOffsetDelta": 2,
+                            "firstTimestamp": 1600000000000,
+                            "maxTimestamp": 1600000000000,
+                            "producerId": -1,
+                            "producerEpoch": -1,
+                            "baseSequence": -1,
+                            "recordCount": 3
+                        },
+                        "records": [
+                            {
+                                "offset": 0,
+                                "key": {
+                                    "$bytes": ""
+                                },
+                                "value": null,
+                                "timestamp": 1600000000000,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 1,
+                                "key": null,
+                                "value": {
+                                    "$bytes": ""
+                                },
+                                "timestamp": 1600000000000,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 2,
+                                "key": null,
+                                "value": null,
+                                "timestamp": 1600000000000,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": {
+                            "$bytes": ""
+                        },
+                        "value": null,
+                        "timestamp": 1600000000000,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 1,
+                        "key": null,
+                        "value": {
+                            "$bytes": ""
+                        },
+                        "timestamp": 1600000000000,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": null,
+                        "timestamp": 1600000000000,
+                        "timestampType": 0,
+                        "headers": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.none.transactional",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "The data batch of a committed transaction: bit 4 of the attributes is set, the producer id and the epoch are the ones InitProducerId handed out and baseSequence is 0. Written with the raw sequence InitProducerId, AddPartitionsToTxn, Produce v3 with a transactional id, EndTxn.",
+            "hex": "00000000000000000000005500000000025b841b8a00100000000100000174876e800000000174876e8005000000000000000200010000000000000002220000000116636f6d6d69747465642d310022000a020116636f6d6d69747465642d3200",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 0,
+                            "batchLength": 85,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 1535384458,
+                            "attributes": 16,
+                            "lastOffsetDelta": 1,
+                            "firstTimestamp": 1600000000000,
+                            "maxTimestamp": 1600000000005,
+                            "producerId": 2,
+                            "producerEpoch": 1,
+                            "baseSequence": 0,
+                            "recordCount": 2
+                        },
+                        "records": [
+                            {
+                                "offset": 0,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "636f6d6d69747465642d31"
+                                },
+                                "timestamp": 1600000000000,
+                                "timestampType": 0,
+                                "headers": []
+                            },
+                            {
+                                "offset": 1,
+                                "key": null,
+                                "value": {
+                                    "$bytes": "636f6d6d69747465642d32"
+                                },
+                                "timestamp": 1600000000005,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636f6d6d69747465642d31"
+                        },
+                        "timestamp": 1600000000000,
+                        "timestampType": 0,
+                        "headers": []
+                    },
+                    {
+                        "offset": 1,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636f6d6d69747465642d32"
+                        },
+                        "timestamp": 1600000000005,
+                        "timestampType": 0,
+                        "headers": []
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.none.control",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "The control batch that the transaction coordinator appended when the transaction above was committed: the attributes are 0x30 (transactional and control), the batch holds one record whose key is the version 0 and the type 1 (COMMIT) and whose value is the version 0 and the coordinator epoch 0, and baseSequence is -1. A client never hands such a record to an application.",
+            "hex": "0000000000000002000000420000000002b8ef3637003000000000000001a085c3dc9c000001a085c3dc9c00000000000000020001ffffffff000000012000000008000000010c00000000000000",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 2,
+                            "batchLength": 66,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 3102684727,
+                            "attributes": 48,
+                            "lastOffsetDelta": 0,
+                            "firstTimestamp": 1788950600860,
+                            "maxTimestamp": 1788950600860,
+                            "producerId": 2,
+                            "producerEpoch": 1,
+                            "baseSequence": -1,
+                            "recordCount": 1
+                        },
+                        "records": [
+                            {
+                                "offset": 2,
+                                "key": {
+                                    "$bytes": "00000001"
+                                },
+                                "value": {
+                                    "$bytes": "000000000000"
+                                },
+                                "timestamp": 1788950600860,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": []
+            }
+        },
+        {
+            "id": "messageformat.v2.downconverted.v1",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MessageSet",
+            "magic": 1,
+            "source": "broker",
+            "description": "The log of t2-rb-none - the record batch v2 of messageformat.v2.none.createtime - answered to a Fetch v3 request, which a client that does not understand the message format v2 sends. The broker converts the batch into three uncompressed messages of the message format v1, keeping the offsets and the timestamps.",
+            "hex": "00000000000000000000001b2b1482c40100000001a085bee29affffffff00000005616c70686100000000000000010000001eddb515b50100000001a085bee2a2000000036b657900000005627261766f00000000000000020000001dc2c298e00100000001a085bee2a2ffffffff00000007636861726c6965",
+            "fields": {
+                "shallow": [
+                    {
+                        "offset": 0,
+                        "message": {
+                            "crc": 722764484,
+                            "magicByte": 1,
+                            "attributes": 0,
+                            "timestamp": 1788950274714,
+                            "key": null,
+                            "value": {
+                                "$bytes": "616c706861"
+                            }
+                        }
+                    },
+                    {
+                        "offset": 1,
+                        "message": {
+                            "crc": 3719632309,
+                            "magicByte": 1,
+                            "attributes": 0,
+                            "timestamp": 1788950274722,
+                            "key": {
+                                "$bytes": "6b6579"
+                            },
+                            "value": {
+                                "$bytes": "627261766f"
+                            }
+                        }
+                    },
+                    {
+                        "offset": 2,
+                        "message": {
+                            "crc": 3267533024,
+                            "magicByte": 1,
+                            "attributes": 0,
+                            "timestamp": 1788950274722,
+                            "key": null,
+                            "value": {
+                                "$bytes": "636861726c6965"
+                            }
+                        }
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": 1788950274714,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": 1788950274722,
+                        "timestampType": 0
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": 1788950274722,
+                        "timestampType": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.downconverted.v0",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MessageSet",
+            "magic": 0,
+            "source": "broker",
+            "description": "The same log answered to a Fetch v1 request: three messages of the message format v0, which has no timestamp field at all, so the CreateTime of every record is lost on the way.",
+            "hex": "0000000000000000000000136157e55e0000ffffffff00000005616c70686100000000000000010000001637ba218a0000000000036b657900000005627261766f00000000000000020000001518b19e640000ffffffff00000007636861726c6965",
+            "fields": {
+                "shallow": [
+                    {
+                        "offset": 0,
+                        "message": {
+                            "crc": 1633150302,
+                            "magicByte": 0,
+                            "attributes": 0,
+                            "key": null,
+                            "value": {
+                                "$bytes": "616c706861"
+                            }
+                        }
+                    },
+                    {
+                        "offset": 1,
+                        "message": {
+                            "crc": 934945162,
+                            "magicByte": 0,
+                            "attributes": 0,
+                            "key": {
+                                "$bytes": "6b6579"
+                            },
+                            "value": {
+                                "$bytes": "627261766f"
+                            }
+                        }
+                    },
+                    {
+                        "offset": 2,
+                        "message": {
+                            "crc": 414293604,
+                            "magicByte": 0,
+                            "attributes": 0,
+                            "key": null,
+                            "value": {
+                                "$bytes": "636861726c6965"
+                            }
+                        }
+                    }
+                ],
+                "records": [
+                    {
+                        "offset": 0,
+                        "key": null,
+                        "value": {
+                            "$bytes": "616c706861"
+                        },
+                        "timestamp": null,
+                        "timestampType": -1
+                    },
+                    {
+                        "offset": 1,
+                        "key": {
+                            "$bytes": "6b6579"
+                        },
+                        "value": {
+                            "$bytes": "627261766f"
+                        },
+                        "timestamp": null,
+                        "timestampType": -1
+                    },
+                    {
+                        "offset": 2,
+                        "key": null,
+                        "value": {
+                            "$bytes": "636861726c6965"
+                        },
+                        "timestamp": null,
+                        "timestampType": -1
+                    }
+                ]
+            }
+        },
+        {
+            "id": "messageformat.v2.control.abort",
+            "kind": "structure",
+            "class": "Protocol\\Kafka\\Common\\Record\\MemoryRecords",
+            "magic": 2,
+            "source": "broker",
+            "description": "The ABORT control batch that the transaction coordinator appended when the transaction of `t8-vectors-abort-txn` was rolled back: the attributes are 0x30 (transactional and control), the single record has the key `00 00 00 00` - the version 0 and the type 0, ABORT - and the value `00 00 00 00 00 00`, the version 0 and the coordinator epoch 0, and the base sequence is -1. The COMMIT marker of the same shape is `messageformat.v2.none.control`.",
+            "hex": "000000000000000200000042000000000269a4f27b003000000000000001a0866f939e000001a0866f939e00000000000000020000ffffffff000000012000000008000000000c00000000000000",
+            "fields": {
+                "batches": [
+                    {
+                        "header": {
+                            "baseOffset": 2,
+                            "batchLength": 66,
+                            "partitionLeaderEpoch": 0,
+                            "magic": 2,
+                            "crc": 1772417659,
+                            "attributes": 48,
+                            "lastOffsetDelta": 0,
+                            "firstTimestamp": 1788961854366,
+                            "maxTimestamp": 1788961854366,
+                            "producerId": 2,
+                            "producerEpoch": 0,
+                            "baseSequence": -1,
+                            "recordCount": 1
+                        },
+                        "records": [
+                            {
+                                "offset": 2,
+                                "key": {
+                                    "$bytes": "00000000"
+                                },
+                                "value": {
+                                    "$bytes": "000000000000"
+                                },
+                                "timestamp": 1788961854366,
+                                "timestampType": 0,
+                                "headers": []
+                            }
+                        ]
+                    }
+                ],
+                "records": []
             }
         }
     ]

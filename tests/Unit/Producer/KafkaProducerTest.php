@@ -23,10 +23,14 @@ use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\MessageTooLargeException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\Common\Record\RecordV2;
 use Protocol\Kafka\Common\Record\TimestampType;
+use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Producer\RecordMetadata;
@@ -556,8 +560,9 @@ final class KafkaProducerTest extends TestCase
     public function testTheRecordSizeOfMessageFormatV1CountsTheTimestampAsWell(): void
     {
         [$producer] = $this->producer([
-            ProducerConfig::BATCH_SIZE       => 1024 * 1024,
-            ProducerConfig::MAX_REQUEST_SIZE => MessageSet::ENTRY_OVERHEAD + Message::MIN_SIZE_V1 + 4,
+            ProducerConfig::BATCH_SIZE             => 1024 * 1024,
+            ProducerConfig::MESSAGE_FORMAT_VERSION => ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0,
+            ProducerConfig::MAX_REQUEST_SIZE       => MessageSet::ENTRY_OVERHEAD + Message::MIN_SIZE_V1 + 4,
         ]);
 
         // A record of five bytes fits into message format v0 but not into v1, which adds the eight bytes of the
@@ -567,12 +572,52 @@ final class KafkaProducerTest extends TestCase
         $producer->send(self::TOPIC, Record::fromValue('value'));
     }
 
+    public function testTheRecordSizeOfTheMessageFormatV2CountsItsHeaders(): void
+    {
+        $withoutHeaders = Record::fromValue('value');
+        $withHeaders    = $withoutHeaders->withHeaders(new Header('trace-id', 'abc'));
+
+        [$producer] = $this->producer([
+            ProducerConfig::BATCH_SIZE       => 1024 * 1024,
+            ProducerConfig::MAX_REQUEST_SIZE => new RecordV2('value')->sizeInBytes(),
+        ]);
+
+        // The bare record fits exactly into `max.request.size`, the very same record with a header does not: a
+        // record of the message format v2 carries its headers next to its key and its value
+        $producer->send(self::TOPIC, $withoutHeaders);
+
+        $this->expectException(MessageTooLargeException::class);
+
+        $producer->send(self::TOPIC, $withHeaders);
+    }
+
     public function testAnUnknownMessageFormatVersionIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('0.11.0');
+        $this->expectExceptionMessage('1.0.0');
 
-        new KafkaProducer([ProducerConfig::MESSAGE_FORMAT_VERSION => '0.11.0']);
+        new KafkaProducer([ProducerConfig::MESSAGE_FORMAT_VERSION => '1.0.0']);
+    }
+
+    public function testTheHeadersOfARecordReachTheClientThatWritesTheBatch(): void
+    {
+        [$producer, $client] = $this->producer();
+
+        $producer->send(
+            self::TOPIC,
+            Record::fromKeyValue('key-0', 'value')->withHeaders(new Header('trace-id', 'abc'), new Header('n'))
+        );
+
+        $records = $client->receivedRecords();
+        self::assertCount(1, $records);
+        self::assertSame(['trace-id', 'n'], array_map(
+            static fn(Header $header): string => $header->key,
+            $records[0]->headers
+        ));
+        self::assertSame(['abc', null], array_map(
+            static fn(Header $header): ?string => $header->value,
+            $records[0]->headers
+        ));
     }
 
     public function testTheCompressionTypeIsHandedToTheClientThatSendsTheBatches(): void
@@ -597,7 +642,13 @@ final class KafkaProducerTest extends TestCase
     private function producer(array $configuration = [], array $behaviours = []): array
     {
         $configuration += $this->clusterConfiguration;
-        $client = new FakeClient($this->cluster, $configuration, $behaviours);
+        // The real producer hands its *resolved* configuration to `createClient()`, so the double has to see the
+        // `acks = all` that `enable.idempotence` implies as well
+        $client = new FakeClient(
+            $this->cluster,
+            ProducerConfig::resolveIdempotence($configuration) + ProducerConfig::getDefaultConfiguration(),
+            $behaviours
+        );
 
         // The behaviours are bound to the test, so that they can build their answer with the client itself
         $this->fakeClient = $client;
@@ -637,7 +688,239 @@ final class KafkaProducerTest extends TestCase
      */
     private function recordSize(?string $key, string $value): int
     {
-        return MessageSet::ENTRY_OVERHEAD + new Message($value, $key)->sizeInBytes();
+        // `message.format.version` defaults to the record batch of the message format v2, whose records are
+        // varint-encoded and cost far less per record than an entry of a message set
+        return new RecordV2($value, $key)->sizeInBytes();
     }
 
+    public function testAPlainProducerCarriesNoProducerStateAtAll(): void
+    {
+        [$producer, $client] = $this->producer();
+
+        $producer->send(self::TOPIC, Record::fromValue('plain'));
+
+        self::assertSame([], $client->initProducerIdCalls, 'Nothing asks for a producer id');
+        self::assertSame(
+            [
+                'producerId'      => RecordBatch::NO_PRODUCER_ID,
+                'producerEpoch'   => RecordBatch::NO_PRODUCER_EPOCH,
+                'baseSequences'   => [],
+                'transactionalId' => null,
+            ],
+            $client->producerStates[0]
+        );
+    }
+
+    public function testAnIdempotentProducerStampsEveryBatchWithItsProducerState(): void
+    {
+        [$producer, $client] = $this->producer([ProducerConfig::ENABLE_IDEMPOTENCE => true]);
+        $client->producerIds = [new ProducerIdAndEpoch(2000, 0)];
+
+        $producer->send(self::TOPIC, Record::fromValue('one'), 0);
+        $producer->send(self::TOPIC, Record::fromValue('two'), 0);
+        $producer->send(self::TOPIC, Record::fromValue('three'), 1);
+
+        self::assertCount(1, $client->initProducerIdCalls, 'The producer id is asked for once, with the first flush');
+        self::assertSame(
+            ['transactionalId' => null, 'transactionTimeoutMs' => 60000],
+            $client->initProducerIdCalls[0],
+            'An idempotent producer has no transactional id'
+        );
+
+        self::assertSame(2000, $client->producerStates[0]['producerId']);
+        self::assertSame(0, $client->producerStates[0]['producerEpoch']);
+        self::assertNull($client->producerStates[0]['transactionalId']);
+        self::assertSame([self::TOPIC => [0 => 0]], $client->producerStates[0]['baseSequences']);
+        self::assertSame(
+            [self::TOPIC => [0 => 1]],
+            $client->producerStates[1]['baseSequences'],
+            'The second batch of the partition continues where the first one ended'
+        );
+        self::assertSame(
+            [self::TOPIC => [1 => 0]],
+            $client->producerStates[2]['baseSequences'],
+            'Another partition starts at 0 - the broker deduplicates per producer and partition'
+        );
+    }
+
+    public function testABatchThatWasNotAcknowledgedKeepsItsSequenceNumbers(): void
+    {
+        $failure = new NotLeaderForPartitionException(['topic' => self::TOPIC]);
+
+        [$producer, $client] = $this->producer(
+            [ProducerConfig::ENABLE_IDEMPOTENCE => true],
+            [static fn(): array => throw new TopicPartitionRequestException([], [self::TOPIC => [0 => $failure]])]
+        );
+        $client->producerIds = [new ProducerIdAndEpoch(2000, 0)];
+
+        $rejected = null;
+        $producer
+            ->send(self::TOPIC, Record::fromValue('one'), 0)
+            ->then(null, static function (\Throwable $error) use (&$rejected): void {
+                $rejected = $error;
+            });
+        $producer->send(self::TOPIC, Record::fromValue('one again'), 0);
+        $producer->send(self::TOPIC, Record::fromValue('two'), 0);
+
+        self::assertSame($failure, $rejected);
+        self::assertSame([self::TOPIC => [0 => 0]], $client->producerStates[0]['baseSequences']);
+        self::assertSame(
+            [self::TOPIC => [0 => 0]],
+            $client->producerStates[1]['baseSequences'],
+            'Nothing was appended, so the next batch of the partition carries the very same sequence'
+        );
+        self::assertSame(
+            [self::TOPIC => [0 => 1]],
+            $client->producerStates[2]['baseSequences'],
+            'Only an acknowledged batch moves the sequence on'
+        );
+    }
+
+    public function testIdempotenceOverridesTheAcksAndTheRetriesOfTheProducer(): void
+    {
+        $probe = $this->configurationProbe([ProducerConfig::ENABLE_IDEMPOTENCE => true]);
+        $probe->send(self::TOPIC, Record::fromValue('x'));
+
+        self::assertSame(ProducerConfig::ACKS_ALL, $probe->clientConfiguration[ProducerConfig::ACKS]);
+        self::assertSame(
+            ProducerConfig::DEFAULT_IDEMPOTENT_RETRIES,
+            $probe->clientConfiguration[ProducerConfig::RETRIES]
+        );
+    }
+
+    public function testAProducerThatWantsIdempotenceWithoutAcksAllIsRefused(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Must set acks to all in order to use the idempotent producer');
+
+        new TestKafkaProducer(
+            [
+                ProducerConfig::ENABLE_IDEMPOTENCE => true,
+                ProducerConfig::ACKS               => ProducerConfig::ACKS_LEADER,
+            ] + $this->clusterConfiguration,
+            new FakeClient($this->cluster)
+        );
+    }
+
+    public function testAProducerThatWantsIdempotenceWithoutRetriesIsRefused(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Must set retries to non-zero when using the idempotent producer');
+
+        new TestKafkaProducer(
+            [
+                ProducerConfig::ENABLE_IDEMPOTENCE => true,
+                ProducerConfig::RETRIES            => 0,
+            ] + $this->clusterConfiguration,
+            new FakeClient($this->cluster)
+        );
+    }
+
+    public function testATransactionalIdImpliesIdempotenceAndItsConstraints(): void
+    {
+        $probe = $this->configurationProbe([ProducerConfig::TRANSACTIONAL_ID => 'tx-1']);
+        // The client is built by the first transactional call, which is the first one a transactional producer makes
+        $probe->initTransactions();
+
+        self::assertTrue($probe->clientConfiguration[ProducerConfig::ENABLE_IDEMPOTENCE]);
+        self::assertSame(ProducerConfig::ACKS_ALL, $probe->clientConfiguration[ProducerConfig::ACKS]);
+        self::assertSame(
+            ProducerConfig::DEFAULT_IDEMPOTENT_RETRIES,
+            $probe->clientConfiguration[ProducerConfig::RETRIES]
+        );
+    }
+
+    public function testATransactionalIdNextToDisabledIdempotenceIsRefused(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Cannot set enable.idempotence to false while a transactional.id');
+
+        new TestKafkaProducer(
+            [
+                ProducerConfig::TRANSACTIONAL_ID   => 'tx-1',
+                ProducerConfig::ENABLE_IDEMPOTENCE => false,
+            ] + $this->clusterConfiguration,
+            new FakeClient($this->cluster)
+        );
+    }
+
+    public function testTheEmptyStringIsNotATransactionalId(): void
+    {
+        // A broker answers the empty id with the error code 42, so the producer refuses it before it sends anything
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('transactional.id must be a non-empty string');
+
+        new TestKafkaProducer(
+            [ProducerConfig::TRANSACTIONAL_ID => ''] + $this->clusterConfiguration,
+            new FakeClient($this->cluster)
+        );
+    }
+
+    public function testTheTransactionalApiIsRefusedWithoutATransactionalId(): void
+    {
+        [$producer] = $this->producer();
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('The transactional API of the producer needs a transactional.id');
+
+        $producer->initTransactions();
+    }
+
+    public function testASendOutsideATransactionIsRefused(): void
+    {
+        [$producer] = $this->producer([ProducerConfig::TRANSACTIONAL_ID => 'tx-1']);
+        $producer->initTransactions();
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Can not send in the state READY');
+
+        $producer->send(self::TOPIC, Record::fromValue('outside'), 0);
+    }
+
+    public function testAWholeTransactionSendsItsRequestsInTheOrderOfTheProtocol(): void
+    {
+        [$producer, $client] = $this->producer([ProducerConfig::TRANSACTIONAL_ID => 'tx-1']);
+
+        $producer->initTransactions();
+        $producer->beginTransaction();
+        $producer->send(self::TOPIC, Record::fromValue('one'), 0);
+        $producer->flush();
+        $producer->sendOffsetsToTransaction([self::TOPIC => [0 => 5]], 'my-group');
+        $producer->commitTransaction();
+
+        self::assertSame(
+            ['addPartitionsToTxn', 'addOffsetsToTxn', 'txnOffsetCommit', 'endTxn'],
+            array_column($client->transactionCalls, 0)
+        );
+        self::assertSame(
+            'tx-1',
+            $client->producerStates[0]['transactionalId'],
+            'the batch of a transaction carries the transactional id into the Produce request'
+        );
+        self::assertTrue($client->transactionCalls[3][2], 'the last request commits');
+    }
+
+    public function testAnAbortThrowsTheBufferedRecordsAwayInsteadOfSendingThem(): void
+    {
+        // A batch size that the record does not fill, so that `send()` does not flush it right away
+        [$producer, $client] = $this->producer([
+            ProducerConfig::TRANSACTIONAL_ID => 'tx-1',
+            ProducerConfig::BATCH_SIZE       => 65536,
+        ]);
+
+        $producer->initTransactions();
+        $producer->beginTransaction();
+        $rejected = null;
+        $producer->send(self::TOPIC, Record::fromValue('never written'), 0)
+            ->then(null, static function (\Throwable $error) use (&$rejected): void {
+                $rejected = $error;
+            });
+
+        $producer->abortTransaction();
+
+        self::assertSame([], $client->produceCalls, 'nothing of an aborted transaction is sent');
+        self::assertSame([['endTxn', 'tx-1', false]], $client->transactionCalls);
+        self::assertInstanceOf(\RuntimeException::class, $rejected);
+        self::assertStringContainsString('The transaction was aborted', $rejected->getMessage());
+    }
 }

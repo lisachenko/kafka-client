@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * codes that `KafkaApis.handleCreateTopicsRequest` produces without an exception (41 NotController and 31
  * ClusterAuthorizationFailed).
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0, v1 and v2)"
  */
 class CreateTopicsResponseTopic implements BinarySchemaInterface
 {

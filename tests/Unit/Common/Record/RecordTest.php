@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Unit\Common\Record;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\TimestampType;
 
@@ -64,6 +65,35 @@ final class RecordTest extends TestCase
 
         self::assertSame(1489324800000, $record->timestamp);
         self::assertSame(TimestampType::LOG_APPEND_TIME, $record->timestampType);
+    }
+
+    public function testARecordCarriesNoHeadersUnlessItIsGivenSome(): void
+    {
+        self::assertSame([], new Record('bar')->headers);
+        self::assertSame([], Record::fromKeyValue('foo', 'bar')->headers);
+    }
+
+    public function testTheHeadersAreTheLastArgumentOfTheConstructor(): void
+    {
+        $header = new Header('content-type', 'application/json');
+
+        $record = new Record('bar', 'foo', 0, 42, 1489324800000, TimestampType::CREATE_TIME, [$header]);
+
+        self::assertSame([$header], $record->headers);
+    }
+
+    public function testStampingARecordWithHeadersLeavesTheOriginalAlone(): void
+    {
+        $record = new Record('bar', 'foo');
+
+        $stamped = $record->withHeaders(new Header('a', 'b'), new Header('c', null));
+
+        self::assertSame([], $record->headers);
+        self::assertCount(2, $stamped->headers);
+        self::assertSame('a', $stamped->headers[0]->key);
+        self::assertNull($stamped->headers[1]->value);
+        self::assertSame('bar', $stamped->value);
+        self::assertSame('foo', $stamped->key);
     }
 
     public function testStampingARecordWithACreateTimeLeavesTheOriginalAlone(): void

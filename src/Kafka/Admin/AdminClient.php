@@ -24,14 +24,17 @@ use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
+use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
+use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
+use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
@@ -39,12 +42,18 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
+use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -74,7 +83,9 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponse;
  *
  * A topic can also be created through the protocol from Kafka 0.10.1 on (CreateTopics, key 19); until then a topic
  * was created by writing to ZooKeeper, e.g. with `kafka-topics.sh`, or implicitly by asking for its metadata while
- * `auto.create.topics.enable` is on - see {@see self::describeTopics()}.
+ * `auto.create.topics.enable` is on. That accident is over on this line: every metadata request of this class is a
+ * version 4 one with `allow_auto_topic_creation = false`, so an admin never creates a topic by describing it - see
+ * {@see self::describeTopics()}.
  */
 class AdminClient
 {
@@ -102,15 +113,19 @@ class AdminClient
      * The method carries the name it has on the `main` branch. Every broker answers for itself, so a rolling upgrade
      * is visible here as brokers that report different ranges; ask each of them with {@see self::findAllBrokers()}.
      *
-     * A 0.10.2.2 broker reports the keys 0 to 20 - the table of the "API keys" section of the protocol document -
+     * A 0.11.0.3 broker reports the keys 0 to 33 - the table of the "API keys" section of the protocol document -
      * and its answer is authoritative for two things the wire format does not show: ControlledShutdown (key 7) is
-     * reported with `minVersion = 1`, because version 0 uses a header without a client id, and every key above 20
+     * reported with `minVersion = 1`, because version 0 uses a header without a client id, and every key above 33
      * is simply absent instead of being reported with an empty range.
+     *
+     * The request goes out as version 1 ({@see ApiVersionsRequest}), so the answer carries the trailing
+     * `throttleTimeMs` of KIP-124; only the whole {@see Client::apiVersions()} response exposes it, this method
+     * returns the api table alone.
      *
      * @param Node $node Broker to ask
      *
      * @throws KafkaException If the broker answered the error code 35 (UnsupportedVersion), i.e. it is older than
-     *                        Kafka 0.10.0 and does not serve version 0 of this api either
+     *                        Kafka 0.11.0 and does not serve version 1 of this api
      *
      * @return array<int, ApiVersionsResponseMetadata> Version range of each api, indexed by the api key
      */
@@ -143,13 +158,21 @@ class AdminClient
      * else, which is exactly what this method needs. Every broker also reports its `broker.rack` from that version
      * on, so {@see Node::$rack} is filled here whenever the cluster is rack aware.
      *
+     * It is sent as version 4 with `allow_auto_topic_creation = false`, like every metadata request of this class;
+     * an empty topic list names no topic that could be created anyway.
+     *
      * @return array<int, Node>
      */
     public function findAllBrokers(): array
     {
         /** @var MetadataResponse $response */
         $response = $this->sendAnyNode(
-            fn(int $correlationId): MetadataRequest => new MetadataRequest([], $this->clientId(), $correlationId),
+            fn(int $correlationId): MetadataRequest => new MetadataRequest(
+                [],
+                false,
+                $this->clientId(),
+                $correlationId
+            ),
             MetadataResponse::class
         );
 
@@ -172,7 +195,11 @@ class AdminClient
     {
         $lookup = new CoordinatorLookup($this->cluster, $this->configuration);
 
-        return $lookup->findCoordinator($groupId, $timeoutMs > 0 ? $timeoutMs : null);
+        return $lookup->findCoordinator(
+            $groupId,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
+            $timeoutMs > 0 ? $timeoutMs : null
+        );
     }
 
     /**
@@ -188,11 +215,13 @@ class AdminClient
     /**
      * Returns the metadata of the given topics, indexed by the topic name
      *
-     * CAVEAT: asking for a topic that does not exist CREATES it when the broker runs with the default
-     * `auto.create.topics.enable=true`. That first answer carries the topic error code 5 (LeaderNotAvailable) and an
-     * empty partition list, because the controller has not elected the leaders yet; the metadata of the fresh topic
-     * arrives with one of the next requests. This is the only way a 0.8 broker creates a topic - the CreateTopics
-     * api key does not exist before Kafka 0.10.1 ({@see self::createTopics()}).
+     * **Version 4 of the Metadata api (Kafka 0.11) ended the caveat this method used to carry.** Until then, asking
+     * for a topic that does not exist CREATED it whenever the broker ran with the default
+     * `auto.create.topics.enable=true`, and that first answer carried the topic error code 5 (LeaderNotAvailable)
+     * with an empty partition list. This client now sends `allow_auto_topic_creation = false` from the whole
+     * administrative side - an admin must not bring a topic into being by looking at it - so a topic the cluster
+     * does not have is answered with the error code **3** (UnknownTopicOrPartition) and stays non-existent. Use
+     * {@see self::createTopics()} to create one.
      *
      * An empty list asks for every topic of the cluster, the internal ones included: it is sent as the NULL topic
      * array of Metadata v1, because an empty array means "no topic at all" from that version on. Which of the
@@ -209,6 +238,7 @@ class AdminClient
         $response = $this->sendAnyNode(
             fn(int $correlationId): MetadataRequest => new MetadataRequest(
                 $requestedTopics,
+                false,
                 $this->clientId(),
                 $correlationId
             ),
@@ -261,6 +291,11 @@ class AdminClient
                 fn(int $correlationId): OffsetsRequest => new OffsetsRequest(
                     $nodePartitionTimes,
                     OffsetsRequest::CONSUMER_REPLICA_ID,
+                    // Deliberately not the `isolation.level` of a consumer: an administrator asks what is in the
+                    // log, not what a `read_committed` reader may see, so this stays at the high watermark even
+                    // while a transaction is open. A consumer gets the last stable offset through
+                    // KafkaConsumer::endOffsets(), which reads ConsumerConfig::ISOLATION_LEVEL.
+                    FetchRequest::READ_UNCOMMITTED,
                     $this->clientId(),
                     $correlationId
                 ),
@@ -664,8 +699,8 @@ class AdminClient
      *
      * Kafka 0.10.1 is the first release in which a client can create a topic without writing to ZooKeeper itself;
      * before it, the only way through the protocol was to ask a broker with `auto.create.topics.enable` for the
-     * metadata of a topic that does not exist yet ({@see self::describeTopics()}), which gives every topic the
-     * defaults of the broker.
+     * metadata of a topic that does not exist yet, which gives every topic the defaults of the broker.
+     * {@see self::describeTopics()} does not do that any more: it asks with `allow_auto_topic_creation = false`.
      *
      * The request is sent to the active controller ({@see self::findController()}), the only broker that serves it,
      * and it is repeated ONCE against a freshly looked up controller when the answer says 41 (NotController) -
@@ -806,5 +841,261 @@ class AdminClient
     private function client(): Client
     {
         return $this->kafkaClient ??= new Client($this->cluster, $this->configuration);
+    }
+
+    /**
+     * Deletes the records before an offset of each of the given partitions (ApiKey 21, Kafka 0.11, KIP-107)
+     *
+     * Until Kafka 0.11 the only way to get rid of records was to wait for the retention of the topic - by time or
+     * by size - or to delete the topic itself. KIP-107 added the api that moves the **low watermark**
+     * (`logStartOffset`) of a partition forward: everything BELOW the offset becomes unreadable at once, the log
+     * cleaner removes the segments that are then completely below it, and the answer reports the new low watermark
+     * of every partition. That watermark is what an Offsets request with
+     * {@see \Protocol\Kafka\Protocol\Request\OffsetsRequest::EARLIEST} answers afterwards, and what a Fetch v5
+     * carries as `log_start_offset`; a consumer that fetches below it is answered with 1 (OffsetOutOfRange).
+     *
+     * The offset of a partition is either a plain integer - the offset of the first record that has to survive - or
+     * a {@see RecordsToDelete}; {@see RecordsToDelete::allRecords()} deletes everything up to the high watermark of
+     * the partition. Deleting **at or below** the current low watermark is not an error and changes nothing.
+     *
+     * The api is served by the LEADER of each partition, so the request is split per leader and a partial failure
+     * is reported as a {@see \Protocol\Kafka\Common\Errors\TopicPartitionRequestException} that carries the
+     * partitions that did succeed.
+     *
+     * @param array<string, array<int, int|RecordsToDelete>> $topicPartitionOffsets Offset to delete before, as
+     *        topic => partition => offset
+     * @param int $timeoutMs How long the leader waits for the new low watermark to be replicated, in milliseconds
+     *
+     * @throws \Protocol\Kafka\Common\Errors\TopicPartitionRequestException If a partition could not be served -
+     *         3 (UnknownTopicOrPartition) for a topic the broker does not know, 1 (OffsetOutOfRange) for an offset
+     *         above the high watermark of the partition, 42 (InvalidRequest) for a negative offset other than -1
+     *
+     * @return array<string, array<int, DeletedRecords>> New low watermark as topic => partition => result
+     */
+    public function deleteRecords(array $topicPartitionOffsets, int $timeoutMs = 30000): array
+    {
+        $answered = $this->client()->deleteRecords($topicPartitionOffsets, $timeoutMs);
+
+        $result = [];
+        foreach ($answered as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $partitionResult) {
+                $result[$topic][$partitionId] = DeletedRecords::fromResponsePartition($partitionResult);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Reads the configuration of the given topics and brokers (ApiKey 32, Kafka 0.11, KIP-133)
+     *
+     * KIP-133 made what `kafka-configs.sh --describe` had to read out of ZooKeeper available through the protocol.
+     * A resource is a topic or a broker ({@see ConfigResource::topic()} / {@see ConfigResource::broker()}), and the
+     * result is indexed by {@see ConfigResource::key()}, because PHP cannot use an object as an array key.
+     *
+     * The two resource types are not asked of the same broker, which is why this method splits the request:
+     *
+     *  - a **topic** resource is answered by any broker, because `AdminManager.describeConfigs` @ 0.11.0.3 reads
+     *    the entity config of the topic from ZooKeeper and merges it with the log defaults of the broker;
+     *  - a **broker** resource is answered by THAT broker alone - it is its live `KafkaConfig` - and every other
+     *    broker refuses the resource with the error code 42 and the message `Unexpected broker id, expected 0, but
+     *    received 1`. This method therefore sends a broker resource to the node whose id it names, and a broker id
+     *    that no node of the cluster has to any broker, so that the answer of the broker says what is wrong.
+     *
+     * `$configNames` filters the options of every resource of the call; `null`, the default, asks for all of them.
+     * The value of a **sensitive** option is never sent by the broker and arrives as `null`, and every option of a
+     * broker resource is reported as read-only, because a 0.11 broker cannot change its own configuration at
+     * runtime.
+     *
+     * @param list<ConfigResource> $resources   Resources to describe
+     * @param list<string>|null    $configNames Options to read of every resource, null for all of them
+     *
+     * @throws KafkaException If the broker refused one of the resources - 42 (InvalidRequest) for an unknown
+     *         resource type or a broker id that is not the one that answers, 17 (InvalidTopic) for an illegal topic
+     *         name; the message the broker sent is in the context of the exception
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return array<string, Config> Configuration of every requested resource, indexed by its resource key
+     */
+    public function describeConfigs(array $resources, ?array $configNames = null): array
+    {
+        $result = [];
+        foreach ($this->groupByConfigNode($resources) as [$nodeId, $nodeResources]) {
+            $entries       = array_map(
+                static fn(ConfigResource $resource): DescribeConfigsRequestResource
+                    => DescribeConfigsRequestResource::fromConfigResource($resource, $configNames),
+                $nodeResources
+            );
+            $createRequest = fn(int $correlationId): DescribeConfigsRequest => new DescribeConfigsRequest(
+                $entries,
+                $this->clientId(),
+                $correlationId
+            );
+
+            $node = $nodeId === null ? null : $this->nodeById($nodeId);
+
+            /** @var DescribeConfigsResponse $response */
+            $response = $node === null
+                ? $this->sendAnyNode($createRequest, DescribeConfigsResponse::class)
+                : $this->sendTo(
+                    $node->getConnection($this->configuration),
+                    $createRequest,
+                    DescribeConfigsResponse::class,
+                    ['node' => $nodeId]
+                );
+
+            foreach ($response->resources as $resourceResult) {
+                $config = Config::fromResponseResource($resourceResult);
+                if ($resourceResult->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $resourceResult->errorCode,
+                        ['resource' => $config->resource->key(), 'error' => $resourceResult->errorMessage]
+                    );
+                }
+                $result[$config->resource->key()] = $config;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Replaces the configuration of the given resources (ApiKey 33, Kafka 0.11, KIP-133)
+     *
+     * The argument maps a {@see ConfigResource::key()} - `topic:events` - to the WHOLE configuration the resource
+     * should have afterwards: `AdminManager.alterConfigs` @ 0.11.0.3 builds a fresh `Properties` from the entries
+     * and hands it to `AdminUtils.changeTopicConfig`, which REPLACES the ZooKeeper node of the topic. An option
+     * that was set before and is not in the request is therefore reset to its default, which is what
+     * {@see Config::nonDefaultValues()} exists for:
+     *
+     * <code>
+     *   $key     = ConfigResource::topic('events')->key();
+     *   $current = $admin->describeConfigs([ConfigResource::topic('events')])[$key]->nonDefaultValues();
+     *   $admin->alterConfigs([$key => ['retention.ms' => '3600000'] + $current]);
+     * </code>
+     *
+     * **A 0.11 broker only alters topics.** Every other resource type is answered with the error code 42
+     * (InvalidRequest) and the message `AlterConfigs is only supported for topics, but resource type is BROKER` -
+     * dynamic broker configuration is Kafka 1.1 (KIP-226). Any broker of the cluster serves the request, there is
+     * no controller involved.
+     *
+     * Every requested resource gets an entry in the result, keyed like the argument: `null` when its configuration
+     * was replaced (or validated, with `$validateOnly`), the exception of its error code otherwise. Nothing is
+     * thrown for a resource that was refused, exactly like {@see self::createTopics()}.
+     *
+     * @param array<string, array<string, string|null>> $configs      Complete configuration of every resource, as
+     *        resource key => option name => value
+     * @param bool                                      $validateOnly Validate the request without changing anything
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return array<string, KafkaException|null> Error of every requested resource, null when it was altered
+     */
+    public function alterConfigs(array $configs, bool $validateOnly = false): array
+    {
+        $resources = [];
+        foreach ($configs as $resourceKey => $entries) {
+            $resources[] = AlterConfigsRequestResource::fromConfigResource(
+                ConfigResource::fromKey((string) $resourceKey),
+                $entries
+            );
+        }
+
+        /** @var AlterConfigsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): AlterConfigsRequest => new AlterConfigsRequest(
+                $resources,
+                $validateOnly,
+                $this->clientId(),
+                $correlationId
+            ),
+            AlterConfigsResponse::class
+        );
+
+        $answered = [];
+        foreach ($response->resources as $resourceResult) {
+            $key            = ConfigResource::fromWire($resourceResult->resourceType, $resourceResult->resourceName)
+                ->key();
+            $answered[$key] = self::configResourceError($key, $resourceResult->errorCode, $resourceResult->errorMessage);
+        }
+
+        $result = [];
+        foreach (array_keys($configs) as $resourceKey) {
+            // A resource that was altered is answered with `null`, so the map has to be probed with
+            // array_key_exists() and not with `??`, which would turn every success into an unknown error
+            $result[$resourceKey] = array_key_exists($resourceKey, $answered)
+                ? $answered[$resourceKey]
+                : new UnknownErrorException(
+                    ['resource' => $resourceKey, 'error' => 'The broker sent no result for this resource']
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Groups the resources of a DescribeConfigs call by the broker that has to answer them
+     *
+     * A broker resource is answered by the broker it names and by no other one, so it gets a group of its own; every
+     * topic resource goes into the group `null`, which any broker of the cluster can serve. A broker resource whose
+     * name is not a number is left in that group as well, so that the broker itself answers it with the 42 and the
+     * message `Broker id must be an integer, but it is: …` instead of this client guessing an id.
+     *
+     * @param list<ConfigResource> $resources
+     *
+     * @return list<array{0: int|null, 1: list<ConfigResource>}> The node id (null for any broker) and its resources
+     */
+    private function groupByConfigNode(array $resources): array
+    {
+        $grouped = [];
+        foreach ($resources as $resource) {
+            $isNamedBroker      = $resource->type === ConfigResource::TYPE_BROKER
+                && preg_match('/^-?\d+$/', $resource->name) === 1;
+            $nodeId             = $isNamedBroker ? (int) $resource->name : null;
+            $grouped[$nodeId ?? 'any'][] = $resource;
+        }
+
+        return array_map(
+            static fn(int|string $nodeId): array => [$nodeId === 'any' ? null : (int) $nodeId, $grouped[$nodeId]],
+            array_keys($grouped)
+        );
+    }
+
+    /**
+     * Returns the broker of the given node id, asking the cluster for its metadata once when it is not known yet
+     *
+     * A node id that no broker of the cluster has comes back as `null`, and the request is then sent to any broker:
+     * the answer of the broker - 42 with `Unexpected broker id, expected 0, but received 7` - says exactly what is
+     * wrong, which is more than this client could say about an id it has never seen.
+     */
+    private function nodeById(int $nodeId): ?Node
+    {
+        $nodes = $this->cluster->nodes();
+        if (!isset($nodes[$nodeId])) {
+            $this->cluster->reload();
+            $nodes = $this->cluster->nodes();
+        }
+
+        return $nodes[$nodeId] ?? null;
+    }
+
+    /**
+     * Turns the error code of one resource of an AlterConfigs answer into the exception of the caller
+     */
+    private static function configResourceError(
+        string $resourceKey,
+        int $errorCode,
+        ?string $errorMessage
+    ): ?KafkaException {
+        if ($errorCode === KafkaException::NO_ERROR) {
+            return null;
+        }
+
+        $context = ['resource' => $resourceKey];
+        if ($errorMessage !== null) {
+            $context['error'] = $errorMessage;
+        }
+
+        return KafkaException::fromCode($errorCode, $context);
     }
 }

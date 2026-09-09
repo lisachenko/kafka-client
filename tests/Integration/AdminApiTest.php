@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
@@ -29,10 +30,10 @@ use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises the AdminClient against a real Kafka 0.10.2.2 broker.
+ * Exercises the AdminClient against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/0.10.2.md, section "ControlledShutdown API (key 7, v0 and v1)"
- * @see docs/protocol/0.10.2.md, section "ApiVersions API (key 18, v0)"
+ * @see docs/protocol/0.11.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "ApiVersions API (key 18, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ApiVersionsRequest::class)]
@@ -79,20 +80,25 @@ final class AdminApiTest extends IntegrationTestCase
         self::assertSame(array_keys(self::clusterBrokers()), array_keys($brokers));
     }
 
-    public function testDescribeTopicsCreatesAnUnknownTopicAndThenReportsItsPartitions(): void
+    public function testDescribeTopicsDoesNotCreateAnUnknownTopicAnyMore(): void
     {
-        $topic = self::$topic ??= self::uniqueTopicName('t10-admin');
+        // Version 4 of the Metadata api (Kafka 0.11) added `allow_auto_topic_creation`, and the AdminClient sends
+        // it as FALSE: an administrator must be able to ask about a topic without bringing it into existence. The
+        // answer is therefore the error code 3, and `kafka-topics.sh --list` never sees the name afterwards - where
+        // every version below 4 would have created the topic here and answered 5 (LeaderNotAvailable).
+        $absent = self::uniqueTopicName('t10-admin-absent');
 
-        // auto.create.topics.enable is on, so this Metadata request is what creates the topic - there is no
-        // CreateTopics api in 0.8. The first answer carries the error code 5 and no partitions at all.
-        $firstAnswer = $this->admin->describeTopics([$topic])[$topic];
-        self::assertSame($topic, $firstAnswer->topic);
-        self::assertContains(
-            $firstAnswer->topicErrorCode,
-            [KafkaException::NO_ERROR, KafkaException::LEADER_NOT_AVAILABLE],
-            'a freshly created topic is announced as LeaderNotAvailable until the controller elected the leaders'
-        );
+        $answer = $this->admin->describeTopics([$absent])[$absent];
 
+        self::assertSame($absent, $answer->topic);
+        self::assertSame(KafkaException::UNKNOWN_TOPIC_OR_PARTITION, $answer->topicErrorCode);
+        self::assertSame([], $answer->partitions);
+        self::assertNotContains($absent, $this->admin->listTopics(), 'asking about a topic must not create it');
+    }
+
+    public function testDescribeTopicsReportsThePartitionsOfATopicThatExists(): void
+    {
+        $topic    = $this->topic();
         $metadata = $this->awaitTopic($topic);
 
         self::assertSame(KafkaException::NO_ERROR, $metadata->topicErrorCode);
@@ -199,7 +205,15 @@ final class AdminApiTest extends IntegrationTestCase
      */
     private function topic(): string
     {
-        return self::$topic ??= self::uniqueTopicName('t10-admin');
+        if (self::$topic !== null) {
+            return self::$topic;
+        }
+
+        $topic = self::uniqueTopicName('t10-admin');
+        // The topic has to be created explicitly now: describeTopics() asks with `allow_auto_topic_creation = false`
+        $this->admin->createTopics([new NewTopic($topic, 3, 1)]);
+
+        return self::$topic = $topic;
     }
 
     /**

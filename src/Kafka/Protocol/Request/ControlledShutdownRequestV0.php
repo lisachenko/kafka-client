@@ -37,7 +37,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * kept for the `0.8.x`/`0.9.x` vectors and for a client that has to talk to a broker of those lines; on this
  * branch, use {@see ControlledShutdownRequest} (v1), which is what the api-key table promises.
  *
- * @see docs/protocol/0.10.2.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
  */
 final class ControlledShutdownRequestV0 extends ControlledShutdownRequest
 {

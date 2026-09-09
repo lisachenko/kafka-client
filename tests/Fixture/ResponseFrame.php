@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Tests\Fixture;
  * The correlation id given here is only a placeholder: {@see BrokerConnection} replaces it with the one of the
  * request it answers, the same way a broker echoes it back.
  *
- * @see docs/protocol/0.10.2.md
+ * @see docs/protocol/0.11.0.md
  */
 final class ResponseFrame
 {
@@ -45,10 +45,11 @@ final class ResponseFrame
     public const string CLUSTER_ID = 'kafka-client-test-clst';
 
     /**
-     * Builds a Metadata response (api key 3, v2)
+     * Builds a Metadata response (api key 3, v4 - the version this client sends)
      *
      * <pre>
-     *   MetadataResponse => [Broker] ClusterId ControllerId [TopicMetadata]
+     *   MetadataResponse => ThrottleTimeMs [Broker] ClusterId ControllerId [TopicMetadata]
+     *     ThrottleTimeMs    => int32                          # since version 3 (KIP-124)
      *     Broker            => NodeId int32 Host string Port int32 Rack nullable string
      *     ClusterId         => nullable string
      *     ControllerId      => int32
@@ -56,10 +57,14 @@ final class ResponseFrame
      *     PartitionMetadata => PartitionErrorCode int16 PartitionId int32 Leader int32 Replicas [int32] Isr [int32]
      * </pre>
      *
+     * Version 4 answers the very same frame as version 3 - what it added, `allow_auto_topic_creation`, is a field
+     * of the request - so this one builder serves both. The throttle time is always 0, like every answer of the
+     * container of `docker-compose.yml`, which sets no quota.
+     *
      * The first broker of the list is the controller unless `$controllerId` says otherwise, and no broker declares
      * a rack - the answer of the container of `docker-compose.yml`, which runs a single broker without
      * `broker.rack`. A topic counts as internal when its name is in `$internalTopics`, i.e. `__consumer_offsets`
-     * and nothing else on a 0.10.2.2 cluster.
+     * and nothing else on a 0.11.0.3 cluster.
      *
      * @param list<array{int, string, int}>  $brokers             nodeId, host, port
      * @param array<string, array<int, int>> $topics              topic => partition => leader node id
@@ -77,7 +82,8 @@ final class ResponseFrame
         array $internalTopics = [],
         ?int $controllerId = null
     ): string {
-        $body = pack('N', count($brokers));
+        // The throttle time of version 3 opens the body, in front of the brokers
+        $body = pack('N', 0) . pack('N', count($brokers));
         foreach ($brokers as [$nodeId, $host, $port]) {
             // The rack of the broker, null for a cluster that is not rack aware
             $body .= pack('N', $nodeId) . self::string($host) . pack('N', $port) . pack('n', 0xFFFF);
@@ -106,6 +112,9 @@ final class ResponseFrame
 
     /**
      * Builds a Produce response (api key 0, v2)
+     *
+     * The frame of a version 3 answer is the frame of a version 2 one, byte for byte: version 3 of the Produce api
+     * added nothing to the response (`PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` @ 0.11.0.3).
      *
      * <pre>
      *   ProduceResponse => [TopicName [Partition ErrorCode Offset LogAppendTime]] ThrottleTime
@@ -162,19 +171,22 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an Offsets (ListOffset) response (api key 2, v1)
+     * Builds an Offsets (ListOffset) response (api key 2, v2 - the version this client sends)
      *
      * <pre>
-     *   ListOffsets Response (Version: 1) => [responses]
+     *   ListOffsets Response (Version: 2) => throttle_time_ms [responses]
      *     partition_responses => partition error_code timestamp offset
      * </pre>
+     *
+     * The partition entries are the ones of version 1; version 2 (KIP-124) only put the throttle time in front of
+     * the topics array, and it is always 0 here, as it is on the container.
      *
      * @param array<string, array<int, array{int, int, int}>> $topics topic => partition =>
      *        [errorCode, timestamp, offset]
      */
     public static function offsets(int $correlationId, array $topics): string
     {
-        $body = pack('N', count($topics));
+        $body = pack('N', 0) . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $timestamp, $offset]) {
@@ -212,21 +224,59 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Fetch response (api key 1, v1)
+     * Builds a Fetch response (api key 1, v5)
      *
      * <pre>
-     *   FetchResponse => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize
-     *                                               MessageSet]]
+     *   FetchResponse => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset LastStableOffset
+     *                                               LogStartOffset [AbortedTransactions] RecordSetSize RecordSet]]
      * </pre>
+     *
+     * The last stable offset defaults to the high water mark and the aborted transactions to `null`, which is what
+     * a `read_uncommitted` fetch of a partition without transactions is answered with.
+     *
+     * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
+     *        [errorCode, highWaterMarkOffset, record set bytes]
+     * @param int                                                $throttleTimeMs Milliseconds the broker delayed the
+     *        request
+     * @param array<string, array<int, array{int, int, list<array{int, int}>|null}>> $transactionState topic =>
+     *        partition => [lastStableOffset, logStartOffset, aborted transactions as [producerId, firstOffset]]
+     */
+    public static function fetch(
+        int $correlationId,
+        array $topics,
+        int $throttleTimeMs = 0,
+        array $transactionState = []
+    ): string {
+        // The throttle time of v1 opens the response, before the topics array
+        $body = pack('N', $throttleTimeMs) . pack('N', count($topics));
+        foreach ($topics as $topic => $partitions) {
+            $body .= self::string((string) $topic) . pack('N', count($partitions));
+            foreach ($partitions as $partitionId => [$errorCode, $highWaterMark, $messageSet]) {
+                [$lastStableOffset, $logStartOffset, $aborted] =
+                    $transactionState[$topic][$partitionId] ?? [$highWaterMark, 0, null];
+
+                $body .= pack('N', $partitionId)
+                    . pack('n', $errorCode)
+                    . pack('J', $highWaterMark)
+                    . pack('J', $lastStableOffset)
+                    . pack('J', $logStartOffset)
+                    . self::abortedTransactions($aborted)
+                    . pack('N', strlen($messageSet))
+                    . $messageSet;
+            }
+        }
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds a Fetch response of the versions 1 to 3, whose partition entries carry none of the fields of 0.11
      *
      * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
      *        [errorCode, highWaterMarkOffset, message set bytes]
-     * @param int                                                $throttleTimeMs Milliseconds the broker delayed the
-     *        request
      */
-    public static function fetch(int $correlationId, array $topics, int $throttleTimeMs = 0): string
+    public static function fetchV3(int $correlationId, array $topics, int $throttleTimeMs = 0): string
     {
-        // The throttle time of v1 opens the response, before the topics array
         $body = pack('N', $throttleTimeMs) . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
@@ -243,26 +293,48 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Fetch response of version 0, i.e. the same answer without the leading `ThrottleTimeMs`
+     * Builds a Fetch response of version 0, i.e. the version 1 to 3 answer without the leading `ThrottleTimeMs`
      *
      * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
      *        [errorCode, highWaterMarkOffset, message set bytes]
      */
     public static function fetchV0(int $correlationId, array $topics): string
     {
-        $frame = self::fetch($correlationId, $topics);
+        $frame = self::fetchV3($correlationId, $topics);
 
         return self::of($correlationId, substr($frame, 12));
     }
 
     /**
-     * Builds an OffsetCommit response (api key 8, the versions 0, 1 and 2 share the response format)
+     * Encodes the nullable aborted-transactions array of a Fetch v4/v5 partition, `null` as the element count -1
+     *
+     * @param list<array{int, int}>|null $abortedTransactions Producer id and first offset of every transaction
+     */
+    private static function abortedTransactions(?array $abortedTransactions): string
+    {
+        if ($abortedTransactions === null) {
+            return pack('N', -1);
+        }
+
+        $body = pack('N', count($abortedTransactions));
+        foreach ($abortedTransactions as [$producerId, $firstOffset]) {
+            $body .= pack('J', $producerId) . pack('J', $firstOffset);
+        }
+
+        return $body;
+    }
+
+    /**
+     * Builds an OffsetCommit response (api key 8, v3 - the version this client sends)
+     *
+     * The versions 0, 1 and 2 share one response format, and version 3 (KIP-124) put the throttle time in front
+     * of it.
      *
      * @param array<string, array<int, int>> $topics topic => partition => error code
      */
     public static function offsetCommit(int $correlationId, array $topics): string
     {
-        $body = pack('N', count($topics));
+        $body = pack('N', 0) . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
             foreach ($partitions as $partitionId => $errorCode) {
@@ -274,15 +346,18 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetFetch response (api key 9; v0 and v1 share the response format, v2 appends a group error)
+     * Builds an OffsetFetch response (api key 9, v3 - the version this client sends)
+     *
+     * v0 and v1 share the response format, v2 appended the group-level error code, and v3 (KIP-124) put the
+     * throttle time in front of the topics; the answer therefore carries a number at each of its ends.
      *
      * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
      *        [errorCode, offset, metadata]
-     * @param int|null $groupErrorCode The group-level error code of version 2, null for a version 0 or 1 answer
+     * @param int|null $groupErrorCode The group-level error code of version 2 and above, null for v0 or v1
      */
     public static function offsetFetch(int $correlationId, array $topics, ?int $groupErrorCode = 0): string
     {
-        $body = pack('N', count($topics));
+        $body = pack('N', 0) . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $offset, $metadata]) {
@@ -300,7 +375,10 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a GroupCoordinator response (api key 10, v0, ConsumerMetadata in Kafka 0.8.2)
+     * Builds a GroupCoordinator response (api key 10, v1 - FindCoordinator in the 0.11 sources)
+     *
+     * Version 1 surrounds the error code with the `ThrottleTimeMs` of KIP-124 and a nullable `ErrorMessage`; a
+     * 0.11.0.3 broker leaves that message null in every answer, which is what this fixture reproduces.
      */
     public static function groupCoordinator(
         int $correlationId,
@@ -309,16 +387,21 @@ final class ResponseFrame
         string $host = '127.0.0.1',
         int $port = 9092
     ): string {
-        $body = pack('n', $errorCode) . pack('N', $nodeId) . self::string($host) . pack('N', $port);
+        $body = pack('N', 0)
+            . pack('n', $errorCode)
+            . pack('n', 0xFFFF)
+            . pack('N', $nodeId)
+            . self::string($host)
+            . pack('N', $port);
 
         return self::of($correlationId, $body);
     }
 
     /**
-     * Builds a JoinGroup response (api key 11, v0)
+     * Builds a JoinGroup response (api key 11, v2 - the version this client sends)
      *
      * <pre>
-     *   JoinGroupResponse => ErrorCode GenerationId GroupProtocol LeaderId MemberId [MemberId MemberMetadata]
+     *   JoinGroupResponse => ThrottleTimeMs ErrorCode GenerationId GroupProtocol LeaderId MemberId [Member]
      * </pre>
      *
      * @param array<string, string> $members Metadata of every member, by member id; filled for the leader only
@@ -332,7 +415,8 @@ final class ResponseFrame
         string $memberId = '',
         array $members = []
     ): string {
-        $body = pack('n', $errorCode)
+        $body = pack('N', 0)
+            . pack('n', $errorCode)
             . pack('N', $generationId)
             . self::string($groupProtocol)
             . self::string($leaderId)
@@ -346,27 +430,106 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a SyncGroup response (api key 14, v0), which has no throttle time before Kafka 0.10.1
+     * Builds a SyncGroup response (api key 14, v1), whose throttle time arrived with Kafka 0.11 (KIP-124)
      */
     public static function syncGroup(int $correlationId, int $errorCode, string $assignment = ''): string
     {
-        return self::of($correlationId, pack('n', $errorCode) . self::bytes($assignment));
+        return self::of($correlationId, pack('N', 0) . pack('n', $errorCode) . self::bytes($assignment));
     }
 
     /**
-     * Builds a Heartbeat response (api key 12, v0), whose whole body is the error code
+     * Builds a Heartbeat response (api key 12, v1): the throttle time and the error code
      */
     public static function heartbeat(int $correlationId, int $errorCode): string
     {
-        return self::of($correlationId, pack('n', $errorCode));
+        return self::of($correlationId, pack('N', 0) . pack('n', $errorCode));
     }
 
     /**
-     * Builds a LeaveGroup response (api key 13, v0), whose whole body is the error code
+     * Builds a LeaveGroup response (api key 13, v1): the throttle time and the error code
      */
     public static function leaveGroup(int $correlationId, int $errorCode): string
     {
-        return self::of($correlationId, pack('n', $errorCode));
+        return self::of($correlationId, pack('N', 0) . pack('n', $errorCode));
+    }
+
+    /**
+     * Builds an InitProducerId response (api key 22, v0)
+     *
+     * <pre>
+     *   InitProducerIdResponse => ThrottleTimeMs ErrorCode ProducerId ProducerEpoch
+     * </pre>
+     *
+     * An answer that carries an error carries -1 as the producer id and as the epoch, which is the default here.
+     */
+    public static function initProducerId(
+        int $correlationId,
+        int $errorCode = 0,
+        int $producerId = -1,
+        int $producerEpoch = -1,
+        int $throttleTimeMs = 0
+    ): string {
+        $body = pack('N', $throttleTimeMs)
+            . pack('n', $errorCode)
+            . pack('J', $producerId)
+            . pack('n', $producerEpoch);
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds a ListGroups response (api key 16, v1)
+     *
+     * <pre>
+     *   ListGroupsResponse => ThrottleTimeMs ErrorCode [GroupId ProtocolType]
+     * </pre>
+     *
+     * @param array<string, string> $groups Protocol type of every group the answering broker coordinates, by id
+     */
+    public static function listGroups(int $correlationId, array $groups, int $errorCode = 0): string
+    {
+        $body = pack('N', 0) . pack('n', $errorCode) . pack('N', count($groups));
+        foreach ($groups as $groupId => $protocolType) {
+            $body .= self::string((string) $groupId) . self::string($protocolType);
+        }
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds a DescribeGroups response (api key 15, v1)
+     *
+     * <pre>
+     *   DescribeGroupsResponse => ThrottleTimeMs [ErrorCode GroupId State ProtocolType Protocol [Member]]
+     *     Member => MemberId ClientId ClientHost MemberMetadata MemberAssignment
+     * </pre>
+     *
+     * There is no error code for the whole request: every group carries its own, and an entry that has one is
+     * otherwise empty, exactly as a broker that is not the coordinator answers it.
+     *
+     * @param array<string, array{int, string, string, string, array<string, array{string, string}>}> $groups
+     *        group id => [errorCode, state, protocolType, protocol, member id => [metadata, assignment]]
+     */
+    public static function describeGroups(int $correlationId, array $groups): string
+    {
+        $body = pack('N', 0) . pack('N', count($groups));
+        foreach ($groups as $groupId => [$errorCode, $state, $protocolType, $protocol, $members]) {
+            $body .= pack('n', $errorCode)
+                . self::string((string) $groupId)
+                . self::string($state)
+                . self::string($protocolType)
+                . self::string($protocol)
+                . pack('N', count($members));
+            foreach ($members as $memberId => [$metadata, $assignment]) {
+                $body .= self::string((string) $memberId)
+                    . self::string('test')
+                    . self::string('/172.18.0.1')
+                    . self::bytes($metadata)
+                    . self::bytes($assignment);
+            }
+        }
+
+        return self::of($correlationId, $body);
     }
 
     /**

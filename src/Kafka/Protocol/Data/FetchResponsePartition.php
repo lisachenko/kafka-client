@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
+use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
@@ -21,23 +22,46 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * One partition of a Fetch response
  *
  * <pre>
- *   FetchResponsePartition => Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet
- *     Partition           => int32
- *     ErrorCode           => int16
- *     HighwaterMarkOffset => int64
- *     MessageSetSize      => int32
+ *   FetchResponsePartition => Partition ErrorCode HighwaterMarkOffset LastStableOffset LogStartOffset
+ *                             [AbortedTransactions] RecordSetSize RecordSet
+ *     Partition            => int32
+ *     ErrorCode            => int16
+ *     HighwaterMarkOffset  => int64
+ *     LastStableOffset     => int64
+ *     LogStartOffset       => int64
+ *     AbortedTransactions  => nullable [ProducerId int64 FirstOffset int64]
+ *     RecordSetSize        => int32
  * </pre>
  *
- * The message set is read as a byte array, because `MessageSetSize` is exactly the int32 length prefix of the
- * BYTEARRAY type; decoding those bytes into messages is the job of the record layer.
+ * The record set is read as a byte array, because `MessageSetSize`/`RecordSetSize` is exactly the int32 length
+ * prefix of the BYTEARRAY type; decoding those bytes into batches and records is the job of the record layer, i.e.
+ * of {@see MemoryRecords}, which reads whichever of the three message formats the broker answered with.
  *
- * `LastStableOffset`, `LogStartOffset` and `AbortedTransactions` belong to the transactional protocol of 0.11 and do
- * not exist in any version a 0.10.2.2 broker serves, in which the partition entry is the same in v0 to v3.
+ * The partition entry is the same in the versions 0 to 3. Version 4 (Kafka 0.11.0, KIP-98) added
+ * `LastStableOffset` and the nullable `AbortedTransactions` array behind the high water mark, and version 5
+ * (KIP-107) added `LogStartOffset` between the two, which is what {@see FetchResponsePartitionV4} and
+ * {@see FetchResponsePartitionV0} lower the version constant for.
  *
- * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 to v3)" and "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v5)", "MessageSet and Message" and
+ *      "RecordBatch (message format v2)"
  */
 class FetchResponsePartition implements BinarySchemaInterface
 {
+    /**
+     * Version of the Fetch API that this DTO is unpacked from
+     */
+    public const int VERSION = 5;
+
+    /**
+     * Value of `LastStableOffset` in an answer that does not carry the field, and of a `read_uncommitted` fetch
+     */
+    public const int INVALID_LAST_STABLE_OFFSET = -1;
+
+    /**
+     * Value of `LogStartOffset` in an answer of a version below 5, which does not carry the field at all
+     */
+    public const int INVALID_LOG_START_OFFSET = -1;
+
     /**
      * The id of the partition this response is for.
      */
@@ -59,15 +83,58 @@ class FetchResponsePartition implements BinarySchemaInterface
     public int $highWaterMarkOffset;
 
     /**
-     * Raw bytes of the returned message set, exactly as they lie in the log.
+     * The last stable offset (LSO) of the partition, the offset every transaction below which has been decided.
      *
-     * The broker is allowed to cut the last message of the set short, therefore these bytes are not necessarily a
-     * sequence of complete messages.
+     * A `read_committed` fetch stops at this offset instead of at the high water mark: everything below it is
+     * either non-transactional or belongs to a transaction that has been committed or aborted, so a consumer can
+     * decide what to hand to the application. Without any transaction on the partition the LSO **is** the high
+     * water mark, and a `read_uncommitted` fetch is answered with
+     * {@see self::INVALID_LAST_STABLE_OFFSET} - the broker does not compute the value it would not use.
+     *
+     * @since Version 4 of protocol
+     */
+    public int $lastStableOffset = self::INVALID_LAST_STABLE_OFFSET;
+
+    /**
+     * Earliest offset that is still on disk for this partition (KIP-107).
+     *
+     * A consumer learns from it that the beginning of the log moved - by the retention of the broker or by a
+     * `DeleteRecords` call - without asking the Offsets api for the earliest offset. A partition that was never
+     * truncated answers 0; an answer of a version below 5 leaves the field at
+     * {@see self::INVALID_LOG_START_OFFSET}.
+     *
+     * @since Version 5 of protocol
+     */
+    public int $logStartOffset = self::INVALID_LOG_START_OFFSET;
+
+    /**
+     * Transactions that were aborted in the range this answer covers, `null` for a `read_uncommitted` fetch.
+     *
+     * The distinction matters: `null` means "the broker was not asked to track transactions", an **empty array**
+     * means "asked, and nothing was aborted here". Both are answered by a real broker, see
+     * {@see FetchResponseAbortedTransaction}.
+     *
+     * @var list<FetchResponseAbortedTransaction>|null
+     *
+     * @since Version 4 of protocol
+     */
+    public ?array $abortedTransactions = null;
+
+    /**
+     * Raw bytes of the returned record set, exactly as they lie in the log.
+     *
+     * The broker is allowed to cut the last batch of the set short, therefore these bytes are not necessarily a
+     * sequence of complete batches.
      */
     public ?string $messageSet = null;
 
     /**
-     * Lazily decoded message set of this partition
+     * Lazily decoded record region of this partition
+     */
+    private ?MemoryRecords $decodedRecords = null;
+
+    /**
+     * Lazily decoded legacy message set of this partition
      */
     private ?MessageSet $decodedMessageSet = null;
 
@@ -76,19 +143,46 @@ class FetchResponsePartition implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'partition'           => BinarySchema::TYPE_INT32,
             'errorCode'           => BinarySchema::TYPE_INT16,
             'highWaterMarkOffset' => BinarySchema::TYPE_INT64,
-            'messageSet'          => BinarySchema::TYPE_BYTEARRAY,
         ];
+        if (static::VERSION >= 4) {
+            $scheme['lastStableOffset'] = BinarySchema::TYPE_INT64;
+        }
+        if (static::VERSION >= 5) {
+            $scheme['logStartOffset'] = BinarySchema::TYPE_INT64;
+        }
+        if (static::VERSION >= 4) {
+            $scheme['abortedTransactions'] = [
+                FetchResponseAbortedTransaction::class,
+                BinarySchema::FLAG_NULLABLE => true,
+            ];
+        }
+        $scheme['messageSet'] = BinarySchema::TYPE_BYTEARRAY;
+
+        return $scheme;
     }
 
     /**
-     * Decodes the raw bytes of this partition into a message set, dropping a partial trailing message.
+     * Decodes the raw bytes of this partition into a record region, dropping a partial trailing batch.
      *
-     * The bytes are decoded once and the result is kept, because a fetch loop asks for the messages of a partition
-     * and for their offsets separately.
+     * The bytes are decoded once and the result is kept, because a fetch loop asks for the records of a partition
+     * and for their offsets separately. Which message format the bytes are in is decided by the log and by the api
+     * version the broker converted them for, not by this class: {@see MemoryRecords::fromBuffer()} reads all three.
+     */
+    public function getRecords(): MemoryRecords
+    {
+        return $this->decodedRecords ??= MemoryRecords::fromBuffer($this->messageSet ?? '');
+    }
+
+    /**
+     * Decodes the raw bytes of this partition into a legacy message set, dropping a partial trailing message.
+     *
+     * This is what an answer of the versions 0 to 3 holds - the broker converts a v2 log down to the message
+     * format v1 or v0 for those - and it throws on a record batch of the message format v2, which only
+     * {@see self::getRecords()} understands.
      */
     public function getMessageSet(): MessageSet
     {
@@ -122,7 +216,11 @@ class FetchResponsePartition implements BinarySchemaInterface
     }
 
     /**
-     * Checks whether the returned bytes begin with at least one complete message
+     * Checks whether the returned bytes begin with at least one complete entry.
+     *
+     * The check is the same for all three message formats: the first twelve bytes of an entry are the offset and
+     * the size of what follows them - `Offset`/`MessageSize` of a message, `BaseOffset`/`BatchLength` of a record
+     * batch - so the entry is complete when that many bytes are there.
      */
     private function hasCompleteMessage(): bool
     {

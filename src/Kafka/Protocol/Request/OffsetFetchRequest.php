@@ -19,13 +19,13 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
- * OffsetFetch, version 2: the offsets that a consumer group committed, read from `__consumer_offsets` (Kafka 0.10.2)
+ * OffsetFetch, version 3: the offsets that a consumer group committed, read from `__consumer_offsets` (Kafka 0.11)
  *
  * This API reads back the offsets that were committed for a consumer group with the OffsetCommit API, so it has to
  * be sent to the coordinator of that group.
  *
  * <pre>
- *   OffsetFetch Request (Version: 2) => group_id [topics]
+ *   OffsetFetch Request (Version: 2 and 3) => group_id [topics]
  *     group_id => STRING
  *     topics   => topic [partitions]     -- NULLABLE since version 2
  *       topic      => STRING
@@ -39,13 +39,18 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * **empty** array - `00 00 00 00` - is a different request that names no topic at all and is answered with an empty
  * response; the two must not be confused.
  *
+ * Version 3 (KIP-124, Kafka 0.11) left the request untouched - `OFFSET_FETCH_REQUEST_V3 = OFFSET_FETCH_REQUEST_V2`
+ * in `Protocol.java` @ 0.11.0.3 - and only added the leading `throttle_time_ms` to the answer, so
+ * {@see OffsetFetchRequestV2} puts the same bytes on the wire and reads its answer with
+ * {@see OffsetFetchResponseV2}.
+ *
  * Versions 0 and 1 have no nullable array ({@see OffsetFetchRequestV1}, {@see OffsetFetchRequestV0}) and are
  * identical to each other on the wire: they only differ in where the broker reads the offsets from - ZooKeeper for
  * version 0, the `__consumer_offsets` topic of the cluster for version 1 and above. Asking those versions for all
  * topics is refused here with an {@see UnsupportedVersionException}, exactly as `OffsetFetchRequest.Builder.build()`
- * @ 0.10.2.2 does; sending a `-1` topic array with version 1 makes the broker close the connection.
+ * @ 0.11.0.3 does; sending a `-1` topic array with version 1 makes the broker close the connection.
  *
- * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "OffsetFetch API (key 9, v0 to v3)"
  */
 class OffsetFetchRequest extends AbstractRequest
 {
@@ -57,7 +62,7 @@ class OffsetFetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Partitions whose offsets are requested, indexed by the topic they belong to, or null for every topic

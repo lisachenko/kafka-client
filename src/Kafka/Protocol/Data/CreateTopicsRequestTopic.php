@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *  - `numPartitions` and `replicationFactor` are both {@see NewTopic::NO_NUM_PARTITIONS} / -1 and the assignment
  *    array names the replicas of every partition.
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0, v1 and v2)"
  */
 class CreateTopicsRequestTopic implements BinarySchemaInterface
 {
@@ -94,6 +94,8 @@ class CreateTopicsRequestTopic implements BinarySchemaInterface
 
         $configEntries = [];
         foreach ($configs as $configKey => $configValue) {
+            // The wire field is a NULLABLE_STRING in every version of the api, but a null value makes the
+            // controller answer that topic with the error code -1, so a value given here is always a string
             $configEntries[$configKey] = new CreateTopicsRequestConfig((string) $configKey, (string) $configValue);
         }
 

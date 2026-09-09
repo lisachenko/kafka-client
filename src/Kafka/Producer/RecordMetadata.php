@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Producer;
  * which is not answered at all.
  *
  * @see \Protocol\Kafka\Client::produce()
- * @see docs/protocol/0.10.2.md, section "Quotas and throttle time"
+ * @see docs/protocol/0.11.0.md, section "Quotas and throttle time"
  */
 final class RecordMetadata
 {

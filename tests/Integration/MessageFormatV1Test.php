@@ -27,9 +27,9 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
-use Protocol\Kafka\Protocol\Request\FetchResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\FetchResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * that fetches with a request below version 2. Everything this suite asserts was read out of a log that a 0.10.2.2
  * broker wrote.
  *
- * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]
@@ -228,19 +228,25 @@ final class MessageFormatV1Test extends IntegrationTestCase
             'the codec and the timestamp type live in the attributes of the wrapper'
         );
 
-        // The broker sets the bit on the wrapper only: the compressed inner messages still hold what was produced
+        // A 0.11 broker stores this batch as a record batch v2 - `message.format.version` defaults to 0.11.0 - and
+        // DOWN-CONVERTS it for the Fetch v3 of this client. `AbstractRecords.convertRecordBatch()` @ 0.11.0.3
+        // rebuilds the set with `MemoryRecords.builder(..., timestampType, baseOffset, logAppendTime)`, and a
+        // magic 1 builder writes that timestamp type into the attributes of every message it appends - so the
+        // inner messages carry the LogAppendTime bit here, where a natively written v1 set of a 0.10.2.2 broker
+        // carried it on the wrapper alone. A reader must not read anything into either.
         $inner = MessageSet::shallowFromBuffer($wrapper->decompressValue());
         self::assertSame(
-            [TimestampType::CREATE_TIME, TimestampType::CREATE_TIME],
+            [TimestampType::LOG_APPEND_TIME, TimestampType::LOG_APPEND_TIME],
             array_map(
                 static fn(array $entry): int => $entry[1]->getTimestampType(),
                 $inner->getMessages()
-            )
+            ),
+            'the down-conversion of a batch v2 stamps the timestamp type on every inner message'
         );
         self::assertSame(
-            [self::CREATE_TIME, self::CREATE_TIME + 10],
+            [$wrapper->getTimestamp(), $wrapper->getTimestamp()],
             array_map(static fn(array $entry): ?int => $entry[1]->getTimestamp(), $inner->getMessages()),
-            'the inner timestamps are left alone and have to be ignored by the reader'
+            'and the append time of the batch as the timestamp of every one of them'
         );
         // ... and the reader reports the timestamp of the wrapper for every record of the batch
         $records = $this->fetch($baseOffset, 2, $topic);
@@ -382,7 +388,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
         $command   = [
-            'docker', 'exec', $container === false || $container === '' ? 'kafka-0-10-2-2' : $container,
+            'docker', 'exec', $container === false || $container === '' ? 'kafka-0-11-0-3' : $container,
             '/opt/kafka/bin/kafka-topics.sh', '--zookeeper', 'localhost:2181',
             '--create', '--topic', $topic, '--partitions', '1', '--replication-factor', '1',
         ];
@@ -416,7 +422,9 @@ final class MessageFormatV1Test extends IntegrationTestCase
     {
         $topic ??= $this->topic;
         $stream = $this->connect();
-        new ProduceRequest(
+        // A message set of the formats v0 and v1 may only travel in a request below version 3, see
+        // docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
+        new ProduceRequestV2(
             [$topic => [self::PARTITION => $messageSet]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -424,7 +432,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
             1
         )->writeTo($stream);
 
-        $partition = ProduceResponse::unpack($stream)->topics[$topic]->partitions[self::PARTITION];
+        $partition = ProduceResponseV2::unpack($stream)->topics[$topic]->partitions[self::PARTITION];
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode(
                 $partition->errorCode,
@@ -461,7 +469,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
         new $requestClass([$topic => [self::PARTITION => $offset]], 1000, 1, 1048576, -1, self::CLIENT_ID, 2)
             ->writeTo($stream);
 
-        $partition = FetchResponse::unpack($stream)->topics[$topic]->partitions[self::PARTITION];
+        $partition = FetchResponseV2::unpack($stream)->topics[$topic]->partitions[self::PARTITION];
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode(
                 $partition->errorCode,

@@ -32,8 +32,8 @@ use Protocol\Kafka\Consumer\RoundRobinAssignor;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Tests\Fixture\ConsumerGroupMemberProcess;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -51,8 +51,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * first one until a session timeout expires. The second member therefore runs in a child process, see
  * {@see ConsumerGroupMemberProcess}.
  *
- * @see docs/protocol/0.10.2.md, sections "Group membership protocol (keys 11 to 14)", "Consumer group protocol
- *      (protocol_type = consumer)" and "DescribeGroups API (key 15, v0)"
+ * @see docs/protocol/0.11.0.md, sections "Group membership protocol (keys 11 to 14)", "Consumer group protocol
+ *      (protocol_type = consumer)" and "DescribeGroups API (key 15, v0 and v1)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(ConsumerCoordinator::class)]
@@ -526,7 +526,7 @@ final class ConsumerGroupTest extends IntegrationTestCase
 
         do {
             $stream = $this->connect();
-            new ProduceRequest(
+            new ProduceRequestV2(
                 [$this->topic => [$partition => $messageSet]],
                 1,
                 self::PRODUCE_TIMEOUT_MS,
@@ -534,7 +534,7 @@ final class ConsumerGroupTest extends IntegrationTestCase
                 1
             )->writeTo($stream);
 
-            $errorCode = ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
+            $errorCode = ProduceResponseV2::unpack($stream)->topics[$this->topic]->partitions[$partition]->errorCode;
             if ($errorCode === KafkaException::NO_ERROR) {
                 return;
             }

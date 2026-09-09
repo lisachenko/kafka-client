@@ -1,13 +1,13 @@
 {
     "api": "offset-commit",
     "apiKey": 8,
-    "section": "OffsetCommit API (key 8, v0, v1 and v2)",
-    "description": "Wire vectors of the OffsetCommit API (key 8, v0, v1 and v2), replayed by tests/Compliance.",
+    "section": "OffsetCommit API (key 8, v0 to v3)",
+    "description": "Wire vectors of the OffsetCommit API (key 8, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsetcommit.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV2",
             "version": 2,
             "source": "broker",
             "description": "OffsetCommit request v2 of a client that is not a group member: generation id -1, empty consumer id, an explicit RetentionTime of 86400000 ms and null metadata. The per-partition TimeStamp of v1 is gone.",
@@ -39,7 +39,7 @@
         {
             "id": "offsetcommit.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV2",
             "version": 2,
             "source": "broker",
             "description": "OffsetCommit response of version 2, which has the same layout as the one of v0 and v1.",
@@ -95,7 +95,7 @@
         {
             "id": "offsetcommit.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV1",
             "version": 1,
             "source": "broker",
             "description": "OffsetCommit response, identical in v0, v1 and v2: one error code per topic-partition.",
@@ -148,7 +148,7 @@
         {
             "id": "offsetcommit.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV0",
             "version": 0,
             "source": "broker",
             "description": "OffsetCommit response of the ZooKeeper-backed version 0.",
@@ -159,6 +159,63 @@
                 "topics": {
                     "t10-vectors": {
                         "topic": "t10-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "OffsetCommit request v3, byte for byte the frame of v2 with a higher version field.",
+            "hex": "00000067000800030000006400176b61666b612d636c69656e742d74332d766563746f7273001374332d7468726f74746c652d6f666673657473ffffffff0000ffffffffffffffff00000001000b74332d7468726f74746c6500000001000000000000000000000003ffff",
+            "fields": {
+                "messageSize": 103,
+                "apiKey": 8,
+                "apiVersion": 3,
+                "correlationId": 100,
+                "clientId": "kafka-client-t3-vectors",
+                "consumerGroup": "t3-throttle-offsets",
+                "generationId": -1,
+                "memberName": "",
+                "retentionTime": -1,
+                "topicPartitions": {
+                    "t3-throttle": {
+                        "topic": "t3-throttle",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 3,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer v3: the throttle time in front of the topics of a v2 answer.",
+            "hex": "00000023000000640000000000000001000b74332d7468726f74746c6500000001000000000000",
+            "fields": {
+                "messageSize": 35,
+                "correlationId": 100,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-throttle": {
+                        "topic": "t3-throttle",
                         "partitions": [
                             {
                                 "partition": 0,

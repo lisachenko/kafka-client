@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * leader of the group in the JoinGroup response and never looks inside. What they mean is decided by the
  * `protocol_type` of the request - for `consumer` it is the `Subscription` structure of the consumer protocol.
  *
- * @see docs/protocol/0.10.2.md, section "JoinGroup API (key 11, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "JoinGroup API (key 11, v0, v1 and v2)"
  */
 class JoinGroupRequestProtocol implements BinarySchemaInterface
 {

@@ -1,0 +1,43 @@
+{
+    "api": "add-offsets-to-txn",
+    "apiKey": 25,
+    "section": "AddOffsetsToTxn API (key 25, v0)",
+    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "addoffsetstotxn.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AddOffsetsToTxn request v0: it enrols the `__consumer_offsets` partition of the group `t8-vectors-group` into the transaction of `t8-vectors-txn`, so that the commit marker reaches it as well. The offsets themselves are not in this request - they travel in the TxnOffsetCommit that follows it, to the group coordinator.",
+            "hex": "0000004000190000000000ba000a74382d766563746f7273000e74382d766563746f72732d74786e00000000000000000002001074382d766563746f72732d67726f7570",
+            "fields": {
+                "messageSize": 64,
+                "apiKey": 25,
+                "apiVersion": 0,
+                "correlationId": 186,
+                "clientId": "t8-vectors",
+                "transactionalId": "t8-vectors-txn",
+                "producerId": 0,
+                "producerEpoch": 2,
+                "groupId": "t8-vectors-group"
+            }
+        },
+        {
+            "id": "addoffsetstotxn.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the transaction coordinator: one error code for the whole request, because this api enrols exactly one partition.",
+            "hex": "0000000a000000ba000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 186,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        }
+    ]
+}

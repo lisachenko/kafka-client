@@ -17,13 +17,17 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * DeleteTopics, version 0: asks the controller to delete one or more topics (ApiKey 20, Kafka 0.10.1)
+ * DeleteTopics, version 1: asks the controller to delete one or more topics (ApiKey 20, Kafka 0.11)
  *
  * <pre>
- *   DeleteTopics Request (Version: 0) => [topics] timeout
+ *   DeleteTopics Request (Version: 0 and 1) => [topics] timeout
  *     topics  => STRING
  *     timeout => INT32
  * </pre>
+ *
+ * `DELETE_TOPICS_REQUEST_V1 = DELETE_TOPICS_REQUEST_V0` in `Protocol.java` @ 0.11.0.3: version 1 (KIP-124, Kafka
+ * 0.11) added the leading `throttle_time_ms` to the ANSWER alone ({@see DeleteTopicsResponse}), so
+ * {@see DeleteTopicsRequestV0} sends the same bytes.
  *
  * Like {@see CreateTopicsRequest} this is served by the ACTIVE CONTROLLER only, and every other broker answers each
  * topic of the request with the error code 41 (NotController) - with one exception that
@@ -41,7 +45,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * not know at all is answered with 3 (UnknownTopicOrPartition), and a broker that runs with
  * `delete.topic.enable=false` - the default of Kafka 0.10 - never carries the deletion out at all.
  *
- * @see docs/protocol/0.10.2.md, section "DeleteTopics API (key 20, v0)"
+ * @see docs/protocol/0.11.0.md, section "DeleteTopics API (key 20, v0 and v1)"
  */
 class DeleteTopicsRequest extends AbstractRequest
 {
@@ -53,7 +57,7 @@ class DeleteTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @param list<string> $topics        Names of the topics to delete

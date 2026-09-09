@@ -22,8 +22,13 @@ namespace Protocol\Kafka\Common\Record;
  * A record in Kafka is a key-value pair with a small amount of associated metadata.
  *
  * This is the class that the producer and the consumer of every protocol line deal in; the wire format of this line
- * is {@see Message}, wrapped into a {@see MessageSet}. A record carries no headers: those arrive with the message
- * format v2 in 0.11.
+ * is either a {@see Message} inside a {@see MessageSet} (the message formats v0 and v1) or a {@see RecordV2} inside
+ * a {@see RecordBatch} (the message format v2 of Kafka 0.11).
+ *
+ * The message format v2 gave a record **headers** (KIP-82), a list of key-value pairs of metadata next to the key
+ * and the value of the record. They are carried by a {@see RecordBatch} only: the message formats v0 and v1 have no
+ * place to put them, so {@see MessageSet::fromRecords()} silently ignores them, and a record read back from a
+ * message set - or from a v2 log that the broker down-converted for an old Fetch request - has none.
  *
  * Message format v1 (Kafka 0.10.0) gave every record a `$timestamp` and the {@see TimestampType} that says where it
  * comes from: the producer stamps the `CreateTime` of a record it sends, and a topic configured with
@@ -40,6 +45,7 @@ class Record
      * @param int|null    $offset     Offset in the log, filled in for a record that was read from a broker
      * @param int|null    $timestamp  Milliseconds since the epoch, null for a record without a timestamp
      * @param int         $timestampType One of the {@see TimestampType} constants, telling which clock stamped it
+     * @param list<Header> $headers      Headers of the record, only ever filled in the message format v2 (KIP-82)
      */
     public function __construct(
         public ?string $value = null,
@@ -48,6 +54,7 @@ class Record
         public ?int $offset = null,
         public ?int $timestamp = null,
         public int $timestampType = TimestampType::NO_TIMESTAMP_TYPE,
+        public array $headers = [],
     ) {}
 
     /**
@@ -78,5 +85,16 @@ class Record
         $stamped->timestampType = TimestampType::CREATE_TIME;
 
         return $stamped;
+    }
+
+    /**
+     * Returns the record with the given headers, which only a {@see RecordBatch} of the message format v2 carries
+     */
+    public function withHeaders(Header ...$headers): static
+    {
+        $result          = clone $this;
+        $result->headers = array_values($headers);
+
+        return $result;
     }
 }

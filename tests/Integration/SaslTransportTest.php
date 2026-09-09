@@ -33,8 +33,8 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
-use Protocol\Kafka\Protocol\Request\ProduceRequest;
-use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeRequest;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
@@ -49,7 +49,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * follow it, the ordinary traffic afterwards, and every way a broker can refuse - none of which carries an error
  * code before Kafka 1.0.
  *
- * @see docs/protocol/0.10.2.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
  */
 #[CoversClass(SocketStream::class)]
@@ -69,7 +69,7 @@ final class SaslTransportTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t8-sasl';
 
     /**
-     * Credentials of `docker/kafka-0.10.2.2/jaas.conf`
+     * Credentials of `docker/kafka-0.11.0.3/jaas.conf`
      */
     private const string USERNAME = 'kafkatest';
 
@@ -113,7 +113,9 @@ final class SaslTransportTest extends IntegrationTestCase
         $stream  = $this->connectWithSasl($listener);
         $records = [[null, 'authenticated'], ['key', 'with SASL/PLAIN']];
 
-        new ProduceRequest(
+        // The batch is a message set of the specification, which only a request below version 3 may carry: a
+        // Produce v3 accepts the message format v2 alone, see docs/protocol/0.11.0.md
+        new ProduceRequestV2(
             [$topic => [0 => SpecMessageSet::of($records)]],
             1,
             self::PRODUCE_TIMEOUT_MS,
@@ -121,7 +123,7 @@ final class SaslTransportTest extends IntegrationTestCase
             201
         )->writeTo($stream);
 
-        $produced = ProduceResponse::unpack($stream);
+        $produced = ProduceResponseV2::unpack($stream);
         self::assertSame(201, $produced->getCorrelationId());
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->errorCode);
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->baseOffset);
@@ -130,7 +132,7 @@ final class SaslTransportTest extends IntegrationTestCase
 
         $fetched   = FetchResponse::unpack($stream)->topics[$topic]->partitions[0];
         $delivered = [];
-        foreach ($fetched->getMessageSet()->getRecords() as $message) {
+        foreach ($fetched->getRecords()->getRecords() as $message) {
             $delivered[] = [$message->key, $message->value];
         }
 
@@ -216,7 +218,7 @@ final class SaslTransportTest extends IntegrationTestCase
         self::assertSame(SecurityProtocol::SASL_PLAINTEXT, $connection->getSecurityProtocol());
 
         // ... and that connection really answers, i.e. it was authenticated as well
-        new MetadataRequest([$topic], self::CLIENT_ID, 301)->writeTo($connection);
+        new MetadataRequest([$topic], true, self::CLIENT_ID, 301)->writeTo($connection);
         self::assertSame(301, MetadataResponse::unpack($connection)->getCorrelationId());
 
         // A connection for other credentials is a different connection, never the cached authenticated one
@@ -318,7 +320,7 @@ final class SaslTransportTest extends IntegrationTestCase
 
         $this->expectException(NetworkException::class);
 
-        new MetadataRequest([], self::CLIENT_ID, 421)->writeTo($stream);
+        new MetadataRequest([], true, self::CLIENT_ID, 421)->writeTo($stream);
         MetadataResponse::unpack($stream);
     }
 
@@ -422,7 +424,7 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     private static function saslBrokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-0.10.2.2/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-0.11.0.3/ssl/broker.crt';
     }
 
     /**
@@ -430,7 +432,7 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     private function requestClusterMetadata(Stream $stream, int $correlationId): MetadataResponse
     {
-        new MetadataRequest([], self::CLIENT_ID, $correlationId)->writeTo($stream);
+        new MetadataRequest([], true, self::CLIENT_ID, $correlationId)->writeTo($stream);
         $response = MetadataResponse::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());
 

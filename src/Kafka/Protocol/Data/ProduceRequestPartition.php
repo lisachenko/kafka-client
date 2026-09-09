@@ -24,16 +24,21 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Produce request Topic-Partition DTO
  *
  * <pre>
- *   Partition MessageSetSize MessageSet
- *     Partition      => int32
- *     MessageSetSize => int32
+ *   Partition RecordSetSize RecordSet
+ *     Partition     => int32
+ *     RecordSetSize => int32
  * </pre>
  *
- * A message set is a raw byte region, not a length-prefixed array of structures, therefore it travels as a BYTEARRAY
- * whose int32 length prefix is exactly the `MessageSetSize` field of the spec. This is the 0.8 counterpart of the
- * `recordBatch` field of the `main` branch.
+ * A record set is a raw byte region, not a length-prefixed array of structures, therefore it travels as a BYTEARRAY
+ * whose int32 length prefix is exactly the `MessageSetSize`/`RecordSetSize` field of the spec. Which message format
+ * those bytes are in is decided by the producer, not by the field: a version 3 request carries a
+ * {@see \Protocol\Kafka\Common\Record\RecordBatch} of the message format v2 here, a lower one a
+ * {@see \Protocol\Kafka\Common\Record\MessageSet} of the format v0 or v1, and
+ * {@see \Protocol\Kafka\Common\Record\MemoryRecords} wraps either of them. The property keeps the name
+ * `messageSet` of the lower protocol lines, whose vectors are replayed against this class.
  *
- * @see docs/protocol/0.10.2.md, sections "Produce API (key 0, v0, v1 and v2)" and "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, sections "Produce API (key 0, v0 to v3)", "MessageSet and Message" and
+ *      "RecordBatch (message format v2)"
  */
 class ProduceRequestPartition implements BinarySchemaInterface
 {
@@ -43,13 +48,13 @@ class ProduceRequestPartition implements BinarySchemaInterface
     public int $partition = 0;
 
     /**
-     * Encoded message set for this topic-partition.
+     * Encoded record set for this topic-partition.
      */
     public string $messageSet = '';
 
     /**
      * @param int                $partition  Number of the partition to produce to
-     * @param string|\Stringable $messageSet Encoded message set, typically a Common\Record\MessageSet instance
+     * @param string|\Stringable $messageSet Encoded record set, typically a Common\Record\MemoryRecords instance
      */
     public function __construct(int $partition = 0, string|\Stringable $messageSet = '')
     {

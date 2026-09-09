@@ -26,27 +26,34 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
 
 /**
- * Byte-exact tests for the Offsets (ListOffset) API, versions 0 and 1.
+ * Byte-exact tests for the Offsets (ListOffset) API, versions 0, 1 and 2.
  *
  * <pre>
  *   OffsetRequest v0  => ReplicaId [TopicName [Partition Time MaxNumberOfOffsets]]
  *   OffsetResponse v0 => [TopicName [Partition ErrorCode [Offset]]]
  *   ListOffsets Request  (Version: 1) => replica_id [topic [partition timestamp]]
  *   ListOffsets Response (Version: 1) => [topic [partition error_code timestamp offset]]
+ *   ListOffsets Request  (Version: 2) => replica_id isolation_level [topic [partition timestamp]]
+ *   ListOffsets Response (Version: 2) => throttle_time_ms [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
+ * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]
+#[CoversClass(OffsetsRequestV1::class)]
 #[CoversClass(OffsetsResponse::class)]
 #[CoversClass(OffsetsResponseV0::class)]
+#[CoversClass(OffsetsResponseV1::class)]
 #[CoversClass(OffsetsRequestTopic::class)]
 #[CoversClass(OffsetsRequestTopicV0::class)]
 #[CoversClass(OffsetsRequestPartition::class)]
@@ -58,20 +65,51 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 final class OffsetsApiTest extends TestCase
 {
     /**
-     * Offsets request v1 asking for the latest offset of "topic-0", client id "test", correlation id 7.
+     * Offsets request v2 asking for the latest offset of "topic-0", client id "test", correlation id 7.
      *
-     *   Size          => 00 00 00 2d (45 bytes)
-     *   ApiKey        => 00 02
-     *   ApiVersion    => 00 01
-     *   CorrelationId => 00 00 00 07
-     *   ClientId      => 00 04 "test"
-     *   ReplicaId     => ff ff ff ff (-1, an ordinary consumer)
-     *   [TopicName]   => 00 00 00 01, 00 05 "topic"
-     *     [Partition] => 00 00 00 01
-     *       Partition => 00 00 00 00
-     *       Timestamp => ff ff ff ff ff ff ff ff (-1, the latest offset)
+     *   Size            => 00 00 00 2e (46 bytes)
+     *   ApiKey          => 00 02
+     *   ApiVersion      => 00 02
+     *   CorrelationId   => 00 00 00 07
+     *   ClientId        => 00 04 "test"
+     *   ReplicaId       => ff ff ff ff (-1, an ordinary consumer)
+     *   IsolationLevel  => 00 (read_uncommitted)
+     *   [TopicName]     => 00 00 00 01, 00 05 "topic"
+     *     [Partition]   => 00 00 00 01
+     *       Partition   => 00 00 00 00
+     *       Timestamp   => ff ff ff ff ff ff ff ff (-1, the latest offset)
      */
-    private const string LATEST_REQUEST_HEX = '0000002d'
+    private const string LATEST_REQUEST_HEX = '0000002e'
+        . '0002'
+        . '0002'
+        . '00000007'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000001'
+        . '00000000' . 'ffffffffffffffff';
+
+    /**
+     * The same request with the isolation level `read_committed`, which asks for the last stable offset
+     */
+    private const string LATEST_COMMITTED_REQUEST_HEX = '0000002e'
+        . '0002'
+        . '0002'
+        . '00000007'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '01'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000001'
+        . '00000000' . 'ffffffffffffffff';
+
+    /**
+     * The same question as a version 1 frame, which has no isolation level at all
+     */
+    private const string LATEST_REQUEST_V1_HEX = '0000002d'
         . '0002'
         . '0001'
         . '00000007'
@@ -85,12 +123,13 @@ final class OffsetsApiTest extends TestCase
     /**
      * The same request asking for the earliest available offset: the timestamp is -2 instead of -1
      */
-    private const string EARLIEST_REQUEST_HEX = '0000002d'
+    private const string EARLIEST_REQUEST_HEX = '0000002e'
         . '0002'
-        . '0001'
+        . '0002'
         . '00000007'
         . '0004' . '74657374'
         . 'ffffffff'
+        . '00'
         . '00000001'
         . '0005' . '746f706963'
         . '00000001'
@@ -112,16 +151,28 @@ final class OffsetsApiTest extends TestCase
 
     public function testLatestOffsetRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new OffsetsRequest(['topic' => [0 => OffsetsRequest::LATEST]], -1, 'test', 7);
+        $request = new OffsetsRequest(
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7
+        );
 
         self::assertSame(self::LATEST_REQUEST_HEX, bin2hex((string) $request));
-        self::assertSame(45, $request->getMessageSize());
-        self::assertSame(1, $request->getApiVersion());
+        self::assertSame(46, $request->getMessageSize(), 'the isolation level of version 2 is one byte');
+        self::assertSame(2, $request->getApiVersion());
     }
 
     public function testEarliestOffsetRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new OffsetsRequest(['topic' => [0 => OffsetsRequest::EARLIEST]], -1, 'test', 7);
+        $request = new OffsetsRequest(
+            ['topic' => [0 => OffsetsRequest::EARLIEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7
+        );
 
         self::assertSame(self::EARLIEST_REQUEST_HEX, bin2hex((string) $request));
     }
@@ -150,11 +201,46 @@ final class OffsetsApiTest extends TestCase
             [new TopicPartition('topic', 0)],
             OffsetsRequest::EARLIEST,
             -1,
+            FetchRequest::READ_UNCOMMITTED,
             'test',
             7
         );
 
         self::assertSame(self::EARLIEST_REQUEST_HEX, bin2hex((string) $request));
+    }
+
+    public function testTheIsolationLevelIsTheByteBehindTheReplicaId(): void
+    {
+        $request = new OffsetsRequest(
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_COMMITTED,
+            'test',
+            7
+        );
+
+        self::assertSame(self::LATEST_COMMITTED_REQUEST_HEX, bin2hex((string) $request));
+        self::assertSame(0, FetchRequest::READ_UNCOMMITTED);
+        self::assertSame(1, FetchRequest::READ_COMMITTED);
+    }
+
+    public function testTheVersionOneRequestCarriesNoIsolationLevel(): void
+    {
+        $request = new OffsetsRequestV1(
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_COMMITTED,
+            'test',
+            7
+        );
+
+        self::assertSame(
+            self::LATEST_REQUEST_V1_HEX,
+            bin2hex((string) $request),
+            'the field arrived with version 2, so a version 1 frame is served as read_uncommitted'
+        );
+        self::assertSame(1, $request->getApiVersion());
+        self::assertArrayNotHasKey('isolationLevel', OffsetsRequestV1::getScheme());
     }
 
     public function testVersionZeroRequestAcceptsStructuredTopicPartitions(): void
@@ -163,6 +249,7 @@ final class OffsetsApiTest extends TestCase
             [new TopicPartition('topic', 0)],
             OffsetsRequest::LATEST,
             -1,
+            FetchRequest::READ_UNCOMMITTED,
             'test',
             7,
             1
@@ -176,14 +263,16 @@ final class OffsetsApiTest extends TestCase
         $request = new OffsetsRequest(
             ['topic' => [0 => OffsetsRequest::EARLIEST, 3 => 1451606400000]],
             -1,
+            FetchRequest::READ_UNCOMMITTED,
             'test',
             7
         );
 
         self::assertSame(
-            '00000039'
-            . '0002' . '0001' . '00000007' . '0004' . '74657374'
+            '0000003a'
+            . '0002' . '0002' . '00000007' . '0004' . '74657374'
             . 'ffffffff'
+            . '00'
             . '00000001'
             . '0005' . '746f706963'
             . '00000002'
@@ -198,7 +287,16 @@ final class OffsetsApiTest extends TestCase
         $scheme = OffsetsRequest::getScheme();
 
         self::assertSame(
-            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'topicPartitions'],
+            [
+                'messageSize',
+                'apiKey',
+                'apiVersion',
+                'correlationId',
+                'clientId',
+                'replicaId',
+                'isolationLevel',
+                'topicPartitions',
+            ],
             array_keys($scheme)
         );
         self::assertSame(['topic' => OffsetsRequestTopic::class], $scheme['topicPartitions']);
@@ -262,7 +360,7 @@ final class OffsetsApiTest extends TestCase
             . '0000000000000002'
         );
 
-        $response = OffsetsResponse::unpack(new StringStream($frame));
+        $response = OffsetsResponseV1::unpack(new StringStream($frame));
 
         self::assertSame(7, $response->getCorrelationId());
         self::assertSame(['topic'], array_keys($response->topics));
@@ -289,7 +387,7 @@ final class OffsetsApiTest extends TestCase
             . 'ffffffffffffffff'
         );
 
-        $partition = OffsetsResponse::unpack(new StringStream($frame))->topics['topic']->partitions[2];
+        $partition = OffsetsResponseV1::unpack(new StringStream($frame))->topics['topic']->partitions[2];
 
         self::assertSame(2, $partition->partition);
         self::assertSame(0, $partition->errorCode, 'nothing matched, and that is not an error');
@@ -312,7 +410,7 @@ final class OffsetsApiTest extends TestCase
             . 'ffffffffffffffff'
         );
 
-        $partition = OffsetsResponse::unpack(new StringStream($frame))->topics['topic']->partitions[2];
+        $partition = OffsetsResponseV1::unpack(new StringStream($frame))->topics['topic']->partitions[2];
 
         self::assertSame(43, $partition->errorCode);
         self::assertSame(-1, $partition->offset);

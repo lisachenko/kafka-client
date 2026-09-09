@@ -46,7 +46,11 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * was compressed with is announced by the three lowest bits of the Attributes byte, and in message format v1 the
  * offsets of the inner messages are relative to the offset of that wrapper message.
  *
- * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+ * Kafka 0.11 added a third format, the {@see RecordBatch} of the magic 2, which is not a message at all: a byte
+ * region that carries one is read by {@see MemoryRecords}, and a magic 2 arriving here is refused with a
+ * {@see CorruptMessageException} that says so.
+ *
+ * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
  * @see kafka/message/Message.scala @ 0.10.2.2
  */
 class Message implements BinarySchemaInterface, \Stringable
@@ -62,7 +66,12 @@ class Message implements BinarySchemaInterface, \Stringable
     public const int MAGIC_V1 = 1;
 
     /**
-     * Message format that this class describes, the highest one of this protocol line
+     * Message format v2, added by Kafka 0.11: a {@see RecordBatch}, which is not a message at all
+     */
+    public const int MAGIC_V2 = 2;
+
+    /**
+     * Message format that this class describes, the highest one that is a message rather than a record batch
      */
     public const int MAGIC = self::MAGIC_V1;
 
@@ -231,8 +240,15 @@ class Message implements BinarySchemaInterface, \Stringable
         return match ($magic) {
             self::MAGIC_V0 => MessageV0::class,
             self::MAGIC_V1 => self::class,
-            default        => throw new CorruptMessageException([
-                'error' => 'A message announces a message format that Kafka 0.10.2.2 does not know',
+            // The message format v2 is a RecordBatch, whose fields after the magic byte are not the ones of a
+            // message; a byte region that holds one is read by MemoryRecords, which dispatches on the magic itself
+            self::MAGIC_V2 => throw new CorruptMessageException([
+                'error' => 'A record batch of the message format v2 can not be read as a message, '
+                    . 'read the byte region with MemoryRecords instead of MessageSet',
+                'magic' => $magic,
+            ]),
+            default => throw new CorruptMessageException([
+                'error' => 'A message announces a message format that Kafka 0.11.0.3 does not know',
                 'magic' => $magic,
             ]),
         };

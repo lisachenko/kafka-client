@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
  *
  * Both versions of the request share this response: `ControlledShutdownResponse` @ 0.10.2.2 has no version of its own.
  *
- * @see docs/protocol/0.10.2.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
  */
 class ControlledShutdownResponse extends AbstractResponse
 {

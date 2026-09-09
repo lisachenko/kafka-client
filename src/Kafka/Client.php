@@ -20,10 +20,12 @@ namespace Protocol\Kafka;
 use Closure;
 use Exception;
 use Protocol\Kafka\Admin\NewTopic;
+use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
+use Protocol\Kafka\Common\Errors\DuplicateSequenceNumberException;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
@@ -34,8 +36,10 @@ use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
@@ -45,24 +49,40 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Network\RetryPolicy;
+use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
+use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
+use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponsePartition;
+use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
+use Protocol\Kafka\Protocol\Request\EndTxnRequest;
+use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
+use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
@@ -70,6 +90,7 @@ use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
@@ -77,18 +98,26 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 
 /**
- * Low-level client for the Kafka 0.10.2.2 protocol.
+ * Low-level client for the Kafka 0.11.0.3 protocol.
  *
- * Every api is sent with the highest version a 0.10.2.2 broker serves: Produce v2, whose answer carries the
- * `LogAppendTime` of every partition, Fetch v3, which asks for message format v1 and bounds the whole answer with
- * `fetch.max.bytes`, OffsetCommit v2 with its `retention_time`, and OffsetCommit v0 when the offsets are stored in
- * ZooKeeper. The lower version classes of those apis stay usable directly, for a client that has to talk to an
- * older broker.
+ * Every api is sent with the highest version a 0.11.0.3 broker serves: Produce v3, which carries a record batch of
+ * the message format v2 and the transactional id of its producer and whose answer reports the `LogAppendTime` and
+ * the `LogStartOffset` of every partition, Fetch v5, which asks for the log as it lies, bounds the whole answer
+ * with `fetch.max.bytes` and states the isolation level of the consumer, OffsetCommit v3 with its `retention_time`,
+ * and OffsetCommit v0 when the offsets are stored in ZooKeeper. The apis that KIP-124 raised go out with the
+ * version whose answer carries a `throttle_time_ms` - Metadata v4, Offsets v2, OffsetFetch v3, GroupCoordinator v1
+ * and the group membership apis one version up. The lower version classes of those apis stay usable directly, for a
+ * client that has to talk to an older broker - and `message.format.version` lowers the Produce request to v2 by
+ * itself, because a message set of the formats v0 and v1 has no place in a version 3 request.
  *
  * Every request that addresses topic-partitions is split by their current leader and sent to all of those brokers
  * at once; the answers are collected with `stream_select()` as they arrive. A topic-partition whose leader answered
@@ -97,7 +126,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/0.10.2.md
+ * @see docs/protocol/0.11.0.md
  */
 class Client
 {
@@ -121,9 +150,13 @@ class Client
      * Asks one broker which api keys and versions it serves (ApiKey 18, Kafka 0.10.0 and later)
      *
      * This is the answer to "what does the broker on the other side speak": the 0.8 and 0.9 lines of this client had
-     * to probe it by sending a request of every key and version, because the api did not exist yet. A 0.10.2.2
-     * broker reports the 21 keys 0 to 20 with the version ranges of the api-key table of the protocol document, and
+     * to probe it by sending a request of every key and version, because the api did not exist yet. A 0.11.0.3
+     * broker reports the 34 keys 0 to 33 with the version ranges of the api-key table of the protocol document, and
      * answers before any authentication has happened on a SASL listener.
+     *
+     * The request goes out as **version 1**, the version Kafka 0.11 added: its frame is the one of version 0 - the
+     * header and nothing else - and the answer gains a trailing `throttleTimeMs`, which is 0 without a
+     * `request_percentage` quota.
      *
      * The client itself does **not** negotiate with the answer - like the `0.9.x` line it sends the fixed versions
      * that a broker of its own Kafka release serves - so this is an api for callers that want to know what they are
@@ -131,8 +164,10 @@ class Client
      *
      * The request is the one frame of the protocol whose *unsupported version* is answered instead of costing the
      * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion) with an
-     * empty api array, which is reported here as it arrives and not raised as an exception - version 0 is the only
-     * version this client sends, so a 35 means the peer is older than Kafka 0.10.0.
+     * empty api array. That answer always arrives in the **version 0** layout, without the throttle time, so a peer
+     * older than Kafka 0.11 has to be asked with a {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0} and
+     * read with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0}; this line speaks to a 0.11.0.3
+     * broker, which serves both versions.
      *
      * @param Node $node Broker to ask; every broker of a cluster answers for itself
      *
@@ -154,13 +189,27 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as Produce v2, so every accepted partition carries two values the broker reported next
-     * to its base offset: the `logAppendTime` the broker stamped on the whole batch, which is -1 unless the topic
-     * is configured with `message.timestamp.type=LogAppendTime`, and the `throttleTimeMs` of the answer it arrived
-     * in, which is 0 without a `producer_byte_rate` quota.
+     * The request goes out as **Produce v3** for the message format v2 (`message.format.version=0.11.0`, the
+     * default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version 3 request
+     * has no place for. Every accepted partition carries two values the broker reported next to its base offset:
+     * the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured with
+     * `message.timestamp.type=LogAppendTime`, and the `throttleTimeMs` of the answer it arrived in, which is 0
+     * without a `producer_byte_rate` quota. Version 3 added no field to the answer at all - `PRODUCE_RESPONSE_V3`
+     * is `PRODUCE_RESPONSE_V2` in `Protocol.java` @ 0.11.0.3 - so the two classes read the same frame.
+     *
+     * An idempotent (or, from the ticket that adds them, a transactional) producer hands over its
+     * {@see TransactionManager}, which is the whole difference between "at least once" and "exactly once, in
+     * order": the batch of every topic-partition is then stamped with the producer id, the epoch and the sequence
+     * number that the manager keeps, the broker recognises a batch it has already appended and answers it with the
+     * offset of that append instead of writing it twice, and the answer moves the sequence numbers on. The three
+     * error codes of KIP-98 - 45, 46 and 47 - are reported to the manager, which decides whether the producer
+     * starts over with a new producer id or is finished for good; a partition that only failed with **46**
+     * (DuplicateSequenceNumber, "this batch is already in the log") counts as accepted, with an unknown offset.
      *
      * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
      *        each topic and partition
+     * @param TransactionManager|null $transactionManager Producer state of an idempotent producer, `null` for a
+     *        plain one, whose batches carry no producer id and are therefore not deduplicated by the broker
      *
      * @return array<string, array<int, ProduceResponsePartition>> Accepted partitions in the form
      *         [topic => [partition => ProduceResponsePartition]], empty for a fire-and-forget request (acks = 0),
@@ -168,10 +217,176 @@ class Client
      *
      * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
      * @throws InvalidConfigurationException  For a `compression.type` or a `message.format.version` that this client
-     *         can not write
+     *         can not write, and for a producer state next to an `acks` other than `all`
      */
-    public function produce(array $topicPartitionMessages): array
+    public function produce(array $topicPartitionMessages, ?TransactionManager $transactionManager = null): array
     {
+        if ($transactionManager === null) {
+            return $this->produceRecords($topicPartitionMessages);
+        }
+
+        // The sequence of a partition only moves on when the broker acknowledged the batch, so a request the
+        // broker does not answer would send every batch with the sequence 0 and lose all of them but the first
+        $acks = $this->configuration[ProducerConfig::ACKS] ?? ProducerConfig::ACKS_LEADER;
+        if (ProducerConfig::parseAcks($acks) !== ProducerConfig::ACKS_ALL) {
+            throw new InvalidConfigurationException(
+                'The delivery guarantee of KIP-98 needs acks = all: a batch whose acknowledgement is not waited '
+                . 'for can neither be deduplicated by the broker nor numbered by this producer'
+            );
+        }
+
+        // The number of records of every partition is what its sequence number moves on by, and an `iterable` can
+        // only be counted once it has been walked, so the batch is materialized before anything is sent
+        $records = [];
+        foreach ($topicPartitionMessages as $topic => $partitionMessages) {
+            foreach ($partitionMessages as $partition => $messages) {
+                $records[$topic][$partition] = self::toRecords($messages);
+            }
+        }
+
+        $producerIdAndEpoch = $transactionManager->maybeInitProducerId();
+        $baseSequences      = $transactionManager->baseSequences($records);
+
+        try {
+            $result = $this->produceRecords(
+                $records,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $baseSequences,
+                $transactionManager->getTransactionalId()
+            );
+        } catch (TopicPartitionRequestException $exception) {
+            $result = $exception->getPartialResult();
+            $errors = [];
+            foreach ($exception->getExceptions() as $topic => $partitionErrors) {
+                foreach ($partitionErrors as $partitionId => $error) {
+                    $topicPartition = new TopicPartition((string) $topic, (int) $partitionId);
+                    $recordCount    = count($records[$topic][$partitionId] ?? []);
+                    $transactionManager->batchFailed($topicPartition, $error, $recordCount, $producerIdAndEpoch);
+
+                    // "The broker received a duplicate sequence number" is not a failure: the batch is in the log
+                    // already, only the offset of that append is not in this answer
+                    if ($error instanceof DuplicateSequenceNumberException) {
+                        $result[$topic][$partitionId] = self::alreadyAppendedPartition((int) $partitionId);
+                        continue;
+                    }
+                    $errors[$topic][$partitionId] = $error;
+                }
+            }
+            if ($errors !== []) {
+                throw new TopicPartitionRequestException($result, $errors);
+            }
+
+            return $result;
+        }
+
+        foreach ($result as $topic => $partitions) {
+            foreach (array_keys($partitions) as $partitionId) {
+                $transactionManager->batchCompleted(
+                    new TopicPartition((string) $topic, (int) $partitionId),
+                    count($records[$topic][$partitionId] ?? []),
+                    $producerIdAndEpoch
+                );
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Asks a broker for a producer id and its epoch (ApiKey 22, Kafka 0.11, KIP-98)
+     *
+     * This is the first request of an idempotent and of a transactional producer, and the transactional id decides
+     * both what it means and **which broker has to answer it**:
+     *
+     * * with `null` - the idempotent producer - any broker of the cluster hands out the next producer id of the
+     *   block it reserved in ZooKeeper, with the epoch 0. Every call answers a new id, so a producer asks once and
+     *   keeps what it got until it is closed;
+     * * with a transactional id, the request goes to the **transaction coordinator** of that id, which
+     *   {@see Client::getTransactionCoordinator()} looks up: the answer is the producer id that
+     *   `__transaction_state` holds for the id, with an epoch that is one higher than the one the previous producer
+     *   of that id used, which fences that producer.
+     *
+     * The `transactionTimeoutMs` is what the coordinator waits for a status update of an open transaction before it
+     * aborts it, and it is only checked for a non-null id: above the broker's `transaction.max.timeout.ms` (900000
+     * by default) the answer is the error code 50 (InvalidTransactionTimeout), while a `null` transactional id is
+     * answered with a producer id whatever the value is.
+     *
+     * @param string|null $transactionalId      Transactional id of the producer, `null` for an idempotent one
+     * @param int         $transactionTimeoutMs `transaction.timeout.ms` of the producer, ignored without an id
+     *
+     * @throws Common\Errors\InvalidTxnTimeoutException For a timeout above `transaction.max.timeout.ms`
+     * @throws Common\Errors\InvalidRequestException    For the empty string as a transactional id
+     * @throws KafkaException                           For every other error code of the answer
+     */
+    public function initProducerId(
+        ?string $transactionalId = null,
+        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS
+    ): ProducerIdAndEpoch {
+        // A producer id without a transactional id is not coordinated by anything, so any broker may answer it
+        $node = $transactionalId === null
+            ? self::anyNodeOf($this->cluster)
+            : $this->getTransactionCoordinator($transactionalId);
+
+        return $this->coordinatorRequest(
+            $node,
+            fn(int $correlationId): InitProducerIdRequest => new InitProducerIdRequest(
+                $transactionalId,
+                $transactionTimeoutMs,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            InitProducerIdResponse::class,
+            static function (InitProducerIdResponse $response) use ($transactionalId): ProducerIdAndEpoch {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['transactionalId' => $transactionalId]
+                    );
+                }
+
+                return new ProducerIdAndEpoch($response->producerId, $response->producerEpoch);
+            }
+        );
+    }
+
+    /**
+     * Appends the records of a batch, with the producer state that an idempotent or transactional producer holds.
+     *
+     * This is the single place that turns records into the record sets of a Produce request, so that the
+     * bookkeeping of KIP-98 only has to fill in its four values instead of rebuilding the request: the producer id
+     * and the epoch that `InitProducerId` handed out, the sequence number each topic-partition continues at, and
+     * the transactional id the batch is written under. Their defaults - -1, -1, no sequence and `null` - are
+     * exactly what a plain producer sends, and a batch that carries none of them is not deduplicated by the broker.
+     *
+     * The sequence numbers are *per topic-partition*, because that is the space the broker deduplicates in
+     * (`ProducerStateManager` @ 0.11.0.3 keeps one sequence per producer **and** partition), so one call of this
+     * method needs one of them per partition it writes to.
+     *
+     * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
+     *        each topic and partition
+     * @param int                            $producerId      Producer id of the batch, -1 without one
+     * @param int                            $producerEpoch   Epoch of that producer, -1 without one
+     * @param array<string, array<int, int>> $baseSequences   Sequence number the batch of a topic-partition starts
+     *                                                        at, as topic => partition => sequence; a partition
+     *                                                        that is not listed is written without one
+     * @param string|null                    $transactionalId Transactional id of the producer, `null` outside of a
+     *                                                        transaction
+     *
+     * @return array<string, array<int, ProduceResponsePartition>> Accepted partitions in the form
+     *         [topic => [partition => ProduceResponsePartition]], empty for a fire-and-forget request (acks = 0)
+     *
+     * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
+     * @throws InvalidConfigurationException  For a `compression.type` or a `message.format.version` that this client
+     *         can not write, and for producer state that the configured message format has no place for
+     */
+    protected function produceRecords(
+        array $topicPartitionMessages,
+        int $producerId = RecordBatch::NO_PRODUCER_ID,
+        int $producerEpoch = RecordBatch::NO_PRODUCER_EPOCH,
+        array $baseSequences = [],
+        ?string $transactionalId = null
+    ): array {
         $requiredAcks = (int) $this->configuration[ProducerConfig::ACKS];
 
         // `compression.type` compresses a whole batch at once, so it is applied per topic-partition, not per record
@@ -180,42 +395,58 @@ class Client
         );
         // `message.format.version` decides which of the two message formats of this line the batch is written in
         $messageFormatMagic = ProducerConfig::messageFormatMagic(
-            $this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION] ?? ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0
+            $this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION] ?? ProducerConfig::MESSAGE_FORMAT_VERSION_0_11_0
         );
 
-        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.10.2.md
-        $topicPartitionMessageSets = [];
+        if ($messageFormatMagic < RecordBatch::MAGIC && $transactionalId !== null) {
+            throw new InvalidConfigurationException(
+                'A transactional producer needs the message format 0.11.0: the transactional id travels in a '
+                . 'Produce v3 request, which only carries a record batch of the message format v2'
+            );
+        }
+
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/0.11.0.md
+        $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
-                $topicPartitionMessageSets[$topic][$partition] = MessageSet::fromRecords(
+                $topicPartitionRecordSets[$topic][$partition] = self::toRecordSet(
                     self::toRecords($messages),
                     $compressionCodec,
-                    $messageFormatMagic
+                    $messageFormatMagic,
+                    $producerId,
+                    $producerEpoch,
+                    (int) ($baseSequences[$topic][$partition] ?? RecordBatch::NO_SEQUENCE),
+                    $transactionalId !== null
                 );
             }
         }
 
-        $createRequest = fn(array $nodeTopicPartitionMessageSets, int $correlationId): ProduceRequest
-            => new ProduceRequest(
-                $nodeTopicPartitionMessageSets,
+        // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the highest
+        // version that has no place for a transactional id
+        $requestClass  = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceRequest::class : ProduceRequestV2::class;
+        $createRequest = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
+            => new $requestClass(
+                $nodeTopicPartitionRecordSets,
                 $requiredAcks,
                 $this->configuration[ProducerConfig::TIMEOUT_MS],
                 $this->configuration[ProducerConfig::CLIENT_ID],
-                $correlationId
+                $correlationId,
+                $transactionalId
             );
+        $responseClass = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceResponse::class : ProduceResponseV2::class;
 
         // acks = 0 is the only request of the protocol that the broker does not answer, so nothing may be read back
         // from those connections, see ProduceRequest::expectsResponse()
         if ($requiredAcks === ProduceRequest::ACKS_NONE) {
-            $this->fireAndForget($topicPartitionMessageSets, $createRequest);
+            $this->fireAndForget($topicPartitionRecordSets, $createRequest);
 
             return [];
         }
 
         return $this->clusterRequest(
-            $topicPartitionMessageSets,
+            $topicPartitionRecordSets,
             $createRequest,
-            ProduceResponse::class,
+            $responseClass,
             static function (array $result, ProduceResponse $response, array &$errors): array {
                 foreach ($response->topics as $topic => $topicResult) {
                     /** @var ProduceResponsePartition[] $partitions */
@@ -273,16 +504,21 @@ class Client
      * which would turn a naive fetch loop into an endless one, see
      * {@see FetchedPartition::isSingleMessageTooLarge()}.
      *
-     * The request goes out as **Fetch v3**, which means three things:
+     * The request goes out as **Fetch v5**, which means four things:
      *
-     * * the message sets come back in the format the log holds them in - a broker converts them down to message
-     *   format v0 only for a request below version 2 - so the records carry the timestamps of format v1;
+     * * the record sets come back in the format the log holds them in - a broker converts them down to message
+     *   format v1 for a request below version 4 and to format v0 below version 2 - so the records carry their
+     *   headers, their timestamps and the producer state of the message format v2;
      * * the whole answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`.
      *   The broker fills the partitions **in the order of `$topicPartitionOffsets`** and stops once that budget is
      *   used up, so the partitions at the end of a large fetch come back empty; a caller that fetches more than one
      *   partition has to rotate their order between calls, as {@see \Protocol\Kafka\Consumer\KafkaConsumer} does;
      * * the first non-empty partition of the answer ignores both limits and carries at least one complete message,
-     *   so a partition can no longer be stuck on a message that is too large and this client never reports one.
+     *   so a partition can no longer be stuck on a message that is too large and this client never reports one;
+     * * every partition of the answer reports its `lastStableOffset`, its `logStartOffset` and the transactions
+     *   that were aborted in the range it covers, and the request states the `isolation.level` of the consumer -
+     *   `read_uncommitted` unless it is configured otherwise, which is what the broker answers a -1 last stable
+     *   offset and a `null` aborted-transactions array to.
      *
      * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
      * @param int                            $timeout               Timeout in ms to wait for fetching
@@ -295,7 +531,8 @@ class Client
     {
         $timeout = (int) min($this->configuration[ConsumerConfig::FETCH_MAX_WAIT_MS], $timeout);
         // A consumer that trusts its network may skip the checksum of every single message it reads
-        $checkCrcs = (bool) ($this->configuration[ConsumerConfig::CHECK_CRCS] ?? true);
+        $checkCrcs      = (bool) ($this->configuration[ConsumerConfig::CHECK_CRCS] ?? true);
+        $isolationLevel = $this->isolationLevel();
 
         return $this->clusterRequest(
             $topicPartitionOffsets,
@@ -307,7 +544,8 @@ class Client
                 -1,
                 $this->configuration[ConsumerConfig::CLIENT_ID],
                 $correlationId,
-                (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES] ?? FetchRequest::DEFAULT_MAX_BYTES)
+                (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES] ?? FetchRequest::DEFAULT_MAX_BYTES),
+                $isolationLevel
             ),
             FetchResponse::class,
             static function (array $result, FetchResponse $response, array &$errors) use (
@@ -326,10 +564,11 @@ class Client
                         }
                         $fetchOffset = (int) ($topicPartitionOffsets[$topic][$partitionId] ?? 0);
                         try {
-                            // The schema engine hands over the raw bytes of the message set, because the broker is
-                            // allowed to cut its last message short. The record layer decodes them, drops that
-                            // partial trailing message and unwraps a compressed set into the messages it holds.
-                            $messageSet = MessageSet::fromBuffer($responsePartition->messageSet ?? '', $checkCrcs);
+                            // The schema engine hands over the raw bytes of the record set, because the broker is
+                            // allowed to cut its last batch short. The record layer looks at the message format of
+                            // every batch, drops that partial trailing one, unwraps a compressed batch into the
+                            // records it holds and keeps the control markers of a transaction to itself.
+                            $records = MemoryRecords::fromBuffer($responsePartition->messageSet ?? '', $checkCrcs);
                         } catch (KafkaException $exception) {
                             // A corrupt message only spoils its own partition, the others are still readable
                             $errors[$topic][$partitionId] = $exception;
@@ -340,12 +579,15 @@ class Client
                             $fetchOffset,
                             $responsePartition->errorCode,
                             $responsePartition->highWaterMarkOffset,
-                            $messageSet,
+                            $records,
                             // From version 3 on the broker guarantees that the first non-empty partition of an
                             // answer holds a complete message, and an empty partition simply means that the
                             // `fetch.max.bytes` of the answer were used up by the ones in front of it
                             FetchRequest::VERSION < 3 && $responsePartition->isSingleMessageTooLarge($fetchOffset),
-                            $response->throttleTimeMs
+                            $response->throttleTimeMs,
+                            $responsePartition->lastStableOffset,
+                            $responsePartition->logStartOffset,
+                            $responsePartition->abortedTransactions
                         );
                     }
                 }
@@ -415,6 +657,7 @@ class Client
             fn(array $nodeTopicRequest, int $correlationId): OffsetsRequest => new OffsetsRequest(
                 $nodeTopicRequest,
                 OffsetsRequest::CONSUMER_REPLICA_ID,
+                $this->isolationLevel(),
                 $this->configuration[ConsumerConfig::CLIENT_ID],
                 $correlationId
             ),
@@ -445,12 +688,12 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option: version 2 stores the offsets in the
+     * The version of the request follows the `offsets.storage` option: version 3 stores the offsets in the
      * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group, version 0 stores
      * them in ZooKeeper and is answered by any broker. An offset may be given as a plain integer or as an
      * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch.
      *
-     * `$retentionTimeMs` is the `retention_time` field of the v2 request: with
+     * `$retentionTimeMs` is the `retention_time` field of the v2 request, which v3 sends unchanged: with
      * {@see OffsetCommitRequest::DEFAULT_RETENTION_TIME} the broker keeps the offsets for `offsets.retention.minutes`
      * counted from its receive time, any other value replaces that retention for this commit. The ZooKeeper version
      * has no such field and ignores it. A client that is not a member of a group commits with
@@ -494,7 +737,8 @@ class Client
                     $correlationId
                 )
                 : new OffsetCommitRequestV0($groupId, $topicPartitionOffsets, $clientId, $correlationId),
-            OffsetCommitResponse::class,
+            // The version 3 answer opens with the throttle time of KIP-124, which a version 0 one does not have
+            $this->isOffsetStorageKafka() ? OffsetCommitResponse::class : OffsetCommitResponseV0::class,
             static function (OffsetCommitResponse $response) use ($groupId): void {
                 foreach ($response->topics as $topic => $topicResponse) {
                     /** @var OffsetCommitResponsePartition $partition */
@@ -801,7 +1045,75 @@ class Client
      */
     public function getGroupCoordinator(string $groupId): Node
     {
-        return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinator($groupId);
+        return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinator(
+            $groupId,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP
+        );
+    }
+
+    /**
+     * Discovers the coordinator node of a transactional id (ApiKey 10 v1, `coordinator_type = 1`, Kafka 0.11)
+     *
+     * The transaction coordinator is the broker that owns the partition of the internal `__transaction_state` topic
+     * that the transactional id hashes to; it is the one that serves InitProducerId, AddPartitionsToTxn,
+     * AddOffsetsToTxn, EndTxn and TxnOffsetCommit for that producer, and it is looked up with the very same api as
+     * a group coordinator, only with {@see GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION}.
+     *
+     * **The first lookup of any transactional id creates `__transaction_state`**, exactly as the first group lookup
+     * creates `__consumer_offsets`, and is therefore answered with the error code 15
+     * (GroupCoordinatorNotAvailable) while that topic is being created; {@see CoordinatorLookup} retries it. The id
+     * itself is not created or registered by the lookup - the broker only hashes it onto a partition of that topic -
+     * so asking for an id that was never used is a legal question with a normal answer.
+     *
+     * @param string $transactionalId The `transactional.id` of the producer
+     *
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException If the coordinator did not become available
+     * @throws Common\Errors\InvalidRequestException If the broker refuses the coordinator type
+     */
+    public function getTransactionCoordinator(string $transactionalId): Node
+    {
+        return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinator(
+            $transactionalId,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION
+        );
+    }
+
+    /**
+     * Returns a broker of the cluster for a request that any of them may answer, e.g. an `InitProducerId` without
+     * a transactional id.
+     *
+     * The Java client picks its least loaded node here; this one has no in-flight bookkeeping to pick by and sends
+     * such a request to the **first broker of the cluster metadata**, deterministically. A broker that does not
+     * answer costs the request, which the caller repeats after a metadata refresh - a producer id is asked for
+     * once per session, so there is nothing to spread over the cluster.
+     *
+     * @throws NetworkException If the cluster metadata list no broker at all
+     */
+    private static function anyNodeOf(Cluster $cluster): Node
+    {
+        $nodes = $cluster->nodes();
+        if ($nodes === []) {
+            throw new NetworkException(['error' => 'The cluster metadata list no broker to send the request to']);
+        }
+
+        return $nodes[array_key_first($nodes)];
+    }
+
+    /**
+     * Builds the answer of a partition whose batch the broker reported as one it already holds (error code 46).
+     *
+     * The base offset of that append is not part of a DuplicateSequenceNumber answer - only the answer that a
+     * 0.11.0.3 broker really sends for a duplicate, the error code 0 with the original offset, carries it - so the
+     * partition is reported as accepted at an unknown offset, the -1 that every official client uses for it.
+     */
+    private static function alreadyAppendedPartition(int $partitionId): ProduceResponsePartition
+    {
+        $partitionResult             = new ProduceResponsePartition();
+        $partitionResult->partition  = $partitionId;
+        $partitionResult->errorCode  = KafkaException::NO_ERROR;
+        $partitionResult->baseOffset = -1;
+
+        return $partitionResult;
     }
 
     /**
@@ -844,7 +1156,74 @@ class Client
     }
 
     /**
-     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v2) instead of ZooKeeper (v0)
+     * Builds the byte region that one topic-partition of a Produce request carries, in the configured format.
+     *
+     * The message format v2 is a {@see RecordBatch} - one batch per topic-partition, compressed as a whole, with
+     * the producer state and the record headers in it - and the formats v0 and v1 are a {@see MessageSet}, which
+     * has no place for either and silently drops the headers of a record. {@see MemoryRecords} wraps both, so that
+     * the request does not have to know which of them it is sending.
+     *
+     * @param list<Record> $records          Records of this topic-partition, with their `CreateTime` timestamps
+     * @param int          $compressionCodec Codec that compresses the whole batch, {@see \Protocol\Kafka\Common\Record\CompressionCodec::NONE}
+     *                                       for an uncompressed one
+     * @param int          $messageFormatMagic Magic byte of the message format to write
+     * @param int          $producerId       Producer id of an idempotent producer, -1 without one
+     * @param int          $producerEpoch    Epoch of that producer, -1 without one
+     * @param int          $baseSequence     Sequence number of the first record, -1 without a producer id
+     * @param bool         $isTransactional  Whether the batch belongs to a transaction
+     */
+    private static function toRecordSet(
+        array $records,
+        int $compressionCodec,
+        int $messageFormatMagic,
+        int $producerId = RecordBatch::NO_PRODUCER_ID,
+        int $producerEpoch = RecordBatch::NO_PRODUCER_EPOCH,
+        int $baseSequence = RecordBatch::NO_SEQUENCE,
+        bool $isTransactional = false
+    ): MemoryRecords {
+        if ($messageFormatMagic >= RecordBatch::MAGIC) {
+            return MemoryRecords::fromRecordBatch(RecordBatch::fromRecords(
+                $records,
+                $compressionCodec,
+                0,
+                $producerId,
+                $producerEpoch,
+                $baseSequence,
+                $isTransactional
+            ));
+        }
+
+        return MemoryRecords::fromMessageSet(
+            MessageSet::fromRecords($records, $compressionCodec, $messageFormatMagic)
+        );
+    }
+
+    /**
+     * Returns the `isolation.level` that a Fetch and an Offsets request of this client state.
+     *
+     * The option is the one of the Java consumer ({@see ConsumerConfig::ISOLATION_LEVEL}) - the strings
+     * `read_uncommitted` and `read_committed`, or the wire value itself - and a client that does not configure it
+     * reads uncommitted, which is what every broker below 0.11 did and what the versions below 4 of the Fetch api
+     * do.
+     *
+     * The level travels in **both** apis on purpose: a `read_committed` consumer whose `endOffsets()` answered the
+     * high watermark would wait for records that it is never going to be shown, so version 2 of the Offsets api
+     * (KIP-98) carries the field as well and answers the last stable offset for `LATEST`.
+     */
+    private function isolationLevel(): int
+    {
+        $configured = $this->configuration[ConsumerConfig::ISOLATION_LEVEL] ?? FetchRequest::READ_UNCOMMITTED;
+        if (is_int($configured)) {
+            return $configured;
+        }
+
+        return strtolower(trim((string) $configured)) === ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED
+            ? FetchRequest::READ_COMMITTED
+            : FetchRequest::READ_UNCOMMITTED;
+    }
+
+    /**
+     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v3) instead of ZooKeeper (v0)
      */
     private function isOffsetStorageKafka(): bool
     {
@@ -1398,5 +1777,269 @@ class Client
         }
 
         return KafkaException::fromCode($errorCode, $context);
+    }
+
+    /**
+     * Deletes the records before an offset of each of the given partitions (ApiKey 21, Kafka 0.11, KIP-107)
+     *
+     * The api moves the **low watermark** (`logStartOffset`) of a partition forward and leaves the deletion of the
+     * segments below it to the log cleaner: everything BELOW the offset goes away, the record at the offset stays,
+     * and the answer reports the new low watermark of each partition. {@see RecordsToDelete::HIGH_WATERMARK} (-1)
+     * asks for everything that is fully replicated.
+     *
+     * Like Produce and Fetch this is served by the **leader** of each partition, so the request is split per leader
+     * by {@see self::clusterRequest()} and the partitions that a metadata refresh can fix - 3, 5, 6 and a dropped
+     * connection - are retried with the `retries` and `retry.backoff.ms` of {@see RetryPolicy}. A partition that
+     * still fails afterwards is reported in the {@see TopicPartitionRequestException} together with the partial
+     * result of the ones that succeeded, exactly like a produce or a fetch.
+     *
+     * @param array<string, array<int, int|RecordsToDelete>> $topicPartitionOffsets Offset to delete before, as
+     *        topic => partition => offset
+     * @param int $timeoutMs How long the leader waits for the new low watermark to be replicated, in milliseconds
+     *
+     * @return array<string, array<int, DeleteRecordsResponsePartition>> [topic => [partition => result]]
+     *
+     * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
+     */
+    public function deleteRecords(array $topicPartitionOffsets, int $timeoutMs = 30000): array
+    {
+        $partitionOffsets = [];
+        foreach ($topicPartitionOffsets as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $offset) {
+                $partitionOffsets[(string) $topic][(int) $partitionId] = $offset instanceof RecordsToDelete
+                    ? $offset->beforeOffset
+                    : (int) $offset;
+            }
+        }
+
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->clusterRequest(
+            $partitionOffsets,
+            fn(array $nodeTopicPartitions, int $correlationId): DeleteRecordsRequest => new DeleteRecordsRequest(
+                $nodeTopicPartitions,
+                $timeoutMs,
+                $clientId,
+                $correlationId
+            ),
+            DeleteRecordsResponse::class,
+            static function (array $result, DeleteRecordsResponse $response, array &$errors): array {
+                foreach ($response->topics as $topic => $topicResponse) {
+                    /** @var DeleteRecordsResponsePartition $partitionResult */
+                    foreach ($topicResponse->partitions as $partitionId => $partitionResult) {
+                        if ($partitionResult->errorCode !== KafkaException::NO_ERROR) {
+                            $errors[$topic][$partitionId] = KafkaException::fromCode(
+                                $partitionResult->errorCode,
+                                ['topic' => $topic, 'partitionId' => $partitionId]
+                            );
+                            continue;
+                        }
+                        $result[$topic][$partitionId] = $partitionResult;
+                    }
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Enrols topic-partitions into the open transaction of a producer (ApiKey 24, Kafka 0.11, KIP-98)
+     *
+     * The request goes to the **transaction coordinator** of the transactional id, and it has to be answered before
+     * the first Produce request that writes into one of those partitions: the coordinator keeps the list of
+     * partitions of a transaction and writes a control batch into every one of them when the transaction ends, so
+     * a partition that was never added would keep its records uncommitted forever. The first call of a transaction
+     * is also the one that *starts* it on the broker - the protocol has no "BeginTransaction" request.
+     *
+     * There is no top-level error code in the answer: a failure of the transaction itself - 47 for a fenced epoch,
+     * 48 for a state that may not add partitions, 49 for a producer id the coordinator does not hold, 51 while the
+     * previous transaction is still being completed - is repeated on every partition, so the first error code of
+     * the answer is the one that is reported here.
+     *
+     * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
+     * @param string             $transactionalId    `transactional.id` of the producer
+     * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
+     * @param array<string, list<int>> $topicPartitions Partitions to add, as topic => list of partition ids
+     *
+     * @throws KafkaException The error code of the first partition that was refused
+     */
+    public function addPartitionsToTxn(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        array $topicPartitions
+    ): void {
+        $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AddPartitionsToTxnRequest => new AddPartitionsToTxnRequest(
+                $transactionalId,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $topicPartitions,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            AddPartitionsToTxnResponse::class,
+            static function (AddPartitionsToTxnResponse $response) use ($transactionalId): void {
+                foreach ($response->errors as $topic => $topicErrors) {
+                    /** @var AddPartitionsToTxnResponsePartition $partitionError */
+                    foreach ($topicErrors->partitionErrors as $partitionId => $partitionError) {
+                        if ($partitionError->errorCode !== KafkaException::NO_ERROR) {
+                            throw KafkaException::fromCode($partitionError->errorCode, [
+                                'transactionalId' => $transactionalId,
+                                'topic'           => $topic,
+                                'partitionId'     => $partitionId,
+                            ]);
+                        }
+                    }
+                }
+            }
+        );
+    }
+
+    /**
+     * Enrols the offsets of a consumer group into the open transaction (ApiKey 25, Kafka 0.11, KIP-98)
+     *
+     * The first half of `sendOffsetsToTransaction()`: the request goes to the **transaction coordinator** and puts
+     * the partition of `__consumer_offsets` that the group hashes to on the list of partitions of the transaction,
+     * so that the commit marker reaches it as well. The offsets themselves travel in the
+     * {@see self::txnOffsetCommit()} that has to follow it, and that goes to the group coordinator instead.
+     *
+     * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
+     * @param string             $transactionalId    `transactional.id` of the producer
+     * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
+     * @param string             $groupId            Consumer group whose offsets become part of the transaction
+     *
+     * @throws KafkaException The error code of the answer
+     */
+    public function addOffsetsToTxn(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        string $groupId
+    ): void {
+        $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AddOffsetsToTxnRequest => new AddOffsetsToTxnRequest(
+                $transactionalId,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $groupId,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            AddOffsetsToTxnResponse::class,
+            static function (AddOffsetsToTxnResponse $response) use ($transactionalId, $groupId): void {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['transactionalId' => $transactionalId, 'groupId' => $groupId]
+                    );
+                }
+            }
+        );
+    }
+
+    /**
+     * Commits or aborts the open transaction of a producer (ApiKey 26, Kafka 0.11, KIP-98)
+     *
+     * The last request of a transaction, sent to the **transaction coordinator**. The answer means that the
+     * coordinator has *decided* the outcome and written it into `__transaction_state`, not that the control batches
+     * are in the partitions: those are written afterwards, with a `WriteTxnMarkers` request per partition leader, so
+     * a `read_committed` consumer sees the records of a committed transaction a moment after this call returns.
+     *
+     * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
+     * @param string             $transactionalId    `transactional.id` of the producer
+     * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
+     * @param bool               $transactionResult  {@see EndTxnRequest::COMMIT} or {@see EndTxnRequest::ABORT}
+     *
+     * @throws KafkaException The error code of the answer
+     */
+    public function endTxn(
+        Node $coordinatorNode,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        bool $transactionResult
+    ): void {
+        $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): EndTxnRequest => new EndTxnRequest(
+                $transactionalId,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $transactionResult,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            EndTxnResponse::class,
+            static function (EndTxnResponse $response) use ($transactionalId, $transactionResult): void {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode($response->errorCode, [
+                        'transactionalId'   => $transactionalId,
+                        'transactionResult' => $transactionResult ? 'commit' : 'abort',
+                    ]);
+                }
+            }
+        );
+    }
+
+    /**
+     * Commits consumer offsets inside the open transaction (ApiKey 28, Kafka 0.11, KIP-98)
+     *
+     * The second half of `sendOffsetsToTransaction()` and the only request of the transaction protocol that goes to
+     * the **group coordinator** ({@see self::getGroupCoordinator()}), because that is the broker which owns
+     * `__consumer_offsets`. It has to follow an {@see self::addOffsetsToTxn()} for the same group, otherwise the
+     * group coordinator answers 48 (`InvalidTxnState`) - a transactional write into a partition that is not part of
+     * an open transaction.
+     *
+     * The offsets it writes stay invisible to an OffsetFetch of the group until the transaction is committed; an
+     * aborted transaction leaves the group with the offsets it had before. As in
+     * {@see self::addPartitionsToTxn()} there is no top-level error code, so the first error code of the answer is
+     * the one that is reported here.
+     *
+     * @param Node               $coordinatorNode    **Group** coordinator of `$groupId`
+     * @param string             $transactionalId    `transactional.id` of the producer
+     * @param string             $groupId            Consumer group whose offsets are committed
+     * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
+     * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
+     *
+     * @throws KafkaException The error code of the first partition that was refused
+     */
+    public function txnOffsetCommit(
+        Node $coordinatorNode,
+        string $transactionalId,
+        string $groupId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        array $topicPartitionOffsets
+    ): void {
+        $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): TxnOffsetCommitRequest => new TxnOffsetCommitRequest(
+                $transactionalId,
+                $groupId,
+                $producerIdAndEpoch->producerId,
+                $producerIdAndEpoch->epoch,
+                $topicPartitionOffsets,
+                $this->configuration[ClientConfig::CLIENT_ID],
+                $correlationId
+            ),
+            TxnOffsetCommitResponse::class,
+            static function (TxnOffsetCommitResponse $response) use ($transactionalId, $groupId): void {
+                foreach ($response->topics as $topic => $topicResult) {
+                    /** @var TxnOffsetCommitResponsePartition $partitionResult */
+                    foreach ($topicResult->partitions as $partitionId => $partitionResult) {
+                        if ($partitionResult->errorCode !== KafkaException::NO_ERROR) {
+                            throw KafkaException::fromCode($partitionResult->errorCode, [
+                                'transactionalId' => $transactionalId,
+                                'groupId'         => $groupId,
+                                'topic'           => $topic,
+                                'partitionId'     => $partitionId,
+                            ]);
+                        }
+                    }
+                }
+            }
+        );
     }
 }

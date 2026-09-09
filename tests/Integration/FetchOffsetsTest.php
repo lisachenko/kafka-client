@@ -31,6 +31,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -45,7 +46,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The messages are produced with hand-written Produce v0 bytes, so that these tests only depend on the wire format
  * of the spec and not on the state of the other protocol classes.
  *
- * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 to v3)" and "Offsets API (key 2, v0 and v1),
+ * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v5)" and "Offsets API (key 2, v0 and v1),
  *      a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequestV1::class)]
@@ -247,7 +248,7 @@ final class FetchOffsetsTest extends IntegrationTestCase
         $topic  = $this->createTopic($stream, 't5-offsets-unknown');
 
         // The topic is created with 3 partitions, so partition 42 does not exist
-        new OffsetsRequest([$topic => [42 => OffsetsRequest::LATEST]], -1, self::CLIENT_ID, 21)->writeTo($stream);
+        new OffsetsRequest([$topic => [42 => OffsetsRequest::LATEST]], -1, FetchRequest::READ_UNCOMMITTED, self::CLIENT_ID, 21)->writeTo($stream);
         $response = OffsetsResponse::unpack($stream);
 
         self::assertSame(21, $response->getCorrelationId());
@@ -267,6 +268,7 @@ final class FetchOffsetsTest extends IntegrationTestCase
         new OffsetsRequest(
             [$topic => [0 => OffsetsRequest::LATEST, 1 => OffsetsRequest::LATEST, 2 => OffsetsRequest::LATEST]],
             -1,
+            FetchRequest::READ_UNCOMMITTED,
             self::CLIENT_ID,
             22
         )->writeTo($stream);
@@ -462,6 +464,7 @@ final class FetchOffsetsTest extends IntegrationTestCase
                 new OffsetsRequest(
                     [$topic => [self::PARTITION => $timestamp]],
                     -1,
+                    FetchRequest::READ_UNCOMMITTED,
                     self::CLIENT_ID,
                     12
                 )->writeTo($stream);

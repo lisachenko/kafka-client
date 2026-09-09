@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * only marked for deletion because the request carried a timeout of 0 with 7 (RequestTimedOut), and every topic of
  * the request with 41 (NotController) when the broker is not the active controller.
  *
- * @see docs/protocol/0.10.2.md, section "DeleteTopics API (key 20, v0)"
+ * @see docs/protocol/0.11.0.md, section "DeleteTopics API (key 20, v0 and v1)"
  */
 class DeleteTopicsResponseTopic implements BinarySchemaInterface
 {

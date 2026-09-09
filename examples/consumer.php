@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Consumes a topic of a Kafka 0.10.2.2 cluster with the partitions picked by hand, see {@see KafkaConsumer}.
+ * Consumes a topic of a Kafka 0.11.0.3 cluster with the partitions picked by hand, see {@see KafkaConsumer}.
  *
  * Start the broker of this repository and run the example against it:
  *
@@ -31,8 +31,8 @@ declare(strict_types=1);
 
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Errors\KafkaException;
-use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
 use Protocol\Kafka\Consumer\ConsumerConfig;
@@ -85,7 +85,7 @@ function awaitTopic(string $brokerAddress, string $topic, array $configuration):
 
     do {
         $stream = new SocketStream($brokerAddress, $configuration, 5.0);
-        new MetadataRequest([$topic], 'kafka-client-example', ++$attempt)->writeTo($stream);
+        new MetadataRequest([$topic], true, 'kafka-client-example', ++$attempt)->writeTo($stream);
         $metadata = MetadataResponse::unpack($stream)->topics[$topic] ?? null;
 
         $hasLeaders = $metadata !== null
@@ -111,16 +111,19 @@ function produceDemoRecords(string $brokerAddress, string $topic, array $configu
             sprintf('Hello from the example #%d, produced at %s', $index, date(DATE_ATOM)),
             'key-' . $index
         );
-        // Message format v1 (Kafka 0.10.0) carries a timestamp per record. KafkaProducer::send() stamps the create
-        // time of every record that has none; this example builds its own request, so it stamps them itself - a
-        // record without a timestamp is written with -1 and read back with `null` here.
+        // Every record carries a timestamp since message format v1 (Kafka 0.10.0). KafkaProducer::send() stamps the
+        // create time of every record that has none; this example builds its own request, so it stamps them itself -
+        // a record without a timestamp is written with -1 and read back with `null` here.
         $record->timestamp = (int) (microtime(true) * 1000);
         $records[]         = $record;
     }
 
+    // The record set of a Produce v3 request is a record batch of the message format v2, and nothing else: a
+    // 0.11.0.3 broker closes the connection on a version 3 request whose magic is below 2. Use ProduceRequestV2
+    // with a MessageSet to write the older formats.
     $stream = new SocketStream($brokerAddress, $configuration, 5.0);
     new ProduceRequest(
-        [$topic => [0 => MessageSet::fromRecords($records)]],
+        [$topic => [0 => RecordBatch::fromRecords($records)]],
         1,
         5000,
         'kafka-client-example',

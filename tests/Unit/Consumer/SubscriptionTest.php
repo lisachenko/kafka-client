@@ -23,7 +23,7 @@ use Protocol\Kafka\Consumer\Subscription;
  * The reference bytes of {@see testPacksTheMetadataThatTheJavaClientSends()} are the ones a Kafka 0.9.0.1 broker
  * relayed for a `kafka-console-consumer.sh --new-consumer` member, read back with a raw DescribeGroups v0 frame.
  *
- * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.11.0.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 #[CoversClass(Subscription::class)]
 final class SubscriptionTest extends TestCase

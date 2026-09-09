@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API, version 2
+ * The produce API, version 3
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -32,25 +32,35 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * time of the send the producer is free to fill in that field in any way it likes.
  *
  * <pre>
- *   ProduceRequest (Version: 2) => RequiredAcks Timeout [TopicName [Partition MessageSetSize MessageSet]]
- *     RequiredAcks => int16
- *     Timeout      => int32
+ *   ProduceRequest (Version: 3) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
+ *                                                                                   RecordSet]]
+ *     TransactionalId => nullable string
+ *     RequiredAcks    => int16
+ *     Timeout         => int32
  * </pre>
  *
- * The body of this request has not changed since version 0: `PRODUCE_REQUEST_V2` is `PRODUCE_REQUEST_V1` is
- * `PRODUCE_REQUEST_V0` in `Protocol.java` @ 0.10.2.2. What a version does select is the layout of the answer -
- * version 1 (Kafka 0.9) appended `ThrottleTime` to it and version 2 (Kafka 0.10.0) added the `LogAppendTime` of
- * every partition, see {@see ProduceResponse} - and, since Kafka 0.10.0, what the broker does with the message set
- * it is given: a version 2 request may carry message format v1, while a batch of a version 0 or 1 request is
- * expected to be message format v0. The broker converts either of them into the `message.format.version` of the
- * topic, so a magic 0 batch of a version 2 request is accepted and stored as v1 with the timestamp -1
- * (`Log.append` @ 0.10.2.2, verified against the broker).
+ * The body of this request did not change between the versions 0 and 2: `PRODUCE_REQUEST_V2` is
+ * `PRODUCE_REQUEST_V1` is `PRODUCE_REQUEST_V0` in `Protocol.java` @ 0.11.0.3, so up to version 2 a version only
+ * selects the layout of the answer - version 1 (Kafka 0.9) appended `ThrottleTime` to it, version 2 (Kafka 0.10.0)
+ * added the `LogAppendTime` of every partition, see {@see ProduceResponse} - and what the broker does with the
+ * record set it is given.
  *
- * {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower pairs available.
+ * **Version 3 (Kafka 0.11.0, KIP-98) is the first one that changed the request**: it prefixes the body with the
+ * nullable `TransactionalId` of the producer, and the record set of every partition is a **record batch of the
+ * message format v2** ({@see \Protocol\Kafka\Common\Record\RecordBatch}) instead of a message set. That batch is
+ * what carries the record headers, the producer id, the producer epoch and the sequence numbers of an idempotent
+ * or transactional producer, so none of them can travel below this version. The **answer** of version 3 is the
+ * answer of version 2, byte for byte, see {@see ProduceResponse}.
  *
- * The `TransactionalId` of the later protocol lines arrived with version 3 of this API (Kafka 0.11.0).
+ * {@see ProduceRequestV2}, {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with
+ * them the legacy message sets - available.
  *
- * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
+ * The broker does **not** check the message format against the api version: it stores whatever it is given in the
+ * `message.format.version` of the topic and converts the batch on append. What a version really states is what the
+ * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
+ * Fetch api that converts a log down for a client that asked with an older version.
+ *
+ * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -62,7 +72,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all
@@ -70,15 +80,16 @@ class ProduceRequest extends AbstractRequest
     public const int ACKS_NONE = 0;
 
     /**
-     * Message sets to append, indexed by the topic name
+     * Record sets to append, indexed by the topic name
      *
      * @var array<string, ProduceRequestTopic>
      */
     public array $topicMessages = [];
 
     /**
-     * @param array<string, array<int, string|\Stringable>> $topicMessages Encoded message sets in the format
-     *                                                                     topic => [partition => message set]
+     * @param array<string, array<int, string|\Stringable>> $topicPartitionRecords Encoded record sets in the format
+     *                              topic => [partition => record set]. A version 3 request carries a record batch
+     *                              of the message format v2 there, a lower one a message set of the format v0 or v1.
      * @param int    $requiredAcks  This field indicates how many acknowledgements the servers should receive before
      *                              responding to the request.
      *                              If it is 0 the server will not send any response
@@ -93,16 +104,24 @@ class ProduceRequest extends AbstractRequest
      * @param int    $correlationId Correlation request ID (will be returned in the response)
      */
     public function __construct(
-        array $topicMessages = [],
-        protected readonly int $requiredAcks = 1,
-        protected readonly int $timeout = 0,
+        array $topicPartitionRecords,
+        protected readonly int $requiredAcks,
+        protected readonly int $timeout,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Transactional id of the producer, `null` for everything that is not part of a transaction.
+         *
+         * The broker authorizes a transactional produce request on this id and refuses a batch whose
+         * `transactional` attribute bit is set without one; a plain or a merely idempotent producer leaves it null.
+         * The field exists since version 3 (Kafka 0.11.0, KIP-98).
+         */
+        protected readonly ?string $transactionalId = null
     ) {
-        foreach ($topicMessages as $topic => $partitionMessageSets) {
+        foreach ($topicPartitionRecords as $topic => $partitionRecordSets) {
             $partitions = [];
-            foreach ($partitionMessageSets as $partition => $messageSet) {
-                $partitions[$partition] = new ProduceRequestPartition($partition, $messageSet);
+            foreach ($partitionRecordSets as $partition => $recordSet) {
+                $partitions[$partition] = new ProduceRequestPartition($partition, $recordSet);
             }
 
             $this->topicMessages[$topic] = new ProduceRequestTopic((string) $topic, $partitions);
@@ -117,12 +136,15 @@ class ProduceRequest extends AbstractRequest
     public static function getScheme(): array
     {
         $header = parent::getScheme();
+        $body   = [];
+        if (static::VERSION >= 3) {
+            $body['transactionalId'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        $body['requiredAcks']  = BinarySchema::TYPE_INT16;
+        $body['timeout']       = BinarySchema::TYPE_INT32;
+        $body['topicMessages'] = ['topic' => ProduceRequestTopic::class];
 
-        return $header + [
-            'requiredAcks'  => BinarySchema::TYPE_INT16,
-            'timeout'       => BinarySchema::TYPE_INT32,
-            'topicMessages' => ['topic' => ProduceRequestTopic::class],
-        ];
+        return $header + $body;
     }
 
     /**
@@ -142,5 +164,13 @@ class ProduceRequest extends AbstractRequest
     public function getRequiredAcks(): int
     {
         return $this->requiredAcks;
+    }
+
+    /**
+     * Returns the transactional id this batch was sent under, `null` outside of a transaction
+     */
+    public function getTransactionalId(): ?string
+    {
+        return $this->transactionalId;
     }
 }

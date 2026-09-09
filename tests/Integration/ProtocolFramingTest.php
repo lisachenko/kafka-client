@@ -22,6 +22,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
+use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Tests\Fixture\ClusterMetadataResponse;
 
 /**
@@ -47,7 +48,7 @@ final class ProtocolFramingTest extends IntegrationTestCase
     public function testBrokerAnswersAMetadataRequestWithTheSameCorrelationId(): void
     {
         $stream = $this->connect();
-        new MetadataRequest([], 'kafka-client-t1', 4242)->writeTo($stream);
+        new MetadataRequest([], true, 'kafka-client-t1', 4242)->writeTo($stream);
 
         self::assertSame(4242, ClusterMetadataResponse::unpack($stream)->getCorrelationId());
     }
@@ -57,7 +58,7 @@ final class ProtocolFramingTest extends IntegrationTestCase
         $stream = $this->connect();
 
         foreach ([1, 2, 0, -1, 2147483647] as $correlationId) {
-            new MetadataRequest([], 'kafka-client-t1', $correlationId)->writeTo($stream);
+            new MetadataRequest([], true, 'kafka-client-t1', $correlationId)->writeTo($stream);
 
             self::assertSame($correlationId, ClusterMetadataResponse::unpack($stream)->getCorrelationId());
         }
@@ -77,9 +78,11 @@ final class ProtocolFramingTest extends IntegrationTestCase
     public function testBrokerListIsDecodedByTheSchemaEngine(): void
     {
         $stream = $this->connect();
-        new MetadataRequest([], 'kafka-client-t1', 1)->writeTo($stream);
+        new MetadataRequest([], true, 'kafka-client-t1', 1)->writeTo($stream);
 
-        $response = ClusterMetadataResponse::unpack($stream);
+        // The reduced ClusterMetadataResponse fixture reads the version 0 layout; a version 4 answer opens with
+        // the throttle time of KIP-124, so it has to be decoded with the real class
+        $response = MetadataResponse::unpack($stream);
 
         self::assertSame(1, $response->getCorrelationId());
         self::assertNotEmpty($response->brokers);
@@ -94,9 +97,9 @@ final class ProtocolFramingTest extends IntegrationTestCase
     {
         $topic  = self::uniqueTopicName('t1-framing');
         $stream = $this->connect();
-        new MetadataRequest([$topic], 'kafka-client-t1', 99)->writeTo($stream);
+        new MetadataRequest([$topic], true, 'kafka-client-t1', 99)->writeTo($stream);
 
-        $response = ClusterMetadataResponse::unpack($stream);
+        $response = MetadataResponse::unpack($stream);
 
         self::assertSame(99, $response->getCorrelationId());
         self::assertNotEmpty($response->brokers);
@@ -105,15 +108,16 @@ final class ProtocolFramingTest extends IntegrationTestCase
     /**
      * A frame the broker cannot parse ends the connection, and the client sees it as a dropped stream
      *
-     * The frame is a Metadata request with the version 3, which Kafka 0.11 has and 0.10.2.2 does not. It is built by
-     * hand, because the point is to send something the request classes of this branch deliberately cannot build.
-     * `RequestChannel.Request` @ 0.10.2.2 throws an `InvalidRequestException` for it and
-     * `SocketServer.processCompletedReceives` closes the channel, so the read of the response runs into the end of
-     * the stream instead of into a timeout - the 0.9.0.1 behaviour this replaces.
+     * The frame is a Metadata request with the version 5, which Kafka 1.0 has and 0.11.0.3 does not - a 0.11.0.3
+     * broker serves Metadata up to v4. It is built by hand, because the point is to send something the request
+     * classes of this branch deliberately cannot build. `RequestChannel.Request` @ 0.11.0.3 throws an
+     * `InvalidRequestException` for it and `SocketServer.processCompletedReceives` closes the channel, so the read
+     * of the response runs into the end of the stream instead of into a timeout - the 0.9.0.1 behaviour this
+     * replaces.
      */
     public function testAFrameTheBrokerCannotParseClosesTheConnection(): void
     {
-        $body   = pack('n', 3) . pack('n', 3) . pack('N', 4243) . pack('n', 0) . pack('N', -1);
+        $body   = pack('n', 3) . pack('n', 5) . pack('N', 4243) . pack('n', 0) . pack('N', -1);
         $stream = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 5000]);
         $stream->write('N', strlen($body));
         $stream->writeBuffer($body);
@@ -128,20 +132,20 @@ final class ProtocolFramingTest extends IntegrationTestCase
      */
     public function testTheNextConnectionIsAnsweredAfterTheBrokerClosedOne(): void
     {
-        $body   = pack('n', 3) . pack('n', 3) . pack('N', 4244) . pack('n', 0) . pack('N', -1);
+        $body   = pack('n', 3) . pack('n', 5) . pack('N', 4244) . pack('n', 0) . pack('N', -1);
         $broken = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 5000]);
         $broken->write('N', strlen($body));
         $broken->writeBuffer($body);
 
         try {
             ClusterMetadataResponse::unpack($broken);
-            self::fail('The broker has to close the connection for a Metadata v3 frame');
+            self::fail('The broker has to close the connection for a Metadata v5 frame');
         } catch (NetworkException) {
             // expected: the broker closed the socket
         }
 
         $stream = $this->connect();
-        new MetadataRequest([], 'kafka-client-t1', 4245)->writeTo($stream);
+        new MetadataRequest([], true, 'kafka-client-t1', 4245)->writeTo($stream);
 
         self::assertSame(4245, ClusterMetadataResponse::unpack($stream)->getCorrelationId());
     }

@@ -17,6 +17,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\NodeV0;
 use Protocol\Kafka\Common\PartitionMetadata;
@@ -26,22 +27,30 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV1;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV2;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the Metadata API v0, v1 and v2 against a real Kafka 0.10.2.2 broker.
+ * Verifies the Metadata API v0 to v4 against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
 #[CoversClass(MetadataRequestV1::class)]
+#[CoversClass(MetadataRequestV2::class)]
+#[CoversClass(MetadataRequestV3::class)]
 #[CoversClass(MetadataResponse::class)]
 #[CoversClass(MetadataResponseV0::class)]
 #[CoversClass(MetadataResponseV1::class)]
+#[CoversClass(MetadataResponseV2::class)]
+#[CoversClass(MetadataResponseV3::class)]
 #[CoversClass(Node::class)]
 #[CoversClass(NodeV0::class)]
 #[CoversClass(TopicMetadata::class)]
@@ -70,7 +79,7 @@ final class MetadataApiTest extends IntegrationTestCase
         $topic  = self::uniqueTopicName('t3-metadata');
         $stream = $this->connect();
 
-        new MetadataRequest([$topic], self::CLIENT_ID, 1)->writeTo($stream);
+        new MetadataRequest([$topic], true, self::CLIENT_ID, 1)->writeTo($stream);
         $response = MetadataResponse::unpack($stream);
 
         self::assertSame(1, $response->getCorrelationId());
@@ -179,6 +188,80 @@ final class MetadataApiTest extends IntegrationTestCase
         foreach ($response->brokers as $broker) {
             self::assertNull($broker->rack, 'the broker of the container declares no broker.rack');
         }
+    }
+
+    public function testVersionThreeIsTheVersionTwoAnswerBehindAThrottleTime(): void
+    {
+        $topic = self::uniqueTopicName('t3-metadata-v3');
+        $this->awaitTopicWithLeaders($topic);
+
+        $stream = $this->connect();
+        new MetadataRequestV3([$topic], self::CLIENT_ID, 30)->writeTo($stream);
+        $versionThree = MetadataResponseV3::unpack($stream);
+
+        new MetadataRequestV2([$topic], self::CLIENT_ID, 31)->writeTo($stream);
+        $versionTwo = MetadataResponseV2::unpack($stream);
+
+        self::assertSame(0, $versionThree->throttleTimeMs, 'the container sets no quota, so nothing is throttled');
+        self::assertSame($versionTwo->clusterId, $versionThree->clusterId);
+        self::assertSame($versionTwo->controllerId, $versionThree->controllerId);
+        self::assertSame(array_keys($versionTwo->topics), array_keys($versionThree->topics));
+        self::assertCount(3, $versionThree->topics[$topic]->partitions);
+    }
+
+    public function testVersionFourAnswersTheVerySameFrameAsVersionThree(): void
+    {
+        // METADATA_RESPONSE_V4 = METADATA_RESPONSE_V3 in Protocol.java @ 0.11.0.3: what version 4 added is the
+        // `allow_auto_topic_creation` of the REQUEST, so the two answers only differ in the correlation id
+        $topic = self::uniqueTopicName('t3-metadata-v4');
+        $this->awaitTopicWithLeaders($topic);
+
+        $stream = $this->connect();
+        new MetadataRequestV3([$topic], self::CLIENT_ID, 32)->writeTo($stream);
+        $versionThree = MetadataResponseV3::unpack($stream);
+
+        new MetadataRequest([$topic], true, self::CLIENT_ID, 32)->writeTo($stream);
+        $versionFour = MetadataResponse::unpack($stream);
+
+        self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
+        self::assertSame(0, $versionFour->throttleTimeMs);
+    }
+
+    public function testAVersionFourRequestWithoutAutoCreationDoesNotCreateTheTopic(): void
+    {
+        // Until version 4 a metadata request for a topic that does not exist CREATED it, because the container runs
+        // with the default auto.create.topics.enable=true. With `allow_auto_topic_creation = false` the broker
+        // answers the error code 3 instead and leaves the cluster alone - which is what makes describeTopics() a
+        // question rather than a side effect.
+        $absent = self::uniqueTopicName('t3-metadata-absent');
+
+        $stream = $this->connect();
+        new MetadataRequest([$absent], false, self::CLIENT_ID, 33)->writeTo($stream);
+        $refused = MetadataResponse::unpack($stream);
+
+        self::assertSame(
+            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+            $refused->topics[$absent]->topicErrorCode
+        );
+        self::assertSame([], $refused->topics[$absent]->partitions);
+
+        // ... and the cluster really does not have it: asking for every topic does not list it either
+        new MetadataRequest(null, false, self::CLIENT_ID, 34)->writeTo($stream);
+        self::assertArrayNotHasKey($absent, MetadataResponse::unpack($stream)->topics);
+
+        // The same request with the flag TRUE creates it, and that first answer is the code 5 without partitions
+        new MetadataRequest([$absent], true, self::CLIENT_ID, 35)->writeTo($stream);
+        $created = MetadataResponse::unpack($stream);
+
+        self::assertContains(
+            $created->topics[$absent]->topicErrorCode,
+            [KafkaException::NO_ERROR, KafkaException::LEADER_NOT_AVAILABLE],
+            'the topic springs into existence, with no leader elected yet'
+        );
+        self::assertNotSame(
+            KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+            $created->topics[$absent]->topicErrorCode
+        );
     }
 
     public function testVersionTwoAnswersAClusterIdThatEveryRequestRepeats(): void
@@ -334,7 +417,7 @@ final class MetadataApiTest extends IntegrationTestCase
     private function requestMetadata(?array $topics, int $correlationId): MetadataResponse
     {
         $stream = $this->connect();
-        new MetadataRequest($topics, self::CLIENT_ID, $correlationId)->writeTo($stream);
+        new MetadataRequest($topics, true, self::CLIENT_ID, $correlationId)->writeTo($stream);
 
         $response = MetadataResponse::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());

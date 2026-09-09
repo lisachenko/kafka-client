@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Tests\Unit\Protocol;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Tests\Fixture\BrokerRecord;
@@ -23,7 +24,7 @@ use Protocol\Kafka\Tests\Fixture\BrokerRecord;
 /**
  * Byte-exact tests for the schema engine and the protocol primitive types.
  *
- * @see docs/protocol/0.10.2.md, section "Protocol primitive types"
+ * @see docs/protocol/0.11.0.md, section "Protocol primitive types"
  */
 #[CoversClass(BinarySchema::class)]
 final class BinarySchemaTest extends TestCase
@@ -48,6 +49,17 @@ final class BinarySchemaTest extends TestCase
             'string empty'   => [BinarySchema::TYPE_STRING, ''],
             'bytearray'      => [BinarySchema::TYPE_BYTEARRAY, "\x01\x02\x03"],
             'bytearray null' => [BinarySchema::TYPE_BYTEARRAY, null],
+            'varint'         => [BinarySchema::TYPE_VARINT_ZIGZAG, 300],
+            'varint negative' => [BinarySchema::TYPE_VARINT_ZIGZAG, -300],
+            'varint int32 max' => [BinarySchema::TYPE_VARINT_ZIGZAG, 2147483647],
+            'varint int32 min' => [BinarySchema::TYPE_VARINT_ZIGZAG, -2147483648],
+            'varlong'        => [BinarySchema::TYPE_VARLONG_ZIGZAG, 1_500_000_000_000],
+            'varlong negative' => [BinarySchema::TYPE_VARLONG_ZIGZAG, -1_500_000_000_000],
+            'varlong max'    => [BinarySchema::TYPE_VARLONG_ZIGZAG, PHP_INT_MAX],
+            'varlong min'    => [BinarySchema::TYPE_VARLONG_ZIGZAG, PHP_INT_MIN],
+            'varchar zigzag' => [BinarySchema::TYPE_VARCHAR_ZIGZAG, "\x01\x02\x03"],
+            'varchar zigzag null' => [BinarySchema::TYPE_VARCHAR_ZIGZAG, null],
+            'varchar zigzag empty' => [BinarySchema::TYPE_VARCHAR_ZIGZAG, ''],
         ];
     }
 
@@ -92,6 +104,29 @@ final class BinarySchemaTest extends TestCase
         yield 'bytes empty'        => [BinarySchema::TYPE_BYTEARRAY, '', '00000000'];
         yield 'bytes value'        => [BinarySchema::TYPE_BYTEARRAY, "\xDE\xAD\xBE\xEF", '00000004deadbeef'];
         yield 'bytes null'         => [BinarySchema::TYPE_BYTEARRAY, null, 'ffffffff'];
+
+        // Zigzag varints of the 0.11 record format: `ByteUtils.writeVarint` @ 0.11.0.3, low 7-bit group first
+        yield 'varint zero'        => [BinarySchema::TYPE_VARINT_ZIGZAG, 0, '00'];
+        yield 'varint minus one'   => [BinarySchema::TYPE_VARINT_ZIGZAG, -1, '01'];
+        yield 'varint one'         => [BinarySchema::TYPE_VARINT_ZIGZAG, 1, '02'];
+        yield 'varint 63'          => [BinarySchema::TYPE_VARINT_ZIGZAG, 63, '7e'];
+        yield 'varint minus 64'    => [BinarySchema::TYPE_VARINT_ZIGZAG, -64, '7f'];
+        yield 'varint 64'          => [BinarySchema::TYPE_VARINT_ZIGZAG, 64, '8001'];
+        yield 'varint minus 65'    => [BinarySchema::TYPE_VARINT_ZIGZAG, -65, '8101'];
+        yield 'varint 300'         => [BinarySchema::TYPE_VARINT_ZIGZAG, 300, 'd804'];
+        yield 'varint int32 max'   => [BinarySchema::TYPE_VARINT_ZIGZAG, 2147483647, 'feffffff0f'];
+        yield 'varint int32 min'   => [BinarySchema::TYPE_VARINT_ZIGZAG, -2147483648, 'ffffffff0f'];
+
+        yield 'varlong zero'       => [BinarySchema::TYPE_VARLONG_ZIGZAG, 0, '00'];
+        yield 'varlong minus one'  => [BinarySchema::TYPE_VARLONG_ZIGZAG, -1, '01'];
+        yield 'varlong 300'        => [BinarySchema::TYPE_VARLONG_ZIGZAG, 300, 'd804'];
+        yield 'varlong 2^31'       => [BinarySchema::TYPE_VARLONG_ZIGZAG, 2147483648, '8080808010'];
+        yield 'varlong max'        => [BinarySchema::TYPE_VARLONG_ZIGZAG, PHP_INT_MAX, 'feffffffffffffffff01'];
+        yield 'varlong min'        => [BinarySchema::TYPE_VARLONG_ZIGZAG, PHP_INT_MIN, 'ffffffffffffffffff01'];
+
+        yield 'varint bytes null'  => [BinarySchema::TYPE_VARCHAR_ZIGZAG, null, '01'];
+        yield 'varchar zigzag empty' => [BinarySchema::TYPE_VARCHAR_ZIGZAG, '', '00'];
+        yield 'varint bytes value' => [BinarySchema::TYPE_VARCHAR_ZIGZAG, "\xDE\xAD\xBE\xEF", '08deadbeef'];
     }
 
     #[DataProvider('primitiveTypeProvider')]
@@ -212,6 +247,45 @@ final class BinarySchemaTest extends TestCase
         self::assertSame('ffffffff', bin2hex($stream->getBuffer()));
         self::assertNull(BinarySchema::readSingleType($scheme, new StringStream($stream->getBuffer())));
         self::assertSame(4, BinarySchema::getSingleTypeSize($scheme, null));
+    }
+
+    public function testVarintCountedArrayIsPrefixedWithAZigzagVarint(): void
+    {
+        $scheme = [BinarySchema::TYPE_INT8, BinarySchema::FLAG_VARARRAY => true];
+        $stream = new StringStream();
+
+        BinarySchema::writeSingleType($scheme, [1, 2, 3], $stream);
+
+        self::assertSame('06010203', bin2hex($stream->getBuffer()));
+        self::assertSame(4, BinarySchema::getSingleTypeSize($scheme, [1, 2, 3]));
+        self::assertSame([1, 2, 3], BinarySchema::readSingleType($scheme, new StringStream("\x06\x01\x02\x03")));
+    }
+
+    public function testNullableVarintCountedArrayRoundTripsNull(): void
+    {
+        $scheme = [BinarySchema::TYPE_INT8, BinarySchema::FLAG_VARARRAY => true, BinarySchema::FLAG_NULLABLE => true];
+        $stream = new StringStream();
+
+        BinarySchema::writeSingleType($scheme, null, $stream);
+
+        self::assertSame('01', bin2hex($stream->getBuffer()));
+        self::assertNull(BinarySchema::readSingleType($scheme, new StringStream("\x01")));
+    }
+
+    public function testVarintLongerThanFiveBytesIsRejected(): void
+    {
+        $this->expectException(NetworkException::class);
+        $this->expectExceptionMessage('longer than its type allows');
+
+        BinarySchema::readSingleType(BinarySchema::TYPE_VARINT_ZIGZAG, new StringStream("\xff\xff\xff\xff\xff\x01"));
+    }
+
+    public function testVarlongLongerThanTenBytesIsRejected(): void
+    {
+        $this->expectException(NetworkException::class);
+        $this->expectExceptionMessage('longer than its type allows');
+
+        BinarySchema::readSingleType(BinarySchema::TYPE_VARLONG_ZIGZAG, new StringStream(str_repeat("\xff", 10) . "\x01"));
     }
 
     public function testNotNullableArrayRejectsNull(): void
