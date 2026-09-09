@@ -18,12 +18,13 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol;
 
 /**
- * Numeric codes that the ApiKey in the request can take, as of Kafka 0.9.0.1.
+ * Numeric codes that the ApiKey in the request can take, as of Kafka 0.10.2.2.
  *
- * The list mirrors kafka/api/RequestKeys.scala @ 0.9.0.1 and stops at key 16: SaslHandshake (17) and ApiVersions (18)
- * arrived with Kafka 0.10, and everything above them is later still. A 0.9.0.1 broker does not answer a request with
- * an api key it does not know and does not close the connection either - it logs "Processor got uncaught exception"
- * and drops the request silently, so a client that sends one waits for its own timeout.
+ * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 0.10.2.2 and stops at key 20: SaslHandshake (17) and
+ * ApiVersions (18) arrived with Kafka 0.10.0, CreateTopics (19) and DeleteTopics (20) with 0.10.1, and everything
+ * above them (DeleteRecords 21, the transactional apis...) is Kafka 0.11. A 0.10 broker answers an ApiVersions
+ * request with the keys and versions it serves; a request with a key or version it cannot parse closes the
+ * connection (kafka.network.Processor: "Closing socket for ... because of error"), where 0.9 dropped it silently.
  */
 class ApiKeys
 {
@@ -50,4 +51,8 @@ class ApiKeys
     public const SYNC_GROUP          = 14;
     public const DESCRIBE_GROUPS     = 15;
     public const LIST_GROUPS         = 16;
+    public const SASL_HANDSHAKE      = 17;
+    public const API_VERSIONS        = 18;
+    public const CREATE_TOPICS       = 19;
+    public const DELETE_TOPICS       = 20;
 }

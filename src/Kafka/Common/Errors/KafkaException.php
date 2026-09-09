@@ -65,6 +65,19 @@ abstract class KafkaException extends RuntimeException
     public const TOPIC_AUTHORIZATION_FAILED       = 29;
     public const GROUP_AUTHORIZATION_FAILED       = 30;
     public const CLUSTER_AUTHORIZATION_FAILED     = 31;
+    public const INVALID_TIMESTAMP                  = 32;
+    public const UNSUPPORTED_SASL_MECHANISM         = 33;
+    public const ILLEGAL_SASL_STATE                 = 34;
+    public const UNSUPPORTED_VERSION                = 35;
+    public const TOPIC_ALREADY_EXISTS               = 36;
+    public const INVALID_PARTITIONS                 = 37;
+    public const INVALID_REPLICATION_FACTOR         = 38;
+    public const INVALID_REPLICA_ASSIGNMENT         = 39;
+    public const INVALID_CONFIG                     = 40;
+    public const NOT_CONTROLLER                     = 41;
+    public const INVALID_REQUEST                    = 42;
+    public const UNSUPPORTED_FOR_MESSAGE_FORMAT     = 43;
+    public const POLICY_VIOLATION                   = 44;
 
     /**
      * Mapping from the codes to class names
@@ -104,6 +117,19 @@ abstract class KafkaException extends RuntimeException
         self::TOPIC_AUTHORIZATION_FAILED       => TopicAuthorizationFailedException::class,
         self::GROUP_AUTHORIZATION_FAILED       => GroupAuthorizationFailedException::class,
         self::CLUSTER_AUTHORIZATION_FAILED     => ClusterAuthorizationFailedException::class,
+        self::INVALID_TIMESTAMP                  => InvalidTimestampException::class,
+        self::UNSUPPORTED_SASL_MECHANISM         => UnsupportedSaslMechanismException::class,
+        self::ILLEGAL_SASL_STATE                 => IllegalSaslStateException::class,
+        self::UNSUPPORTED_VERSION                => UnsupportedVersionException::class,
+        self::TOPIC_ALREADY_EXISTS               => TopicExistsException::class,
+        self::INVALID_PARTITIONS                 => InvalidPartitionsException::class,
+        self::INVALID_REPLICATION_FACTOR         => InvalidReplicationFactorException::class,
+        self::INVALID_REPLICA_ASSIGNMENT         => InvalidReplicaAssignmentException::class,
+        self::INVALID_CONFIG                     => InvalidConfigException::class,
+        self::NOT_CONTROLLER                     => NotControllerException::class,
+        self::INVALID_REQUEST                    => InvalidRequestException::class,
+        self::UNSUPPORTED_FOR_MESSAGE_FORMAT     => UnsupportedForMessageFormatException::class,
+        self::POLICY_VIOLATION                   => PolicyViolationException::class,
     ];
 
     /**

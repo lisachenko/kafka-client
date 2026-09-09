@@ -24,23 +24,32 @@ use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
+use Protocol\Kafka\Common\Errors\IllegalSaslStateException;
 use Protocol\Kafka\Common\Errors\InconsistentGroupProtocolException;
 use Protocol\Kafka\Common\Errors\InvalidCommitOffsetSizeException;
+use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidFetchSizeException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
+use Protocol\Kafka\Common\Errors\InvalidPartitionsException;
+use Protocol\Kafka\Common\Errors\InvalidReplicaAssignmentException;
+use Protocol\Kafka\Common\Errors\InvalidReplicationFactorException;
+use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\InvalidRequiredAcksException;
 use Protocol\Kafka\Common\Errors\InvalidSessionTimeoutException;
+use Protocol\Kafka\Common\Errors\InvalidTimestampException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\LeaderNotAvailableException;
 use Protocol\Kafka\Common\Errors\MessageTooLargeException;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\NotEnoughReplicasAfterAppendException;
 use Protocol\Kafka\Common\Errors\NotEnoughReplicasException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OffsetMetadataTooLargeException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
+use Protocol\Kafka\Common\Errors\PolicyViolationException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\RecordListTooLargeException;
 use Protocol\Kafka\Common\Errors\ReplicaNotAvailableException;
@@ -49,20 +58,25 @@ use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\Errors\ServerExceptionInterface;
 use Protocol\Kafka\Common\Errors\StaleControllerEpochException;
 use Protocol\Kafka\Common\Errors\TopicAuthorizationFailedException;
+use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
+use Protocol\Kafka\Common\Errors\UnsupportedSaslMechanismException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use RuntimeException;
 
 /**
  * Verifies that the error codes of this branch are exactly the ones of Kafka 0.9.0.1.
  *
- * The codes mirror clients/src/main/java/org/apache/kafka/common/protocol/Errors.java at tag 0.9.0.1, which is the
- * first release that carries the whole mapping in the Java client; the names of the codes 14-16 and 22-25 still
+ * The codes -1 to 31 mirror clients/src/main/java/org/apache/kafka/common/protocol/Errors.java at tag 0.9.0.1, which is
+ * the first release that carries the whole mapping in the Java client; the names of the codes 14-16 and 22-25 still
  * speak of *consumers* in kafka/common/ErrorMapping.scala. The class names are those of the later protocol lines
  * (branch main) so that the cascade merge stays small, and the retriable flags follow the RetriableException
  * hierarchy of the Java client of 0.9.0.1 (InvalidMetadataException extends RetriableException, so the codes 3, 5,
- * 6 and 13 are retriable; none of the codes 21-31 is).
+ * 6 and 13 are retriable; none of the codes 21-31 is). The codes 32-44 are those of Kafka 0.10.0 to 0.10.2
+ * (Errors.java @ 0.10.2.2); of them only 41 NotController is retriable.
  */
 #[CoversClass(KafkaException::class)]
 final class KafkaExceptionTest extends TestCase
@@ -107,6 +121,19 @@ final class KafkaExceptionTest extends TestCase
             'TopicAuthorizationFailed'       => [29, TopicAuthorizationFailedException::class, false],
             'GroupAuthorizationFailed'       => [30, GroupAuthorizationFailedException::class, false],
             'ClusterAuthorizationFailed'     => [31, ClusterAuthorizationFailedException::class, false],
+            'InvalidTimestamp'              => [32, InvalidTimestampException::class, false],
+            'UnsupportedSaslMechanism'      => [33, UnsupportedSaslMechanismException::class, false],
+            'IllegalSaslState'              => [34, IllegalSaslStateException::class, false],
+            'UnsupportedVersion'            => [35, UnsupportedVersionException::class, false],
+            'TopicExists'                   => [36, TopicExistsException::class, false],
+            'InvalidPartitions'             => [37, InvalidPartitionsException::class, false],
+            'InvalidReplicationFactor'      => [38, InvalidReplicationFactorException::class, false],
+            'InvalidReplicaAssignment'      => [39, InvalidReplicaAssignmentException::class, false],
+            'InvalidConfig'                 => [40, InvalidConfigException::class, false],
+            'NotController'                 => [41, NotControllerException::class, true],
+            'InvalidRequest'                => [42, InvalidRequestException::class, false],
+            'UnsupportedForMessageFormat'   => [43, UnsupportedForMessageFormatException::class, false],
+            'PolicyViolation'               => [44, PolicyViolationException::class, false],
         ];
     }
 
@@ -160,7 +187,7 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Codes above 31 were introduced by Kafka 0.10 and later, a 0.9.0.1 broker never sends them
+     * Codes above 44 were introduced by Kafka 0.11 and later, a 0.10.2.2 broker never sends them
      *
      * @return array<string, array{int}>
      */
@@ -168,10 +195,8 @@ final class KafkaExceptionTest extends TestCase
     {
         return [
             'NoError'                       => [0],
-            'InvalidTimestamp (32)'         => [32],
-            'UnsupportedSaslMechanism (33)' => [33],
-            'IllegalSaslState (34)'         => [34],
-            'UnsupportedVersion (35)'       => [35],
+            'InvalidTransactionTimeout (45)' => [45],
+            'ConcurrentTransactions (51)'    => [51],
             'out of range'                  => [4242],
             'negative out of range'         => [-999],
         ];
@@ -199,9 +224,9 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Guards against a post-0.9 error class sneaking back into the mapping
+     * Guards against a post-0.10 error class sneaking into the mapping
      */
-    public function testOnlyTheErrorCodesOfKafka0901AreMapped(): void
+    public function testOnlyTheErrorCodesOfKafka01022AreMapped(): void
     {
         $mappedCodes = [];
         foreach (range(-10, 60) as $errorCode) {
@@ -211,7 +236,7 @@ final class KafkaExceptionTest extends TestCase
             }
         }
 
-        self::assertSame(array_merge([-1], range(1, 31)), $mappedCodes);
+        self::assertSame(array_merge([-1], range(1, 44)), $mappedCodes);
     }
 
     /**

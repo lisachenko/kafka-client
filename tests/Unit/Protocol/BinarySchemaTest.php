@@ -34,6 +34,8 @@ final class BinarySchemaTest extends TestCase
     public static function primitiveTypeProvider(): array
     {
         return [
+            'boolean true'   => [BinarySchema::TYPE_BOOLEAN, true],
+            'boolean false'  => [BinarySchema::TYPE_BOOLEAN, false],
             'int8 positive'  => [BinarySchema::TYPE_INT8, 42],
             'int8 negative'  => [BinarySchema::TYPE_INT8, -1],
             'int16 positive' => [BinarySchema::TYPE_INT16, 1000],
@@ -56,6 +58,8 @@ final class BinarySchemaTest extends TestCase
      */
     public static function byteVectorProvider(): iterable
     {
+        yield 'boolean false'      => [BinarySchema::TYPE_BOOLEAN, false, '00'];
+        yield 'boolean true'       => [BinarySchema::TYPE_BOOLEAN, true, '01'];
         yield 'int8 zero'          => [BinarySchema::TYPE_INT8, 0, '00'];
         yield 'int8 max'           => [BinarySchema::TYPE_INT8, 127, '7f'];
         yield 'int8 minus one'     => [BinarySchema::TYPE_INT8, -1, 'ff'];
@@ -116,6 +120,16 @@ final class BinarySchemaTest extends TestCase
     public function testSingleTypeSizeMatchesTheWrittenBytes(int $type, mixed $value, string $expectedHex): void
     {
         self::assertSame(intdiv(strlen($expectedHex), 2), BinarySchema::getSingleTypeSize($type, $value));
+    }
+
+    /**
+     * Types.BOOLEAN of the Java client: `if (b == 0) false else true`
+     */
+    public function testBooleanReadsAnyNonZeroByteAsTrue(): void
+    {
+        self::assertTrue(BinarySchema::readSingleType(BinarySchema::TYPE_BOOLEAN, new StringStream("\x01")));
+        self::assertTrue(BinarySchema::readSingleType(BinarySchema::TYPE_BOOLEAN, new StringStream("\xFF")));
+        self::assertFalse(BinarySchema::readSingleType(BinarySchema::TYPE_BOOLEAN, new StringStream("\x00")));
     }
 
     public function testInt8IsReadAsASignedValue(): void
