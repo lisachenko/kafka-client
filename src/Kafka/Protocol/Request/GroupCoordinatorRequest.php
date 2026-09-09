@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *     ConsumerGroup => string
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, section "GroupCoordinator API (key 10, v0)"
+ * @see docs/protocol/0.11.0.md, section "GroupCoordinator API (key 10, v0)"
  */
 class GroupCoordinatorRequest extends AbstractRequest
 {

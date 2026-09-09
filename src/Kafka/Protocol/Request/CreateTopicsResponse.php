@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV0;
  *                                     with an explicit assignment                                               |
  * | 44   | PolicyViolation            | A `create.topic.policy.class.name` on the broker refused the topic        |
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0 and v1)"
  */
 class CreateTopicsResponse extends AbstractResponse
 {

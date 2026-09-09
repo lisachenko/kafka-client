@@ -44,7 +44,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * Every test uses a client id of its own - the broker enforces a quota for whoever sends that id, and this broker
  * is shared with the other suites - and removes its quota in a `finally` block, also when it fails.
  *
- * @see docs/protocol/0.10.2.md, section "Quotas and throttle time"
+ * @see docs/protocol/0.11.0.md, section "Quotas and throttle time"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(KafkaProducer::class)]

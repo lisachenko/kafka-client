@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
  *   ListOffsets Response (Version: 1) => [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
+ * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]

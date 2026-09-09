@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV0;
 /**
  * Byte-exact tests for the CreateTopics API of Kafka 0.10.1 (api key 19, v0 and v1).
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0 and v1)"
  */
 #[CoversClass(CreateTopicsRequest::class)]
 #[CoversClass(CreateTopicsRequestV0::class)]

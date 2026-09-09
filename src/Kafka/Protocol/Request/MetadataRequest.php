@@ -57,7 +57,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * An empty array creates nothing either: `KafkaApis.handleTopicMetadataRequest` @ 0.10.2.2 only auto-creates the
  * topics that the request NAMES, so `[]` is the cheapest way to ask a broker for the members of the cluster.
  *
- * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0, v1 and v2)"
  */
 class MetadataRequest extends AbstractRequest
 {

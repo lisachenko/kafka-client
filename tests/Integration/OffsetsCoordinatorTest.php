@@ -56,7 +56,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * are exercised here, because version 0 and version 2 are reachable through the `offsets.storage` option of the
  * client and version 1 is the version a 0.8 broker expects.
  *
- * @see docs/protocol/0.10.2.md, sections "GroupCoordinator API (key 10, v0)",
+ * @see docs/protocol/0.11.0.md, sections "GroupCoordinator API (key 10, v0)",
  *      "OffsetCommit API (key 8, v0, v1 and v2)" and "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 #[CoversClass(Client::class)]

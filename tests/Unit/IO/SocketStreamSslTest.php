@@ -31,7 +31,7 @@ use Protocol\Kafka\IO\SocketStream;
  * handshake performed here is the very same one the integration suite performs against Kafka.
  *
  * @see \Protocol\Kafka\Tests\Integration\SslTransportTest for the same handshake against a real broker
- * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
+ * @see docs/protocol/0.11.0.md, section "Transport security (SSL)"
  */
 #[CoversClass(SocketStream::class)]
 #[CoversClass(AbstractStream::class)]

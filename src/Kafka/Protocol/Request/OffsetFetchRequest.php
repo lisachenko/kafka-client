@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * topics is refused here with an {@see UnsupportedVersionException}, exactly as `OffsetFetchRequest.Builder.build()`
  * @ 0.10.2.2 does; sending a `-1` topic array with version 1 makes the broker close the connection.
  *
- * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 class OffsetFetchRequest extends AbstractRequest
 {

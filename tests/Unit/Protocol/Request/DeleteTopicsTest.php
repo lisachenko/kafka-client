@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 /**
  * Byte-exact tests for the DeleteTopics API of Kafka 0.10.1 (api key 20, v0).
  *
- * @see docs/protocol/0.10.2.md, section "DeleteTopics API (key 20, v0)"
+ * @see docs/protocol/0.11.0.md, section "DeleteTopics API (key 20, v0)"
  */
 #[CoversClass(DeleteTopicsRequest::class)]
 #[CoversClass(DeleteTopicsResponse::class)]

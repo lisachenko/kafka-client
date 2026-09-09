@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
  * A 0.10.2.2 broker answers with the 21 keys 0 to 20; a client must not assume that, though - the whole point of
  * the api is that the set is whatever the broker on the other side reports, and a later broker reports more.
  *
- * @see docs/protocol/0.10.2.md, section "ApiVersions API (key 18, v0)"
+ * @see docs/protocol/0.11.0.md, section "ApiVersions API (key 18, v0)"
  */
 class ApiVersionsResponse extends AbstractResponse
 {

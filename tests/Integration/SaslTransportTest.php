@@ -49,7 +49,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * follow it, the ordinary traffic afterwards, and every way a broker can refuse - none of which carries an error
  * code before Kafka 1.0.
  *
- * @see docs/protocol/0.10.2.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
  */
 #[CoversClass(SocketStream::class)]

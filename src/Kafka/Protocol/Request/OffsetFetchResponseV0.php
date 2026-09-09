@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the offset -1 with the error code 3 (UnknownTopicOrPartition) where version 1 reports the offset -1 with the
  * error code 0.
  *
- * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 final class OffsetFetchResponseV0 extends OffsetFetchResponse
 {

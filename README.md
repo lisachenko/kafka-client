@@ -16,7 +16,7 @@ line, so it covers everything 0.10.0, 0.10.1 and 0.10.2 added — and nothing el
 classes is the one of the `main` branch wherever 0.10 has the same concept, so code written
 against `main` mostly compiles here; what the 0.10 protocol cannot do is simply absent, and
 [what that is](#supported-kafka-protocol-versions) is listed below. The grammar this branch
-implements is written down, byte for byte, in [docs/protocol/0.10.2.md](docs/protocol/0.10.2.md).
+implements is written down, byte for byte, in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md).
 
 Installation
 ------------
@@ -632,8 +632,8 @@ is skipped when it is unset:
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or
 accepted — through the request and response classes and checks that the annotated dumps of
-[docs/protocol/0.10.2.md](docs/protocol/0.10.2.md) still hold the same bytes, and that every
-`@see docs/protocol/0.10.2.md, section "…"` of the sources names a heading that exists, so the
+[docs/protocol/0.11.0.md](docs/protocol/0.11.0.md) still hold the same bytes, and that every
+`@see docs/protocol/0.11.0.md, section "…"` of the sources names a heading that exists, so the
 document and the code cannot drift apart.
 
 Examples

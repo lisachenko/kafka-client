@@ -41,7 +41,7 @@ use function sprintf;
  * {@see self::isSupported()} tells whether the tool can be reached at all, so that a suite which runs against a
  * broker outside of Docker skips those tests instead of failing them.
  *
- * @see docs/protocol/0.10.2.md, section "Quotas and throttle time"
+ * @see docs/protocol/0.11.0.md, section "Quotas and throttle time"
  */
 final class ClientQuota
 {

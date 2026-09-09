@@ -31,7 +31,7 @@ namespace Protocol\Kafka\Common\Security;
  * PLAIN sends the credentials in clear text inside the SASL token, so it is only sound over `SASL_SSL`; the
  * `SASL_PLAINTEXT` listener exists for a trusted network and for tests.
  *
- * @see docs/protocol/0.10.2.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  * @see \Protocol\Kafka\Common\ClientConfig::SASL_MECHANISM
  */
 final class SaslMechanism

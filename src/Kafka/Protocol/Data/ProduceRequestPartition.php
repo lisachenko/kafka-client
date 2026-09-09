@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * whose int32 length prefix is exactly the `MessageSetSize` field of the spec. This is the 0.8 counterpart of the
  * `recordBatch` field of the `main` branch.
  *
- * @see docs/protocol/0.10.2.md, sections "Produce API (key 0, v0, v1 and v2)" and "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, sections "Produce API (key 0, v0, v1 and v2)" and "MessageSet and Message"
  */
 class ProduceRequestPartition implements BinarySchemaInterface
 {

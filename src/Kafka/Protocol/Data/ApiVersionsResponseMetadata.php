@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * client cannot build. The class is named after the `main` branch; the Kafka sources call the structure
  * `API_VERSIONS_V0` / `ApiVersionsResponse.ApiVersion` (`clients/.../requests/ApiVersionsResponse.java` @ 0.10.2.2).
  *
- * @see docs/protocol/0.10.2.md, section "ApiVersions API (key 18, v0)"
+ * @see docs/protocol/0.11.0.md, section "ApiVersions API (key 18, v0)"
  */
 class ApiVersionsResponseMetadata implements BinarySchemaInterface
 {

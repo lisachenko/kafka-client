@@ -45,7 +45,7 @@ use Protocol\Kafka\IO\StringStream;
  * type of the wrapper applies to every message of the set, and a `LogAppendTime` wrapper replaces the timestamps of
  * all of its inner messages with its own.
  *
- * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
  * @see kafka/message/ByteBufferMessageSet.scala @ 0.10.2.2
  */
 final class MessageSet implements \Countable, \Stringable

@@ -60,7 +60,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
  * The `LogStartOffset` of a partition (v5) and the `IsolationLevel` of the transactional protocol (v4) belong to
  * Kafka 0.11 and do not exist here.
  *
- * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
+ * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v3)"
  */
 class FetchRequest extends AbstractRequest
 {

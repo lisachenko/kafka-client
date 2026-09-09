@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see \Protocol\Kafka\Protocol\Data\ProduceResponseTopic} follow. Reading a version 1 answer with the version 2
  * class would take the throttle time for the append time of the partition and run past the end of the frame.
  *
- * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 final class ProduceResponseV1 extends ProduceResponse
 {

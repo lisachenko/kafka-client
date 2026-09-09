@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * unknown brokers - unlike in add-partitions case, this follows the existing logic in TopicCommand"), it only
  * checks that every partition of the topic is assigned and that all of them get the same number of replicas.
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0 and v1)"
  */
 class CreateTopicsRequestReplicaAssignment implements BinarySchemaInterface
 {

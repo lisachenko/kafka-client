@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 /**
  * Byte-exact tests for the DescribeGroups API of Kafka 0.9 (api key 15, v0).
  *
- * @see docs/protocol/0.10.2.md, section "DescribeGroups API (key 15, v0)"
+ * @see docs/protocol/0.11.0.md, section "DescribeGroups API (key 15, v0)"
  */
 #[CoversClass(DescribeGroupsRequest::class)]
 #[CoversClass(DescribeGroupsResponse::class)]

@@ -19,7 +19,9 @@ use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\ClientExceptionInterface;
 use Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException;
+use Protocol\Kafka\Common\Errors\ConcurrentTransactionsException;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
+use Protocol\Kafka\Common\Errors\DuplicateSequenceException;
 use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
@@ -31,6 +33,7 @@ use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidFetchSizeException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\InvalidPartitionsException;
+use Protocol\Kafka\Common\Errors\InvalidPidMappingException;
 use Protocol\Kafka\Common\Errors\InvalidReplicaAssignmentException;
 use Protocol\Kafka\Common\Errors\InvalidReplicationFactorException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
@@ -38,6 +41,8 @@ use Protocol\Kafka\Common\Errors\InvalidRequiredAcksException;
 use Protocol\Kafka\Common\Errors\InvalidSessionTimeoutException;
 use Protocol\Kafka\Common\Errors\InvalidTimestampException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
+use Protocol\Kafka\Common\Errors\InvalidTxnStateException;
+use Protocol\Kafka\Common\Errors\InvalidTxnTimeoutException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\LeaderNotAvailableException;
 use Protocol\Kafka\Common\Errors\MessageTooLargeException;
@@ -49,16 +54,22 @@ use Protocol\Kafka\Common\Errors\NotEnoughReplicasException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OffsetMetadataTooLargeException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
+use Protocol\Kafka\Common\Errors\OperationNotAttemptedException;
+use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\PolicyViolationException;
+use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\RecordListTooLargeException;
 use Protocol\Kafka\Common\Errors\ReplicaNotAvailableException;
 use Protocol\Kafka\Common\Errors\RequestTimedOutException;
 use Protocol\Kafka\Common\Errors\RetriableException;
+use Protocol\Kafka\Common\Errors\SecurityDisabledException;
 use Protocol\Kafka\Common\Errors\ServerExceptionInterface;
 use Protocol\Kafka\Common\Errors\StaleControllerEpochException;
 use Protocol\Kafka\Common\Errors\TopicAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
+use Protocol\Kafka\Common\Errors\TransactionalIdAuthorizationException;
+use Protocol\Kafka\Common\Errors\TransactionCoordinatorFencedException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
@@ -76,7 +87,9 @@ use RuntimeException;
  * (branch main) so that the cascade merge stays small, and the retriable flags follow the RetriableException
  * hierarchy of the Java client of 0.9.0.1 (InvalidMetadataException extends RetriableException, so the codes 3, 5,
  * 6 and 13 are retriable; none of the codes 21-31 is). The codes 32-44 are those of Kafka 0.10.0 to 0.10.2
- * (Errors.java @ 0.10.2.2); of them only 41 NotController is retriable.
+ * (Errors.java @ 0.10.2.2); of them only 41 NotController is retriable. The codes 45-55 are those of Kafka 0.11
+ * (Errors.java @ 0.11.0.3): the producer id, sequence and transaction codes of KIP-98 and the two ACL codes; none
+ * of them extends RetriableException in the Java client (the transactional producer retries 51 on its own).
  */
 #[CoversClass(KafkaException::class)]
 final class KafkaExceptionTest extends TestCase
@@ -134,6 +147,17 @@ final class KafkaExceptionTest extends TestCase
             'InvalidRequest'                => [42, InvalidRequestException::class, false],
             'UnsupportedForMessageFormat'   => [43, UnsupportedForMessageFormatException::class, false],
             'PolicyViolation'               => [44, PolicyViolationException::class, false],
+            'OutOfOrderSequenceNumber'      => [45, OutOfOrderSequenceException::class, false],
+            'DuplicateSequenceNumber'       => [46, DuplicateSequenceException::class, false],
+            'InvalidProducerEpoch'          => [47, ProducerFencedException::class, false],
+            'InvalidTxnState'               => [48, InvalidTxnStateException::class, false],
+            'InvalidProducerIdMapping'      => [49, InvalidPidMappingException::class, false],
+            'InvalidTransactionTimeout'     => [50, InvalidTxnTimeoutException::class, false],
+            'ConcurrentTransactions'        => [51, ConcurrentTransactionsException::class, false],
+            'TransactionCoordinatorFenced'  => [52, TransactionCoordinatorFencedException::class, false],
+            'TransactionalIdAuthorizationFailed' => [53, TransactionalIdAuthorizationException::class, false],
+            'SecurityDisabled'              => [54, SecurityDisabledException::class, false],
+            'OperationNotAttempted'         => [55, OperationNotAttemptedException::class, false],
         ];
     }
 
@@ -187,7 +211,7 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Codes above 44 were introduced by Kafka 0.11 and later, a 0.10.2.2 broker never sends them
+     * Codes above 55 were introduced by Kafka 1.0 and later (56 KAFKA_STORAGE_ERROR), a 0.11.0.3 broker never sends them
      *
      * @return array<string, array{int}>
      */
@@ -195,8 +219,8 @@ final class KafkaExceptionTest extends TestCase
     {
         return [
             'NoError'                       => [0],
-            'InvalidTransactionTimeout (45)' => [45],
-            'ConcurrentTransactions (51)'    => [51],
+            'KafkaStorageError (56)'        => [56],
+            'LogDirNotFound (57)'           => [57],
             'out of range'                  => [4242],
             'negative out of range'         => [-999],
         ];
@@ -224,9 +248,9 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Guards against a post-0.10 error class sneaking into the mapping
+     * Guards against a post-0.11 error class sneaking into the mapping
      */
-    public function testOnlyTheErrorCodesOfKafka01022AreMapped(): void
+    public function testOnlyTheErrorCodesOfKafka01103AreMapped(): void
     {
         $mappedCodes = [];
         foreach (range(-10, 60) as $errorCode) {
@@ -236,7 +260,7 @@ final class KafkaExceptionTest extends TestCase
             }
         }
 
-        self::assertSame(array_merge([-1], range(1, 44)), $mappedCodes);
+        self::assertSame(array_merge([-1], range(1, 55)), $mappedCodes);
     }
 
     /**

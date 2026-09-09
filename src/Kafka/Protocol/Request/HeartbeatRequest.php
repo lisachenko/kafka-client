@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *     member_id           => STRING
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, section "Heartbeat API (key 12, v0)"
+ * @see docs/protocol/0.11.0.md, section "Heartbeat API (key 12, v0)"
  */
 class HeartbeatRequest extends AbstractRequest
 {

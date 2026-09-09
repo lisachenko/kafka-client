@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `LogConfig.validate()` before it creates anything - an unknown key or an unparsable value is answered with the
  * error code 40 (InvalidConfig) for that topic.
  *
- * @see docs/protocol/0.10.2.md, section "CreateTopics API (key 19, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0 and v1)"
  */
 class CreateTopicsRequestConfig implements BinarySchemaInterface
 {

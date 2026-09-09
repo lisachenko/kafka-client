@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
  * and -1 (`KafkaApis.handleOffsetRequestV1` @ 0.10.2.2).
  *
- * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
+ * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
  */
 class OffsetsResponse extends AbstractResponse
 {

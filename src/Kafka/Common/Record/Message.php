@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * was compressed with is announced by the three lowest bits of the Attributes byte, and in message format v1 the
  * offsets of the inner messages are relative to the offset of that wrapper message.
  *
- * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
  * @see kafka/message/Message.scala @ 0.10.2.2
  */
 class Message implements BinarySchemaInterface, \Stringable

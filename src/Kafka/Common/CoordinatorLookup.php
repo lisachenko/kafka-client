@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
  * This mirrors the retry behaviour of `AdminClient::findCoordinator()` on branch `main`, which the 0.8 line has no
  * AdminClient for; the group membership APIs that would use it (api keys 11-14) only arrived in Kafka 0.9.
  *
- * @see docs/protocol/0.10.2.md, section "GroupCoordinator API (key 10, v0)"
+ * @see docs/protocol/0.11.0.md, section "GroupCoordinator API (key 10, v0)"
  */
 final class CoordinatorLookup
 {

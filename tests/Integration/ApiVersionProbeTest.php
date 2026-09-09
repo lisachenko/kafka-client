@@ -31,7 +31,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  *
  * Kafka 0.10.0 added the api that answers that question - **ApiVersions**, key 18 - so this class no longer has to
  * guess it the way the `0.8.x` and `0.9.x` lines did. The first half of the suite asks the broker with
- * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/0.10.2.md`.
+ * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/0.11.0.md`.
  *
  * The second half is still a raw probe ({@see RawApiProbe}), because the *edges* of that table are not in it: what
  * the broker does with a key or a version it does not serve is behaviour, not data. Kafka 0.10 changed that
@@ -53,7 +53,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * epoch -1 and empty partition sets, ControlledShutdown asks for a broker id that does not exist, the group apis use
  * a group id that no other test uses, and CreateTopics/DeleteTopics are sent with an empty topic array.
  *
- * @see docs/protocol/0.10.2.md, section "API keys"
+ * @see docs/protocol/0.11.0.md, section "API keys"
  */
 #[CoversClass(ApiKeys::class)]
 #[CoversClass(ApiVersionsRequest::class)]

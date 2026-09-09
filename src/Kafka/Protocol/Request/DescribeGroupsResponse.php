@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
  * There is no error code for the request as a whole: every group carries its own, and the order of the array is the
  * order of the group ids in the request.
  *
- * @see docs/protocol/0.10.2.md, section "DescribeGroups API (key 15, v0)"
+ * @see docs/protocol/0.11.0.md, section "DescribeGroups API (key 15, v0)"
  */
 class DescribeGroupsResponse extends AbstractResponse
 {

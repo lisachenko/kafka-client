@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `PlainSaslServer.evaluateResponse()` splits on the NUL bytes into exactly three parts; the authorization id is
  * left empty by this client, as the Java `PlainLoginModule` does.
  *
- * @see docs/protocol/0.10.2.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  * @see \Protocol\Kafka\IO\SocketStream::authenticate()
  */
 final class SaslToken implements BinarySchemaInterface

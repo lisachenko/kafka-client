@@ -44,7 +44,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * keys and the offsets survive that conversion, the timestamps do not. What the log really holds and what a Fetch
  * v2 request answers is the subject of {@see MessageFormatV1Test}.
  *
- * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]

@@ -31,7 +31,7 @@ use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\SchemaMetadataResponse;
 /**
  * Byte-exact tests for the request and response framing.
  *
- * @see docs/protocol/0.10.2.md, sections "Requests" and "Responses"
+ * @see docs/protocol/0.11.0.md, sections "Requests" and "Responses"
  */
 #[CoversClass(AbstractProtocolMessage::class)]
 #[CoversClass(AbstractRequest::class)]

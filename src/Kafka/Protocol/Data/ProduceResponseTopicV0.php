@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The topic entry itself did not change in version 2 of the API, only the partition entries it holds did, so this
  * class only lowers the version constant that {@see ProduceResponseTopic::partitionClass()} follows.
  *
- * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0, v1 and v2)"
  */
 final class ProduceResponseTopicV0 extends ProduceResponseTopic
 {

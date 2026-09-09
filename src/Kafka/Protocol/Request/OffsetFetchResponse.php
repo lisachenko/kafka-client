@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
  * one of them reports {@see KafkaException::NO_ERROR} here, because the whole answer of those versions is made of
  * per-partition results.
  *
- * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
+ * @see docs/protocol/0.11.0.md, section "OffsetFetch API (key 9, v0, v1 and v2)"
  */
 class OffsetFetchResponse extends AbstractResponse
 {

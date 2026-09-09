@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
  * The `LastStableOffset`, `LogStartOffset` and `AbortedTransactions` fields of the later protocol lines arrived with
  * Kafka 0.11.
  *
- * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
+ * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v3)"
  */
 class FetchResponse extends AbstractResponse
 {

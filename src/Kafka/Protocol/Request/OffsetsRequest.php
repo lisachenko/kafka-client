@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
  * offset - the offset the next produced message will get - and {@see self::EARLIEST} (`-2`) for the first offset
  * that is still on disk. Neither of them reads a message, so their answer carries the timestamp -1.
  *
- * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
+ * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
  */
 class OffsetsRequest extends AbstractRequest
 {

@@ -97,7 +97,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/0.10.2.md
+ * @see docs/protocol/0.11.0.md
  */
 class Client
 {
@@ -183,7 +183,7 @@ class Client
             $this->configuration[ProducerConfig::MESSAGE_FORMAT_VERSION] ?? ProducerConfig::MESSAGE_FORMAT_VERSION_0_10_0
         );
 
-        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.10.2.md
+        // The wire format carries one opaque message set per topic-partition, see docs/protocol/0.11.0.md
         $topicPartitionMessageSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {

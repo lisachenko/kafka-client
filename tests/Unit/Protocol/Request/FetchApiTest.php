@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV2;
  *   FetchResponse v1 to v3  => ThrottleTimeMs [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 to v3)" and "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v3)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV2::class)]

@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
  * (NotController) can not be produced here - it is exercised with a scripted two-broker cluster in
  * `tests/Unit/Admin/AdminClientTest.php`.
  *
- * @see docs/protocol/0.10.2.md, sections "CreateTopics API (key 19, v0 and v1)" and "DeleteTopics API (key 20, v0)"
+ * @see docs/protocol/0.11.0.md, sections "CreateTopics API (key 19, v0 and v1)" and "DeleteTopics API (key 20, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(NewTopic::class)]

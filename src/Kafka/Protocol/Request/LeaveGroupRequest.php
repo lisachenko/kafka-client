@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *     member_id => STRING
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, section "LeaveGroup API (key 13, v0)"
+ * @see docs/protocol/0.11.0.md, section "LeaveGroup API (key 13, v0)"
  */
 class LeaveGroupRequest extends AbstractRequest
 {

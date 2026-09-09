@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 /**
  * Byte-exact tests for the ApiVersions API of Kafka 0.10 (api key 18, v0).
  *
- * @see docs/protocol/0.10.2.md, section "ApiVersions API (key 18, v0)"
+ * @see docs/protocol/0.11.0.md, section "ApiVersions API (key 18, v0)"
  */
 #[CoversClass(ApiVersionsRequest::class)]
 #[CoversClass(ApiVersionsResponse::class)]

@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * that fetches with a request below version 2. Everything this suite asserts was read out of a log that a 0.10.2.2
  * broker wrote.
  *
- * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+ * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]

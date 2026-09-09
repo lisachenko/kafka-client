@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
  * a parameter of the constructor instead of a field of the request, and the scheme of
  * {@see \Protocol\Kafka\Protocol\Data\OffsetsRequestPartitionV0} carries it.
  *
- * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
+ * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0 and v1), a.k.a. ListOffset"
  */
 final class OffsetsRequestV0 extends OffsetsRequest
 {

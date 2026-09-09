@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 /**
  * Byte-exact tests for the ListGroups API of Kafka 0.9 (api key 16, v0).
  *
- * @see docs/protocol/0.10.2.md, section "ListGroups API (key 16, v0)"
+ * @see docs/protocol/0.11.0.md, section "ListGroups API (key 16, v0)"
  */
 #[CoversClass(ListGroupsRequest::class)]
 #[CoversClass(ListGroupsResponse::class)]

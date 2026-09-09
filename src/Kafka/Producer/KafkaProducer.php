@@ -86,7 +86,7 @@ use React\Promise\Promise;
  * {@see RecordMetadata::$throttleTimeMs} reports, and {@see KafkaProducer::flush()} simply takes that much longer.
  *
  * @see examples/producer.php for a runnable example
- * @see docs/protocol/0.10.2.md, section "Quotas and throttle time"
+ * @see docs/protocol/0.11.0.md, section "Quotas and throttle time"
  */
 class KafkaProducer
 {

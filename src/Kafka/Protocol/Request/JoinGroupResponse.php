@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
  * The `rebalance_timeout` of the version 1 request did not change the answer at all: `JOIN_GROUP_RESPONSE_V1 =
  * JOIN_GROUP_RESPONSE_V0` in `Protocol.java` @ 0.10.2.2, so this one class decodes both versions.
  *
- * @see docs/protocol/0.10.2.md, section "JoinGroup API (key 11, v0 and v1)"
+ * @see docs/protocol/0.11.0.md, section "JoinGroup API (key 11, v0 and v1)"
  */
 class JoinGroupResponse extends AbstractResponse
 {

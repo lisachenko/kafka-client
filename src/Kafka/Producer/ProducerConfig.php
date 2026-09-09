@@ -168,7 +168,7 @@ final class ProducerConfig extends GeneralConfig
      * configured with `message.format.version=0.9.0` or lower, where writing message format v0 straight away saves
      * the broker the conversion.
      *
-     * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
+     * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
      */
     public const string MESSAGE_FORMAT_VERSION = 'message.format.version';
 

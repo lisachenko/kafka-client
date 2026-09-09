@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the transport: that the handshake succeeds against the certificate of the broker, that it fails against any other
  * trust anchor, and above all *which endpoint the broker advertises* to a client that reached it over TLS.
  *
- * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
+ * @see docs/protocol/0.11.0.md, section "Transport security (SSL)"
  */
 #[CoversClass(SocketStream::class)]
 #[CoversClass(SecurityProtocol::class)]

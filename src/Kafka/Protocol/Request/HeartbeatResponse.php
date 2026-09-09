@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (RebalanceInProgress) means the group is rebalancing and the member has to send JoinGroup again, 25
  * (UnknownMemberId) that it was dropped out of the group, 22 (IllegalGeneration) that its generation is over.
  *
- * @see docs/protocol/0.10.2.md, section "Heartbeat API (key 12, v0)"
+ * @see docs/protocol/0.11.0.md, section "Heartbeat API (key 12, v0)"
  */
 class HeartbeatResponse extends AbstractResponse
 {

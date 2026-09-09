@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *     GroupId => string
  * </pre>
  *
- * @see docs/protocol/0.10.2.md, section "DescribeGroups API (key 15, v0)"
+ * @see docs/protocol/0.11.0.md, section "DescribeGroups API (key 15, v0)"
  */
 class DescribeGroupsRequest extends AbstractRequest
 {
