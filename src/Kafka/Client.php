@@ -82,12 +82,13 @@ use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 
 /**
- * Low-level client for the Kafka 0.9.0.1 protocol.
+ * Low-level client for the Kafka 0.10.2.2 protocol.
  *
- * Every api is sent with the highest version a 0.9.0.1 broker serves: Produce v1 and Fetch v1, whose answers carry
- * the throttle time of a quota, OffsetCommit v2 with its `retention_time`, and OffsetCommit v0 when the offsets are
- * stored in ZooKeeper. The version 0 classes of those apis stay usable directly, for a client that has to talk to a
- * 0.8 broker.
+ * Every api is sent with the highest version a 0.10.2.2 broker serves: Produce v2, whose answer carries the
+ * `LogAppendTime` of every partition, Fetch v3, which asks for message format v1 and bounds the whole answer with
+ * `fetch.max.bytes`, OffsetCommit v2 with its `retention_time`, and OffsetCommit v0 when the offsets are stored in
+ * ZooKeeper. The lower version classes of those apis stay usable directly, for a client that has to talk to an
+ * older broker.
  *
  * Every request that addresses topic-partitions is split by their current leader and sent to all of those brokers
  * at once; the answers are collected with `stream_select()` as they arrive. A topic-partition whose leader answered
@@ -153,8 +154,10 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as Produce v1, so every accepted partition also carries the `throttleTimeMs` the broker
-     * reported for the answer it arrived in; without a `producer_byte_rate` quota that is always 0.
+     * The request goes out as Produce v2, so every accepted partition carries two values the broker reported next
+     * to its base offset: the `logAppendTime` the broker stamped on the whole batch, which is -1 unless the topic
+     * is configured with `message.timestamp.type=LogAppendTime`, and the `throttleTimeMs` of the answer it arrived
+     * in, which is 0 without a `producer_byte_rate` quota.
      *
      * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
      *        each topic and partition
@@ -265,12 +268,21 @@ class Client
      * Fetches messages together with the state of each topic-partition they came from.
      *
      * A consumer needs more than the records to drive its fetch loop: the high water mark of a partition tells it
-     * how far behind the end of the log it is, and a message that is larger than `max.partition.fetch.bytes` makes
-     * the broker answer without an error and without a single complete message, which would turn a naive fetch loop
-     * into an endless one, see {@see FetchedPartition::isSingleMessageTooLarge()}.
+     * how far behind the end of the log it is, and up to version 2 of the api a message that is larger than
+     * `max.partition.fetch.bytes` makes the broker answer without an error and without a single complete message,
+     * which would turn a naive fetch loop into an endless one, see
+     * {@see FetchedPartition::isSingleMessageTooLarge()}.
      *
-     * The request goes out as Fetch v1, so every returned partition also carries the `throttleTimeMs` the broker
-     * reported for the answer it belongs to; without quotas that is always 0.
+     * The request goes out as **Fetch v3**, which means three things:
+     *
+     * * the message sets come back in the format the log holds them in - a broker converts them down to message
+     *   format v0 only for a request below version 2 - so the records carry the timestamps of format v1;
+     * * the whole answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`.
+     *   The broker fills the partitions **in the order of `$topicPartitionOffsets`** and stops once that budget is
+     *   used up, so the partitions at the end of a large fetch come back empty; a caller that fetches more than one
+     *   partition has to rotate their order between calls, as {@see \Protocol\Kafka\Consumer\KafkaConsumer} does;
+     * * the first non-empty partition of the answer ignores both limits and carries at least one complete message,
+     *   so a partition can no longer be stuck on a message that is too large and this client never reports one.
      *
      * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
      * @param int                            $timeout               Timeout in ms to wait for fetching
@@ -294,7 +306,8 @@ class Client
                 $this->configuration[ConsumerConfig::MAX_PARTITION_FETCH_BYTES],
                 -1,
                 $this->configuration[ConsumerConfig::CLIENT_ID],
-                $correlationId
+                $correlationId,
+                (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES] ?? FetchRequest::DEFAULT_MAX_BYTES)
             ),
             FetchResponse::class,
             static function (array $result, FetchResponse $response, array &$errors) use (
@@ -328,7 +341,10 @@ class Client
                             $responsePartition->errorCode,
                             $responsePartition->highWaterMarkOffset,
                             $messageSet,
-                            $responsePartition->isSingleMessageTooLarge($fetchOffset),
+                            // From version 3 on the broker guarantees that the first non-empty partition of an
+                            // answer holds a complete message, and an empty partition simply means that the
+                            // `fetch.max.bytes` of the answer were used up by the ones in front of it
+                            FetchRequest::VERSION < 3 && $responsePartition->isSingleMessageTooLarge($fetchOffset),
                             $response->throttleTimeMs
                         );
                     }

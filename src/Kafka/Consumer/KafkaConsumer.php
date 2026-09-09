@@ -100,9 +100,14 @@ use Throwable;
  *
  * What arrived after 0.10.2.2 is absent: the `isolation.level` of the transactional protocol of 0.11.
  *
- * A message that does not fit into `max.partition.fetch.bytes` is refused with a {@see RecordTooLargeException}
- * rather than silently stalling the partition, because a 0.9.0.1 broker cuts a message set off at that size
- * without guaranteeing that a single message fits into it.
+ * The records are fetched with **Fetch v3**, so they carry the timestamps of message format v1 and the whole
+ * answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`. The broker fills
+ * the partitions in the order of the request until that budget is used up, so this consumer rotates the order of
+ * its partitions after every poll: a partition that returned records is moved behind the ones that did not, which
+ * is what the Java consumer of 0.10.2 does as well (`Fetcher.parseCompletedFetch` ⇒
+ * `SubscriptionState.movePartitionToEnd`). A single message that is larger than either limit is returned in full
+ * as long as it is the first one of the answer, so a partition can no longer be stuck on it - the
+ * {@see RecordTooLargeException} of the lower Fetch versions is not raised by a 0.10.2 broker any more.
  */
 class KafkaConsumer
 {
@@ -147,6 +152,18 @@ class KafkaConsumer
      * Last commit time in ms
      */
     private ?int $lastAutoCommitMs = null;
+
+    /**
+     * Order in which the assigned topic-partitions are asked for, as a list of `[topic, partition]` pairs
+     *
+     * Version 3 of the Fetch API bounds the whole answer with `fetch.max.bytes` and the broker fills the
+     * partitions in the order of the request, so the ones at its end come back empty while the ones in front of
+     * them carry data. Rotating this order after every poll - the partitions that returned something move behind
+     * the ones that did not - is what keeps every partition of a large assignment served.
+     *
+     * @var list<array{string, int}>
+     */
+    private array $fetchOrder = [];
 
     /**
      * Deserializer for the record keys, or null to keep them as raw byte strings
@@ -414,6 +431,10 @@ class KafkaConsumer
      * are committed once `auto.commit.interval.ms` has passed since the last commit, and always right before the
      * consumer gives its partitions up in a rebalance.
      *
+     * The partitions are asked for in a **rotating order**: a Fetch v3 request is bounded by `fetch.max.bytes`
+     * for the whole answer and the broker serves the partitions in the order it was asked, so every partition
+     * that returned records in this poll() is moved behind the ones that did not before the next one is sent.
+     *
      * @param int $timeout The time, in milliseconds, spent waiting in poll if data is not available. If 0, returns
      *                     immediately with any records that are available now. The broker never waits longer than
      *                     `fetch.max.wait.ms` and answers as soon as `fetch.min.bytes` are available.
@@ -432,7 +453,7 @@ class KafkaConsumer
             $this->ensureActiveGroup($milliSeconds);
         }
 
-        $activeTopicPartitionOffsets = $this->subscriptionState->fetchablePartitions();
+        $activeTopicPartitionOffsets = $this->inFetchOrder($this->subscriptionState->fetchablePartitions());
         if ($activeTopicPartitionOffsets === []) {
             return [];
         }
@@ -441,6 +462,7 @@ class KafkaConsumer
         $result            = $this->collectRecords($fetchedPartitions);
 
         $this->updateFetchPositions($fetchedPartitions);
+        $this->rotateFetchOrder($fetchedPartitions);
 
         if ($this->isAutoCommitEnabled()) {
             $elapsedInterval = $milliSeconds - (int) $this->lastAutoCommitMs;
@@ -791,8 +813,9 @@ class KafkaConsumer
         $result = [];
         foreach ($fetchedPartitions as $topic => $partitions) {
             foreach ($partitions as $partitionId => $fetchedPartition) {
-                // A 0.9.0.1 broker fills the answer up to MaxBytes without guaranteeing that one message fits, so
-                // a partition whose next message is bigger would come back empty forever
+                // Up to version 2 of the Fetch API the broker fills the answer up to MaxBytes without
+                // guaranteeing that one message fits, so a partition whose next message is bigger would come
+                // back empty forever; version 3, which this consumer sends, always returns that message instead
                 if ($fetchedPartition->isSingleMessageTooLarge()) {
                     throw new RecordTooLargeException(
                         (string) $topic,
@@ -812,6 +835,87 @@ class KafkaConsumer
         }
 
         return $result;
+    }
+
+    /**
+     * Puts the fetchable positions into the order in which this consumer asks the broker for them
+     *
+     * The order is the one of the last poll(), with the partitions that were served moved to its end; a partition
+     * of a fresh assignment is appended behind everything that is already known, and one that is not assigned any
+     * more is dropped. A paused partition keeps its place, it is only left out of the request itself. Because the
+     * wire format groups the partitions of a topic together, a partition can only be moved behind the other
+     * partitions of its own topic; that is the very same approximation the Java consumer makes
+     * (`org.apache.kafka.common.internals.PartitionStates` @ 0.10.2.2).
+     *
+     * @param array<string, array<int, int>> $fetchablePartitions Positions of the partitions that may be fetched
+     *
+     * @return array<string, array<int, int>> The same positions, in the order they are asked for
+     */
+    private function inFetchOrder(array $fetchablePartitions): array
+    {
+        $assignment = $this->subscriptionState->getAssignment();
+
+        $order = $seen = [];
+        foreach ($this->fetchOrder as [$topic, $partition]) {
+            if (isset($assignment[$topic][$partition])) {
+                $order[]                    = [$topic, $partition];
+                $seen[$topic][$partition] = true;
+            }
+        }
+        // Everything this consumer has not fetched yet - a fresh assignment - goes behind what it already knows
+        foreach ($assignment as $topic => $partitions) {
+            foreach (array_keys($partitions) as $partition) {
+                if (!isset($seen[$topic][$partition])) {
+                    $order[] = [(string) $topic, (int) $partition];
+                }
+            }
+        }
+        $this->fetchOrder = $order;
+
+        $ordered = [];
+        foreach ($order as [$topic, $partition]) {
+            if (isset($fetchablePartitions[$topic][$partition])) {
+                $ordered[$topic][$partition] = $fetchablePartitions[$topic][$partition];
+            }
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * Moves every partition that the broker served behind the partitions that it did not serve
+     *
+     * A partition that came back with records had its share of the `fetch.max.bytes` of the answer, so it goes to
+     * the end of the queue; the ones that came back empty stay in front and are the first to be served by the
+     * next request. This is the rule of the Java consumer, whose `Fetcher` moves a partition to the end of its
+     * assignment as soon as the answer carried bytes for it or reported an error.
+     *
+     * @param array<string, array<int, FetchedPartition>> $fetchedPartitions Partitions of one poll()
+     */
+    private function rotateFetchOrder(array $fetchedPartitions): void
+    {
+        $served = [];
+        foreach ($fetchedPartitions as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $fetchedPartition) {
+                if ($fetchedPartition->count() > 0 || $fetchedPartition->errorCode !== 0) {
+                    $served[$topic][$partitionId] = true;
+                }
+            }
+        }
+        if ($served === []) {
+            return;
+        }
+
+        $waiting = $rotated = [];
+        foreach ($this->fetchOrder as [$topic, $partition]) {
+            if (isset($served[$topic][$partition])) {
+                $rotated[] = [$topic, $partition];
+            } else {
+                $waiting[] = [$topic, $partition];
+            }
+        }
+
+        $this->fetchOrder = array_merge($waiting, $rotated);
     }
 
     /**

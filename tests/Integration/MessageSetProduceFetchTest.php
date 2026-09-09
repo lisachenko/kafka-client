@@ -24,10 +24,10 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\Snappy;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
-use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV0;
-use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV0;
+use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -51,7 +51,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(CompressionCodec::class)]
 #[CoversClass(Snappy::class)]
 #[CoversClass(Lz4::class)]
+#[CoversClass(FetchRequestV1::class)]
 #[CoversClass(FetchRequestV0::class)]
+#[CoversClass(FetchResponseV1::class)]
 #[CoversClass(FetchResponseV0::class)]
 #[CoversClass(FetchResponsePartition::class)]
 final class MessageSetProduceFetchTest extends IntegrationTestCase
@@ -172,9 +174,9 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
         $baseOffset = $this->produce(MessageSet::fromRecords([new Record('throttle', 'probe')]));
         $stream     = $this->connect();
 
-        new FetchRequest([$this->topic => [self::PARTITION => $baseOffset]], 1000, 1, 65536, -1, self::CLIENT_ID, 51)
+        new FetchRequestV1([$this->topic => [self::PARTITION => $baseOffset]], 1000, 1, 65536, -1, self::CLIENT_ID, 51)
             ->writeTo($stream);
-        $versionOne = FetchResponse::unpack($stream);
+        $versionOne = FetchResponseV1::unpack($stream);
 
         self::assertSame(51, $versionOne->getCorrelationId());
         self::assertSame(0, $versionOne->throttleTimeMs, 'the test broker enforces no consumer quota');
@@ -233,10 +235,10 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     private function fetchPartition(int $offset, int $maxBytes = 65536): FetchResponsePartition
     {
         $stream = $this->connect();
-        new FetchRequest([$this->topic => [self::PARTITION => $offset]], 1000, 1, $maxBytes, -1, self::CLIENT_ID, 2)
+        new FetchRequestV1([$this->topic => [self::PARTITION => $offset]], 1000, 1, $maxBytes, -1, self::CLIENT_ID, 2)
             ->writeTo($stream);
 
-        $partition = FetchResponse::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
+        $partition = FetchResponseV1::unpack($stream)->topics[$this->topic]->partitions[self::PARTITION];
         if ($partition->errorCode !== 0) {
             throw KafkaException::fromCode($partition->errorCode, ['topic' => $this->topic, 'partitionId' => self::PARTITION]);
         }

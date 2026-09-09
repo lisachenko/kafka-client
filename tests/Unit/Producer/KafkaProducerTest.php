@@ -30,6 +30,7 @@ use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Producer\RecordMetadata;
+use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\ClusterFixture;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\TestKafkaProducer;
@@ -499,6 +500,57 @@ final class KafkaProducerTest extends TestCase
 
         self::assertInstanceOf(RecordMetadata::class, $metadata);
         self::assertSame(1489324800000, $metadata->timestamp, 'the CreateTime of the first record of the batch');
+    }
+
+    public function testTheLogAppendTimeOfTheBrokerReplacesTheCreateTimeInTheRecordMetadata(): void
+    {
+        // Version 2 of the Produce API answers with the time the broker stamped the batch with when the topic is
+        // configured with `message.timestamp.type=LogAppendTime`; that value is the one the log holds, so it is
+        // the one the metadata of the batch reports - as the Java `RecordMetadata` does
+        $appendTime  = 1489324800000 + 4711;
+        [$producer]  = $this->producer(
+            [ProducerConfig::BATCH_SIZE => 1024 * 1024],
+            [function (array $topicPartitionMessages) use ($appendTime): array {
+                $result = $this->fakeClient->acknowledge($topicPartitionMessages);
+                foreach ($result as $partitions) {
+                    foreach ($partitions as $partition) {
+                        $partition->logAppendTime = $appendTime;
+                    }
+                }
+
+                return $result;
+            }]
+        );
+
+        $metadata = null;
+        $producer
+            ->send(self::TOPIC, new Record('value', 'key-0', 0, null, 1489324800000))
+            ->then(static function (RecordMetadata $recordMetadata) use (&$metadata): void {
+                $metadata = $recordMetadata;
+            });
+        $producer->flush();
+
+        self::assertInstanceOf(RecordMetadata::class, $metadata);
+        self::assertSame($appendTime, $metadata->timestamp, 'the broker stamped the batch itself');
+    }
+
+    public function testTheCreateTimeIsKeptWhenTheBrokerReportsNoAppendTime(): void
+    {
+        // -1 is what a topic that keeps the CreateTime of the producer answers, and what the versions 0 and 1 of
+        // the api leave the field at, because they do not carry it at all
+        [$producer] = $this->producer([ProducerConfig::BATCH_SIZE => 1024 * 1024]);
+
+        $metadata = null;
+        $producer
+            ->send(self::TOPIC, new Record('value', 'key-0', 0, null, 1489324800000))
+            ->then(static function (RecordMetadata $recordMetadata) use (&$metadata): void {
+                $metadata = $recordMetadata;
+            });
+        $producer->flush();
+
+        self::assertSame(-1, ProduceResponsePartition::NO_LOG_APPEND_TIME);
+        self::assertInstanceOf(RecordMetadata::class, $metadata);
+        self::assertSame(1489324800000, $metadata->timestamp, 'the CreateTime the producer stamped on the batch');
     }
 
     public function testTheRecordSizeOfMessageFormatV1CountsTheTimestampAsWell(): void

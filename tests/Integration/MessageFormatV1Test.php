@@ -25,11 +25,11 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
-use Protocol\Kafka\Protocol\Request\FetchRequest;
+use Protocol\Kafka\Protocol\Request\FetchRequestV1;
+use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
-use Protocol\Kafka\Tests\Fixture\FetchRequestV2;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -456,7 +456,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
     {
         $topic ??= $this->topic;
         $stream        = $this->connect();
-        $requestClass  = $version === 2 ? FetchRequestV2::class : FetchRequest::class;
+        $requestClass  = $version === 2 ? FetchRequestV2::class : FetchRequestV1::class;
 
         new $requestClass([$topic => [self::PARTITION => $offset]], 1000, 1, 1048576, -1, self::CLIENT_ID, 2)
             ->writeTo($stream);

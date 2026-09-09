@@ -624,6 +624,76 @@ final class KafkaConsumerTest extends TestCase
         self::assertSame(2, $consumer->position(self::TOPIC, 0));
     }
 
+    public function testThePartitionsThatReturnedRecordsAreAskedForLastInTheNextPoll(): void
+    {
+        // A Fetch v3 request is bounded by `fetch.max.bytes` for the whole answer and the broker fills the
+        // partitions in the order of the request, so a consumer that always asked in the same order would starve
+        // the partitions at its end. Every partition that returned records therefore moves behind the ones that
+        // did not, which is what the Java consumer does with `SubscriptionState.movePartitionToEnd`.
+        $client = $this->clientWithLog([0 => 1, 1 => 1]);
+        // The third partition exists but its log is empty, so it is the one that comes back without records
+        $client->logStartOffsets[self::TOPIC][2] = 0;
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([self::TOPIC => [0, 1, 2]]);
+
+        $consumer->poll(10);
+        $consumer->poll(10);
+
+        self::assertSame([0, 1, 2], array_keys($client->fetchCalls[0][self::TOPIC]));
+        self::assertSame(
+            [2, 0, 1],
+            array_keys($client->fetchCalls[1][self::TOPIC]),
+            'the partition that had nothing to give is asked first, the served ones keep their relative order'
+        );
+    }
+
+    public function testAPartitionOfAFreshAssignmentIsAppendedBehindTheKnownOrder(): void
+    {
+        $client   = $this->clientWithLog([0 => 1, 1 => 1]);
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([self::TOPIC => [0, 1]]);
+        $consumer->poll(10);
+
+        $client->append(self::TOPIC, 2, ['value-0']);
+        $consumer->assign([self::TOPIC => [0, 1, 2]]);
+        $consumer->poll(10);
+
+        self::assertSame(
+            [0, 1, 2],
+            array_keys($client->fetchCalls[1][self::TOPIC]),
+            'a partition this consumer never fetched is asked for behind the ones it knows'
+        );
+    }
+
+    public function testAPausedPartitionKeepsItsPlaceInTheFetchOrder(): void
+    {
+        $client   = $this->clientWithLog([0 => 1, 1 => 1]);
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([self::TOPIC => [0, 1]]);
+        $consumer->pause([self::TOPIC => [1]]);
+
+        $consumer->poll(10);
+        $consumer->resume([self::TOPIC => [1]]);
+        $consumer->poll(10);
+
+        self::assertSame([0], array_keys($client->fetchCalls[0][self::TOPIC]), 'a paused partition is not fetched');
+        self::assertSame(
+            [1, 0],
+            array_keys($client->fetchCalls[1][self::TOPIC]),
+            'the partition that was served goes behind the one that was paused'
+        );
+    }
+
     public function testDeserializersAreAppliedToTheKeyAndTheValue(): void
     {
         $client = new FakeClient();

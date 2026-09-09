@@ -421,17 +421,21 @@ class KafkaProducer
                 if (!isset($this->topicPartitionMessages[$topic][$partitionId])) {
                     continue;
                 }
-                // The `timestamp` is the CreateTime the producer stamped on the first record of the batch, which is
-                // the record the answer reports the offset of; the `LogAppendTime` that version 2 of the Produce
-                // API reports arrives with Kafka 0.10 and replaces it
+                // The `timestamp` is the CreateTime the producer stamped on the first record of the batch, which
+                // is the record the answer reports the offset of - unless the broker stamped the batch itself,
+                // which version 2 of the Produce API reports as the `LogAppendTime` of the partition; that value
+                // is the one the log holds, so it wins, exactly as `RecordMetadata` of the Java producer does
                 $createTime = $this->createTimeOf($topic, $partitionId);
-                $deferred   = $this->forgetPartition($topic, $partitionId);
+                $timestamp  = $partitionResult->logAppendTime !== ProduceResponsePartition::NO_LOG_APPEND_TIME
+                    ? $partitionResult->logAppendTime
+                    : $createTime;
+                $deferred = $this->forgetPartition($topic, $partitionId);
 
                 $deferred?->resolve(new RecordMetadata(
                     $topic,
                     $partitionId,
                     $partitionResult->baseOffset,
-                    $createTime,
+                    $timestamp,
                     $partitionResult->throttleTimeMs
                 ));
             }

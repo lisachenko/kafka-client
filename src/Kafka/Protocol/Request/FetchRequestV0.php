@@ -22,9 +22,10 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * The bytes of a version 0 request are the bytes of a version 1 request with another value in the `ApiVersion`
  * field of the header, so this class only lowers the version constant. What the version does change is the answer:
- * a version 0 request is answered without the `ThrottleTimeMs` prefix, see {@see FetchResponseV0}.
+ * a version 0 request is answered without the `ThrottleTimeMs` prefix, see {@see FetchResponseV0}, and - like every
+ * version below 2 - with a message set that the broker converted down to message format v0.
  *
- * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 to v3)"
  */
 final class FetchRequestV0 extends FetchRequest
 {
