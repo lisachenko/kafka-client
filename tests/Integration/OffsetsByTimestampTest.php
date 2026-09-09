@@ -32,12 +32,15 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Verifies version 1 of the Offsets (ListOffset) API - the timestamp lookup of Kafka 0.10.1 - against a real
- * 0.10.2.2 broker.
+ * Verifies the timestamp lookup of the Offsets (ListOffset) API - version 1 of Kafka 0.10.1, and version 2 with
+ * the isolation level of Kafka 0.11 - against a real 0.11.0.3 broker.
  *
- * Every partition under test holds five records one second apart, with the `CreateTime` values 1600000000000 to
- * 1600000004000, so that the answer of the broker is fully determined by the timestamp that is searched for. What
- * the tests assert is the table of "What the broker answers" in the protocol document.
+ * Every partition under test holds five records one second apart, with `CreateTime` values that start one hour
+ * before the run, so that the answer of the broker is fully determined by the timestamp that is searched for. The
+ * timestamps are relative to the clock and not fixed, because time-based retention deletes a segment by the
+ * largest timestamp it holds: a segment stamped with a date years in the past is removed at the next retention
+ * check of the broker (every five minutes), in the middle of the run. What the tests assert is the table of
+ * "What the broker answers" in the protocol document.
  *
  * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
  */
@@ -60,9 +63,10 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
     private const int PARTITION = 0;
 
     /**
-     * `CreateTime` of the first record of a prepared topic; the following ones are one second apart
+     * `CreateTime` of the first record of a prepared topic, one hour before the run; the following ones are one
+     * second apart. Fixed for the whole class, because the prepared topics are shared by the test methods.
      */
-    private const int FIRST_TIMESTAMP = 1600000000000;
+    private static ?int $firstTimestamp = null;
 
     /**
      * Number of records that a prepared topic holds
@@ -103,29 +107,29 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
 
     public function testATimestampBelowTheFirstRecordFindsTheFirstRecord(): void
     {
-        $found = $this->lookUp($this->preparedTopic('plain'), self::FIRST_TIMESTAMP - 5000);
+        $found = $this->lookUp($this->preparedTopic('plain'), self::firstTimestamp() - 5000);
 
         self::assertInstanceOf(OffsetAndTimestamp::class, $found);
         self::assertSame(0, $found->offset);
-        self::assertSame(self::FIRST_TIMESTAMP, $found->timestamp);
+        self::assertSame(self::firstTimestamp(), $found->timestamp);
     }
 
     public function testATimestampBetweenTwoRecordsFindsTheLaterOne(): void
     {
-        $found = $this->lookUp($this->preparedTopic('plain'), self::FIRST_TIMESTAMP + 1500);
+        $found = $this->lookUp($this->preparedTopic('plain'), self::firstTimestamp() + 1500);
 
         self::assertInstanceOf(OffsetAndTimestamp::class, $found);
         self::assertSame(2, $found->offset, 'the first record whose own timestamp is at or after the target time');
-        self::assertSame(self::FIRST_TIMESTAMP + 2000, $found->timestamp);
+        self::assertSame(self::firstTimestamp() + 2000, $found->timestamp);
     }
 
     public function testTheTimestampOfARecordFindsThatVeryRecord(): void
     {
-        $found = $this->lookUp($this->preparedTopic('plain'), self::FIRST_TIMESTAMP + 4000);
+        $found = $this->lookUp($this->preparedTopic('plain'), self::firstTimestamp() + 4000);
 
         self::assertInstanceOf(OffsetAndTimestamp::class, $found);
         self::assertSame(4, $found->offset);
-        self::assertSame(self::FIRST_TIMESTAMP + 4000, $found->timestamp);
+        self::assertSame(self::firstTimestamp() + 4000, $found->timestamp);
     }
 
     public function testATimestampAboveTheLastRecordIsAnsweredWithoutAnOffsetAndWithoutAnError(): void
@@ -133,13 +137,13 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
         $topic = $this->preparedTopic('plain');
 
         self::assertNull(
-            $this->lookUp($topic, self::FIRST_TIMESTAMP + 9000),
+            $this->lookUp($topic, self::firstTimestamp() + 9000),
             'the broker answers the error code 0 with the offset -1, which this client reports as null'
         );
         self::assertSame(
             [$topic => [self::PARTITION => OffsetsResponsePartition::UNKNOWN_OFFSET]],
             $this->client($topic)->fetchTopicPartitionOffsets(
-                [$topic => [self::PARTITION => self::FIRST_TIMESTAMP + 9000]]
+                [$topic => [self::PARTITION => self::firstTimestamp() + 9000]]
             ),
             'the plain offset of a partition that holds no such message is -1'
         );
@@ -149,7 +153,7 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
     {
         $topic = $this->preparedTopic('empty');
 
-        self::assertNull($this->lookUp($topic, self::FIRST_TIMESTAMP));
+        self::assertNull($this->lookUp($topic, self::firstTimestamp()));
         self::assertSame(0, $this->lookUp($topic, OffsetsRequest::LATEST)?->offset, 'an empty log ends at offset 0');
         self::assertSame(0, $this->lookUp($topic, OffsetsRequest::EARLIEST)?->offset);
     }
@@ -164,7 +168,7 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
         self::assertSame(0, $this->lookUp($topic, OffsetsRequest::EARLIEST)?->offset);
 
         try {
-            $this->lookUp($topic, self::FIRST_TIMESTAMP + 1500);
+            $this->lookUp($topic, self::firstTimestamp() + 1500);
             self::fail('A timestamp lookup on a message format v0 topic is expected to fail');
         } catch (TopicPartitionRequestException $exception) {
             $error = $exception->getExceptions()[$topic][self::PARTITION];
@@ -178,11 +182,11 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
     {
         // The whole batch is one wrapper message on disk, and the broker still answers the offset of the single
         // inner record, not the base offset of the wrapper
-        $found = $this->lookUp($this->preparedTopic('gzip'), self::FIRST_TIMESTAMP + 1500);
+        $found = $this->lookUp($this->preparedTopic('gzip'), self::firstTimestamp() + 1500);
 
         self::assertInstanceOf(OffsetAndTimestamp::class, $found);
         self::assertSame(2, $found->offset);
-        self::assertSame(self::FIRST_TIMESTAMP + 2000, $found->timestamp);
+        self::assertSame(self::firstTimestamp() + 2000, $found->timestamp);
     }
 
     public function testALogAppendTimeTopicIsSearchedByTheAppendTimeOfTheBroker(): void
@@ -191,12 +195,12 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
 
         // The CreateTime values the producer sent are replaced by the broker, and they lie far in the past, so a
         // lookup for them finds the very first record
-        $found = $this->lookUp($topic, self::FIRST_TIMESTAMP + 1500);
+        $found = $this->lookUp($topic, self::firstTimestamp() + 1500);
 
         self::assertInstanceOf(OffsetAndTimestamp::class, $found);
         self::assertSame(0, $found->offset);
         self::assertGreaterThan(
-            self::FIRST_TIMESTAMP,
+            self::firstTimestamp(),
             $found->timestamp,
             'the answer carries the append time of the broker, not the timestamp of the producer'
         );
@@ -240,12 +244,12 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
                 $consumer->endOffsets([$topic => [self::PARTITION]])
             );
 
-            $found = $consumer->offsetsForTimes([$topic => [self::PARTITION => self::FIRST_TIMESTAMP + 2500]]);
+            $found = $consumer->offsetsForTimes([$topic => [self::PARTITION => self::firstTimestamp() + 2500]]);
 
             $offsetAndTimestamp = $found[$topic][self::PARTITION];
             self::assertInstanceOf(OffsetAndTimestamp::class, $offsetAndTimestamp);
             self::assertSame(3, $offsetAndTimestamp->offset);
-            self::assertSame(self::FIRST_TIMESTAMP + 3000, $offsetAndTimestamp->timestamp);
+            self::assertSame(self::firstTimestamp() + 3000, $offsetAndTimestamp->timestamp);
 
             // Nothing was moved by the lookup, so a consumer that wants to read from there seeks itself
             $consumer->assign([$topic => [self::PARTITION]]);
@@ -259,6 +263,11 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
     /**
      * Looks one target time up in the partition under test and returns what the broker found
      */
+    private static function firstTimestamp(): int
+    {
+        return self::$firstTimestamp ??= (int) (floor(microtime(true)) * 1000) - 3600000;
+    }
+
     private function lookUp(string $topic, int $timestamp): ?OffsetAndTimestamp
     {
         return $this->client($topic)
@@ -335,7 +344,7 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
                 null,
                 CompressionCodec::NONE,
                 null,
-                self::FIRST_TIMESTAMP + $index * 1000
+                self::firstTimestamp() + $index * 1000
             );
         }
 

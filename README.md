@@ -298,10 +298,11 @@ of a record batch v2 carries the headers the producer wrote (`ConsumerRecord::$h
 request: with `read_committed` the broker answers only up to the **last stable offset** — the first
 record of a transaction that has neither committed nor aborted — and names the aborted transactions
 of the answer, whose records the consumer drops. The control batches of the transaction protocol are
-never handed to an application in either level. Note that `endOffsets()` and `listOffsets()` ask with
-`read_uncommitted`, i.e. for the log end offset: the isolation level of Offsets v2 is a parameter of
-`OffsetsRequest` on this branch, not of the consumer configuration, so a `read_committed` consumer
-that compares its position against `endOffsets()` compares it against the high water mark.
+never handed to an application in either level. The option travels in the **Offsets v2** request as
+well, so `endOffsets()`, `position()` and `seekToEnd()` of a `read_committed` consumer answer the last
+stable offset instead of the log end offset — a consumer that compares its position against the end of
+a partition compares it against the offset it can really reach. `AdminClient::listOffsets()` stays at
+`read_uncommitted` on purpose: an administrator asks what is in the log.
 
 **Offsets by timestamp** (Kafka 0.10.1, KIP-79) are what the record timestamps buy on the consumer
 side: `offsetsForTimes(['test' => [0 => $millis]])` answers the first record of each partition
@@ -547,7 +548,7 @@ marked **(0.10)**.
 | `request.timeout.ms` | **305000** | has to exceed both timeouts above, because a JoinGroup blocks |
 | `fetch.min.bytes` / `fetch.max.wait.ms` | 1 / 500 | when the broker answers a fetch |
 | `fetch.max.bytes` **(0.10)** | 52428800 | request-level `max_bytes` of Fetch v3, the bound of a whole answer |
-| `isolation.level` **(0.11)** | `read_uncommitted` | `read_uncommitted` or `read_committed`: what a Fetch v4/v5 makes of transactional records |
+| `isolation.level` **(0.11)** | `read_uncommitted` | `read_uncommitted` or `read_committed`: what a Fetch v4/v5 and an Offsets v2 make of transactional records |
 | `max.partition.fetch.bytes` | 65536 | per-partition bound; from Fetch v3 on the first partition is served whole even if it exceeds both |
 | `auto.offset.reset` | `latest` | `latest` or `earliest`, used when a partition has no committed offset |
 | `enable.auto.commit` / `auto.commit.interval.ms` | true / 0 | commit from `poll()`; 0 means "after every poll" |
@@ -564,9 +565,12 @@ marked **(0.10)**.
 | `timeout.ms` | 2000 | how long the broker waits for the replicas of a batch |
 | `batch.size` / `linger.ms` | 0 / 0 | when a batch is sent |
 | `compression.type` | `none` | `none`, `gzip`, `snappy`, **(0.10)** `lz4` |
-| `message.format.version` **(0.10)** | `0.11.0` | format a batch is written in: `0.9.0` and below format v0, `0.10.x` format v1 with timestamps, `0.11.0` the record batch v2 with headers |
+| `message.format.version` **(0.10)** | `0.11.0` | format a batch is written in, and with it the Produce version: `0.9.0` and below format v0, `0.10.x` format v1 with timestamps (both a Produce v2), `0.11.0` the record batch v2 with headers (a Produce v3) |
 | `max.request.size` | 1048576 | biggest record this client will buffer |
-| `retries` / `retry.backoff.ms` | 0 / 100 | retry budget of a batch |
+| `retries` / `retry.backoff.ms` | 0 / 100 | retry budget of a batch; **3** when `enable.idempotence` is on and it was not set |
+| `enable.idempotence` **(0.11)** | false | exactly once and in order per partition; implies `acks = all` and a non-zero `retries` |
+| `transactional.id` **(0.11)** | – | turns the producer into a transactional one and implies `enable.idempotence` |
+| `transaction.timeout.ms` **(0.11)** | 60000 | how long the coordinator lets a transaction of this producer stay open |
 | `partitioner.class` | `DefaultPartitioner` | murmur2 of the key, round robin without one |
 
 Security / SSL
@@ -681,11 +685,11 @@ version it sends.
 | 21      | DeleteRecords        | v0                   | yes           | –       | –        | **v0**                       |
 | 22      | InitProducerId       | v0                   | yes           | –       | –        | **v0**                       |
 | 23      | OffsetForLeaderEpoch | v0                   | broker→broker | –       | –        | **v0** (classes and vectors, no client method) |
-| 24      | AddPartitionsToTxn   | v0                   | yes           | –       | –        | planned (T8)                 |
-| 25      | AddOffsetsToTxn      | v0                   | yes           | –       | –        | planned (T8)                 |
-| 26      | EndTxn               | v0                   | yes           | –       | –        | planned (T8)                 |
-| 27      | WriteTxnMarkers      | v0                   | broker→broker | –       | –        | planned (T8)                 |
-| 28      | TxnOffsetCommit      | v0                   | yes           | –       | –        | planned (T8)                 |
+| 24      | AddPartitionsToTxn   | v0                   | yes           | –       | –        | **v0**                       |
+| 25      | AddOffsetsToTxn      | v0                   | yes           | –       | –        | **v0**                       |
+| 26      | EndTxn               | v0                   | yes           | –       | –        | **v0**                       |
+| 27      | WriteTxnMarkers      | v0                   | broker→broker | –       | –        | **v0** (classes and vectors, no client method) |
+| 28      | TxnOffsetCommit      | v0                   | yes           | –       | –        | **v0**                       |
 | 29      | DescribeAcls         | v0                   | yes           | –       | –        | no, see below                |
 | 30      | CreateAcls           | v0                   | yes           | –       | –        | no, see below                |
 | 31      | DeleteAcls           | v0                   | yes           | –       | –        | no, see below                |
@@ -728,7 +732,7 @@ What the four lines can do beyond the api versions themselves:
 | Record headers end to end (KIP-82)                    | 0.11       | –       | –       | –        | **yes** |
 | `OffsetForLeaderEpoch`, `allow_auto_topic_creation`   | 0.11       | –       | –       | –        | **yes** |
 | Idempotent producer (`enable.idempotence`)            | 0.11       | –       | –       | –        | **yes** |
-| Transactional producer, `isolation.level`             | 0.11       | –       | –       | –        | **planned (T8)** |
+| Transactional producer, `isolation.level`             | 0.11       | –       | –       | –        | **yes** |
 | Error codes                                           | –          | -1 … 20 | -1 … 31 | -1 … 44  | **-1 … 55** |
 
 Everything a later Kafka added is missing here, by design:
@@ -796,8 +800,8 @@ composer install
 composer check   # coding standards + static analysis + PHPUnit
 ```
 
-The suite is split in three — 1420 unit tests, 217 compliance tests replaying the 210 documented
-wire vectors, and 405 integration tests against a real broker over its four listeners:
+The suite is split in three — 1487 unit tests, 236 compliance tests replaying the 229 documented
+wire vectors, and 426 integration tests against a real broker over its four listeners:
 
 ```bash
 vendor/bin/phpunit --testsuite unit          # pure unit tests, no broker
@@ -839,6 +843,7 @@ Every file in [examples/](examples) is runnable against the container of `docker
 | [`consumer-group.php`](examples/consumer-group.php) | `subscribe()`, the rebalance listener, `max.poll.interval.ms` — start it twice |
 | [`record-headers.php`](examples/record-headers.php) | the record headers of Kafka 0.11 (KIP-82), written and read back end to end |
 | [`idempotent-producer.php`](examples/idempotent-producer.php) | `enable.idempotence`: the producer id, the sequence numbers and what a duplicate batch answers |
+| [`transactional-producer.php`](examples/transactional-producer.php) | `transactional.id`, the consume-transform-produce loop and a `read_committed` consumer |
 | [`admin.php`](examples/admin.php) | brokers, cluster id and controller, topics, offsets, groups |
 | [`create-topic.php`](examples/create-topic.php) | `createTopics()` / `deleteTopics()` with `validateOnly` and the error of a topic |
 | [`admin-configs.php`](examples/admin-configs.php) | `describeConfigs()`, `alterConfigs()` and `deleteRecords()` — the admin apis of Kafka 0.11 |

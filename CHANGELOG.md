@@ -14,8 +14,8 @@ Unreleased — the main line (Kafka 0.11.0.3)
 
 The 0.11 line, built on top of the `0.10.x` line it was cascade-merged from. Everything below was
 verified against a real Apache **0.11.0.3** broker (`docker/kafka-0.11.0.3/`, four listeners) and
-is documented byte for byte in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), whose 210 wire
-vectors [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 90 frames
+is documented byte for byte in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), whose 229 wire
+vectors [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 109 frames
 this line captured and the 120 of the three lines below, which a 0.11.0.3 broker still speaks.
 
 ### Added
@@ -260,6 +260,14 @@ this line captured and the 120 of the three lines below, which a 0.11.0.3 broker
 - **A 0.11.0.3 broker remembers one batch per producer id and partition.** The five-batch window of
   `ProducerStateEntry.NumBatchesToRetain` is Kafka 1.0, so a duplicate of a batch that is no longer
   the last one is answered 45 and not with the offset of the original append.
+- **Five error codes of the transaction protocol could not be produced on a one-broker container
+  without an authorizer** — 49 (`InvalidProducerIdMapping`), 51 as a stable wire vector (it is
+  transient), 52 (`TransactionCoordinatorFenced`, which needs two coordinators), 53 and 30. They are
+  implemented from the sources of 0.11.0.3 and marked as such in the protocol document, next to the
+  ones the container really answered.
+- **The epoch of an `InitProducerId` may move by more than one.** A coordinator that has to roll an
+  open transaction back bumps the epoch once for the fencing and once for the new producer, and
+  answers 51 in between: a client reads the epoch it is given and never computes `epoch + 1`.
 
 Previous line — 0.10.x (Kafka 0.10.2.2)
 ----------------------------------------

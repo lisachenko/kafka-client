@@ -20,7 +20,7 @@ document's "Broker quirks and observations" section.
 | **T4** #74 | **Produce v3 and Fetch v4/v5**: the transactional id, the isolation level, the last stable offset, the aborted transactions and the log start offset, with the record headers travelling end to end through `KafkaProducer` and `KafkaConsumer` |
 | **T5** #75 | **DeleteRecords** (21), **DescribeConfigs** (32) and **AlterConfigs** (33) with the `AdminClient` methods, `ConfigResource`, `Config`/`ConfigEntry`, `RecordsToDelete` and `DeletedRecords` |
 | **T7** #76 | **The idempotent producer**: InitProducerId (22), `ProducerIdAndEpoch`, `TransactionManager`, the producer id / epoch / per-partition sequence on every batch, `enable.idempotence`, and what a client does with 45, 46 and 47 |
-| **T8** #77 | **The transactional producer**: AddPartitionsToTxn (24), AddOffsetsToTxn (25), EndTxn (26), WriteTxnMarkers (27), TxnOffsetCommit (28), the transaction coordinator lookup, `sendOffsetsToTransaction()` and the `read_committed` consumer |
+| **T8** #77 | **The transactional producer**: AddPartitionsToTxn (24), AddOffsetsToTxn (25), EndTxn (26), TxnOffsetCommit (28) and WriteTxnMarkers (27, classes and vectors only), the state machine of `TransactionManager`, `transactional.id` with the five methods of the Java producer, and the `read_committed` consumer with `ConsumerConfig::ISOLATION_LEVEL` and `AbortedTransactionFilter` |
 | **T9** #78 | This file, the consistency pass over the document, the README matrix, the CHANGELOG, the vectors README and the examples |
 
 ## How it was verified
@@ -28,15 +28,16 @@ document's "Broker quirks and observations" section.
 Everything was measured against a real Apache Kafka **0.11.0.3** broker (`docker/kafka-0.11.0.3/`, four listeners:
 PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL 9095), never against the specification alone:
 
-* **210 wire vectors** in [`docs/protocol/vectors`](../protocol/vectors) — the **90** frames this line captured from
-  the container plus the 120 of the three lines below, which a 0.11.0.3 broker still answers unchanged. Every one of
-  them is replayed by `tests/Compliance` through the request and response classes, in both directions, and
+* **229 wire vectors** in [`docs/protocol/vectors`](../protocol/vectors) — the **109** frames this line captured
+  from the container plus the 120 of the three lines below, which a 0.11.0.3 broker still answers unchanged. Every
+  one of them is replayed by `tests/Compliance` through the request and response classes, in both directions, and
   `DocumentationSyncTest` holds the annotated dumps of the document and the vector files together.
 * The **api-key table** of the document is the literal ApiVersions answer of the broker;
   `tests/Integration/ApiVersionProbeTest.php` sends a real frame of every key and version of it, and one version
   above each of them to check that the broker really does not serve those.
 * The **integration suite** runs against the container over all four listeners with unique topic, group and
-  transactional-id names per test class.
+  transactional-id names per test class: 1487 unit tests, 236 compliance tests and 426 integration tests, without a
+  single skip.
 
 ## Deviations from the plan, forced by the broker
 
@@ -55,6 +56,13 @@ PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL 9095), never against the
   `Log.analyzeAndValidateProducerState` is guarded by `isFromClient` and answers a duplicate of the last batch with
   the code **0** and the offset of the original append; a duplicate of an older batch is **45**. The class exists
   and is retriable, as in the Java client, but it is implemented from the specification and observed nowhere.
+* **The retries of the transaction manager are bounded by a deadline, not by `retries`.** The coordinator codes
+  14, 15, 16 and 51 do not say that a request failed, and a producer with the default `retries` would give up on
+  the very first 51 a coordinator answers while it rolls an earlier transaction back, so those four are retried
+  until `metadata.fetch.timeout.ms` instead.
+* **An `InitProducerId` may bump the epoch by more than one.** A coordinator that has to roll an open transaction
+  back bumps it once for the fencing and once for the new producer and answers 51 in between — measured on the
+  container: the epoch 1 of an open transaction, one 51, then the epoch 3. A client reads the epoch it is given.
 * **The ACL apis 29-31 were left out** (decision 3 of the epic): they do nothing on a broker without an
   `authorizer.class.name` — a 0.11.0.3 broker answers all three with the error code 54 — and every wire vector of
   this repository comes from a real broker.
@@ -77,10 +85,13 @@ PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL 9095), never against the
   `ProducerStateEntry.NumBatchesToRetain` is Kafka 1.0, so a retry that is not the *last* batch of its partition is
   answered 45 and not with the offset of the original append. The idempotence guarantee also ends with the producer
   session: a new `KafkaProducer` gets a new producer id.
-* **The isolation level of Offsets v2 is a parameter of `OffsetsRequest`, not of the consumer configuration**:
-  `KafkaConsumer::endOffsets()` and `AdminClient::listOffsets()` ask with `read_uncommitted`, i.e. for the log end
-  offset, whatever `isolation.level` says. A `read_committed` consumer that wants the last stable offset has to send
-  the request itself.
+* **Five error codes of the transaction protocol are implemented from the sources and were never observed**: 49
+  (`InvalidProducerIdMapping`), 51 as a stable wire vector (it is transient), 52 (`TransactionCoordinatorFenced`,
+  which needs two coordinators), 53 and 30 (which need an authorizer). The container of this line cannot produce
+  them; the protocol document says so at every one of them.
+* **`AdminClient::listOffsets()` stays at `read_uncommitted`** while `KafkaConsumer` sends its `isolation.level` in
+  the Fetch and in the Offsets request alike: an administrator asks what is in the log, a consumer asks what it may
+  read. That is a deliberate difference, not an omission.
 * **Everything above 0.11.0.3 is out of scope by design**: Fetch v6, Produce v4, Metadata v5, flexible versions and
   tagged fields, `DeleteGroups`, incremental `AlterConfigs`. The api-key table of the document is the ceiling, and a
   frame above it costs the connection.
