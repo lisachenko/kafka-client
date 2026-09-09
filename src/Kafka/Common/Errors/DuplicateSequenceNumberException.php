@@ -18,9 +18,9 @@ use Exception;
 /**
  * The broker received a duplicate sequence number.
  *
- * Error code 46, Kafka 0.11 (idempotent producer, KIP-98): the batch was already appended, a retry after a lost acknowledgement; the Java client treats it as a success.
+ * Error code 46, Kafka 0.11 (idempotent producer, KIP-98): the batch was already appended, a retry after a lost acknowledgement. `DuplicateSequenceNumberException` extends `RetriableException` in the Java client of 0.11.0.3, and the idempotent producer treats the answer as a success rather than as something to send again.
  */
-class DuplicateSequenceException extends KafkaException implements ServerExceptionInterface
+class DuplicateSequenceNumberException extends KafkaException implements RetriableException, ServerExceptionInterface
 {
     public function __construct(array $context = [], ?Exception $previous = null)
     {

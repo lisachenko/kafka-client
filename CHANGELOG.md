@@ -31,7 +31,7 @@ all 120 vectors of the three lines below, which a 0.11.0.3 broker still speaks.
   `WRITE_TXN_MARKERS` (27), `TXN_OFFSET_COMMIT` (28), `DESCRIBE_ACLS` (29), `CREATE_ACLS` (30),
   `DELETE_ACLS` (31), `DESCRIBE_CONFIGS` (32) and `ALTER_CONFIGS` (33). `Protocol\ApiKeys` now ends
   at 33; everything above it is Kafka 1.0.
-- **Error codes 45-55** — `OutOfOrderSequenceException` (45), `DuplicateSequenceException` (46),
+- **Error codes 45-55** — `OutOfOrderSequenceException` (45), `DuplicateSequenceNumberException` (46, the one retriable code of the eleven),
   `ProducerFencedException` (47), `InvalidTxnStateException` (48), `InvalidPidMappingException`
   (49), `InvalidTxnTimeoutException` (50), `ConcurrentTransactionsException` (51),
   `TransactionCoordinatorFencedException` (52), `TransactionalIdAuthorizationException` (53),

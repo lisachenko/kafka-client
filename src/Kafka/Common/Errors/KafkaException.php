@@ -28,7 +28,7 @@ use RuntimeException;
  * 0.10.0, 36-42 (the CreateTopics codes, NOT_CONTROLLER and INVALID_REQUEST) with 0.10.1 and 43-44
  * (UNSUPPORTED_FOR_MESSAGE_FORMAT, POLICY_VIOLATION) with 0.10.2; Kafka 0.11 added 45-55, the codes of the
  * idempotent and transactional producer (KIP-98), of the ACL apis (SECURITY_DISABLED, OPERATION_NOT_ATTEMPTED) and
- * TRANSACTIONAL_ID_AUTHORIZATION_FAILED. Code 13 was StaleLeaderEpochCode in the 0.8 line and is NETWORK_EXCEPTION
+ * TRANSACTIONAL_ID_AUTHORIZATION_FAILED; of them only 46 is retriable, as in the Java client. Code 13 was StaleLeaderEpochCode in the 0.8 line and is NETWORK_EXCEPTION
  * here; NO_ERROR is not part of the mapping. Codes above 55 (KAFKA_STORAGE_ERROR 56 is Kafka 1.0) are answered with
  * {@see \Protocol\Kafka\Common\Errors\UnknownErrorException} by {@see self::fromCode()}.
  */
@@ -146,7 +146,7 @@ abstract class KafkaException extends RuntimeException
         self::UNSUPPORTED_FOR_MESSAGE_FORMAT     => UnsupportedForMessageFormatException::class,
         self::POLICY_VIOLATION                   => PolicyViolationException::class,
         self::OUT_OF_ORDER_SEQUENCE_NUMBER          => OutOfOrderSequenceException::class,
-        self::DUPLICATE_SEQUENCE_NUMBER             => DuplicateSequenceException::class,
+        self::DUPLICATE_SEQUENCE_NUMBER             => DuplicateSequenceNumberException::class,
         self::INVALID_PRODUCER_EPOCH                => ProducerFencedException::class,
         self::INVALID_TXN_STATE                     => InvalidTxnStateException::class,
         self::INVALID_PRODUCER_ID_MAPPING           => InvalidPidMappingException::class,
