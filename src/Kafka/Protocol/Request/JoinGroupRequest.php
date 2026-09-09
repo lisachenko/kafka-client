@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * timeout of the connection - `request.timeout.ms` - therefore has to be larger than
  * {@see \Protocol\Kafka\Consumer\ConsumerConfig::SESSION_TIMEOUT_MS}, exactly as in the Java client.
  *
- * @see docs/protocol/0.9.0.md, section "JoinGroup API (key 11, v0)"
+ * @see docs/protocol/0.10.2.md, section "JoinGroup API (key 11, v0)"
  */
 class JoinGroupRequest extends AbstractRequest
 {

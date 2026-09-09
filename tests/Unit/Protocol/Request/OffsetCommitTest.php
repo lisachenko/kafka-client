@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 /**
  * Byte-exact tests for the OffsetCommit API (key 8), versions 0, 1 and 2.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
+ * @see docs/protocol/0.10.2.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]

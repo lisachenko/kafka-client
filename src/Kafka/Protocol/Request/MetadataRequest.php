@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * In version 0 of this API the topic array is not nullable: an EMPTY array asks for every topic of the cluster.
  * The nullable array of the later protocol lines arrived with version 1 (Kafka 0.10.0).
  *
- * @see docs/protocol/0.9.0.md, section "Metadata API (key 3, v0)"
+ * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0)"
  */
 class MetadataRequest extends AbstractRequest
 {

@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Version 1 is the only version of the request with a per-partition commit timestamp, so this class exists solely
  * to raise that field into the scheme that {@see OffsetCommitRequestPartition::getScheme()} builds.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
+ * @see docs/protocol/0.10.2.md, section "OffsetCommit API (key 8, v0, v1 and v2)"
  */
 final class OffsetCommitRequestPartitionV1 extends OffsetCommitRequestPartition
 {

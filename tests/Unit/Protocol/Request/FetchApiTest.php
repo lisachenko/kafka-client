@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV0;
  *   FetchResponse => [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet]]
  * </pre>
  *
- * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0)" and "MessageSet and Message"
+ * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]

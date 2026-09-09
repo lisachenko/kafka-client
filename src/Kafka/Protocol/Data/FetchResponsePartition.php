@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `LastStableOffset`, `LogStartOffset` and `AbortedTransactions` belong to the transactional protocol of 0.11 and do
  * not exist in v0.
  *
- * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0)" and "MessageSet and Message"
+ * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0)" and "MessageSet and Message"
  */
 class FetchResponsePartition implements BinarySchemaInterface
 {

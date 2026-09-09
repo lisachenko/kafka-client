@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * `LogStartOffset` only exists since FetchRequest v5 (Kafka 0.11) and is therefore absent here.
  *
- * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 and v1)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface
 {

@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * field of the header, so this class only lowers the version constant. What the version does change is the answer:
  * a version 0 request is answered without the `ThrottleTimeMs` prefix, see {@see FetchResponseV0}.
  *
- * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 and v1)"
  */
 final class FetchRequestV0 extends FetchRequest
 {

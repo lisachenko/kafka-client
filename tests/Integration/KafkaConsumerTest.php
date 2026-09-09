@@ -42,7 +42,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * there. The broker-side group membership of Kafka 0.9 - subscribe(), the rebalance and the heartbeats - is driven
  * by {@see ConsumerGroupTest}.
  *
- * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0 and v1)", "Offsets API (key 2, v0), a.k.a.
+ * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 and v1)", "Offsets API (key 2, v0), a.k.a.
  *      ListOffset" and "OffsetFetch API (key 9, v0 and v1)"
  */
 #[CoversClass(KafkaConsumer::class)]

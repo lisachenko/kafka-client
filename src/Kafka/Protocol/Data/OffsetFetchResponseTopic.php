@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partition_responses => OffsetFetchResponsePartition
  * </pre>
  *
- * @see docs/protocol/0.9.0.md, section "OffsetFetch API (key 9, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0 and v1)"
  */
 class OffsetFetchResponseTopic implements BinarySchemaInterface
 {

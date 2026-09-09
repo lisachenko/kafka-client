@@ -35,7 +35,7 @@ use Protocol\Kafka\Common\Security\SslProtocol;
  *
  * SASL is not implemented; see {@see SecurityProtocol} for why 0.9 cannot support it.
  *
- * @see docs/protocol/0.9.0.md, section "Transport security (SSL)"
+ * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
  */
 class SocketStream extends AbstractStream
 {

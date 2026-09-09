@@ -57,7 +57,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * Tests the low-level client against scripted brokers: the fan-out to the partition leaders, the correlation of the
  * answers, the retries after a metadata refresh and the reporting of a partially failed request.
  *
- * @see docs/protocol/0.9.0.md
+ * @see docs/protocol/0.10.2.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(RetryPolicy::class)]

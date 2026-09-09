@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * field of the header, so this class only lowers the version constant. What the version does change is the answer:
  * a version 0 request is answered without the `ThrottleTime` field, see {@see ProduceResponseV0}.
  *
- * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0 and v1)"
  */
 final class ProduceRequestV0 extends ProduceRequest
 {

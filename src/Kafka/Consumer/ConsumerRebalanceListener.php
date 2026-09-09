@@ -31,7 +31,7 @@ namespace Protocol\Kafka\Consumer;
  * `session.timeout.ms` costs this consumer its membership.
  *
  * @see \Protocol\Kafka\Consumer\KafkaConsumer::subscribe()
- * @see docs/protocol/0.9.0.md, section "Group membership protocol (keys 11 to 14)"
+ * @see docs/protocol/0.10.2.md, section "Group membership protocol (keys 11 to 14)"
  */
 interface ConsumerRebalanceListener
 {

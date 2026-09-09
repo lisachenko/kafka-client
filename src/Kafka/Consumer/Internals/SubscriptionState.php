@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * consumer matches the pattern against the topics of the cluster metadata - and no wire structure of Kafka 0.9
  * carries it.
  *
- * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 final class SubscriptionState
 {

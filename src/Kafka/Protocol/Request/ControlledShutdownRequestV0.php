@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * A 0.9.0.1 broker still serves this version; it is the only version a 0.8.2.2 broker understands.
  *
- * @see docs/protocol/0.9.0.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "ControlledShutdown API (key 7, v0 and v1)"
  */
 final class ControlledShutdownRequestV0 extends ControlledShutdownRequest
 {

@@ -24,7 +24,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  *
  * Kafka 0.9 has no ApiVersions request (that is key 18, Kafka 0.10), so the only way to know the protocol surface of
  * a broker is to send a minimal well-formed request of every key and version and to watch what comes back. The
- * result is the api-key table of `docs/protocol/0.9.0.md`, and this test keeps that table honest.
+ * result is the api-key table of `docs/protocol/0.10.2.md`, and this test keeps that table honest.
  *
  * Two properties of the 0.9.0.1 broker make the probe possible at all:
  *
@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * epoch -1 and empty partition sets, ControlledShutdown asks for a broker id that does not exist, and the group
  * apis use a group id that no other test uses and are answered with an error before a group is created.
  *
- * @see docs/protocol/0.9.0.md, section "API keys"
+ * @see docs/protocol/0.10.2.md, section "API keys"
  */
 #[CoversClass(ApiKeys::class)]
 final class ApiVersionProbeTest extends IntegrationTestCase

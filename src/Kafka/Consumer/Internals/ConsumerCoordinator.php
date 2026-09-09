@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * a rejoin with the member id of the previous generation, 25 (UnknownMemberId) for a rejoin without one, and 15/16
  * (GroupCoordinatorNotAvailable, NotCoordinatorForGroup) for another coordinator lookup.
  *
- * @see docs/protocol/0.9.0.md, sections "Group membership protocol (keys 11 to 14)" and "Consumer group protocol"
+ * @see docs/protocol/0.10.2.md, sections "Group membership protocol (keys 11 to 14)" and "Consumer group protocol"
  * @see \Protocol\Kafka\Consumer\KafkaConsumer::poll()
  */
 final class ConsumerCoordinator

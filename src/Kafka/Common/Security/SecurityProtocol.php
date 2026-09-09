@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Common\Security;
  * GSSAPI token exchange on a freshly opened connection, and the `SaslHandshake` request that made the mechanism
  * negotiable only arrived with Kafka 0.10.0 (api key 17).
  *
- * @see docs/protocol/0.9.0.md, section "Transport security (SSL)"
+ * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
  * @see \Protocol\Kafka\Common\ClientConfig::SECURITY_PROTOCOL
  */
 final class SecurityProtocol

@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * v0 answers with a list of segment offsets, which is why there is an array here and a single `Timestamp`/`Offset`
  * pair in v1 (Kafka 0.10.1) of the API.
  *
- * @see docs/protocol/0.9.0.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
+ * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
 class OffsetsResponsePartition implements BinarySchemaInterface
 {

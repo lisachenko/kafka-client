@@ -39,7 +39,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The messages are produced with hand-written Produce v0 bytes, so that these tests only depend on the wire format
  * of the spec and not on the state of the other protocol classes.
  *
- * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0)" and "Offsets API (key 2, v0), a.k.a. ListOffset"
+ * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0)" and "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]

@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
  * The order of {@see self::$members} is the order of the internal map of the coordinator and is **not** the order
  * in which the members joined; a leader that needs a stable order has to sort the array itself.
  *
- * @see docs/protocol/0.9.0.md, section "JoinGroup API (key 11, v0)"
+ * @see docs/protocol/0.10.2.md, section "JoinGroup API (key 11, v0)"
  */
 class JoinGroupResponse extends AbstractResponse
 {

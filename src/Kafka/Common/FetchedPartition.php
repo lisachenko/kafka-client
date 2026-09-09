@@ -32,7 +32,7 @@ use Protocol\Kafka\Common\Record\Record;
  * only waits longer.
  *
  * @see \Protocol\Kafka\Client::fetchPartitions()
- * @see docs/protocol/0.9.0.md, sections "Fetch API (key 1, v0 and v1)" and "Quotas and throttle time"
+ * @see docs/protocol/0.10.2.md, sections "Fetch API (key 1, v0 and v1)" and "Quotas and throttle time"
  */
 final class FetchedPartition
 {

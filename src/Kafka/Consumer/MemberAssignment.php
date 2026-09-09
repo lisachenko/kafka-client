@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * Kafka 0.9.0.1 knows exactly one version, {@see MemberAssignment::VERSION}, and the built-in assignors send the
  * empty `UserData` that the Java client sends.
  *
- * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
  * @see \Protocol\Kafka\Consumer\PartitionAssignorInterface::assign()
  */
 class MemberAssignment implements BinarySchemaInterface

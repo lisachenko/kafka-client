@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
  * The `Timestamp` field and the single offset of v1 (Kafka 0.10.1) do not exist here: v0 answers with the list of the
  * segment offsets that match the requested time.
  *
- * @see docs/protocol/0.9.0.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
+ * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
 class OffsetsResponse extends AbstractResponse
 {

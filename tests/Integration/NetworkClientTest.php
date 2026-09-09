@@ -39,7 +39,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * requests, it echoes the correlation id of each request back, and it is the only thing that can tell the client
  * that its cached metadata points at the wrong leader.
  *
- * @see docs/protocol/0.9.0.md
+ * @see docs/protocol/0.10.2.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(Cluster::class)]

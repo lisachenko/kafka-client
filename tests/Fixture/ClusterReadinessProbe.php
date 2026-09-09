@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Request\MetadataRequest;
  *
  * An empty broker array is therefore "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/0.9.0.md, section "Cluster readiness"
+ * @see docs/protocol/0.10.2.md, section "Cluster readiness"
  */
 final class ClusterReadinessProbe
 {

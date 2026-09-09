@@ -28,7 +28,7 @@ use Protocol\Kafka\Consumer\Subscription;
  * implementation is deterministic - the members of a topic are sorted lexicographically and its partitions are
  * handed out in numeric order.
  *
- * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 #[CoversClass(RangeAssignor::class)]
 #[CoversClass(AbstractPartitionAssignor::class)]

@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * A topic-partition without a committed offset is not an error: the broker answers with the offset `-1`, empty
  * metadata and the error code 0 (v1); v0 reads from ZooKeeper and reports 3 (UnknownTopicOrPartition) instead.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetFetch API (key 9, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0 and v1)"
  */
 class OffsetFetchResponsePartition implements BinarySchemaInterface
 {

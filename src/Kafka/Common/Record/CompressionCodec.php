@@ -23,7 +23,7 @@ use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
  * The 0.9.0.1 broker already knows the LZ4 codec (3), added for the new Java producer, but this client neither
  * produces nor consumes it.
  *
- * @see docs/protocol/0.9.0.md, section "MessageSet and Message"
+ * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
  * @see kafka/message/CompressionCodec.scala @ 0.9.0.1
  */
 final class CompressionCodec

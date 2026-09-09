@@ -38,7 +38,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * decompresses a compressed set to assign the offsets of its inner messages, and it recompresses it with the codec
  * the producer chose. A set that survives this round trip is a set that Kafka itself accepts.
  *
- * @see docs/protocol/0.9.0.md, section "MessageSet and Message"
+ * @see docs/protocol/0.10.2.md, section "MessageSet and Message"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]

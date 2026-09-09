@@ -27,7 +27,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 /**
  * Verifies the Metadata API v0 against a real Kafka 0.9.0.1 broker.
  *
- * @see docs/protocol/0.9.0.md, section "Metadata API (key 3, v0)"
+ * @see docs/protocol/0.10.2.md, section "Metadata API (key 3, v0)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataResponse::class)]

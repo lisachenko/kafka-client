@@ -2,7 +2,7 @@ Wire vectors of the Kafka 0.9.0.1 protocol
 ==========================================
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
-machine-readable half of [`../0.9.0.md`](../0.9.0.md), whose "Wire vectors" section shows the same bytes as annotated
+machine-readable half of [`../0.10.2.md`](../0.10.2.md), whose "Wire vectors" section shows the same bytes as annotated
 hex dumps.
 
 The vectors that this branch inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker; Kafka 0.9.0.1 does not

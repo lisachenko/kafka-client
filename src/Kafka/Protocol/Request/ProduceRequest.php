@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  *
  * The `TransactionalId` of the later protocol lines arrived with version 3 of this API (Kafka 0.11.0).
  *
- * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0 and v1)"
  */
 class ProduceRequest extends AbstractRequest
 {

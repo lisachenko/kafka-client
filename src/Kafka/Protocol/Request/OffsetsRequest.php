@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopic;
  *     MaxNumberOfOffsets => int32
  * </pre>
  *
- * @see docs/protocol/0.9.0.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
+ * @see docs/protocol/0.10.2.md, section "Offsets API (key 2, v0), a.k.a. ListOffset"
  */
 class OffsetsRequest extends AbstractRequest
 {

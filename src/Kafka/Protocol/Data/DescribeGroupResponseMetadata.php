@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * four states, and the coordinator answers a group it does not know with {@see self::STATE_DEAD} and the error
  * code 0, not with an error - a group only exists while it has members or committed offsets.
  *
- * @see docs/protocol/0.9.0.md, section "DescribeGroups API (key 15, v0)"
+ * @see docs/protocol/0.10.2.md, section "DescribeGroups API (key 15, v0)"
  */
 class DescribeGroupResponseMetadata implements BinarySchemaInterface
 {

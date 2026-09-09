@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the empty byte array that the Java client sends, `PartitionAssignor.Subscription` defaulting the field to
  * `ByteBuffer.wrap(new byte[0])`.
  *
- * @see docs/protocol/0.9.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/0.10.2.md, section "Consumer group protocol (protocol_type = consumer)"
  * @see \Protocol\Kafka\Consumer\PartitionAssignorInterface::subscription()
  */
 class Subscription implements BinarySchemaInterface

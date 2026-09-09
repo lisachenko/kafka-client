@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
  * The top-level `error_code` of the version 2 response belongs to Kafka 0.9: in 0.8.2.2 every error is reported per
  * topic-partition.
  *
- * @see docs/protocol/0.9.0.md, section "OffsetFetch API (key 9, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "OffsetFetch API (key 9, v0 and v1)"
  */
 class OffsetFetchResponse extends AbstractResponse
 {

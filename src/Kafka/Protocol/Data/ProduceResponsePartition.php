@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The `LogAppendTime` of the later protocol lines arrived with version 2 of this API (Kafka 0.10.0).
  *
- * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0 and v1)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {
@@ -63,7 +63,7 @@ class ProduceResponsePartition implements BinarySchemaInterface
      * those answers carries a throttle time of its own.
      *
      * @see \Protocol\Kafka\Producer\RecordMetadata::$throttleTimeMs
-     * @see docs/protocol/0.9.0.md, section "Quotas and throttle time"
+     * @see docs/protocol/0.10.2.md, section "Quotas and throttle time"
      */
     public int $throttleTimeMs = 0;
 

@@ -28,7 +28,7 @@ use Protocol\Kafka\Common\Security\SslProtocol;
  * this client connects with, and the `ssl.*` options configure the TLS handshake it performs before the first
  * request. Authentication (SASL/GSSAPI) is deliberately absent - it has no handshake api before Kafka 0.10.0.
  *
- * @see docs/protocol/0.9.0.md, section "Transport security (SSL)"
+ * @see docs/protocol/0.10.2.md, section "Transport security (SSL)"
  */
 class ClientConfig
 {

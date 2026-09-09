@@ -33,7 +33,7 @@ use Protocol\Kafka\Common\TopicMetadata;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/0.9.0.md, sections "Metadata API (key 3, v0)" and "Cluster readiness"
+ * @see docs/protocol/0.10.2.md, sections "Metadata API (key 3, v0)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {

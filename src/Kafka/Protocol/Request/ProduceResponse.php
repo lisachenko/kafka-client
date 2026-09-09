@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
  * exist here. A request with `RequiredAcks = 0` is never answered at all, see
  * {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/0.9.0.md, section "Produce API (key 0, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Produce API (key 0, v0 and v1)"
  */
 class ProduceResponse extends AbstractResponse
 {

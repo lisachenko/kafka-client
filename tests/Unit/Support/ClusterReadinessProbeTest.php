@@ -24,7 +24,7 @@ use Protocol\Kafka\Tests\Fixture\FakeStream;
  * The readiness probe drives the integration suite, so it gets tested against canned broker answers rather than
  * against a live broker.
  *
- * @see docs/protocol/0.9.0.md, section "Cluster readiness"
+ * @see docs/protocol/0.10.2.md, section "Cluster readiness"
  */
 #[CoversClass(ClusterReadinessProbe::class)]
 #[CoversClass(ClusterMetadataResponse::class)]

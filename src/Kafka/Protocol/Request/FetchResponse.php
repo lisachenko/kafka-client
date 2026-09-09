@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
  * The `LastStableOffset`, `LogStartOffset` and `AbortedTransactions` fields of the later protocol lines arrived with
  * Kafka 0.11, and the returned message sets are always message format v0 in 0.9.
  *
- * @see docs/protocol/0.9.0.md, section "Fetch API (key 1, v0 and v1)"
+ * @see docs/protocol/0.10.2.md, section "Fetch API (key 1, v0 and v1)"
  */
 class FetchResponse extends AbstractResponse
 {
