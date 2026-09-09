@@ -43,8 +43,6 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
-use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
-use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
@@ -139,6 +137,11 @@ class AdminClient
      * that is "not ready, retry", never "the cluster has no brokers", see the "Cluster readiness" section of the
      * protocol document.
      *
+     * The request names an EMPTY topic list, which version 1 of the Metadata API (Kafka 0.10.0) made a request for
+     * NO topic at all instead of one for every topic: the answer carries the brokers of the cluster and nothing
+     * else, which is exactly what this method needs. Every broker also reports its `broker.rack` from that version
+     * on, so {@see Node::$rack} is filled here whenever the cluster is rack aware.
+     *
      * @return array<int, Node>
      */
     public function findAllBrokers(): array
@@ -188,7 +191,11 @@ class AdminClient
      * `auto.create.topics.enable=true`. That first answer carries the topic error code 5 (LeaderNotAvailable) and an
      * empty partition list, because the controller has not elected the leaders yet; the metadata of the fresh topic
      * arrives with one of the next requests. This is the only way a 0.8 broker creates a topic - the CreateTopics
-     * api key does not exist before Kafka 0.10.1.
+     * api key does not exist before Kafka 0.10.1 ({@see self::createTopics()}).
+     *
+     * An empty list asks for every topic of the cluster, the internal ones included: it is sent as the NULL topic
+     * array of Metadata v1, because an empty array means "no topic at all" from that version on. Which of the
+     * answered topics Kafka keeps for itself is in {@see TopicMetadata::$isInternal}.
      *
      * @param list<string> $topics Topics to describe, an empty list asks for every topic of the cluster
      *
@@ -196,7 +203,7 @@ class AdminClient
      */
     public function describeTopics(array $topics = []): array
     {
-        $requestedTopics = array_values($topics);
+        $requestedTopics = $topics !== [] ? array_values($topics) : null;
         /** @var MetadataResponse $response */
         $response = $this->sendAnyNode(
             fn(int $correlationId): MetadataRequest => new MetadataRequest(
@@ -634,15 +641,6 @@ class AdminClient
     }
 
     /**
-     * Topic name that {@see self::findController()} probes the brokers with
-     *
-     * `#` is not one of the characters a Kafka topic name may contain (`Topic.validate` @ 0.10.2.2 allows
-     * `[a-zA-Z0-9._-]` only), so no cluster can ever hold a topic of this name and the probe can not delete
-     * anything by accident.
-     */
-    private const string CONTROLLER_PROBE_TOPIC = '#kafka-client-controller-probe#';
-
-    /**
      * Low-level client of this cluster, built by {@see self::client()} when a topic api is used for the first time
      */
     private ?Client $kafkaClient = null;
@@ -723,67 +721,40 @@ class AdminClient
     /**
      * Returns the broker that is the active controller of the cluster
      *
-     * The topic administration apis are served by the active controller alone, and version 0 of the Metadata api -
-     * the only one a 0.9 broker had - does not say which broker that is: the `controller_id` field arrived with
-     * Metadata v1 in Kafka 0.10.0 and replaces the body of this method in the ticket that implements it. Until
-     * then the controller is found by asking: every broker of {@see self::findAllBrokers()} is sent a probe of the
-     * DeleteTopics api, and the first one that does not answer 41 (NotController) is the controller.
+     * The topic administration apis are served by the active controller alone, and version 1 of the Metadata api
+     * (Kafka 0.10.0) is what says which broker that is: every answer from that version on carries the
+     * `ControllerId` of the metadata cache of the broker that answered
+     * ({@see \Protocol\Kafka\Protocol\Request\MetadataResponse::$controllerId}), so one metadata refresh finds it -
+     * on a 0.9 cluster the same lookup needed one probe request per broker.
      *
-     * The probe deletes NOTHING. It names one topic whose name can never be a legal Kafka topic
-     * ({@see self::CONTROLLER_PROBE_TOPIC} - `Topic.validate` only allows `[a-zA-Z0-9._-]`), so the controller
-     * cannot find it in its metadata cache and answers the error code 3 (UnknownTopicOrPartition) without touching
-     * ZooKeeper, while every other broker answers 41 for it. A request with an EMPTY topic array - the obvious
-     * probe - can NOT be used: `KafkaApis.handleDeleteTopicsRequest` @ 0.10.2.2 builds the answer by mapping over
-     * the topics of the REQUEST, so an empty request is answered with an empty array by the controller and by every
-     * follower alike, and the answer would never carry the 41 the lookup is looking for. That was verified against
-     * the 0.10.2.2 broker, see the "DeleteTopics API" section of the protocol document.
+     * The metadata of the cluster is asked again ONCE when the id is missing, because a `-1`
+     * ({@see \Protocol\Kafka\Protocol\Request\MetadataResponse::NO_CONTROLLER_ID}) is what a broker answers while
+     * the cluster is electing a controller, and because the metadata this client holds may be older than the last
+     * election. A broker whose id is not among the alive brokers of the same answer counts as "no controller" too:
+     * that is what a client sees in the moment the controller goes down.
      *
-     * @throws AllBrokersNotAvailableException If not a single broker of the cluster answered the probe
-     * @throws NotControllerException If every broker of the cluster answered 41, i.e. the cluster is electing a
-     *         controller right now
+     * @throws AllBrokersNotAvailableException If not a single broker of the cluster answered
+     * @throws NotControllerException If the cluster has no active controller, i.e. it is electing one right now
      */
     public function findController(): Node
     {
-        $lastException = null;
-        $refusedNodes  = [];
-        foreach ($this->findAllBrokers() as $node) {
-            try {
-                /** @var DeleteTopicsResponse $response */
-                $response = $this->sendTo(
-                    $node->getConnection($this->configuration),
-                    fn(int $correlationId): DeleteTopicsRequest => new DeleteTopicsRequest(
-                        [self::CONTROLLER_PROBE_TOPIC],
-                        0,
-                        $this->clientId(),
-                        $correlationId
-                    ),
-                    DeleteTopicsResponse::class,
-                    ['node' => $node->nodeId]
-                );
-            } catch (Exception $exception) {
-                $lastException = $exception;
-
-                continue;
-            }
-
-            $errorCode = $response->topics[self::CONTROLLER_PROBE_TOPIC]->errorCode ?? KafkaException::NO_ERROR;
-            if ($errorCode !== KafkaException::NOT_CONTROLLER) {
-                return $node;
-            }
-            $refusedNodes[] = $node->nodeId;
+        $controller = $this->cluster->controller();
+        if ($controller === null) {
+            // The cached metadata may predate the last controller election, so the cluster is asked once more
+            $this->cluster->reload();
+            $controller = $this->cluster->controller();
         }
 
-        if ($refusedNodes !== []) {
+        if ($controller === null) {
             throw new NotControllerException(
-                ['nodes' => $refusedNodes, 'error' => 'No broker of the cluster is the active controller']
+                [
+                    'error' => 'The cluster does not have an active controller',
+                    'nodes' => array_keys($this->cluster->nodes()),
+                ]
             );
         }
 
-        throw new AllBrokersNotAvailableException(
-            ['error' => 'No broker of the cluster answered the controller lookup'],
-            KafkaException::UNKNOWN,
-            $lastException
-        );
+        return $controller;
     }
 
     /**
@@ -792,6 +763,10 @@ class AdminClient
      * A controller election between the lookup and the request is the one failure of the topic administration apis
      * that a client can fix by itself, and one more lookup is enough for it: the answer of the second attempt is
      * reported as it is, whatever it says.
+     *
+     * The 41 is also the proof that the `ControllerId` this client holds is STALE - the broker it names says it is
+     * not the controller any more - so the metadata is fetched again before the second lookup; without that the
+     * second attempt would go to the very same broker and get the very same answer.
      *
      * @param Closure(Node): array<string, KafkaException|null> $request Sends the request to the given controller
      *
@@ -802,6 +777,8 @@ class AdminClient
         $result = $request($this->findController());
         foreach ($result as $error) {
             if ($error instanceof NotControllerException) {
+                $this->cluster->reload();
+
                 return $request($this->findController());
             }
         }
