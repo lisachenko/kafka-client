@@ -44,7 +44,7 @@ use Protocol\Kafka\Common\Errors\CorruptMessageException;
  * {@see MemoryRecords::getRecords()} answers what an application is allowed to see: the records of every batch,
  * without the **control batches**, whose records are markers of the transaction protocol and never leave the client.
  *
- * @see docs/protocol/0.11.0.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
  * @see org/apache/kafka/common/record/MemoryRecords.java @ 0.11.0.3
  */
 final class MemoryRecords implements \Countable, \Stringable

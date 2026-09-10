@@ -48,7 +48,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * partition while the previous transaction of the id is still being completed is answered with **51**
  * (`ConcurrentTransactions`), which is retriable after a back-off.
  *
- * @see docs/protocol/0.11.0.md, section "AddPartitionsToTxn API (key 24, v0)"
+ * @see docs/protocol/1.1.md, section "AddPartitionsToTxn API (key 24, v0)"
  */
 class AddPartitionsToTxnRequest extends AbstractRequest
 {

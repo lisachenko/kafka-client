@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * so this class only lowers the version constant that {@see FetchRequest::getScheme()} and
  * {@see FetchRequest::topicClass()} follow.
  *
- * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
+ * @see docs/protocol/1.1.md, section "Fetch API (key 1, v0 to v7)"
  */
 final class FetchRequestV4 extends FetchRequest
 {

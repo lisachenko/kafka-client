@@ -1,0 +1,180 @@
+{
+    "api": "describe-log-dirs",
+    "apiKey": 35,
+    "section": "DescribeLogDirs API (key 35, v0)",
+    "description": "Wire vectors of the DescribeLogDirs API (key 35, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describelogdirs.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeLogDirs request v0 that asks for one partition of one topic, so that the answer names only the directory that holds it.",
+            "hex": "00000034002300000000003c000a74352d6c6f676469727300000001001274352d766563746f72732d6c6f67646972730000000100000000",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 35,
+                "apiVersion": 0,
+                "correlationId": 60,
+                "clientId": "t5-logdirs",
+                "topics": {
+                    "t5-vectors-logdirs": {
+                        "topic": "t5-vectors-logdirs",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeLogDirs response v0 of the two-directory container: both log directories are reported, one of them holding the requested replica with its size and an offset lag of 0, the other one with an empty topic array.",
+            "hex": "000000690000003c00000000000000020000000f2f746d702f6b61666b612d6c6f677300000000000000112f746d702f6b61666b612d6c6f67732d3200000001001274352d766563746f72732d6c6f6764697273000000010000000000000000007d2ec2000000000000000000",
+            "fields": {
+                "messageSize": 105,
+                "correlationId": 60,
+                "throttleTimeMs": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": []
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": {
+                            "t5-vectors-logdirs": {
+                                "topic": "t5-vectors-logdirs",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "size": 8203970,
+                                        "offsetLag": 0,
+                                        "isFuture": false
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v0.all-partitions",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeLogDirs request v0 with a null topic array, which asks for every replica of every log directory of the broker; its answer is not captured, because it carries every partition of the container.",
+            "hex": "00000018002300000000003d000a74352d6c6f6764697273ffffffff",
+            "fields": {
+                "messageSize": 24,
+                "apiKey": 35,
+                "apiVersion": 0,
+                "correlationId": 61,
+                "clientId": "t5-logdirs",
+                "topics": null
+            }
+        },
+        {
+            "id": "describelogdirs.request.v0.no-partitions",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeLogDirs request v0 with an empty topic array, which asks for no replica at all.",
+            "hex": "00000018002300000000003e000a74352d6c6f676469727300000000",
+            "fields": {
+                "messageSize": 24,
+                "apiKey": 35,
+                "apiVersion": 0,
+                "correlationId": 62,
+                "clientId": "t5-logdirs",
+                "topics": []
+            }
+        },
+        {
+            "id": "describelogdirs.response.v0.no-partitions",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeLogDirs response v0 to an empty topic array: the two log directories of the container, both online and both with an empty topic array.",
+            "hex": "0000003c0000003e00000000000000020000000f2f746d702f6b61666b612d6c6f677300000000000000112f746d702f6b61666b612d6c6f67732d3200000000",
+            "fields": {
+                "messageSize": 60,
+                "correlationId": 62,
+                "throttleTimeMs": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": []
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v0.future",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeLogDirs response v0 while a replica move runs: the partition is reported twice, as the current log of the source directory (`is_future = false`, `offset_lag = 0`) and as the future log of the destination, whose `offset_lag` is the number of records the mover still has to copy.",
+            "hex": "000000960000004000000000000000020000000f2f746d702f6b61666b612d6c6f677300000001001274352d766563746f72732d6c6f67646972730000000100000000000000000000000000000000000003e801000000112f746d702f6b61666b612d6c6f67732d3200000001001274352d766563746f72732d6c6f6764697273000000010000000000000000007d2ec2000000000000000000",
+            "fields": {
+                "messageSize": 150,
+                "correlationId": 64,
+                "throttleTimeMs": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": {
+                            "t5-vectors-logdirs": {
+                                "topic": "t5-vectors-logdirs",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "size": 0,
+                                        "offsetLag": 1000,
+                                        "isFuture": true
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": {
+                            "t5-vectors-logdirs": {
+                                "topic": "t5-vectors-logdirs",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "size": 8203970,
+                                        "offsetLag": 0,
+                                        "isFuture": false
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

@@ -112,7 +112,7 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsRequest",
             "version": 0,
             "source": "broker",
-            "description": "AlterConfigs request v0 for a broker resource with validate_only = 01, which a Kafka 0.11 broker refuses whatever the flag says.",
+            "description": "AlterConfigs request v0 for a broker resource with validate_only = 01, which a Kafka 0.11 broker refuses whatever the flag says. Captured on the 0.11.0.3 container and kept as history: a 1.1.1 broker accepts the very same frame (KIP-226), see alterconfigs.request.v0.broker-dynamic.",
             "hex": "0000003b002100000000002d000a74352d766563746f727300000001040001300000000100136c6f672e726574656e74696f6e2e686f757273000331363801",
             "fields": {
                 "messageSize": 59,
@@ -141,7 +141,7 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsResponse",
             "version": 0,
             "source": "broker",
-            "description": "AlterConfigs response v0 for a broker resource: the error code 42 (InvalidRequest) and the message \"AlterConfigs is only supported for topics, but resource type is BROKER\".",
+            "description": "AlterConfigs response v0 of a 0.11.0.3 broker for a broker resource: the error code 42 (InvalidRequest) and the message \"AlterConfigs is only supported for topics, but resource type is BROKER\". Kept as history - a 1.1.1 broker answers 0 for a dynamic option and 42 with \"Cannot update these configs dynamically: Set(...)\" for a static one, and its message names topics AND brokers.",
             "hex": "0000005a0000002d0000000000000001002a0046416c746572436f6e66696773206973206f6e6c7920737570706f7274656420666f7220746f706963732c20627574207265736f7572636520747970652069732042524f4b455204000130",
             "fields": {
                 "messageSize": 90,
@@ -151,6 +151,159 @@
                     {
                         "errorCode": 42,
                         "errorMessage": "AlterConfigs is only supported for topics, but resource type is BROKER",
+                        "resourceType": 4,
+                        "resourceName": "0"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "alterconfigs.request.v0.broker-dynamic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterConfigs request v0 that sets a dynamically updatable option of the broker resource `0` (KIP-226). The frame is the one of Kafka 0.11 - the api has no version 1 - and only the broker changed: a 0.11 broker refused every broker resource.",
+            "hex": "000000400021000000000004000a74342d636f6e6669677300000001040001300000000100166c6f672e636c65616e65722e6261636b6f66662e6d730005313630303000",
+            "fields": {
+                "messageSize": 64,
+                "apiKey": 33,
+                "apiVersion": 0,
+                "correlationId": 4,
+                "clientId": "t4-configs",
+                "resources": [
+                    {
+                        "resourceType": 4,
+                        "resourceName": "0",
+                        "configEntries": {
+                            "log.cleaner.backoff.ms": {
+                                "configName": "log.cleaner.backoff.ms",
+                                "configValue": "16000"
+                            }
+                        }
+                    }
+                ],
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "alterconfigs.response.v0.broker-dynamic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of a 1.1.1 broker to it: the error code 0 and a null message. The option is applied at runtime and a DescribeConfigs of the same resource reports it with the source 2 (DYNAMIC_BROKER_CONFIG) right away.",
+            "hex": "000000140000000400000000000000010000ffff04000130",
+            "fields": {
+                "messageSize": 20,
+                "correlationId": 4,
+                "throttleTimeMs": 0,
+                "resources": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "resourceType": 4,
+                        "resourceName": "0"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "alterconfigs.request.v0.broker-default",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterConfigs request v0 for the **default** broker resource: the resource type 4 with an EMPTY name, which is how KIP-226 addresses the cluster-wide dynamic configuration that every broker picks up.",
+            "hex": "0000003f0021000000000006000a74342d636f6e66696773000000010400000000000100166c6f672e636c65616e65722e6261636b6f66662e6d730005313730303000",
+            "fields": {
+                "messageSize": 63,
+                "apiKey": 33,
+                "apiVersion": 0,
+                "correlationId": 6,
+                "clientId": "t4-configs",
+                "resources": [
+                    {
+                        "resourceType": 4,
+                        "resourceName": "",
+                        "configEntries": {
+                            "log.cleaner.backoff.ms": {
+                                "configName": "log.cleaner.backoff.ms",
+                                "configValue": "17000"
+                            }
+                        }
+                    }
+                ],
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "alterconfigs.response.v0.broker-default",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer to it - error code 0, and the empty resource name echoed back. A DescribeConfigs of the same resource then reports the option with the source 3 (DYNAMIC_DEFAULT_BROKER_CONFIG).",
+            "hex": "000000130000000600000000000000010000ffff040000",
+            "fields": {
+                "messageSize": 19,
+                "correlationId": 6,
+                "throttleTimeMs": 0,
+                "resources": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "resourceType": 4,
+                        "resourceName": ""
+                    }
+                ]
+            }
+        },
+        {
+            "id": "alterconfigs.request.v0.broker-static",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterConfigs request v0 that tries to change an option of the broker which is NOT dynamically updatable.",
+            "hex": "0000003b0021000000000008000a74342d636f6e6669677300000001040001300000000100136c6f672e726574656e74696f6e2e686f757273000331363900",
+            "fields": {
+                "messageSize": 59,
+                "apiKey": 33,
+                "apiVersion": 0,
+                "correlationId": 8,
+                "clientId": "t4-configs",
+                "resources": [
+                    {
+                        "resourceType": 4,
+                        "resourceName": "0",
+                        "configEntries": {
+                            "log.retention.hours": {
+                                "configName": "log.retention.hours",
+                                "configValue": "169"
+                            }
+                        }
+                    }
+                ],
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "alterconfigs.response.v0.broker-static",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of a 1.1.1 broker: the error code 42 (InvalidRequest) and the message `Cannot update these configs dynamically: Set(log.retention.hours)`, wrapped in the `Invalid config value for resource \u2026` of `AdminManager.alterConfigs`. The whole resource is refused, and nothing of it is applied.",
+            "hex": "00000098000000080000000000000001002a0084496e76616c696420636f6e6669672076616c756520666f72207265736f75726365205265736f7572636528747970653d42524f4b45522c206e616d653d2730277d3a2043616e6e6f742075706461746520746865736520636f6e666967732064796e616d6963616c6c793a20536574286c6f672e726574656e74696f6e2e686f7572732904000130",
+            "fields": {
+                "messageSize": 152,
+                "correlationId": 8,
+                "throttleTimeMs": 0,
+                "resources": [
+                    {
+                        "errorCode": 42,
+                        "errorMessage": "Invalid config value for resource Resource(type=BROKER, name='0'}: Cannot update these configs dynamically: Set(log.retention.hours)",
                         "resourceType": 4,
                         "resourceName": "0"
                     }

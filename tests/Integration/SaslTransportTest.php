@@ -17,9 +17,11 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\IllegalSaslStateException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\SaslAuthenticationException;
+use Protocol\Kafka\Common\Errors\SaslAuthenticationFailedException;
 use Protocol\Kafka\Common\Errors\UnsupportedSaslMechanismException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Security\SaslMechanism;
@@ -35,28 +37,36 @@ use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateRequest;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponse;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeRequest;
+use Protocol\Kafka\Protocol\Request\SaslHandshakeRequestV0;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the SASL/PLAIN authentication against the SASL listeners of a real Kafka 0.10.2.2 broker.
+ * Verifies the SASL/PLAIN authentication against the SASL listeners of a real Kafka 1.1.1 broker.
  *
  * Kafka 0.10.0 (KIP-43) put the mechanism negotiation into the protocol - `SaslHandshake`, api key 17 - and added
- * the PLAIN mechanism, whose token is a user name and a password rather than a Kerberos ticket. What is tested here
- * is that exchange end to end on both SASL listeners of the test broker: the handshake, the bare token frames that
- * follow it, the ordinary traffic afterwards, and every way a broker can refuse - none of which carries an error
- * code before Kafka 1.0.
+ * the PLAIN mechanism, whose token is a user name and a password rather than a Kerberos ticket. Kafka 1.0
+ * (KIP-152) put the tokens themselves into it, as `SaslAuthenticate` requests (api key 36) that a **v1** handshake
+ * asks for, and with them an error code for a refused credential. What is tested here is both exchanges end to end
+ * on both SASL listeners of the test broker: the handshake, the tokens in either framing, the ordinary traffic
+ * afterwards, and every way a broker can refuse - the 58 with a message after a v1 handshake, and the connection
+ * that simply goes away after a v0 one.
  *
- * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/1.1.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0)"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
  */
 #[CoversClass(SocketStream::class)]
 #[CoversClass(SecurityProtocol::class)]
 #[CoversClass(SaslMechanism::class)]
 #[CoversClass(SaslToken::class)]
+#[CoversClass(SaslAuthenticateRequest::class)]
+#[CoversClass(SaslAuthenticateResponse::class)]
 #[CoversClass(SaslHandshakeRequest::class)]
+#[CoversClass(SaslHandshakeRequestV0::class)]
 #[CoversClass(SaslHandshakeResponse::class)]
 #[CoversClass(ConnectionFactory::class)]
 #[CoversClass(Cluster::class)]
@@ -69,7 +79,7 @@ final class SaslTransportTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t8-sasl';
 
     /**
-     * Credentials of `docker/kafka-0.11.0.3/jaas.conf`
+     * Credentials of `docker/kafka-1.1.1/jaas.conf`
      */
     private const string USERNAME = 'kafkatest';
 
@@ -114,7 +124,7 @@ final class SaslTransportTest extends IntegrationTestCase
         $records = [[null, 'authenticated'], ['key', 'with SASL/PLAIN']];
 
         // The batch is a message set of the specification, which only a request below version 3 may carry: a
-        // Produce v3 accepts the message format v2 alone, see docs/protocol/0.11.0.md
+        // Produce v3 accepts the message format v2 alone, see docs/protocol/1.1.md
         new ProduceRequestV2(
             [$topic => [0 => SpecMessageSet::of($records)]],
             1,
@@ -229,13 +239,44 @@ final class SaslTransportTest extends IntegrationTestCase
     }
 
     /**
-     * Wrong credentials have no error code before Kafka 1.0: `PlainSaslServer` throws, the broker closes the
-     * connection in the middle of the token exchange and answers nothing at all.
+     * The framed exchange of Kafka 1.0, driven by hand over both SASL listeners: a v1 handshake, the very same
+     * PLAIN token inside a `SaslAuthenticate` request, and an answer that says so with an error code.
+     */
+    #[DataProvider('saslListeners')]
+    public function testTokenOfAVersionOneHandshakeTravelsInsideASaslAuthenticateRequest(string $listener): void
+    {
+        $stream = $this->connectWithoutAuthentication($listener);
+
+        new SaslHandshakeRequest(SaslMechanism::PLAIN, self::CLIENT_ID, 431)->writeTo($stream);
+        $handshake = SaslHandshakeResponse::unpack($stream);
+
+        self::assertSame(431, $handshake->getCorrelationId());
+        self::assertSame(0, $handshake->errorCode);
+        self::assertSame([SaslMechanism::PLAIN], $handshake->enabledMechanisms);
+
+        $token = SaslToken::ofPlainCredentials(self::USERNAME, self::PASSWORD);
+        new SaslAuthenticateRequest($token->token, self::CLIENT_ID, 432)->writeTo($stream);
+        $answer = SaslAuthenticateResponse::unpack($stream);
+
+        self::assertSame(432, $answer->getCorrelationId());
+        self::assertSame(0, $answer->errorCode, 'the credentials of the container are accepted');
+        self::assertNull($answer->errorMessage, 'a successful answer carries no message');
+        self::assertSame('', $answer->saslAuthBytes, 'PLAIN completes with the empty token');
+
+        // ... and the connection is an ordinary one from here on
+        new MetadataRequest([], true, self::CLIENT_ID, 433)->writeTo($stream);
+        self::assertSame(433, MetadataResponse::unpack($stream)->getCorrelationId());
+    }
+
+    /**
+     * Wrong credentials are the error code 58 with a message from Kafka 1.0 on - and the answer is the last frame
+     * of the connection, which the broker closes right after it.
      */
     #[DataProvider('refusedCredentials')]
-    public function testRefusedCredentialsCloseTheConnectionDuringTheTokenExchange(
+    public function testRefusedCredentialsAreAnsweredWithTheErrorCode58(
         string $username,
-        string $password
+        string $password,
+        string $expectedMessage
     ): void {
         $stream = new SocketStream(
             'tcp://' . self::saslBootstrapServer(),
@@ -251,26 +292,159 @@ final class SaslTransportTest extends IntegrationTestCase
             self::fail('The broker must not authenticate these credentials');
         } catch (SaslAuthenticationException $exception) {
             $context = $exception->getContext();
-            self::assertStringContainsString('closed the connection', $context['error']);
+            self::assertSame(KafkaException::SASL_AUTHENTICATION_FAILED, $context['errorCode']);
+            self::assertSame($expectedMessage, $context['errorMessage']);
+            self::assertSame($expectedMessage, $context['error']);
             self::assertSame($username, $context['username']);
             self::assertNotContains($password, $context, 'the password never reaches an exception');
+            self::assertInstanceOf(
+                SaslAuthenticationFailedException::class,
+                $exception->getPrevious(),
+                'the wire code of the answer is the cause of the client-side exception'
+            );
         }
 
         self::assertFalse($stream->isConnected(), 'the connection is dropped with the failed authentication');
     }
 
     /**
-     * @return iterable<string, array{string, string}>
+     * @return iterable<string, array{string, string, string}>
      */
     public static function refusedCredentials(): iterable
     {
-        yield 'wrong password' => [self::USERNAME, 'not-the-password'];
-        yield 'unknown user'   => ['t8-nobody', self::PASSWORD];
+        $invalid = 'Authentication failed: Invalid username or password';
+
+        yield 'wrong password' => [self::USERNAME, 'not-the-password', $invalid];
+        yield 'unknown user'   => ['t8-nobody', self::PASSWORD, $invalid];
     }
 
     /**
-     * A mechanism the broker has not enabled is refused with the error code 33 and the list of the enabled ones -
-     * the only error code of the whole exchange - and the broker closes the connection right afterwards.
+     * A token the mechanism cannot even parse - PLAIN needs three NUL-separated parts - is the same error code
+     * with the other message of `SaslServerAuthenticator`.
+     */
+    public function testTokenTheMechanismCanNotParseIsAnsweredWithTheErrorCode58(): void
+    {
+        $stream = $this->connectPlain();
+
+        new SaslHandshakeRequest(SaslMechanism::PLAIN, self::CLIENT_ID, 441)->writeTo($stream);
+        self::assertSame(0, SaslHandshakeResponse::unpack($stream)->errorCode);
+
+        new SaslAuthenticateRequest('no-separators-at-all', self::CLIENT_ID, 442)->writeTo($stream);
+        $answer = SaslAuthenticateResponse::unpack($stream);
+
+        self::assertSame(KafkaException::SASL_AUTHENTICATION_FAILED, $answer->errorCode);
+        self::assertSame(
+            'Authentication failed due to invalid credentials with SASL mechanism PLAIN',
+            $answer->errorMessage
+        );
+        self::assertSame('', $answer->saslAuthBytes);
+    }
+
+    /**
+     * A second `SaslAuthenticate` reaches `KafkaApis` instead of the authenticator: it is answered with 34 and,
+     * unlike every other refusal of the exchange, it leaves the connection usable.
+     */
+    public function testSecondSaslAuthenticateIsAnsweredWithTheIllegalSaslState(): void
+    {
+        $stream = $this->connectPlain();
+        $token  = SaslToken::ofPlainCredentials(self::USERNAME, self::PASSWORD);
+
+        new SaslHandshakeRequest(SaslMechanism::PLAIN, self::CLIENT_ID, 451)->writeTo($stream);
+        self::assertSame(0, SaslHandshakeResponse::unpack($stream)->errorCode);
+        new SaslAuthenticateRequest($token->token, self::CLIENT_ID, 452)->writeTo($stream);
+        self::assertSame(0, SaslAuthenticateResponse::unpack($stream)->errorCode);
+
+        new SaslAuthenticateRequest($token->token, self::CLIENT_ID, 453)->writeTo($stream);
+        $answer = SaslAuthenticateResponse::unpack($stream);
+
+        self::assertSame(KafkaException::ILLEGAL_SASL_STATE, $answer->errorCode);
+        self::assertSame('SaslAuthenticate request received after successful authentication', $answer->errorMessage);
+        self::assertInstanceOf(IllegalSaslStateException::class, KafkaException::fromCode($answer->errorCode));
+
+        // The connection survives it, which no other refusal of this exchange does
+        new MetadataRequest([], true, self::CLIENT_ID, 454)->writeTo($stream);
+        self::assertSame(454, MetadataResponse::unpack($stream)->getCorrelationId());
+    }
+
+    /**
+     * The raw exchange of the lines up to 0.11 is still served, unchanged, by a 1.1.1 broker: a v0 handshake and
+     * bare token frames with no header at all.
+     */
+    public function testTheRawTokenExchangeOfAVersionZeroHandshakeStillWorks(): void
+    {
+        $stream = $this->connectPlain();
+
+        new SaslHandshakeRequestV0(SaslMechanism::PLAIN, self::CLIENT_ID, 461)->writeTo($stream);
+        self::assertSame(0, SaslHandshakeResponse::unpack($stream)->errorCode);
+
+        SaslToken::ofPlainCredentials(self::USERNAME, self::PASSWORD)->writeTo($stream);
+        self::assertTrue(SaslToken::readFrom($stream)->isEmpty(), 'PLAIN completes with the empty token');
+
+        new MetadataRequest([], true, self::CLIENT_ID, 462)->writeTo($stream);
+        self::assertSame(462, MetadataResponse::unpack($stream)->getCorrelationId());
+    }
+
+    /**
+     * ... and it still has no error code either: refused credentials are a closed connection there
+     */
+    public function testRefusedCredentialsOfTheRawExchangeCloseTheConnection(): void
+    {
+        $stream = $this->connectPlain();
+
+        new SaslHandshakeRequestV0(SaslMechanism::PLAIN, self::CLIENT_ID, 471)->writeTo($stream);
+        self::assertSame(0, SaslHandshakeResponse::unpack($stream)->errorCode);
+
+        $this->expectException(NetworkException::class);
+        SaslToken::ofPlainCredentials(self::USERNAME, 'not-the-password')->writeTo($stream);
+        SaslToken::readFrom($stream);
+    }
+
+    /**
+     * The two halves have to match: the broker switches on the version of the handshake and on nothing else, so
+     * the wrong framing is read as garbage and the connection is closed without an answer.
+     */
+    public function testAFramedTokenAfterAVersionZeroHandshakeClosesTheConnection(): void
+    {
+        $stream = $this->connectPlain();
+
+        new SaslHandshakeRequestV0(SaslMechanism::PLAIN, self::CLIENT_ID, 481)->writeTo($stream);
+        self::assertSame(0, SaslHandshakeResponse::unpack($stream)->errorCode);
+
+        $this->expectException(NetworkException::class);
+        $token = SaslToken::ofPlainCredentials(self::USERNAME, self::PASSWORD);
+        new SaslAuthenticateRequest($token->token, self::CLIENT_ID, 482)->writeTo($stream);
+        SaslAuthenticateResponse::unpack($stream);
+    }
+
+    public function testARawTokenAfterAVersionOneHandshakeClosesTheConnection(): void
+    {
+        $stream = $this->connectPlain();
+
+        new SaslHandshakeRequest(SaslMechanism::PLAIN, self::CLIENT_ID, 491)->writeTo($stream);
+        self::assertSame(0, SaslHandshakeResponse::unpack($stream)->errorCode);
+
+        $this->expectException(NetworkException::class);
+        SaslToken::ofPlainCredentials(self::USERNAME, self::PASSWORD)->writeTo($stream);
+        SaslToken::readFrom($stream);
+    }
+
+    /**
+     * `SaslAuthenticate` belongs to the authentication phase: before the handshake the authenticator does not even
+     * build an error response for it, it closes the connection.
+     */
+    public function testSaslAuthenticateBeforeTheHandshakeIsNotAnswered(): void
+    {
+        $stream = $this->connectPlain();
+        $token  = SaslToken::ofPlainCredentials(self::USERNAME, self::PASSWORD);
+
+        $this->expectException(NetworkException::class);
+        new SaslAuthenticateRequest($token->token, self::CLIENT_ID, 501)->writeTo($stream);
+        SaslAuthenticateResponse::unpack($stream);
+    }
+
+    /**
+     * A mechanism the broker has not enabled is refused with the error code 33 and the list of the enabled ones,
+     * and the broker closes the connection right afterwards - in both versions of the handshake.
      *
      * The request is written by hand here because the client refuses to configure a mechanism it cannot perform.
      */
@@ -296,18 +470,64 @@ final class SaslTransportTest extends IntegrationTestCase
     }
 
     /**
-     * The handshake is answered exactly once: the state machine of the broker is past `HANDSHAKE_REQUEST` afterwards
+     * The handshake is answered exactly once. After a **v1** one the second frame is parsed as a Kafka request, so
+     * the broker answers 34 - with an empty mechanism list, which is a change of Kafka 1.1 - and closes.
      */
-    public function testSecondHandshakeOnTheSameConnectionIsNotAnswered(): void
+    public function testSecondHandshakeOfAVersionOneConnectionIsAnsweredWithTheIllegalSaslState(): void
     {
         $stream = $this->connectPlain();
 
         new SaslHandshakeRequest(SaslMechanism::PLAIN, self::CLIENT_ID, 411)->writeTo($stream);
         self::assertSame(0, SaslHandshakeResponse::unpack($stream)->errorCode);
 
-        $this->expectException(NetworkException::class);
         new SaslHandshakeRequest(SaslMechanism::PLAIN, self::CLIENT_ID, 412)->writeTo($stream);
+        $second = SaslHandshakeResponse::unpack($stream);
+
+        self::assertSame(KafkaException::ILLEGAL_SASL_STATE, $second->errorCode);
+        self::assertSame([], $second->enabledMechanisms, 'a 1.1 broker answers that with no mechanism at all');
+
+        // ... and nothing else comes out of that connection
+        $this->expectException(NetworkException::class);
+        new SaslHandshakeRequest(SaslMechanism::PLAIN, self::CLIENT_ID, 413)->writeTo($stream);
         SaslHandshakeResponse::unpack($stream);
+    }
+
+    /**
+     * After a **v0** handshake the second frame is a token, not a request, so there is nothing to answer with
+     */
+    public function testSecondHandshakeOfAVersionZeroConnectionIsNotAnswered(): void
+    {
+        $stream = $this->connectPlain();
+
+        new SaslHandshakeRequestV0(SaslMechanism::PLAIN, self::CLIENT_ID, 421)->writeTo($stream);
+        self::assertSame(0, SaslHandshakeResponse::unpack($stream)->errorCode);
+
+        $this->expectException(NetworkException::class);
+        new SaslHandshakeRequestV0(SaslMechanism::PLAIN, self::CLIENT_ID, 422)->writeTo($stream);
+        SaslHandshakeResponse::unpack($stream);
+    }
+
+    /**
+     * A handshake that never reaches the authenticator - here on the PLAINTEXT listener - is the same 34 with the
+     * empty mechanism list, but it comes from `KafkaApis` and leaves the connection alone.
+     */
+    public function testHandshakeOnAListenerThatDoesNotAuthenticateIsAnsweredWithTheIllegalSaslState(): void
+    {
+        $stream = new SocketStream(
+            'tcp://' . self::firstBootstrapServer(),
+            [ClientConfig::REQUEST_TIMEOUT_MS => 5000],
+            5.0
+        );
+
+        new SaslHandshakeRequest(SaslMechanism::PLAIN, self::CLIENT_ID, 511)->writeTo($stream);
+        $response = SaslHandshakeResponse::unpack($stream);
+
+        self::assertSame(KafkaException::ILLEGAL_SASL_STATE, $response->errorCode);
+        self::assertSame([], $response->enabledMechanisms, 'Kafka 1.1 empties that list, 1.0.2 still filled it');
+
+        // The api layer answered, so the connection is untouched
+        new MetadataRequest([], true, self::CLIENT_ID, 512)->writeTo($stream);
+        self::assertSame(512, MetadataResponse::unpack($stream)->getCorrelationId());
     }
 
     /**
@@ -325,8 +545,9 @@ final class SaslTransportTest extends IntegrationTestCase
     }
 
     /**
-     * ApiVersions is the one exception: a 0.10.2 broker answers it before the authentication (KIP-35), so that a
-     * client can learn what the broker speaks before it decides how to talk to it.
+     * ApiVersions is the one exception: a broker answers it before the authentication (KIP-35), so that a client
+     * can learn what the broker speaks before it decides how to talk to it - which is exactly how the Java client
+     * of 1.1 finds out whether it may promise the framed exchange.
      *
      * The request is written from the primitives of the stream because the ApiVersions message classes belong to
      * another ticket of this line; only its header is needed here.
@@ -347,6 +568,11 @@ final class SaslTransportTest extends IntegrationTestCase
         self::assertSame(431, $stream->readInt32(), 'the answer carries the correlation id of the request');
         self::assertSame(0, $stream->readInt16(), 'the error code of the ApiVersions response');
         self::assertGreaterThan(0, $stream->readInt32(), 'the broker lists the api versions it serves');
+
+        // The rest of the answer is of no interest here, but the connection has to stay usable for the handshake
+        $stream->read('a' . ($messageSize - 4 - 2 - 4));
+        new SaslHandshakeRequest(SaslMechanism::PLAIN, self::CLIENT_ID, 432)->writeTo($stream);
+        self::assertSame(0, SaslHandshakeResponse::unpack($stream)->errorCode, 'the probe costs nothing');
     }
 
     /**
@@ -371,6 +597,26 @@ final class SaslTransportTest extends IntegrationTestCase
             [ClientConfig::REQUEST_TIMEOUT_MS => 5000],
             5.0
         );
+    }
+
+    /**
+     * Opens a connection to a SASL listener **without** authenticating it, so that the exchange can be driven by
+     * hand: `SASL_SSL` needs the TLS channel around it, which is the `SSL` transport of this client and nothing
+     * more - the broker performs the TLS handshake before it expects a single Kafka byte either way.
+     */
+    private function connectWithoutAuthentication(string $securityProtocol): SocketStream
+    {
+        $listener      = $this->listenerFor($securityProtocol);
+        $configuration = [ClientConfig::REQUEST_TIMEOUT_MS => 5000];
+
+        if ($securityProtocol === SecurityProtocol::SASL_SSL) {
+            $configuration += [
+                ClientConfig::SECURITY_PROTOCOL      => SecurityProtocol::SSL,
+                ClientConfig::SSL_CA_CERT_LOCATION   => self::saslBrokerCertificateFile(),
+            ];
+        }
+
+        return new SocketStream('tcp://' . $listener, $configuration, 5.0);
     }
 
     /**
@@ -424,7 +670,7 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     private static function saslBrokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-0.11.0.3/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-1.1.1/ssl/broker.crt';
     }
 
     /**

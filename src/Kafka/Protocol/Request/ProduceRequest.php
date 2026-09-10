@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API, version 3
+ * The produce API, version 5
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * time of the send the producer is free to fill in that field in any way it likes.
  *
  * <pre>
- *   ProduceRequest (Version: 3) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
+ *   ProduceRequest (Version: 5) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
  *                                                                                   RecordSet]]
  *     TransactionalId => nullable string
  *     RequiredAcks    => int16
@@ -40,27 +40,37 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * </pre>
  *
  * The body of this request did not change between the versions 0 and 2: `PRODUCE_REQUEST_V2` is
- * `PRODUCE_REQUEST_V1` is `PRODUCE_REQUEST_V0` in `Protocol.java` @ 0.11.0.3, so up to version 2 a version only
- * selects the layout of the answer - version 1 (Kafka 0.9) appended `ThrottleTime` to it, version 2 (Kafka 0.10.0)
- * added the `LogAppendTime` of every partition, see {@see ProduceResponse} - and what the broker does with the
- * record set it is given.
+ * `PRODUCE_REQUEST_V1` is `PRODUCE_REQUEST_V0` in `ProduceRequest.schemaVersions()` @ 1.1.1, so up to version 2 a
+ * version only selects the layout of the answer - version 1 (Kafka 0.9) appended `ThrottleTime` to it, version 2
+ * (Kafka 0.10.0) added the `LogAppendTime` of every partition, see {@see ProduceResponse} - and what the broker
+ * does with the record set it is given.
  *
  * **Version 3 (Kafka 0.11.0, KIP-98) is the first one that changed the request**: it prefixes the body with the
  * nullable `TransactionalId` of the producer, and the record set of every partition is a **record batch of the
  * message format v2** ({@see \Protocol\Kafka\Common\Record\RecordBatch}) instead of a message set. That batch is
  * what carries the record headers, the producer id, the producer epoch and the sequence numbers of an idempotent
- * or transactional producer, so none of them can travel below this version. The **answer** of version 3 is the
- * answer of version 2, byte for byte, see {@see ProduceResponse}.
+ * or transactional producer, so none of them can travel below this version.
  *
- * {@see ProduceRequestV2}, {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with
- * them the legacy message sets - available.
+ * **The versions 4 and 5 (Kafka 1.0) send the very same body again**: `PRODUCE_REQUEST_V5` is `PRODUCE_REQUEST_V4`
+ * is `PRODUCE_REQUEST_V3` in `ProduceRequest.schemaVersions()` @ 1.1.1, and each of the two only states something
+ * about the *client*:
+ *
+ * * **version 4** says that the client understands the error code **56** `KAFKA_STORAGE_ERROR`; a broker translates
+ *   that condition to 6 `NOT_LEADER_FOR_PARTITION` for a request of version 3 or lower
+ *   (`ProduceRequest.java` @ 1.1.1: "The KafkaStorageException will be translated to NotLeaderForPartitionException
+ *   in the response if version <= 3");
+ * * **version 5** says that the client understands the `LogStartOffset` that the answer gained, see
+ *   {@see \Protocol\Kafka\Protocol\Data\ProduceResponsePartition::$logStartOffset}.
+ *
+ * {@see ProduceRequestV4}, {@see ProduceRequestV3}, {@see ProduceRequestV2}, {@see ProduceRequestV1} and
+ * {@see ProduceRequestV0} keep the lower versions - and with them the legacy message sets - available.
  *
  * The broker does **not** check the message format against the api version: it stores whatever it is given in the
  * `message.format.version` of the topic and converts the batch on append. What a version really states is what the
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -72,7 +82,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 5;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all
@@ -88,8 +98,9 @@ class ProduceRequest extends AbstractRequest
 
     /**
      * @param array<string, array<int, string|\Stringable>> $topicPartitionRecords Encoded record sets in the format
-     *                              topic => [partition => record set]. A version 3 request carries a record batch
-     *                              of the message format v2 there, a lower one a message set of the format v0 or v1.
+     *                              topic => [partition => record set]. A version 3 or higher request carries a
+     *                              record batch of the message format v2 there, a lower one a message set of the
+     *                              format v0 or v1.
      * @param int    $requiredAcks  This field indicates how many acknowledgements the servers should receive before
      *                              responding to the request.
      *                              If it is 0 the server will not send any response

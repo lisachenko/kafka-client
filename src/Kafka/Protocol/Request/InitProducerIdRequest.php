@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The empty string is not a transactional id: the broker answers it with the error code **42** (InvalidRequest),
  * deliberately, to keep its behaviour the same as the Java client, which refuses the empty id in its configuration.
  *
- * @see docs/protocol/0.11.0.md, section "InitProducerId API (key 22, v0)"
+ * @see docs/protocol/1.1.md, section "InitProducerId API (key 22, v0)"
  */
 class InitProducerIdRequest extends AbstractRequest
 {

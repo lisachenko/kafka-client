@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\DeleteRecordsResponseTopic;
  * | 29   | TopicAuthorizationFailed | The client may describe the topic but not delete from it                    |
  * | 42   | InvalidRequest           | A negative offset other than -1                                             |
  *
- * @see docs/protocol/0.11.0.md, section "DeleteRecords API (key 21, v0)"
+ * @see docs/protocol/1.1.md, section "DeleteRecords API (key 21, v0)"
  */
 class DeleteRecordsResponse extends AbstractResponse
 {

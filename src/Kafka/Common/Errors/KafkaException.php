@@ -23,13 +23,19 @@ use RuntimeException;
  * These can be translated by the client into exceptions or whatever the appropriate error handling mechanism in the
  * client language.
  *
- * The constant names are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 0.11.0.3,
- * which ends at 55: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
+ * The constant names are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 1.1.1,
+ * which ends at 71: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
  * 0.10.0, 36-42 (the CreateTopics codes, NOT_CONTROLLER and INVALID_REQUEST) with 0.10.1 and 43-44
  * (UNSUPPORTED_FOR_MESSAGE_FORMAT, POLICY_VIOLATION) with 0.10.2; Kafka 0.11 added 45-55, the codes of the
  * idempotent and transactional producer (KIP-98), of the ACL apis (SECURITY_DISABLED, OPERATION_NOT_ATTEMPTED) and
- * TRANSACTIONAL_ID_AUTHORIZATION_FAILED; of them only 46 is retriable, as in the Java client. Code 13 was StaleLeaderEpochCode in the 0.8 line and is NETWORK_EXCEPTION
- * here; NO_ERROR is not part of the mapping. Codes above 55 (KAFKA_STORAGE_ERROR 56 is Kafka 1.0) are answered with
+ * TRANSACTIONAL_ID_AUTHORIZATION_FAILED; of them only 46 is retriable, as in the Java client. Kafka 1.0 added 56-60
+ * (KAFKA_STORAGE_ERROR and LOG_DIR_NOT_FOUND of the JBOD work, SASL_AUTHENTICATION_FAILED of SaslAuthenticate,
+ * UNKNOWN_PRODUCER_ID, REASSIGNMENT_IN_PROGRESS) and Kafka 1.1 added 61-71 (the seven delegation token codes, the
+ * two DeleteGroups codes and the two fetch session codes); of them 56, 70 and 71 are retriable, as in the Java client.
+ * The class names are those of the Java client (`UnsupportedByAuthenticationException` for 64, `GroupNotEmptyException`
+ * for 68), except 58, whose Java name `SaslAuthenticationException` is the client-side exception of this package.
+ * Code 13 was StaleLeaderEpochCode in the 0.8 line and is NETWORK_EXCEPTION here; NO_ERROR is not part of the
+ * mapping. Codes above 71 (72 LISTENER_NOT_FOUND is Kafka 2.0) are answered with
  * {@see \Protocol\Kafka\Common\Errors\UnknownErrorException} by {@see self::fromCode()}.
  */
 abstract class KafkaException extends RuntimeException
@@ -93,6 +99,22 @@ abstract class KafkaException extends RuntimeException
     public const TRANSACTIONAL_ID_AUTHORIZATION_FAILED = 53;
     public const SECURITY_DISABLED                     = 54;
     public const OPERATION_NOT_ATTEMPTED               = 55;
+    public const KAFKA_STORAGE_ERROR                     = 56;
+    public const LOG_DIR_NOT_FOUND                       = 57;
+    public const SASL_AUTHENTICATION_FAILED              = 58;
+    public const UNKNOWN_PRODUCER_ID                     = 59;
+    public const REASSIGNMENT_IN_PROGRESS                = 60;
+    public const DELEGATION_TOKEN_AUTH_DISABLED          = 61;
+    public const DELEGATION_TOKEN_NOT_FOUND              = 62;
+    public const DELEGATION_TOKEN_OWNER_MISMATCH         = 63;
+    public const DELEGATION_TOKEN_REQUEST_NOT_ALLOWED    = 64;
+    public const DELEGATION_TOKEN_AUTHORIZATION_FAILED   = 65;
+    public const DELEGATION_TOKEN_EXPIRED                = 66;
+    public const INVALID_PRINCIPAL_TYPE                  = 67;
+    public const NON_EMPTY_GROUP                         = 68;
+    public const GROUP_ID_NOT_FOUND                      = 69;
+    public const FETCH_SESSION_ID_NOT_FOUND              = 70;
+    public const INVALID_FETCH_SESSION_EPOCH             = 71;
 
     /**
      * Mapping from the codes to class names
@@ -156,6 +178,22 @@ abstract class KafkaException extends RuntimeException
         self::TRANSACTIONAL_ID_AUTHORIZATION_FAILED => TransactionalIdAuthorizationException::class,
         self::SECURITY_DISABLED                     => SecurityDisabledException::class,
         self::OPERATION_NOT_ATTEMPTED               => OperationNotAttemptedException::class,
+        self::KAFKA_STORAGE_ERROR                     => KafkaStorageException::class,
+        self::LOG_DIR_NOT_FOUND                       => LogDirNotFoundException::class,
+        self::SASL_AUTHENTICATION_FAILED              => SaslAuthenticationFailedException::class,
+        self::UNKNOWN_PRODUCER_ID                     => UnknownProducerIdException::class,
+        self::REASSIGNMENT_IN_PROGRESS                => ReassignmentInProgressException::class,
+        self::DELEGATION_TOKEN_AUTH_DISABLED          => DelegationTokenDisabledException::class,
+        self::DELEGATION_TOKEN_NOT_FOUND              => DelegationTokenNotFoundException::class,
+        self::DELEGATION_TOKEN_OWNER_MISMATCH         => DelegationTokenOwnerMismatchException::class,
+        self::DELEGATION_TOKEN_REQUEST_NOT_ALLOWED    => UnsupportedByAuthenticationException::class,
+        self::DELEGATION_TOKEN_AUTHORIZATION_FAILED   => DelegationTokenAuthorizationException::class,
+        self::DELEGATION_TOKEN_EXPIRED                => DelegationTokenExpiredException::class,
+        self::INVALID_PRINCIPAL_TYPE                  => InvalidPrincipalTypeException::class,
+        self::NON_EMPTY_GROUP                         => GroupNotEmptyException::class,
+        self::GROUP_ID_NOT_FOUND                      => GroupIdNotFoundException::class,
+        self::FETCH_SESSION_ID_NOT_FOUND              => FetchSessionIdNotFoundException::class,
+        self::INVALID_FETCH_SESSION_EPOCH             => InvalidFetchSessionEpochException::class,
     ];
 
     /**

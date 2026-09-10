@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
  * commits the offsets is not a member of the group, and the fencing that a generation would give is done by the
  * producer epoch instead. It has no `retention_time` either.
  *
- * @see docs/protocol/0.11.0.md, section "TxnOffsetCommit API (key 28, v0)"
+ * @see docs/protocol/1.1.md, section "TxnOffsetCommit API (key 28, v0)"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {

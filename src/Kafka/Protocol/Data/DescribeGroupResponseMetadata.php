@@ -29,8 +29,8 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     Members      => MemberId ClientId ClientHost MemberMetadata MemberAssignment
  * </pre>
  *
- * The state is one of the constants below; `kafka/coordinator/GroupMetadata.scala` @ 0.10.2.2 defines exactly the
- * five states, and the coordinator answers a group it does not know with {@see self::STATE_DEAD} and the error
+ * The state is one of the constants below; `kafka/coordinator/group/GroupMetadata.scala` @ 1.1.1 defines exactly
+ * the five states, and the coordinator answers a group it does not know with {@see self::STATE_DEAD} and the error
  * code 0, not with an error.
  *
  * Kafka 0.10.1 split "the group is gone" in two. A group whose last member left is no longer dropped at once, it
@@ -38,7 +38,11 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * expires them; only then does it become {@see self::STATE_DEAD} and disappear from ListGroups. A 0.9.0.1
  * coordinator had no such state and answered `Dead` from the moment the last member had left.
  *
- * @see docs/protocol/0.11.0.md, section "DescribeGroups API (key 15, v0 and v1)"
+ * Kafka 1.0 **renamed** one of the five: the state between the last JoinGroup and the SyncGroup of the leader is
+ * called {@see self::STATE_COMPLETING_REBALANCE} since then, where 0.9 to 0.11 called it
+ * {@see self::STATE_AWAITING_SYNC}. Only the name on the wire changed, the state itself did not.
+ *
+ * @see docs/protocol/1.1.md, section "DescribeGroups API (key 15, v0 and v1)"
  */
 class DescribeGroupResponseMetadata implements BinarySchemaInterface
 {
@@ -49,6 +53,18 @@ class DescribeGroupResponseMetadata implements BinarySchemaInterface
 
     /**
      * Every member has joined and the coordinator waits for the SyncGroup request of the leader
+     *
+     * This is the name Kafka 1.0 gave the state (`CompletingRebalance` in
+     * `kafka/coordinator/group/GroupMetadata.scala` @ 1.1.1) and the one a broker of this line answers with.
+     */
+    public const string STATE_COMPLETING_REBALANCE = 'CompletingRebalance';
+
+    /**
+     * The Kafka 0.9 to 0.11 name of {@see self::STATE_COMPLETING_REBALANCE}, the very same state
+     *
+     * `GroupMetadata.scala` called the state `AwaitingSync` until Kafka 1.0 renamed it; a broker of this line
+     * never answers this string, and the constant is kept so that code written against the `0.9.x` to `0.11.x`
+     * lines - and a client that talks to a broker of one of them - still compiles and still compares correctly.
      */
     public const string STATE_AWAITING_SYNC = 'AwaitingSync';
 

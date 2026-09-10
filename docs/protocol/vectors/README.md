@@ -1,53 +1,60 @@
-Wire vectors of the Kafka 0.11.0.3 protocol
-===========================================
+Wire vectors of the Kafka 1.1.1 protocol
+========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
-machine-readable half of [`../0.11.0.md`](../0.11.0.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **229** of them in 30 files: the 120 the three lines below captured, which a 0.11.0.3 broker
-still answers unchanged, and the **109** frames of what Kafka 0.11 added.
+machine-readable half of [`../1.1.md`](../1.1.md), whose "Wire vectors" section shows the same bytes as annotated
+hex dumps. There are **314** of them in **36** files, every one of which a **1.1.1** broker speaks: **229** were
+captured by the four lines below this one and are replayed against the classes of this line unchanged, and **85**
+were captured on the `kafka-1-1-1` container of this line. Two of the inherited vectors were **re-captured** rather
+than added — `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker.
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
 - Produce v1, Fetch v1, OffsetCommit v2, ControlledShutdown v1, the group membership apis and the consumer protocol
 structures - on a 0.9.0.1 broker, those of `0.10.x` - message format v1, Metadata v1/v2, Produce v2, Fetch v2/v3,
 Offsets v1, OffsetFetch v2, JoinGroup v1, CreateTopics v0/v1, DeleteTopics v0 and SaslHandshake v0 - on a 0.10.2.2
-broker, and everything Kafka 0.11 adds on the 0.11.0.3 container of `docker-compose.yml`:
+broker, and everything Kafka 0.11 added - the record batch v2, the throttle time of KIP-124 on fourteen apis,
+Produce v3, Fetch v4/v5, DeleteRecords, DescribeConfigs/AlterConfigs v0, OffsetForLeaderEpoch and the six apis of
+the transaction protocol - on the 0.11.0.3 container of the `0.11.x` line.
 
-| File | Vectors | What was captured on the 0.11.0.3 broker |
+What the 1.x line captured on the `kafka-1-1-1` container of `docker-compose.yml`
+--------------------------------------------------------------------------------
+
+The container runs Apache Kafka **1.1.1** with four listeners (PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094,
+SASL_SSL 9095), `log.message.format.version = 1.1-IV0`, two log directories and a delegation-token master key. Six
+of the files below are new on this line; the rest gained the frames of the versions Kafka 1.0 and 1.1 added.
+
+| File | Of it captured here | What was captured on the 1.1.1 broker |
 |---|---|---|
-| `message-format.json` | 13 of 20 | The **record batch v2** (magic 2): the four codecs, a `LogAppendTime` batch, a three-batch region, record **headers**, null keys and values, a transactional batch, the two real **control batches** with their COMMIT and ABORT markers, and the two down-conversions of a 0.11 log to the message formats v1 and v0 |
-| `api-versions.json` | 5 of 5 | ApiVersions **v0 and v1**: the 34 keys the broker serves, in both layouts, and the error code 35 of an unknown version (the two v0 frames were re-captured here) |
-| `metadata.json` | 6 of 17 | Metadata **v3 and v4**, and the v4 answer of an absent topic asked for with `allow_auto_topic_creation = false` |
-| `offsets.json` | 4 of 14 | Offsets **v2** in both isolation levels |
-| `offset-commit.json`, `offset-fetch.json` | 2 of 8, 2 of 15 | OffsetCommit **v3** and OffsetFetch **v3** |
-| `group-coordinator.json` | 4 of 6 | GroupCoordinator **v1** for a consumer group and for a transactional id |
-| `join-group.json`, `sync-group.json`, `heartbeat.json`, `leave-group.json` | 2 of 8, 2 of 6, 2 of 8, 2 of 6 | The group membership apis one version up: JoinGroup **v2**, SyncGroup/Heartbeat/LeaveGroup **v1** |
-| `describe-groups.json`, `list-groups.json` | 2 of 6, 2 of 4 | DescribeGroups **v1** and ListGroups **v1** |
-| `create-topics.json`, `delete-topics.json` | 2 of 7, 2 of 5 | CreateTopics **v2** and DeleteTopics **v1** |
-| `offset-for-leader-epoch.json` | 4 of 4 | OffsetForLeaderEpoch **v0** (KIP-101), the epoch of a partition and of one the cluster does not host |
-| `produce.json` | 8 of 16 | Produce **v3**: the request with its nullable `transactional_id` and a record batch v2, the two answers of a `CreateTime` and a `LogAppendTime` topic - which are the version 2 frame, because `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` - and the four frames of the idempotent producer: a numbered batch, the answer to the very same frame sent again, and an out-of-order sequence |
-| `fetch.json` | 8 of 19 | Fetch **v4 and v5**: both versions at both isolation levels, which is where the `last_stable_offset = -1` and the null `aborted_transactions` of a `read_uncommitted` answer come from, plus the `read_committed` answers of a partition whose only transaction was aborted - with an empty and with a filled `aborted_transactions` array |
-| `delete-records.json` | 6 of 6 | DeleteRecords **v0** (KIP-107): the low watermark it moves, an offset above the high watermark and an unknown topic |
-| `describe-configs.json` | 6 of 6 | DescribeConfigs **v0** (KIP-133) of a topic and of a broker resource, and the 42 of a broker id the answering broker does not have |
-| `alter-configs.json` | 6 of 6 | AlterConfigs **v0** (KIP-133): a topic that is altered, an unknown option name (40) and the broker resource a 0.11 broker refuses (42) |
-| `init-producer-id.json` | 6 of 6 | InitProducerId **v0** (KIP-98) with a null transactional id, with a real one, and the 50 of a transaction timeout above the broker's maximum |
-| `add-partitions-to-txn.json` | 4 of 4 | AddPartitionsToTxn **v0** (KIP-98), and the 47 a producer whose epoch was bumped away gets - reported per partition, because the api has no top-level error code |
-| `add-offsets-to-txn.json` | 2 of 2 | AddOffsetsToTxn **v0**: the request that enrols the offsets of a consumer group into a transaction |
-| `end-txn.json` | 6 of 6 | EndTxn **v0**: a commit, an abort, and the 48 of an abort that follows a commit of the same transactional id |
-| `txn-offset-commit.json` | 2 of 2 | TxnOffsetCommit **v0**: the offsets a transaction carries to the **group** coordinator |
-| `write-txn-markers.json` | 2 of 2 | WriteTxnMarkers **v0** - a broker-to-broker frame, which an unsecured broker serves to an ordinary client, and the only answer of 0.11 without a `throttle_time_ms` |
+| `api-versions.json` | 2 of 5, **re-captured** | The two ApiVersions **answers**. The answer of this api *is* the api-key table of the broker, so it is re-captured on every line: it now carries the **43** keys 0 to 42 of a Kafka 1.1.1 broker (272 and 276 bytes), where the 0.11 capture carried 34 and the 0.10 one 21. The two requests are unchanged — an ApiVersions frame has no body in either version |
+| `sasl-handshake.json` | 6 of 12 | **SaslHandshake v1** (KIP-152): the accepted handshake, a mechanism the broker has not enabled (33), and a second handshake on the same connection (34, with the **empty** mechanism list that 1.1 answers where 1.0.2 still filled it). The v0 frames of the `0.10.x` line are replayed unchanged, now through `SaslHandshakeRequestV0` |
+| `sasl-authenticate.json` | 5 of 5, **new file** | **SaslAuthenticate v0** (key 36): the framed PLAIN token and its empty answer, a wrong password (**58** with the message of the broker) and a second `SaslAuthenticate` on an authenticated connection (**34**, which leaves the connection usable) |
+| `produce.json` | 8 of 24 | **Produce v4** (the v3 body, one api version higher) and **Produce v5** with its `log_start_offset`, captured after a `DeleteRecords` so that the field is really 2; plus the two pairs of the 1.x idempotent producer — a duplicate of the batch **four batches back** (error code 0 and the base offset of the original append: the five-batch window) and the batch after a `DeleteRecords` of the whole partition (**59** `UNKNOWN_PRODUCER_ID` with `log_start_offset = 5`) |
+| `fetch.json` | 10 of 29 | **Fetch v6** (the v5 frame, one api version higher) and the six frames of one **fetch session** of v7 (KIP-227): the full fetch that opens it, an incremental fetch with an empty topic array, an incremental fetch that drops a partition in `forgotten_topics_data`, and the two session errors **71** (a wrong epoch) and **70** (an unknown session id) |
+| `metadata.json` | 2 of 19 | **Metadata v5** (KIP-112/113): the answer whose every partition ends with the `offline_replicas` array, empty on the one-broker container |
+| `describe-log-dirs.json` | 6 of 6, **new file** | **DescribeLogDirs v0** (KIP-113): the two log directories of the image, the answer for one named partition, both shapes of the nullable topic array (the **empty** one and its 64-byte answer, and the **null** request whose answer is not stored because it carries every replica of the container), and the answer taken **while a real replica move was running**, in which the partition appears in both directories with `is_future` marking the destination |
+| `alter-replica-log-dirs.json` | 6 of 6, **new file** | **AlterReplicaLogDirs v0** (KIP-113): an accepted move, the **57** of a path that is not one of `log.dirs`, and the **9** (`ReplicaNotAvailable`) of a replica the broker does not host |
+| `describe-configs.json` | 8 of 14 | **DescribeConfigs v1** (KIP-226): a topic with and without `include_synonyms` (the config **source** and the synonyms that replace `is_default`), the broker resource right after a dynamic change — the source 2 with the static default behind it, and the sensitive `ssl.key.password` whose value is null in the entry and in its synonym — and the cluster-wide **default** broker resource with the source 3. The six v0 frames of the `0.11.x` line are replayed through the new `…V0` classes |
+| `alter-configs.json` | 6 of 12 | **The dynamic broker configuration of KIP-226**: a dynamic option on one broker (accepted), the same option on the default resource, and a static one refused with 42 and `Cannot update these configs dynamically: Set(…)`. The two 0.11 frames of a *refused* broker resource stay as history — a 1.1 broker no longer refuses the frame at all |
+| `create-partitions.json` | 8 of 8, **new file** | **CreatePartitions v0** (KIP-195): the growth of a topic, an assignment with `validate_only`, a shrink (**37**) and an unknown topic (**3**) |
+| `delete-groups.json` | 6 of 6, **new file** | **DeleteGroups v0** (KIP-229): an `Empty` group deleted (0) next to a group that never existed (**69**) in one frame, and a group with a live member (**68**) |
+| `delegation-tokens.json` | 14 of 14, **new file** | **The four token apis 38 to 41** (KIP-48) — the one vector file that holds *several* apis, so its `apiKey` is null and every request vector carries the key of its own api. The fourteen frames are one life of one token on the SASL_PLAINTEXT listener as `User:kafkatest`: created with a renewer and a one-hour lifetime, described, renewed, deleted; plus the **67** of a renewer that is not a `User`, the **63** of a principal that is neither owner nor renewer, the **62** of expiring a deleted token, the **66** of a token past its lifetime and the two **64**s of the PLAINTEXT listener |
 
-The remaining three files - `consumer-protocol.json`, `controlled-shutdown.json` and `sasl-handshake.json` - carry
-no 0.11 frame at all: their apis and structures are unchanged since the line that captured them.
+The other 23 files carry no 1.x frame at all: their apis and structures are unchanged since the line that captured
+them, and a 1.1.1 broker still answers every one of their versions.
 
 That the older frames are still the current ones is not an assumption:
-`tests/Integration/ApiVersionProbeTest.php` asks the 0.11.0.3 broker with a real **ApiVersions** request
-(`api-versions.json`) which versions it serves, and sends a frame of every one of them.
+`tests/Integration/ApiVersionProbeTest.php` asks the 1.1.1 broker with a real **ApiVersions** request
+(`api-versions.json`) which versions it serves, and sends a frame of every one of them — and one frame above every
+one of them, to see the connection close.
+
+The shape of a file
+-------------------
 
 ```json
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v4)",
+    "section": "Metadata API (key 3, v0 to v5)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
@@ -74,6 +81,8 @@ through the `pack()` and `unpack()` helpers of their class instead of the framin
   assignments of the group apis - is written as `{"$bytes": "<hex>"}`.
 * `source` is `broker` for a captured frame and `constructed` for the few that were built by the client because a
   capture would carry unrelated state of the test cluster.
+* A file whose `apiKey` is `null` either holds structures (`consumer-protocol.json`) or several apis
+  (`delegation-tokens.json`); in the second case every vector names its own `apiKey`.
 
 `tests/Compliance/ProtocolVectorTest` replays every vector - decode the frame, compare every field, encode the
 message back and compare the bytes - and `tests/Compliance/DocumentationSyncTest` checks that the document and these

@@ -1,0 +1,170 @@
+{
+    "api": "alter-replica-log-dirs",
+    "apiKey": 34,
+    "section": "AlterReplicaLogDirs API (key 34, v0)",
+    "description": "Wire vectors of the AlterReplicaLogDirs API (key 34, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "alterreplicalogdirs.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs request v0 that moves one partition into the other log directory of the same broker.",
+            "hex": "00000049002200000000003f000a74352d6c6f676469727300000001000f2f746d702f6b61666b612d6c6f677300000001001274352d766563746f72732d6c6f67646972730000000100000000",
+            "fields": {
+                "messageSize": 73,
+                "apiKey": 34,
+                "apiVersion": 0,
+                "correlationId": 63,
+                "clientId": "t5-logdirs",
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": {
+                            "t5-vectors-logdirs": {
+                                "topic": "t5-vectors-logdirs",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterreplicalogdirs.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs response v0: the error code 0, which says that the move was accepted and started, not that it is finished.",
+            "hex": "0000002a0000003f0000000000000001001274352d766563746f72732d6c6f676469727300000001000000000000",
+            "fields": {
+                "messageSize": 42,
+                "correlationId": 63,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t5-vectors-logdirs": {
+                        "topic": "t5-vectors-logdirs",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterreplicalogdirs.request.v0.unknown-log-dir",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs request v0 that names an absolute path which is not one of the directories of `log.dirs`.",
+            "hex": "0000004b0022000000000043000a74352d6c6f67646972730000000100112f746d702f6b61666b612d6c6f67732d3300000001001274352d766563746f72732d6c6f67646972730000000100000000",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 34,
+                "apiVersion": 0,
+                "correlationId": 67,
+                "clientId": "t5-logdirs",
+                "logDirs": {
+                    "/tmp/kafka-logs-3": {
+                        "logDir": "/tmp/kafka-logs-3",
+                        "topics": {
+                            "t5-vectors-logdirs": {
+                                "topic": "t5-vectors-logdirs",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterreplicalogdirs.response.v0.unknown-log-dir",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs response v0 for a directory the broker does not have: the error code 57 (LogDirNotFound), reported per replica because the api has no top-level error code.",
+            "hex": "0000002a000000430000000000000001001274352d766563746f72732d6c6f676469727300000001000000000039",
+            "fields": {
+                "messageSize": 42,
+                "correlationId": 67,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t5-vectors-logdirs": {
+                        "topic": "t5-vectors-logdirs",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 57
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterreplicalogdirs.request.v0.unknown-replica",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs request v0 for a topic that the cluster does not have.",
+            "hex": "000000500022000000000044000a74352d6c6f676469727300000001000f2f746d702f6b61666b612d6c6f677300000001001974352d766563746f72732d6c6f67646972732d616273656e740000000100000000",
+            "fields": {
+                "messageSize": 80,
+                "apiKey": 34,
+                "apiVersion": 0,
+                "correlationId": 68,
+                "clientId": "t5-logdirs",
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": {
+                            "t5-vectors-logdirs-absent": {
+                                "topic": "t5-vectors-logdirs-absent",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterreplicalogdirs.response.v0.unknown-replica",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs response v0 for a replica the broker does not host: the error code 9 (ReplicaNotAvailable), which is what `ReplicaManager.getReplicaOrException` throws - not the 3 that the topic apis answer - and the topic is not created.",
+            "hex": "00000031000000440000000000000001001974352d766563746f72732d6c6f67646972732d616273656e7400000001000000000009",
+            "fields": {
+                "messageSize": 49,
+                "correlationId": 68,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t5-vectors-logdirs-absent": {
+                        "topic": "t5-vectors-logdirs-absent",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 9
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}

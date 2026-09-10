@@ -27,16 +27,21 @@ use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
+use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
+use Protocol\Kafka\Protocol\Request\FetchRequestV5;
+use Protocol\Kafka\Protocol\Request\FetchRequestV6;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
 use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
+use Protocol\Kafka\Protocol\Request\FetchResponseV5;
+use Protocol\Kafka\Protocol\Request\FetchResponseV6;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
@@ -44,20 +49,26 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the versions 2 and 3 of the Fetch API against a real Kafka 0.10.2.2 broker.
+ * Verifies the Fetch API against a real Kafka 1.1.1 broker.
  *
- * The two versions are what a client of this line really sends, and neither of them can be checked without a
- * broker: version 2 changes nothing on the wire and only tells the broker to stop converting its answer down to
- * message format v0, and the request-level `MaxBytes` of version 3 is a rule about how the broker *fills* the
- * answer - in the order of the partitions of the request, and always with at least one complete message in the
- * first non-empty one.
+ * Most of what a version of this api states can not be checked without a broker: version 2 changes nothing on the
+ * wire and only tells the broker to stop converting its answer down to message format v0, the request-level
+ * `MaxBytes` of version 3 is a rule about how the broker *fills* the answer, the versions 4 and 5 are the ones
+ * that answer with the log as it lies, version 6 is the version 5 frame with another error code, and version 7
+ * carries the incremental fetch sessions of KIP-227, which have a test class of their own
+ * ({@see FetchSessionApiTest}) - this one only checks that a version 7 request **without** a session is served
+ * like a version 6 one, which is what {@see \Protocol\Kafka\Client::fetchPartitions()} sends.
  *
- * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
+ * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
+#[CoversClass(FetchRequestV6::class)]
+#[CoversClass(FetchRequestV5::class)]
 #[CoversClass(FetchRequestV2::class)]
 #[CoversClass(FetchRequestV1::class)]
 #[CoversClass(FetchResponse::class)]
+#[CoversClass(FetchResponseV6::class)]
+#[CoversClass(FetchResponseV5::class)]
 #[CoversClass(FetchResponseV2::class)]
 #[CoversClass(FetchResponseV1::class)]
 #[CoversClass(FetchResponsePartition::class)]
@@ -188,29 +199,127 @@ final class FetchApiTest extends IntegrationTestCase
         self::assertSame($timestamp, $version3->getRecords()->getRecords()[0]->timestamp);
     }
 
-    public function testAPartitionWhoseRecordsCarryHeadersCanNotBeReadByAFetchBelowVersionFour(): void
+    /**
+     * A fetch below v4 of a partition whose records carry headers is served, and the headers are dropped
+     *
+     * **This is a behaviour change of Kafka 1.0.** A 0.11.0.3 broker could not build such an answer at all:
+     * `MemoryRecordsBuilder.appendWithOffset` @ 0.11.0.3 threw "Magic v1 does not support record headers" out of
+     * the down-conversion, and the partition came back with the error code **-1** (UnknownServerError) and an
+     * empty record set. KAFKA-5760 replaced that with a down-conversion that simply **leaves the headers out**:
+     * `AbstractRecords.convertRecordBatch()` @ 1.1.1 builds a message of the format the request can read, copies
+     * key, value and timestamp, and warns `Down-converting records with headers` in the broker log instead of
+     * failing.
+     *
+     * A client of a 1.x broker therefore has to know that a record it reads with a Fetch below v4 may have carried
+     * headers it will never see, where a 0.11 broker refused the fetch outright. The batch below holds three
+     * records and only the middle one has a header, so the test also pins that **no record is skipped** and that
+     * the offsets of the answer are the offsets of the log.
+     */
+    public function testAPartitionWhoseRecordsCarryHeadersIsDownConvertedWithoutThemBelowVersionFour(): void
     {
+        $timestamp = self::currentTimestampMs();
         $this->produceRecordBatch(0, [
-            new Record('with a header', null, 0, null, self::currentTimestampMs())
-                ->withHeaders(new Header('trace-id', 'abc')),
+            new Record('plain', 'k0', 0, null, $timestamp),
+            new Record('with a header', 'k1', 0, null, $timestamp + 1)->withHeaders(new Header('trace-id', 'abc')),
+            new Record('also plain', 'k2', 0, null, $timestamp + 2),
         ]);
 
-        // `MemoryRecordsBuilder.appendWithOffset` @ 0.11.0.3: "Magic v1 does not support record headers". The
-        // broker can not build the answer of a client that asks below version 4 and reports the partition with the
-        // error code -1, UnknownServerError, and an empty record set - the rest of the answer is a normal frame
+        // `AbstractRecords.convertRecordBatch` @ 1.1.1: "Ignore headers when down-converting to V0 and V1 since
+        // they are not supported". A 1.x broker converts such a batch like any other and simply leaves the headers
+        // out, where a 0.11.0.3 broker answered the whole partition with the error code -1 (UnknownServerError)
+        // and an empty record set, because the very same call threw "Magic v1 does not support record headers".
         $stream   = $this->connect();
         $version3 = $this->fetch($stream, FetchRequestV3::class, FetchResponseV3::class, 0, 79);
         $version1 = $this->fetch($stream, FetchRequestV1::class, FetchResponseV1::class, 0, 80);
 
-        self::assertSame(KafkaException::UNKNOWN, $version3->errorCode);
-        self::assertSame('', (string) $version3->messageSet);
-        self::assertSame(KafkaException::UNKNOWN, $version1->errorCode);
+        self::assertSame(0, $version3->errorCode, 'a 1.x broker no longer refuses the conversion');
+        self::assertSame(Message::MAGIC_V1, $version3->getRecords()->getMagic());
+        self::assertSame(
+            ['plain', 'with a header', 'also plain'],
+            self::valuesOf($version3),
+            'not a single record is skipped'
+        );
+        self::assertSame(
+            [[], [], []],
+            array_map(static fn(Record $record): array => $record->headers, $version3->getRecords()->getRecords()),
+            'the headers are dropped, silently'
+        );
+        self::assertSame(
+            [$timestamp, $timestamp + 1, $timestamp + 2],
+            array_map(static fn(Record $record): ?int => $record->timestamp, $version3->getRecords()->getRecords()),
+            'the message format v1 still has a place for the CreateTime of every record'
+        );
 
-        // The very same partition is perfectly readable with a version 4 request
+        self::assertSame(0, $version1->errorCode);
+        self::assertSame(Message::MAGIC_V0, $version1->getRecords()->getMagic());
+        self::assertSame(['plain', 'with a header', 'also plain'], self::valuesOf($version1));
+        self::assertSame(
+            [null, null, null],
+            array_map(static fn(Record $record): ?int => $record->timestamp, $version1->getRecords()->getRecords()),
+            'the message format v0 has no timestamps either'
+        );
+
+        // The very same partition carries its headers for a version 4 request
         $version4 = $this->fetchWithIsolationLevel($stream, 4, FetchRequest::READ_UNCOMMITTED, 81);
 
         self::assertSame(0, $version4->errorCode);
-        self::assertSame(['with a header'], self::valuesOf($version4));
+        self::assertSame(['plain', 'with a header', 'also plain'], self::valuesOf($version4));
+        self::assertSame('trace-id', $version4->getRecords()->getRecords()[1]->headers[0]->key);
+        self::assertSame('abc', $version4->getRecords()->getRecords()[1]->headers[0]->value);
+    }
+
+    public function testTheAnswerOfAVersionSixRequestIsTheVersionFiveFrame(): void
+    {
+        // FETCH_REQUEST_V6 = FETCH_REQUEST_V5 and FETCH_RESPONSE_V6 = FETCH_RESPONSE_V5 @ 1.1.1: version 6 (Kafka
+        // 1.0) states that the client understands the error code 56 KAFKA_STORAGE_ERROR and changes no byte
+        $this->produce(0, [new Record('version six', null, 0, null, self::currentTimestampMs())]);
+
+        $stream      = $this->connect();
+        $versionFive = $this->fetch($stream, FetchRequestV5::class, FetchResponseV5::class, 0, 90);
+        $versionSix  = $this->fetch($stream, FetchRequestV6::class, FetchResponseV6::class, 0, 91);
+
+        self::assertSame(0, $versionSix->errorCode);
+        self::assertSame(['version six'], self::valuesOf($versionSix));
+        self::assertSame($versionFive->highWaterMarkOffset, $versionSix->highWaterMarkOffset);
+        self::assertSame($versionFive->lastStableOffset, $versionSix->lastStableOffset);
+        self::assertSame($versionFive->logStartOffset, $versionSix->logStartOffset);
+        self::assertSame(
+            bin2hex((string) $versionFive->messageSet),
+            bin2hex((string) $versionSix->messageSet)
+        );
+    }
+
+    public function testAVersionSevenRequestWithoutASessionIsServedLikeAVersionSixOne(): void
+    {
+        // `session_id = 0` with `epoch = -1` is the LEGACY metadata of the Java client, which is what
+        // Client::fetchPartitions() sends: the whole requested set comes back and the broker keeps no state
+        $this->produce(0, [
+            new Record('one', null, 0, null, self::currentTimestampMs()),
+            new Record('two', null, 0, null, self::currentTimestampMs()),
+        ]);
+
+        $stream = $this->connect();
+        new FetchRequest(
+            [$this->topic => [0 => 0]],
+            self::FETCH_MAX_WAIT_MS,
+            1,
+            65536,
+            -1,
+            self::CLIENT_ID,
+            92
+        )->writeTo($stream);
+
+        $response = FetchResponse::unpack($stream);
+
+        self::assertSame(92, $response->getCorrelationId());
+        self::assertSame(0, $response->errorCode, 'a session-less fetch has no session error');
+        self::assertSame(
+            FetchMetadata::INVALID_SESSION_ID,
+            $response->sessionId,
+            'the broker answers the session id 0 when it was not asked to open a session'
+        );
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(['one', 'two'], self::valuesOf($response->topics[$this->topic]->partitions[0]));
     }
 
     public function testTheLastStableOffsetAndTheAbortedTransactionsAreTheAnswerOfAReadCommittedFetchAlone(): void
@@ -385,7 +494,7 @@ final class FetchApiTest extends IntegrationTestCase
     private function produce(int $partition, array $records): void
     {
         $stream = $this->connect();
-        // A message set may only travel in a request below version 3, see docs/protocol/0.11.0.md
+        // A message set may only travel in a request below version 3, see docs/protocol/1.1.md
         new ProduceRequestV2(
             [$this->topic => [$partition => MessageSet::fromRecords($records)]],
             1,
@@ -506,8 +615,8 @@ final class FetchApiTest extends IntegrationTestCase
         int $correlationId,
         int $partition = 0
     ): FetchResponsePartition {
-        $requestClass  = $version === 5 ? FetchRequest::class : FetchRequestV4::class;
-        $responseClass = $version === 5 ? FetchResponse::class : FetchResponseV4::class;
+        $requestClass  = $version === 5 ? FetchRequestV5::class : FetchRequestV4::class;
+        $responseClass = $version === 5 ? FetchResponseV5::class : FetchResponseV4::class;
 
         new $requestClass(
             [$this->topic => [$partition => 0]],

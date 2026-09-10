@@ -100,7 +100,15 @@ use Throwable;
  * consumer, `zookeeper` uses the version 0, which is what the consumers of Kafka 0.8.1 did. The two storages are
  * independent, so a group has one position per storage.
  *
- * The records are fetched with **Fetch v5**, so a 0.11 broker answers with the log as it lies: record batches of
+ * The records are fetched with **Fetch v7**, and every broker this consumer reads from holds an **incremental
+ * fetch session** for it (KIP-227, Kafka 1.1, {@see \Protocol\Kafka\Consumer\Internals\FetchSessionHandler}): the
+ * first request to a broker states the whole assignment and opens the session, every following one states only the
+ * partitions whose position moved and lets the broker fill in the rest, a partition that leaves the assignment - a
+ * rebalance, {@see pause()}, a topic that is gone - is dropped from the session with the `forgotten_topics_data`
+ * of the next request, and the answer carries only the partitions that have news. Nothing of that is visible in
+ * poll(): a session error (70, 71) and a dropped connection are answered with a full fetch by the client itself.
+ *
+ * A Fetch v7 answer is the one of v5, so a 1.1 broker answers with the log as it lies: record batches of
  * the message format v2, whose records carry their timestamps and their headers ({@see Record::$headers}, KIP-82),
  * and the control markers of a transaction are dropped by the record layer before a record ever reaches poll().
  * The whole answer is bounded by `fetch.max.bytes` on top of the per-partition `max.partition.fetch.bytes`; the
@@ -119,7 +127,7 @@ use Throwable;
  * {@see \Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter} before poll() returns, because a 0.11.0.3
  * broker sends them and only names them. The default is `read_uncommitted`, which shows every record of the log.
  *
- * @see docs/protocol/0.11.0.md, section "Transactions"
+ * @see docs/protocol/1.1.md, section "Transactions"
  */
 class KafkaConsumer
 {
@@ -443,9 +451,14 @@ class KafkaConsumer
      * are committed once `auto.commit.interval.ms` has passed since the last commit, and always right before the
      * consumer gives its partitions up in a rebalance.
      *
-     * The partitions are asked for in a **rotating order**: a Fetch v5 request is bounded by `fetch.max.bytes`
+     * The partitions are asked for in a **rotating order**: a Fetch v7 request is bounded by `fetch.max.bytes`
      * for the whole answer and the broker serves the partitions in the order it was asked, so every partition
      * that returned records in this poll() is moved behind the ones that did not before the next one is sent.
+     *
+     * The request itself is the incremental fetch of the session this consumer holds with every broker (KIP-227):
+     * it states the positions that moved since the previous poll(), forgets the partitions that left the
+     * assignment, and is answered with the partitions that have news alone. A partition that is not in that
+     * answer simply keeps its position and is polled again.
      *
      * @param int $timeout The time, in milliseconds, spent waiting in poll if data is not available. If 0, returns
      *                     immediately with any records that are available now. The broker never waits longer than
@@ -943,6 +956,11 @@ class KafkaConsumer
      * the topic was recreated - is answered with the error code 1, OffsetOutOfRange. The consumer resolves that
      * exactly like a missing committed offset: it follows `auto.offset.reset` and fetches again.
      *
+     * The fetch itself goes through {@see Client::fetchPartitionsWithSessions()}, i.e. through the **incremental
+     * fetch session** (KIP-227) that this consumer holds with every broker it reads from, so what comes back are
+     * only the partitions that have news. A partition the answer does not mention keeps everything the consumer
+     * knows about it, its position included.
+     *
      * @param array<string, array<int, int>> $activeTopicPartitionOffsets Positions to fetch from
      * @param int                            $timeout                     Poll timeout in milliseconds
      *
@@ -951,7 +969,7 @@ class KafkaConsumer
     private function fetchMessages(array $activeTopicPartitionOffsets, int $timeout): array
     {
         try {
-            return $this->getClient()->fetchPartitions($activeTopicPartitionOffsets, $timeout);
+            return $this->getClient()->fetchPartitionsWithSessions($activeTopicPartitionOffsets, $timeout);
         } catch (OffsetOutOfRangeException $exception) {
             $resetOffsets = $this->resetOutOfRangeOffsets($activeTopicPartitionOffsets, $exception);
         } catch (TopicPartitionRequestException $exception) {
@@ -962,7 +980,7 @@ class KafkaConsumer
             $resetOffsets = $this->resetOutOfRangeOffsets($activeTopicPartitionOffsets, $exception);
         }
 
-        return $this->getClient()->fetchPartitions($resetOffsets, $timeout);
+        return $this->getClient()->fetchPartitionsWithSessions($resetOffsets, $timeout);
     }
 
     /**

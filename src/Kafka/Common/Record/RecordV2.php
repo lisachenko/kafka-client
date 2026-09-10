@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see Record} belongs to the user-facing record of every protocol line of this package, so the wire form is named
  * after the message format it is the record of, the way {@see MessageV0} is.
  *
- * @see docs/protocol/0.11.0.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
  * @see org/apache/kafka/common/record/DefaultRecord.java @ 0.11.0.3
  */
 class RecordV2 implements BinarySchemaInterface, \Stringable

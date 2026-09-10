@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV2;
  * Version 3 (KIP-124, Kafka 0.11) is the leading `ThrottleTimeMs` of the answer and nothing else: the request of
  * v2 and v3 is one and the same body, and the three lower versions of the answer are one and the same layout.
  *
- * @see docs/protocol/0.11.0.md, section "OffsetCommit API (key 8, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "OffsetCommit API (key 8, v0 to v3)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]

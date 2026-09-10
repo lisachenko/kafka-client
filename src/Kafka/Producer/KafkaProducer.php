@@ -98,6 +98,15 @@ use React\Promise\Promise;
  * session: a new {@see KafkaProducer} gets a new producer id and can not deduplicate against what the old one
  * wrote. Application-level re-sends can not be deduplicated either - only a retry of the very same batch can.
  *
+ * A **1.x broker** widens that in two ways this producer inherits without an option of its own: it recognises a
+ * duplicate of any of the **last five** batches of a producer and partition rather than only of the very last one,
+ * so a producer whose acknowledgement of several batches in a row was lost is answered as the original append
+ * instead of being thrown out of sequence; and it says so with an error of its own, **59** `UnknownProducerId`,
+ * when it lost the state of a producer because the records it held it by were deleted. That one is answered inside
+ * {@see \Protocol\Kafka\Client::produce()}: the partition is numbered from the sequence 0 again and the batch is
+ * sent once more, which is why a producer that writes into a partition with a short retention keeps working
+ * instead of failing with an out-of-order sequence.
+ *
  * <code>
  *   $producer = new KafkaProducer([
  *       ProducerConfig::BOOTSTRAP_SERVERS   => ['tcp://127.0.0.1:9092'],
@@ -141,7 +150,7 @@ use React\Promise\Promise;
  *
  * @see examples/producer.php for a runnable example
  * @see examples/transactional-producer.php for the consume-transform-produce loop
- * @see docs/protocol/0.11.0.md, sections "Quotas and throttle time" and "Transactions"
+ * @see docs/protocol/1.1.md, sections "Quotas and throttle time" and "Transactions"
  */
 class KafkaProducer
 {

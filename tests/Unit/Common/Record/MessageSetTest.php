@@ -38,7 +38,7 @@ use Protocol\Kafka\Common\Record\TimestampType;
  * message format v1 counterparts, with their relative inner offsets, are captured from the 0.10.2.2 broker in
  * `docs/protocol/vectors/message-format.json` and replayed by tests/Compliance.
  *
- * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
+ * @see docs/protocol/1.1.md, section "MessageSet and Message"
  */
 #[CoversClass(MessageSet::class)]
 final class MessageSetTest extends TestCase

@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
  *
  * Each vector is a frame that a Kafka broker really sent or really accepted - 0.10.2.2 for everything the 0.10 line
  * added, 0.9.0.1 and 0.8.2.2 for the api versions whose frames the later lines do not change - stored as hex in
- * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/0.11.0.md`. For every one of them
+ * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/1.1.md`. For every one of them
  * this suite checks four things:
  *
  * 1. the frame decodes into the class that the vector names;
@@ -192,6 +192,14 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function saslAuthenticateVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function createTopicsVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -240,6 +248,38 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function describeLogDirsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function createPartitionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function alterReplicaLogDirsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteGroupsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function initProducerIdVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -281,6 +321,14 @@ final class ProtocolVectorTest extends TestCase
      * @return iterable<string, array{0: array<string, mixed>}>
      */
     public static function txnOffsetCommitVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function delegationTokensVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
     }
@@ -559,6 +607,15 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @param array<string, mixed> $vector
      */
+    #[DataProvider('saslAuthenticateVectors')]
+    public function testSaslAuthenticateApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
     #[DataProvider('createTopicsVectors')]
     public function testCreateTopicsApi(array $vector): void
     {
@@ -613,6 +670,42 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @param array<string, mixed> $vector
      */
+    #[DataProvider('describeLogDirsVectors')]
+    public function testDescribeLogDirsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('createPartitionsVectors')]
+    public function testCreatePartitionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('alterReplicaLogDirsVectors')]
+    public function testAlterReplicaLogDirsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteGroupsVectors')]
+    public function testDeleteGroupsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
     #[DataProvider('initProducerIdVectors')]
     public function testInitProducerIdApi(array $vector): void
     {
@@ -660,6 +753,18 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('txnOffsetCommitVectors')]
     public function testTxnOffsetCommitApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * The four delegation token apis of KIP-48 share one vector file, so every request vector of it carries the api
+     * key of its own api and the file itself declares none.
+     *
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('delegationTokensVectors')]
+    public function testDelegationTokenApis(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

@@ -19,29 +19,33 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * One SASL token as it travels over a `SASL_PLAINTEXT`/`SASL_SSL` connection of a Kafka 0.10 broker.
+ * One SASL token as it travels over a `SASL_PLAINTEXT`/`SASL_SSL` connection.
  *
  * Between the SaslHandshake response and the first ordinary request, the connection carries the tokens of the
- * chosen mechanism and nothing else. They are **not** Kafka requests: they have no api key, no api version, no
- * correlation id and no client id - a token is a size-prefixed blob, exactly what the `bytes` primitive of the
- * protocol is:
+ * chosen mechanism and nothing else. After a **v0** handshake they are **not** Kafka requests: they have no api
+ * key, no api version, no correlation id and no client id - a token is a size-prefixed blob, exactly what the
+ * `bytes` primitive of the protocol is:
  *
  * <pre>
  *   SaslToken => Token
  *     Token => bytes    // INT32 length, then that many bytes
  * </pre>
  *
- * `SaslServerAuthenticator.authenticate()` @ 0.10.2.2 reads it with a plain `NetworkReceive` (the same 4-byte
- * length prefix every Kafka frame carries) and hands the payload straight to `SaslServer.evaluateResponse()`; the
- * answer travels back the same way, and for PLAIN it is the empty token `new byte[0]`, i.e. the four bytes
- * `00 00 00 00`. Kafka 1.0 wrapped the very same tokens into the `SaslAuthenticate` request (api key 36) to give
- * them a header and an error code - that request does not exist on a 0.10 broker.
+ * `SaslServerAuthenticator.authenticate()` @ 1.1.1 reads such a frame with a plain `NetworkReceive` (the same
+ * 4-byte length prefix every Kafka frame carries) and hands the payload straight to
+ * `SaslServer.evaluateResponse()`; the answer travels back the same way, and for PLAIN it is the empty token
+ * `new byte[0]`, i.e. the four bytes `00 00 00 00`.
+ *
+ * Kafka 1.0 (KIP-152) wrapped the very same payload into the `SaslAuthenticate` request (api key 36) to give it a
+ * header and an error code, which is what a **v1** handshake asks for: this class then only builds the bytes and
+ * {@see \Protocol\Kafka\Protocol\Request\SaslAuthenticateRequest} carries them. The payload is identical in both
+ * exchanges - what changes is the framing around it.
  *
  * For the PLAIN mechanism the token is the RFC 4616 message `authzid \0 authcid \0 passwd`, which
  * `PlainSaslServer.evaluateResponse()` splits on the NUL bytes into exactly three parts; the authorization id is
  * left empty by this client, as the Java `PlainLoginModule` does.
  *
- * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/1.1.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  * @see \Protocol\Kafka\IO\SocketStream::authenticate()
  */
 final class SaslToken implements BinarySchemaInterface

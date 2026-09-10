@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\Request\AbstractResponse;
  * the connection is out of sync and any further byte read from it would be parsed at the wrong offset, therefore it
  * is reported as a {@see CorrelationIdMismatchException} and the connection is dropped by the caller.
  *
- * @see docs/protocol/0.11.0.md, sections "Requests" and "Responses"
+ * @see docs/protocol/1.1.md, sections "Requests" and "Responses"
  */
 final class ResponseValidator
 {

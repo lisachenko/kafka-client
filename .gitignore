@@ -5,3 +5,6 @@ composer.phar
 
 # Sandbox-only CA certificates for the broker image build (docker/<version>/ca/README.md)
 docker/*/ca/*.crt
+
+# Worktrees of the coordinator's subagents (Claude Code Agent tool)
+.claude/worktrees/

@@ -36,7 +36,7 @@ use RuntimeException;
  * of the engine, field by field, because there is no response class to decode them into yet.
  *
  * @see \Protocol\Kafka\Tests\Fixture\RawApiProbe for the probe that asks what a broker does with a frame it refuses
- * @see docs/protocol/0.11.0.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
  */
 final class RawRecordBatchProbe
 {

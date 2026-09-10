@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * client parses the two fields it knows and ignores whatever follows them, and a type it does not know is
  * {@see ControlRecordType::UNKNOWN}, which it silently drops.
  *
- * @see docs/protocol/0.11.0.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
  * @see org/apache/kafka/common/record/ControlRecordType.java @ 0.11.0.3
  */
 class ControlRecordKey implements BinarySchemaInterface

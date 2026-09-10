@@ -28,11 +28,13 @@ use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\TransactionalIdAuthorizationException;
+use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Network\RetryPolicy;
+use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
 use Throwable;
@@ -72,29 +74,42 @@ use Throwable;
  *
  * ### What the broker does with those numbers, and what this class does with its answers
  *
- * Verified against the 0.11.0.3 container, `ProducerStateManager.validateAppend` @ 0.11.0.3:
+ * Verified against the 1.1.1 container, against `ProducerAppendInfo.checkSequence` of `ProducerStateManager.scala`
+ * and `Log.analyzeAndValidateProducerState` @ 1.1.1:
  *
  * | The broker sees                                        | It answers                    | This class then      |
  * |--------------------------------------------------------|-------------------------------|----------------------|
- * | the next sequence of that producer and partition        | 0 and the new base offset     | increments by the record count |
- * | *exactly* the batch it appended last (id, epoch, range) | **0 and the original offset** | increments as if it had just been written |
- * | a sequence with a gap, or a duplicate of an *older* batch | **45** OutOfOrderSequence    | {@see TransactionManager::resetProducerId()} - a new producer id for the next send |
+ * | the next sequence of that producer and partition        | 0 and the new base offset     | increments by the record count, remembers the last offset |
+ * | *exactly* one of the **last five** batches it appended (id, epoch, range) | **0 and the original offset** | increments as if it had just been written |
+ * | a sequence with a gap, or a duplicate of a batch below those five | **45** OutOfOrderSequence | {@see TransactionManager::resetProducerId()} - a new producer id for the next send |
  * | an epoch below the one it has for that producer id      | **47** InvalidProducerEpoch   | fatal, the producer refuses to send anything else |
- * | a duplicate that its last-batch check did not catch     | 46 DuplicateSequenceNumber    | counts the batch as appended, the sequence is consumed |
+ * | no entry for that producer id, and a first sequence that is not 0 | **59** UnknownProducerId | {@see TransactionManager::canRetryBatch()} - the partition starts at 0 again, or the 45 row |
+ * | a duplicate that its five-batch check did not catch     | 46 DuplicateSequenceNumber    | counts the batch as appended, the sequence is consumed |
  *
- * The error code 46 is the one a 0.11.0.3 broker never actually sends to a client - its duplicate check runs
+ * The error code 46 is the one a 1.1.1 broker never actually sends to a client - its duplicate check runs
  * *before* the sequence validation and answers the duplicate with a normal offset - so the row above is what this
  * class does when it does arrive, from a broker that behaves otherwise.
  *
- * Resetting the producer id on a 45 is what the Java `Sender` @ 0.11.0.3 does for an **idempotent** producer, and
+ * Resetting the producer id on a 45 is what the Java `Sender` @ 1.1.1 does for an **idempotent** producer, and
  * it is the only sensible answer: a gap in the sequence means that the producer and the broker no longer agree on
  * what was written, and there is no frame that could fill the gap. The batch that hit it is reported to the caller,
  * everything after it starts a new producer id at the sequence 0 - and loses the deduplication of everything that
  * was written under the old id. A *transactional* producer must not do this (bumping the epoch behind the back of
  * an open transaction), which is why {@see TransactionManager::resetProducerId()} refuses it.
  *
+ * ### What Kafka 1.x changed
+ *
+ * Two things, both of them broker-side and neither of them a change of the wire format: the broker keeps the last
+ * **five** batches of a producer id and partition instead of the single one 0.11 kept
+ * (`ProducerStateEntry.NumBatchesToRetain = 5`), so a producer whose acknowledgements of several batches were lost
+ * is answered as the original append instead of being thrown out of sequence; and it has an error of its own for
+ * "I have no state of this producer", **59** `UnknownProducerId`, which 0.11 reported as a 45. The client half of
+ * the second one is {@see TransactionManager::canRetryBatch()} with the `log_start_offset` of the Produce **v5**
+ * answer - the field that makes the difference between "your records were deleted, number the partition from 0
+ * again" and "your records are there and we disagree about them" visible at all.
+ *
  * @see \Protocol\Kafka\Client::initProducerId()
- * @see docs/protocol/0.11.0.md, sections "InitProducerId API (key 22, v0)" and "The idempotent producer"
+ * @see docs/protocol/1.1.md, sections "InitProducerId API (key 22, v0)" and "The idempotent producer"
  */
 class TransactionManager
 {
@@ -125,6 +140,19 @@ class TransactionManager
      * @var array<string, array<int, int>>
      */
     private array $sequenceNumbers = [];
+
+    /**
+     * Offset of the last record the broker acknowledged for a topic-partition, as topic => partition => offset
+     *
+     * `TransactionManager.lastAckedOffset` @ 1.1.1, and the value the decision about a **59**
+     * (`UnknownProducerId`) is made on: a partition whose last acknowledged offset is **below** the
+     * `log_start_offset` of the answer lost the records of this producer to a deletion, which is why the broker
+     * has no state of it any more, see {@see TransactionManager::canRetryBatch()}. A partition that was never
+     * acknowledged answers {@see ProduceResponsePartition::INVALID_OFFSET}.
+     *
+     * @var array<string, array<int, int>>
+     */
+    private array $lastAckedOffsets = [];
 
     /**
      * The error that made this producer unusable, `null` while it is healthy
@@ -290,6 +318,7 @@ class TransactionManager
 
         $this->producerIdAndEpoch = ProducerIdAndEpoch::none();
         $this->sequenceNumbers    = [];
+        $this->lastAckedOffsets   = [];
     }
 
     /**
@@ -319,6 +348,114 @@ class TransactionManager
     }
 
     /**
+     * Numbers the next batch of one topic-partition from 0 again, without touching the producer id.
+     *
+     * `TransactionManager.startSequencesAtBeginning()` @ 1.1.1, and the only sequence reset of the 1.x producer
+     * that is **not** a reset of the whole producer: the broker forgot the state of this producer *for this
+     * partition* because the records it holds it by were deleted (see
+     * {@see TransactionManager::canRetryBatch()}), so the next batch of that partition has to be the first one of
+     * it again - and it is accepted, because a producer id the broker has no entry for may start at 0 whenever it
+     * likes. Every other partition keeps its numbering, and so does the deduplication of everything that was
+     * written under this producer id elsewhere.
+     */
+    public function startSequencesAtBeginning(TopicPartition $topicPartition): void
+    {
+        $this->sequenceNumbers[$topicPartition->topic][$topicPartition->partition] = self::FIRST_SEQUENCE;
+        unset($this->lastAckedOffsets[$topicPartition->topic][$topicPartition->partition]);
+    }
+
+    /**
+     * Returns the offset of the last record the broker acknowledged for a topic-partition.
+     *
+     * {@see ProduceResponsePartition::INVALID_OFFSET} (-1) for a partition this producer never wrote to, which is
+     * what `TransactionManager.lastAckedOffset()` @ 1.1.1 answers with `ProduceResponse.INVALID_OFFSET`.
+     */
+    public function lastAckedOffset(TopicPartition $topicPartition): int
+    {
+        return $this->lastAckedOffsets[$topicPartition->topic][$topicPartition->partition]
+            ?? ProduceResponsePartition::INVALID_OFFSET;
+    }
+
+    /**
+     * Remembers the offset of the last record of an acknowledged batch, the value a **59** is decided on.
+     *
+     * `TransactionManager.updateLastAckedOffset()` @ 1.1.1: the last offset of the batch is
+     * `baseOffset + recordCount - 1`, an answer without a base offset (-1, which a **46** leaves behind) is
+     * ignored, and an offset that is not higher than the one already known does not move it - a *duplicate* is
+     * answered with the offset of the original append, which is by definition not newer than what is known.
+     */
+    public function updateLastAckedOffset(TopicPartition $topicPartition, int $baseOffset, int $recordCount): void
+    {
+        if ($baseOffset === ProduceResponsePartition::INVALID_OFFSET || $recordCount < 1) {
+            return;
+        }
+
+        $lastOffset = $baseOffset + $recordCount - 1;
+        if ($lastOffset > $this->lastAckedOffset($topicPartition)) {
+            $this->lastAckedOffsets[$topicPartition->topic][$topicPartition->partition] = $lastOffset;
+        }
+    }
+
+    /**
+     * Decides whether a batch that a topic-partition refused may simply be sent again (Kafka 1.0, KIP-98 + 59).
+     *
+     * This is `TransactionManager.canRetry()` @ 1.1.1 for the one case a **synchronous** client can be in. The
+     * error **59** `UnknownProducerId` says that the broker has no state of this producer id for this partition
+     * any more, and the `log_start_offset` that Produce **v5** added to the answer is what tells the two reasons
+     * for it apart:
+     *
+     * * `-1` - the broker did not know the log start offset when it built the answer, because the partition moved
+     *   away from it between the error and the answer. Nothing is decided, and the very same batch is sent again
+     *   unchanged until an answer carries the offset;
+     * * a real offset **above** the last one this producer had acknowledged for the partition - every record this
+     *   producer wrote there was deleted (a `DeleteRecords`, or a retention run), and with the last of them the
+     *   broker dropped the producer entry. The batch is *not* a duplicate and not out of order: it is the first
+     *   batch of a partition the producer has to number from 0 again, so
+     *   {@see TransactionManager::startSequencesAtBeginning()} does that and the batch is sent again;
+     * * a real offset that is **not** above it - the records are still in the log, so the producer state was lost
+     *   for a reason this client can not repair. The batch fails, and {@see TransactionManager::batchFailed()}
+     *   answers it as the out-of-order sequence that `UnknownProducerIdException` is a special case of.
+     *
+     * The `OUT_OF_ORDER_SEQUENCE_NUMBER` branch of the Java method has no counterpart here: it retries a batch
+     * that is not the first one in flight, and this client sends one produce request at a time and reads its
+     * answer before the next one, so there never is a second batch of a partition in flight.
+     *
+     * Note that this is **not** limited to a merely idempotent producer, exactly as the Java method is not: a
+     * transactional producer whose records were deleted under it numbers the partition from 0 again as well and
+     * stays inside its transaction. Only the batch that can not be retried makes the transaction abortable.
+     *
+     * @param TopicPartition         $topicPartition  Partition whose batch was refused
+     * @param Throwable              $error           Error that partition of the answer carried
+     * @param int                    $logStartOffset  `log_start_offset` of that partition of the Produce v5
+     *        answer, {@see ProduceResponsePartition::INVALID_OFFSET} when the answer carried none
+     * @param ProducerIdAndEpoch|null $batchIdAndEpoch Producer id and epoch the batch was written with, so that a
+     *        batch of an id this producer has thrown away in the meantime is not retried
+     */
+    public function canRetryBatch(
+        TopicPartition $topicPartition,
+        Throwable $error,
+        int $logStartOffset = ProduceResponsePartition::INVALID_OFFSET,
+        ?ProducerIdAndEpoch $batchIdAndEpoch = null
+    ): bool {
+        if (!$error instanceof UnknownProducerIdException || !$this->hasProducerId()) {
+            return false;
+        }
+        if ($batchIdAndEpoch !== null && !$this->hasProducerIdAndEpoch($batchIdAndEpoch->producerId, $batchIdAndEpoch->epoch)) {
+            return false;
+        }
+        if ($logStartOffset === ProduceResponsePartition::INVALID_OFFSET) {
+            return true;
+        }
+        if ($this->lastAckedOffset($topicPartition) < $logStartOffset) {
+            $this->startSequencesAtBeginning($topicPartition);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Returns the sequence number of every topic-partition of a produce request, as {@see Client::produce()} wants
      * them.
      *
@@ -345,10 +482,23 @@ class TransactionManager
      * Records that the broker acknowledged a batch of this many records, which consumes their sequence numbers.
      *
      * A batch that was written with another producer id - one that a reset threw away while it was in flight - is
-     * ignored, exactly as `Sender.completeBatch()` @ 0.11.0.3 ignores it.
+     * ignored, exactly as `Sender.completeBatch()` @ 1.1.1 ignores it. The **base offset** of the answer is
+     * remembered next to the sequence, because a Kafka 1.x producer decides a **59** on it, see
+     * {@see TransactionManager::canRetryBatch()}; a caller that has none passes
+     * {@see ProduceResponsePartition::INVALID_OFFSET}, which is also what a duplicate that the broker answered
+     * with a **46** leaves behind.
+     *
+     * @param TopicPartition          $topicPartition  Partition the batch was appended to
+     * @param int                     $recordCount     Number of records of the batch, i.e. of sequence numbers
+     * @param ProducerIdAndEpoch|null $batchIdAndEpoch Producer id and epoch the batch was written with
+     * @param int                     $baseOffset      `base_offset` the partition of the answer reported
      */
-    public function batchCompleted(TopicPartition $topicPartition, int $recordCount, ?ProducerIdAndEpoch $batchIdAndEpoch = null): void
-    {
+    public function batchCompleted(
+        TopicPartition $topicPartition,
+        int $recordCount,
+        ?ProducerIdAndEpoch $batchIdAndEpoch = null,
+        int $baseOffset = ProduceResponsePartition::INVALID_OFFSET
+    ): void {
         if ($batchIdAndEpoch !== null && !$this->hasProducerIdAndEpoch($batchIdAndEpoch->producerId, $batchIdAndEpoch->epoch)) {
             return;
         }
@@ -357,6 +507,7 @@ class TransactionManager
         }
 
         $this->incrementSequenceNumber($topicPartition, $recordCount);
+        $this->updateLastAckedOffset($topicPartition, $baseOffset, $recordCount);
     }
 
     /**
@@ -374,12 +525,19 @@ class TransactionManager
      * * **46** DuplicateSequenceNumber - the batch is already in the log, so its sequence numbers are consumed
      *   and the producer moves on as if it had just written them.
      *
+     * Kafka 1.0 added a fourth, **59** `UnknownProducerId` ({@see UnknownProducerIdException}), and it arrives
+     * here only when {@see TransactionManager::canRetryBatch()} has already decided that sending the batch again
+     * can not fix it. `UnknownProducerIdException extends OutOfOrderSequenceException`, in this package as in the
+     * Java client, so it then takes the **45** row of the table above - a new producer id for an idempotent
+     * producer, an abortable error inside a transaction - which is exactly what `Sender.failBatch()` @ 1.1.1 does
+     * with it.
+     *
      * Every other error - a lost leader, an authorization failure, a timeout - says nothing about the producer
      * state and is left to the caller. **For a producer inside a transaction it says one thing more**: the batch
      * that failed may or may not be in the log, so the transaction can not be committed any more and the producer
      * goes into {@see TransactionState::ABORTABLE_ERROR}, from which only
-     * {@see TransactionManager::abortTransaction()} leads out. That is what `Sender.failBatch()` @ 0.11.0.3 does
-     * with `transactionManager.maybeTransitionToErrorState()`.
+     * {@see TransactionManager::abortTransaction()} leads out. That is what `Sender.failBatch()` @ 1.1.1 does
+     * with `transactionManager.transitionToAbortableError()`.
      */
     public function batchFailed(
         TopicPartition $topicPartition,
@@ -542,6 +700,7 @@ class TransactionManager
 
         $this->producerIdAndEpoch = ProducerIdAndEpoch::none();
         $this->sequenceNumbers    = [];
+        $this->lastAckedOffsets   = [];
 
         $transactionalId = $this->requireTransactionalId();
 

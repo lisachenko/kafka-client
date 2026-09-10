@@ -56,7 +56,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
  * {@see OffsetCommitRequestV1} and {@see OffsetCommitRequestV0}. Everything else - the fields, the class names and
  * the way the topic-partitions are packed - is shared.
  *
- * @see docs/protocol/0.11.0.md, section "OffsetCommit API (key 8, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "OffsetCommit API (key 8, v0 to v3)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {

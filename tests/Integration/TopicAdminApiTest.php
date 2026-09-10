@@ -15,11 +15,13 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidPartitionsException;
+use Protocol\Kafka\Common\Errors\InvalidReplicaAssignmentException;
 use Protocol\Kafka\Common\Errors\InvalidReplicationFactorException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
@@ -34,17 +36,20 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 
 /**
- * Exercises the CreateTopics (key 19) and DeleteTopics (key 20) apis against a real Kafka 0.10.2.2 broker.
+ * Exercises the topic administration apis - CreateTopics (19), DeleteTopics (20) and CreatePartitions (37) -
+ * against a real Kafka 1.1.1 broker.
  *
- * Both apis arrived with Kafka 0.10.1 and are served by the ACTIVE CONTROLLER only. The container of
- * `docker-compose.yml` runs a single broker, which is therefore always the controller, so the error code 41
- * (NotController) can not be produced here - it is exercised with a scripted two-broker cluster in
- * `tests/Unit/Admin/AdminClientTest.php`.
+ * The first two arrived with Kafka 0.10.1, the third with Kafka 1.0 (KIP-195), and all three are served by the
+ * ACTIVE CONTROLLER only. The container of `docker-compose.yml` runs a single broker, which is therefore always the
+ * controller, so the error code 41 (NotController) can not be produced here - it is exercised with a scripted
+ * two-broker cluster in `tests/Unit/Admin/AdminClientTest.php`.
  *
- * @see docs/protocol/0.11.0.md, sections "CreateTopics API (key 19, v0, v1 and v2)" and "DeleteTopics API (key 20, v0 and v1)"
+ * @see docs/protocol/1.1.md, sections "CreateTopics API (key 19, v0, v1 and v2)", "DeleteTopics API (key 20, v0 and v1)"
+ *      and "CreatePartitions API (key 37, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(NewTopic::class)]
+#[CoversClass(NewPartitions::class)]
 final class TopicAdminApiTest extends IntegrationTestCase
 {
     /**
@@ -174,8 +179,11 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $result = $this->admin->createTopics([new NewTopic($topic, 0, 1)]);
 
         self::assertInstanceOf(InvalidPartitionsException::class, $result[$topic]);
+        // The text changed with Kafka 1.0, the code (37) did not: `AdminUtils.assignReplicasToBrokers` @ 0.11.0.3
+        // threw "number of partitions must be larger than 0" and `AdminUtils`/`AdminZkClient` @ 1.1.1 throws
+        // "Number of partitions must be larger than 0." - a capital N and a trailing dot
         self::assertSame(
-            'number of partitions must be larger than 0',
+            'Number of partitions must be larger than 0.',
             $result[$topic]->getContext()['error'] ?? null
         );
     }
@@ -314,6 +322,123 @@ final class TopicAdminApiTest extends IntegrationTestCase
         self::assertNotContains($probe, $this->admin->listTopics());
     }
 
+    public function testThePartitionCountOfATopicIsRaised(): void
+    {
+        $topic = $this->topicName('grow');
+        self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
+        $this->awaitTopic($topic);
+
+        $result = $this->admin->createPartitions([$topic => 3]);
+
+        self::assertSame([$topic => null], $result, 'the controller added the two partitions within the timeout');
+        $partitions = array_keys($this->awaitPartitionCount($topic, 3)->partitions);
+        sort($partitions);
+        self::assertSame([0, 1, 2], $partitions);
+    }
+
+    public function testTheNewPartitionsCanBePlacedOnNamedBrokers(): void
+    {
+        $topic = $this->topicName('assigned');
+        self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
+        $this->awaitTopic($topic);
+
+        // One entry per ADDED partition, one broker id per replica - the container has the broker 0 alone
+        $result = $this->admin->createPartitions([$topic => NewPartitions::increaseTo(2, [[0]])]);
+
+        self::assertSame([$topic => null], $result);
+        $metadata = $this->awaitPartitionCount($topic, 2);
+        self::assertSame([0], array_values($metadata->partitions[1]->replicas));
+    }
+
+    public function testAValidatedCreatePartitionsAddsNothing(): void
+    {
+        $topic = $this->topicName('validate-partitions');
+        self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
+        $this->awaitTopic($topic);
+
+        $result = $this->admin->createPartitions([$topic => 4], 30000, true);
+
+        self::assertSame([$topic => null], $result, 'the request is valid');
+        self::assertCount(
+            1,
+            $this->admin->describeTopics([$topic])[$topic]->partitions,
+            'and the topic still has the partition it was created with'
+        );
+    }
+
+    public function testATopicCanNotBeShrunk(): void
+    {
+        $topic = $this->topicName('shrink');
+        self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 3, 1)]));
+        $this->awaitTopic($topic);
+
+        $fewer = $this->admin->createPartitions([$topic => 2]);
+        $same  = $this->admin->createPartitions([$topic => 3]);
+
+        self::assertInstanceOf(InvalidPartitionsException::class, $fewer[$topic]);
+        self::assertStringContainsString(
+            'Topic currently has 3 partitions, which is higher than the requested 2.',
+            $fewer[$topic]->getMessage()
+        );
+        self::assertInstanceOf(InvalidPartitionsException::class, $same[$topic]);
+        self::assertStringContainsString('Topic already has 3 partitions.', $same[$topic]->getMessage());
+        self::assertCount(3, $this->admin->describeTopics([$topic])[$topic]->partitions, 'and nothing changed');
+    }
+
+    public function testGrowingATopicThatDoesNotExistIsReportedPerTopic(): void
+    {
+        $topic = self::uniqueTopicName('t7-topics-never-created');
+
+        $result = $this->admin->createPartitions([$topic => 3]);
+
+        self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result[$topic]);
+        self::assertStringContainsString("The topic '{$topic}' does not exist.", $result[$topic]->getMessage());
+        self::assertNotContains($topic, $this->admin->listTopics(), 'and the request did not create it either');
+    }
+
+    public function testAnAssignmentThatDoesNotMatchTheAddedPartitionsIsRefused(): void
+    {
+        $topic = $this->topicName('bad-assignment');
+        self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
+        $this->awaitTopic($topic);
+
+        $tooFew  = $this->admin->createPartitions([$topic => NewPartitions::increaseTo(3, [[0]])]);
+        $unknown = $this->admin->createPartitions([$topic => NewPartitions::increaseTo(2, [[7]])]);
+
+        self::assertInstanceOf(InvalidReplicaAssignmentException::class, $tooFew[$topic]);
+        self::assertStringContainsString(
+            'Increasing the number of partitions by 2 but 1 assignments provided.',
+            $tooFew[$topic]->getMessage()
+        );
+        self::assertInstanceOf(InvalidReplicaAssignmentException::class, $unknown[$topic]);
+        self::assertStringContainsString(
+            'Unknown broker(s) in replica assignment: 7.',
+            $unknown[$topic]->getMessage()
+        );
+        self::assertCount(1, $this->admin->describeTopics([$topic])[$topic]->partitions);
+    }
+
+    public function testACreatePartitionsTimeoutOfZeroAnswersRequestTimedOutWhileThePartitionsAreAddedAnyway(): void
+    {
+        $topic = $this->topicName('partitions-timeout');
+        self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
+        $this->awaitTopic($topic);
+
+        $result = $this->admin->createPartitions([$topic => 2], 0);
+
+        self::assertInstanceOf(RequestTimedOutException::class, $result[$topic]);
+        self::assertCount(
+            2,
+            $this->awaitPartitionCount($topic, 2)->partitions,
+            'the answer only says that the controller was not done yet'
+        );
+    }
+
+    public function testCreatePartitionsWithoutATopicIsAnsweredWithAnEmptyResult(): void
+    {
+        self::assertSame([], $this->admin->createPartitions([]));
+    }
+
     public function testVersionZeroOfCreateTopicsIsStillServedByTheBroker(): void
     {
         $topic  = $this->topicName('v0');
@@ -355,6 +480,27 @@ final class TopicAdminApiTest extends IntegrationTestCase
         } while (microtime(true) < $deadline);
 
         self::fail("The topic {$topic} did not become available in time");
+    }
+
+    /**
+     * Waits until the topic has the expected number of partitions in the metadata of the cluster
+     *
+     * The controller answers a CreatePartitions as soon as IT has the new partitions; the other brokers - and the
+     * metadata cache of the one that answers a Metadata request - learn about them a moment later.
+     */
+    private function awaitPartitionCount(string $topic, int $expected): TopicMetadata
+    {
+        $deadline = microtime(true) + self::METADATA_TIMEOUT;
+        do {
+            $metadata = $this->admin->describeTopics([$topic])[$topic] ?? null;
+            if ($metadata !== null && $metadata->topicErrorCode === KafkaException::NO_ERROR
+                && count($metadata->partitions) === $expected) {
+                return $metadata;
+            }
+            usleep(200000);
+        } while (microtime(true) < $deadline);
+
+        self::fail("The topic {$topic} did not reach {$expected} partitions in time");
     }
 
     /**

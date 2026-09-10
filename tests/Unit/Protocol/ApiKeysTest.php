@@ -19,11 +19,12 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use ReflectionClass;
 
 /**
- * Verifies that the api keys of this branch are exactly the ones of Kafka 0.11.0.3.
+ * Verifies that the api keys of this branch are exactly the ones of Kafka 1.1.1.
  *
- * The list mirrors `org.apache.kafka.common.protocol.ApiKeys` @ 0.11.0.3, which ends at key 33. The names are the
+ * The list mirrors `org.apache.kafka.common.protocol.ApiKeys` @ 1.1.1, which ends at key 42. The names are the
  * ones of the pre-schema `main` branch wherever the concept exists there: key 10 is GroupCoordinator here, although
- * 0.11 renamed the api to FindCoordinator and the 0.8.2 sources called it ConsumerMetadata.
+ * 0.11 renamed the api to FindCoordinator and the 0.8.2 sources called it ConsumerMetadata; the keys 34 to 42 carry
+ * the names of the Java client.
  *
  * @see \Protocol\Kafka\Tests\Integration\ApiVersionProbeTest for the same list verified against a real broker
  */
@@ -31,11 +32,11 @@ use ReflectionClass;
 final class ApiKeysTest extends TestCase
 {
     /**
-     * Every api key of Kafka 0.11.0.3, in the order of org.apache.kafka.common.protocol.ApiKeys
+     * Every api key of Kafka 1.1.1, in the order of org.apache.kafka.common.protocol.ApiKeys
      *
      * @var array<string, int>
      */
-    private const array KEYS_OF_KAFKA_0_11_0_3 = [
+    private const array KEYS_OF_KAFKA_1_1_1 = [
         'PRODUCE'                 => 0,
         'FETCH'                   => 1,
         'OFFSETS'                 => 2,
@@ -70,14 +71,23 @@ final class ApiKeysTest extends TestCase
         'DELETE_ACLS'             => 31,
         'DESCRIBE_CONFIGS'        => 32,
         'ALTER_CONFIGS'           => 33,
+        'ALTER_REPLICA_LOG_DIRS'  => 34,
+        'DESCRIBE_LOG_DIRS'       => 35,
+        'SASL_AUTHENTICATE'       => 36,
+        'CREATE_PARTITIONS'       => 37,
+        'CREATE_DELEGATION_TOKEN'   => 38,
+        'RENEW_DELEGATION_TOKEN'    => 39,
+        'EXPIRE_DELEGATION_TOKEN'   => 40,
+        'DESCRIBE_DELEGATION_TOKEN' => 41,
+        'DELETE_GROUPS'             => 42,
     ];
 
-    public function testTheApiKeysAreExactlyTheOnesOfKafka01103(): void
+    public function testTheApiKeysAreExactlyTheOnesOfKafka111(): void
     {
         self::assertSame(
-            self::KEYS_OF_KAFKA_0_11_0_3,
+            self::KEYS_OF_KAFKA_1_1_1,
             new ReflectionClass(ApiKeys::class)->getConstants(),
-            'The branch declares an api key that Kafka 0.11.0.3 does not have, or misses one that it has'
+            'The branch declares an api key that Kafka 1.1.1 does not have, or misses one that it has'
         );
     }
 
@@ -114,15 +124,30 @@ final class ApiKeysTest extends TestCase
     }
 
     /**
-     * AlterReplicaLogDirs (34), DescribeLogDirs (35) and SaslAuthenticate (36) arrived with Kafka 1.0 and must not
-     * appear on this branch
+     * AlterReplicaLogDirs (34), DescribeLogDirs (35), SaslAuthenticate (36) and CreatePartitions (37) arrived with
+     * Kafka 1.0, the delegation token apis (38-41) and DeleteGroups (42) with Kafka 1.1
+     */
+    public function testTheKeysOfKafka1AreDeclared(): void
+    {
+        self::assertSame(34, ApiKeys::ALTER_REPLICA_LOG_DIRS);
+        self::assertSame(35, ApiKeys::DESCRIBE_LOG_DIRS);
+        self::assertSame(36, ApiKeys::SASL_AUTHENTICATE);
+        self::assertSame(37, ApiKeys::CREATE_PARTITIONS);
+        self::assertSame(38, ApiKeys::CREATE_DELEGATION_TOKEN);
+        self::assertSame(41, ApiKeys::DESCRIBE_DELEGATION_TOKEN);
+        self::assertSame(42, ApiKeys::DELETE_GROUPS);
+    }
+
+    /**
+     * ElectPreferredLeaders (43) and IncrementalAlterConfigs (44) arrived with Kafka 2.2 / 2.3 and must not appear
+     * on this branch
      */
     public function testNoApiKeyOfALaterKafkaIsDeclared(): void
     {
         $keys = new ReflectionClass(ApiKeys::class)->getConstants();
 
-        self::assertSame(range(0, 33), array_values($keys));
-        self::assertNotContains('DESCRIBE_LOG_DIRS', array_keys($keys));
-        self::assertNotContains('SASL_AUTHENTICATE', array_keys($keys));
+        self::assertSame(range(0, 42), array_values($keys));
+        self::assertNotContains('ELECT_PREFERRED_LEADERS', array_keys($keys));
+        self::assertNotContains('INCREMENTAL_ALTER_CONFIGS', array_keys($keys));
     }
 }

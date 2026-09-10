@@ -35,7 +35,7 @@ namespace Protocol\Kafka\Tests\Fixture;
  * The Produce API only carries these bytes around, so the protocol classes are tested against an independently
  * built message set instead of against the class that also produces one.
  *
- * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
+ * @see docs/protocol/1.1.md, section "MessageSet and Message"
  */
 final class SpecMessageSet
 {

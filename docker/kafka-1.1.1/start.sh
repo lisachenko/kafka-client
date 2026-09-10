@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Starts the bundled ZooKeeper and a single Kafka 0.11.0.3 broker in one container.
+# Starts the bundled ZooKeeper and a single Kafka 1.1.1 broker in one container.
 #
 set -e
 
@@ -32,9 +32,14 @@ sed -i "s/^broker.id=.*/broker.id=${BROKER_ID}/" config/server.properties
 sed -i "s/^num.partitions=.*/num.partitions=${NUM_PARTITIONS}/" config/server.properties
 sed -i "s/^#\?listeners=.*//; s/^#\?port=.*//" config/server.properties
 
-# The server.properties shipped with 0.11 ends without a trailing newline (its last line is
-# `group.initial.rebalance.delay.ms=0`), so anything appended to it would glue onto that line
+# The server.properties shipped with Kafka ends without a trailing newline - 1.1.1 as well as 0.11
+# (its last byte is the `0` of `group.initial.rebalance.delay.ms=0`); appending one is harmless
+# when the file already has it
 echo >> config/server.properties
+
+# Two log directories (KIP-113): AlterReplicaLogDirs (34) can move a replica between them and
+# DescribeLogDirs (35) reports both. Nothing in the suite depends on the directory a partition lands in.
+sed -i "s#^log.dirs=.*#log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2#" config/server.properties
 
 {
     # 0.9 binds by `listeners`; the controller reaches every broker through its ADVERTISED address, so it has to
@@ -56,16 +61,18 @@ echo >> config/server.properties
     # A single-broker cluster can not replicate the __consumer_offsets topic
     echo "offsets.topic.replication.factor=1"
     echo "offsets.topic.num.partitions=5"
-    # 0.11: the transaction coordinator's __transaction_state topic can not replicate either; without these two
+    # 0.11+: the transaction coordinator's __transaction_state topic can not replicate either; without these two
     # settings a one-broker cluster answers every transactional request with 15 (COORDINATOR_NOT_AVAILABLE)
     echo "transaction.state.log.replication.factor=1"
     echo "transaction.state.log.min.isr=1"
+    # 1.1 (KIP-48): the delegation token apis 38-41 are disabled (error code 61) without a master key. Test value only.
+    echo "delegation.token.master.key=kafkatest-delegation-token-master-key"
     # Group membership: let integration tests use short session timeouts
     echo "group.min.session.timeout.ms=1000"
     echo "group.max.session.timeout.ms=60000"
 } >> config/server.properties
 
-# The 0.11 broker reads its JAAS configuration from the JVM system property (no listener-scoped
+# The broker reads its JAAS configuration from the JVM system property (no listener-scoped
 # sasl.jaas.config before 0.10.2 / KIP-85 on the broker side).
 export KAFKA_OPTS="-Djava.security.auth.login.config=/opt/kafka/config/kafka_server_jaas.conf ${KAFKA_OPTS:-}"
 

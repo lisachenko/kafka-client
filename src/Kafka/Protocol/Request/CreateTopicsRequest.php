@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
  * accepted, while the creation carries on in the background: the request "will trigger topic creation and return
  * immediately", see `AdminManager.createTopics` @ 0.11.0.3.
  *
- * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0, v1 and v2)"
+ * @see docs/protocol/1.1.md, section "CreateTopics API (key 19, v0, v1 and v2)"
  */
 class CreateTopicsRequest extends AbstractRequest
 {

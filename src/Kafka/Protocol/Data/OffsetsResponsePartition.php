@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * log. A request for {@see OffsetsRequest::LATEST} or {@see OffsetsRequest::EARLIEST} succeeds with a real offset
  * and the timestamp -1, because the broker does not read the message the offset points at.
  *
- * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/1.1.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
  */
 class OffsetsResponsePartition implements BinarySchemaInterface
 {

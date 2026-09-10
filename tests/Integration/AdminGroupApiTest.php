@@ -18,11 +18,15 @@ use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
+use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
@@ -32,7 +36,8 @@ use Protocol\Kafka\Tests\Fixture\RawGroupMember;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Exercises the group admin apis of Kafka 0.9 - ListGroups (16) and DescribeGroups (15) - against a real broker.
+ * Exercises the group admin apis - ListGroups (16) and DescribeGroups (15) of Kafka 0.9, and the DeleteGroups (42)
+ * of Kafka 1.1 - against a real broker.
  *
  * The groups these tests look at are created with {@see RawGroupMember}, which speaks the JoinGroup and SyncGroup
  * requests of the membership protocol directly: a group only exists on the coordinator while it has a member, and
@@ -41,7 +46,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The broker is shared with the other suites and coordinates their groups too, so every assertion here is about the
  * groups of this class and never about the whole answer.
  *
- * @see docs/protocol/0.11.0.md, sections "DescribeGroups API (key 15, v0 and v1)" and "ListGroups API (key 16, v0 and v1)"
+ * @see docs/protocol/1.1.md, sections "DescribeGroups API (key 15, v0 and v1)", "ListGroups API (key 16, v0 and v1)"
+ *      and "DeleteGroups API (key 42, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeGroupsRequest::class)]
@@ -51,6 +57,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(ListGroupsRequest::class)]
 #[CoversClass(ListGroupsResponse::class)]
 #[CoversClass(ListGroupResponseProtocol::class)]
+#[CoversClass(DeleteGroupsRequest::class)]
+#[CoversClass(DeleteGroupsResponse::class)]
 final class AdminGroupApiTest extends IntegrationTestCase
 {
     /**
@@ -146,7 +154,15 @@ final class AdminGroupApiTest extends IntegrationTestCase
         self::assertSame($assignment, $described->memberAssignment, 'and so does the assignment of the leader');
     }
 
-    public function testDescribeGroupReportsAwaitingSyncWhileTheLeaderHasNotPublishedTheAssignment(): void
+    /**
+     * The state between the last JoinGroup and the leader's SyncGroup is called `CompletingRebalance` from Kafka 1.0
+     *
+     * `GroupMetadata.scala` called it `AwaitingSync` from 0.9 to 0.11 and the coordinator answered that string;
+     * Kafka 1.0 renamed the state and nothing else about it, so
+     * {@see DescribeGroupResponseMetadata::STATE_AWAITING_SYNC} is kept for the lines below and a broker of this
+     * line never sends it.
+     */
+    public function testDescribeGroupReportsCompletingRebalanceWhileTheLeaderHasNotPublishedTheAssignment(): void
     {
         $groupId = $this->uniqueGroupId();
         $member  = new RawGroupMember(
@@ -160,7 +176,12 @@ final class AdminGroupApiTest extends IntegrationTestCase
 
         $group = $this->admin->describeGroup($groupId);
 
-        self::assertSame(DescribeGroupResponseMetadata::STATE_AWAITING_SYNC, $group->state);
+        self::assertSame(DescribeGroupResponseMetadata::STATE_COMPLETING_REBALANCE, $group->state);
+        self::assertNotSame(
+            DescribeGroupResponseMetadata::STATE_AWAITING_SYNC,
+            $group->state,
+            'the 0.9 to 0.11 name of the very same state, which a 1.x broker never answers'
+        );
         self::assertSame('consumer', $group->protocolType);
         self::assertSame('', $group->protocol, 'the protocol is empty until the group is stable');
         self::assertCount(1, $group->members, 'the members are already known in this state');
@@ -223,6 +244,104 @@ final class AdminGroupApiTest extends IntegrationTestCase
     }
 
     /**
+     * KIP-229: a group without members is deleted, and its committed offsets go with it
+     */
+    public function testAnEmptyGroupIsDeletedWithItsCommittedOffsets(): void
+    {
+        $groupId = $this->emptyGroupWithACommittedOffset();
+        $topic   = self::committedTopic();
+        self::assertSame(7, $this->admin->listGroupOffsets($groupId)[$topic]->partitions[0]->offset);
+
+        $result = $this->admin->deleteConsumerGroups([$groupId]);
+
+        self::assertSame([$groupId => null], $result, 'a group nobody is a member of is deleted');
+        self::assertArrayNotHasKey(
+            $groupId,
+            $this->admin->listGroups($this->admin->findCoordinator($groupId)),
+            'and it is gone from the group list of its coordinator'
+        );
+        self::assertSame(
+            [],
+            $this->admin->listGroupOffsets($groupId),
+            'the coordinator wrote a tombstone for every offset the group had committed'
+        );
+        self::assertSame(
+            DescribeGroupResponseMetadata::STATE_DEAD,
+            $this->admin->describeGroup($groupId)->state,
+            'and describes it like a group that never existed'
+        );
+    }
+
+    public function testAGroupWithAMemberIsRefusedWithNonEmptyGroup(): void
+    {
+        $groupId = $this->uniqueGroupId();
+        $member  = $this->joinGroup($groupId, 't4-delete-member');
+
+        $result = $this->admin->deleteConsumerGroups([$groupId]);
+
+        self::assertInstanceOf(
+            GroupNotEmptyException::class,
+            $result[$groupId],
+            'the offsets of a group whose consumers are running are never thrown away'
+        );
+        self::assertSame(
+            DescribeGroupResponseMetadata::STATE_STABLE,
+            $this->admin->describeGroup($groupId)->state,
+            'and the group is untouched'
+        );
+
+        // The very same group is deletable the moment its last member has left it
+        $member->leave();
+
+        self::assertSame([$groupId => null], $this->admin->deleteConsumerGroups([$groupId]));
+    }
+
+    public function testAGroupTheCoordinatorDoesNotKnowIsReportedWithGroupIdNotFound(): void
+    {
+        $groupId = $this->uniqueGroupId();
+
+        $result = $this->admin->deleteConsumerGroups([$groupId]);
+
+        self::assertInstanceOf(
+            GroupIdNotFoundException::class,
+            $result[$groupId],
+            'the one way to tell "there was nothing to delete" from "it is still in use"'
+        );
+        self::assertSame(['groupId' => $groupId], $result[$groupId]->getContext());
+    }
+
+    public function testTheGroupsOfOneCallAreReportedIndependently(): void
+    {
+        $deletable = $this->emptyGroupWithACommittedOffset();
+        $held      = $this->uniqueGroupId();
+        $unknown   = $this->uniqueGroupId();
+        $this->joinGroup($held, 't4-delete-second');
+
+        $result = $this->admin->deleteConsumerGroups([$deletable, $held, $unknown]);
+
+        self::assertSame([$deletable, $held, $unknown], array_keys($result), 'in the order of the call');
+        self::assertNull($result[$deletable]);
+        self::assertInstanceOf(GroupNotEmptyException::class, $result[$held]);
+        self::assertInstanceOf(GroupIdNotFoundException::class, $result[$unknown]);
+    }
+
+    public function testDeletingADeadGroupIsAnsweredWithGroupIdNotFound(): void
+    {
+        // A group that was deleted a moment ago is `Dead`, i.e. exactly what an unknown group looks like
+        $groupId = $this->emptyGroupWithACommittedOffset();
+        self::assertSame([$groupId => null], $this->admin->deleteConsumerGroups([$groupId]));
+
+        $result = $this->admin->deleteConsumerGroups([$groupId]);
+
+        self::assertInstanceOf(GroupIdNotFoundException::class, $result[$groupId]);
+    }
+
+    public function testDeletingNoGroupAtAllIsAnsweredWithAnEmptyResult(): void
+    {
+        self::assertSame([], $this->admin->deleteConsumerGroups([]));
+    }
+
+    /**
      * `listGroupOffsets()` without partitions asks for every topic-partition the group committed (OffsetFetch v2)
      *
      * That is the shape the method has on the `main` branch, and the nullable topic array of the version 2 of the
@@ -261,6 +380,51 @@ final class AdminGroupApiTest extends IntegrationTestCase
             'an empty iterable names no topic at all, which is not the same request as null'
         );
     }
+
+    /**
+     * Creates a group that has a committed offset and no member at all, i.e. one in the state `Empty`
+     *
+     * A group is created by a plain OffsetCommit as well as by a member, and the offset is what makes the group
+     * survive until something deletes it: the coordinator drops an `Empty` group that holds no offset at all the
+     * next time `offsets.retention.check.interval.ms` fires, which on a container that several suites share is a
+     * window a test must not depend on (the group is answered with 69 instead of being deleted).
+     *
+     * @return string Id of the group, whose offset 7 of the partition 0 of {@see self::committedTopic()} is set
+     */
+    private function emptyGroupWithACommittedOffset(): string
+    {
+        $groupId = $this->uniqueGroupId();
+        $topic   = self::committedTopic();
+        $client  = new Client(Cluster::bootstrap($this->configuration()), $this->configuration());
+
+        // A commit is refused for a topic that does not exist, so the topic is created (and awaited) first
+        new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, 't4-admin-groups')
+            ->awaitTopicWithLeaders($topic);
+
+        $client->commitGroupOffsets(
+            $client->getGroupCoordinator($groupId),
+            $groupId,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            [$topic => [0 => 7]],
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME
+        );
+
+        return $groupId;
+    }
+
+    /**
+     * Topic the groups of the DeleteGroups tests commit an offset of, created once for the whole class
+     */
+    private static function committedTopic(): string
+    {
+        return self::$committedTopic ??= self::uniqueTopicName('t4-admin-delete');
+    }
+
+    /**
+     * Name of that topic, resolved by {@see self::committedTopic()} on its first use
+     */
+    private static ?string $committedTopic = null;
 
     /**
      * Creates a group with a single member that has joined and published an assignment, i.e. a stable group

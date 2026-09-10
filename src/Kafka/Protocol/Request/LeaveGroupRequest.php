@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `LEAVE_GROUP_REQUEST_V1 = LEAVE_GROUP_REQUEST_V0` in `Protocol.java` @ 0.11.0.3: version 1 (KIP-124, Kafka 0.11)
  * changed the answer alone ({@see LeaveGroupResponse}), so {@see LeaveGroupRequestV0} sends the same bytes.
  *
- * @see docs/protocol/0.11.0.md, section "LeaveGroup API (key 13, v0 and v1)"
+ * @see docs/protocol/1.1.md, section "LeaveGroup API (key 13, v0 and v1)"
  */
 class LeaveGroupRequest extends AbstractRequest
 {

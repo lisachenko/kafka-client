@@ -22,6 +22,7 @@ use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV0;
@@ -33,44 +34,57 @@ use Protocol\Kafka\Protocol\Data\FetchResponsePartitionV4;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
+use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV0;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
+use Protocol\Kafka\Protocol\Request\FetchRequestV5;
+use Protocol\Kafka\Protocol\Request\FetchRequestV6;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV0;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
 use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
+use Protocol\Kafka\Protocol\Request\FetchResponseV5;
+use Protocol\Kafka\Protocol\Request\FetchResponseV6;
 
 /**
- * Byte-exact tests for the Fetch API, versions 0 to 5.
+ * Byte-exact tests for the Fetch API, versions 0 to 7.
  *
  * <pre>
  *   FetchRequest v0, v1, v2 => ReplicaId MaxWaitTime MinBytes [TopicName [Partition FetchOffset MaxBytes]]
  *   FetchRequest v3         => ReplicaId MaxWaitTime MinBytes MaxBytes [TopicName [Partition FetchOffset MaxBytes]]
  *   FetchRequest v4         => … MaxBytes IsolationLevel [TopicName [Partition FetchOffset MaxBytes]]
- *   FetchRequest v5         => … MaxBytes IsolationLevel [TopicName [Partition FetchOffset LogStartOffset
+ *   FetchRequest v5, v6     => … MaxBytes IsolationLevel [TopicName [Partition FetchOffset LogStartOffset
  *                                                                    MaxBytes]]
+ *   FetchRequest v7         => … MaxBytes IsolationLevel SessionId Epoch [TopicName [Partition FetchOffset
+ *                               LogStartOffset MaxBytes]] [TopicName [Partition]]
  *   FetchResponse v0        => [TopicName [Partition ErrorCode HighwaterMarkOffset MessageSetSize MessageSet]]
  *   FetchResponse v1 to v3  => ThrottleTimeMs [TopicName [...]]
  *   FetchResponse v4        => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset
  *                                                         LastStableOffset [AbortedTransactions] …]]
- *   FetchResponse v5        => … HighwaterMarkOffset LastStableOffset LogStartOffset [AbortedTransactions] …
+ *   FetchResponse v5, v6    => … HighwaterMarkOffset LastStableOffset LogStartOffset [AbortedTransactions] …
+ *   FetchResponse v7        => ThrottleTimeMs ErrorCode SessionId [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v5)" and "MessageSet and Message"
+ * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)", "Fetch sessions (v7, KIP-227)" and
+ *      "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
+#[CoversClass(FetchRequestV6::class)]
+#[CoversClass(FetchRequestV5::class)]
 #[CoversClass(FetchRequestV4::class)]
 #[CoversClass(FetchRequestV3::class)]
 #[CoversClass(FetchRequestV2::class)]
 #[CoversClass(FetchRequestV1::class)]
 #[CoversClass(FetchRequestV0::class)]
 #[CoversClass(FetchResponse::class)]
+#[CoversClass(FetchResponseV6::class)]
+#[CoversClass(FetchResponseV5::class)]
 #[CoversClass(FetchResponseV4::class)]
 #[CoversClass(FetchResponseV3::class)]
 #[CoversClass(FetchResponseV2::class)]
@@ -87,6 +101,8 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 #[CoversClass(FetchResponsePartitionV4::class)]
 #[CoversClass(FetchResponsePartitionV0::class)]
 #[CoversClass(FetchResponseAbortedTransaction::class)]
+#[CoversClass(FetchRequestForgottenTopic::class)]
+#[CoversClass(FetchMetadata::class)]
 final class FetchApiTest extends TestCase
 {
     /**
@@ -129,7 +145,7 @@ final class FetchApiTest extends TestCase
      *   IsolationLevel => 00 (read_uncommitted)
      *   LogStartOffset => ff ff ff ff ff ff ff ff (-1, a consumer has no log of its own)
      */
-    private const string FETCH_REQUEST_HEX = '0000005e'
+    private const string FETCH_REQUEST_V5_HEX = '0000005e'
         . '0001'
         . '0005'
         . '00000001'
@@ -144,6 +160,32 @@ final class FetchApiTest extends TestCase
         . '00000002'
         . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
         . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400';
+
+    /**
+     * The same request as a version 7 one: the `SessionId` and the `Epoch` of KIP-227 between the
+     * `IsolationLevel` and the topics, and the `forgotten_topics_data` array behind them.
+     *
+     *   Size           => 00 00 00 6a (106 bytes), ApiVersion => 00 07
+     *   SessionId      => 00 00 00 00 (no session), Epoch => ff ff ff ff (-1, FINAL_EPOCH)
+     *   [ForgottenTopic] => 00 00 00 00 (nothing to forget)
+     */
+    private const string FETCH_REQUEST_HEX = '0000006a'
+        . '0001'
+        . '0007'
+        . '00000001'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00000064'
+        . '00000001'
+        . '00100000'
+        . '00'
+        . '00000000' . 'ffffffff'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000002'
+        . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+        . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
+        . '00000000';
 
     /**
      * The same request without the request-level MaxBytes, which is what the versions 0 to 2 send
@@ -202,8 +244,87 @@ final class FetchApiTest extends TestCase
         $request = new FetchRequest(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
 
         self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
-        self::assertSame(94, $request->getMessageSize());
+        self::assertSame(106, $request->getMessageSize());
         self::assertSame(FetchRequest::READ_UNCOMMITTED, $request->getIsolationLevel());
+        self::assertEquals(
+            FetchMetadata::legacy(),
+            $request->getMetadata(),
+            'a request without metadata is the session-less full fetch of every version below 7'
+        );
+        self::assertSame([], $request->getForgottenTopicPartitions());
+    }
+
+    public function testVersion7SendsTheSessionIdAndTheEpochBetweenTheIsolationLevelAndTheTopics(): void
+    {
+        $request = new FetchRequest(
+            ['topic' => [0 => 0]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            new FetchMetadata(123, 4),
+            ['topic' => [2, 3], 'other' => [0]]
+        );
+
+        //   Size => 00 00 00 74 (116 bytes), ApiVersion => 00 07, SessionId => 00 00 00 7b (123),
+        //   Epoch => 00 00 00 04, one topic with the partition 0, then the two forgotten topics
+        self::assertSame(
+            '00000074' . '0001' . '0007' . '00000001' . '0004' . '74657374'
+            . 'ffffffff' . '00000064' . '00000001' . '00100000' . '00'
+            . '0000007b' . '00000004'
+            . '00000001' . '0005' . '746f706963' . '00000001'
+            . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+            . '00000002'
+            . '0005' . '746f706963' . '00000002' . '00000002' . '00000003'
+            . '0005' . '6f74686572' . '00000001' . '00000000',
+            bin2hex((string) $request)
+        );
+        self::assertSame(123, $request->getMetadata()->sessionId);
+        self::assertSame(4, $request->getMetadata()->epoch);
+        self::assertSame(['topic' => [2, 3], 'other' => [0]], $request->getForgottenTopicPartitions());
+    }
+
+    public function testVersion6RequestIsTheVersionFiveFrameWithAnotherApiVersion(): void
+    {
+        $request = new FetchRequestV6(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        // FETCH_REQUEST_V6 = FETCH_REQUEST_V5 @ 1.1.1: version 6 states that the client understands the error
+        // code 56 and nothing else, so only the api version of the header differs
+        self::assertSame(
+            substr_replace(self::FETCH_REQUEST_V5_HEX, '0006', 12, 4),
+            bin2hex((string) $request)
+        );
+        self::assertSame(6, $request->getApiVersion());
+        self::assertSame(FetchRequestV5::getScheme(), FetchRequestV6::getScheme());
+    }
+
+    public function testVersion5RequestHasNeitherASessionNorForgottenTopics(): void
+    {
+        $request = new FetchRequestV5(
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            new FetchMetadata(123, 4),
+            ['topic' => [2]]
+        );
+
+        // A session that the version can not send is silently not written, exactly as an isolation level is not
+        // written below version 4
+        self::assertSame(self::FETCH_REQUEST_V5_HEX, bin2hex((string) $request));
+        self::assertEquals(FetchMetadata::legacy(), $request->getMetadata());
+        self::assertArrayNotHasKey('sessionId', FetchRequestV5::getScheme());
+        self::assertArrayNotHasKey('epoch', FetchRequestV5::getScheme());
+        self::assertArrayNotHasKey('forgottenTopics', FetchRequestV5::getScheme());
     }
 
     public function testTheIsolationLevelOfVersionFourIsWrittenBehindTheRequestLevelMaxBytes(): void
@@ -283,7 +404,7 @@ final class FetchApiTest extends TestCase
         self::assertSame(52428800, FetchRequest::DEFAULT_MAX_BYTES);
         // 00 03 20 00 00 = the 50 MiB of `fetch.max.bytes` behind MinBytes, then the read_uncommitted byte
         self::assertStringContainsString(
-            '00000001' . '03200000' . '00' . '00000001' . '0005746f706963',
+            '00000001' . '03200000' . '00' . '00000000' . 'ffffffff' . '00000001' . '0005746f706963',
             bin2hex((string) $request)
         );
     }
@@ -297,7 +418,8 @@ final class FetchApiTest extends TestCase
         self::assertStringEndsWith(
             '00000002'
             . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
-            . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400',
+            . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+            . '00000000',
             bin2hex((string) $request)
         );
     }
@@ -353,15 +475,77 @@ final class FetchApiTest extends TestCase
         self::assertSame(0, $request->getApiVersion());
     }
 
+    public function testTheLegacyMetadataIsTheSessionLessFullFetchOfEveryVersionBelowSeven(): void
+    {
+        $legacy = FetchMetadata::legacy();
+
+        self::assertSame(FetchMetadata::INVALID_SESSION_ID, $legacy->sessionId);
+        self::assertSame(FetchMetadata::FINAL_EPOCH, $legacy->epoch);
+        self::assertSame(0, FetchMetadata::INVALID_SESSION_ID);
+        self::assertSame(-1, FetchMetadata::FINAL_EPOCH);
+        self::assertTrue($legacy->isFull(), 'a session-less request always carries every partition');
+        self::assertSame('(sessionId=INVALID, epoch=FINAL)', (string) $legacy);
+    }
+
+    public function testTheInitialMetadataAsksTheBrokerForANewSession(): void
+    {
+        $initial = FetchMetadata::initial();
+
+        self::assertSame(FetchMetadata::INVALID_SESSION_ID, $initial->sessionId);
+        self::assertSame(FetchMetadata::INITIAL_EPOCH, $initial->epoch);
+        self::assertSame(0, FetchMetadata::INITIAL_EPOCH);
+        self::assertTrue($initial->isFull(), 'the request that creates a session is a full fetch');
+        self::assertSame('(sessionId=INVALID, epoch=INITIAL)', (string) $initial);
+    }
+
+    public function testTheEpochOfASessionCountsUpAndNeverReachesZeroAgain(): void
+    {
+        $first  = FetchMetadata::newIncremental(4242);
+        $second = $first->nextIncremental();
+
+        self::assertSame(4242, $first->sessionId);
+        self::assertSame(1, $first->epoch, 'the first incremental fetch of a session has the epoch 1');
+        self::assertFalse($first->isFull());
+        self::assertSame(2, $second->epoch);
+        self::assertSame(4242, $second->sessionId);
+        self::assertSame('(sessionId=4242, epoch=2)', (string) $second);
+
+        // `FetchMetadata.nextEpoch` @ 1.1.1: the successor of FINAL_EPOCH is FINAL_EPOCH and the successor of
+        // Integer.MAX_VALUE is 1, because the epoch 0 means "full fetch"
+        self::assertSame(FetchMetadata::FINAL_EPOCH, FetchMetadata::nextEpoch(FetchMetadata::FINAL_EPOCH));
+        self::assertSame(1, FetchMetadata::nextEpoch(2147483647));
+        self::assertSame(1, FetchMetadata::nextEpoch(FetchMetadata::INITIAL_EPOCH));
+    }
+
+    public function testClosingAnExistingSessionKeepsItsIdAndGoesBackToTheInitialEpoch(): void
+    {
+        $closing = FetchMetadata::newIncremental(4242)->nextIncremental()->nextCloseExisting();
+
+        // A full fetch that names a session closes it and creates a new one, which is how a client starts over
+        // after the error codes 70 and 71 (`FetchSessionCache.newContext` @ 1.1.1)
+        self::assertSame(4242, $closing->sessionId);
+        self::assertSame(FetchMetadata::INITIAL_EPOCH, $closing->epoch);
+        self::assertTrue($closing->isFull());
+    }
+
     public function testEveryVersionOfTheRequestWritesExactlyTheFieldsItHas(): void
     {
         $scheme = FetchRequest::getScheme();
 
         // The request-level MaxBytes of v3 stands between MinBytes and the topics, the IsolationLevel of v4 behind
-        // it, and the LogStartOffset of v5 inside a partition entry
+        // it, the SessionId and the Epoch of v7 behind that, the LogStartOffset of v5 inside a partition entry and
+        // the forgotten topics of v7 behind the whole topics array
+        self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'sessionId', 'epoch', 'topicPartitions', 'forgottenTopics'],
+            array_keys($scheme)
+        );
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'topicPartitions'],
-            array_keys($scheme)
+            array_keys(FetchRequestV6::getScheme())
+        );
+        self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'topicPartitions'],
+            array_keys(FetchRequestV5::getScheme())
         );
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'topicPartitions'],
@@ -372,6 +556,13 @@ final class FetchApiTest extends TestCase
             array_keys(FetchRequestV2::getScheme())
         );
         self::assertSame(BinarySchema::TYPE_INT8, $scheme['isolationLevel']);
+        self::assertSame(BinarySchema::TYPE_INT32, $scheme['sessionId']);
+        self::assertSame(BinarySchema::TYPE_INT32, $scheme['epoch']);
+        self::assertSame([FetchRequestForgottenTopic::class], $scheme['forgottenTopics']);
+        self::assertSame(
+            ['topic' => BinarySchema::TYPE_STRING, 'partitions' => [BinarySchema::TYPE_INT32]],
+            FetchRequestForgottenTopic::getScheme()
+        );
         self::assertSame(['topic' => FetchRequestTopic::class], $scheme['topicPartitions']);
         self::assertSame(
             ['topic' => FetchRequestTopicV0::class],
@@ -542,7 +733,7 @@ final class FetchApiTest extends TestCase
             [[1000, 5]]
         );
 
-        $response  = FetchResponse::unpack(new StringStream($frame));
+        $response  = FetchResponseV5::unpack(new StringStream($frame));
         $partition = $response->topics['topic']->partitions[0];
 
         self::assertSame(12, $partition->highWaterMarkOffset);
@@ -557,9 +748,9 @@ final class FetchApiTest extends TestCase
     public function testAnEmptyAbortedTransactionsArrayIsNotTheNullOfAReadUncommittedFetch(): void
     {
         // A read_committed fetch of a partition that no transaction ever touched: the array is there and empty
-        $empty = FetchResponse::unpack(new StringStream(self::responseFrameV5('', 3, 3, 0, [])));
+        $empty = FetchResponseV5::unpack(new StringStream(self::responseFrameV5('', 3, 3, 0, [])));
         // A read_uncommitted fetch: the broker does not compute the LSO at all and answers the count -1, `null`
-        $null  = FetchResponse::unpack(new StringStream(self::responseFrameV5('', 3, -1, 0, null)));
+        $null  = FetchResponseV5::unpack(new StringStream(self::responseFrameV5('', 3, -1, 0, null)));
 
         self::assertSame([], $empty->topics['topic']->partitions[0]->abortedTransactions);
         self::assertSame(3, $empty->topics['topic']->partitions[0]->lastStableOffset);
@@ -592,8 +783,74 @@ final class FetchApiTest extends TestCase
         self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
     }
 
+    public function testTheAnswerOfAVersionSixRequestIsTheVersionFiveFrame(): void
+    {
+        // FETCH_RESPONSE_V6 = FETCH_RESPONSE_V5 @ 1.1.1: version 6 only states that the client understands the
+        // error code 56, and the top-level error code and session id of version 7 are not on the wire yet
+        $frame = self::responseFrameV5(self::MESSAGE_SET_HEX, 2, 2, 0, []);
+
+        $version6 = FetchResponseV6::unpack(new StringStream($frame));
+
+        self::assertSame(FetchResponseV5::getScheme(), FetchResponseV6::getScheme());
+        self::assertSame(2, $version6->topics['topic']->partitions[0]->highWaterMarkOffset);
+        self::assertSame(0, $version6->errorCode, 'a version below 7 leaves the session error code at zero');
+        self::assertSame(0, $version6->sessionId);
+        self::assertSame($frame, (string) $version6, 'the response has to survive a round trip');
+    }
+
+    public function testVersion7AnswerCarriesTheSessionErrorCodeAndTheSessionIdBehindTheThrottleTime(): void
+    {
+        //   ThrottleTimeMs 0, ErrorCode 0, SessionId 0x2a2a2a2a, one topic with one partition
+        $frame = self::responseFrameV7(self::MESSAGE_SET_HEX, 2, 0, 707406378);
+
+        $response = FetchResponse::unpack(new StringStream($frame));
+
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(0, $response->errorCode);
+        self::assertSame(707406378, $response->sessionId);
+        self::assertSame(2, $response->topics['topic']->partitions[0]->highWaterMarkOffset);
+        self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
+    }
+
+    public function testASessionLessVersion7AnswerReportsTheSessionIdZero(): void
+    {
+        $response = FetchResponse::unpack(new StringStream(self::responseFrameV7(self::MESSAGE_SET_HEX, 2)));
+
+        self::assertSame(FetchMetadata::INVALID_SESSION_ID, $response->sessionId);
+        self::assertSame(0, $response->errorCode);
+    }
+
+    public function testASessionErrorIsAnsweredWithAnEmptyTopicsArray(): void
+    {
+        //   The two answers of a broken session: 70 FETCH_SESSION_ID_NOT_FOUND for a session id the broker does
+        //   not know and 71 INVALID_FETCH_SESSION_EPOCH for an epoch that does not match. `SessionErrorContext`
+        //   @ 1.1.1 answers both with an empty topics array and the session id 0.
+        $unknownSession = '00000012' . '00000001' . '00000000' . '0046' . '00000000' . '00000000';
+        $wrongEpoch     = '00000012' . '00000001' . '00000000' . '0047' . '00000000' . '00000000';
+
+        $notFound = FetchResponse::unpack(new StringStream((string) hex2bin($unknownSession)));
+        $invalid  = FetchResponse::unpack(new StringStream((string) hex2bin($wrongEpoch)));
+
+        self::assertSame(70, $notFound->errorCode);
+        self::assertSame(0, $notFound->sessionId);
+        self::assertSame([], $notFound->topics);
+        self::assertSame(71, $invalid->errorCode);
+        self::assertSame([], $invalid->topics);
+        self::assertSame($unknownSession, bin2hex((string) $notFound));
+        self::assertSame($wrongEpoch, bin2hex((string) $invalid));
+    }
+
     public function testEveryVersionOfTheResponseReadsThePartitionEntryOfItsOwnVersion(): void
     {
+        self::assertSame(
+            ['messageSize', 'correlationId', 'throttleTimeMs', 'errorCode', 'sessionId', 'topics'],
+            array_keys(FetchResponse::getScheme())
+        );
+        self::assertSame(
+            ['messageSize', 'correlationId', 'throttleTimeMs', 'topics'],
+            array_keys(FetchResponseV6::getScheme())
+        );
+
         self::assertSame(
             ['partition', 'errorCode', 'highWaterMarkOffset', 'lastStableOffset', 'logStartOffset',
                 'abortedTransactions', 'messageSet'],
@@ -623,7 +880,7 @@ final class FetchApiTest extends TestCase
     {
         $legacy = FetchResponseV3::unpack(new StringStream(self::responseFrame(self::MESSAGE_SET_HEX, 0, 0, 2)))
             ->topics['topic']->partitions[0];
-        $batch  = FetchResponse::unpack(new StringStream(self::responseFrameV5(self::RECORD_BATCH_HEX, 2, 2, 0, [])))
+        $batch  = FetchResponseV5::unpack(new StringStream(self::responseFrameV5(self::RECORD_BATCH_HEX, 2, 2, 0, [])))
             ->topics['topic']->partitions[0];
 
         self::assertSame(Message::MAGIC_V0, $legacy->getRecords()->getMagic());
@@ -641,6 +898,28 @@ final class FetchApiTest extends TestCase
             static fn(Header $header): string => $header->key,
             $records[0]->headers
         ), 'the headers of a record only exist in the message format v2');
+    }
+
+    /**
+     * Builds a Fetch response v7 frame with a single topic "topic" and a single partition
+     *
+     * @param string $recordSetHex Hex of the record set bytes of that partition
+     */
+    private static function responseFrameV7(
+        string $recordSetHex,
+        int $highWaterMarkOffset = 0,
+        int $sessionErrorCode = 0,
+        int $sessionId = 0
+    ): string {
+        $body = '00000001' . '00000000' . sprintf('%04x', $sessionErrorCode) . sprintf('%08x', $sessionId)
+            . '00000001' . '0005' . '746f706963' . '00000001'
+            . '00000000' . '0000' . sprintf('%016x', $highWaterMarkOffset)
+            . self::int64($highWaterMarkOffset)
+            . self::int64(0)
+            . self::abortedTransactions([])
+            . sprintf('%08x', intdiv(strlen($recordSetHex), 2)) . $recordSetHex;
+
+        return (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
     }
 
     /**

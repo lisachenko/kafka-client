@@ -20,12 +20,14 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
+use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\Stream;
@@ -44,14 +46,26 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
+use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
+use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
@@ -64,6 +78,8 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
 
 /**
  * Kafka low-level administrative client
@@ -226,6 +242,11 @@ class AdminClient
      * An empty list asks for every topic of the cluster, the internal ones included: it is sent as the NULL topic
      * array of Metadata v1, because an empty array means "no topic at all" from that version on. Which of the
      * answered topics Kafka keeps for itself is in {@see TopicMetadata::$isInternal}.
+     *
+     * The request goes out as **Metadata v5** (Kafka 1.0, KIP-112/113), so every partition of the answer reports
+     * its {@see \Protocol\Kafka\Common\PartitionMetadata::$offlineReplicas} next to its replicas and its
+     * in-sync replicas: the replicas whose broker is down or whose log directory has failed. On a one-broker
+     * cluster that array is always empty.
      *
      * @param list<string> $topics Topics to describe, an empty list asks for every topic of the cluster
      *
@@ -451,10 +472,15 @@ class AdminClient
      * Describes one consumer group: its state, the protocol its members agreed on and the members themselves
      *
      * The request goes to the coordinator of the group ({@see self::findCoordinator()}), the only broker that knows
-     * anything about it. The state is one of `PreparingRebalance`, `AwaitingSync`, `Stable` and `Dead`
-     * (`kafka/coordinator/GroupMetadata.scala` @ 0.10.2.2); a group the coordinator has never heard of, or that has
-     * lost its last member, is NOT an error - it is answered with the error code 0, the state `Dead`, an empty
-     * protocol type and no members.
+     * anything about it. The state is one of `PreparingRebalance`, `CompletingRebalance`, `Stable`, `Empty` and
+     * `Dead` (`kafka/coordinator/group/GroupMetadata.scala` @ 1.1.1), i.e. one of the `STATE_*` constants of
+     * {@see DescribeGroupResponseMetadata}; a group the coordinator has never heard of, or that has lost its last
+     * member and outlived its committed offsets, is NOT an error - it is answered with the error code 0, the state
+     * `Dead`, an empty protocol type and no members.
+     *
+     * Kafka 1.0 renamed the state between the last JoinGroup and the leader's SyncGroup from `AwaitingSync` to
+     * **`CompletingRebalance`**; a broker of this line answers the new name, and
+     * {@see DescribeGroupResponseMetadata::STATE_AWAITING_SYNC} is kept only for the lines below.
      *
      * @param string $groupId Name of the group
      *
@@ -903,12 +929,24 @@ class AdminClient
      *    that no node of the cluster has to any broker, so that the answer of the broker says what is wrong.
      *
      * `$configNames` filters the options of every resource of the call; `null`, the default, asks for all of them.
-     * The value of a **sensitive** option is never sent by the broker and arrives as `null`, and every option of a
-     * broker resource is reported as read-only, because a 0.11 broker cannot change its own configuration at
-     * runtime.
+     * The value of a **sensitive** option is never sent by the broker and arrives as `null`.
      *
-     * @param list<ConfigResource> $resources   Resources to describe
-     * @param list<string>|null    $configNames Options to read of every resource, null for all of them
+     * The request goes out as **version 1**, the version Kafka 1.1 added with KIP-226, so every entry of the answer
+     * carries the {@see ConfigSource} its value comes from instead of the bare `is_default` boolean of version 0,
+     * and `$includeSynonyms` asks the broker to list every place it looked for that value
+     * ({@see ConfigEntry::$synonyms}). Without the flag the synonym list of every entry is empty and nothing else
+     * changes. Two consequences of the version raise a caller of the 0.11 line should know about:
+     *
+     *  - `isDefault` now means "nobody configured it anywhere", not "the resource did not configure it": an option
+     *    whose broker-level synonym stands in the `server.properties` is reported with the source
+     *    `STATIC_BROKER_CONFIG`. {@see Config::ownValues()} is the set of options the resource itself carries;
+     *  - a broker entry is only read-only when it is **not** dynamically updatable
+     *    (`DynamicBrokerConfig.AllDynamicConfigs`), where a 0.11 broker reported every option of a broker resource
+     *    as read-only.
+     *
+     * @param list<ConfigResource> $resources       Resources to describe
+     * @param list<string>|null    $configNames     Options to read of every resource, null for all of them
+     * @param bool                 $includeSynonyms Ask for the synonyms of every option (version 1, KIP-226)
      *
      * @throws KafkaException If the broker refused one of the resources - 42 (InvalidRequest) for an unknown
      *         resource type or a broker id that is not the one that answers, 17 (InvalidTopic) for an illegal topic
@@ -917,8 +955,11 @@ class AdminClient
      *
      * @return array<string, Config> Configuration of every requested resource, indexed by its resource key
      */
-    public function describeConfigs(array $resources, ?array $configNames = null): array
-    {
+    public function describeConfigs(
+        array $resources,
+        ?array $configNames = null,
+        bool $includeSynonyms = false
+    ): array {
         $result = [];
         foreach ($this->groupByConfigNode($resources) as [$nodeId, $nodeResources]) {
             $entries       = array_map(
@@ -928,6 +969,7 @@ class AdminClient
             );
             $createRequest = fn(int $correlationId): DescribeConfigsRequest => new DescribeConfigsRequest(
                 $entries,
+                $includeSynonyms,
                 $this->clientId(),
                 $correlationId
             );
@@ -970,14 +1012,27 @@ class AdminClient
      *
      * <code>
      *   $key     = ConfigResource::topic('events')->key();
-     *   $current = $admin->describeConfigs([ConfigResource::topic('events')])[$key]->nonDefaultValues();
+     *   $current = $admin->describeConfigs([ConfigResource::topic('events')])[$key]->ownValues();
      *   $admin->alterConfigs([$key => ['retention.ms' => '3600000'] + $current]);
      * </code>
      *
-     * **A 0.11 broker only alters topics.** Every other resource type is answered with the error code 42
-     * (InvalidRequest) and the message `AlterConfigs is only supported for topics, but resource type is BROKER` -
-     * dynamic broker configuration is Kafka 1.1 (KIP-226). Any broker of the cluster serves the request, there is
-     * no controller involved.
+     * **A 1.1 broker alters a broker resource as well** (KIP-226), where a 0.11 broker refused every one of them
+     * with the error code 42 and the message `AlterConfigs is only supported for topics, but resource type is
+     * BROKER`. The wire format did not change for it; what changed is the broker:
+     *
+     *  - the resource `broker:<id>` is the live configuration of THAT broker and is only served by it, exactly like
+     *    a DescribeConfigs of the same resource, so such a call has to be sent to the named node - this method
+     *    sends every resource of one call to any broker, which means that a broker resource has to be altered in a
+     *    call of its own against an {@see AdminClient} whose cluster the node answers, or through the default
+     *    resource below;
+     *  - the resource `broker:` - the **empty** name - is the cluster-wide default of KIP-226: the value is stored
+     *    in ZooKeeper under `/config/brokers/<default>`, every broker of the cluster picks it up, and a
+     *    DescribeConfigs reports it with the source `DYNAMIC_DEFAULT_BROKER_CONFIG`;
+     *  - only the options of `DynamicBrokerConfig.AllDynamicConfigs` can be changed at runtime. Everything else is
+     *    answered with 42 and `Cannot update these configs dynamically: Set(…)`, which names the offending options,
+     *    and the whole resource is refused - the entries are validated together.
+     *
+     * Any broker of the cluster serves the request, there is no controller involved.
      *
      * Every requested resource gets an entry in the result, keyed like the argument: `null` when its configuration
      * was replaced (or validated, with `$validateOnly`), the exception of its error code otherwise. Nothing is
@@ -1097,5 +1152,498 @@ class AdminClient
         }
 
         return KafkaException::fromCode($errorCode, $context);
+    }
+
+    /**
+     * Raises the number of partitions of existing topics (ApiKey 37, Kafka 1.0, KIP-195)
+     *
+     * The last piece of `kafka-topics.sh --alter` that needed ZooKeeper before Kafka 1.0. Every entry of
+     * `$newPartitions` maps a topic name to the number of partitions it should have **afterwards** - as a
+     * {@see NewPartitions}, or as a plain integer for `NewPartitions::increaseTo($count)`:
+     *
+     * <code>
+     *   $admin->createPartitions(['events' => 5, 'audit' => NewPartitions::increaseTo(2, [[0]])]);
+     * </code>
+     *
+     * The api can only ever GROW a topic: a count that is not above the current one is answered with the error code
+     * 37 (InvalidPartitions) and the message `Topic already has 3 partitions.`, because Kafka cannot merge two logs
+     * and the keys of a compacted topic would change their partition. The optional assignment names the brokers of
+     * every partition that is ADDED, in order, and has to have as many entries as partitions are added and as many
+     * brokers per entry as the replication factor of the topic - anything else is 39 (InvalidReplicaAssignment).
+     *
+     * The request is sent to the active controller ({@see self::findController()}), the only broker that serves it,
+     * and is repeated ONCE against a freshly looked up controller when the answer says 41 (NotController), exactly
+     * like {@see self::createTopics()}. Every requested topic gets an entry in the result: `null` when its partition
+     * count was raised (or validated, with `$validateOnly`), the exception of its error code otherwise - nothing is
+     * thrown for a topic that was refused.
+     *
+     * CAVEAT: `$timeoutMs` is the time the CONTROLLER waits for the new partitions to exist before it answers, as in
+     * `createTopics()`. A successful answer means the controller is done; the other brokers learn about the new
+     * partitions with their next metadata update, so a Metadata request may answer 5 (LeaderNotAvailable) for them
+     * for a moment.
+     *
+     * @param array<string, NewPartitions|int> $newPartitions Topics to grow, as topic name => new total count
+     * @param int                              $timeoutMs     How long the controller waits for the new partitions
+     * @param bool                             $validateOnly  Validate the request without adding anything
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws NotControllerException If no broker of the cluster is the active controller
+     *
+     * @return array<string, KafkaException|null> Error of every requested topic, null when it was grown
+     */
+    public function createPartitions(
+        array $newPartitions,
+        int $timeoutMs = 30000,
+        bool $validateOnly = false
+    ): array {
+        return $this->onController(
+            fn(Node $controller): array => $this->client()
+                ->createPartitions($controller, $newPartitions, $timeoutMs, $validateOnly)
+        );
+    }
+
+    /**
+     * Makes the coordinator forget consumer groups and their committed offsets (ApiKey 42, Kafka 1.1, KIP-229)
+     *
+     * The counterpart of `kafka-consumer-groups.sh --delete`, which had to write to ZooKeeper before Kafka 1.1.
+     * `GroupCoordinator.handleDeleteGroups` @ 1.1.1 removes the group from its cache and writes a tombstone for
+     * every offset the group committed, so the group disappears from {@see self::listGroups()} and an OffsetFetch of
+     * it answers -1 for every partition afterwards.
+     *
+     * **A group is only deletable when it has no member left.** An `Empty` group (every member left or timed out)
+     * and a `Dead` one are deleted; a group with a live member is answered with 68 (NonEmptyGroup) and keeps its
+     * offsets, and a group the coordinator has never heard of with 69 (GroupIdNotFound) - which is the one way to
+     * tell "there was nothing to delete" from "it is still in use".
+     *
+     * Groups that share a coordinator are deleted with a single request, and a coordinator is looked up for every
+     * group ({@see self::findCoordinator()}), because a broker answers a group it does not coordinate with 16
+     * (NotCoordinatorForGroup). Every requested group gets an entry in the result, keyed by the group id: `null`
+     * when it was deleted, the exception of its error code otherwise. Nothing is thrown for a group that was
+     * refused - one group of a call says nothing about the others - and an empty list is answered with an empty
+     * result without a single request.
+     *
+     * @param list<string> $groupIds Names of the groups to delete, duplicates are collapsed
+     *
+     * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If a coordinator could not be
+     *         looked up at all
+     *
+     * @return array<string, KafkaException|null> Error of every requested group, null when it was deleted
+     */
+    public function deleteConsumerGroups(array $groupIds): array
+    {
+        $coordinators  = [];
+        $groupsPerNode = [];
+        foreach (array_unique($groupIds) as $groupId) {
+            $coordinator                           = $this->findCoordinator($groupId);
+            $coordinators[$coordinator->nodeId]    = $coordinator;
+            $groupsPerNode[$coordinator->nodeId][] = $groupId;
+        }
+
+        $answered = [];
+        foreach ($groupsPerNode as $nodeId => $groups) {
+            /** @var DeleteGroupsResponse $response */
+            $response = $this->sendTo(
+                $coordinators[$nodeId]->getConnection($this->configuration),
+                fn(int $correlationId): DeleteGroupsRequest => new DeleteGroupsRequest(
+                    $groups,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DeleteGroupsResponse::class,
+                ['node' => $nodeId, 'groups' => $groups]
+            );
+
+            foreach ($groups as $groupId) {
+                $result             = $response->groups[$groupId] ?? null;
+                $answered[$groupId] = $result === null
+                    ? new UnknownErrorException(
+                        ['groupId' => $groupId, 'error' => 'The coordinator sent no result for this group']
+                    )
+                    : self::groupError($groupId, $result->errorCode);
+            }
+        }
+
+        $result = [];
+        foreach ($groupIds as $groupId) {
+            // A group that was deleted is answered with `null`, so the map has to be probed with array_key_exists()
+            // and not with `??`, which would turn every success into an unknown error
+            $result[$groupId] = array_key_exists($groupId, $answered)
+                ? $answered[$groupId]
+                : new UnknownErrorException(
+                    ['groupId' => $groupId, 'error' => 'The coordinator sent no result for this group']
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Turns the error code of one group of a DeleteGroups answer into the exception of the caller
+     */
+    private static function groupError(string $groupId, int $errorCode): ?KafkaException
+    {
+        return $errorCode === KafkaException::NO_ERROR
+            ? null
+            : KafkaException::fromCode($errorCode, ['groupId' => $groupId]);
+    }
+
+    /**
+     * Reports what each log directory of the given brokers holds (ApiKey 35, Kafka 1.0, KIP-113)
+     *
+     * A broker of Kafka 1.x may have more than one data directory (`log.dirs`), and every replica lives in exactly
+     * one of them. This api says which - and it is **broker-local**: `KafkaApis.handleDescribeLogDirsRequest` @
+     * 1.1.1 asks the local `ReplicaManager`, so each broker only knows about its own disks and one request goes to
+     * each of them. The result is therefore indexed by the broker id first and by the absolute path of the
+     * directory second.
+     *
+     * `$topicPartitions` selects the replicas to report:
+     *
+     *  - `null`, the default, asks for **every** replica of every directory, which is what the Java admin client
+     *    and `kafka-log-dirs.sh --describe` send. The answer of a busy broker is large - hundreds of kilobytes for
+     *    a few thousand partitions - so name the partitions when they are known;
+     *  - an **empty array** asks for no replica at all and answers the directories alone, which is the cheapest way
+     *    to ask which disks a broker has and whether they are online;
+     *  - a `topic => list of partition ids` map, or an iterable of {@see TopicPartition}, asks for those replicas.
+     *
+     * A replica that this broker does not have is not an error and simply produces no entry, and a directory that
+     * is offline is reported with the error 56 (KafkaStorageError) in {@see LogDirInfo::$error} and no replica.
+     *
+     * @param list<int>                                              $brokerIds       Brokers to ask, by node id
+     * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Replicas to report, null for
+     *        every replica of every log directory
+     *
+     * @throws BrokerNotAvailableException If a requested broker id is not a node of the cluster
+     *
+     * @return array<int, array<string, LogDirInfo>> Directories of every asked broker, as broker id => path => info
+     */
+    public function describeLogDirs(array $brokerIds, ?array $topicPartitions = null): array
+    {
+        $topics = $topicPartitions === null ? null : self::normalizeTopicPartitions($topicPartitions);
+
+        $result = [];
+        foreach ($brokerIds as $brokerId) {
+            $brokerId = (int) $brokerId;
+
+            /** @var DescribeLogDirsResponse $response */
+            $response = $this->sendToBroker(
+                $brokerId,
+                fn(int $correlationId): DescribeLogDirsRequest => new DescribeLogDirsRequest(
+                    $topics,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DescribeLogDirsResponse::class
+            );
+
+            $directories = [];
+            foreach ($response->logDirs as $logDir) {
+                $directories[$logDir->logDir] = LogDirInfo::fromResponseLogDir($logDir);
+            }
+            $result[$brokerId] = $directories;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Moves the given replicas to another log directory of the broker that holds them (ApiKey 34, Kafka 1.0, KIP-113)
+     *
+     * The argument maps a {@see TopicPartitionReplica::key()} - `events-0-1` - to the **absolute** path of the
+     * directory the replica should live in, and this method groups it by the broker each replica names, because the
+     * api is broker-local like {@see self::describeLogDirs()}:
+     *
+     * <code>
+     *   $admin->alterReplicaLogDirs([
+     *       TopicPartitionReplica::of('events', 0, 1)->key() => '/mnt/disk-2/kafka-logs',
+     *   ]);
+     * </code>
+     *
+     * **The answer only says that the move was accepted.** The broker creates the future log and starts the
+     * `ReplicaAlterLogDirsThread` while it handles the request, then answers 0; the copy runs in the background and
+     * the replica is reported by {@see self::describeLogDirs()} in *both* directories - as the current log of the
+     * source and as the log with {@see ReplicaInfo::$isFuture} of the destination - until the mover swaps it in.
+     * Naming the directory the replica already sits in is not an error either: the broker answers 0 and creates
+     * nothing.
+     *
+     * Every requested replica gets an entry in the result, keyed like the argument: `null` when the move was
+     * accepted, the exception of its error code otherwise - 57 (LogDirNotFound) for a path that is not one of the
+     * directories of `log.dirs` or that is relative, 9 (ReplicaNotAvailable) for a partition the broker does not
+     * host, 56 (KafkaStorageError) for a directory that is offline. Nothing is thrown for a replica that was
+     * refused, exactly like {@see self::alterConfigs()}.
+     *
+     * @param array<string, string> $replicaAssignment Destination of every replica, as replica key => absolute path
+     *
+     * @throws BrokerNotAvailableException If a replica names a broker id that is not a node of the cluster
+     *
+     * @return array<string, KafkaException|null> Error of every requested replica, null when the move was accepted
+     */
+    public function alterReplicaLogDirs(array $replicaAssignment): array
+    {
+        $requestByBroker = [];
+        foreach ($replicaAssignment as $replicaKey => $logDir) {
+            $replica = TopicPartitionReplica::fromKey((string) $replicaKey);
+
+            $requestByBroker[$replica->brokerId][$logDir][$replica->topic][] = $replica->partition;
+        }
+
+        $answered = [];
+        foreach ($requestByBroker as $brokerId => $logDirs) {
+            /** @var AlterReplicaLogDirsResponse $response */
+            $response = $this->sendToBroker(
+                $brokerId,
+                fn(int $correlationId): AlterReplicaLogDirsRequest => new AlterReplicaLogDirsRequest(
+                    $logDirs,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                AlterReplicaLogDirsResponse::class
+            );
+
+            foreach ($response->topics as $topicResult) {
+                foreach ($topicResult->partitions as $partitionResult) {
+                    $key = TopicPartitionReplica::of(
+                        $topicResult->topic,
+                        $partitionResult->partition,
+                        $brokerId
+                    )->key();
+
+                    $answered[$key] = $partitionResult->errorCode === KafkaException::NO_ERROR
+                        ? null
+                        : KafkaException::fromCode($partitionResult->errorCode, ['replica' => $key]);
+                }
+            }
+        }
+
+        $result = [];
+        foreach (array_keys($replicaAssignment) as $replicaKey) {
+            $replicaKey = (string) $replicaKey;
+            // A replica that was accepted is answered with `null`, so the map has to be probed with
+            // array_key_exists() and not with `??`, which would turn every success into an unknown error
+            $result[$replicaKey] = array_key_exists($replicaKey, $answered)
+                ? $answered[$replicaKey]
+                : new UnknownErrorException(
+                    ['replica' => $replicaKey, 'error' => 'The broker sent no result for this replica']
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Sends one request to the broker of the given node id, which is the only one that can answer it
+     *
+     * The two JBOD apis of KIP-113 are about the disks of one broker, so there is no fallback to another node the
+     * way {@see self::sendAnyNode()} has one: a broker id that the cluster does not have is a mistake of the
+     * caller, and asking a different broker would answer with *its* directories instead.
+     *
+     * @param Closure(int): AbstractRequest  $createRequest Builds the request for a given correlation id
+     * @param class-string<AbstractResponse> $responseClass Response class to unpack the answer with
+     *
+     * @throws BrokerNotAvailableException If the node id is not a broker of the cluster
+     */
+    private function sendToBroker(int $brokerId, Closure $createRequest, string $responseClass): AbstractResponse
+    {
+        $node = $this->nodeById($brokerId);
+        if ($node === null) {
+            throw new BrokerNotAvailableException(
+                ['node' => $brokerId, 'error' => 'The cluster has no broker with this node id']
+            );
+        }
+
+        return $this->sendTo(
+            $node->getConnection($this->configuration),
+            $createRequest,
+            $responseClass,
+            ['node' => $brokerId]
+        );
+    }
+
+    /**
+     * Issues a delegation token for the principal of this client (ApiKey 38, Kafka 1.1, KIP-48)
+     *
+     * KIP-48 gave a cluster a second kind of credential: a short-lived token that a client can hand to a worker
+     * process instead of the credential it authenticated with. The **owner** of the token is not in the request -
+     * it is the principal of the connection - which is why the api only works on a channel that authenticated
+     * somebody: a PLAINTEXT connection, a one-way SSL one and a connection that itself authenticated with a token
+     * are all answered with the error code 64 (`UnsupportedByAuthenticationException`) before the body is read.
+     * The connection of this client is the one that {@see \Protocol\Kafka\Common\ClientConfig::SECURITY_PROTOCOL}
+     * and the SASL options of its configuration describe.
+     *
+     * `$renewers` are the principals that may renew or expire the token besides its owner, as
+     * {@see KafkaPrincipal} objects or as the `<type>:<name>` strings every Kafka tool prints. Only the type
+     * {@see KafkaPrincipal::USER_TYPE} is accepted, anything else is the error code 67.
+     *
+     * `$maxLifeTimeMs` is a **period**, not a timestamp: the broker caps it at its own
+     * `delegation.token.max.lifetime.ms` (7 days by default), and the default -1 asks for exactly that maximum.
+     * The `expiryTimestamp` of the answer is the earlier of that maximum and
+     * `now + delegation.token.expiry.time.ms` (24 hours by default), i.e. the moment the token has to be renewed
+     * by ({@see self::renewDelegationToken()}).
+     *
+     * **A token this client issues cannot be used by this client.** Authenticating *with* a token is SASL/SCRAM
+     * with the token id as the user name and the base64 hmac as the password, and this package speaks `PLAIN`
+     * alone - see {@see DelegationToken}.
+     *
+     * @param list<KafkaPrincipal|string> $renewers      Principals that may renew the token besides its owner
+     * @param int                         $maxLifeTimeMs Maximum lifetime in milliseconds, -1 for the maximum of
+     *        the broker
+     *
+     * @throws KafkaException If the broker refused the request - 61 when it has no `delegation.token.master.key`,
+     *         64 when the connection authenticated nobody, 67 for a renewer that is not a `User`
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     */
+    public function createDelegationToken(
+        array $renewers = [],
+        int $maxLifeTimeMs = CreateDelegationTokenRequest::DEFAULT_MAX_LIFE_TIME
+    ): DelegationToken {
+        // The answer does not repeat the renewers of the request, so the list of the caller is the only place the
+        // information of the issued token can take them from - as the Scala `AdminClient.createToken` does as well
+        $principals = KafkaPrincipal::listOf($renewers);
+
+        /** @var CreateDelegationTokenResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): CreateDelegationTokenRequest => new CreateDelegationTokenRequest(
+                $principals,
+                $maxLifeTimeMs,
+                $this->clientId(),
+                $correlationId
+            ),
+            CreateDelegationTokenResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['owner' => (string) $response->owner]);
+        }
+
+        return DelegationToken::fromCreateResponse($response, $principals);
+    }
+
+    /**
+     * Moves the expiry of a delegation token forward (ApiKey 39, Kafka 1.1, KIP-48)
+     *
+     * A token is named by the raw bytes of its **hmac** - {@see DelegationToken::$hmac}, of which
+     * {@see DelegationToken::hmacAsBase64String()} is the form the Kafka tools print - and never by its id.
+     *
+     * `$renewTimePeriodMs` is a period counted from *now*: the new expiry is `min(maxTimestamp, now + period)`, so
+     * a renewal can never move the expiry past the maximum lifetime the token was issued with, and -1 asks for the
+     * `delegation.token.expiry.time.ms` of the broker. Only the owner of the token and the principals its renewers
+     * name may renew it, everybody else is answered with 63.
+     *
+     * @param string $hmac              Raw bytes of the HMAC of the token
+     * @param int    $renewTimePeriodMs Milliseconds from now that the token should stay valid for
+     *
+     * @throws KafkaException If the broker refused the request - 62 for an hmac no token of the cluster has, 63
+     *         for a principal that may not renew it, 66 for a token that is already past its expiry, 64 on a
+     *         connection that authenticated nobody
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return int Milliseconds since the epoch at which the token now expires
+     */
+    public function renewDelegationToken(
+        string $hmac,
+        int $renewTimePeriodMs = RenewDelegationTokenRequest::DEFAULT_RENEW_TIME_PERIOD
+    ): int {
+        /** @var RenewDelegationTokenResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): RenewDelegationTokenRequest => new RenewDelegationTokenRequest(
+                $hmac,
+                $renewTimePeriodMs,
+                $this->clientId(),
+                $correlationId
+            ),
+            RenewDelegationTokenResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['renewTimePeriodMs' => $renewTimePeriodMs]);
+        }
+
+        return $response->expiryTimestamp;
+    }
+
+    /**
+     * Shortens the life of a delegation token, or ends it now (ApiKey 40, Kafka 1.1, KIP-48)
+     *
+     * The api is the mirror image of {@see self::renewDelegationToken()} and the same principals may call it, but
+     * the sign of the period decides what happens: a **negative** one
+     * ({@see ExpireDelegationTokenRequest::EXPIRE_IMMEDIATELY}, the default) deletes the token from ZooKeeper and
+     * from the token cache of every broker at once and answers with the clock of the broker, a non-negative one
+     * sets the expiry to `min(maxTimestamp, now + period)` and leaves the token in place.
+     *
+     * A token that was deleted is answered with **62** (`DelegationTokenNotFoundException`) afterwards, not with
+     * the 66 of a token that is merely past its expiry.
+     *
+     * @param string $hmac               Raw bytes of the HMAC of the token
+     * @param int    $expiryTimePeriodMs Milliseconds from now the token should still live, negative to delete it
+     *
+     * @throws KafkaException If the broker refused the request - 62, 63, 64 and 66 as for the renew api
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return int Milliseconds since the epoch at which the token expires, or expired
+     */
+    public function expireDelegationToken(
+        string $hmac,
+        int $expiryTimePeriodMs = ExpireDelegationTokenRequest::EXPIRE_IMMEDIATELY
+    ): int {
+        /** @var ExpireDelegationTokenResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): ExpireDelegationTokenRequest => new ExpireDelegationTokenRequest(
+                $hmac,
+                $expiryTimePeriodMs,
+                $this->clientId(),
+                $correlationId
+            ),
+            ExpireDelegationTokenResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['expiryTimePeriodMs' => $expiryTimePeriodMs]);
+        }
+
+        return $response->expiryTimestamp;
+    }
+
+    /**
+     * Lists the delegation tokens this client may see (ApiKey 41, Kafka 1.1, KIP-48)
+     *
+     * The argument is a nullable array and its three shapes are three different questions:
+     *
+     *  * `null`, the default, asks for every token the caller may see;
+     *  * a non-empty list of owners asks for the tokens one of those principals owns or may renew;
+     *  * an empty array asks for nothing and is answered with an empty result.
+     *
+     * On a cluster without an authorizer - which is what the container of this repository is - "may see" is
+     * exactly "owns or may renew", so a client sees its own tokens and the ones it was named a renewer of. The
+     * described entries carry the hmac as well, so a token that is visible can also be renewed and expired.
+     *
+     * @param list<KafkaPrincipal|string>|null $owners Owners to ask for, null for every visible token
+     *
+     * @throws KafkaException If the broker refused the request - 61 when it has no `delegation.token.master.key`,
+     *         64 on a connection that authenticated nobody
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return array<string, DelegationToken> Every visible token, indexed by its token id
+     */
+    public function describeDelegationToken(?array $owners = null): array
+    {
+        /** @var DescribeDelegationTokenResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeDelegationTokenRequest => new DescribeDelegationTokenRequest(
+                $owners,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeDelegationTokenResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['owners' => $owners === null ? 'all' : count($owners)]);
+        }
+
+        $tokens = [];
+        foreach ($response->tokenDetails as $tokenId => $token) {
+            $tokens[$tokenId] = DelegationToken::fromResponseToken($token);
+        }
+
+        return $tokens;
     }
 }

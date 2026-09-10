@@ -1,4 +1,4 @@
-# Apache Kafka 0.11.0.3 (Scala 2.11) with the bundled ZooKeeper, for wire-protocol testing.
+# Apache Kafka 1.1.1 (Scala 2.11) with the bundled ZooKeeper, for wire-protocol testing.
 #
 # The broker listens on PLAINTEXT (9092), SSL (9093), SASL_PLAINTEXT (9094) and SASL_SSL (9095).
 # SASL offers the PLAIN mechanism only (users in jaas.conf: kafkatest/kafkatest-secret, admin/admin-secret). The SSL listener uses the self-signed test
@@ -6,9 +6,9 @@
 # is the CA file that the SSL integration tests hand to the client. Do not use these keys anywhere else.
 FROM eclipse-temurin:8-jre
 
-ARG KAFKA_VERSION=0.11.0.3
+ARG KAFKA_VERSION=1.1.1
 ARG SCALA_VERSION=2.11
-ARG KAFKA_DIST=kafka_2.11-0.11.0.3
+ARG KAFKA_DIST=kafka_2.11-1.1.1
 
 # Extra CA certificates of a sandbox proxy, see ca/README.md (the directory is normally empty)
 COPY ca/ /usr/local/share/ca-certificates/extra/

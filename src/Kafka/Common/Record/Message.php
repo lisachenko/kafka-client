@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * region that carries one is read by {@see MemoryRecords}, and a magic 2 arriving here is refused with a
  * {@see CorruptMessageException} that says so.
  *
- * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
+ * @see docs/protocol/1.1.md, section "MessageSet and Message"
  * @see kafka/message/Message.scala @ 0.10.2.2
  */
 class Message implements BinarySchemaInterface, \Stringable

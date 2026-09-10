@@ -50,7 +50,7 @@ use Protocol\Kafka\IO\StringStream;
  * {@see MessageSet::getRecords()} never fills any. A byte region of an unknown format is read by
  * {@see MemoryRecords}, which dispatches on the magic byte of every entry; this class refuses a magic 2.
  *
- * @see docs/protocol/0.11.0.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
  * @see kafka/message/ByteBufferMessageSet.scala @ 0.10.2.2
  */
 final class MessageSet implements \Countable, \Stringable

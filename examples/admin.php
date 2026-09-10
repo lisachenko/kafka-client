@@ -10,12 +10,21 @@
  */
 
 /**
- * Admin API example for the Kafka 0.11.0.3 protocol.
+ * Admin API example for the Kafka 1.1.1 protocol: the cluster and its controller, the api table of a broker, the
+ * topics, the offsets of a partition, and the consumer groups - listed, described and, since Kafka 1.1 (KIP-229),
+ * deleted through the protocol with `deleteConsumerGroups()`.
+ *
+ * The configuration apis of the same client are in {@see examples/admin-configs.php}, the log directories of a
+ * broker in {@see examples/admin-log-dirs.php}, the topic apis in {@see examples/create-topic.php} and the
+ * delegation tokens of KIP-48 in {@see examples/delegation-tokens.php}.
  *
  * Start the broker of docker-compose.yml and run:
  *
  *   docker compose up -d
  *   php examples/admin.php [topic] [groupId]
+ *
+ * @see docs/protocol/1.1.md, sections "Metadata API (key 3, v0 to v5)", "ListGroups API (key 16, v0 and v1)",
+ *      "DescribeGroups API (key 15, v0 and v1)" and "DeleteGroups API (key 42, v0)"
  */
 
 declare(strict_types=1);
@@ -135,6 +144,17 @@ foreach ($description->members as $memberId => $member) {
     $assignmentSize = strlen($member->memberAssignment);
     echo "  member {$memberId} of the client {$member->clientId} at {$member->clientHost}, "
         . "{$assignmentSize} bytes of assignment\n";
+}
+
+// DeleteGroups (key 42, Kafka 1.1, KIP-229) makes the coordinator forget a group and the offsets it committed.
+// Only a group without members can be deleted: one that still has a live consumer is answered with 68
+// (NonEmptyGroup), and a group the coordinator has never heard of with 69 (GroupIdNotFound). Nothing is thrown -
+// the result has one entry per group, like createTopics().
+echo "\nDeleting the group {$groupId}\n";
+foreach ($admin->deleteConsumerGroups([$groupId]) as $deletedGroupId => $error) {
+    echo '  ' . $deletedGroupId . ': ' . ($error === null
+        ? 'deleted, with every offset it had committed'
+        : 'error ' . $error->getCode() . ' - ' . $error->getMessage()) . "\n";
 }
 
 // The remaining admin call, controlledShutdown(), asks the controller to move every leader off a broker. It is what

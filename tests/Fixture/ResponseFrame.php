@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Tests\Fixture;
  * The correlation id given here is only a placeholder: {@see BrokerConnection} replaces it with the one of the
  * request it answers, the same way a broker echoes it back.
  *
- * @see docs/protocol/0.11.0.md
+ * @see docs/protocol/1.1.md
  */
 final class ResponseFrame
 {
@@ -45,7 +45,7 @@ final class ResponseFrame
     public const string CLUSTER_ID = 'kafka-client-test-clst';
 
     /**
-     * Builds a Metadata response (api key 3, v4 - the version this client sends)
+     * Builds a Metadata response (api key 3, v5 - the version this client sends)
      *
      * <pre>
      *   MetadataResponse => ThrottleTimeMs [Broker] ClusterId ControllerId [TopicMetadata]
@@ -55,16 +55,18 @@ final class ResponseFrame
      *     ControllerId      => int32
      *     TopicMetadata     => TopicErrorCode int16 TopicName string IsInternal boolean [PartitionMetadata]
      *     PartitionMetadata => PartitionErrorCode int16 PartitionId int32 Leader int32 Replicas [int32] Isr [int32]
+     *                          OfflineReplicas [int32]         # since version 5 (KIP-112/113)
      * </pre>
      *
      * Version 4 answers the very same frame as version 3 - what it added, `allow_auto_topic_creation`, is a field
-     * of the request - so this one builder serves both. The throttle time is always 0, like every answer of the
-     * container of `docker-compose.yml`, which sets no quota.
+     * of the request - and version 5 (Kafka 1.0) appended `OfflineReplicas` to every partition entry, which is
+     * always empty on the one-broker container of `docker-compose.yml`. The throttle time is always 0, like every
+     * answer of that container, which sets no quota.
      *
      * The first broker of the list is the controller unless `$controllerId` says otherwise, and no broker declares
      * a rack - the answer of the container of `docker-compose.yml`, which runs a single broker without
      * `broker.rack`. A topic counts as internal when its name is in `$internalTopics`, i.e. `__consumer_offsets`
-     * and nothing else on a 0.11.0.3 cluster.
+     * and `__transaction_state` on a 1.1.1 cluster.
      *
      * @param list<array{int, string, int}>  $brokers             nodeId, host, port
      * @param array<string, array<int, int>> $topics              topic => partition => leader node id
@@ -72,6 +74,8 @@ final class ResponseFrame
      * @param array<string, array<int, int>> $partitionErrorCodes Error code of a partition
      * @param list<string>                   $internalTopics      Topics to flag with `is_internal`
      * @param int|null                       $controllerId        Controller of the cluster, -1 while it elects one
+     * @param array<string, array<int, list<int>>> $offlineReplicas Offline replicas of a partition, empty by
+     *        default as on a one-broker cluster
      */
     public static function metadata(
         int $correlationId,
@@ -80,7 +84,8 @@ final class ResponseFrame
         array $topicErrorCodes = [],
         array $partitionErrorCodes = [],
         array $internalTopics = [],
-        ?int $controllerId = null
+        ?int $controllerId = null,
+        array $offlineReplicas = []
     ): string {
         // The throttle time of version 3 opens the body, in front of the brokers
         $body = pack('N', 0) . pack('N', count($brokers));
@@ -103,7 +108,8 @@ final class ResponseFrame
                     . pack('N', $partitionId)
                     . pack('N', $leader)
                     . self::int32Array($replicas)
-                    . self::int32Array($replicas);
+                    . self::int32Array($replicas)
+                    . self::int32Array($offlineReplicas[$topic][$partitionId] ?? []);
             }
         }
 
@@ -111,28 +117,47 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Produce response (api key 0, v2)
+     * Builds a Produce response (api key 0, v5 - the version this client sends for the message format v2)
      *
-     * The frame of a version 3 answer is the frame of a version 2 one, byte for byte: version 3 of the Produce api
-     * added nothing to the response (`PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` @ 0.11.0.3).
+     * The frames of the versions 2, 3 and 4 are one and the same (`PRODUCE_RESPONSE_V4` is `PRODUCE_RESPONSE_V3`
+     * is `PRODUCE_RESPONSE_V2` @ 1.1.1); version 5 (Kafka 1.0) appended `LogStartOffset` to every partition entry.
      *
      * <pre>
-     *   ProduceResponse => [TopicName [Partition ErrorCode Offset LogAppendTime]] ThrottleTime
+     *   ProduceResponse => [TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset]] ThrottleTime
      * </pre>
      *
      * @param array<string, array<int, array{int, int}>> $topics        topic => partition => [errorCode, baseOffset]
      * @param int                                        $throttleTime  Milliseconds the broker delayed the request
      * @param int                                        $logAppendTime Time the broker stamped the batch with, -1
      *        for a topic that keeps the `CreateTime` of the producer
+     * @param array<string, array<int, int>>             $logStartOffsets Log start offset of a partition, 0 by
+     *        default as on a log nothing was deleted from
      */
     public static function produce(
         int $correlationId,
         array $topics,
         int $throttleTime = 0,
-        int $logAppendTime = -1
+        int $logAppendTime = -1,
+        array $logStartOffsets = []
     ): string {
         // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it
-        $body = self::produceTopics($topics, $logAppendTime) . pack('N', $throttleTime);
+        $body = self::produceTopics($topics, $logAppendTime, $logStartOffsets) . pack('N', $throttleTime);
+
+        return self::of($correlationId, $body);
+    }
+
+    /**
+     * Builds a Produce response of the versions 2, 3 and 4, i.e. the same answer without `LogStartOffset`
+     *
+     * @param array<string, array<int, array{int, int}>> $topics topic => partition => [errorCode, baseOffset]
+     */
+    public static function produceV2(
+        int $correlationId,
+        array $topics,
+        int $throttleTime = 0,
+        int $logAppendTime = -1
+    ): string {
+        $body = self::produceTopics($topics, $logAppendTime, null) . pack('N', $throttleTime);
 
         return self::of($correlationId, $body);
     }
@@ -144,7 +169,7 @@ final class ResponseFrame
      */
     public static function produceV0(int $correlationId, array $topics): string
     {
-        return self::of($correlationId, self::produceTopics($topics, null));
+        return self::of($correlationId, self::produceTopics($topics, null, null));
     }
 
     /**
@@ -153,8 +178,10 @@ final class ResponseFrame
      * @param array<string, array<int, array{int, int}>> $topics        topic => partition => [errorCode, baseOffset]
      * @param int|null                                   $logAppendTime Append time of every partition entry, or
      *        null for the versions 0 and 1, which do not carry that field at all
+     * @param array<string, array<int, int>>|null         $logStartOffsets Log start offset of every partition
+     *        entry, or null for the versions below 5, which do not carry that field at all
      */
-    private static function produceTopics(array $topics, ?int $logAppendTime): string
+    private static function produceTopics(array $topics, ?int $logAppendTime, ?array $logStartOffsets): string
     {
         $body = pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
@@ -163,6 +190,9 @@ final class ResponseFrame
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $baseOffset);
                 if ($logAppendTime !== null) {
                     $body .= pack('J', $logAppendTime);
+                }
+                if ($logStartOffsets !== null) {
+                    $body .= pack('J', $logStartOffsets[$topic][$partitionId] ?? 0);
                 }
             }
         }
@@ -224,12 +254,16 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a Fetch response (api key 1, v5)
+     * Builds a Fetch response (api key 1, v7 - the version this client sends)
      *
      * <pre>
-     *   FetchResponse => ThrottleTimeMs [TopicName [Partition ErrorCode HighwaterMarkOffset LastStableOffset
-     *                                               LogStartOffset [AbortedTransactions] RecordSetSize RecordSet]]
+     *   FetchResponse => ThrottleTimeMs ErrorCode SessionId
+     *                    [TopicName [Partition ErrorCode HighwaterMarkOffset LastStableOffset
+     *                                LogStartOffset [AbortedTransactions] RecordSetSize RecordSet]]
      * </pre>
+     *
+     * The top-level `ErrorCode` and `SessionId` of version 7 (KIP-227) are 0 by default, which is what a broker
+     * answers a session-less request with - the only fetch this client sends today.
      *
      * The last stable offset defaults to the high water mark and the aborted transactions to `null`, which is what
      * a `read_uncommitted` fetch of a partition without transactions is answered with.
@@ -240,15 +274,23 @@ final class ResponseFrame
      *        request
      * @param array<string, array<int, array{int, int, list<array{int, int}>|null}>> $transactionState topic =>
      *        partition => [lastStableOffset, logStartOffset, aborted transactions as [producerId, firstOffset]]
+     * @param int                                                $sessionErrorCode Top-level error code of version 7
+     * @param int                                                $sessionId        Fetch session id of version 7
      */
     public static function fetch(
         int $correlationId,
         array $topics,
         int $throttleTimeMs = 0,
-        array $transactionState = []
+        array $transactionState = [],
+        int $sessionErrorCode = 0,
+        int $sessionId = 0
     ): string {
-        // The throttle time of v1 opens the response, before the topics array
-        $body = pack('N', $throttleTimeMs) . pack('N', count($topics));
+        // The throttle time of v1 opens the response, before the topics array; the session error code and the
+        // session id of v7 sit between the two
+        $body = pack('N', $throttleTimeMs)
+            . pack('n', $sessionErrorCode)
+            . pack('N', $sessionId)
+            . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $highWaterMark, $messageSet]) {

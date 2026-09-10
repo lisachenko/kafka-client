@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * not know at all is answered with 3 (UnknownTopicOrPartition), and a broker that runs with
  * `delete.topic.enable=false` - the default of Kafka 0.10 - never carries the deletion out at all.
  *
- * @see docs/protocol/0.11.0.md, section "DeleteTopics API (key 20, v0 and v1)"
+ * @see docs/protocol/1.1.md, section "DeleteTopics API (key 20, v0 and v1)"
  */
 class DeleteTopicsRequest extends AbstractRequest
 {

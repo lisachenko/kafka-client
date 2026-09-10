@@ -18,8 +18,10 @@ use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\NodeV0;
 use Protocol\Kafka\Common\PartitionMetadata;
+use Protocol\Kafka\Common\PartitionMetadataV0;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicMetadataV0;
+use Protocol\Kafka\Common\TopicMetadataV1;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -27,45 +29,52 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV1;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV4;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV2;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV4;
 
 /**
- * Byte-exact tests of the Metadata API, versions 0 to 4.
+ * Byte-exact tests of the Metadata API, versions 0 to 5.
  *
  * <pre>
  *   Metadata Request (Version: 0)        => [TopicName]
  *   Metadata Request (Version: 1, 2, 3)  => [TopicName]                        # the array is nullable
- *   Metadata Request (Version: 4)        => [TopicName] AllowAutoTopicCreation
+ *   Metadata Request (Version: 4, 5)     => [TopicName] AllowAutoTopicCreation
  *   Metadata Response (Version: 0)       => [Broker][TopicMetadata]
  *   Metadata Response (Version: 1)       => [Broker] ControllerId [TopicMetadata]
  *   Metadata Response (Version: 2)       => [Broker] ClusterId ControllerId [TopicMetadata]
- *   Metadata Response (Version: 3, 4)    => ThrottleTimeMs [Broker] ClusterId ControllerId [TopicMetadata]
+ *   Metadata Response (Version: 3, 4, 5) => ThrottleTimeMs [Broker] ClusterId ControllerId [TopicMetadata]
  *     Broker            => NodeId int32 Host string Port int32 [Rack nullable string]
  *     TopicMetadata     => TopicErrorCode int16 TopicName string [IsInternal boolean] [PartitionMetadata]
  *     PartitionMetadata => PartitionErrorCode int16 PartitionId int32 Leader int32 Replicas [int32] Isr [int32]
+ *                          [OfflineReplicas [int32]]      # since version 5
  * </pre>
  *
- * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
+ * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
 #[CoversClass(MetadataRequestV1::class)]
 #[CoversClass(MetadataRequestV2::class)]
+#[CoversClass(MetadataRequestV4::class)]
 #[CoversClass(MetadataRequestV3::class)]
 #[CoversClass(MetadataResponse::class)]
 #[CoversClass(MetadataResponseV0::class)]
 #[CoversClass(MetadataResponseV1::class)]
 #[CoversClass(MetadataResponseV2::class)]
+#[CoversClass(MetadataResponseV4::class)]
 #[CoversClass(MetadataResponseV3::class)]
 #[CoversClass(Node::class)]
 #[CoversClass(NodeV0::class)]
 #[CoversClass(TopicMetadata::class)]
+#[CoversClass(TopicMetadataV1::class)]
 #[CoversClass(TopicMetadataV0::class)]
 #[CoversClass(PartitionMetadata::class)]
+#[CoversClass(PartitionMetadataV0::class)]
 final class MetadataApiTest extends TestCase
 {
     /**
@@ -131,13 +140,32 @@ final class MetadataApiTest extends TestCase
         . '00000001' . '00000000' . '0007' . '6b61666b612d31' . '00002384'
         . '00000001' . '0005' . '0009' . '6e65772d746f706963' . '00000000';
 
+    /**
+     * A version 5 answer with one broker and the topic "orders", whose only partition has an offline replica.
+     *
+     *   Size            => 00 00 00 5e (94 bytes), CorrelationId => 00 00 00 2a
+     *   ThrottleTimeMs  => 00 00 00 00
+     *   [Broker]        => 00 00 00 01, node 0 at "kafka-1:9092", Rack => ff ff (null)
+     *   ClusterId       => ff ff (null), ControllerId => 00 00 00 00
+     *   [TopicMetadata] => 00 00 00 01, error 0, "orders", IsInternal => 00, one partition:
+     *     error 0, id 0, leader 0, Replicas [0, 1], Isr [0], OfflineReplicas [1]
+     */
+    private const string OFFLINE_REPLICAS_RESPONSE_V5_HEX = '0000005e' . '0000002a' . '00000000'
+        . '00000001' . '00000000' . '0007' . '6b61666b612d31' . '00002384' . 'ffff'
+        . 'ffff' . '00000000'
+        . '00000001' . '0000' . '0006' . '6f7264657273' . '00'
+        . '00000001' . '0000' . '00000000' . '00000000'
+        . '00000002' . '00000000' . '00000001'
+        . '00000001' . '00000000'
+        . '00000001' . '00000001';
+
     public function testRequestWithoutTopicsAsksForEveryTopic(): void
     {
-        //   Size => 19, ApiKey 3, ApiVersion 4, CorrelationId 1, ClientId "test", [TopicName] => null, allow => 01
+        //   Size => 19, ApiKey 3, ApiVersion 5, CorrelationId 1, ClientId "test", [TopicName] => null, allow => 01
         $request = new MetadataRequest(null, true, 'test', 1);
 
         self::assertSame(
-            '00000013' . '0003' . '0004' . '00000001' . '0004' . '74657374' . 'ffffffff' . '01',
+            '00000013' . '0003' . '0005' . '00000001' . '0004' . '74657374' . 'ffffffff' . '01',
             bin2hex((string) $request)
         );
         self::assertNull($request->getTopics(), 'a null topic array is the "every topic" of version 1 and above');
@@ -149,7 +177,7 @@ final class MetadataApiTest extends TestCase
         $request = new MetadataRequest([], true, 'test', 1);
 
         self::assertSame(
-            '00000013' . '0003' . '0004' . '00000001' . '0004' . '74657374' . '00000000' . '01',
+            '00000013' . '0003' . '0005' . '00000001' . '0004' . '74657374' . '00000000' . '01',
             bin2hex((string) $request)
         );
         self::assertSame([], $request->getTopics());
@@ -161,14 +189,14 @@ final class MetadataApiTest extends TestCase
         $request = new MetadataRequest(['orders', 'payments'], true, 'php-kafka', 7);
 
         self::assertSame(
-            '0000002a' . '0003' . '0004' . '00000007' . '0009' . '7068702d6b61666b61'
+            '0000002a' . '0003' . '0005' . '00000007' . '0009' . '7068702d6b61666b61'
             . '00000002' . '0006' . '6f7264657273' . '0008' . '7061796d656e7473' . '01',
             bin2hex((string) $request)
         );
         self::assertSame(['orders', 'payments'], $request->getTopics());
     }
 
-    public function testTheAutoCreationFlagIsTheLastByteOfAVersionFourFrame(): void
+    public function testTheAutoCreationFlagIsTheLastByteOfAVersionFourAndFiveFrame(): void
     {
         $allowed = bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3));
         $refused = bin2hex((string) new MetadataRequest(['orders'], false, 'test', 3));
@@ -191,9 +219,23 @@ final class MetadataApiTest extends TestCase
         self::assertSame(1, new MetadataRequestV1()->getApiVersion());
         self::assertSame(2, new MetadataRequestV2()->getApiVersion());
         self::assertSame(3, new MetadataRequestV3()->getApiVersion());
-        self::assertSame(4, new MetadataRequest()->getApiVersion());
+        self::assertSame(4, new MetadataRequestV4()->getApiVersion());
+        self::assertSame(5, new MetadataRequest()->getApiVersion());
         self::assertArrayNotHasKey('allowAutoTopicCreation', MetadataRequestV3::getScheme());
         self::assertArrayHasKey('allowAutoTopicCreation', MetadataRequest::getScheme());
+    }
+
+    public function testTheVersionsFourAndFiveSendOneAndTheSameFrame(): void
+    {
+        // METADATA_REQUEST_V5 = METADATA_REQUEST_V4 @ 1.1.1: what version 5 states is that the client understands
+        // the `offline_replicas` array of the ANSWER, and only the api version of the header says so
+        $version4 = bin2hex((string) new MetadataRequestV4(['orders'], true, 'test', 3));
+        $version5 = bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3));
+
+        self::assertSame('0004', substr($version4, 12, 4), 'the api version sits behind Size and ApiKey');
+        self::assertSame('0005', substr($version5, 12, 4));
+        self::assertSame(substr_replace($version4, '0005', 12, 4), $version5);
+        self::assertSame(MetadataRequestV4::getScheme(), MetadataRequest::getScheme());
     }
 
     public function testRequestTopicsAreNotNullableInVersionZero(): void
@@ -346,10 +388,66 @@ final class MetadataApiTest extends TestCase
         $frame = '00000016' . '0000002a' . '00000000' . '00000000' . 'ffff' . '00000000' . '00000000';
 
         $versionThree = MetadataResponseV3::unpack(new StringStream((string) hex2bin($frame)));
-        $versionFour  = MetadataResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $versionFour  = MetadataResponseV4::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
         self::assertSame($versionThree->throttleTimeMs, $versionFour->throttleTimeMs);
+        self::assertSame(MetadataResponseV3::getScheme(), MetadataResponseV4::getScheme());
+    }
+
+    public function testAVersionFiveAnswerCarriesTheOfflineReplicasOfEveryPartition(): void
+    {
+        //   ThrottleTimeMs 0, one broker 0 at "kafka-1:9092" without a rack, ClusterId null, ControllerId 0, the
+        //   topic "orders" with one partition: leader 0, Replicas [0, 1], Isr [0] and OfflineReplicas [1] - the
+        //   replica on the broker 1, which is down or whose log directory failed (KIP-112/113)
+        $frame = self::OFFLINE_REPLICAS_RESPONSE_V5_HEX;
+
+        $response  = MetadataResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $partition = $response->topics['orders']->partitions[0];
+
+        self::assertSame([0, 1], $partition->replicas);
+        self::assertSame([0], $partition->isr);
+        self::assertSame([1], $partition->offlineReplicas);
+        self::assertSame($frame, bin2hex((string) $response), 'the answer has to survive a round trip');
+    }
+
+    public function testAVersionBelowFiveLeavesTheOfflineReplicasEmpty(): void
+    {
+        //   The very same answer without the four plus four bytes of the OfflineReplicas array
+        $frame = '00000056' . '0000002a' . '00000000'
+            . '00000001' . '00000000' . '0007' . '6b61666b612d31' . '00002384' . 'ffff'
+            . 'ffff' . '00000000'
+            . '00000001' . '0000' . '0006' . '6f7264657273' . '00'
+            . '00000001' . '0000' . '00000000' . '00000000'
+            . '00000002' . '00000000' . '00000001'
+            . '00000001' . '00000000';
+
+        $response  = MetadataResponseV4::unpack(new StringStream((string) hex2bin($frame)));
+        $partition = $response->topics['orders']->partitions[0];
+
+        self::assertSame([0, 1], $partition->replicas);
+        self::assertSame([0], $partition->isr);
+        self::assertSame(
+            [],
+            $partition->offlineReplicas,
+            'an answer below version 5 does not say anything about offline replicas'
+        );
+        self::assertSame($frame, bin2hex((string) $response), 'the answer has to survive a round trip');
+    }
+
+    public function testEveryVersionOfTheAnswerReadsTheEntriesOfItsOwnVersion(): void
+    {
+        self::assertArrayHasKey('offlineReplicas', PartitionMetadata::getScheme());
+        self::assertArrayNotHasKey('offlineReplicas', PartitionMetadataV0::getScheme());
+        self::assertSame(
+            ['topic' => TopicMetadata::class],
+            MetadataResponse::getScheme()['topics'],
+            'version 5 reads the partition entries with the offline replicas'
+        );
+        self::assertSame(['topic' => TopicMetadataV1::class], MetadataResponseV4::getScheme()['topics']);
+        self::assertSame(['topic' => TopicMetadataV1::class], MetadataResponseV3::getScheme()['topics']);
+        self::assertSame(['topic' => TopicMetadataV1::class], MetadataResponseV1::getScheme()['topics']);
+        self::assertSame(['topic' => TopicMetadataV0::class], MetadataResponseV0::getScheme()['topics']);
     }
 
     public function testControllerIdIsMinusOneWhileTheClusterElectsAController(): void

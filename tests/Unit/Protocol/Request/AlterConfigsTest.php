@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
 /**
  * Byte-exact tests for the AlterConfigs API of Kafka 0.11 (api key 33, v0).
  *
- * @see docs/protocol/0.11.0.md, section "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/1.1.md, section "AlterConfigs API (key 33, v0)"
  */
 #[CoversClass(AlterConfigsRequest::class)]
 #[CoversClass(AlterConfigsResponse::class)]

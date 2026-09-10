@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResource;
  *   $configs[ConfigResource::topic('events')->key()]->get('retention.ms')?->value;
  * </code>
  *
- * @see docs/protocol/0.11.0.md, section "DescribeConfigs API (key 32, v0)"
+ * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
  */
 final class Config
 {
@@ -47,7 +47,7 @@ final class Config
     {
         $entries = [];
         foreach ($resource->configEntries as $entry) {
-            $entries[$entry->configName] = ConfigEntry::fromResponseEntry($entry);
+            $entries[$entry->configName] = ConfigEntry::fromResponseEntry($entry, $resource->resourceType);
         }
 
         return new self(ConfigResource::fromWire($resource->resourceType, $resource->resourceName), $entries);
@@ -70,10 +70,14 @@ final class Config
     }
 
     /**
-     * Returns the options that were configured for this resource, i.e. everything that is not a default
+     * Returns every option whose value is not the built-in default
      *
-     * That is the set an AlterConfigs request has to send back to keep the resource as it is: the api replaces the
-     * whole configuration, and every default is re-derived by the broker.
+     * CAVEAT since KIP-226: "not a default" is not the same as "configured for this resource" any more. A 1.1
+     * broker reports the *source* of a value, and an option whose broker-level synonym stands in the
+     * `server.properties` - `segment.bytes`, whose synonym `log.segment.bytes` the container sets - has the source
+     * `STATIC_BROKER_CONFIG` and therefore lands here, although the topic itself never set it. Sending this map
+     * back through AlterConfigs would WRITE those values into the ZooKeeper node of the topic; the set a
+     * read-modify-write has to send back is {@see self::ownValues()}.
      *
      * @return array<string, string|null> Option name => value
      */
@@ -82,6 +86,33 @@ final class Config
         $values = [];
         foreach ($this->entries as $name => $entry) {
             if (!$entry->isDefault) {
+                $values[$name] = $entry->value;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * Returns the options that were configured for this resource itself
+     *
+     * That is the set an AlterConfigs request has to send back to keep the resource as it is: the api replaces the
+     * whole configuration of the resource, and everything it inherits - from the `server.properties`, from a
+     * cluster-wide dynamic default or from the built-in defaults - is re-derived by the broker.
+     *
+     * <code>
+     *   $key     = ConfigResource::topic('events')->key();
+     *   $current = $admin->describeConfigs([ConfigResource::topic('events')])[$key]->ownValues();
+     *   $admin->alterConfigs([$key => ['retention.ms' => '3600000'] + $current]);
+     * </code>
+     *
+     * @return array<string, string|null> Option name => value
+     */
+    public function ownValues(): array
+    {
+        $values = [];
+        foreach ($this->entries as $name => $entry) {
+            if (ConfigSource::isResourceOwn($entry->source)) {
                 $values[$name] = $entry->value;
             }
         }

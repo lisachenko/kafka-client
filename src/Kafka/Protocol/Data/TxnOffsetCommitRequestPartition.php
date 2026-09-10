@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * retention of the commit is the one the group coordinator applies by itself, there is no `retention_time` in this
  * api.
  *
- * @see docs/protocol/0.11.0.md, section "TxnOffsetCommit API (key 28, v0)"
+ * @see docs/protocol/1.1.md, section "TxnOffsetCommit API (key 28, v0)"
  */
 class TxnOffsetCommitRequestPartition implements BinarySchemaInterface
 {

@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises the transactional producer of KIP-98 against a real Kafka 0.11.0.3 broker.
+ * Exercises the transactional producer of KIP-98 against a real Kafka 1.1.1 broker.
  *
  * What can only be seen against a broker is checked here: that a committed transaction really becomes visible to a
  * `read_committed` reader and an aborted one never does, that the last stable offset of a partition stays behind
@@ -50,7 +50,11 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * into the partitions, that a second producer of the same transactional id fences the first one, and what the
  * coordinator answers to the illegal state transitions of the api.
  *
- * @see docs/protocol/0.11.0.md, section "Transactions"
+ * The 1.1.1 coordinator answers every one of those exactly as the 0.11.0.3 one did - the api block 24-28 is
+ * unchanged at v0 and so is `TransactionCoordinator` - with a single addition of the 1.x line: the **59**
+ * `UnknownProducerId` of a producer whose records were deleted under it does not end its transaction.
+ *
+ * @see docs/protocol/1.1.md, section "Transactions"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(TransactionManager::class)]
@@ -75,9 +79,10 @@ final class TransactionalProducerTest extends IntegrationTestCase
     /**
      * How long to wait for the coordinator to roll an expired transaction back, in seconds.
      *
-     * `transaction.abort.timed.out.transaction.cleanup.interval.ms` is 60 seconds by default and the container
-     * does not lower it, so this is the one test of the line that has to wait a whole minute; measured on the
-     * 0.11.0.3 container, the rollback arrived after 57 seconds.
+     * `transaction.abort.timed.out.transaction.cleanup.interval.ms` is 60 seconds by default - unchanged in 1.1.1,
+     * `TransactionStateManager.DefaultAbortTimedOutTransactionsIntervalMs` - and the container does not lower it, so
+     * this is the one test of the line that has to wait a whole minute; on the 1.1.1 container the rollback arrived
+     * as it did on the 0.11.0.3 one.
      */
     private const float EXPIRY_TIMEOUT = 120.0;
 
@@ -484,6 +489,57 @@ final class TransactionalProducerTest extends IntegrationTestCase
     }
 
     /**
+     * The **59** of Kafka 1.0 inside a transaction: the partition is numbered from 0 again, the transaction lives on
+     *
+     * `TransactionManager.canRetry()` @ 1.1.1 does **not** exclude a transactional producer from the sequence
+     * reset of an `UnknownProducerId` whose `logStartOffset` shows that the records were deleted, and a 1.1.1
+     * coordinator agrees: the batch that starts the partition over is accepted under the epoch of the open
+     * transaction and the transaction commits normally. Only a 59 that this can not repair makes the transaction
+     * abortable, which is where a transactional producer differs from a merely idempotent one - the latter would
+     * throw its producer id away.
+     */
+    public function testATransactionSurvivesTheRecordsOfItsProducerBeingDeleted(): void
+    {
+        $topic           = $this->topic('deleted-records');
+        $transactionalId = $this->transactionalId('deleted-records');
+        $manager         = $this->manager($transactionalId);
+        $manager->initTransactions();
+
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$topic => [0 => []]]);
+        $this->client->produce([$topic => [0 => $this->records(['before the deletion'])]], $manager);
+        $manager->commitTransaction();
+        $this->awaitMarker($topic);
+
+        $idAndEpoch = $manager->getProducerIdAndEpoch();
+        // The record and the COMMIT marker of the transaction above, and with them the producer entry of the log
+        $latest     = $this->latestOffset($topic);
+        self::assertSame($latest, $this->admin->deleteRecords([$topic => [0 => $latest]])[$topic][0]->lowWatermark);
+
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$topic => [0 => []]]);
+        $answer = $this->client->produce([$topic => [0 => $this->records(['after the deletion'])]], $manager);
+
+        self::assertSame($latest, $answer[$topic][0]->baseOffset, 'the batch that was sent again was appended');
+        self::assertSame($latest, $answer[$topic][0]->logStartOffset);
+        self::assertSame(TransactionState::IN_TRANSACTION, $manager->currentState(), 'and the transaction is open');
+        self::assertSame(
+            $idAndEpoch->epoch,
+            $manager->getProducerIdAndEpoch()->epoch,
+            'nothing was fenced: only the numbering of the partition started over'
+        );
+
+        $manager->commitTransaction();
+        $this->awaitMarker($topic, 1, null, $latest);
+
+        self::assertSame(
+            ['after the deletion'],
+            $this->read($topic, FetchRequest::READ_COMMITTED, $latest),
+            'a reader has to start at the new log start offset: everything below it is gone'
+        );
+    }
+
+    /**
      * Builds a transaction manager of a fresh transactional id
      */
     private function manager(string $transactionalId): TransactionManager
@@ -515,9 +571,9 @@ final class TransactionalProducerTest extends IntegrationTestCase
      *
      * @return list<string|null>
      */
-    private function read(string $topic, int $isolationLevel): array
+    private function read(string $topic, int $isolationLevel, int $fromOffset = 0): array
     {
-        $partition = $this->partitionOf($topic, $isolationLevel);
+        $partition = $this->partitionOf($topic, $isolationLevel, $fromOffset);
         $records   = $isolationLevel === FetchRequest::READ_COMMITTED
             ? AbortedTransactionFilter::committedRecords($partition)
             : $partition->getRecords();
@@ -528,11 +584,11 @@ final class TransactionalProducerTest extends IntegrationTestCase
     /**
      * Fetches the first partition of a topic with the given isolation level
      */
-    private function partitionOf(string $topic, int $isolationLevel): FetchedPartition
+    private function partitionOf(string $topic, int $isolationLevel, int $fromOffset = 0): FetchedPartition
     {
         $client = new Client($this->cluster, $this->consumerConfiguration($isolationLevel));
 
-        return $client->fetchPartitions([$topic => [0 => 0]], 5000)[$topic][0];
+        return $client->fetchPartitions([$topic => [0 => $fromOffset]], 5000)[$topic][0];
     }
 
     /**
@@ -555,13 +611,20 @@ final class TransactionalProducerTest extends IntegrationTestCase
      * `EndTxn` is answered as soon as the coordinator decided the outcome, so the markers arrive a moment later;
      * a reader that looked before them would see an open transaction.
      */
-    private function awaitMarker(string $topic, int $expectedMarkers = 1, ?float $timeout = null): void
-    {
+    private function awaitMarker(
+        string $topic,
+        int $expectedMarkers = 1,
+        ?float $timeout = null,
+        int $fromOffset = 0
+    ): void {
         $timeout ??= self::MARKER_TIMEOUT;
         $deadline  = microtime(true) + $timeout;
         do {
             $markers = 0;
-            foreach ($this->partitionOf($topic, FetchRequest::READ_UNCOMMITTED)->getMemoryRecords()->getBatches() as $batch) {
+            $batches = $this->partitionOf($topic, FetchRequest::READ_UNCOMMITTED, $fromOffset)
+                ->getMemoryRecords()
+                ->getBatches();
+            foreach ($batches as $batch) {
                 if ($batch instanceof RecordBatch && $batch->isControlBatch()) {
                     $markers++;
                 }
@@ -640,6 +703,14 @@ final class TransactionalProducerTest extends IntegrationTestCase
                 usleep(200000);
             }
         } while (true);
+    }
+
+    /**
+     * Returns the offset the next record of the first partition will get, markers included
+     */
+    private function latestOffset(string $topic): int
+    {
+        return $this->admin->listOffsets([$topic => [0]], OffsetsRequest::LATEST)[$topic][0];
     }
 
     /**

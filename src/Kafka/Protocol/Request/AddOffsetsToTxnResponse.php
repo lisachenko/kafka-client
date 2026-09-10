@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * | 30   | GroupAuthorizationFailed           | The client may not `Read` the consumer group                      |
  * | 53   | TransactionalIdAuthorizationFailed | The client may not `Write` the transactional id                   |
  *
- * @see docs/protocol/0.11.0.md, section "AddOffsetsToTxn API (key 25, v0)"
+ * @see docs/protocol/1.1.md, section "AddOffsetsToTxn API (key 25, v0)"
  */
 class AddOffsetsToTxnResponse extends AbstractResponse
 {

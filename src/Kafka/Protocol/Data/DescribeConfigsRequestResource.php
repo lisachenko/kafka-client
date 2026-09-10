@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *  - an **empty** array asks for no option, and the resource comes back with the error code 0 and an empty entry
  *    list.
  *
- * @see docs/protocol/0.11.0.md, section "DescribeConfigs API (key 32, v0)"
+ * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
  */
 class DescribeConfigsRequestResource implements BinarySchemaInterface
 {

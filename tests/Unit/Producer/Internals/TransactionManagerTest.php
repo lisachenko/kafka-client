@@ -20,18 +20,20 @@ use Protocol\Kafka\Common\Errors\DuplicateSequenceNumberException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
+use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
+use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\ClusterFixture;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
 
 /**
- * The bookkeeping of the idempotent producer: one producer id, one sequence per topic-partition, and the three
- * error codes of KIP-98.
+ * The bookkeeping of the idempotent producer: one producer id, one sequence and one acknowledged offset per
+ * topic-partition, the three error codes of KIP-98 and the fourth one Kafka 1.0 added, 59 `UnknownProducerId`.
  *
- * @see docs/protocol/0.11.0.md, section "The idempotent producer"
+ * @see docs/protocol/1.1.md, section "The idempotent producer"
  */
 #[CoversClass(TransactionManager::class)]
 #[CoversClass(ProducerIdAndEpoch::class)]
@@ -242,6 +244,150 @@ final class TransactionManagerTest extends TestCase
         );
 
         self::assertFalse($manager->hasFatalError());
+    }
+
+    public function testAnAcknowledgedBatchRemembersTheOffsetOfItsLastRecord(): void
+    {
+        $manager    = $this->manager();
+        $idAndEpoch = $manager->maybeInitProducerId();
+        $partition  = new TopicPartition(self::TOPIC, 0);
+
+        self::assertSame(
+            ProduceResponsePartition::INVALID_OFFSET,
+            $manager->lastAckedOffset($partition),
+            'nothing was acknowledged for this partition yet'
+        );
+
+        $manager->batchCompleted($partition, 3, $idAndEpoch, 10);
+
+        self::assertSame(12, $manager->lastAckedOffset($partition), 'baseOffset + recordCount - 1');
+        self::assertSame(3, $manager->sequenceNumber($partition));
+    }
+
+    public function testAnAnswerWithoutABaseOffsetAndADuplicateNeverMoveTheLastAcknowledgedOffsetBack(): void
+    {
+        $manager   = $this->manager();
+        $partition = new TopicPartition(self::TOPIC, 0);
+
+        $manager->updateLastAckedOffset($partition, 10, 3);
+        // A 46 leaves -1 behind, and a duplicate is answered with the offset of the ORIGINAL append
+        $manager->updateLastAckedOffset($partition, ProduceResponsePartition::INVALID_OFFSET, 2);
+        $manager->updateLastAckedOffset($partition, 0, 1);
+
+        self::assertSame(12, $manager->lastAckedOffset($partition));
+    }
+
+    public function testAnUnknownProducerIdWithoutALogStartOffsetOnlyMakesTheBatchBeSentAgain(): void
+    {
+        $manager    = $this->manager();
+        $idAndEpoch = $manager->maybeInitProducerId();
+        $partition  = new TopicPartition(self::TOPIC, 0);
+        $manager->batchCompleted($partition, 4, $idAndEpoch, 0);
+
+        // "The partition moved away from this broker between the error and the answer" - nothing is decided
+        self::assertTrue($manager->canRetryBatch(
+            $partition,
+            new UnknownProducerIdException(),
+            ProduceResponsePartition::INVALID_OFFSET,
+            $idAndEpoch
+        ));
+        self::assertSame(4, $manager->sequenceNumber($partition), 'the very same batch goes out again');
+        self::assertTrue($manager->hasProducerId());
+    }
+
+    public function testAnUnknownProducerIdAboveTheLastAcknowledgedOffsetNumbersThePartitionFromZeroAgain(): void
+    {
+        $manager    = $this->manager();
+        $idAndEpoch = $manager->maybeInitProducerId();
+        $partition  = new TopicPartition(self::TOPIC, 0);
+        $other      = new TopicPartition(self::TOPIC, 1);
+        $manager->batchCompleted($partition, 4, $idAndEpoch, 0);
+        $manager->batchCompleted($other, 2, $idAndEpoch, 0);
+
+        // The log now starts at 7, above the offset 3 this producer last had acknowledged: every record it wrote
+        // into the partition is gone, and with them the state the broker held it by
+        self::assertTrue($manager->canRetryBatch($partition, new UnknownProducerIdException(), 7, $idAndEpoch));
+
+        self::assertSame(0, $manager->sequenceNumber($partition), 'the partition is numbered from 0 again');
+        self::assertSame(2, $manager->sequenceNumber($other), 'and every other partition keeps its numbering');
+        self::assertSame(
+            ProduceResponsePartition::INVALID_OFFSET,
+            $manager->lastAckedOffset($partition),
+            'nothing of this producer is left in the partition'
+        );
+        self::assertTrue($manager->hasProducerId(), 'the producer id itself survives');
+    }
+
+    public function testAnUnknownProducerIdWhoseRecordsAreStillInTheLogIsNotRetried(): void
+    {
+        $manager    = $this->manager();
+        $idAndEpoch = $manager->maybeInitProducerId();
+        $partition  = new TopicPartition(self::TOPIC, 0);
+        $manager->batchCompleted($partition, 4, $idAndEpoch, 0);
+
+        self::assertFalse($manager->canRetryBatch($partition, new UnknownProducerIdException(), 2, $idAndEpoch));
+        self::assertSame(4, $manager->sequenceNumber($partition), 'and nothing was reset');
+    }
+
+    public function testOnlyAnUnknownProducerIdOfTheCurrentProducerIsRetried(): void
+    {
+        $manager    = $this->manager();
+        $idAndEpoch = $manager->maybeInitProducerId();
+        $partition  = new TopicPartition(self::TOPIC, 0);
+
+        self::assertFalse(
+            $manager->canRetryBatch($partition, new OutOfOrderSequenceException(), 7, $idAndEpoch),
+            'a plain out of order sequence is never retried by a client that sends one batch at a time'
+        );
+        self::assertFalse(
+            $manager->canRetryBatch($partition, new UnknownProducerIdException(), 7, new ProducerIdAndEpoch(999, 0)),
+            'a batch of a producer id that was thrown away in the meantime is dropped, not retried'
+        );
+
+        $plain = $this->manager();
+
+        self::assertFalse(
+            $plain->canRetryBatch($partition, new UnknownProducerIdException(), 7),
+            'a producer without an id has no sequence to reset'
+        );
+    }
+
+    public function testATransactionalProducerNumbersThePartitionFromZeroAgainAsWell(): void
+    {
+        $manager    = new TransactionManager($this->client([new ProducerIdAndEpoch(2000, 1)]), 'tx-1');
+        $idAndEpoch = $manager->maybeInitProducerId();
+        $partition  = new TopicPartition(self::TOPIC, 0);
+        $manager->batchCompleted($partition, 1, $idAndEpoch, 0);
+
+        self::assertTrue($manager->canRetryBatch($partition, new UnknownProducerIdException(), 2, $idAndEpoch));
+        self::assertSame(0, $manager->sequenceNumber($partition));
+        self::assertFalse($manager->hasError(), 'the transaction stays open, exactly as it does in the Java client');
+    }
+
+    public function testAnUnknownProducerIdThatCanNotBeRetriedIsTheOutOfOrderSequenceItIs(): void
+    {
+        $client     = $this->client([new ProducerIdAndEpoch(2000, 0), new ProducerIdAndEpoch(2001, 0)]);
+        $manager    = new TransactionManager($client);
+        $idAndEpoch = $manager->maybeInitProducerId();
+        $partition  = new TopicPartition(self::TOPIC, 0);
+
+        $manager->batchFailed($partition, new UnknownProducerIdException(), 1, $idAndEpoch);
+
+        self::assertFalse($manager->hasProducerId(), 'UnknownProducerIdException extends OutOfOrderSequenceException');
+        self::assertFalse($manager->hasFatalError());
+        self::assertSame(2001, $manager->maybeInitProducerId()->producerId);
+    }
+
+    public function testTheLastAcknowledgedOffsetsAreThrownAwayWithTheProducerId(): void
+    {
+        $manager    = $this->manager([new ProducerIdAndEpoch(1, 0), new ProducerIdAndEpoch(2, 0)]);
+        $idAndEpoch = $manager->maybeInitProducerId();
+        $partition  = new TopicPartition(self::TOPIC, 0);
+        $manager->batchCompleted($partition, 4, $idAndEpoch, 0);
+
+        $manager->resetProducerId();
+
+        self::assertSame(ProduceResponsePartition::INVALID_OFFSET, $manager->lastAckedOffset($partition));
     }
 
     public function testTheProducerIdAndEpochPairKnowsWhetherItNamesARealProducer(): void

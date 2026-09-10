@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * what the version constant of this DTO picks in {@see self::partitionClass()}, see {@see FetchResponseTopicV4}
  * and {@see FetchResponseTopicV0}.
  *
- * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
+ * @see docs/protocol/1.1.md, section "Fetch API (key 1, v0 to v7)"
  */
 class FetchResponseTopic implements BinarySchemaInterface
 {

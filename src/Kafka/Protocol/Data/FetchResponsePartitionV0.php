@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * message set of the format v1 (a v2/v3 request) or v0 (a v0/v1 request), because the broker converts a record
  * batch down for every client that asks below version 4.
  *
- * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
+ * @see docs/protocol/1.1.md, section "Fetch API (key 1, v0 to v7)"
  */
 final class FetchResponsePartitionV0 extends FetchResponsePartition
 {

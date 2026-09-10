@@ -36,6 +36,8 @@ use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
@@ -46,10 +48,14 @@ use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -61,12 +67,16 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * really answers: the `LogAppendTime` of a partition, which is -1 for a topic that keeps the `CreateTime` of the
  * producer and the clock of the broker for a topic with `message.timestamp.type=LogAppendTime`.
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
  */
 #[CoversClass(ProduceRequest::class)]
+#[CoversClass(ProduceRequestV4::class)]
+#[CoversClass(ProduceRequestV3::class)]
 #[CoversClass(ProduceRequestV1::class)]
 #[CoversClass(ProduceRequestV0::class)]
 #[CoversClass(ProduceResponse::class)]
+#[CoversClass(ProduceResponseV4::class)]
+#[CoversClass(ProduceResponseV3::class)]
 #[CoversClass(ProduceResponseV1::class)]
 #[CoversClass(ProduceResponseV0::class)]
 #[CoversClass(ProduceRequestTopic::class)]
@@ -370,14 +380,14 @@ final class ProduceApiTest extends IntegrationTestCase
                 ->withHeaders(new Header('trace-id', 'abc'), new Header('empty')),
         ]);
 
-        new ProduceRequest(
+        new ProduceRequestV3(
             [$this->topic => [0 => $batch]],
             1,
             self::PRODUCE_TIMEOUT_MS,
             self::CLIENT_ID,
             57
         )->writeTo($stream);
-        $response  = ProduceResponse::unpack($stream);
+        $response  = ProduceResponseV3::unpack($stream);
         $partition = $response->topics[$this->topic]->partitions[0];
 
         self::assertSame(57, $response->getCorrelationId());
@@ -435,6 +445,124 @@ final class ProduceApiTest extends IntegrationTestCase
     /**
      * Returns the size of the answer that the very same append gets from a version 2 request
      */
+    public function testAVersionFourRequestIsAnsweredWithTheVersionTwoFrame(): void
+    {
+        // PRODUCE_RESPONSE_V4 = PRODUCE_RESPONSE_V3 = PRODUCE_RESPONSE_V2 @ 1.1.1: version 4 (Kafka 1.0) states
+        // that the client understands the error code 56 KAFKA_STORAGE_ERROR and changes no byte of either frame
+        $stream = $this->connect();
+        new ProduceRequestV4(
+            [$this->topic => [2 => RecordBatch::fromRecords(
+                [new Record('version four')->withCreateTime(self::currentTimestampMs())]
+            )]],
+            1,
+            self::PRODUCE_TIMEOUT_MS,
+            self::CLIENT_ID,
+            61
+        )->writeTo($stream);
+
+        $response  = ProduceResponseV4::unpack($stream);
+        $partition = $response->topics[$this->topic]->partitions[2];
+
+        self::assertSame(61, $response->getCorrelationId());
+        self::assertSame(0, $partition->errorCode);
+        self::assertSame(0, $partition->baseOffset);
+        self::assertSame(-1, $partition->logAppendTime);
+        self::assertSame(
+            ProduceResponsePartition::INVALID_OFFSET,
+            $partition->logStartOffset,
+            'a version below 5 does not report a log start offset at all'
+        );
+        self::assertSame(
+            $response->getMessageSize(),
+            self::produceResponseSizeOfVersionTwo($this->topic, 1),
+            'the answer of version 4 is the answer of version 2, byte for byte'
+        );
+    }
+
+    public function testAVersionFiveAnswerReportsTheLogStartOffsetOfThePartition(): void
+    {
+        // Version 5 (Kafka 1.0) appended LogStartOffset to every partition entry: the first offset the log still
+        // holds. It is 0 for an untouched log and moves with the retention or with a DeleteRecords request, which
+        // is what tells an idempotent producer that a 59 UNKNOWN_PRODUCER_ID is spurious.
+        $stream = $this->connect();
+        $first  = $this->produceRecordBatch($stream, 1, ['first', 'second'], 62);
+
+        self::assertSame(0, $first->errorCode);
+        self::assertSame(0, $first->baseOffset);
+        self::assertSame(0, $first->logStartOffset, 'nothing has been deleted from the front of this log yet');
+
+        new DeleteRecordsRequest([$this->topic => [1 => 2]], 30000, self::CLIENT_ID, 63)->writeTo($stream);
+        $deleted = DeleteRecordsResponse::unpack($stream)->topics[$this->topic]->partitions[1];
+
+        self::assertSame(0, $deleted->errorCode);
+        self::assertSame(2, $deleted->lowWatermark);
+
+        $second = $this->produceRecordBatch($stream, 1, ['third'], 64);
+
+        self::assertSame(0, $second->errorCode);
+        self::assertSame(2, $second->baseOffset);
+        self::assertSame(2, $second->logStartOffset, 'the DeleteRecords request moved the front of the log');
+        self::assertSame(3, $this->produceRecordBatch($stream, 1, ['fourth'], 65)->baseOffset);
+    }
+
+    public function testTheBrokerAcceptsTheVersionsThreeFourAndFiveWithOneAndTheSameBody(): void
+    {
+        // PRODUCE_REQUEST_V5 = PRODUCE_REQUEST_V4 = PRODUCE_REQUEST_V3 @ 1.1.1, and the broker really accepts all
+        // three: what the later versions state is which error code and which answer the client understands
+        $stream    = $this->connect();
+        $timestamp = self::currentTimestampMs();
+        $frames    = [];
+        $offsets   = [];
+        $versions  = [
+            3 => [ProduceRequestV3::class, ProduceResponseV3::class],
+            4 => [ProduceRequestV4::class, ProduceResponseV4::class],
+            5 => [ProduceRequest::class, ProduceResponse::class],
+        ];
+        foreach ($versions as $version => [$requestClass, $responseClass]) {
+            $request = new $requestClass(
+                [$this->topic => [0 => RecordBatch::fromRecords(
+                    [new Record('same body')->withCreateTime($timestamp)]
+                )]],
+                1,
+                self::PRODUCE_TIMEOUT_MS,
+                self::CLIENT_ID,
+                60 + $version
+            );
+            // Everything behind `Size ApiKey ApiVersion CorrelationId`, i.e. the client id and the body
+            $frames[$version] = substr(bin2hex((string) $request), 24);
+            $request->writeTo($stream);
+            $partition          = $responseClass::unpack($stream)->topics[$this->topic]->partitions[0];
+            $offsets[$version]  = $partition->baseOffset;
+            self::assertSame(0, $partition->errorCode, "the broker accepted the version {$version} request");
+        }
+
+        self::assertCount(1, array_unique($frames), 'the three versions send one and the same body');
+        self::assertSame([3 => 0, 4 => 1, 5 => 2], $offsets, 'every one of them appended one record');
+    }
+
+    /**
+     * Appends a record batch of the message format v2 with a Produce v5 request and returns the partition entry
+     *
+     * @param list<string> $values Values of the records to append
+     */
+    private function produceRecordBatch(Stream $stream, int $partition, array $values, int $correlationId): ProduceResponsePartition
+    {
+        $records = [];
+        foreach ($values as $value) {
+            $records[] = new Record($value)->withCreateTime(self::currentTimestampMs());
+        }
+
+        new ProduceRequest(
+            [$this->topic => [$partition => RecordBatch::fromRecords($records)]],
+            1,
+            self::PRODUCE_TIMEOUT_MS,
+            self::CLIENT_ID,
+            $correlationId
+        )->writeTo($stream);
+
+        return ProduceResponse::unpack($stream)->topics[$this->topic]->partitions[$partition];
+    }
+
     private function produceResponseSizeOfVersionTwo(string $topic, int $partition): int
     {
         $stream = $this->connect();

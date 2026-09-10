@@ -27,7 +27,7 @@ use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
  * the xerial library and lz4 in the LZ4 frame format, whose header checksum depends on the message format of the
  * message that carries it, see {@see Lz4}.
  *
- * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
+ * @see docs/protocol/1.1.md, section "MessageSet and Message"
  * @see kafka/message/CompressionCodec.scala @ 0.10.2.2
  */
 final class CompressionCodec

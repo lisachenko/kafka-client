@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * body - and version 1 (KIP-124, Kafka 0.11) added the `throttle_time_ms` to the ANSWER alone
  * ({@see ListGroupsResponse}), so {@see ListGroupsRequestV0} differs in the version field of the header only.
  *
- * @see docs/protocol/0.11.0.md, section "ListGroups API (key 16, v0 and v1)"
+ * @see docs/protocol/1.1.md, section "ListGroups API (key 16, v0 and v1)"
  */
 class ListGroupsRequest extends AbstractRequest
 {

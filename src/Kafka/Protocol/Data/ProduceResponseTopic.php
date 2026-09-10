@@ -24,22 +24,24 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Produce response Topic DTO
  *
  * <pre>
- *   TopicName [Partition ErrorCode Offset LogAppendTime]
+ *   TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset]
  *     TopicName => string
  * </pre>
  *
  * The topic entry itself never changed; what a version selects is the shape of its partition entries - a version 0
- * or 1 answer carries no `LogAppendTime` ({@see ProduceResponseTopicV0}) - which is what the version constant of
- * this DTO picks in {@see self::partitionClass()}. Version 3 changed nothing about the answer at all.
+ * or 1 answer carries no `LogAppendTime` ({@see ProduceResponseTopicV0}), a version 2, 3 or 4 answer no
+ * `LogStartOffset` ({@see ProduceResponseTopicV2}) - which is what the version constant of this DTO picks in
+ * {@see self::partitionClass()}. The versions 3 and 4 changed nothing about the answer at all; version 5 (Kafka
+ * 1.0) appended the `LogStartOffset` to every partition entry.
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
  */
 class ProduceResponseTopic implements BinarySchemaInterface
 {
     /**
      * Version of the Produce API that this DTO is unpacked from
      */
-    public const int VERSION = 2;
+    public const int VERSION = 5;
 
     /**
      * The name of the topic
@@ -71,6 +73,10 @@ class ProduceResponseTopic implements BinarySchemaInterface
      */
     protected static function partitionClass(): string
     {
-        return static::VERSION >= 2 ? ProduceResponsePartition::class : ProduceResponsePartitionV0::class;
+        return match (true) {
+            static::VERSION >= 5 => ProduceResponsePartition::class,
+            static::VERSION >= 2 => ProduceResponsePartitionV2::class,
+            default              => ProduceResponsePartitionV0::class,
+        };
     }
 }

@@ -19,6 +19,7 @@ namespace Protocol\Kafka;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Common\ClientConfig;
@@ -42,6 +43,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
+use Protocol\Kafka\Consumer\Internals\FetchSessionHandler;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\IO\SocketStream;
@@ -68,6 +70,8 @@ use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
@@ -76,6 +80,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
+use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
@@ -105,6 +110,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
+use Throwable;
 
 /**
  * Low-level client for the Kafka 0.11.0.3 protocol.
@@ -126,7 +132,7 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/0.11.0.md
+ * @see docs/protocol/1.1.md
  */
 class Client
 {
@@ -134,6 +140,25 @@ class Client
      * Fallback for `request.timeout.ms` when the configuration does not carry it
      */
     private const int DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+
+    /**
+     * How often {@see self::fetchPartitionsWithSessions()} answers a fetch session error with a full fetch of its
+     * own, before it leaves the recovery to the next call
+     *
+     * This is not a retry of a failed request - a session error costs no partition anything and needs neither a
+     * metadata refresh nor a backoff - it is the full fetch that the broker asked for by answering 70 or 71, and
+     * one of them is always enough: it opens a new session and is answered with every partition of it.
+     */
+    private const int SESSION_ERROR_ATTEMPTS = 1;
+
+    /**
+     * Incremental fetch session of every broker this client fetched from with sessions, by node id
+     *
+     * @see self::fetchPartitionsWithSessions()
+     *
+     * @var array<int, FetchSessionHandler>
+     */
+    private array $fetchSessionHandlers = [];
 
     public function __construct(
         /**
@@ -189,22 +214,34 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as **Produce v3** for the message format v2 (`message.format.version=0.11.0`, the
-     * default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version 3 request
-     * has no place for. Every accepted partition carries two values the broker reported next to its base offset:
-     * the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured with
-     * `message.timestamp.type=LogAppendTime`, and the `throttleTimeMs` of the answer it arrived in, which is 0
-     * without a `producer_byte_rate` quota. Version 3 added no field to the answer at all - `PRODUCE_RESPONSE_V3`
-     * is `PRODUCE_RESPONSE_V2` in `Protocol.java` @ 0.11.0.3 - so the two classes read the same frame.
+     * The request goes out as **Produce v5** for the message format v2 (`message.format.version=0.11.0`, `1.0` or
+     * `1.1`, the default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version
+     * 3 request has no place for. Every accepted partition carries three values the broker reported next to its
+     * base offset: the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured
+     * with `message.timestamp.type=LogAppendTime`, the `logStartOffset` of the partition, which version 5 (Kafka
+     * 1.0) appended to the answer and which a producer needs to tell a spurious `OutOfOrderSequence` from a real
+     * one, and the `throttleTimeMs` of the answer it arrived in, which is 0 without a `producer_byte_rate` quota.
+     * The versions 3 and 4 added no field to the answer at all - `PRODUCE_RESPONSE_V4` is `PRODUCE_RESPONSE_V3` is
+     * `PRODUCE_RESPONSE_V2` @ 1.1.1 - so the version this client sends is the first one that reports the log start
+     * offset.
      *
-     * An idempotent (or, from the ticket that adds them, a transactional) producer hands over its
-     * {@see TransactionManager}, which is the whole difference between "at least once" and "exactly once, in
-     * order": the batch of every topic-partition is then stamped with the producer id, the epoch and the sequence
-     * number that the manager keeps, the broker recognises a batch it has already appended and answers it with the
-     * offset of that append instead of writing it twice, and the answer moves the sequence numbers on. The three
-     * error codes of KIP-98 - 45, 46 and 47 - are reported to the manager, which decides whether the producer
-     * starts over with a new producer id or is finished for good; a partition that only failed with **46**
-     * (DuplicateSequenceNumber, "this batch is already in the log") counts as accepted, with an unknown offset.
+     * An idempotent or transactional producer hands over its {@see TransactionManager}, which is the whole
+     * difference between "at least once" and "exactly once, in order": the batch of every topic-partition is then
+     * stamped with the producer id, the epoch and the sequence number that the manager keeps, the broker
+     * recognises a batch it has already appended - one of the **last five** of that producer and partition, on a
+     * 1.x broker - and answers it with the offset of that append instead of writing it twice, and the answer moves
+     * the sequence numbers on. The three error codes of KIP-98 - 45, 46 and 47 - are reported to the manager,
+     * which decides whether the producer starts over with a new producer id or is finished for good; a partition
+     * that only failed with **46** (DuplicateSequenceNumber, "this batch is already in the log") counts as
+     * accepted, with an unknown offset.
+     *
+     * The fourth code, **59** `UnknownProducerId` (Kafka 1.0), is the one this method answers itself: the broker
+     * has no state of this producer for that partition any more, and
+     * {@see TransactionManager::canRetryBatch()} decides on the `logStartOffset` of the answer whether that is
+     * because every record of the producer was deleted from the log - a `DeleteRecords`, or a retention run - in
+     * which case the partition is numbered from the sequence 0 again and the batch is **sent once more**, up to
+     * `retries` times with `retry.backoff.ms` between the attempts. Only a 59 that this can not repair is reported
+     * to the manager, which treats it as the out-of-order sequence it is a special case of.
      *
      * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
      *        each topic and partition
@@ -244,53 +281,114 @@ class Client
             }
         }
 
-        $producerIdAndEpoch = $transactionManager->maybeInitProducerId();
-        $baseSequences      = $transactionManager->baseSequences($records);
+        // A produce with producer state IS an idempotent producer, and `enable.idempotence` refuses `retries = 0`
+        // (ProducerConfig::resolveIdempotence()); a client that was handed a manager without going through the
+        // producer configuration therefore still gets one further attempt. That is all the answer to a 59 needs:
+        // the batch that is sent again starts at the sequence 0, and a first sequence of 0 is never a 59
+        $retries   = max(1, (int) ($this->configuration[ProducerConfig::RETRIES] ?? 0));
+        $backoffMs = (int) ($this->configuration[ClientConfig::RETRY_BACKOFF_MS] ?? 100);
 
-        try {
-            $result = $this->produceRecords(
-                $records,
-                $producerIdAndEpoch->producerId,
-                $producerIdAndEpoch->epoch,
-                $baseSequences,
-                $transactionManager->getTransactionalId()
-            );
-        } catch (TopicPartitionRequestException $exception) {
-            $result = $exception->getPartialResult();
-            $errors = [];
-            foreach ($exception->getExceptions() as $topic => $partitionErrors) {
+        $pending  = $records;
+        $accepted = [];
+        $errors   = [];
+
+        for ($attempt = 0; ; ++$attempt) {
+            $producerIdAndEpoch = $transactionManager->maybeInitProducerId();
+            $baseSequences      = $transactionManager->baseSequences($pending);
+
+            $failures = [];
+            try {
+                $answered = $this->produceRecords(
+                    $pending,
+                    $producerIdAndEpoch->producerId,
+                    $producerIdAndEpoch->epoch,
+                    $baseSequences,
+                    $transactionManager->getTransactionalId()
+                );
+            } catch (TopicPartitionRequestException $exception) {
+                /** @var array<string, array<int, ProduceResponsePartition>> $answered */
+                $answered = $exception->getPartialResult();
+                $failures = $exception->getExceptions();
+            }
+
+            foreach ($answered as $topic => $partitions) {
+                foreach ($partitions as $partitionId => $partitionInfo) {
+                    $transactionManager->batchCompleted(
+                        new TopicPartition((string) $topic, (int) $partitionId),
+                        count($pending[$topic][$partitionId] ?? []),
+                        $producerIdAndEpoch,
+                        $partitionInfo->baseOffset
+                    );
+                    $accepted[$topic][$partitionId] = $partitionInfo;
+                }
+            }
+
+            $retriable = [];
+            foreach ($failures as $topic => $partitionErrors) {
                 foreach ($partitionErrors as $partitionId => $error) {
                     $topicPartition = new TopicPartition((string) $topic, (int) $partitionId);
-                    $recordCount    = count($records[$topic][$partitionId] ?? []);
+                    $recordCount    = count($pending[$topic][$partitionId] ?? []);
+
+                    // Kafka 1.0: the broker lost the state of this producer for this partition (59). The
+                    // `log_start_offset` of the Produce v5 answer decides whether sending the batch again can fix
+                    // it - when it does, the manager has just numbered the partition from 0 again
+                    if (
+                        $attempt < $retries
+                        && $transactionManager->canRetryBatch(
+                            $topicPartition,
+                            $error,
+                            self::logStartOffsetOf($error),
+                            $producerIdAndEpoch
+                        )
+                    ) {
+                        $retriable[$topic][$partitionId] = $pending[$topic][$partitionId];
+                        continue;
+                    }
+
                     $transactionManager->batchFailed($topicPartition, $error, $recordCount, $producerIdAndEpoch);
 
                     // "The broker received a duplicate sequence number" is not a failure: the batch is in the log
                     // already, only the offset of that append is not in this answer
                     if ($error instanceof DuplicateSequenceNumberException) {
-                        $result[$topic][$partitionId] = self::alreadyAppendedPartition((int) $partitionId);
+                        $accepted[$topic][$partitionId] = self::alreadyAppendedPartition((int) $partitionId);
                         continue;
                     }
                     $errors[$topic][$partitionId] = $error;
                 }
             }
-            if ($errors !== []) {
-                throw new TopicPartitionRequestException($result, $errors);
+
+            if ($retriable === []) {
+                break;
             }
 
-            return $result;
-        }
-
-        foreach ($result as $topic => $partitions) {
-            foreach (array_keys($partitions) as $partitionId) {
-                $transactionManager->batchCompleted(
-                    new TopicPartition((string) $topic, (int) $partitionId),
-                    count($records[$topic][$partitionId] ?? []),
-                    $producerIdAndEpoch
-                );
+            $pending = $retriable;
+            if ($backoffMs > 0) {
+                usleep($backoffMs * 1000);
             }
         }
 
-        return $result;
+        if ($errors !== []) {
+            throw new TopicPartitionRequestException($accepted, $errors);
+        }
+
+        return $accepted;
+    }
+
+    /**
+     * Returns the `log_start_offset` a failed partition of a Produce answer reported.
+     *
+     * The value travels in the context of the exception {@see Client::produceRecords()} builds out of the error
+     * code, because the answer itself is gone by the time a producer decides what to do about it; an answer below
+     * Produce v5, and an error that is not one of a produce request at all, answer
+     * {@see ProduceResponsePartition::INVALID_OFFSET}.
+     */
+    private static function logStartOffsetOf(Throwable $error): int
+    {
+        if (!$error instanceof KafkaException) {
+            return ProduceResponsePartition::INVALID_OFFSET;
+        }
+
+        return (int) ($error->getContext()['logStartOffset'] ?? ProduceResponsePartition::INVALID_OFFSET);
     }
 
     /**
@@ -405,7 +503,7 @@ class Client
             );
         }
 
-        // The wire format carries one opaque record set per topic-partition, see docs/protocol/0.11.0.md
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/1.1.md
         $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
@@ -422,7 +520,8 @@ class Client
         }
 
         // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the highest
-        // version that has no place for a transactional id
+        // version that has no place for a transactional id; the message format v2 goes out as Produce v5, the
+        // first version whose answer reports the log start offset of every partition
         $requestClass  = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceRequest::class : ProduceRequestV2::class;
         $createRequest = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
             => new $requestClass(
@@ -453,9 +552,17 @@ class Client
                     $partitions = $topicResult->partitions;
                     foreach ($partitions as $partitionId => $partitionInfo) {
                         if ($partitionInfo->errorCode !== KafkaException::NO_ERROR) {
+                            // The log start offset travels with the *error* as well, because it is what decides
+                            // what a producer does about a 59 (UnknownProducerId): the field is the only way to
+                            // tell the head of the log being deleted under a producer from a real out-of-order
+                            // sequence, see TransactionManager::canRetryBatch()
                             $errors[$topic][$partitionId] = KafkaException::fromCode(
                                 $partitionInfo->errorCode,
-                                ['topic' => $topic, 'partitionId' => $partitionId]
+                                [
+                                    'topic'          => $topic,
+                                    'partitionId'    => $partitionId,
+                                    'logStartOffset' => $partitionInfo->logStartOffset,
+                                ]
                             );
                             continue;
                         }
@@ -504,7 +611,7 @@ class Client
      * which would turn a naive fetch loop into an endless one, see
      * {@see FetchedPartition::isSingleMessageTooLarge()}.
      *
-     * The request goes out as **Fetch v5**, which means four things:
+     * The request goes out as **Fetch v7**, which means five things:
      *
      * * the record sets come back in the format the log holds them in - a broker converts them down to message
      *   format v1 for a request below version 4 and to format v0 below version 2 - so the records carry their
@@ -515,6 +622,10 @@ class Client
      *   partition has to rotate their order between calls, as {@see \Protocol\Kafka\Consumer\KafkaConsumer} does;
      * * the first non-empty partition of the answer ignores both limits and carries at least one complete message,
      *   so a partition can no longer be stuck on a message that is too large and this client never reports one;
+     * * the request carries the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()}, i.e. it opens no
+     *   incremental fetch session (KIP-227), and a 1.1.1 broker serves it exactly as it serves a Fetch v6: the
+     *   whole requested set comes back, and the answer reports the session id 0 and the top-level error code 0.
+     *   {@see FetchRequest} implements the whole frame, so a caller that wants a session builds the request itself;
      * * every partition of the answer reports its `lastStableOffset`, its `logStartOffset` and the transactions
      *   that were aborted in the range it covers, and the request states the `isolation.level` of the consumer -
      *   `read_uncommitted` unless it is configured otherwise, which is what the broker answers a -1 last stable
@@ -548,54 +659,247 @@ class Client
                 $isolationLevel
             ),
             FetchResponse::class,
-            static function (array $result, FetchResponse $response, array &$errors) use (
+            static fn(array $result, FetchResponse $response, array &$errors): array => self::collectFetchedPartitions(
+                $result,
+                $response,
                 $topicPartitionOffsets,
-                $checkCrcs
-            ): array {
-                foreach ($response->topics as $topic => $topicResponse) {
-                    /** @var FetchResponsePartition $responsePartition */
-                    foreach ($topicResponse->partitions as $partitionId => $responsePartition) {
-                        if ($responsePartition->errorCode !== KafkaException::NO_ERROR) {
-                            $errors[$topic][$partitionId] = KafkaException::fromCode(
-                                $responsePartition->errorCode,
-                                ['topic' => $topic, 'partitionId' => $partitionId]
-                            );
-                            continue;
-                        }
-                        $fetchOffset = (int) ($topicPartitionOffsets[$topic][$partitionId] ?? 0);
-                        try {
-                            // The schema engine hands over the raw bytes of the record set, because the broker is
-                            // allowed to cut its last batch short. The record layer looks at the message format of
-                            // every batch, drops that partial trailing one, unwraps a compressed batch into the
-                            // records it holds and keeps the control markers of a transaction to itself.
-                            $records = MemoryRecords::fromBuffer($responsePartition->messageSet ?? '', $checkCrcs);
-                        } catch (KafkaException $exception) {
-                            // A corrupt message only spoils its own partition, the others are still readable
-                            $errors[$topic][$partitionId] = $exception;
-                            continue;
-                        }
-                        $result[$topic][$partitionId] = new FetchedPartition(
-                            new TopicPartition((string) $topic, (int) $partitionId),
-                            $fetchOffset,
-                            $responsePartition->errorCode,
-                            $responsePartition->highWaterMarkOffset,
-                            $records,
-                            // From version 3 on the broker guarantees that the first non-empty partition of an
-                            // answer holds a complete message, and an empty partition simply means that the
-                            // `fetch.max.bytes` of the answer were used up by the ones in front of it
-                            FetchRequest::VERSION < 3 && $responsePartition->isSingleMessageTooLarge($fetchOffset),
-                            $response->throttleTimeMs,
-                            $responsePartition->lastStableOffset,
-                            $responsePartition->logStartOffset,
-                            $responsePartition->abortedTransactions
-                        );
-                    }
-                }
-
-                return $result;
-            },
+                $checkCrcs,
+                $errors
+            ),
             $timeout
         );
+    }
+
+    /**
+     * Fetches messages the way a consumer does: with an **incremental fetch session** per broker (KIP-227)
+     *
+     * The frame, the isolation level and everything that is read out of an answer are the ones of
+     * {@see self::fetchPartitions()}; what is different is what travels in the request and what comes back:
+     *
+     * * the **first** request to a broker is a full fetch with the epoch 0, which asks it to open a fetch session
+     *   and is answered with the id of that session and with every partition of the request;
+     * * every following request to it is an **incremental** fetch of that session and states only the partitions
+     *   whose fetch offset moved since the last one - the broker remembers the others. A partition that is not in
+     *   `$topicPartitionOffsets` any more (a rebalance took it away, {@see \Protocol\Kafka\Consumer\KafkaConsumer}
+     *   paused it, its topic was deleted) travels in the `forgotten_topics_data` of that request and is dropped
+     *   from the session;
+     * * the answer of an incremental fetch carries **only the partitions that have news**, up to an answer with no
+     *   topic at all, so the returned array holds only those. A partition that is missing from it has nothing new:
+     *   its position, its high water mark and everything else the caller knows about it are still valid, which is
+     *   why this method reports what came back instead of an entry per requested partition.
+     *
+     * The session state lives in one {@see FetchSessionHandler} per node ({@see self::getFetchSessionHandlers()}),
+     * which also does the recovery: a broker that answers **70** `FetchSessionIdNotFound` - it evicted the session,
+     * its cache holds 1000 of them - or **71** `InvalidFetchSessionEpoch` - a request or an answer was lost - is
+     * asked again with a full fetch right away, so that a caller never sees a session error; the same happens when
+     * a connection drops before the answer arrives. A partition that a broker answers with a retriable error is
+     * handled as in {@see self::fetchPartitions()}, except that the request that follows the metadata refresh
+     * carries the **whole** set again: an incremental request that carried the failed partitions alone would tell
+     * the broker to forget all the others.
+     *
+     * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
+     * @param int                            $timeout               Timeout in ms to wait for fetching
+     *
+     * @return array<string, array<int, FetchedPartition>> [topic => [partition => FetchedPartition]], only the
+     *         partitions the brokers answered
+     *
+     * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
+     */
+    public function fetchPartitionsWithSessions(array $topicPartitionOffsets, int $timeout): array
+    {
+        $timeout        = (int) min($this->configuration[ConsumerConfig::FETCH_MAX_WAIT_MS], $timeout);
+        $checkCrcs      = (bool) ($this->configuration[ConsumerConfig::CHECK_CRCS] ?? true);
+        $isolationLevel = $this->isolationLevel();
+        $policy         = RetryPolicy::fromConfiguration($this->configuration);
+        $maxAttempts    = $policy->getMaxAttempts();
+
+        $result          = [];
+        $permanentErrors = [];
+        $pending         = $topicPartitionOffsets;
+        $attempt         = 1;
+        $sessionAttempts = self::SESSION_ERROR_ATTEMPTS;
+
+        while (true) {
+            $errors         = [];
+            $sessionErrors  = [];
+            $requestedNodes = [];
+            $answeredNodes  = [];
+
+            $round = $this->dispatch(
+                $pending,
+                function (array $nodeTopicRequest, int $correlationId, int $nodeId) use (
+                    &$requestedNodes,
+                    $timeout,
+                    $isolationLevel
+                ): FetchRequest {
+                    $handler = $this->fetchSessionHandlers[$nodeId] ??= new FetchSessionHandler($nodeId);
+                    $builder = $handler->newBuilder();
+                    foreach ($nodeTopicRequest as $topic => $partitionOffsets) {
+                        foreach ($partitionOffsets as $partitionId => $fetchOffset) {
+                            $builder->add(
+                                new TopicPartition((string) $topic, (int) $partitionId),
+                                (int) $fetchOffset
+                            );
+                        }
+                    }
+                    $requestData             = $builder->build();
+                    $requestedNodes[$nodeId] = true;
+
+                    return new FetchRequest(
+                        $requestData->toSend,
+                        $timeout,
+                        $this->configuration[ConsumerConfig::FETCH_MIN_BYTES],
+                        $this->configuration[ConsumerConfig::MAX_PARTITION_FETCH_BYTES],
+                        -1,
+                        $this->configuration[ConsumerConfig::CLIENT_ID],
+                        $correlationId,
+                        (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES]
+                            ?? FetchRequest::DEFAULT_MAX_BYTES),
+                        $isolationLevel,
+                        $requestData->metadata,
+                        $requestData->toForget
+                    );
+                },
+                FetchResponse::class,
+                function (array $result, FetchResponse $response, array &$errors, int $nodeId) use (
+                    $pending,
+                    $checkCrcs,
+                    &$answeredNodes,
+                    &$sessionErrors
+                ): array {
+                    $answeredNodes[$nodeId] = true;
+                    $handler                = $this->fetchSessionHandlers[$nodeId] ?? null;
+                    if ($handler !== null && !$handler->handleResponse($response)) {
+                        // A session error - 70 or 71 - is answered with an empty topics array and costs no
+                        // partition anything; the handler is back at a full fetch, which is sent right away
+                        $sessionErrors[$nodeId] = $response->errorCode;
+
+                        return $result;
+                    }
+
+                    return self::collectFetchedPartitions($result, $response, $pending, $checkCrcs, $errors);
+                },
+                $timeout,
+                $errors
+            );
+            $result = self::mergeResult($result, $round);
+
+            // A broker that never answered leaves its session in an unknown state: the next request to it closes
+            // whatever is left of it and opens a new one
+            foreach (array_keys($requestedNodes) as $nodeId) {
+                if (!isset($answeredNodes[$nodeId])) {
+                    $this->fetchSessionHandlers[$nodeId]->handleError();
+                }
+            }
+
+            $hasRetriable = false;
+            foreach ($errors as $topic => $partitionErrors) {
+                foreach ($partitionErrors as $partitionId => $error) {
+                    $canRetry = $attempt < $maxAttempts
+                        && RetryPolicy::isRetriable($error)
+                        && isset($pending[$topic][$partitionId]);
+                    if ($canRetry) {
+                        $hasRetriable = true;
+                    } else {
+                        $permanentErrors[$topic][$partitionId] = $error;
+                    }
+                }
+            }
+
+            if ($hasRetriable) {
+                // The error codes 3, 5, 6 and a dropped connection all mean the same thing: the leader this client
+                // has in its metadata is not the leader of that partition any more
+                $this->reloadCluster();
+                $policy->backoff();
+                $attempt++;
+            } elseif ($sessionErrors !== [] && $sessionAttempts > 0) {
+                $sessionAttempts--;
+            } else {
+                break;
+            }
+
+            $pending = self::withoutPartitions($topicPartitionOffsets, $permanentErrors);
+            if ($pending === []) {
+                break;
+            }
+        }
+
+        if ($permanentErrors !== []) {
+            throw new TopicPartitionRequestException($result, $permanentErrors);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns the incremental fetch session this client holds with every broker it fetched from, by node id
+     *
+     * @return array<int, FetchSessionHandler>
+     */
+    public function getFetchSessionHandlers(): array
+    {
+        return $this->fetchSessionHandlers;
+    }
+
+    /**
+     * Merges one Fetch answer into the result of a fetch, reporting the error of every partition that failed
+     *
+     * @param array<string, array<int, FetchedPartition>> $result                Partitions that are already known
+     * @param FetchResponse                               $response              Answer of one broker
+     * @param array<string, array<int, int>>              $topicPartitionOffsets Offset every partition was asked at
+     * @param bool                                        $checkCrcs             Whether to verify every checksum
+     * @param array<string, array<int, Exception>>        $errors                Collects the error of each partition
+     *
+     * @return array<string, array<int, FetchedPartition>>
+     */
+    private static function collectFetchedPartitions(
+        array $result,
+        FetchResponse $response,
+        array $topicPartitionOffsets,
+        bool $checkCrcs,
+        array &$errors
+    ): array {
+        foreach ($response->topics as $topic => $topicResponse) {
+            /** @var FetchResponsePartition $responsePartition */
+            foreach ($topicResponse->partitions as $partitionId => $responsePartition) {
+                if ($responsePartition->errorCode !== KafkaException::NO_ERROR) {
+                    $errors[$topic][$partitionId] = KafkaException::fromCode(
+                        $responsePartition->errorCode,
+                        ['topic' => $topic, 'partitionId' => $partitionId]
+                    );
+                    continue;
+                }
+                $fetchOffset = (int) ($topicPartitionOffsets[$topic][$partitionId] ?? 0);
+                try {
+                    // The schema engine hands over the raw bytes of the record set, because the broker is
+                    // allowed to cut its last batch short. The record layer looks at the message format of
+                    // every batch, drops that partial trailing one, unwraps a compressed batch into the
+                    // records it holds and keeps the control markers of a transaction to itself.
+                    $records = MemoryRecords::fromBuffer($responsePartition->messageSet ?? '', $checkCrcs);
+                } catch (KafkaException $exception) {
+                    // A corrupt message only spoils its own partition, the others are still readable
+                    $errors[$topic][$partitionId] = $exception;
+                    continue;
+                }
+                $result[$topic][$partitionId] = new FetchedPartition(
+                    new TopicPartition((string) $topic, (int) $partitionId),
+                    $fetchOffset,
+                    $responsePartition->errorCode,
+                    $responsePartition->highWaterMarkOffset,
+                    $records,
+                    // From version 3 on the broker guarantees that the first non-empty partition of an
+                    // answer holds a complete message, and an empty partition simply means that the
+                    // `fetch.max.bytes` of the answer were used up by the ones in front of it
+                    FetchRequest::VERSION < 3 && $responsePartition->isSingleMessageTooLarge($fetchOffset),
+                    $response->throttleTimeMs,
+                    $responsePartition->lastStableOffset,
+                    $responsePartition->logStartOffset,
+                    $responsePartition->abortedTransactions
+                );
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -1423,10 +1727,14 @@ class Client
     /**
      * Performs one round of the fan-out: one request per leader, then the answers as they arrive
      *
-     * @param array<string, array<int, mixed>>       $topicPartitionsRequest Request data per topic-partition
-     * @param Closure(array, int): AbstractRequest   $nodeRequest            Builds the request of one node
+     * Both closures are called with the id of the node they belong to as their last argument, which is what a
+     * request that carries per-broker state - the incremental fetch session of {@see FetchSessionHandler} - needs
+     * to find that state again; a closure that does not care about it simply declares fewer parameters.
+     *
+     * @param array<string, array<int, mixed>>          $topicPartitionsRequest Request data per topic-partition
+     * @param Closure(array, int, int): AbstractRequest $nodeRequest            Builds the request of one node
      * @param class-string<AbstractResponse> $responseClass          Class of the expected response
-     * @param Closure(array, mixed, array): array    $responseAggregator     Merges one answer into the result
+     * @param Closure(array, mixed, array, int): array  $responseAggregator     Merges one answer into the result
      * @param int|null                               $timeout                How long to wait for the answers
      * @param array<string, array<int, Exception>>   $exceptions             Collects the error of each partition
      *
@@ -1463,7 +1771,7 @@ class Client
         foreach ($requestByNode as $nodeId => $nodeTopicPartitions) {
             try {
                 $correlationId = AbstractRequest::nextCorrelationId();
-                $request       = $nodeRequest($nodeTopicPartitions, $correlationId);
+                $request       = $nodeRequest($nodeTopicPartitions, $correlationId, $nodeId);
                 $stream        = $this->connectionTo($nodeId);
                 if ($stream instanceof SocketStream) {
                     // Opened before the request is written, so that the answers of every leader can be awaited at
@@ -1552,8 +1860,8 @@ class Client
         }
 
         $result = [];
-        foreach ($responses as $response) {
-            $result = $responseAggregator($result, $response, $exceptions);
+        foreach ($responses as $nodeId => $response) {
+            $result = $responseAggregator($result, $response, $exceptions, $nodeId);
         }
 
         return $result;
@@ -1621,6 +1929,28 @@ class Client
         }
 
         return $result;
+    }
+
+    /**
+     * Returns the given topic-partitions without the ones the second array holds
+     *
+     * @param array<string, array<int, mixed>> $topicPartitions Partitions to filter
+     * @param array<string, array<int, mixed>> $toRemove        Partitions to leave out
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private static function withoutPartitions(array $topicPartitions, array $toRemove): array
+    {
+        foreach ($toRemove as $topic => $partitions) {
+            foreach (array_keys($partitions) as $partitionId) {
+                unset($topicPartitions[$topic][$partitionId]);
+            }
+            if (($topicPartitions[$topic] ?? null) === []) {
+                unset($topicPartitions[$topic]);
+            }
+        }
+
+        return $topicPartitions;
     }
 
     /**
@@ -1717,6 +2047,65 @@ class Client
                 $result = [];
                 foreach ($topicNames as $topic) {
                     $result[$topic] = self::topicError($topic, $response->topics[$topic]->errorCode ?? null);
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Asks the controller to raise the partition count of the given topics (ApiKey 37, Kafka 1.0, KIP-195)
+     *
+     * The api of KIP-195 is the last piece of `kafka-topics.sh --alter` that needed ZooKeeper. Like CreateTopics it
+     * is served by the ACTIVE CONTROLLER alone - `$controller` has to be the node that
+     * {@see \Protocol\Kafka\Admin\AdminClient::findController()} returned, and a broker that is not (or is no longer)
+     * the controller reports the error code 41 (NotController) for every topic of the request, which is handed back
+     * as a {@see Common\Errors\NotControllerException} of that topic instead of being thrown.
+     *
+     * Every entry of `$newPartitions` names the number of partitions its topic should have AFTERWARDS, as a
+     * {@see NewPartitions} or as a plain integer; the api can only grow a topic, and a count that is not above the
+     * current one is answered with 37 (InvalidPartitions).
+     *
+     * `$timeoutMs` is the time the controller waits for the new partitions to exist before it answers, as in
+     * {@see self::createTopics()}: a value of 0 answers immediately with the error code 7 (RequestTimedOut) for
+     * every accepted topic while the work carries on.
+     *
+     * @param Node                             $controller    Active controller of the cluster
+     * @param array<string, NewPartitions|int> $newPartitions Topics to grow, as topic name => new total count
+     * @param int                              $timeoutMs     How long the controller waits for the new partitions
+     * @param bool                             $validateOnly  Validate the request without adding anything
+     *
+     * @return array<string, KafkaException|null> Error of every requested topic, null when it was grown
+     */
+    public function createPartitions(
+        Node $controller,
+        array $newPartitions,
+        int $timeoutMs = 30000,
+        bool $validateOnly = false
+    ): array {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+        $topics   = array_map(strval(...), array_keys($newPartitions));
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new CreatePartitionsRequest(
+                $newPartitions,
+                $timeoutMs,
+                $validateOnly,
+                $clientId,
+                $correlationId
+            ),
+            CreatePartitionsResponse::class,
+            static function (CreatePartitionsResponse $response) use ($topics): array {
+                $result = [];
+                foreach ($topics as $topic) {
+                    $topicResult    = $response->topics[$topic] ?? null;
+                    $result[$topic] = self::topicError(
+                        $topic,
+                        $topicResult?->errorCode,
+                        $topicResult?->errorMessage
+                    );
                 }
 
                 return $result;

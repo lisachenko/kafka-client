@@ -180,7 +180,7 @@ final class ProducerConfig extends GeneralConfig
      * headers, for the producer id and the sequence numbers of an idempotent producer and for a transactional id.
      * A batch of the formats v0 and v1 is sent as Produce v2 and its headers are dropped.
      *
-     * @see docs/protocol/0.11.0.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
+     * @see docs/protocol/1.1.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
      */
     public const string MESSAGE_FORMAT_VERSION = 'message.format.version';
 
@@ -249,7 +249,7 @@ final class ProducerConfig extends GeneralConfig
      * broker. This client is synchronous - {@see KafkaProducer::flush()} writes one produce request and reads its
      * answer before the next one - so it has no such option and satisfies the requirement by construction.
      *
-     * @see docs/protocol/0.11.0.md, section "The idempotent producer"
+     * @see docs/protocol/1.1.md, section "The idempotent producer"
      */
     public const string ENABLE_IDEMPOTENCE = 'enable.idempotence';
 
@@ -258,7 +258,7 @@ final class ProducerConfig extends GeneralConfig
      * from the producer before proactively aborting the ongoing transaction.
      *
      * It travels in the `InitProducerId` request and is only meaningful for a producer that has a transactional
-     * id: with a `null` one a 0.11.0.3 broker ignores the field entirely. A value above the broker's
+     * id: with a `null` one a 1.1.1 broker ignores the field entirely, as a 0.11.0.3 one did. A value above the broker's
      * `transaction.max.timeout.ms` (900000 by default) is refused with the error code 50
      * (`InvalidTransactionTimeout`).
      */
@@ -285,7 +285,7 @@ final class ProducerConfig extends GeneralConfig
      * a transactional id - a broker answers it with the error code 42 - and is refused here as a configuration
      * error.
      *
-     * @see docs/protocol/0.11.0.md, section "Transactions"
+     * @see docs/protocol/1.1.md, section "Transactions"
      */
     public const string TRANSACTIONAL_ID = 'transactional.id';
 
@@ -293,10 +293,14 @@ final class ProducerConfig extends GeneralConfig
      * The `retries` an idempotent producer gets when the configuration does not name a value.
      *
      * The Java producer overrides the default to `Integer.MAX_VALUE` here, because its background sender bounds a
-     * batch by `request.timeout.ms` rather than by a number of attempts. This client has no sender thread: `retries`
-     * is a loop inside {@see \Protocol\Kafka\Client::produce()} that {@see KafkaProducer::flush()} blocks on, so an
-     * unbounded budget would be an unbounded flush. Three attempts on top of the first one is the deliberate
-     * deviation, and a caller that wants more simply configures `retries`.
+     * batch by `request.timeout.ms` rather than by a number of attempts - `KafkaProducer.configureRetries()` @
+     * 1.1.1 does exactly what the 0.11.0.3 one did, so nothing about this decision changed with the 1.x line.
+     * This client has no sender thread: `retries` is a loop inside {@see \Protocol\Kafka\Client::produce()} that
+     * {@see KafkaProducer::flush()} blocks on, so an unbounded budget would be an unbounded flush. Three attempts
+     * on top of the first one is the deliberate deviation, and a caller that wants more simply configures
+     * `retries`. The budget of a 1.x producer is spent on two things: a retriable error of a partition, and the
+     * **59** `UnknownProducerId` whose sequence reset {@see \Protocol\Kafka\Client::produce()} answers with one
+     * further attempt (see {@see \Protocol\Kafka\Producer\Internals\TransactionManager::canRetryBatch()}).
      */
     public const int DEFAULT_IDEMPOTENT_RETRIES = 3;
 

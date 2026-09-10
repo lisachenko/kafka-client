@@ -49,7 +49,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * there. The broker-side group membership of Kafka 0.9 - subscribe(), the rebalance and the heartbeats - is driven
  * by {@see ConsumerGroupTest}.
  *
- * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v5)", "Offsets API (key 2, v0), a.k.a.
+ * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)", "Offsets API (key 2, v0), a.k.a.
  *      ListOffset" and "OffsetFetch API (key 9, v0 to v3)"
  */
 #[CoversClass(KafkaConsumer::class)]
@@ -136,6 +136,36 @@ final class KafkaConsumerTest extends IntegrationTestCase
             self::assertSame($partitionId, $metadata->partitionId);
             self::assertGreaterThanOrEqual(0, $metadata->leader);
         }
+    }
+
+    public function testEveryAssignedPartitionKeepsBeingServedThroughTheIncrementalFetchSession(): void
+    {
+        // From Kafka 1.1 the consumer fetches through an incremental fetch session (KIP-227): the first poll states
+        // the whole assignment, every following one only the positions that moved, and the broker answers only the
+        // partitions that have news. What an application must not notice is any of that - a record appended to a
+        // partition the last answer left out has to arrive on the next poll all the same.
+        $this->produce(0, ['first-p0']);
+
+        $consumer = $this->consumer(self::uniqueGroupName(), [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([$this->topic => [0, 1]]);
+
+        self::assertSame(['first-p0'], $this->valuesOf($this->pollUntil($consumer, 1), 0));
+
+        // The partition 1 was empty and therefore not in the answer of the incremental fetches in between
+        $this->produce(1, ['later-p1']);
+
+        self::assertSame(['later-p1'], $this->valuesOf($this->pollUntil($consumer, 1), 1));
+        self::assertSame(1, $consumer->position($this->topic, 0), 'the position of the quiet partition is kept');
+        self::assertSame(1, $consumer->position($this->topic, 1));
+
+        // ... and so does the one that was quiet the second time round
+        $this->produce(0, ['second-p0']);
+
+        self::assertSame(['second-p0'], $this->valuesOf($this->pollUntil($consumer, 1), 0));
+        self::assertSame(2, $consumer->position($this->topic, 0));
     }
 
     public function testTwoAssignedPartitionsAreConsumedFromTheBeginning(): void

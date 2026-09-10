@@ -4,18 +4,345 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
-own: `0.11.x` implements the **Kafka 0.11.0.3 wire protocol** — the last release of the 0.11 line —
-and nothing above it. The lines below it are `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1)
-and `0.8.x` (Kafka 0.8.2.2), the line above it is `main` (Kafka 1.x, in development), and every
-line is merged upwards into the next one, so the sections below accumulate: what a line added
-stays true of every line above it.
+own: `main` implements the **Kafka 1.1.1 wire protocol** — the last release of the 1.x line — and
+nothing above it. The lines below it are `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2),
+`0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards into the next
+one, so the sections below accumulate: what a line added stays true of every line above it.
+
+Unreleased — the 1.x line (Kafka 1.1.1)
+---------------------------------------
+
+The 1.x line, built on top of the `0.11.x` line it was cascade-merged from. Everything below is
+verified against a real Apache **1.1.1** broker (`docker/kafka-1.1.1/`, four listeners) and
+documented in [docs/protocol/1.1.md](docs/protocol/1.1.md), whose **314** wire vectors
+[`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 85 frames this
+line captured and the 229 of the four lines below, which a 1.1.1 broker still speaks. What the line
+delivered, how it was verified and what the line above it starts from is in
+[docs/handoff/main.md](docs/handoff/main.md).
+
+### Added
+
+- **The Kafka 1.1.1 broker of the line** — `docker/kafka-1.1.1/` with the four listeners of the
+  0.11 image (PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL 9095) and its
+  `transaction.state.log.*=1` settings, plus two new ones: **two log directories**
+  (`log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2`, so that `AlterReplicaLogDirs` can move a replica
+  instead of only answering 57) and a **`delegation.token.master.key`** (so that the token apis
+  answer 64 instead of 61). `inter.broker.protocol.version` and `log.message.format.version` are
+  `1.1-IV0`; `docker-compose.yml` builds it as the container `kafka-1-1-1`.
+- **Api keys 34-42** — `ALTER_REPLICA_LOG_DIRS` (34), `DESCRIBE_LOG_DIRS` (35),
+  `SASL_AUTHENTICATE` (36), `CREATE_PARTITIONS` (37), `CREATE_DELEGATION_TOKEN` (38),
+  `RENEW_DELEGATION_TOKEN` (39), `EXPIRE_DELEGATION_TOKEN` (40), `DESCRIBE_DELEGATION_TOKEN` (41)
+  and `DELETE_GROUPS` (42). `Protocol\ApiKeys` now ends at 42; everything above it is Kafka 2.x.
+- **Error codes 56-71** — `KafkaStorageException` (56), `LogDirNotFoundException` (57),
+  `SaslAuthenticationFailedException` (58), `UnknownProducerIdException` (59),
+  `ReassignmentInProgressException` (60) with Kafka 1.0, and `DelegationTokenDisabledException`
+  (61), `DelegationTokenNotFoundException` (62), `DelegationTokenOwnerMismatchException` (63),
+  `UnsupportedByAuthenticationException` (64), `DelegationTokenAuthorizationException` (65),
+  `DelegationTokenExpiredException` (66), `InvalidPrincipalTypeException` (67),
+  `GroupNotEmptyException` (68), `GroupIdNotFoundException` (69), `FetchSessionIdNotFoundException`
+  (70) and `InvalidFetchSessionEpochException` (71) with Kafka 1.1, each with its constant on
+  `KafkaException` and its entry in the code map. **56, 70 and 71 are the only retriable ones**, as
+  in `Errors.java` @ 1.1.1, and 59 extends `OutOfOrderSequenceException` because it is the special
+  case of an out-of-order sequence the broker can explain. Two identifiers deviate from the Java
+  client on purpose: 58 is `SaslAuthenticationFailedException`, because `SaslAuthenticationException`
+  is already the client-side exception of this package, and 64 keeps the Java *class* name
+  `UnsupportedByAuthenticationException` rather than its constant.
+- **`DescribeGroupResponseMetadata::STATE_COMPLETING_REBALANCE`** — Kafka 1.0 renamed the group
+  state between the last JoinGroup and the leader's SyncGroup from `AwaitingSync` to
+  `CompletingRebalance`, and that is the string a 1.x coordinator answers. `STATE_AWAITING_SYNC`
+  stays for the lines below, documented as the 0.9-to-0.11 name of the very same state.
+- **SaslHandshake v1 and the SaslAuthenticate api (key 36, v0)** — KIP-152, Kafka 1.0. The client
+  now opens a SASL connection with a **v1** handshake (`SaslHandshakeRequest::VERSION = 1`,
+  `SaslHandshakeRequestV0` for the frame of the lines below) and carries the PLAIN token inside a
+  `SaslAuthenticateRequest`, whose `SaslAuthenticateResponse` finally has an error code: wrong
+  credentials are the code **58** (`SaslAuthenticationFailedException`) with the message of the
+  broker — `Authentication failed: Invalid username or password` — where a 0.11 broker closed the
+  connection without a word. `SaslAuthenticationException`, the client-side exception the socket
+  layer raises, carries that code, the broker's message and the wire exception as its cause, and
+  still leaves every retry loop of the client. The raw, unframed exchange of a v0 handshake stays
+  implemented and is still served by a 1.1.1 broker; `IO\SocketStream` selects it through a single
+  protected method, and both paths are covered by the unit and the integration suite.
+- **Wire vectors of the two apis** — `docs/protocol/vectors/sasl-authenticate.json` (new) and six
+  more entries in `sasl-handshake.json`: the v1 handshake and its answer, the 33 of a mechanism the
+  broker has not enabled, the 34 of a second handshake (with the **empty** mechanism list that
+  Kafka 1.1 answers there, where 1.0.2 still filled it), the accepted `SaslAuthenticate` exchange,
+  the 58 of a wrong password and the 34 of a second `SaslAuthenticate`. The v0 vectors of the
+  handshake are replayed through `SaslHandshakeRequestV0` from now on.
+- **Produce v4 and v5 (Kafka 1.0)** — the body of the versions 3, 4 and 5 is one and the same
+  (`PRODUCE_REQUEST_V5` is `PRODUCE_REQUEST_V4` is `PRODUCE_REQUEST_V3` @ 1.1.1). Version 4 states
+  that the client understands the error code **56** `KAFKA_STORAGE_ERROR`, which a broker translates
+  to 6 `NOT_LEADER_FOR_PARTITION` for a version 3 or lower; version 5 appends **`log_start_offset`**
+  to every partition entry of the answer. `ProduceRequest::VERSION` is 5 with `ProduceRequestV4` and
+  `ProduceRequestV3` below it, `ProduceResponse` is v5 with `ProduceResponseV4`/`V3` and the new
+  `ProduceResponsePartitionV2`/`ProduceResponseTopicV2` for the frame the versions 2 to 4 share, and
+  `ProduceResponsePartition::$logStartOffset` is `-1` (`INVALID_OFFSET`) below version 5.
+  `Client::produce()` sends **v5** for the message format v2 and keeps v2 for the legacy message
+  sets; the `ProduceRequest::__construct()` signature is unchanged.
+- **Fetch v6 and v7 with the incremental fetch sessions of KIP-227 (Kafka 1.0 and 1.1)** — v6 is the
+  v5 frame in both directions and states that the client understands the error code 56; **v7** adds
+  `session_id` and `epoch` (int32) between the isolation level and the topics array and a trailing
+  `forgotten_topics_data`, and the answer gains a top-level `error_code` and `session_id` behind the
+  throttle time. New: `Protocol\Request\FetchMetadata` — the Java `FetchMetadata`, field for field,
+  with `INVALID_SESSION_ID`, `INITIAL_EPOCH`, `FINAL_EPOCH`, `legacy()`, `initial()`,
+  `newIncremental()`, `nextIncremental()`, `nextCloseExisting()` and `isFull()` (the Java constants
+  `LEGACY` and `INITIAL` are factory methods here, because a PHP class constant cannot hold an
+  object) — and `Protocol\Data\FetchRequestForgottenTopic`. `FetchRequest::VERSION` is 7 with
+  `FetchRequestV6`/`V5` below it and two new optional constructor arguments (`?FetchMetadata
+  $metadata = null`, `array $forgottenTopicPartitions = []`); `FetchResponse` is v7 with
+  `FetchResponseV6`/`V5` and the new `$errorCode`/`$sessionId`, both 0 below version 7.
+  `Client::fetchPartitions()` sends v7 with the **session-less** metadata (`session_id 0`,
+  `epoch -1`), which a 1.1.1 broker serves exactly as it serves a Fetch v6; the sessions themselves
+  are driven by the consumer, see the KIP-227 entry below.
+- **Metadata v5 (Kafka 1.0, KIP-112/113)** — every partition entry of the answer gains
+  **`offline_replicas`**, the replicas whose broker is down or whose log directory has failed; the
+  request is the version 4 frame. `MetadataRequest`/`MetadataResponse` are v5 with
+  `MetadataRequestV4`/`MetadataResponseV4` below them, `Common\PartitionMetadata` gains
+  `$offlineReplicas` (`[]` below version 5) with `PartitionMetadataV0` for the entry of the versions
+  0 to 4, and `Common\TopicMetadataV1` carries the topic entry of the versions 1 to 4.
+  `Cluster`, `TopicMetadata` and `AdminClient::describeTopics()` pass the new field through; on a
+  one-broker cluster it is always empty.
+- **Wire vectors of the three apis** — sixteen frames captured on the 1.1.1 container with the
+  client id and topic `t3-vectors`: the v4 and v5 pairs of Produce (the v5 answer after a
+  `DeleteRecords`, so its `log_start_offset` is 2), the v6 pair of Fetch, the six frames of one
+  fetch session (the full fetch that opens it, the incremental fetch that is answered with the one
+  partition that changed, the fetch that forgets a partition, and the two session errors **70** and
+  **71**) and the v5 pair of Metadata.
+- **The idempotent producer of Kafka 1.x: `UNKNOWN_PRODUCER_ID` (59) is repaired instead of
+  reported** — the broker drops the state of a producer id when every record it wrote into a
+  partition is deleted (`DeleteRecords`, or a retention run), and answers the next batch of that
+  producer with the code 59 rather than with the 45 of a 0.11 broker.
+  `Producer\Internals\TransactionManager` now keeps the **offset of the last record the broker
+  acknowledged** for every topic-partition (`lastAckedOffset()`, `updateLastAckedOffset()`, fed by
+  a new `$baseOffset` argument of `batchCompleted()`) and decides on it, exactly as
+  `TransactionManager.canRetry()` @ 1.1.1 does: the new **`canRetryBatch()`** answers `true` for a
+  59 whose `logStartOffset` is `-1` (the partition moved away from the broker, so the same batch is
+  sent again unchanged) and for one whose `logStartOffset` is **above** that offset — the records
+  really were deleted — after **`startSequencesAtBeginning()`** has numbered *that* partition from
+  the sequence 0 again, keeping the producer id and every other partition. `Client::produce()` sends
+  the repaired batch once more, within `retries` and `retry.backoff.ms`; a 59 that this cannot
+  explain reaches `batchFailed()` as the `OutOfOrderSequence` it is a subclass of. It holds for a
+  transactional producer too — the 1.1.1 coordinator accepts the batch that starts the partition
+  over under the epoch of the open transaction, so a deletion under an open transaction is no longer
+  an abort.
+- **The `log_start_offset` of a refused partition travels with its exception** —
+  `Client::produce()` puts it into the context of the `KafkaException` of every failed partition of
+  a Produce answer, so an application that catches a `TopicPartitionRequestException` can read
+  `getContext()['logStartOffset']` next to the topic and the partition.
+- **Wire vectors of what 1.x changed for the producer** — four Produce **v5** frames captured on the
+  1.1.1 container with the client id and topic `t6-idempotent`: the request and the answer of a
+  duplicate of the batch **four batches back** (error code 0, the base offset of the original append
+  and its stored timestamp — the five-batch window, where a 0.11 broker answered 45), and the
+  request and the answer of the batch that follows a `DeleteRecords` of the whole partition (error
+  code **59** with `log_start_offset = 5`).
+- **The two JBOD apis of KIP-113, Kafka 1.0** — `DescribeLogDirs` (key 35, v0) and
+  `AlterReplicaLogDirs` (key 34, v0), with `Admin\AdminClient::describeLogDirs()` and
+  `Admin\AdminClient::alterReplicaLogDirs()`. Both are **broker-local**, so the first takes a list
+  of broker ids and answers `array<int, array<string, Admin\LogDirInfo>>` — broker id, then the
+  absolute path of each `log.dirs` entry — and the second is keyed by an
+  `Admin\TopicPartitionReplica` (`topic-partition-brokerId`, the `toString()` of the Java class)
+  and reports `null` or the exception of each replica, like `alterConfigs()`. A replica is an
+  `Admin\ReplicaInfo` with `size`, `offsetLag` and `isFuture`. The request array of DescribeLogDirs
+  is **nullable**: `null` asks for every replica of the broker, an empty array only for the
+  directories themselves. `alterReplicaLogDirs()` answers as soon as the move is **accepted** — the
+  copy runs in a `ReplicaAlterLogDirsThread`, and the replica is reported in both directories, the
+  destination with `isFuture = true` and an `offsetLag` that counts down, until the mover swaps the
+  logs in.
+- **Wire vectors of the two apis** — `docs/protocol/vectors/describe-log-dirs.json` and
+  `alter-replica-log-dirs.json`, six frames each, captured on the two log directories of the
+  container: both shapes of the nullable topic array (the empty one answers 64 bytes, the null one
+  answered 235 207 bytes for the several thousand replicas of the shared container and is therefore
+  not stored), the answer for one named partition, the answer taken **while a real move was
+  running**, the accepted move, the **57** of a path that is not in `log.dirs` and the **9** of a
+  replica the broker does not host.
+- **`examples/admin-log-dirs.php`** — the disks of every broker, a replica moved between two of
+  them and watched while the mover copies it, and the two error codes the api has of its own.
+- **DescribeConfigs v1 (key 32) — the config source and the synonyms of KIP-226, Kafka 1.1.** The
+  client sends **version 1** now: the request carries the trailing `include_synonyms` boolean
+  (`AdminClient::describeConfigs($resources, $configNames, $includeSynonyms)`), and every entry of
+  the answer replaces the `is_default` boolean of version 0 with a `config_source` int8 and gains
+  the list of the places the broker looked for that value. New `Admin\ConfigSource` (the ids of
+  `DescribeConfigsResponse.ConfigSource` @ 1.1.1: `UNKNOWN` 0, `TOPIC_CONFIG` 1,
+  `DYNAMIC_BROKER_CONFIG` 2, `DYNAMIC_DEFAULT_BROKER_CONFIG` 3, `STATIC_BROKER_CONFIG` 4,
+  `DEFAULT_CONFIG` 5) and `Admin\ConfigSynonym`; `Admin\ConfigEntry` gained `$source` and
+  `$synonyms`, and its `$isDefault` is derived from the source exactly as `ConfigEntry.isDefault()`
+  does it. `Admin\Config::ownValues()` is new and is the set a read-modify-write has to send back
+  through AlterConfigs — since KIP-226 `nonDefaultValues()` also reports the options that only the
+  **broker** configuration sets. The version 0 of the api stays available as
+  `DescribeConfigsRequestV0`/`DescribeConfigsResponseV0` (with `…ResponseResourceV0` and
+  `…ResponseConfigEntryV0`), and a client that reads it derives the source back from the boolean
+  and the resource type, which is what the Java client does.
+- **The dynamic broker configuration of KIP-226 through AlterConfigs (key 33)** — the frame did not
+  change, the broker did: a **broker** resource is accepted now, where a 0.11 broker refused every
+  one of them with 42. `ConfigResource::defaultBroker()` names the cluster-wide default (the
+  resource type 4 with an **empty** name, `/config/brokers/<default>` in ZooKeeper), which every
+  broker of the cluster picks up and reports with the source `DYNAMIC_DEFAULT_BROKER_CONFIG`, while
+  a value set for one broker wins over it with `DYNAMIC_BROKER_CONFIG`. Only the options of
+  `DynamicBrokerConfig.AllDynamicConfigs` can be changed at runtime; anything else is answered with
+  42 and `Cannot update these configs dynamically: Set(…)`, and the validation refuses the whole
+  resource, not the single option.
+- **CreatePartitions (key 37, v0, KIP-195, Kafka 1.0)** — `CreatePartitionsRequest`/`Response`,
+  `Data\CreatePartitionsRequestTopic`/`…ResponseTopic` and the value object `Admin\NewPartitions`
+  with the Java factory `increaseTo($totalCount, $newAssignments)`.
+  `AdminClient::createPartitions($newPartitions, $timeoutMs, $validateOnly)` sends the request to
+  the active controller and repeats it once on 41, exactly like `createTopics()`, and reports one
+  entry per topic without throwing. The count is what the topic should have **afterwards**: the api
+  can only grow a topic (37 `Topic already has 3 partitions.` otherwise), and an assignment names
+  the brokers of every ADDED partition (39 when its length or width does not fit).
+- **DeleteGroups (key 42, v0, KIP-229, Kafka 1.1)** — `DeleteGroupsRequest`/`Response` and
+  `Data\DeleteGroupsResponseGroup`. `AdminClient::deleteConsumerGroups($groupIds)` looks a
+  coordinator up for every group, sends one request per coordinator and reports one entry per group:
+  `null` when the group and its committed offsets are gone, the code **68** (`GroupNotEmpty`) for a
+  group that still has a member and **69** (`GroupIdNotFound`) for one the coordinator does not
+  know. A deleted group disappears from `listGroups()`, its offsets answer -1 in an OffsetFetch and
+  `describeGroup()` reports it as `Dead`.
+- **Wire vectors of the four apis** — `docs/protocol/vectors/create-partitions.json` and
+  `delete-groups.json` (new, eight and six frames), plus eight DescribeConfigs v1 and six
+  AlterConfigs frames captured on the 1.1.1 container: a topic with and without `include_synonyms`,
+  the broker resource with a dynamic option and a sensitive one, the cluster-wide default resource,
+  the accepted and the refused AlterConfigs of a broker, the growth of a topic, an assignment with
+  `validate_only`, the 37 of a shrink, the 3 of an unknown topic, and the 0/68/69 of DeleteGroups.
+  The six version 0 vectors of DescribeConfigs are replayed through the new `…V0` classes.
+- **The four delegation-token apis of KIP-48 (keys 38 to 41, all v0, Kafka 1.1)** —
+  `CreateDelegationTokenRequest`/`Response`, `RenewDelegationToken…`, `ExpireDelegationToken…` and
+  `DescribeDelegationToken…` with `Data\DescribeDelegationTokenResponseToken`, the principal struct
+  `Common\Security\KafkaPrincipal` that all four embed, and the value objects
+  `Admin\DelegationToken` and `Admin\TokenInformation` (the names of the Java client). The
+  `AdminClient` gained `createDelegationToken(array $renewers = [], int $maxLifeTimeMs = -1)`,
+  `renewDelegationToken(string $hmac, int $renewTimePeriodMs = -1)`,
+  `expireDelegationToken(string $hmac, int $expiryTimePeriodMs = -1)` and
+  `describeDelegationToken(?array $owners = null)`, each of them served by any broker of the
+  cluster. **`throttle_time_ms` is the last field of all four answers**, not the first one — an api
+  added after KIP-124 appends it. A token is named by the raw bytes of its **HMAC**, never by its
+  id; `DelegationToken::hmacAsBase64String()` is the form `kafka-delegation-tokens.sh` prints.
+- **Limitation: a delegation token can be issued but not used.** Authenticating *with* a token is a
+  SASL/SCRAM login whose user name is the token id and whose password is the base64 HMAC, and this
+  client speaks SASL/**PLAIN** only. The four apis are implemented and verified against a real
+  1.1.1 broker; the login with their result is not implemented. See "What is not in Kafka 1.1.1".
+- **Wire vectors of the token apis** — the new `docs/protocol/vectors/delegation-tokens.json`, the
+  one vector file that holds several apis (its `apiKey` is null and every request vector carries the
+  key of its own api). Its fourteen frames are one life of one token on the SASL_PLAINTEXT listener
+  with the client id `t7-vectors` and the principal `User:kafkatest`, plus the error answers 67, 63,
+  62, 66 and the two 64s of the PLAINTEXT listener.
+- **The incremental fetch sessions of KIP-227 in the consumer (Kafka 1.1)** — `KafkaConsumer` now
+  holds one fetch session per broker it reads from. New `Consumer\Internals\FetchSessionHandler`
+  (the `org.apache.kafka.clients.FetchSessionHandler` of the Java client: `newBuilder()` →
+  `FetchSessionHandlerBuilder::add(TopicPartition, int $fetchOffset)` → `build()` gives the
+  `FetchRequestData` of the next request with its `toSend`, `toForget`, `sessionPartitions` and
+  `metadata`; `handleResponse()` says whether the answer may be read and moves the epoch on,
+  `handleError()` puts the handler back to a full fetch), and the new
+  `Client::fetchPartitionsWithSessions()`, which the consumer fetches through and which returns
+  **only the partitions the brokers answered** — an incremental answer leaves out everything that
+  has no news, and the state of those partitions stays valid. The Java `PartitionData` triple is a
+  single fetch offset here, because a Fetch request of this client carries one `MaxBytes` for every
+  partition and a `LogStartOffset` that only a follower fills in. `Client::fetchPartitions()` keeps
+  its signature and its session-less behaviour for the bare client, and
+  `Client::getFetchSessionHandlers()` reports the sessions a client holds. The first request to a
+  broker opens the session with a full fetch, every following one states only the positions that
+  moved, a partition that leaves the assignment (a rebalance, `pause()`, a deleted topic) travels in
+  `forgotten_topics_data`, and the error codes **70** and **71**, a broker that hands out no session
+  at all and a request that was never answered are all handled inside the client: a `poll()` never
+  sees a session error. Verified against the 1.1.1 container in
+  `tests/Integration/FetchSessionConsumerTest.php`, including a real two-member rebalance and a
+  session cache filled to its 1000 slots.
+- **Wire vectors of the consumer side of a session** (`fetch.json`, four more Fetch v7 frames with
+  the client id and topic `t8-vectors`): `fetch.request.v7.incremental-forgotten` — an incremental
+  fetch that states the two positions that moved **and** forgets a third partition, the frame a
+  rebalance produces — with its answer, and `fetch.request.v7.close-existing` — the recovery from a
+  session error: the client's own session id with the epoch 0 — with the answer that carries a
+  **new** session id and every partition of the request.
+- **`examples/delegation-tokens.php`** — one token's whole life against a SASL listener of the
+  container: created with a renewer and a maximum lifetime, described, renewed (which lands on the
+  maximum lifetime rather than on the period that was asked for) and removed, with the **62** of
+  expiring it a second time.
+- **The release record of the line** — [docs/handoff/main.md](docs/handoff/main.md) is the release
+  notes of the 1.x line (what was built, how it was verified, the deviations the broker forced, the
+  known limitations) with the plan it was built from kept below them, and
+  [docs/handoff/2.0.x.md](docs/handoff/2.0.x.md) is the handoff of the next line: what Kafka 2.0.1
+  adds over 1.1.1 api by api, the error codes, a ticket plan and the pitfalls of this session.
+
+### Changed
+
+- **The protocol document is `docs/protocol/1.1.md`** (renamed from `docs/protocol/0.11.0.md`, as
+  every line renames it), and its front matter, api-key table, "What is not in Kafka 1.1.1", error
+  codes, group-state tables and "Broker quirks and observations" now describe Kafka 1.1.1. The
+  section "The last Scala api does not check its version" became **"Every api of the table
+  validates its version"**: Kafka 1.0 moved ControlledShutdown to the schemas of the Java client,
+  so **ApiVersions is the only api left whose unknown version is answered** instead of costing the
+  connection.
+- **The api-key table is the 43-key answer of a 1.1.1 broker** (keys 0 to 42), re-captured into
+  `docs/protocol/vectors/api-versions.json` as `apiversions.response.v0` and `.v1`. Against
+  0.11.0.3 it raises Produce to v5, Fetch to v7, Metadata to v5, SaslHandshake to v1 and
+  DescribeConfigs to v1, adds the nine keys 34-42, and reports **ControlledShutdown as v0-v1**
+  where a 0.9-to-0.11 broker reported v1 alone.
+- **Behaviour of the broker that the inherited suite pinned differently** — all of it measured on
+  the container and recorded in the document: a duplicate of any of the **last five** batches of a
+  producer id and partition is answered as the original append (0.11 kept one batch and answered 45
+  for anything older), while a **first** batch of a producer id the broker has no entry for that
+  does not start at the sequence 0 is **59**, where 0.11.0.3 answered 45 — the 45 is left for an
+  entry that exists, i.e. a gap in the sequence or an epoch bump that does not restart at 0; a Fetch
+  below v4 of a partition whose records carry headers is **served with
+  the headers dropped** and the error code 0, where 0.11 refused it with -1 — measured with a batch
+  of three records of which only the middle one has a header, so no record is skipped and the
+  timestamps survive down to the message format v1; `is_default` of a
+  DescribeConfigs v0 answer is derived from the KIP-226 config **source**, so a topic option whose
+  broker synonym stands in the `server.properties` is not a default any more; `is_read_only` of a
+  broker entry means "not dynamically updatable"; AlterConfigs **accepts** a broker resource and
+  refuses it per option (`Cannot update these configs dynamically: Set(log.retention.hours)`); and
+  CreateTopics rewrote three of its error messages (`Number of partitions must be larger than 0.`,
+  `Replication factor: 2 larger than available brokers: 1.`, `Topic name "x" is illegal, it
+  contains a character other than …`).
+- **README** now announces the 1.x line: the badges point at `main`, the protocol-version matrix
+  lists all 43 api keys of a 1.1.1 broker with the ticket that raises each remaining one, and the
+  feature matrix gained a `main` column.
+- **The "Idempotent producer" section of the README and the sections "The idempotent producer" and
+  "Transactions" of the protocol document** describe the 1.x producer: the five-batch window, the
+  error code 59 with the `log_start_offset` that decides what to do about it, and the whole
+  behaviour table re-measured against the 1.1.1 container. The transaction apis 24-28 are unchanged
+  at version 0 and every observation of the 0.11 line was re-measured on the 1.1.1 coordinator with
+  the same result, down to the defaults `transactional.id.expiration.ms = 604800000` and
+  `transaction.abort.timed.out.transaction.cleanup.interval.ms = 60000`.
+- **The consistency pass over the documentation of the line** — `docs/protocol/1.1.md` no longer
+  names a ticket anywhere except at the consumer half of the fetch sessions, "Broker quirks and
+  observations" is grouped by api (with new groups for the KIP-226 configuration, CreatePartitions
+  and DeleteGroups, and for the delegation tokens), the "Wire vectors" preamble states the counts of
+  the line, and "What is not in Kafka 1.1.1" now also names the replication apis 4, 5 and 6.
+  `docs/protocol/vectors/README.md` lists what each file captured on the 1.1.1 container, the README
+  matrix and the feature and limitation tables are complete, and `docs/CASCADE.md` and `CLAUDE.md`
+  record the finished line.
+
+### Fixed
+
+- **`LogDirsApiTest` no longer depends on the speed of the disk.** The two tests that watch a replica move
+  in flight caught it on the container, where an 8 MB partition takes a quarter of a second, and missed it
+  on a CI runner that copied the same partition in less than one request round trip. They now bound the
+  mover with the dynamic broker option `replica.alter.log.dirs.io.max.bytes.per.second` (KIP-113) through
+  `alterConfigs()` of the broker resource — 1 MB/s, eight seconds for the move — and remove it again in
+  `tearDown()`. CI also runs the integration suite with the SSL and SASL listener variables now, so it
+  reports the same 549 tests with zero skips as the local gate.
+- **Seven integration tests were silently skipped against the 1.1.1 broker.** Three fixtures still
+  named the container of the line below (`kafka-0-11-0-3`) and the SSL tests still pointed at its
+  certificate, so `MessageFormatV1Test`, `RecordBatchV2Test` and the quota tests skipped themselves
+  instead of running — the same pitfall the 0.11 line found. The fixtures name `kafka-1-1-1` and
+  `docker/kafka-1.1.1/ssl/broker.crt` now, and the suite runs with **zero** skips.
+- **Two docblocks asserted what a 1.1.1 broker contradicts** — `ApiVersionsResponse` claimed the
+  answer holds "34 keys 0 to 33" and `ControlledShutdownRequestV0` that the broker reports
+  `minVersion = 1` for the api key 7. Both are corrected against the api table of the container; no
+  behaviour changed.
+- **Seven examples still pointed at the line below.** `idempotent-producer.php` and
+  `record-headers.php` carried an `@see docs/protocol/0.11.0.md`; they and `producer.php` and
+  `transactional-producer.php` printed `docker exec kafka-0-11-0-3 …` commands that no container of
+  this branch answers; `ssl.php` and `sasl.php` read the broker certificate from
+  `docker/kafka-0.11.0.3/ssl/`, the image directory of the line below; and `admin.php` announced
+  itself as an example "for the Kafka 0.11.0.3 protocol". All of them name the 1.1.1 document,
+  container and image directory now — `DocumentationSyncTest` does not scan `examples/`, so nothing
+  had caught it.
 
 Unreleased — the 0.11.x line (Kafka 0.11.0.3)
 -------------------------------------------
 
 The 0.11 line, built on top of the `0.10.x` line it was cascade-merged from. Everything below was
 verified against a real Apache **0.11.0.3** broker (`docker/kafka-0.11.0.3/`, four listeners) and
-is documented byte for byte in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), whose 229 wire
+is documented byte for byte in [docs/protocol/1.1.md](docs/protocol/1.1.md), whose 229 wire
 vectors [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 109 frames
 this line captured and the 120 of the three lines below, which a 0.11.0.3 broker still speaks.
 
@@ -203,7 +530,7 @@ this line captured and the 120 of the three lines below, which a 0.11.0.3 broker
 
 ### Changed
 
-- **`docs/protocol/0.11.0.md` is the grammar of Kafka 0.11.0.3.** The api-key table is the literal
+- **`docs/protocol/1.1.md` is the grammar of Kafka 0.11.0.3.** The api-key table is the literal
   ApiVersions answer of the container (34 keys), the error-code table runs to 55, the sources are
   the ones at `0.11.0.3-rc0` — the Apache repository has no `0.11.0.3` tag — and the "Broker quirks
   and observations" section records what 0.11 changed against 0.10.2.2.
@@ -275,7 +602,7 @@ Previous line — 0.10.x (Kafka 0.10.2.2)
 
 Everything a Kafka 0.10.2.2 broker speaks, built on top of the `0.9.x` line it was merged from.
 Every wire format below was verified against a real 0.10.2.2 broker and is documented byte for
-byte in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), with 120 wire vectors in
+byte in [docs/protocol/1.1.md](docs/protocol/1.1.md), with 120 wire vectors in
 [docs/protocol/vectors](docs/protocol/vectors) that `tests/Compliance` replays through the
 protocol classes.
 
@@ -367,7 +694,7 @@ protocol classes.
   `metadata.json`, `produce.json`, `fetch.json`, `offsets.json`, `offset-fetch.json` and
   `join-group.json`, all captured from the container and replayed by
   `tests/Compliance/ProtocolVectorTest`; `DocumentationSyncTest` additionally checks that every
-  `@see docs/protocol/0.11.0.md, section "…"` of the sources names a heading that exists.
+  `@see docs/protocol/1.1.md, section "…"` of the sources names a heading that exists.
 - **Examples** — [`examples/create-topic.php`](examples/create-topic.php),
   [`examples/offsets-for-times.php`](examples/offsets-for-times.php) and
   [`examples/sasl.php`](examples/sasl.php).
@@ -393,7 +720,7 @@ protocol classes.
 - **Breaking: `Client::joinGroup()` takes a `?int $rebalanceTimeoutMs = null`** as its last
   argument (`null` = the configured `max.poll.interval.ms`), and `Client` sends Produce v2, Fetch
   v3, Offsets v1, Metadata v2, OffsetFetch v2 and JoinGroup v1 instead of the 0.9 versions.
-- **The protocol document is `docs/protocol/0.11.0.md`** and describes Kafka 0.10.2.2: the api-key
+- **The protocol document is `docs/protocol/1.1.md`** and describes Kafka 0.10.2.2: the api-key
   table is the literal ApiVersions answer of the broker, one section per api of the line, the error
   table runs to 44, and "Broker quirks and observations" collects every behaviour the integration
   suite established. `docs/protocol/0.9.0.md` stays on the `0.9.x` branch.

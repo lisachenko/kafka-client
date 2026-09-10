@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0;
  * Kafka 0.10.0 added version 0 and Kafka 0.11 version 1, which is the same request with a `throttle_time_ms`
  * appended to the answer - the one api of the release that puts the field at the end instead of the beginning.
  *
- * @see docs/protocol/0.11.0.md, section "ApiVersions API (key 18, v0 and v1)"
+ * @see docs/protocol/1.1.md, section "ApiVersions API (key 18, v0 and v1)"
  */
 #[CoversClass(ApiVersionsRequest::class)]
 #[CoversClass(ApiVersionsRequestV0::class)]

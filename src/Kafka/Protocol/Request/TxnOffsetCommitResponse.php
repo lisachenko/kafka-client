@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
  * transaction - 14, 15, 16, 47, 48 - is repeated on every partition of the answer, because
  * `GroupCoordinator.handleTxnCommitOffsets` @ 0.11.0.3 maps its single result over the requested partitions.
  *
- * @see docs/protocol/0.11.0.md, section "TxnOffsetCommit API (key 28, v0)"
+ * @see docs/protocol/1.1.md, section "TxnOffsetCommit API (key 28, v0)"
  */
 class TxnOffsetCommitResponse extends AbstractResponse
 {

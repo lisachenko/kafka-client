@@ -16,11 +16,12 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
 
 /**
- * Fetch API (key 1), version 5
+ * Fetch API (key 1), version 7
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -35,24 +36,27 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
  * handle this case.
  *
  * <pre>
- *   FetchRequest (Version: 5) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel
+ *   FetchRequest (Version: 7) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
  *                                [TopicName [Partition FetchOffset LogStartOffset MaxBytes]]
+ *                                [TopicName [Partition]]
  *     ReplicaId      => int32
  *     MaxWaitTime    => int32
  *     MinBytes       => int32
  *     MaxBytes       => int32
  *     IsolationLevel => int8
+ *     SessionId      => int32     -- since version 7
+ *     Epoch          => int32     -- since version 7
  *     FetchOffset    => int64
  *     LogStartOffset => int64
  * </pre>
  *
- * The five versions of this api that a 0.11.0.3 broker serves next to this one differ as follows:
+ * The seven versions of this api that a 1.1.1 broker serves next to this one differ as follows:
  *
  * * **v1** (Kafka 0.9) left the request untouched and only prefixed the answer with `ThrottleTimeMs`, see
  *   {@see FetchResponse};
  * * **v2** (Kafka 0.10.0) is byte-identical to v1 in both directions - `FETCH_REQUEST_V2` is `FETCH_REQUEST_V1` in
- *   `Protocol.java` @ 0.11.0.3 - and means one thing only: *the client understands message format v1*. A broker
- *   answers a request below version 2 by converting every stored record down to message format v0
+ *   `FetchRequest.schemaVersions()` @ 1.1.1 - and means one thing only: *the client understands message format v1*.
+ *   A broker answers a request below version 2 by converting every stored record down to message format v0
  *   (`KafkaApis.handleFetchRequest`), which strips the timestamps and turns the relative inner offsets of a
  *   compressed set back into absolute ones;
  * * **v3** (Kafka 0.10.1, KIP-74) adds the request-level `MaxBytes` after `MinBytes`, which bounds the **whole**
@@ -62,12 +66,24 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
  *   transaction flags that no lower version has a place for. Its answer carries the `LastStableOffset` and the
  *   `AbortedTransactions` of every partition;
  * * **v5** (KIP-107) adds the `LogStartOffset` of a partition entry, which only a follower fills in, and the
- *   `LogStartOffset` of every partition of the answer.
+ *   `LogStartOffset` of every partition of the answer;
+ * * **v6** (Kafka 1.0) is byte-identical to v5 in both directions and says that the client understands the error
+ *   code **56** `KAFKA_STORAGE_ERROR`, which a broker translates to 6 `NOT_LEADER_FOR_PARTITION` for a request of
+ *   version 5 or lower ({@see FetchRequestV6});
+ * * **v7** (Kafka 1.1, KIP-227) adds the **incremental fetch sessions**: the `SessionId` and the `Epoch` of
+ *   {@see FetchMetadata} in front of the topics array, and the trailing `forgotten_topics_data` behind it
+ *   ({@see \Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic}); the answer gains a top-level error code
+ *   and the session id, see {@see FetchResponse}.
  *
- * {@see FetchRequestV4}, {@see FetchRequestV3}, {@see FetchRequestV2}, {@see FetchRequestV1} and
- * {@see FetchRequestV0} keep the lower versions available.
+ * A version 7 request **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
+ * which is what this class sends when it is given no metadata - is served exactly like a version 6 request: the
+ * whole requested set comes back and the answer reports `session_id = 0`. That is what
+ * {@see \Protocol\Kafka\Client::fetchPartitions()} sends today.
  *
- * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
+ * {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4}, {@see FetchRequestV3},
+ * {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower versions available.
+ *
+ * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -79,7 +95,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 7;
 
     /**
      * Default bound of a whole answer, the 50 MiB of the `fetch.max.bytes` option of the Java consumer
@@ -109,6 +125,30 @@ class FetchRequest extends AbstractRequest
     protected readonly array $topicPartitions;
 
     /**
+     * Id of the fetch session this request belongs to, 0 for a request that has none.
+     *
+     * @since Version 7 of protocol
+     */
+    protected readonly int $sessionId;
+
+    /**
+     * Epoch of that fetch session: 0 asks for a new session, -1 says "no session", anything above 0 is an
+     * incremental fetch of an existing one.
+     *
+     * @since Version 7 of protocol
+     */
+    protected readonly int $epoch;
+
+    /**
+     * Partitions the fetch session should drop, one entry per topic
+     *
+     * @since Version 7 of protocol
+     *
+     * @var list<FetchRequestForgottenTopic>
+     */
+    protected readonly array $forgottenTopics;
+
+    /**
      * @param array<string, array<int, int>> $topicPartitions   Fetch offset of every partition, as topic =>
      *                                                          partition => offset. The **order** of this array is
      *                                                          the order the broker fills the answer in, see
@@ -131,6 +171,13 @@ class FetchRequest extends AbstractRequest
      *                                                          debugging purposes.
      * @param int                            $maxBytes          The maximum number of bytes of the whole answer
      *                                                          (`fetch.max.bytes`), the field that version 3 added.
+     * @param FetchMetadata|null             $metadata          Session id and epoch of version 7, `null` for the
+     *                                                          session-less full fetch that every version below 7
+     *                                                          sends, {@see FetchMetadata::legacy()}.
+     * @param array<string, list<int>>       $forgottenTopicPartitions Partitions the session should forget, as
+     *                                                          topic => [partition, ...]; only version 7 puts them
+     *                                                          on the wire and only a session does anything with
+     *                                                          them.
      */
     public function __construct(
         array $topicPartitions,
@@ -163,8 +210,20 @@ class FetchRequest extends AbstractRequest
          * aborted in that range, so that the consumer can drop their records. A version below 4 does not carry the
          * field at all and always reads uncommitted.
          */
-        protected readonly int $isolationLevel = self::READ_UNCOMMITTED
+        protected readonly int $isolationLevel = self::READ_UNCOMMITTED,
+        ?FetchMetadata $metadata = null,
+        array $forgottenTopicPartitions = []
     ) {
+        $metadata ??= FetchMetadata::legacy();
+        $this->sessionId = $metadata->sessionId;
+        $this->epoch     = $metadata->epoch;
+
+        $forgottenTopics = [];
+        foreach ($forgottenTopicPartitions as $topic => $partitions) {
+            $forgottenTopics[] = new FetchRequestForgottenTopic((string) $topic, array_values($partitions));
+        }
+        $this->forgottenTopics = $forgottenTopics;
+
         $topicClass            = static::topicClass();
         $partitionClass        = $topicClass::partitionClass();
         $packedTopicPartitions = [];
@@ -186,7 +245,9 @@ class FetchRequest extends AbstractRequest
      * The order of the pairs is kept, because it is the order in which the broker fills the answer of a version 3
      * request until its `MaxBytes` are used up.
      *
-     * @param iterable<array{TopicPartition, int}> $partitionOffsets Pairs of a topic partition and its fetch offset
+     * @param iterable<array{TopicPartition, int}> $partitionOffsets         Pairs of a topic partition and its
+     *                                                                       fetch offset
+     * @param array<string, list<int>>             $forgottenTopicPartitions Partitions the session should forget
      */
     public static function fromTopicPartitions(
         iterable $partitionOffsets,
@@ -197,7 +258,9 @@ class FetchRequest extends AbstractRequest
         string $clientId = '',
         int $correlationId = 0,
         int $maxBytes = self::DEFAULT_MAX_BYTES,
-        int $isolationLevel = self::READ_UNCOMMITTED
+        int $isolationLevel = self::READ_UNCOMMITTED,
+        ?FetchMetadata $metadata = null,
+        array $forgottenTopicPartitions = []
     ): static {
         $topicPartitions = [];
         foreach ($partitionOffsets as [$topicPartition, $fetchOffset]) {
@@ -213,7 +276,9 @@ class FetchRequest extends AbstractRequest
             $clientId,
             $correlationId,
             $maxBytes,
-            $isolationLevel
+            $isolationLevel,
+            $metadata,
+            $forgottenTopicPartitions
         );
     }
 
@@ -234,7 +299,14 @@ class FetchRequest extends AbstractRequest
         if (static::VERSION >= 4) {
             $body['isolationLevel'] = BinarySchema::TYPE_INT8;
         }
+        if (static::VERSION >= 7) {
+            $body['sessionId'] = BinarySchema::TYPE_INT32;
+            $body['epoch']     = BinarySchema::TYPE_INT32;
+        }
         $body['topicPartitions'] = ['topic' => static::topicClass()];
+        if (static::VERSION >= 7) {
+            $body['forgottenTopics'] = [FetchRequestForgottenTopic::class];
+        }
 
         return $header + $body;
     }
@@ -245,6 +317,29 @@ class FetchRequest extends AbstractRequest
     public function getIsolationLevel(): int
     {
         return static::VERSION >= 4 ? $this->isolationLevel : self::READ_UNCOMMITTED;
+    }
+
+    /**
+     * Returns the session id and the epoch this request travels with, {@see FetchMetadata::legacy()} below version 7
+     */
+    public function getMetadata(): FetchMetadata
+    {
+        return static::VERSION >= 7 ? new FetchMetadata($this->sessionId, $this->epoch) : FetchMetadata::legacy();
+    }
+
+    /**
+     * Returns the partitions this request asks the fetch session to forget, as topic => [partition, ...]
+     *
+     * @return array<string, list<int>>
+     */
+    public function getForgottenTopicPartitions(): array
+    {
+        $forgotten = [];
+        foreach ($this->forgottenTopics as $forgottenTopic) {
+            $forgotten[$forgottenTopic->topic] = $forgottenTopic->partitions;
+        }
+
+        return $forgotten;
     }
 
     /**

@@ -21,19 +21,29 @@ use Protocol\Kafka\Common\Errors\ClientExceptionInterface;
 use Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\ConcurrentTransactionsException;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
+use Protocol\Kafka\Common\Errors\DelegationTokenAuthorizationException;
+use Protocol\Kafka\Common\Errors\DelegationTokenDisabledException;
+use Protocol\Kafka\Common\Errors\DelegationTokenExpiredException;
+use Protocol\Kafka\Common\Errors\DelegationTokenNotFoundException;
+use Protocol\Kafka\Common\Errors\DelegationTokenOwnerMismatchException;
 use Protocol\Kafka\Common\Errors\DuplicateSequenceNumberException;
+use Protocol\Kafka\Common\Errors\FetchSessionIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
+use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
+use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\IllegalSaslStateException;
 use Protocol\Kafka\Common\Errors\InconsistentGroupProtocolException;
 use Protocol\Kafka\Common\Errors\InvalidCommitOffsetSizeException;
 use Protocol\Kafka\Common\Errors\InvalidConfigException;
+use Protocol\Kafka\Common\Errors\InvalidFetchSessionEpochException;
 use Protocol\Kafka\Common\Errors\InvalidFetchSizeException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\InvalidPartitionsException;
 use Protocol\Kafka\Common\Errors\InvalidPidMappingException;
+use Protocol\Kafka\Common\Errors\InvalidPrincipalTypeException;
 use Protocol\Kafka\Common\Errors\InvalidReplicaAssignmentException;
 use Protocol\Kafka\Common\Errors\InvalidReplicationFactorException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
@@ -44,7 +54,9 @@ use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\InvalidTxnStateException;
 use Protocol\Kafka\Common\Errors\InvalidTxnTimeoutException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\KafkaStorageException;
 use Protocol\Kafka\Common\Errors\LeaderNotAvailableException;
+use Protocol\Kafka\Common\Errors\LogDirNotFoundException;
 use Protocol\Kafka\Common\Errors\MessageTooLargeException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
@@ -58,11 +70,13 @@ use Protocol\Kafka\Common\Errors\OperationNotAttemptedException;
 use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\PolicyViolationException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
+use Protocol\Kafka\Common\Errors\ReassignmentInProgressException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\RecordListTooLargeException;
 use Protocol\Kafka\Common\Errors\ReplicaNotAvailableException;
 use Protocol\Kafka\Common\Errors\RequestTimedOutException;
 use Protocol\Kafka\Common\Errors\RetriableException;
+use Protocol\Kafka\Common\Errors\SaslAuthenticationFailedException;
 use Protocol\Kafka\Common\Errors\SecurityDisabledException;
 use Protocol\Kafka\Common\Errors\ServerExceptionInterface;
 use Protocol\Kafka\Common\Errors\StaleControllerEpochException;
@@ -72,7 +86,9 @@ use Protocol\Kafka\Common\Errors\TransactionalIdAuthorizationException;
 use Protocol\Kafka\Common\Errors\TransactionCoordinatorFencedException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
+use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnsupportedByAuthenticationException;
 use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Common\Errors\UnsupportedSaslMechanismException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
@@ -90,7 +106,10 @@ use RuntimeException;
  * (Errors.java @ 0.10.2.2); of them only 41 NotController is retriable. The codes 45-55 are those of Kafka 0.11
  * (Errors.java @ 0.11.0.3): the producer id, sequence and transaction codes of KIP-98 and the two ACL codes; only
  * 46 DuplicateSequenceNumber extends RetriableException in the Java client (the transactional producer retries 51
- * on its own).
+ * on its own). The codes 56-60 are those of Kafka 1.0 and 61-71 those of Kafka 1.1 (Errors.java @ 1.1.1): the JBOD,
+ * SaslAuthenticate, producer-id and reassignment codes, the delegation token, DeleteGroups and fetch session codes;
+ * of them 56 KafkaStorageError (an InvalidMetadataException), 70 FetchSessionIdNotFound and 71
+ * InvalidFetchSessionEpoch extend RetriableException in the Java client.
  */
 #[CoversClass(KafkaException::class)]
 final class KafkaExceptionTest extends TestCase
@@ -159,6 +178,22 @@ final class KafkaExceptionTest extends TestCase
             'TransactionalIdAuthorizationFailed' => [53, TransactionalIdAuthorizationException::class, false],
             'SecurityDisabled'              => [54, SecurityDisabledException::class, false],
             'OperationNotAttempted'         => [55, OperationNotAttemptedException::class, false],
+            'KafkaStorageError'                     => [56, KafkaStorageException::class, true],
+            'LogDirNotFound'                        => [57, LogDirNotFoundException::class, false],
+            'SaslAuthenticationFailed'              => [58, SaslAuthenticationFailedException::class, false],
+            'UnknownProducerId'                     => [59, UnknownProducerIdException::class, false],
+            'ReassignmentInProgress'                => [60, ReassignmentInProgressException::class, false],
+            'DelegationTokenAuthDisabled'           => [61, DelegationTokenDisabledException::class, false],
+            'DelegationTokenNotFound'               => [62, DelegationTokenNotFoundException::class, false],
+            'DelegationTokenOwnerMismatch'          => [63, DelegationTokenOwnerMismatchException::class, false],
+            'DelegationTokenRequestNotAllowed'      => [64, UnsupportedByAuthenticationException::class, false],
+            'DelegationTokenAuthorizationFailed'    => [65, DelegationTokenAuthorizationException::class, false],
+            'DelegationTokenExpired'                => [66, DelegationTokenExpiredException::class, false],
+            'InvalidPrincipalType'                  => [67, InvalidPrincipalTypeException::class, false],
+            'NonEmptyGroup'                         => [68, GroupNotEmptyException::class, false],
+            'GroupIdNotFound'                       => [69, GroupIdNotFoundException::class, false],
+            'FetchSessionIdNotFound'                => [70, FetchSessionIdNotFoundException::class, true],
+            'InvalidFetchSessionEpoch'              => [71, InvalidFetchSessionEpochException::class, true],
         ];
     }
 
@@ -212,7 +247,7 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Codes above 55 were introduced by Kafka 1.0 and later (56 KAFKA_STORAGE_ERROR), a 0.11.0.3 broker never sends them
+     * Codes above 71 were introduced by Kafka 2.0 and later (72 LISTENER_NOT_FOUND), a 1.1.1 broker never sends them
      *
      * @return array<string, array{int}>
      */
@@ -220,8 +255,8 @@ final class KafkaExceptionTest extends TestCase
     {
         return [
             'NoError'                       => [0],
-            'KafkaStorageError (56)'        => [56],
-            'LogDirNotFound (57)'           => [57],
+            'ListenerNotFound (72)'         => [72],
+            'TopicDeletionDisabled (73)'    => [73],
             'out of range'                  => [4242],
             'negative out of range'         => [-999],
         ];
@@ -249,19 +284,19 @@ final class KafkaExceptionTest extends TestCase
     }
 
     /**
-     * Guards against a post-0.11 error class sneaking into the mapping
+     * Guards against a post-1.1 error class sneaking into the mapping
      */
-    public function testOnlyTheErrorCodesOfKafka01103AreMapped(): void
+    public function testOnlyTheErrorCodesOfKafka111AreMapped(): void
     {
         $mappedCodes = [];
-        foreach (range(-10, 60) as $errorCode) {
+        foreach (range(-10, 80) as $errorCode) {
             $exception = KafkaException::fromCode($errorCode, []);
             if (!$exception instanceof UnknownErrorException || $errorCode === KafkaException::UNKNOWN) {
                 $mappedCodes[] = $errorCode;
             }
         }
 
-        self::assertSame(array_merge([-1], range(1, 55)), $mappedCodes);
+        self::assertSame(array_merge([-1], range(1, 71)), $mappedCodes);
     }
 
     /**

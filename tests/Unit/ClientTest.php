@@ -36,6 +36,7 @@ use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Header;
@@ -46,6 +47,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\Internals\FetchSessionHandler;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Network\ConnectionFactory;
@@ -55,6 +57,7 @@ use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Tests\Compliance\MessageFields;
@@ -67,7 +70,7 @@ use Protocol\Kafka\Tests\Unit\Fixture\TransactionalTestClient;
  * Tests the low-level client against scripted brokers: the fan-out to the partition leaders, the correlation of the
  * answers, the retries after a metadata refresh and the reporting of a partially failed request.
  *
- * @see docs/protocol/0.11.0.md
+ * @see docs/protocol/1.1.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(RetryPolicy::class)]
@@ -351,7 +354,7 @@ final class ClientTest extends TestCase
         string $compressionType,
         int $expectedCodec
     ): void {
-        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -390,7 +393,7 @@ final class ClientTest extends TestCase
 
     public function testABatchIsSentAsItIsWithoutACompressionType(): void
     {
-        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 1]]]));
+        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 1]]]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -573,15 +576,21 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 5, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes` and
-        // the isolation level `read_uncommitted`
-        self::assertStringStartsWith('00010005', $request, 'the Fetch api is spoken in version 5');
-        self::assertStringContainsString('0010000000', $request, 'fetch.max.bytes and read_uncommitted');
+        // ApiKey 1, ApiVersion 7, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch
+        self::assertStringStartsWith('00010007', $request, 'the Fetch api is spoken in version 7');
+        self::assertStringContainsString(
+            '00100000' . '00' . '00000000' . 'ffffffff',
+            $request,
+            'fetch.max.bytes, read_uncommitted and the session-less metadata of KIP-227'
+        );
         // The partitions travel in the order they were given, which is the order the broker fills the answer in;
-        // the -1 in front of every MaxBytes is the LogStartOffset of v5, which only a follower fills in
+        // the -1 in front of every MaxBytes is the LogStartOffset of v5, which only a follower fills in, and the
+        // trailing empty array is the `forgotten_topics_data` of version 7
         self::assertStringEndsWith(
             '00000001' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
-            . '00000000' . '0000000000000003' . 'ffffffffffffffff' . '00010000',
+            . '00000000' . '0000000000000003' . 'ffffffffffffffff' . '00010000'
+            . '00000000',
             $request
         );
     }
@@ -645,7 +654,7 @@ final class ClientTest extends TestCase
         yield 'read_committed'   => ['read_committed', '01'];
     }
 
-    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionThreeRecordBatch(): void
+    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionFiveRecordBatch(): void
     {
         $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
         $this->brokers
@@ -657,8 +666,8 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 3, correlation id, client id, then the null transactional id of a plain producer
-        self::assertStringStartsWith('00000003', $frame, 'the Produce api is spoken in version 3');
+        // ApiKey 0, ApiVersion 5, correlation id, client id, then the null transactional id of a plain producer
+        self::assertStringStartsWith('00000005', $frame, 'the Produce api is spoken in version 5');
         self::assertStringContainsString('74372d636c69656e74' . 'ffff', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
@@ -670,7 +679,7 @@ final class ClientTest extends TestCase
 
     public function testAMessageFormatBelowTheRecordBatchIsSentAsAProduceVersionTwo(): void
     {
-        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -941,6 +950,120 @@ final class ClientTest extends TestCase
         self::assertFalse($manager->hasFatalError());
     }
 
+    public function testAnUnknownProducerIdAboveTheAcknowledgedOffsetNumbersThePartitionFromZeroAndSendsItAgain(): void
+    {
+        $leader = new BrokerConnection(
+            ResponseFrame::initProducerId(0, 0, 2000, 0),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 0]]], 0, -1, [self::TOPIC => [0 => 0]]),
+            // Every record of this producer was deleted in the meantime: the log now starts at 5 and the broker
+            // has no state of the producer id left, which Kafka 1.0 answers with 59 instead of 45
+            ResponseFrame::produce(
+                0,
+                [self::TOPIC => [0 => [KafkaException::UNKNOWN_PRODUCER_ID, -1]]],
+                0,
+                -1,
+                [self::TOPIC => [0 => 5]]
+            ),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]], 0, -1, [self::TOPIC => [0 => 5]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+        $client->produce([self::TOPIC => [0 => [new Record('the first one')]]], $manager);
+
+        $result = $client->produce([self::TOPIC => [0 => [new Record('after the deletion')]]], $manager);
+
+        self::assertSame(5, $result[self::TOPIC][0]->baseOffset, 'the batch that was sent again was appended');
+        self::assertSame(2000, $manager->getProducerIdAndEpoch()->producerId, 'and under the very same producer id');
+        self::assertSame(1, $manager->sequenceNumber(new TopicPartition(self::TOPIC, 0)));
+
+        $frames  = $leader->getReceivedFrames();
+        $refused = MemoryRecords::fromBuffer(self::messageSetOf($frames[2]))->getBatches()[0];
+        $again   = MemoryRecords::fromBuffer(self::messageSetOf($frames[3]))->getBatches()[0];
+
+        self::assertInstanceOf(RecordBatch::class, $refused);
+        self::assertInstanceOf(RecordBatch::class, $again);
+        self::assertSame(1, $refused->baseSequence, 'the batch the broker refused continued the numbering');
+        self::assertSame(0, $again->baseSequence, 'and the one that was sent again starts the partition over');
+        self::assertSame(2000, $again->producerId);
+    }
+
+    public function testAnUnknownProducerIdWithoutALogStartOffsetIsSentAgainUnchanged(): void
+    {
+        $leader = new BrokerConnection(
+            ResponseFrame::initProducerId(0, 0, 2000, 0),
+            // "The partition may have moved away from the broker between the error and the answer", Sender.java
+            // @ 1.1.1: nothing is decided, and the very same batch goes out once more
+            ResponseFrame::produce(
+                0,
+                [self::TOPIC => [0 => [KafkaException::UNKNOWN_PRODUCER_ID, -1]]],
+                0,
+                -1,
+                [self::TOPIC => [0 => -1]]
+            ),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 3]]], 0, -1, [self::TOPIC => [0 => 0]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        $result = $client->produce([self::TOPIC => [0 => [new Record('unchanged')]]], $manager);
+
+        self::assertSame(3, $result[self::TOPIC][0]->baseOffset);
+
+        $frames = $leader->getReceivedFrames();
+
+        self::assertSame(
+            bin2hex(self::messageSetOf($frames[1])),
+            bin2hex(self::messageSetOf($frames[2])),
+            'the second attempt is byte for byte the first one'
+        );
+    }
+
+    public function testAnUnknownProducerIdWhoseRecordsAreStillInTheLogThrowsTheProducerIdAway(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::initProducerId(0, 0, 2000, 0),
+                ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 0]]], 0, -1, [self::TOPIC => [0 => 0]]),
+                ResponseFrame::produce(
+                    0,
+                    [self::TOPIC => [0 => [KafkaException::UNKNOWN_PRODUCER_ID, -1]]],
+                    0,
+                    -1,
+                    [self::TOPIC => [0 => 0]]
+                )
+            ))
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+        $client->produce([self::TOPIC => [0 => [new Record('still in the log')]]], $manager);
+
+        try {
+            $client->produce([self::TOPIC => [0 => [new Record('and yet unknown')]]], $manager);
+            self::fail('an unknown producer id that a retry can not fix has to be reported to the caller');
+        } catch (TopicPartitionRequestException $exception) {
+            self::assertInstanceOf(
+                UnknownProducerIdException::class,
+                $exception->getExceptions()[self::TOPIC][0]
+            );
+            self::assertSame(0, $exception->getExceptions()[self::TOPIC][0]->getContext()['logStartOffset']);
+        }
+
+        self::assertFalse($manager->hasProducerId(), 'it is the out of order sequence it is a special case of');
+        self::assertFalse($manager->hasFatalError());
+    }
+
     public function testAFencedProducerRefusesToSendAnythingElse(): void
     {
         $this->brokers
@@ -1038,6 +1161,160 @@ final class ClientTest extends TestCase
             self::assertSame(['readable'], array_column($exception->getPartialResult()[self::TOPIC][0], 'value'));
             self::assertInstanceOf(OffsetOutOfRangeException::class, $exception->getExceptions()[self::TOPIC][1]);
         }
+    }
+
+    public function testTheFirstFetchWithSessionsOpensASessionAndTheNextOneIsIncremental(): void
+    {
+        $messageSet = MessageSet::fromRecords([new Record('first')])->toBuffer();
+        $metadata   = ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], [self::TOPIC => [0 => 0, 1 => 0]]);
+        $connection = new BrokerConnection(
+            // The full fetch is answered with both partitions and with the id of the session the broker opened
+            ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 1, $messageSet], 1 => [0, 0, '']]], 0, [], 0, 4711),
+            // ... the incremental one only with the partition that has news
+            ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 2, $messageSet]]], 0, [], 0, 4711)
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($metadata))
+            ->on(self::FIRST_LEADER, $connection)
+            ->install();
+
+        $client = $this->client();
+        $client->fetchPartitionsWithSessions([self::TOPIC => [0 => 0, 1 => 0]], 200);
+        $second = $client->fetchPartitionsWithSessions([self::TOPIC => [0 => 1, 1 => 0]], 200);
+
+        [$full, $incremental] = array_map(bin2hex(...), $connection->getReceivedFrames());
+
+        // The first request carries the session id 0 with the epoch 0 - "open a session" - and both partitions
+        self::assertStringContainsString('00000000' . '00000000' . '00000001' . '00066f7264657273', $full);
+        // The second one carries the session id of the answer, the epoch 1, the partition whose offset moved and
+        // nothing else; the trailing empty array is the forgotten_topics_data
+        self::assertStringContainsString('00001267' . '00000001', $incremental, 'the session id and the epoch 1');
+        self::assertStringEndsWith(
+            '00000001' . '00066f7264657273' . '00000001'
+            . '00000000' . '0000000000000001' . 'ffffffffffffffff' . '00010000'
+            . '00000000',
+            $incremental,
+            'only the partition whose fetch offset moved travels, and nothing is forgotten'
+        );
+        self::assertSame(
+            [self::TOPIC => [0]],
+            array_map(array_keys(...), $second),
+            'an incremental answer carries only the partitions that have news'
+        );
+        self::assertSame([0 => 4711], array_map(
+            static fn(FetchSessionHandler $handler): int => $handler->getSessionId(),
+            $client->getFetchSessionHandlers()
+        ));
+    }
+
+    public function testAPartitionThatIsNotFetchedAnyMoreIsForgottenByTheSession(): void
+    {
+        $metadata   = ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], [self::TOPIC => [0 => 0, 1 => 0]]);
+        $connection = new BrokerConnection(
+            ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 0, ''], 1 => [0, 0, '']]], 0, [], 0, 4711),
+            ResponseFrame::fetch(0, [], 0, [], 0, 4711)
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($metadata))
+            ->on(self::FIRST_LEADER, $connection)
+            ->install();
+
+        $client = $this->client();
+        $client->fetchPartitionsWithSessions([self::TOPIC => [0 => 0, 1 => 0]], 200);
+        // The partition 1 left the assignment, so the next request tells the session to drop it
+        $answer = $client->fetchPartitionsWithSessions([self::TOPIC => [0 => 0]], 200);
+
+        $incremental = bin2hex($connection->getReceivedFrames()[1]);
+
+        self::assertStringEndsWith(
+            '00000000'                                     // topicPartitions: nothing moved
+            . '00000001' . '00066f7264657273' . '00000001' // forgottenTopics: one topic ...
+            . '00000001',                                  // ... with the partition 1
+            $incremental
+        );
+        self::assertSame([], $answer, 'an answer with no topic at all is a legal answer of a session');
+    }
+
+    public function testASessionErrorIsAnsweredWithAFullFetchWithoutTheCallerNoticing(): void
+    {
+        $messageSet = MessageSet::fromRecords([new Record('after the session was lost')])->toBuffer();
+        $metadata   = ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], [self::TOPIC => [0 => 0]]);
+        $connection = new BrokerConnection(
+            ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 0, '']]], 0, [], 0, 4711),
+            // The broker evicted the session: the error code 70, the session id 0 and no topic at all
+            ResponseFrame::fetch(0, [], 0, [], KafkaException::FETCH_SESSION_ID_NOT_FOUND, 0),
+            ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 1, $messageSet]]], 0, [], 0, 815)
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($metadata))
+            ->on(self::FIRST_LEADER, $connection)
+            ->install();
+
+        $client = $this->client();
+        $client->fetchPartitionsWithSessions([self::TOPIC => [0 => 0]], 200);
+        $answer = $client->fetchPartitionsWithSessions([self::TOPIC => [0 => 0]], 200);
+
+        self::assertCount(3, $connection->getReceivedFrames(), 'the 70 is answered with a full fetch right away');
+        self::assertSame(
+            ['after the session was lost'],
+            array_column($answer[self::TOPIC][0]->getRecords(), 'value'),
+            'the caller of the fetch sees the records of the new session, not the session error'
+        );
+        self::assertSame(815, $client->getFetchSessionHandlers()[0]->getSessionId());
+
+        // The recovery is a full fetch with the epoch 0 and the session id 0, because a 70 says that the id is gone
+        $recovery = bin2hex($connection->getReceivedFrames()[2]);
+
+        self::assertStringContainsString('00000000' . '00000000' . '00000001' . '00066f7264657273', $recovery);
+    }
+
+    public function testEveryBrokerOfTheClusterGetsAFetchSessionOfItsOwn(): void
+    {
+        $first  = new BrokerConnection(ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 0, '']]], 0, [], 0, 11));
+        $second = new BrokerConnection(ResponseFrame::fetch(0, [self::TOPIC => [1 => [0, 0, '']]], 0, [], 0, 22));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $first)
+            ->on(self::SECOND_LEADER, $second)
+            ->install();
+
+        $client = $this->client();
+        $client->fetchPartitionsWithSessions([self::TOPIC => [0 => 0, 1 => 0]], 200);
+
+        self::assertSame([0 => 11, 1 => 22], array_map(
+            static fn(FetchSessionHandler $handler): int => $handler->getSessionId(),
+            $client->getFetchSessionHandlers()
+        ), 'a fetch session belongs to one broker, and every leader answers with an id of its own');
+    }
+
+    public function testAFetchThatIsNotAnsweredAtAllStartsTheSessionOver(): void
+    {
+        $metadata = ResponseFrame::metadata(0, [[0, 'kafka-1', 9092]], [self::TOPIC => [0 => 0]]);
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($metadata))
+            ->on(
+                self::FIRST_LEADER,
+                new BrokerConnection(ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 0, '']]], 0, [], 0, 4711)),
+                // The connection of the second fetch is opened and answers nothing at all
+                new BrokerConnection(null)
+            )
+            ->install();
+
+        $client = $this->client();
+        $client->fetchPartitionsWithSessions([self::TOPIC => [0 => 0]], 200);
+
+        try {
+            $client->fetchPartitionsWithSessions([self::TOPIC => [0 => 0]], 200);
+            self::fail('A broker that does not answer is expected to fail the fetch of its partitions');
+        } catch (TopicPartitionRequestException $exception) {
+            self::assertInstanceOf(NetworkException::class, $exception->getExceptions()[self::TOPIC][0]);
+        }
+
+        // The session may or may not have seen that request, so the next one closes it and opens a new one
+        $metadata = $client->getFetchSessionHandlers()[0]->getNextMetadata();
+
+        self::assertSame(4711, $metadata->sessionId);
+        self::assertSame(FetchMetadata::INITIAL_EPOCH, $metadata->epoch);
     }
 
     public function testACommitIsRoutedToTheCoordinatorAsVersionThree(): void

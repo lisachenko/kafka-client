@@ -33,7 +33,7 @@ use Protocol\Kafka\Common\Record\TimestampType;
  * below version 4 is answered down-converted, so a client has to look at the magic byte of every entry of a region
  * before it can read it. The magic sits at the offset 16 in all three formats, which is what this reader uses.
  *
- * @see docs/protocol/0.11.0.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
  */
 #[CoversClass(MemoryRecords::class)]
 final class MemoryRecordsTest extends TestCase

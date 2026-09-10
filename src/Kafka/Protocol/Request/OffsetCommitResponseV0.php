@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see OffsetCommitRequestV0}) as well; it is byte for byte the answer of {@see OffsetCommitResponseV1} and
  * {@see OffsetCommitResponseV2}.
  *
- * @see docs/protocol/0.11.0.md, section "OffsetCommit API (key 8, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "OffsetCommit API (key 8, v0 to v3)"
  */
 final class OffsetCommitResponseV0 extends OffsetCommitResponse
 {

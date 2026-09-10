@@ -23,6 +23,7 @@ use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\MessageTooLargeException;
 use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
@@ -774,6 +775,53 @@ final class KafkaProducerTest extends TestCase
             $client->producerStates[2]['baseSequences'],
             'Only an acknowledged batch moves the sequence on'
         );
+    }
+
+    public function testAnIdempotentProducerNumbersAPartitionFromZeroAgainWhenItsRecordsWereDeleted(): void
+    {
+        // Kafka 1.0: the broker has no state of this producer for the partition any more, and the log start offset
+        // of the Produce v5 answer says why - everything this producer wrote there is below it
+        $unknown = new UnknownProducerIdException(
+            ['topic' => self::TOPIC, 'partitionId' => 0, 'logStartOffset' => 5]
+        );
+
+        [$producer, $client] = $this->producer(
+            [ProducerConfig::ENABLE_IDEMPOTENCE => true],
+            [
+                fn(array $records): array => $this->fakeClient->acknowledge($records),
+                static fn(): array => throw new TopicPartitionRequestException([], [self::TOPIC => [0 => $unknown]]),
+            ]
+        );
+        $client->producerIds = [new ProducerIdAndEpoch(2000, 0)];
+
+        $rejected = null;
+        $producer->send(self::TOPIC, Record::fromValue('one'), 0);
+        $producer
+            ->send(self::TOPIC, Record::fromValue('after the deletion'), 0)
+            ->then(null, static function (\Throwable $error) use (&$rejected): void {
+                $rejected = $error;
+            });
+        $producer->flush();
+
+        self::assertNull($rejected, 'the batch that was sent again was appended, so nothing is reported');
+        self::assertCount(3, $client->producerStates, 'the refused batch went out a second time');
+        self::assertSame([self::TOPIC => [0 => 0]], $client->producerStates[0]['baseSequences']);
+        self::assertSame(
+            [self::TOPIC => [0 => 1]],
+            $client->producerStates[1]['baseSequences'],
+            'the batch the broker refused continued the numbering of the partition'
+        );
+        self::assertSame(
+            [self::TOPIC => [0 => 0]],
+            $client->producerStates[2]['baseSequences'],
+            'and the one that was sent again starts it over'
+        );
+        self::assertSame(
+            2000,
+            $client->producerStates[2]['producerId'],
+            'under the very same producer id - only the numbering of that partition started over'
+        );
+        self::assertCount(1, $client->initProducerIdCalls, 'so no new producer id was asked for');
     }
 
     public function testIdempotenceOverridesTheAcksAndTheRetriesOfTheProducer(): void

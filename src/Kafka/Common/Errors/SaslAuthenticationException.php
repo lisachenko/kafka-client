@@ -19,18 +19,27 @@ use Throwable;
 /**
  * The SASL authentication of a connection failed.
  *
- * A Kafka 0.10 broker has no error code for this: `SaslServerAuthenticator.authenticate()` @ 0.10.2.2 lets the
- * `SaslException` of the mechanism bubble up as an `IOException` and the connection is simply closed, without an
- * answer - only the handshake that precedes the tokens has an error code of its own (33 UnsupportedSaslMechanism).
- * The dedicated error code 58 (SaslAuthenticationFailed) and the `SaslAuthenticate` request that carries it arrived
- * with Kafka 1.0, so a client of this line can only report the closed connection.
+ * This is the client-side exception the socket layer raises for every way an authentication can end badly, and it
+ * carries what the broker said in its context. What that is depends on the version of the `SaslHandshake` request
+ * the connection opened with, and Kafka 1.0 (KIP-152) is the release that gave it words:
+ *
+ * * after a **v1** handshake the tokens travel inside `SaslAuthenticate` requests, and refused credentials come
+ *   back as the error code **58** with a message - `Authentication failed: Invalid username or password` on a
+ *   1.1.1 broker. The context then carries `errorCode`, the broker's `errorMessage`, and a
+ *   {@see SaslAuthenticationFailedException} - the wire code - as the cause;
+ * * after a **v0** handshake the tokens are raw frames and the broker has no way to answer at all: it closes the
+ *   connection in the middle of the exchange (`SaslException` -> `IOException`), and the cause is the
+ *   {@see NetworkException} of the dropped socket. That is the whole story on every line up to 0.11.
+ *
+ * The Java client calls the wire code `SaslAuthenticationException`; here that name belongs to this class, and the
+ * code is {@see SaslAuthenticationFailedException}.
  *
  * It is deliberately *not* a {@see KafkaException}, exactly like {@see InvalidConfigurationException}: the cause is
  * a wrong user name or password, not a state of the cluster, so it has to leave the retry loops of the client -
  * {@see \Protocol\Kafka\Common\Cluster::bootstrap()} and {@see \Protocol\Kafka\Network\RetryPolicy} - instead of
  * being attempted again until a timeout runs out. Nothing about the connection will be different next time.
  *
- * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/1.1.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  */
 class SaslAuthenticationException extends RuntimeException implements ClientExceptionInterface
 {

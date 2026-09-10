@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `OFFSET_FETCH_REQUEST_V3 = OFFSET_FETCH_REQUEST_V2` in `Protocol.java` @ 0.11.0.3: the nullable topic array of
  * version 2 is what version 3 sends as well, and only the answer differs ({@see OffsetFetchResponseV2}).
  *
- * @see docs/protocol/0.11.0.md, section "OffsetFetch API (key 9, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "OffsetFetch API (key 9, v0 to v3)"
  */
 final class OffsetFetchRequestV2 extends OffsetFetchRequest
 {

@@ -34,7 +34,7 @@ use function count;
  * on the first members: with one partition per topic, the lexicographically first member gets every partition.
  * {@see RoundRobinAssignor} is the alternative that spreads such a subscription evenly.
  *
- * @see docs/protocol/0.11.0.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/1.1.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 class RangeAssignor extends AbstractPartitionAssignor
 {

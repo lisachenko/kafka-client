@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Data\AlterConfigsResponseResource;
  * | 42   | InvalidRequest             | A resource type other than topic, or an unparsable option VALUE        |
  * | 44   | PolicyViolation            | An `alter.config.policy.class.name` on the broker refused the change   |
  *
- * @see docs/protocol/0.11.0.md, section "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/1.1.md, section "AlterConfigs API (key 33, v0)"
  */
 class AlterConfigsResponse extends AbstractResponse
 {
