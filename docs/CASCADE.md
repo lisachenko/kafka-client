@@ -3,13 +3,13 @@
 The client is developed one Kafka protocol version at a time, lowest first, and each finished line
 is merged upwards into the next one:
 
-    0.8.x (Kafka 0.8.2.2) → 0.9.x (Kafka 0.9.0.1) → 0.10.x (Kafka 0.10.2.2) → main (Kafka 0.11.0.3)
+    0.8.x (Kafka 0.8.2.2) → 0.9.x (Kafka 0.9.0.1) → 0.10.x (Kafka 0.10.2.2) → 0.11.x (Kafka 0.11.0.3) → main (Kafka 1.x)
 
 ## Rules
 
 1. **Direction.** Changes flow upwards only. A fix needed on a lower line is made there and cascaded;
    nothing is cherry-picked downwards.
-2. **Trigger.** Every push to `0.8.x`, `0.9.x` or `0.10.x` makes `.github/workflows/cascade.yml`
+2. **Trigger.** Every push to `0.8.x`, `0.9.x`, `0.10.x` or `0.11.x` makes `.github/workflows/cascade.yml`
    open (or keep) a pull request into the next line. A push that the next line already contains
    opens nothing.
 3. **Conflict resolution** happens on a branch named `cascade/<from>-into-<to>` created from `<to>`,
@@ -36,4 +36,5 @@ is merged upwards into the next one:
 |-------|-------|--------|
 | 0.8.x | 0.9.x | merged tree identical to 0.8.x; the pre-schema 0.9 deltas (group membership apis, Produce/Fetch v1 throttle time, Metadata v1, OffsetCommit v1 fields, first AdminClient) are re-implemented as the 0.9.x tickets — see `docs/handoff/0.9.x.md` |
 | 0.9.x | 0.10.x | merged tree identical to 0.9.x (plus the `ext-openssl` suggestion of `composer.json`); the pre-schema 0.10 deltas (commits `5b6dd06..77993bc`: Metadata v1/v2, Fetch v2/v3, Offsets v1, JoinGroup v1, OffsetFetch v2, ApiVersions, SaslHandshake, message format with timestamps, four error classes) are dropped by rule 5 and re-implemented as the 0.10.x tickets — see `docs/handoff/0.10.x.md` |
-| 0.10.x | main | merged tree identical to 0.10.x plus the api-key constants 21–33 of `ApiKeys` (Kafka 0.11); the pre-schema 0.11 code of `main` (the 14 requests with `$header = null`, `Common\Record\{RecordBatch,Header}`, `Common\Utils\ByteUtils`, `Data\FetchResponseAbortedTransaction`, the `KafkaException` that stopped at 35, its six tests) is dropped by rule 5 and re-implemented on the 0.10 design as the tickets of the 0.11 line — see `docs/handoff/main.md`; the automatic PR #48 was closed in favour of `cascade/0.10.x-into-main`. **The line is complete**: `main` speaks Kafka 0.11.0.3 (epic #70, tickets #71-#78), and since there is no branch above it the cascade ends here - `docs/handoff/main.md` carries the release notes of the line instead of a handoff |
+| 0.10.x | main | merged tree identical to 0.10.x plus the api-key constants 21–33 of `ApiKeys` (Kafka 0.11); the pre-schema 0.11 code of `main` (the 14 requests with `$header = null`, `Common\Record\{RecordBatch,Header}`, `Common\Utils\ByteUtils`, `Data\FetchResponseAbortedTransaction`, the `KafkaException` that stopped at 35, its six tests) is dropped by rule 5 and re-implemented on the 0.10 design as the tickets of the 0.11 line — see `docs/handoff/0.11.x.md`; the automatic PR #48 was closed in favour of `cascade/0.10.x-into-main`. **The line is complete**: it speaks Kafka 0.11.0.3 (epic #70, tickets #71-#78, PR #87), and was branched off `main` as **`0.11.x`** at that commit (`64d767c`) so that `main` can continue as the 1.x line — `docs/handoff/0.11.x.md` carries the release notes of the line with the original plan below them |
+| 0.11.x | main | **pending** — `main` and `0.11.x` were identical at the branch point (`64d767c`); the first cascade after it carries the configuration of the `0.11.x` line and the handoff of the 1.x line (`docs/handoff/main.md`), and the 1.x tickets are re-applied on top of every later one |

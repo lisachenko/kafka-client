@@ -1,350 +1,276 @@
-# The `main` line (Kafka 0.11.0.3) — release notes
+# Handoff: the `main` line (Kafka 1.x)
 
-**State: complete.** `main` speaks the Apache Kafka **0.11.0.3** wire protocol — the last release of the 0.11 line,
-so it covers everything 0.11.0.0 added and nothing later — on the `BinarySchema` engine that came up the cascade
-from `0.10.x`. It is the **last line of the cascade**: there is no branch above it, so this file is the release
-record of the package rather than a plan for the next line. The plan the line was built from is kept below, under
-"The original plan", exactly as it was written.
+State at handoff: the `0.11.x` line is **complete**. Everything a Kafka 0.11.0.3 broker speaks is implemented on the
+`BinarySchema` engine and verified against a real broker — 1487 unit tests, 236 compliance tests replaying the 229
+wire vectors of the four lines (120 inherited, 109 captured on the 0.11.0.3 container), and 426 integration tests
+against the 0.11.0.3 container over its four listeners, without a single skip. The grammar is written down in
+[`docs/protocol/0.11.0.md`](../protocol/0.11.0.md), the machine-readable frames in
+[`docs/protocol/vectors`](../protocol/vectors), the behaviour a client cannot read out of the grammar in that
+document's "Broker quirks and observations" section, and the record of how the line was built — what was decided,
+what the broker forced, what was left out — in [`docs/handoff/0.11.x.md`](0.11.x.md).
 
-The grammar is [`docs/protocol/0.11.0.md`](../protocol/0.11.0.md), the machine-readable frames are in
-[`docs/protocol/vectors`](../protocol/vectors), and what a client cannot read out of the grammar is in that
-document's "Broker quirks and observations" section.
-
-## What was built
-
-| Ticket | What it delivered |
-|---|---|
-| **T1** #71 | The 0.11.0.3 broker image, the protocol document of the line, the api-key table as the literal ApiVersions answer of the container, **ApiVersions v1**, and the 18 inherited integration failures fixed against the api set a 0.11 broker really serves |
-| **T2** #72 | The **record batch v2**: `RecordBatch`, `RecordV2`, `Header`, `ControlRecordKey`, `ControlRecordType`, `EndTransactionMarker`, `MemoryRecords`, CRC-32C, the delta encoding, control batches and the two down-conversions of a 0.11 broker |
-| **T3** #73 | **The throttle time of KIP-124 on fourteen apis**: Metadata v3/v4, Offsets v2, OffsetCommit v3, OffsetFetch v3, GroupCoordinator v1 (with `coordinator_type`), JoinGroup v2, Heartbeat/LeaveGroup/SyncGroup/DescribeGroups/ListGroups v1, CreateTopics v2, DeleteTopics v1, plus **OffsetForLeaderEpoch** (23) |
-| **T4** #74 | **Produce v3 and Fetch v4/v5**: the transactional id, the isolation level, the last stable offset, the aborted transactions and the log start offset, with the record headers travelling end to end through `KafkaProducer` and `KafkaConsumer` |
-| **T5** #75 | **DeleteRecords** (21), **DescribeConfigs** (32) and **AlterConfigs** (33) with the `AdminClient` methods, `ConfigResource`, `Config`/`ConfigEntry`, `RecordsToDelete` and `DeletedRecords` |
-| **T7** #76 | **The idempotent producer**: InitProducerId (22), `ProducerIdAndEpoch`, `TransactionManager`, the producer id / epoch / per-partition sequence on every batch, `enable.idempotence`, and what a client does with 45, 46 and 47 |
-| **T8** #77 | **The transactional producer**: AddPartitionsToTxn (24), AddOffsetsToTxn (25), EndTxn (26), TxnOffsetCommit (28) and WriteTxnMarkers (27, classes and vectors only), the state machine of `TransactionManager`, `transactional.id` with the five methods of the Java producer, and the `read_committed` consumer with `ConsumerConfig::ISOLATION_LEVEL` and `AbortedTransactionFilter` |
-| **T9** #78 | This file, the consistency pass over the document, the README matrix, the CHANGELOG, the vectors README and the examples |
-
-## How it was verified
-
-Everything was measured against a real Apache Kafka **0.11.0.3** broker (`docker/kafka-0.11.0.3/`, four listeners:
-PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL 9095), never against the specification alone:
-
-* **229 wire vectors** in [`docs/protocol/vectors`](../protocol/vectors) — the **109** frames this line captured
-  from the container plus the 120 of the three lines below, which a 0.11.0.3 broker still answers unchanged. Every
-  one of them is replayed by `tests/Compliance` through the request and response classes, in both directions, and
-  `DocumentationSyncTest` holds the annotated dumps of the document and the vector files together.
-* The **api-key table** of the document is the literal ApiVersions answer of the broker;
-  `tests/Integration/ApiVersionProbeTest.php` sends a real frame of every key and version of it, and one version
-  above each of them to check that the broker really does not serve those.
-* The **integration suite** runs against the container over all four listeners with unique topic, group and
-  transactional-id names per test class: 1487 unit tests, 236 compliance tests and 426 integration tests, without a
-  single skip.
-
-## Deviations from the plan, forced by the broker
-
-* **ApiVersions is v0 and v1**, not v0 alone as the plan assumed, and version 1 **appends** its `throttle_time_ms`
-  where every other api of KIP-124 prepends it: an unknown version is still answered in the version 0 layout, so
-  the leading `error_code` has to stay where a v0 client reads it.
-* **A Produce v3 answer is a Produce v2 answer.** `PRODUCE_RESPONSE_V3` *is* `PRODUCE_RESPONSE_V2` in
-  `Protocol.java` @ 0.11.0.3; the `log_start_offset` the plan asked for on a produce answer is Kafka 1.0 (Produce
-  v5) and is not on this line.
-* **A Produce v3 request accepts the message format v2 and nothing else** — the broker closes the connection on a
-  lower magic — while the versions 0 to 2 accept every magic. That is why `message.format.version` selects the api
-  version the producer sends.
-* **`CONFIG_ENTRY` of CreateTopics carries a nullable value in every version** (it is one shared schema object), and
-  all three versions answer such a topic with the error code -1.
-* **The error code 46 (`DuplicateSequenceNumber`) is unreachable from a client.** The duplicate check of
-  `Log.analyzeAndValidateProducerState` is guarded by `isFromClient` and answers a duplicate of the last batch with
-  the code **0** and the offset of the original append; a duplicate of an older batch is **45**. The class exists
-  and is retriable, as in the Java client, but it is implemented from the specification and observed nowhere.
-* **The retries of the transaction manager are bounded by a deadline, not by `retries`.** The coordinator codes
-  14, 15, 16 and 51 do not say that a request failed, and a producer with the default `retries` would give up on
-  the very first 51 a coordinator answers while it rolls an earlier transaction back, so those four are retried
-  until `metadata.fetch.timeout.ms` instead.
-* **An `InitProducerId` may bump the epoch by more than one.** A coordinator that has to roll an open transaction
-  back bumps it once for the fencing and once for the new producer and answers 51 in between — measured on the
-  container: the epoch 1 of an open transaction, one 51, then the epoch 3. A client reads the epoch it is given.
-* **The ACL apis 29-31 were left out** (decision 3 of the epic): they do nothing on a broker without an
-  `authorizer.class.name` — a 0.11.0.3 broker answers all three with the error code 54 — and every wire vector of
-  this repository comes from a real broker.
-
-## Known limitations
-
-* **No ACL apis** (`DescribeAcls` 29, `CreateAcls` 30, `DeleteAcls` 31). They need a container configured with an
-  authorizer; a follow-up can add them on a second container without touching anything else of the line.
-* **`WriteTxnMarkers` (27) and `OffsetForLeaderEpoch` (23) are broker-to-broker apis.** Their classes and wire
-  vectors are here because they belong to the protocol of 0.11, but this client sends neither and no method of
-  `Client` or `AdminClient` produces one.
-* **`SaslAuthenticate` (key 36) is Kafka 1.0**, so the SASL token exchange of this line is still raw, unframed data
-  on the socket after the handshake, and wrong credentials have no error code — the broker closes the connection.
-  The api keys 34 and 35 and the error code 56 are 1.0 as well.
-* **`retries` defaults to 3 with `enable.idempotence`**, not to the `Integer.MAX_VALUE` of the Java producer: this
-  client has no background sender, so the retry budget is a loop that `flush()` blocks on and an unbounded one would
-  be an unbounded flush. `max.in.flight.requests.per.connection` needs no option here — the client writes one
-  produce request and reads its answer before the next.
-* **A 0.11.0.3 broker deduplicates against one batch per producer id and partition.** The five-batch window of
-  `ProducerStateEntry.NumBatchesToRetain` is Kafka 1.0, so a retry that is not the *last* batch of its partition is
-  answered 45 and not with the offset of the original append. The idempotence guarantee also ends with the producer
-  session: a new `KafkaProducer` gets a new producer id.
-* **Five error codes of the transaction protocol are implemented from the sources and were never observed**: 49
-  (`InvalidProducerIdMapping`), 51 as a stable wire vector (it is transient), 52 (`TransactionCoordinatorFenced`,
-  which needs two coordinators), 53 and 30 (which need an authorizer). The container of this line cannot produce
-  them; the protocol document says so at every one of them.
-* **`AdminClient::listOffsets()` stays at `read_uncommitted`** while `KafkaConsumer` sends its `isolation.level` in
-  the Fetch and in the Offsets request alike: an administrator asks what is in the log, a consumer asks what it may
-  read. That is a deliberate difference, not an omission.
-* **Everything above 0.11.0.3 is out of scope by design**: Fetch v6, Produce v4, Metadata v5, flexible versions and
-  tagged fields, `DeleteGroups`, incremental `AlterConfigs`. The api-key table of the document is the ceiling, and a
-  frame above it costs the connection.
-
-## What a future line would start from
-
-There is no branch above `main`, so a Kafka 1.0 line would be `main` itself, not a cascade merge. The four things
-that would have to happen first: `ApiKeys` beyond 33 and the error code 56, the `SaslAuthenticate` framing of the
-token exchange, the five-batch deduplication window of `ProducerStateManager`, and the `log_start_offset` of a
-Produce v5 answer. Everything else this line built — the schema engine, the record batch v2, the transaction
-protocol, the vectors and the compliance suite — carries over unchanged.
-
----
-
-# The original plan
-
-Everything below is the handoff that the `0.10.x` line wrote for this one, kept as the record of what was decided
-before the work started. It describes the state **at handoff**, not the state of the branch today.
-
-## Handoff: the `main` line (Kafka 0.11)
-
-State at handoff: the `0.10.x` line is **complete**. Everything a Kafka 0.10.2.2 broker speaks is implemented on the
-`BinarySchema` engine and verified against a real broker — 1054 unit tests, 127 compliance tests replaying the 120
-wire vectors of the three lines, and 285 integration tests against a 0.10.2.2 broker over its four listeners
-(`vendor/bin/phpunit` counts 1466 with the integration suite skipped). The grammar is written down in
-[`docs/protocol/0.10.2.md`](../protocol/0.10.2.md), the machine-readable frames in
-[`docs/protocol/vectors`](../protocol/vectors), and the behaviour a client cannot read out of the grammar in that
-document's "Broker quirks and observations" section.
-
-`main` is the **last** line of the cascade: it speaks Kafka **0.11.0.3** (the last release of the 0.11 line, on the
-principle the three lines below it follow — `0.8.x` speaks 0.8.2.2, `0.9.x` 0.9.0.1, `0.10.x` 0.10.2.2). It is also
-the only line whose current code was not written for the schema engine: what is on `main` today is the pre-schema
-implementation with hand-written `pack()`/`unpack()` fragments, a `RecordBatch` of format v2, an `ApiKeys` that runs
-to 33 and a `KafkaException` that stops at 35. By rule 5 of [`docs/CASCADE.md`](../CASCADE.md) the parts of it that
-target the removed design are **dropped in the cascade merge** and re-implemented on the 0.10 design, starting from
-`main`'s own classes wherever they are usable.
+`main` is the **1.x line**. It was identical to `0.11.x` at the branch point (`64d767c`, the merge of PR #87) and
+receives everything that lands on `0.11.x` through the cascade (`.github/workflows/cascade.yml` opens the PR on
+every push to `0.11.x`; rules in [`docs/CASCADE.md`](../CASCADE.md)). Unlike every line before it, this one starts
+from a finished **schema-based** implementation: there is nothing to drop and nothing to re-implement, every class
+of 0.11 is the class the 1.x version of the same api extends, and rule 4 of `CLAUDE.md` simply means "start from
+the 0.11 class and add what the new release adds".
 
 Read `CLAUDE.md` first (hard rules, toolchain, the Composer/phpstan sandbox workaround, Docker, the JIT caveat).
 
 ## First decision for the owner: which Kafka release the line speaks
 
-Everything below is written for **Kafka 0.11.0.3**. That covers both raises of the 0.11 line:
+Every line below speaks the **last** release of its Kafka line (0.8.2.2, 0.9.0.1, 0.10.2.2, 0.11.0.3). On that
+principle the 1.x line speaks **Kafka 1.1.1**, and everything below is written for it. The 1.x line raised the
+protocol twice, and a 1.1.1 broker serves both raises:
 
-* **0.11.0.0** — record batch v2 (varints, headers, delta-encoded offsets and timestamps), the idempotent and
-  transactional producer with the api keys 21–28, the ACL and config apis 29–33, `throttle_time_ms` in the group
-  apis, Produce v3, Fetch v4/v5, Metadata v3/v4, OffsetCommit v3, OffsetFetch v3, ListOffsets v2, error codes
-  45–56.
-* **0.11.0.1/0.11.0.2/0.11.0.3** — bug-fix releases; no protocol change. The api-version table of a 0.11.0.3 broker
-  is the one below, and `SaslAuthenticate` (key 36) is Kafka **1.0**, i.e. still out of scope.
+* **1.0.0** (1.0.1 and 1.0.2 changed no wire format) — Produce v4/v5, Fetch v6, Metadata v5, SaslHandshake v1 and
+  **SaslAuthenticate** (36), **AlterReplicaLogDirs** (34), **DescribeLogDirs** (35), **CreatePartitions** (37), the
+  error codes 56–60, the five-batch deduplication window of the idempotent producer, and `log.message.format.version`
+  1.0 (still magic 2).
+* **1.1.0** (1.1.1 changed no wire format) — Fetch v7 with the **incremental fetch sessions** of KIP-227,
+  DescribeConfigs v1 and the **dynamic broker configuration** of KIP-226, the **delegation tokens** (38–41) of
+  KIP-48, **DeleteGroups** (42) of KIP-229, the error codes 61–71.
 
-If the owner prefers "0.11.0.0 only", nothing in this plan changes.
+If the owner prefers "1.0.2 only", strike the 1.1.0 row everywhere below: Fetch stops at v6, DescribeConfigs at v0,
+`ApiKeys` at 37, `KafkaException` at 60 — nothing else in this plan changes. The Kafka repository has the tags
+`1.0.2` and `1.1.1` (no `-rc` detour this time), and archive.apache.org has `kafka_2.11-1.1.1.tgz`, so the Scala
+2.11 image recipe of the 0.11 line works unchanged.
 
-## What Kafka 0.11.0.3 adds over 0.10.2.2
+## What Kafka 1.1.1 adds over 0.11.0.3
 
-Verified against `clients/src/main/java/org/apache/kafka/common/protocol/{Protocol,ApiKeys,Errors}.java` at the tag
-**0.11.0.3** (`git clone --depth 1 --branch 0.11.0.3 https://github.com/apache/kafka`); as always the broker of the
-line has the last word, and this line can simply **ask** it — the ApiVersions api of `0.10.x` is already implemented
-and `tests/Integration/ApiVersionProbeTest.php` pins the answer.
+Verified field by field against the Kafka sources at the tags **1.0.2** and **1.1.1** (`git clone --depth 1
+--branch 1.1.1 https://github.com/apache/kafka`): `clients/src/main/java/org/apache/kafka/common/protocol/{ApiKeys,Errors}.java`
+and — because `Protocol.java` stopped being the schema authority in 1.0 — the `schemaVersions()` of every class in
+`clients/src/main/java/org/apache/kafka/common/requests/`. As always the broker of the line has the last word, and
+this line can ask it: the served api table of a 1.1.1 container is in the section "The ApiVersions answer of a
+1.1.1 broker" below.
 
-| Api | 0.10.2.2 | 0.11.0.3 | Start from |
-|---|---|---|---|
-| Produce (0) | v0–v2 | **v3**: the request gains a `transactional_id` nullable string before `acks`, and the record set it carries is a **record batch v2**; the response partition gains `log_start_offset` int64 | `ProduceRequest`/`ProduceResponse` of `0.10.x`, plus `main`'s `RecordBatch` |
-| Fetch (1) | v0–v3 | **v4**: request gains `isolation_level` int8 after `max_bytes`, response partition gains `last_stable_offset` int64 and `aborted_transactions [producer_id first_offset]`. **v5**: both gain `log_start_offset` int64 | `main`'s `FetchRequest` (v5, `READ_COMMITTED`/`READ_UNCOMMITTED`) and `Data/FetchResponseAbortedTransaction`, which already exist |
-| Offsets (2) | v0, v1 | **v2**: request gains `isolation_level` int8 after `replica_id`, response gains a top-level `throttle_time_ms` | `OffsetsRequest`/`OffsetsResponse` of `0.10.x` |
-| Metadata (3) | v0–v2 | **v3**: response gains a leading `throttle_time_ms` int32. **v4**: request gains `allow_auto_topic_creation` boolean | `MetadataRequest`/`MetadataResponse` of `0.10.x` |
-| OffsetCommit (8) | v0–v2 | **v3**: response gains a leading `throttle_time_ms` | `0.10.x` |
-| OffsetFetch (9) | v0–v2 | **v3**: response gains a leading `throttle_time_ms` | `0.10.x` |
-| GroupCoordinator (10) | v0 | **v1**: request gains `coordinator_type` int8 (0 = group, 1 = transaction), response gains `throttle_time_ms` and an `error_message` nullable string. The api is called **FindCoordinator** from 0.11 on — `main`'s identifiers decide the class name | `GroupCoordinatorRequest`/`Response` of `0.10.x` |
-| JoinGroup (11), Heartbeat (12), LeaveGroup (13), SyncGroup (14), DescribeGroups (15), ListGroups (16) | v0/v1 | **+1 version each**, all of them adding nothing but the leading `throttle_time_ms` of the response (JoinGroup v2, Heartbeat v1, LeaveGroup v1, SyncGroup v1, DescribeGroups v1, ListGroups v1) | `0.10.x`; one `…V0`/`…V1` subclass per api, the pattern of this repository |
-| CreateTopics (19) | v0, v1 | **v2**: response gains a leading `throttle_time_ms` | `0.10.x` |
-| DeleteTopics (20) | v0 | **v1**: response gains a leading `throttle_time_ms` | `0.10.x` |
-| **DeleteRecords (21)** | – | new: `[topic [partition offset]] timeout` → `throttle_time_ms [topic [partition low_watermark error_code]]`, truncates a log below an offset | nothing; `ApiKeys::DELETE_RECORDS` exists on `main` |
-| **InitProducerId (22)** | – | new: `transactional_id transaction_timeout_ms` → `throttle_time_ms error_code producer_id producer_epoch` — the first request of an idempotent producer | nothing |
-| **OffsetForLeaderEpoch (23)** | – | new, broker→broker (replica fetcher), needed only for completeness | nothing |
-| **AddPartitionsToTxn (24), AddOffsetsToTxn (25), EndTxn (26), WriteTxnMarkers (27), TxnOffsetCommit (28)** | – | new: the transactional producer. 27 is broker→broker | nothing |
-| **DescribeAcls (29), CreateAcls (30), DeleteAcls (31)** | – | new: the ACL apis, only useful against a broker with an `authorizer.class.name` | nothing |
-| **DescribeConfigs (32), AlterConfigs (33)** | – | new: read and change broker/topic configuration through the protocol instead of ZooKeeper | nothing |
-| Message format | v0, v1 | **record batch v2** (magic 2), see below | `main`'s `Common\Record\{RecordBatch,Record,Header}` and `Common\Utils\ByteUtils` |
-| Error codes | −1 … 44 | **45** `OUT_OF_ORDER_SEQUENCE_NUMBER`, **46** `DUPLICATE_SEQUENCE_NUMBER`, **47** `INVALID_PRODUCER_EPOCH`, **48** `INVALID_TXN_STATE`, **49** `INVALID_PRODUCER_ID_MAPPING`, **50** `INVALID_TRANSACTION_TIMEOUT`, **51** `CONCURRENT_TRANSACTIONS`, **52** `TRANSACTION_COORDINATOR_FENCED`, **53** `TRANSACTIONAL_ID_AUTHORIZATION_FAILED`, **54** `SECURITY_DISABLED`, **55** `OPERATION_NOT_ATTEMPTED`, (**56** `KAFKA_STORAGE_ERROR` is 1.0) | `Common/Errors/*` of `0.10.x`; `main`'s `KafkaException` stops at 35 and has to be extended, not copied |
-| Producer | at most once, retries | **idempotent** (`enable.idempotence`, producer id + epoch + sequence per partition) and **transactional** (`transactional.id`, `initTransactions()`, `beginTransaction()`, `sendOffsetsToTransaction()`, `commitTransaction()`, `abortTransaction()`) | `main`'s `KafkaProducer` has none of it |
-| Consumer | – | `isolation.level = read_committed` skips aborted records with the help of the `aborted_transactions` of a Fetch v4 answer, and stops at the `last_stable_offset` instead of the high water mark | `main`'s `KafkaConsumer` has none of it |
+| Api | 0.11.0.3 | 1.1.1 | Since | Start from |
+|---|---|---|---|---|
+| Produce (0) | v0–v3 | **v4**: the same frame as v3 (`PRODUCE_REQUEST_V4 = PRODUCE_REQUEST_V3`, `PRODUCE_RESPONSE_V4 = PRODUCE_RESPONSE_V3`); the version says that the client understands the error code 56 `KAFKA_STORAGE_ERROR`. **v5**: the response partition gains `log_start_offset` int64 after `log_append_time` — the field the 0.11 plan wrongly expected on v3; a producer uses it to tell a spurious `OutOfOrderSequence` (its records were deleted below the log start offset) from a real one | 1.0 | `ProduceRequest`/`ProduceResponse` (+ `…V<n>` subclasses), `ProduceResponsePartition` |
+| Fetch (1) | v0–v5 | **v6**: the same frame as v5 (`FETCH_REQUEST_V6 = FETCH_REQUEST_V5`, response likewise); says that the client understands 56. **v7** (KIP-227, incremental fetch sessions): the request gains `session_id` int32 and `epoch` int32 after `isolation_level` and before `topics`, and a trailing `forgotten_topics_data [topic [partition]]`; the response gains a top-level `error_code` int16 and `session_id` int32 after `throttle_time_ms`. `session_id = 0, epoch = -1` is the session-less full fetch of every older version, which the broker still serves — a client may implement the frame and keep sending full fetches, or implement sessions in the consumer (below) | v6 1.0, v7 1.1 | `FetchRequest`/`FetchResponse`, `FetchRequestTopicPartition`, `FetchedPartition`, `KafkaConsumer` |
+| Metadata (3) | v0–v4 | **v5**: every partition gains `offline_replicas [int32]` after `isr` (KIP-112/113, JBOD); request unchanged | 1.0 | `MetadataRequest`/`MetadataResponse`, `Common\PartitionMetadata` |
+| Offsets (2), OffsetCommit (8), OffsetFetch (9), GroupCoordinator (10), JoinGroup (11), Heartbeat (12), LeaveGroup (13), SyncGroup (14), DescribeGroups (15), ListGroups (16), ApiVersions (18), CreateTopics (19), DeleteTopics (20), DeleteRecords (21), InitProducerId (22), OffsetForLeaderEpoch (23), the transaction apis (24–28), AlterConfigs (33) | – | **unchanged** — same versions, same frames. AlterConfigs is unchanged on the wire but a 1.1 broker accepts a **broker** resource for the dynamic configuration options of KIP-226 (0.11 answered 42 for every broker resource) | – | – |
+| SaslHandshake (17) | v0 | **v1**: the same frame; a client that sends v1 promises to continue with **SaslAuthenticate** requests instead of the raw, unframed token exchange, and in return receives an error code for a failed authentication instead of a closed connection | 1.0 | `SaslHandshakeRequest`, the SASL path of `IO\SocketStream` |
+| ControlledShutdown (7) | v1 | unchanged (v0 still parsed, version still ignored — re-verify) | – | – |
+| DescribeConfigs (32) | v0 | **v1** (KIP-226): the request gains `include_synonyms` boolean after the resources; in the response entry `is_default` boolean is **replaced** by `config_source` int8 (0 unknown, 1 topic, 2 dynamic broker, 3 dynamic default broker, 4 static broker, 5 default) and the entry gains `config_synonyms [config_name config_value config_source]` | 1.1 | `DescribeConfigsRequest`/`Response`, `Admin\ConfigEntry`, `AdminClient::describeConfigs()` |
+| **AlterReplicaLogDirs (34)** | – | new (KIP-113): `[log_dir [topic [partition]]]` → `throttle_time_ms [topic [partition error_code]]`; sent to the broker that hosts the replicas; needs a broker with more than one `log.dirs` entry to do anything, otherwise 57 `LOG_DIR_NOT_FOUND` | 1.0 | nothing; `ApiKeys::ALTER_REPLICA_LOG_DIRS` |
+| **DescribeLogDirs (35)** | – | new (KIP-113): `[topic [partition]]` (nullable = every partition) → `throttle_time_ms [error_code log_dir [topic [partition size offset_lag is_future]]]`; broker-local | 1.0 | nothing |
+| **SaslAuthenticate (36)** | – | new (KIP-152): `sasl_auth_bytes` bytes → `error_code error_message sasl_auth_bytes`; carries the SASL token exchange as ordinary framed requests after a SaslHandshake **v1**; a failed PLAIN authentication answers 58 `SASL_AUTHENTICATION_FAILED` with a message where 0.11 closed the socket | 1.0 | `SaslHandshakeRequest`, `Common\Security\SaslToken`, the SASL code of `SocketStream`, `tests/Integration/SaslTransportTest.php` |
+| **CreatePartitions (37)** | – | new (KIP-195): `[topic count assignment(nullable [[int32]])] timeout validate_only` → `throttle_time_ms [topic error_code error_message]`; controller-only, like CreateTopics (41 `NOT_CONTROLLER` otherwise); cannot shrink a topic (37 `INVALID_PARTITIONS`) | 1.0 | `CreateTopicsRequest` for the shape, `AdminClient::createTopics()` for the controller lookup |
+| **CreateDelegationToken (38), RenewDelegationToken (39), ExpireDelegationToken (40), DescribeDelegationToken (41)** | – | new (KIP-48): tokens issued to a SASL principal; refused on PLAINTEXT and one-way-SSL channels with 64 `DELEGATION_TOKEN_REQUEST_NOT_ALLOWED`, and disabled with 61 unless the broker has a `delegation.token.master.key`; *using* a token means authenticating with SASL/**SCRAM**, which this client does not have (PLAIN only) | 1.1 | nothing; see the open question |
+| **DeleteGroups (42)** | – | new (KIP-229): `[group]` → `throttle_time_ms [group error_code]`; to the group coordinator; 68 `NON_EMPTY_GROUP` for a group with members, 69 `GROUP_ID_NOT_FOUND` for an unknown one | 1.1 | `DescribeGroupsRequest` for the shape, `AdminClient::describeGroups()` for the coordinator lookup |
+| LeaderAndIsr (4) v1, UpdateMetadata (6) v4 | v0 / v0–v3 | broker→broker, not implemented (the probe still sends them with a stale epoch and expects 11) | 1.0 | – |
+| Message format | v2 | **unchanged** — magic 2, no new attribute bit; `log.message.format.version` defaults to 1.1 and a 1.1.1 broker still down-converts for Fetch v0–v3 exactly as 0.11 did | – | `Common\Record\*` untouched |
+| Error codes | −1 … 55 | **56** `KAFKA_STORAGE_ERROR` (retriable, `InvalidMetadataException`), **57** `LOG_DIR_NOT_FOUND`, **58** `SASL_AUTHENTICATION_FAILED` (`AuthenticationException`), **59** `UNKNOWN_PRODUCER_ID` (extends `OutOfOrderSequenceException`), **60** `REASSIGNMENT_IN_PROGRESS`; **61** `DELEGATION_TOKEN_AUTH_DISABLED`, **62** `DELEGATION_TOKEN_NOT_FOUND`, **63** `DELEGATION_TOKEN_OWNER_MISMATCH`, **64** `DELEGATION_TOKEN_REQUEST_NOT_ALLOWED`, **65** `DELEGATION_TOKEN_AUTHORIZATION_FAILED`, **66** `DELEGATION_TOKEN_EXPIRED`, **67** `INVALID_PRINCIPAL_TYPE`, **68** `NON_EMPTY_GROUP`, **69** `GROUP_ID_NOT_FOUND`, **70** `FETCH_SESSION_ID_NOT_FOUND` (retriable), **71** `INVALID_FETCH_SESSION_EPOCH` (retriable). Only 56, 70 and 71 extend `RetriableException` in the Java client | 56–60 1.0, 61–71 1.1 | `Common/Errors/*`, `KafkaException::$codeToClassMap` and its test, which pins the range 1–55 |
+| Producer | idempotent, transactional | the broker keeps the **last five batches** per producer id and partition (`ProducerStateManager.NumBatchesToRetain = 5` @ 1.0.2 and 1.1.1; 0.11 kept one), so a duplicate of any of them is answered as the original append and the "duplicate of an older batch is 45" quirk of 0.11 is gone; **59 `UNKNOWN_PRODUCER_ID`** arrives when the broker lost the producer's state (its records fell below the log start offset) and the 1.x Java producer answers it by resetting the sequence numbers of that partition when `log_start_offset` of the Produce v5 answer shows why; `max.in.flight.requests.per.connection` up to 5 with idempotence is a Java-client concern, this client sends one request at a time | 1.0 | `Producer\Internals\TransactionManager`, `Client::produce()` |
+| Consumer | `read_committed` | **incremental fetch sessions** (optional, see Fetch v7): a consumer that keeps a session sends only the partitions whose fetch offset changed and gets back only the partitions that have data; 70/71 mean "start a new full fetch". Offline replicas in the metadata | 1.1 | `KafkaConsumer`, `Consumer\Internals\SubscriptionState`, `Client::fetchPartitions()` |
+| Admin | topics, configs, records, groups | `createPartitions()`, `deleteConsumerGroups()` (the Java name), `describeLogDirs()`, `alterReplicaLogDirs()`, the config synonyms and sources, dynamic broker configuration through `alterConfigs()` (`describeConfigs()` of a broker resource answers the dynamic and static values with their source) | 1.0 / 1.1 | `Admin\AdminClient`, `Admin\Config*` |
+| Transport | PLAINTEXT, SSL, SASL_PLAINTEXT/SASL_SSL with PLAIN | the same, with the framed `SaslAuthenticate` exchange after a v1 handshake and a real error code for wrong credentials | 1.0 | `SocketStream`, `Common\Security\*` |
 
-### Record batch v2 is the big one
+Three engine-level facts, all of them good news: no new primitive type (the wire of 1.x is int8/16/32/64,
+boolean, string, nullable string, bytes, arrays and the zigzag varints of the record batch, all of which the engine
+has), no new message format, and the request header is still `api_key api_version correlation_id client_id`
+(the flexible versions with tagged fields are Kafka 2.4). Everything in 1.x is "one more `…V<n>` subclass, one
+more field guarded by `static::VERSION`, one more request class" on the pattern of the 0.11 line.
 
-`main` already carries `Common\Record\RecordBatch`, `Common\Record\Header` and `Common\Utils\ByteUtils` (varint and
-zigzag), which is the right place to start, but the batch has to be rebuilt on the schema engine and next to the
-`MessageSet`/`Message` of the lines below, because a **0.11 broker still reads and writes the older formats** and a
-topic keeps whatever `message.format.version` says:
+## The ApiVersions answer of a 1.1.1 broker
+
+The literal answer of a Kafka 1.1.1 container (the image recipe above, built in the scratchpad of the 0.11 session
+and probed with a raw ApiVersions v0 frame on 2026-09-10): `errorCode = 0`, **43 apis**, keys 0 to 42. It matches
+the `ApiKeys`/`schemaVersions()` of the sources at the tag 1.1.1 in every row, with one difference from the 0.11.0.3
+answer that is not a new version: **ControlledShutdown (7) is served as v0–v1 again** (a 0.11.0.3 broker reported
+`MinVersion = 1`), so the "key 7 is the one row whose minimum is not 0" statement of the 0.11 document is no longer
+true and `ApiVersionProbeTest::SERVED_APIS` changes in that row as well. `inter.broker.protocol.version` and
+`log.message.format.version` of the container are `1.1-IV0`.
+
+| ApiKey | Name | Min | Max | 0.11.0.3 | What changed |
+|---|---|---|---|---|---|
+| 0 | Produce | 0 | 5 | 0–3 | v4, v5 |
+| 1 | Fetch | 0 | 7 | 0–5 | v6, v7 |
+| 2 | ListOffsets | 0 | 2 | 0–2 | – |
+| 3 | Metadata | 0 | 5 | 0–4 | v5 |
+| 4 | LeaderAndIsr | 0 | 1 | 0 | broker→broker |
+| 5 | StopReplica | 0 | 0 | 0 | – |
+| 6 | UpdateMetadata | 0 | 4 | 0–3 | broker→broker |
+| 7 | ControlledShutdown | **0** | 1 | 1 | v0 served again |
+| 8 | OffsetCommit | 0 | 3 | 0–3 | – |
+| 9 | OffsetFetch | 0 | 3 | 0–3 | – |
+| 10 | FindCoordinator | 0 | 1 | 0–1 | – |
+| 11 | JoinGroup | 0 | 2 | 0–2 | – |
+| 12–16 | Heartbeat, LeaveGroup, SyncGroup, DescribeGroups, ListGroups | 0 | 1 | 0–1 | – |
+| 17 | SaslHandshake | 0 | 1 | 0 | v1 |
+| 18 | ApiVersions | 0 | 1 | 0–1 | – |
+| 19 | CreateTopics | 0 | 2 | 0–2 | – |
+| 20 | DeleteTopics | 0 | 1 | 0–1 | – |
+| 21–28 | DeleteRecords, InitProducerId, OffsetForLeaderEpoch, the transaction apis | 0 | 0 | 0 | – |
+| 29–31 | DescribeAcls, CreateAcls, DeleteAcls | 0 | 0 | 0 | – (still 54 without an authorizer) |
+| 32 | DescribeConfigs | 0 | 1 | 0 | v1 |
+| 33 | AlterConfigs | 0 | 0 | 0 | broker resources accepted |
+| 34 | AlterReplicaLogDirs | 0 | 0 | – | new |
+| 35 | DescribeLogDirs | 0 | 0 | – | new |
+| 36 | SaslAuthenticate | 0 | 0 | – | new |
+| 37 | CreatePartitions | 0 | 0 | – | new |
+| 38 | CreateDelegationToken | 0 | 0 | – | new |
+| 39 | RenewDelegationToken | 0 | 0 | – | new |
+| 40 | ExpireDelegationToken | 0 | 0 | – | new |
+| 41 | DescribeDelegationToken | 0 | 0 | – | new |
+| 42 | DeleteGroups | 0 | 0 | – | new |
+
+Raw frame of the answer, for the re-capture of `apiversions.response.v0` (client id `apiversions-probe`, correlation id 1):
 
 ```
-RecordBatch => firstOffset length partitionLeaderEpoch magic(2) crc attributes lastOffsetDelta
-               firstTimestamp maxTimestamp producerId producerEpoch firstSequence [Record]
-  Record     => length(varint) attributes(int8) timestampDelta(varint) offsetDelta(varint)
-                keyLength(varint) key valueLength(varint) value [Header]
-  Header     => keyLength(varint) key valueLength(varint) value
+0000010c0000000100000000002b000000000005000100000007000200000002000300000005000400000001000500000000000600000004000700000001000800000003000900000003000a00000001000b00000002000c00000001000d00000001000e00000001000f00000001001000000001001100000001001200000001001300000002001400000001001500000000001600000000001700000000001800000000001900000000001a00000000001b00000000001c00000000001d00000000001e00000000001f00000000002000000001002100000000002200000000002300000000002400000000002500000000002600000000002700000000002800000000002900000000002a00000000
 ```
 
-* the CRC is **CRC-32C** (Castagnoli), not the CRC-32 of the message formats v0/v1, and it covers the batch from
-  the attributes on — PHP's `hash('crc32c', …)` has it since 7.4;
-* `attributes` carry the codec (bits 0–2), the timestamp type (bit 3), `isTransactional` (bit 4) and `isControl`
-  (bit 5); a **control batch** (an abort or commit marker) is never handed to an application;
-* offsets and timestamps inside a batch are **deltas** of the batch header's values, which is what makes the schema
-  engine's per-field reading insufficient on its own: the record entries need a small reader of their own, as the
-  `MessageSet` of the lower lines has;
-* the engine needs `TYPE_VARINT` and `TYPE_ZIGZAG` (or one varint type with a zigzag flag) plus a nullable
-  varint-prefixed byte array, and `BinarySchema::getObjectTypeSize()` has to size them — that is the first ticket
-  of the line, before any api.
+## Baseline: the inherited suite of 0.11.x against a 1.1.1 broker
 
-## What the cascade `0.10.x → main` drops and re-implements
+Run on 2026-09-10 with the `0.11.x` tree at `64d767c` against the 1.1.1 container above, all four listeners:
+unit + compliance untouched (a broker is not involved), integration **426 tests, 21 failures, 0 skips**. Every
+failure is an expectation written for a 0.11.0.3 broker; all of them belong to T1 unless the row says otherwise,
+and each is a behaviour the 1.x document has to record:
 
-Rule 4 of `docs/CASCADE.md`: the lower line wins the shared part, the higher line's version-specific additions come
-back on top as fields and constants. Concretely, on a `cascade/0.10.x-into-main` branch created from `main`:
+| Failing test | What the 1.1.1 broker does | Owner |
+|---|---|---|
+| `ApiVersionProbeTest` (6 + 3): `SERVED_APIS`, the two table tests, and "closes the connection" for Produce v4, Fetch v6, Metadata v5, LeaderAndIsr v1, UpdateMetadata v4, SaslHandshake v1 | serves the 43-key table above; the providers derive from `SERVED_APIS`, so the table is the only edit | T1 |
+| `ApiVersionProbeTest::testControlledShutdownAnswersEveryVersionItIsSent` (v2 above the table) and `AdminApiTest::testTheBrokerAnnouncesOnlyVersionOneOfControlledShutdown` | **ControlledShutdown is an ordinary Java-schema api now**: v0 is served (`MinVersion = 0`) and a version above the table **closes the connection** like every other api — the "last Scala api does not check its version" section of the 0.11 document is history | T1 |
+| `AdminGroupApiTest::testDescribeGroupReportsAwaitingSyncWhileTheLeaderHasNotPublishedTheAssignment` | the group state **`AwaitingSync` is called `CompletingRebalance`** (1.0); `DescribeGroups` answers the new name, so the constant, the document's group-state list and the test move | T1 |
+| `TopicAdminApiTest::testATopicWithoutPartitionsIsRefused` | the message is `Number of partitions must be larger than 0.` (capital N, trailing dot), same code 37 | T1 |
+| `IdempotentProducerTest::testADuplicateOfABatchThatIsNoLongerTheLastOneIsAnOutOfOrderSequence` | the **five-batch window**: a duplicate of a batch that is no longer the last one is answered as the original append, not with 45 (`ProducerStateManager.NumBatchesToRetain = 5`) | T6 (the idempotent producer of 1.x), T1 keeps the suite green by pinning the new answer |
+| `FetchApiTest::testAPartitionWhoseRecordsCarryHeadersCanNotBeReadByAFetchBelowVersionFour` | a Fetch below v4 of a partition whose records carry headers is answered with the error code **0** instead of the -1 of 0.11 — a 1.x broker down-converts such a batch (what it does with the headers is for T3 to measure with `DumpLogSegments` and a raw Fetch v3: dropped, or the batch skipped) | T3, T1 pins the answer |
+| `ConfigsApiTest` (6): a fresh topic reports entries of its own; the broker resource is no longer read-only throughout; `alterConfigs()` of a topic does not leave exactly the two options; `validate_only` and a null value are not followed by an empty own-options list; a broker resource is no longer refused with the 0.11 message | **KIP-226**: `DescribeConfigs` v0 on a 1.1 broker derives `is_default` from the config *source* (an option whose value comes from the broker's static configuration is not "default" any more), and `AlterConfigs` **accepts a broker resource** and validates it per option (`Cannot update these configs dynamically: Set(log.retention.hours)` for a static option; a dynamic one such as `log.cleaner.threads` is applied). T4 owns the semantics and the v1 of the api; T1 only makes the six tests state what the broker answers | T4 (T1 pins) |
 
-**Done at the end of the 0.10.x session.** The automatic PR #48 (`0.10.x` → `main`), which conflicted in almost
-every file because the two trees share nothing but their history, was closed as superseded, and the cascade was
-resolved on `cascade/0.10.x-into-main` as this section describes: the merged tree is the `0.10.x` tree plus the
-api-key constants 21–33 of `ApiKeys`; the ten files of `main` that `0.10.x` does not have (listed below) were
-dropped and stay reachable with `git show <merge base>:<path>` for the tickets that re-implement them.
+Not failing, worth noting: the whole message-format, transaction, `read_committed`, SASL/PLAIN (raw exchange after
+a v0 handshake still works on 1.1.1), quota, DeleteRecords and group-membership coverage of 0.11 passes unchanged,
+and the 229 vectors replay unchanged — a 1.1.1 broker speaks every version the four lines captured.
 
-**Keep from `0.10.x`** (the whole tree, in practice): the schema engine and its two fixes (signed `int8`, a null
-byte array as `-1`), the framing, `Client`, `AdminClient`, `KafkaProducer`, `KafkaConsumer` with the group
-membership, the assignors, the message formats v0/v1 with gzip/snappy/lz4, SSL and SASL/PLAIN, the configuration
-classes, every test suite, the wire vectors, the protocol document, the tooling and the Docker broker.
+## Environment recipe (the one of the 0.11 line, re-targeted)
 
-**Drop from `main`** — all of it re-implemented as the tickets below, and listed in the merge commit:
+1. **Docker**: `nohup dockerd >/tmp/dockerd.log 2>&1 &` if `docker info` fails — and check `docker info` again before
+   every gate, the daemon died once in the middle of the 0.11 session and once in the handoff work. Copy
+   `docker/kafka-0.11.0.3/` to `docker/kafka-1.1.1/`, set `KAFKA_VERSION=1.1.1` and `KAFKA_DIST=kafka_2.11-1.1.1`
+   (the Scala 2.11 tarball exists on archive.apache.org; JDK 8 of the base image is what 1.1 wants), keep the four
+   listeners, `jaas.conf`, the `ca/` proxy-CA mechanism and the `transaction.state.log.*=1` settings of `start.sh`
+   (a one-broker cluster still needs them), and point `docker-compose.yml` at it (container `kafka-1-1-1`). Check
+   whether the `server.properties` of 1.1.1 still ends without a trailing newline — `start.sh` appends one either
+   way, keep that. Before building behind the sandbox proxy: `cp /root/.ccr/ca-bundle.crt docker/kafka-1.1.1/ca/proxy-ca.crt`.
+   The download of the tarball took six to ten minutes through the proxy in this session.
+2. **Broker settings the suite depends on** are those of the 0.11 image. For the new apis add what they need:
+   `delegation.token.master.key=<any string>` and `sasl.enabled.mechanisms=PLAIN,SCRAM-SHA-256` if the delegation
+   tokens are in scope (a SCRAM user is created with `kafka-configs.sh --zookeeper localhost:2181 --alter
+   --add-config 'SCRAM-SHA-256=[password=…]' --entity-type users --entity-name <user>`), and a second `log.dirs`
+   entry if AlterReplicaLogDirs should do more than answer 57.
+3. **Dependencies**: `tools/dev/vendor-from-source.sh` once per session (about ten minutes), then `cp -a vendor/`
+   into every agent worktree; never `composer update` in the sandbox.
+4. **Sources**: `git clone --depth 1 --branch 1.1.1 https://github.com/apache/kafka` (and `1.0.2` for the
+   attribution of a version to a release). `Protocol.java` is no longer the schema authority in 1.x: the schemas
+   are the `schemaVersions()` arrays of `clients/src/main/java/org/apache/kafka/common/requests/*Request.java` and
+   `*Response.java`, the api table is `protocol/ApiKeys.java`, the errors `protocol/Errors.java`.
+5. **Probe before cutting tickets**: a raw ApiVersions v0 frame (twenty lines of PHP over a socket, or
+   `Client::apiVersions()`) gives the served table — paste it into the epic, it is the contract — and the inherited
+   integration suite against the new broker gives the baseline failures, all of which belong to T1.
+6. **Recreate the broker between waves** (`docker compose down -v && docker compose up -d --wait`); every full
+   suite run creates about a hundred topics.
 
-* every request/response class with `$header = null;` instead of `parent::getScheme() + [...]` — 14 of them
-  (`ProduceRequest`, `FetchRequest`, `MetadataRequest`, `OffsetsRequest`, `OffsetCommitRequest`,
-  `OffsetFetchRequest`, `GroupCoordinatorRequest`, `JoinGroupRequest`, `SyncGroupRequest`, `HeartbeatRequest`,
-  `LeaveGroupRequest`, `DescribeGroupsRequest`, `ControlledShutdownRequest`, `SaslHandshakeRequest`). A request that
-  declares `$header = null` writes **no** request header at all; the version-specific *fields* of those classes are
-  what the tickets keep;
-* `Common\Record\RecordBatch` and `Common\Record\Record` as they stand (untyped properties, no `MessageSet` next to
-  them, no magic-byte dispatch) — the batch comes back on the 0.10 `Message`/`MessageSet` design;
-* `KafkaException` and `Common/Errors/*` of `main`, which stop at 35 and lack the codes 36–44 the 0.10 line needs —
-  the 0.10 classes win and the codes 45–55 are added to them;
-* `ApiKeys` of `main` keeps its constants 21–33 (they are correct for 0.11) but is otherwise the 0.10 file;
-* `main`'s `KafkaConsumer`/`KafkaProducer`/`AdminClient`, which are a subset of the 0.10 ones (no group
-  coordination, no assignors, no admin topic apis) with a few 0.11 fields — keep the 0.10 classes and re-add the
-  0.11 fields per ticket;
-* `main`'s six test files, which the 0.10 suites cover many times over. Do not lose
-  `tests/Common/Record/HeaderTest.php`: it is the only existing test of the record headers of 0.11.
+## Ticket plan (waves of up to four Opus agents in isolated worktrees)
 
-**Never lower** anything: the versions of the table above are the protocol of this line, and a 0.11 broker really
-does serve them.
+Wave 1 — foundation and the two independent pieces
+- **T1 broker, surface, docs**: `docker/kafka-1.1.1/`, the protocol document renamed to `docs/protocol/1.1.md`
+  with every `@see` updated (rule 7 of `docs/CASCADE.md`; the naming drops the patch level, as `0.11.0.md` did),
+  `ApiKeys` 34–42, the error codes 56–71 with their classes and retriable flags, the api-key table pinned by
+  `ApiVersionProbeTest` (its providers derive from `SERVED_APIS`, so the table is the only edit), the baseline
+  failures, README/CHANGELOG headers. As in the 0.11 line, the coordinator can put `ApiKeys` and the error codes
+  into a foundation commit before the wave.
+- **T2 SaslHandshake v1 and SaslAuthenticate (36)**: the framed token exchange, the 58 with a message for wrong
+  credentials, `SaslTransportTest` over both SASL listeners, the transport section of the document. Independent of
+  everything else.
+- **T3 Produce v4/v5, Fetch v6/v7, Metadata v5**: the largest ticket — `log_start_offset` on the produce answer,
+  `offline_replicas`, the Fetch v7 frame with `session_id`/`epoch`/`forgotten_topics_data` and the top-level error
+  code, and the **decision on fetch sessions** (below). Frozen contract: `FetchedPartition` and
+  `ProduceResponsePartition` gain fields, nothing loses one.
 
-## Environment recipe
+Wave 2 — the admin apis and the producer semantics
+- **T4 DescribeConfigs v1, dynamic broker configs, CreatePartitions (37), DeleteGroups (42)**: `AdminClient`
+  methods with the Java names, the synonyms and sources, the broker resource that AlterConfigs now accepts.
+- **T5 DescribeLogDirs (35) and AlterReplicaLogDirs (34)**: classes, vectors, `AdminClient::describeLogDirs()`;
+  `alterReplicaLogDirs()` verified as far as one log directory allows (57), or against a second `log.dirs` entry.
+- **T6 the idempotent producer of 1.x**: the five-batch window, 59 `UNKNOWN_PRODUCER_ID` and the sequence reset it
+  triggers, `log_start_offset` in the decision, and the transactional producer re-verified against the new
+  coordinator (no wire change).
+- **T7 delegation tokens (38–41)** — only if the owner wants them (open question 3).
 
-1. **Docker**: `nohup dockerd >/tmp/dockerd.log 2>&1 &` if `docker info` fails. Copy `docker/kafka-0.10.2.2/` to
-   `docker/kafka-0.11.0.3/`, bump `KAFKA_VERSION`, `SCALA_VERSION` (2.11 or 2.12 for 0.11) and `KAFKA_DIST`, and
-   point `docker-compose.yml` at it. The tarball comes from `archive.apache.org`, which is reachable; old Docker
-   Hub images with v1 manifests are not pullable.
-2. **The proxy-CA trick**: the sandbox intercepts TLS, so the `curl` of the build fails unless the proxy CA is
-   trusted. `docker/kafka-<version>/ca/` is copied into `/usr/local/share/ca-certificates/extra/` and
-   `update-ca-certificates` runs before the download; drop `/root/.ccr/ca-bundle.crt` in there when the build
-   reports certificate errors. Keep the mechanism in the new image.
-3. **Listeners**: carry over all four — `PLAINTEXT://0.0.0.0:9092`, `SSL://0.0.0.0:9093`,
-   `SASL_PLAINTEXT://0.0.0.0:9094`, `SASL_SSL://0.0.0.0:9095` — with the checked-in `ssl/broker.crt`/`broker.key`
-   and the `jaas.conf` of the 0.10 image. `KAFKA_SSL_BOOTSTRAP_SERVERS`, `KAFKA_SASL_BOOTSTRAP_SERVERS` and
-   `KAFKA_SASL_SSL_BOOTSTRAP_SERVERS` are already wired into `IntegrationTestCase`.
-4. **Broker settings** the suite depends on: `auto.create.topics.enable=true`, `num.partitions=3`,
-   `offsets.topic.replication.factor=1`, `offsets.topic.num.partitions=5`, `group.min.session.timeout.ms=1000`,
-   `group.max.session.timeout.ms=60000`, `delete.topic.enable=true`. For 0.11 add
-   `transaction.state.log.replication.factor=1` and `transaction.state.log.min.isr=1` — without them the
-   `__transaction_state` topic cannot be created on a one-broker cluster and every transactional test fails with 15.
-   A topic with `message.format.version=0.10.0` (and one with `0.9.0`) is what proves the down-conversion paths,
-   which a 0.11 broker has two of.
-5. **Dependencies**: `tools/dev/vendor-from-source.sh` once per session, then `cp -a vendor/` into every agent
-   worktree. Never `composer update` in the sandbox.
-6. **In-container tools**: `kafka-topics.sh --zookeeper localhost:2181`, `kafka-console-producer.sh`,
-   `kafka-console-consumer.sh --new-consumer --bootstrap-server localhost:9092 --consumer.config <file>`,
-   `kafka-consumer-groups.sh --new-consumer`, `kafka-configs.sh`, and
-   `kafka-run-class.sh kafka.tools.DumpLogSegments --files /tmp/kafka-logs/<topic>-0/00000000000000000000.log --print-data-log --deep-iteration`,
-   which prints a record batch v2 with its producer id, epoch, sequence and headers — the fastest way to see what
-   the format really looks like. `docker logs <container>` shows why the broker closed a connection.
+Wave 3 — the finish
+- **T8 fetch sessions in the consumer** if wave 1 decided to implement them (`FetchSessionHandler` of the Java
+  client: session id and epoch per broker, the set of partitions the broker knows, `forgotten_topics_data` for
+  the ones that left the assignment, a full fetch on 70/71).
+- **T9 docs, compliance, README matrix, CHANGELOG, examples, release notes**, and the handoff for the line above
+  (Kafka 2.0: flexible versions are still far away, 2.0 is Produce v6, Fetch v8, OffsetCommit v4 … and the
+  removal of the zookeeper-based admin paths).
 
-## Ticket plan (waves of up to four agents in isolated worktrees)
+Every ticket: byte-exact vectors from the real broker, integration tests with unique topic/group/transactional-id
+names, the whole gate green before the PR, and a PR against the integration branch with "Closes #n". The
+coordinator merges each PR locally with a merge commit, runs the whole gate against the broker, pushes, closes the
+issue by hand; the line goes to `main` as one PR at the end — but note that this time the integration branch is
+cut from `main` **and** every fix that lands on `0.11.x` in the meantime arrives through a cascade PR, which has
+to be merged into the integration branch before the final PR.
 
-Wave 1 — foundation
-- **T1 broker, surface, docs**: `docker/kafka-0.11.0.3/`, the protocol document renamed to
-  `docs/protocol/0.11.0.md` with every `@see` updated, `ApiKeys` 21–33, error codes 45–55, the ApiVersions table of
-  the new broker pinned by the probe, README/CHANGELOG headers.
-- **T2 record batch v2**: `TYPE_VARINT`/zigzag in the engine, `RecordBatch`, `Record` with headers, CRC-32C, the
-  control batches, and the two down-conversions a 0.11 broker performs. The largest single piece of the line.
+## Pitfalls of the 0.11 session (do not rediscover them)
 
-Wave 2 — the versioned apis (all of them mechanical once the batch is there)
-- **T3 throttle time everywhere**: GroupCoordinator/FindCoordinator v1, JoinGroup v2, Heartbeat v1, LeaveGroup v1,
-  SyncGroup v1, DescribeGroups v1, ListGroups v1, OffsetCommit v3, OffsetFetch v3, CreateTopics v2, DeleteTopics
-  v1, Metadata v3/v4, Offsets v2 — one `…V<n>` subclass per api and the throttle time on the response.
-- **T4 Produce v3 / Fetch v4 and v5**: `transactional_id`, `log_start_offset`, `isolation_level`,
-  `last_stable_offset` and the aborted transactions.
-- **T5 DeleteRecords (21) and the config apis (32, 33)** with the `AdminClient` methods.
-- **T6 the ACL apis (29–31)**, only if the owner wants them; they need a broker with an authorizer.
-
-Wave 3 — the producer semantics
-- **T7 idempotent producer**: InitProducerId (22), the producer id/epoch/sequence bookkeeping per partition,
-  `enable.idempotence`, and what a client does with 45/46/47.
-- **T8 transactional producer**: AddPartitionsToTxn (24), AddOffsetsToTxn (25), EndTxn (26), TxnOffsetCommit (28),
-  the transaction coordinator lookup (FindCoordinator v1 with `coordinator_type = 1`) and the consumer's
-  `isolation.level = read_committed`.
-- **T9 docs, compliance, README matrix, CHANGELOG, examples, and the handoff** — the closing ticket of every line.
-  There is no line above `main`, so its "handoff" is the release notes of the package instead.
-
-Every ticket: byte-exact vectors from the real broker, integration tests with unique topic/group names, the whole
-gate green before the PR, and a PR against the integration branch with "Closes #n".
-
-## Pitfalls of the 0.10.x session (do not rediscover them)
-
-* **The shared broker fills up.** Every agent runs the *whole* integration suite before its PR and each run creates
-  about a hundred topics; after two waves the container held 4000 of them. An all-topics Metadata request against
-  4000 topics takes longer than a one-second session timeout, which is what broke `ConsumerGroupTest` once.
-  Recreate the broker between waves (`docker compose down -v && docker compose up -d --wait`) and write every test
-  helper so that it bootstraps with a **named** topic instead of asking for the whole cluster.
-* **A 0.10/0.11 broker closes the socket on a frame it cannot parse** — an unknown api key, a version it does not
-  serve, or a body that does not match the schema of a version it does. The client sees the end of the stream, not
-  a timeout, and `docker logs <container>` names the reason. Only ApiVersions answers an unknown version (with the
-  error code 35), and ControlledShutdown ignores its version altogether.
-* **An empty group stays `Empty`**, with its committed offsets, instead of being dropped; `Dead` now really means
-  "this coordinator has never heard of the group".
-* **A 0.10.2.2 broker answers Metadata with one broker even on a topic-less cluster**, where 0.8/0.9 answered zero
-  brokers. An empty broker array still means "not ready, retry", so the readiness probe stays.
-* **The consumer defaults changed with 0.10.1** and the 0.11 ones are the same: `session.timeout.ms` 10000,
-  `request.timeout.ms` 305000, `max.poll.interval.ms` 300000. `request.timeout.ms` has to exceed both other values,
-  because a JoinGroup blocks the connection for a whole rebalance — and two members of one group need two PHP
-  processes (`tests/Fixture/consumer-group-member.php` + `ConsumerGroupMemberProcess`).
-* **The recurring merge conflicts of parallel tickets were exactly four places**, all of them "keep both":
-  the 0.10.2.2 bullet of the "Wire vectors" preamble, the end of the "Wire vectors" section, the `use` list of
-  `src/Kafka/Client.php` and the provider list of `tests/Compliance/ProtocolVectorTest.php`. The `### <vector id>`
-  blocks, the vector files and the api sections themselves never conflicted — that part of the design works, keep
-  it.
-* **`private` properties break versioned subclasses**: a `…V0` class that reuses its parent's scheme needs
-  `protected` (or public) properties. Write new request classes with `protected readonly` promoted properties.
-* **The sandbox's PHP 8.5 CLI runs the tracing JIT by default and it miscompiles the pure-PHP LZ4 decoder** once
-  its functions get hot: `Lz4Test` and the lz4 message-format vectors then fail with an order-dependent
-  `CorruptMessageException`, while 0 of 200 round trips fail with `php -d opcache.jit=0`. Run the suite as
-  `php -d opcache.jit=0 vendor/bin/phpunit` there; CI on PHP 8.4 is unaffected. Expect the same for the CRC-32C and
-  varint code of the record batch — measure before believing a failure is a defect of the code.
-* **Nested branch names** (`main/foo`) are fine on `main`, but keep the `t<n>-<slug>` convention of the other lines
-  so that the tooling stays uniform; `Closes #n` **does** auto-close on `main`, unlike on the protocol branches.
+* **The gate script must not `cd` into its own directory.** The first version of the coordinator's `gate.sh` did
+  `cd "$(dirname "$0")"` and silently gated the scratchpad; run it with an explicit worktree path and check that the
+  file counts it prints are the repository's.
+* **`pkill -f <pattern>` kills the shell that runs it** when the pattern appears in that shell's own command line;
+  three coordinator commands died that way. Use `ps aux | grep "[p]attern"` to look and a pid to kill.
+* **Run `docker compose down -v` and `docker compose up -d --wait` as separate commands** from anything else; a
+  daemon that dies leaves `docker info` failing and the compose commands hanging.
+* **`subscribe_pr_activity` on every agent PR floods the coordinator with events**; the agents subscribe
+  themselves when they open a PR, so unsubscribe after the merge and stop a finished agent (`TaskStop`) — its
+  leftover sleep timers keep re-waking otherwise.
+* **Identifiers of a previous design are a rule, not a suggestion.** The foundation commit re-invented the varint
+  types under new names and had to be re-done to the identifiers the pre-schema `main` had (`ByteUtils`,
+  `Stream::readVarint()`, `TYPE_VARINT_ZIGZAG` …). For 1.x that trap is gone — the reference is the 0.11 code
+  itself — but the equivalent one exists: the Java client's names for what is new (`createPartitions`,
+  `deleteConsumerGroups`, `describeLogDirs`, `ConfigSource`, `FetchSessionHandler`).
+* **The broker answers, not the plan.** Five statements of the 0.11 handoff were wrong and the broker corrected
+  them (ApiVersions v1 exists; a Produce v3 answer is the v2 frame; Produce v3 accepts magic 2 only; the
+  CreateTopics config value is nullable in every version; error 46 is unreachable). Expect the same rate here:
+  the table above is derived from the sources, and each ticket verifies its own rows.
+* **Timestamps in tests come from the clock.** Time-based retention deletes a segment by the largest timestamp
+  it holds (5-minute check on the container); a test that stamps records with a fixed date in the past loses its
+  data mid-run. `OffsetsByTimestampTest` was the last one fixed.
+* **`DocumentationSyncTest` checks every `@see … section "…"` against the headings**, so renaming a section means
+  moving every reference and the `section` field of the vector file with it — plan the renames into the ticket
+  that owns the api.
+* **Zero skips is the state of the integration suite.** A skip is a regression (the 0.11 line found five hidden
+  behind a stale container name).
+* **A `read_committed` consumer needs the isolation level in Offsets v2 as well as in Fetch** — it was nearly
+  missed; the 1.x consumer keeps it.
+* **The recurring merge-conflict spots are still the same four**, plus README and CHANGELOG: the "Wire vectors"
+  preamble, the end of the vectors section, the `use` list of `Client.php`, the provider list of
+  `ProtocolVectorTest`, the api-key table. All "keep both"; the `### <vector id>` blocks and the api sections never
+  conflicted.
+* **The shared broker is recreated between waves**, and one broker cannot produce every error code: 49, 52, 53
+  and 30 need a second coordinator or an authorizer, 51 is transient. Say which codes are implemented from the
+  sources alone, as the 0.11 document does.
+* **The PHP 8.5 CLI of the sandbox runs the tracing JIT** and miscompiles hot pure-PHP byte loops: always
+  `php -d opcache.jit=0 vendor/bin/phpunit`. `ByteUtils::crc32c()` uses the native `hash('crc32c')` for that
+  reason; keep new byte loops out of PHP where ext/hash or `pack()` can do them.
 
 ## Open questions for the owner
 
-1. **Which Kafka release the line speaks** — 0.11.0.3 is assumed above.
-2. **How far the transactional support should go.** The idempotent producer is a bounded piece of work; the
-   transactional one needs a coordinator lookup, a state machine, `sendOffsetsToTransaction()` and a consumer that
-   filters aborted records. It could also be declared out of scope, leaving `main` with the wire formats but
-   without the semantics.
-3. **The ACL apis (29–31)** need a broker with an `authorizer.class.name`; implement them against a configured
-   container, or from the specification alone and mark them unverified?
-4. **What happens to `main`'s public API where it differs from the lower lines** (`protected const VERSION`, the
-   untyped `RecordBatch` properties, `Consumer\Subscription` without the assignors). The cascade rules say the
-   lower line wins, which changes `main`'s API — the owner should confirm that this is intended before the merge,
-   because it is the API the package publishes.
-5. **Whether `main` keeps the `0.8.x`/`0.9.x`/`0.10.x` protocol documents and vectors** or only its own. The
-   compliance suite replays every one of the 120 vectors of the lower lines against the classes of this line, which
-   is the strongest regression test the repository has — dropping them would lose it.
+1. **Which Kafka release the line speaks** — 1.1.1 is assumed above; 1.0.2 is the smaller alternative.
+2. **Fetch sessions: frame only, or the consumer too.** The frame of Fetch v7 is a day's work and keeps the
+   consumer sending session-less full fetches, which every 1.x broker serves; the incremental sessions of KIP-227
+   save bandwidth for a consumer with many partitions and are a ticket of their own (T8).
+3. **Delegation tokens (38–41).** The four apis are small, but a token is only *usable* with SASL/SCRAM, which
+   this client does not implement (SASL/PLAIN only); the apis can be implemented and verified over the
+   SASL_PLAINTEXT listener with a `delegation.token.master.key`, leaving the SCRAM authentication with a token as
+   a limitation — or the whole group can be left out like the ACL apis of 0.11.
+4. **The ACL apis 29–31 are still out** (decision 3 of the 0.11 epic). A second container with an
+   `authorizer.class.name` and `allow.everyone.if.no.acl.found=true` would let a 1.x ticket add them without
+   touching the shared broker; the 1.x error codes 53 and 65 belong to the same family.
+5. **`main`'s README, CHANGELOG and document say `0.11.x` until T1 of the 1.x line renames them** — the cascade
+   brings the 0.11 texts up verbatim, and rule 7 of `docs/CASCADE.md` makes the rename the first ticket, as it was
+   for every line before. If the owner wants `main` to announce the 1.x line before that, it is a one-file change
+   of the README title and its first paragraph.
