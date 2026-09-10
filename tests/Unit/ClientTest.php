@@ -36,6 +36,7 @@ use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Header;
@@ -944,6 +945,120 @@ final class ClientTest extends TestCase
         }
 
         self::assertFalse($manager->hasProducerId(), 'The idempotent producer starts over with a new producer id');
+        self::assertFalse($manager->hasFatalError());
+    }
+
+    public function testAnUnknownProducerIdAboveTheAcknowledgedOffsetNumbersThePartitionFromZeroAndSendsItAgain(): void
+    {
+        $leader = new BrokerConnection(
+            ResponseFrame::initProducerId(0, 0, 2000, 0),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 0]]], 0, -1, [self::TOPIC => [0 => 0]]),
+            // Every record of this producer was deleted in the meantime: the log now starts at 5 and the broker
+            // has no state of the producer id left, which Kafka 1.0 answers with 59 instead of 45
+            ResponseFrame::produce(
+                0,
+                [self::TOPIC => [0 => [KafkaException::UNKNOWN_PRODUCER_ID, -1]]],
+                0,
+                -1,
+                [self::TOPIC => [0 => 5]]
+            ),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]], 0, -1, [self::TOPIC => [0 => 5]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+        $client->produce([self::TOPIC => [0 => [new Record('the first one')]]], $manager);
+
+        $result = $client->produce([self::TOPIC => [0 => [new Record('after the deletion')]]], $manager);
+
+        self::assertSame(5, $result[self::TOPIC][0]->baseOffset, 'the batch that was sent again was appended');
+        self::assertSame(2000, $manager->getProducerIdAndEpoch()->producerId, 'and under the very same producer id');
+        self::assertSame(1, $manager->sequenceNumber(new TopicPartition(self::TOPIC, 0)));
+
+        $frames  = $leader->getReceivedFrames();
+        $refused = MemoryRecords::fromBuffer(self::messageSetOf($frames[2]))->getBatches()[0];
+        $again   = MemoryRecords::fromBuffer(self::messageSetOf($frames[3]))->getBatches()[0];
+
+        self::assertInstanceOf(RecordBatch::class, $refused);
+        self::assertInstanceOf(RecordBatch::class, $again);
+        self::assertSame(1, $refused->baseSequence, 'the batch the broker refused continued the numbering');
+        self::assertSame(0, $again->baseSequence, 'and the one that was sent again starts the partition over');
+        self::assertSame(2000, $again->producerId);
+    }
+
+    public function testAnUnknownProducerIdWithoutALogStartOffsetIsSentAgainUnchanged(): void
+    {
+        $leader = new BrokerConnection(
+            ResponseFrame::initProducerId(0, 0, 2000, 0),
+            // "The partition may have moved away from the broker between the error and the answer", Sender.java
+            // @ 1.1.1: nothing is decided, and the very same batch goes out once more
+            ResponseFrame::produce(
+                0,
+                [self::TOPIC => [0 => [KafkaException::UNKNOWN_PRODUCER_ID, -1]]],
+                0,
+                -1,
+                [self::TOPIC => [0 => -1]]
+            ),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 3]]], 0, -1, [self::TOPIC => [0 => 0]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+
+        $result = $client->produce([self::TOPIC => [0 => [new Record('unchanged')]]], $manager);
+
+        self::assertSame(3, $result[self::TOPIC][0]->baseOffset);
+
+        $frames = $leader->getReceivedFrames();
+
+        self::assertSame(
+            bin2hex(self::messageSetOf($frames[1])),
+            bin2hex(self::messageSetOf($frames[2])),
+            'the second attempt is byte for byte the first one'
+        );
+    }
+
+    public function testAnUnknownProducerIdWhoseRecordsAreStillInTheLogThrowsTheProducerIdAway(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::initProducerId(0, 0, 2000, 0),
+                ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 0]]], 0, -1, [self::TOPIC => [0 => 0]]),
+                ResponseFrame::produce(
+                    0,
+                    [self::TOPIC => [0 => [KafkaException::UNKNOWN_PRODUCER_ID, -1]]],
+                    0,
+                    -1,
+                    [self::TOPIC => [0 => 0]]
+                )
+            ))
+            ->install();
+
+        $client  = $this->idempotentClient();
+        $manager = new TransactionManager($client);
+        $client->produce([self::TOPIC => [0 => [new Record('still in the log')]]], $manager);
+
+        try {
+            $client->produce([self::TOPIC => [0 => [new Record('and yet unknown')]]], $manager);
+            self::fail('an unknown producer id that a retry can not fix has to be reported to the caller');
+        } catch (TopicPartitionRequestException $exception) {
+            self::assertInstanceOf(
+                UnknownProducerIdException::class,
+                $exception->getExceptions()[self::TOPIC][0]
+            );
+            self::assertSame(0, $exception->getExceptions()[self::TOPIC][0]->getContext()['logStartOffset']);
+        }
+
+        self::assertFalse($manager->hasProducerId(), 'it is the out of order sequence it is a special case of');
         self::assertFalse($manager->hasFatalError());
     }
 

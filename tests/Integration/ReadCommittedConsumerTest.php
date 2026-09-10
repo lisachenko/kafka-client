@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * The read side of KIP-98 against a real Kafka 0.11.0.3 broker: `isolation.level = read_committed`.
+ * The read side of KIP-98 against a real Kafka 1.1.1 broker: `isolation.level = read_committed`.
  *
  * A `read_committed` consumer is the only thing that makes a transaction worth anything, and three of its
  * properties can only be seen against a broker: that the answer stops at the *last stable offset* while a

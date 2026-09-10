@@ -19,8 +19,10 @@ re-captured on every line: they now carry the **43** keys 0 to 42 of a Kafka 1.1
 where the 0.11 capture carried 34 and the 0.10 one 21. The two requests are unchanged — an ApiVersions frame has no
 body in either version. The vectors of what Kafka 1.x *adds* arrive with the ticket that implements each api:
 Produce v4/v5, Fetch v6/v7 and Metadata v5 (T3), SaslHandshake v1 and SaslAuthenticate (T2), DescribeConfigs v1,
-CreatePartitions and DeleteGroups (T4), DescribeLogDirs and AlterReplicaLogDirs (T5) and, optionally, the four
-delegation-token apis (T7).
+CreatePartitions and DeleteGroups (T4), DescribeLogDirs and AlterReplicaLogDirs (T5), the two Produce v5 answers
+that Kafka 1.x changed for the idempotent producer — a duplicate of a batch inside the five-batch window and the
+**59** `UNKNOWN_PRODUCER_ID` of a producer whose records were deleted, with the `log_start_offset` that decides
+what a client does about it (T6) — and, optionally, the four delegation-token apis (T7).
 
 | File | Vectors | What was captured on the 0.11.0.3 broker |
 |---|---|---|

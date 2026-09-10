@@ -106,6 +106,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
+use Throwable;
 
 /**
  * Low-level client for the Kafka 0.11.0.3 protocol.
@@ -201,14 +202,23 @@ class Client
      * `PRODUCE_RESPONSE_V2` @ 1.1.1 - so the version this client sends is the first one that reports the log start
      * offset.
      *
-     * An idempotent (or, from the ticket that adds them, a transactional) producer hands over its
-     * {@see TransactionManager}, which is the whole difference between "at least once" and "exactly once, in
-     * order": the batch of every topic-partition is then stamped with the producer id, the epoch and the sequence
-     * number that the manager keeps, the broker recognises a batch it has already appended and answers it with the
-     * offset of that append instead of writing it twice, and the answer moves the sequence numbers on. The three
-     * error codes of KIP-98 - 45, 46 and 47 - are reported to the manager, which decides whether the producer
-     * starts over with a new producer id or is finished for good; a partition that only failed with **46**
-     * (DuplicateSequenceNumber, "this batch is already in the log") counts as accepted, with an unknown offset.
+     * An idempotent or transactional producer hands over its {@see TransactionManager}, which is the whole
+     * difference between "at least once" and "exactly once, in order": the batch of every topic-partition is then
+     * stamped with the producer id, the epoch and the sequence number that the manager keeps, the broker
+     * recognises a batch it has already appended - one of the **last five** of that producer and partition, on a
+     * 1.x broker - and answers it with the offset of that append instead of writing it twice, and the answer moves
+     * the sequence numbers on. The three error codes of KIP-98 - 45, 46 and 47 - are reported to the manager,
+     * which decides whether the producer starts over with a new producer id or is finished for good; a partition
+     * that only failed with **46** (DuplicateSequenceNumber, "this batch is already in the log") counts as
+     * accepted, with an unknown offset.
+     *
+     * The fourth code, **59** `UnknownProducerId` (Kafka 1.0), is the one this method answers itself: the broker
+     * has no state of this producer for that partition any more, and
+     * {@see TransactionManager::canRetryBatch()} decides on the `logStartOffset` of the answer whether that is
+     * because every record of the producer was deleted from the log - a `DeleteRecords`, or a retention run - in
+     * which case the partition is numbered from the sequence 0 again and the batch is **sent once more**, up to
+     * `retries` times with `retry.backoff.ms` between the attempts. Only a 59 that this can not repair is reported
+     * to the manager, which treats it as the out-of-order sequence it is a special case of.
      *
      * @param array<string, array<int, iterable<Record|string|\Stringable>>> $topicPartitionMessages Messages for
      *        each topic and partition
@@ -248,53 +258,114 @@ class Client
             }
         }
 
-        $producerIdAndEpoch = $transactionManager->maybeInitProducerId();
-        $baseSequences      = $transactionManager->baseSequences($records);
+        // A produce with producer state IS an idempotent producer, and `enable.idempotence` refuses `retries = 0`
+        // (ProducerConfig::resolveIdempotence()); a client that was handed a manager without going through the
+        // producer configuration therefore still gets one further attempt. That is all the answer to a 59 needs:
+        // the batch that is sent again starts at the sequence 0, and a first sequence of 0 is never a 59
+        $retries   = max(1, (int) ($this->configuration[ProducerConfig::RETRIES] ?? 0));
+        $backoffMs = (int) ($this->configuration[ClientConfig::RETRY_BACKOFF_MS] ?? 100);
 
-        try {
-            $result = $this->produceRecords(
-                $records,
-                $producerIdAndEpoch->producerId,
-                $producerIdAndEpoch->epoch,
-                $baseSequences,
-                $transactionManager->getTransactionalId()
-            );
-        } catch (TopicPartitionRequestException $exception) {
-            $result = $exception->getPartialResult();
-            $errors = [];
-            foreach ($exception->getExceptions() as $topic => $partitionErrors) {
+        $pending  = $records;
+        $accepted = [];
+        $errors   = [];
+
+        for ($attempt = 0; ; ++$attempt) {
+            $producerIdAndEpoch = $transactionManager->maybeInitProducerId();
+            $baseSequences      = $transactionManager->baseSequences($pending);
+
+            $failures = [];
+            try {
+                $answered = $this->produceRecords(
+                    $pending,
+                    $producerIdAndEpoch->producerId,
+                    $producerIdAndEpoch->epoch,
+                    $baseSequences,
+                    $transactionManager->getTransactionalId()
+                );
+            } catch (TopicPartitionRequestException $exception) {
+                /** @var array<string, array<int, ProduceResponsePartition>> $answered */
+                $answered = $exception->getPartialResult();
+                $failures = $exception->getExceptions();
+            }
+
+            foreach ($answered as $topic => $partitions) {
+                foreach ($partitions as $partitionId => $partitionInfo) {
+                    $transactionManager->batchCompleted(
+                        new TopicPartition((string) $topic, (int) $partitionId),
+                        count($pending[$topic][$partitionId] ?? []),
+                        $producerIdAndEpoch,
+                        $partitionInfo->baseOffset
+                    );
+                    $accepted[$topic][$partitionId] = $partitionInfo;
+                }
+            }
+
+            $retriable = [];
+            foreach ($failures as $topic => $partitionErrors) {
                 foreach ($partitionErrors as $partitionId => $error) {
                     $topicPartition = new TopicPartition((string) $topic, (int) $partitionId);
-                    $recordCount    = count($records[$topic][$partitionId] ?? []);
+                    $recordCount    = count($pending[$topic][$partitionId] ?? []);
+
+                    // Kafka 1.0: the broker lost the state of this producer for this partition (59). The
+                    // `log_start_offset` of the Produce v5 answer decides whether sending the batch again can fix
+                    // it - when it does, the manager has just numbered the partition from 0 again
+                    if (
+                        $attempt < $retries
+                        && $transactionManager->canRetryBatch(
+                            $topicPartition,
+                            $error,
+                            self::logStartOffsetOf($error),
+                            $producerIdAndEpoch
+                        )
+                    ) {
+                        $retriable[$topic][$partitionId] = $pending[$topic][$partitionId];
+                        continue;
+                    }
+
                     $transactionManager->batchFailed($topicPartition, $error, $recordCount, $producerIdAndEpoch);
 
                     // "The broker received a duplicate sequence number" is not a failure: the batch is in the log
                     // already, only the offset of that append is not in this answer
                     if ($error instanceof DuplicateSequenceNumberException) {
-                        $result[$topic][$partitionId] = self::alreadyAppendedPartition((int) $partitionId);
+                        $accepted[$topic][$partitionId] = self::alreadyAppendedPartition((int) $partitionId);
                         continue;
                     }
                     $errors[$topic][$partitionId] = $error;
                 }
             }
-            if ($errors !== []) {
-                throw new TopicPartitionRequestException($result, $errors);
+
+            if ($retriable === []) {
+                break;
             }
 
-            return $result;
-        }
-
-        foreach ($result as $topic => $partitions) {
-            foreach (array_keys($partitions) as $partitionId) {
-                $transactionManager->batchCompleted(
-                    new TopicPartition((string) $topic, (int) $partitionId),
-                    count($records[$topic][$partitionId] ?? []),
-                    $producerIdAndEpoch
-                );
+            $pending = $retriable;
+            if ($backoffMs > 0) {
+                usleep($backoffMs * 1000);
             }
         }
 
-        return $result;
+        if ($errors !== []) {
+            throw new TopicPartitionRequestException($accepted, $errors);
+        }
+
+        return $accepted;
+    }
+
+    /**
+     * Returns the `log_start_offset` a failed partition of a Produce answer reported.
+     *
+     * The value travels in the context of the exception {@see Client::produceRecords()} builds out of the error
+     * code, because the answer itself is gone by the time a producer decides what to do about it; an answer below
+     * Produce v5, and an error that is not one of a produce request at all, answer
+     * {@see ProduceResponsePartition::INVALID_OFFSET}.
+     */
+    private static function logStartOffsetOf(Throwable $error): int
+    {
+        if (!$error instanceof KafkaException) {
+            return ProduceResponsePartition::INVALID_OFFSET;
+        }
+
+        return (int) ($error->getContext()['logStartOffset'] ?? ProduceResponsePartition::INVALID_OFFSET);
     }
 
     /**
@@ -458,9 +529,17 @@ class Client
                     $partitions = $topicResult->partitions;
                     foreach ($partitions as $partitionId => $partitionInfo) {
                         if ($partitionInfo->errorCode !== KafkaException::NO_ERROR) {
+                            // The log start offset travels with the *error* as well, because it is what decides
+                            // what a producer does about a 59 (UnknownProducerId): the field is the only way to
+                            // tell the head of the log being deleted under a producer from a real out-of-order
+                            // sequence, see TransactionManager::canRetryBatch()
                             $errors[$topic][$partitionId] = KafkaException::fromCode(
                                 $partitionInfo->errorCode,
-                                ['topic' => $topic, 'partitionId' => $partitionId]
+                                [
+                                    'topic'          => $topic,
+                                    'partitionId'    => $partitionId,
+                                    'logStartOffset' => $partitionInfo->logStartOffset,
+                                ]
                             );
                             continue;
                         }

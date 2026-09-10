@@ -582,6 +582,126 @@
                 },
                 "throttleTime": 0
             }
+        },
+        {
+            "id": "produce.request.v5.duplicate-in-window",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The first of five batches of one idempotent producer, sent a second time after four more batches of the same producer id went into the partition - the retry a producer would send if the acknowledgements of five batches in a row had been lost. The frame is byte for byte the one that was appended, only the correlation id differs: the producer id 574, the epoch 0 and the base sequence 0 are the ones the original append carried.",
+            "hex": "000000850000000500000006000d74362d6964656d706f74656e74ffffffff0000138800000001000d74362d6964656d706f74656e7400000001000000000000004700000000000000000000003bffffffff02713029f9000000000000000001a08c527d6d000001a08c527d6d000000000000023e000000000000000000011200000001066f6e6500",
+            "fields": {
+                "messageSize": 133,
+                "apiKey": 0,
+                "apiVersion": 5,
+                "correlationId": 6,
+                "clientId": "t6-idempotent",
+                "transactionalId": null,
+                "requiredAcks": -1,
+                "timeout": 5000,
+                "topicMessages": {
+                    "t6-idempotent": {
+                        "topic": "t6-idempotent",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000003bffffffff02713029f9000000000000000001a08c527d6d000001a08c527d6d000000000000023e000000000000000000011200000001066f6e6500"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v5.duplicate-in-window",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer of a **1.1.1** broker to that duplicate: the error code 0 and the base offset 0 of the original append, four batches back. A 0.11.0.3 broker, which kept a single batch per producer and partition, answered 45 (OutOfOrderSequence) for anything but the very last one; `ProducerStateEntry.NumBatchesToRetain = 5` @ 1.0.2 and 1.1.1 is what widened it. The `LogAppendTime` of 1789060611437 gives the duplicate away - the topic keeps the CreateTime of the producer, so a real append answers -1 there - and the `LogStartOffset` of version 5 is 0, the partition being untouched.",
+            "hex": "0000003d0000000600000001000d74362d6964656d706f74656e74000000010000000000000000000000000000000001a08c527d6d000000000000000000000000",
+            "fields": {
+                "messageSize": 61,
+                "correlationId": 6,
+                "topics": {
+                    "t6-idempotent": {
+                        "topic": "t6-idempotent",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 0,
+                                "logAppendTime": 1789060611437,
+                                "logStartOffset": 0
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
+        },
+        {
+            "id": "produce.request.v5.unknown-producer-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The next batch of that producer - base sequence 5, the five records of the batches above being acknowledged - sent after a DeleteRecords request removed every record of the partition. The producer knows nothing of the deletion, so the frame is the ordinary next one of the sequence.",
+            "hex": "000000940000000500000007000d74362d6964656d706f74656e74ffffffff0000138800000001000d74362d6964656d706f74656e7400000001000000000000005600000000000000000000004affffffff02d98cab5b000000000000000001a08c527d77000001a08c527d77000000000000023e000000000005000000013000000001246166746572207468652064656c6574696f6e00",
+            "fields": {
+                "messageSize": 148,
+                "apiKey": 0,
+                "apiVersion": 5,
+                "correlationId": 7,
+                "clientId": "t6-idempotent",
+                "transactionalId": null,
+                "requiredAcks": -1,
+                "timeout": 5000,
+                "topicMessages": {
+                    "t6-idempotent": {
+                        "topic": "t6-idempotent",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000004affffffff02d98cab5b000000000000000001a08c527d77000001a08c527d77000000000000023e000000000005000000013000000001246166746572207468652064656c6574696f6e00"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v5.unknown-producer-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The error code **59** UNKNOWN_PRODUCER_ID (Kafka 1.0): `ProducerStateManager.truncateHead()` dropped the entry of every producer whose last record fell below the new log start offset, and a batch of a producer the broker has no entry for that does not start at the sequence 0 is answered with this code rather than with the 45 of a 0.11.0.3 broker. The `LogStartOffset` of 5 is the whole point of Produce v5: it is above the offset 4 this producer last had acknowledged, so the records really were deleted, and the client numbers the partition from 0 again instead of throwing its producer id away.",
+            "hex": "0000003d0000000700000001000d74362d6964656d706f74656e740000000100000000003bffffffffffffffffffffffffffffffff000000000000000500000000",
+            "fields": {
+                "messageSize": 61,
+                "correlationId": 7,
+                "topics": {
+                    "t6-idempotent": {
+                        "topic": "t6-idempotent",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 59,
+                                "baseOffset": -1,
+                                "logAppendTime": -1,
+                                "logStartOffset": 5
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
         }
     ]
 }
