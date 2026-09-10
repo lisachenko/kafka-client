@@ -48,9 +48,10 @@ specification alone:
   `tests/Integration/ApiVersionProbeTest.php` sends a real frame of every one of the 43 keys — bodies for the nine
   keys 34-42 included — and one frame **above** every one of them, to see the connection close; the api key 43
   (`ElectPreferredLeaders`, Kafka 2.2) is what it sends to see an unknown key close it.
-* **Ten of the sixteen error codes this line adds are observed on the container** (57, 58, 59, 62, 63, 64, 66, 67,
-  68, 69). The codes **56**, **60**, **61** and **65** cannot be produced on it and are implemented from
-  `Errors.java` alone; **70** and **71** are reachable only from a consumer that keeps a fetch session.
+* **Twelve of the sixteen error codes this line adds are observed on the container** (57, 58, 59, 62, 63, 64, 66,
+  67, 68, 69, 70 and 71 — the last two as the wire vectors `fetch.response.v7.session-id-not-found` and
+  `fetch.response.v7.invalid-fetch-session-epoch`, and as the recovery the consumer performs). The codes **56**,
+  **60**, **61** and **65** cannot be produced on it and are implemented from `Errors.java` alone.
 
 ## Deviations from the plan, forced by the broker
 
