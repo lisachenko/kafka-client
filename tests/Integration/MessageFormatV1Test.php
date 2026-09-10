@@ -388,7 +388,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
         $command   = [
-            'docker', 'exec', $container === false || $container === '' ? 'kafka-0-11-0-3' : $container,
+            'docker', 'exec', $container === false || $container === '' ? 'kafka-1-1-1' : $container,
             '/opt/kafka/bin/kafka-topics.sh', '--zookeeper', 'localhost:2181',
             '--create', '--topic', $topic, '--partitions', '1', '--replication-factor', '1',
         ];
