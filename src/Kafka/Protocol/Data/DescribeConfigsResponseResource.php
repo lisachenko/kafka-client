@@ -28,14 +28,22 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     config_entries => DescribeConfigsResponseConfigEntry
  * </pre>
  *
- * `DESCRIBE_CONFIGS_RESPONSE_ENTITY_V0` in `Protocol.java` @ 0.11.0.3. The error is per resource - one bad resource
- * of a request does not spoil the others - and it carries the `error_message` of the exception the broker caught,
- * which is the only place that says WHY a resource was refused.
+ * `DESCRIBE_CONFIGS_RESPONSE_ENTITY_V0` and `…_V1` of `DescribeConfigsResponse.java` @ 1.1.1: the resource entry
+ * itself never changed, only the config entries it holds did, which is what the version constant of this DTO picks
+ * in {@see self::entryClass()}, see {@see DescribeConfigsResponseResourceV0}.
  *
- * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0)"
+ * The error is per resource - one bad resource of a request does not spoil the others - and it carries the
+ * `error_message` of the exception the broker caught, which is the only place that says WHY a resource was refused.
+ *
+ * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
  */
 class DescribeConfigsResponseResource implements BinarySchemaInterface
 {
+    /**
+     * Version of the DescribeConfigs API that this DTO is unpacked from
+     */
+    public const int VERSION = 1;
+
     /**
      * Error code of this resource, 0 when its configuration follows
      */
@@ -73,7 +81,19 @@ class DescribeConfigsResponseResource implements BinarySchemaInterface
             'errorMessage'  => BinarySchema::TYPE_NULLABLE_STRING,
             'resourceType'  => BinarySchema::TYPE_INT8,
             'resourceName'  => BinarySchema::TYPE_STRING,
-            'configEntries' => ['configName' => DescribeConfigsResponseConfigEntry::class],
+            'configEntries' => ['configName' => static::entryClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a configuration entry for the version of the API that this DTO belongs to
+     *
+     * @return class-string<DescribeConfigsResponseConfigEntry>
+     */
+    protected static function entryClass(): string
+    {
+        return static::VERSION >= 1
+            ? DescribeConfigsResponseConfigEntry::class
+            : DescribeConfigsResponseConfigEntryV0::class;
     }
 }

@@ -401,17 +401,21 @@ foreach ($group->members as $memberId => $member) {
 | `describeGroup()` / `describeGroups()`       | DescribeGroups v1       | Sent to the coordinator of the group; an unknown group answers `Dead`, one whose last member left `Empty` |
 | `controlledShutdown()`                       | ControlledShutdown v1   | Moves every partition leader off a broker — it really does stop it    |
 | `deleteRecords()`                            | DeleteRecords v0        | Moves the **low watermark** of a partition forward (KIP-107); sent to the partition leader, answers a `DeletedRecords` per partition |
-| `describeConfigs()`                          | DescribeConfigs v0      | The configuration of a topic or a broker (KIP-133); a broker resource is only answered by that broker, and a sensitive value comes back `null` |
-| `alterConfigs()`                             | AlterConfigs v0         | **Replaces** the whole configuration of a topic; a 1.1 broker takes a broker resource too and refuses the options it cannot change at runtime with 42 (KIP-226, ticket T4) |
+| `describeConfigs()`                          | DescribeConfigs **v1**  | The configuration of a topic or a broker (KIP-133); every entry says which `ConfigSource` its value comes from and, with `$includeSynonyms`, every place the broker looked (KIP-226). A broker resource is only answered by that broker, and a sensitive value comes back `null` |
+| `alterConfigs()`                             | AlterConfigs v0         | **Replaces** the whole configuration of a resource (`Config::ownValues()` is the set to send back); a 1.1 broker takes a **broker** resource too — the dynamic options of KIP-226, per broker or cluster-wide with `ConfigResource::defaultBroker()` — and refuses the ones it cannot change at runtime with 42 |
 | `describeLogDirs()`                          | DescribeLogDirs v0      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories |
 | `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v0  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
+| `createPartitions()`                         | CreatePartitions v0     | Raises the partition count of topics that exist (KIP-195); controller-only like `createTopics()`, and it can only ever grow a topic (37 otherwise) |
+| `deleteConsumerGroups()`                     | DeleteGroups v0         | Makes the coordinator forget groups and their committed offsets (KIP-229); a group with a live member is 68, one the coordinator does not know 69 |
 
-Both topic apis are served by the **controller** alone: `AdminClient` looks it up in the
-`controller_id` of a Metadata answer, and repeats the request once against a freshly looked up
-controller when a topic comes back with the error code 41 (`NotController`). Neither method throws
-for a topic: the result has one entry per requested topic, in the order of the request, `null` when
-it worked and the exception of its error code — with the `error_message` of CreateTopics v1 in the
-context — when it did not, because one topic of a batch says nothing about the others.
+The three topic apis — `createTopics()`, `deleteTopics()` and `createPartitions()` — are served by
+the **controller** alone: `AdminClient` looks it up in the `controller_id` of a Metadata answer, and
+repeats the request once against a freshly looked up controller when a topic comes back with the
+error code 41 (`NotController`). None of them throws for a topic: the result has one entry per
+requested topic, in the order of the request, `null` when it worked and the exception of its error
+code — with the `error_message` the controller sent in the context — when it did not, because one
+topic of a batch says nothing about the others. `deleteConsumerGroups()` reports its groups the same
+way, and sends one request to the coordinator of each of them.
 
 `getApiVersions()` is what Kafka 0.10.0 added: it asks one broker for the version range of every
 api it serves and returns them indexed by the api key, which is the only way to tell one release
@@ -718,17 +722,17 @@ still implementing.
 | 29      | DescribeAcls         | v0                | yes           | –        | no       | no, see below                |
 | 30      | CreateAcls           | v0                | yes           | –        | no       | no, see below                |
 | 31      | DeleteAcls           | v0                | yes           | –        | no       | no, see below                |
-| 32      | DescribeConfigs      | v0, v1            | yes           | –        | **v0**   | **v0**; v1: T4               |
-| 33      | AlterConfigs         | v0                | yes           | –        | **v0**   | **v0**                       |
+| 32      | DescribeConfigs      | v0, v1            | yes           | –        | **v0**   | v0, **v1**                   |
+| 33      | AlterConfigs         | v0                | yes           | –        | **v0**   | **v0** (topics and brokers)  |
 | 34      | AlterReplicaLogDirs  | v0                | yes           | –        | –        | **v0**                       |
 | 35      | DescribeLogDirs      | v0                | yes           | –        | –        | **v0**                       |
 | 36      | SaslAuthenticate     | v0                | yes           | –        | –        | **v0**                       |
-| 37      | CreatePartitions     | v0                | controller    | –        | –        | T4                           |
+| 37      | CreatePartitions     | v0                | controller    | –        | –        | **v0**                       |
 | 38      | CreateDelegationToken | v0               | yes           | –        | –        | T7 (optional)                |
 | 39      | RenewDelegationToken | v0                | yes           | –        | –        | T7 (optional)                |
 | 40      | ExpireDelegationToken | v0               | yes           | –        | –        | T7 (optional)                |
 | 41      | DescribeDelegationToken | v0             | yes           | –        | –        | T7 (optional)                |
-| 42      | DeleteGroups         | v0                | yes           | –        | –        | T4                           |
+| 42      | DeleteGroups         | v0                | yes           | –        | –        | **v0**                       |
 
 `offsets.storage = zookeeper` sends version 0 of OffsetCommit and OffsetFetch instead of the bold
 ones, and the lower versions of every api are kept because their frames are what the wire vectors
@@ -777,8 +781,8 @@ What the five lines can do beyond the api versions themselves. A cell that names
 | Framed SASL exchange (`SaslAuthenticate`, KIP-152)     | 1.0        | –       | –       | –        | –        | yes    |
 | `log_start_offset` of a produce answer, `offline_replicas` | 1.0    | –       | –       | –        | –        | **yes** |
 | Incremental fetch sessions (KIP-227)                   | 1.1        | –       | –       | –        | –        | the frame; in the consumer: T8 |
-| Dynamic broker configuration, config sources and synonyms (KIP-226) | 1.1 | –  | –       | –        | –        | T4     |
-| Admin: `createPartitions()`, `deleteConsumerGroups()`  | 1.0 / 1.1  | –       | –       | –        | –        | T4     |
+| Dynamic broker configuration, config sources and synonyms (KIP-226) | 1.1 | –  | –       | –        | –        | **yes** |
+| Admin: `createPartitions()`, `deleteConsumerGroups()`  | 1.0 / 1.1  | –       | –       | –        | –        | **yes** |
 | Admin: `describeLogDirs()`, `alterReplicaLogDirs()`    | 1.0        | –       | –       | –        | –        | yes    |
 | Delegation tokens (KIP-48)                             | 1.1        | –       | –       | –        | –        | T7 (optional) |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | **-1 … 71** |

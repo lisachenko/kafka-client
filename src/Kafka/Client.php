@@ -19,6 +19,7 @@ namespace Protocol\Kafka;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Common\ClientConfig;
@@ -68,6 +69,8 @@ use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
@@ -1726,6 +1729,65 @@ class Client
                 $result = [];
                 foreach ($topicNames as $topic) {
                     $result[$topic] = self::topicError($topic, $response->topics[$topic]->errorCode ?? null);
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Asks the controller to raise the partition count of the given topics (ApiKey 37, Kafka 1.0, KIP-195)
+     *
+     * The api of KIP-195 is the last piece of `kafka-topics.sh --alter` that needed ZooKeeper. Like CreateTopics it
+     * is served by the ACTIVE CONTROLLER alone - `$controller` has to be the node that
+     * {@see \Protocol\Kafka\Admin\AdminClient::findController()} returned, and a broker that is not (or is no longer)
+     * the controller reports the error code 41 (NotController) for every topic of the request, which is handed back
+     * as a {@see Common\Errors\NotControllerException} of that topic instead of being thrown.
+     *
+     * Every entry of `$newPartitions` names the number of partitions its topic should have AFTERWARDS, as a
+     * {@see NewPartitions} or as a plain integer; the api can only grow a topic, and a count that is not above the
+     * current one is answered with 37 (InvalidPartitions).
+     *
+     * `$timeoutMs` is the time the controller waits for the new partitions to exist before it answers, as in
+     * {@see self::createTopics()}: a value of 0 answers immediately with the error code 7 (RequestTimedOut) for
+     * every accepted topic while the work carries on.
+     *
+     * @param Node                             $controller    Active controller of the cluster
+     * @param array<string, NewPartitions|int> $newPartitions Topics to grow, as topic name => new total count
+     * @param int                              $timeoutMs     How long the controller waits for the new partitions
+     * @param bool                             $validateOnly  Validate the request without adding anything
+     *
+     * @return array<string, KafkaException|null> Error of every requested topic, null when it was grown
+     */
+    public function createPartitions(
+        Node $controller,
+        array $newPartitions,
+        int $timeoutMs = 30000,
+        bool $validateOnly = false
+    ): array {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+        $topics   = array_map(strval(...), array_keys($newPartitions));
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new CreatePartitionsRequest(
+                $newPartitions,
+                $timeoutMs,
+                $validateOnly,
+                $clientId,
+                $correlationId
+            ),
+            CreatePartitionsResponse::class,
+            static function (CreatePartitionsResponse $response) use ($topics): array {
+                $result = [];
+                foreach ($topics as $topic) {
+                    $topicResult    = $response->topics[$topic] ?? null;
+                    $result[$topic] = self::topicError(
+                        $topic,
+                        $topicResult?->errorCode,
+                        $topicResult?->errorMessage
+                    );
                 }
 
                 return $result;

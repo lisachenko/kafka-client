@@ -32,7 +32,7 @@ use InvalidArgumentException;
  * so {@see self::key()} is what a result of {@see AdminClient::describeConfigs()} is indexed by, and what
  * {@see AdminClient::alterConfigs()} takes as the key of its argument.
  *
- * @see docs/protocol/1.1.md, sections "DescribeConfigs API (key 32, v0)" and "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/1.1.md, sections "DescribeConfigs API (key 32, v0 and v1)" and "AlterConfigs API (key 33, v0)"
  */
 final class ConfigResource
 {
@@ -97,6 +97,20 @@ final class ConfigResource
     public static function broker(int|string $brokerId): self
     {
         return new self(self::TYPE_BROKER, (string) $brokerId);
+    }
+
+    /**
+     * Names the cluster-wide default of the broker configuration, i.e. the broker resource with an EMPTY name
+     *
+     * KIP-226 (Kafka 1.1) addresses the dynamic configuration that every broker of the cluster picks up as a broker
+     * resource whose name is the empty string; it lives in ZooKeeper under `/config/brokers/<default>`, and
+     * `AdminManager` @ 1.1.1 answers a DescribeConfigs of it with the options that were set that way and nothing
+     * else, each of them with the source {@see ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG}. A value set for a
+     * single broker ({@see self::broker()}) wins over it.
+     */
+    public static function defaultBroker(): self
+    {
+        return new self(self::TYPE_BROKER, '');
     }
 
     /**

@@ -14,17 +14,19 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 
 /**
- * DescribeConfigs, version 0: reads the configuration of a topic or of a broker (ApiKey 32, Kafka 0.11, KIP-133)
+ * DescribeConfigs, version 1: reads the configuration of a topic or of a broker (ApiKey 32, Kafka 0.11, KIP-133)
  *
  * <pre>
- *   DescribeConfigs Request (Version: 0) => [resources]
+ *   DescribeConfigs Request (Version: 1) => [resources] include_synonyms
  *     resources => resource_type resource_name [config_names]
  *       resource_type => INT8
  *       resource_name => STRING
  *       config_names  => NULLABLE_ARRAY of STRING
+ *     include_synonyms => BOOLEAN
  * </pre>
  *
  * KIP-133 made the two things `kafka-configs.sh --describe` had to read out of ZooKeeper available through the
@@ -37,7 +39,13 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
  * The whole request carries no timeout and no top-level anything: it is a plain array of resources, and every
  * resource of it gets an entry in the answer, with an error code of its own.
  *
- * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0)"
+ * Kafka 1.1 (KIP-226) added the trailing `include_synonyms` boolean of this version. With the flag set, every entry
+ * of the answer lists the places the broker looked for the value - `AdminManager.configSynonyms()` @ 1.1.1 - and
+ * without it the synonym array of every entry is **empty**; nothing else about the answer changes.
+ * {@see DescribeConfigsRequestV0} sends the version 0 frame of a 0.11 broker, whose answer has no synonyms and no
+ * config source at all.
+ *
+ * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
  */
 class DescribeConfigsRequest extends AbstractRequest
 {
@@ -49,7 +57,7 @@ class DescribeConfigsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Resources to describe, in the order of the request
@@ -63,11 +71,21 @@ class DescribeConfigsRequest extends AbstractRequest
 
     /**
      * @param list<DescribeConfigsRequestResource> $resources     Resources to describe
+     * @param bool                                 $includeSynonyms Ask for the synonyms of every option (version 1)
      * @param string                               $clientId      A user specified identifier for the client
      * @param int                                  $correlationId A user-supplied value the broker passes back
      */
-    public function __construct(array $resources, string $clientId = '', int $correlationId = 0)
-    {
+    public function __construct(
+        array $resources,
+        /**
+         * Whether every entry of the answer should list the places the broker read the value from
+         *
+         * @since Version 1 of protocol
+         */
+        protected readonly bool $includeSynonyms = false,
+        string $clientId = '',
+        int $correlationId = 0
+    ) {
         $this->resources = array_values($resources);
 
         parent::__construct(self::API_KEY, $clientId, $correlationId);
@@ -79,9 +97,13 @@ class DescribeConfigsRequest extends AbstractRequest
     public static function getScheme(): array
     {
         $header = parent::getScheme();
-
-        return $header + [
+        $body   = [
             'resources' => [DescribeConfigsRequestResource::class],
         ];
+        if (static::VERSION >= 1) {
+            $body['includeSynonyms'] = BinarySchema::TYPE_BOOLEAN;
+        }
+
+        return $header + $body;
     }
 }

@@ -256,7 +256,23 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function createPartitionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function alterReplicaLogDirsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteGroupsVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
     }
@@ -655,8 +671,26 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @param array<string, mixed> $vector
      */
+    #[DataProvider('createPartitionsVectors')]
+    public function testCreatePartitionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
     #[DataProvider('alterReplicaLogDirsVectors')]
     public function testAlterReplicaLogDirsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteGroupsVectors')]
+    public function testDeleteGroupsApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

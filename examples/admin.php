@@ -137,6 +137,17 @@ foreach ($description->members as $memberId => $member) {
         . "{$assignmentSize} bytes of assignment\n";
 }
 
+// DeleteGroups (key 42, Kafka 1.1, KIP-229) makes the coordinator forget a group and the offsets it committed.
+// Only a group without members can be deleted: one that still has a live consumer is answered with 68
+// (NonEmptyGroup), and a group the coordinator has never heard of with 69 (GroupIdNotFound). Nothing is thrown -
+// the result has one entry per group, like createTopics().
+echo "\nDeleting the group {$groupId}\n";
+foreach ($admin->deleteConsumerGroups([$groupId]) as $deletedGroupId => $error) {
+    echo '  ' . $deletedGroupId . ': ' . ($error === null
+        ? 'deleted, with every offset it had committed'
+        : 'error ' . $error->getCode() . ' - ' . $error->getMessage()) . "\n";
+}
+
 // The remaining admin call, controlledShutdown(), asks the controller to move every leader off a broker. It is what
 // kafka-server-stop.sh triggers, and it really does stop serving that broker - only send it to a broker you want to
 // shut down. Creating and deleting topics is in examples/create-topic.php, the offsets by timestamp of Kafka 0.10.1

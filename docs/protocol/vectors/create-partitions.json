@@ -1,0 +1,199 @@
+{
+    "api": "create-partitions",
+    "apiKey": 37,
+    "section": "CreatePartitions API (key 37, v0)",
+    "description": "Wire vectors of the CreatePartitions API (key 37, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "createpartitions.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "CreatePartitions request v0 that raises a topic of one partition to three, with the placement of the two new partitions left to the controller (the null assignment `ff ff ff ff`).",
+            "hex": "0000003c002500000000000b000a74342d636f6e6669677300000001001574342d636f6e666967732d706172746974696f6e7300000003ffffffff0000753000",
+            "fields": {
+                "messageSize": 60,
+                "apiKey": 37,
+                "apiVersion": 0,
+                "correlationId": 11,
+                "clientId": "t4-configs",
+                "topics": {
+                    "t4-configs-partitions": {
+                        "topic": "t4-configs-partitions",
+                        "count": 3,
+                        "assignment": null
+                    }
+                },
+                "timeout": 30000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createpartitions.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the controller: the throttle time, one entry per topic of the request, the error code 0 and a null error message. The topic has three partitions when this frame arrives.",
+            "hex": "000000270000000b0000000000000001001574342d636f6e666967732d706172746974696f6e730000ffff",
+            "fields": {
+                "messageSize": 39,
+                "correlationId": 11,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-configs-partitions": {
+                        "topic": "t4-configs-partitions",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "createpartitions.request.v0.assignment",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "CreatePartitions request v0 with an explicit assignment and `validate_only = 01`: the two added partitions would both live on the broker 0, which is the only broker of the container. The assignment has one entry per ADDED partition, not per partition of the topic.",
+            "hex": "0000004c002500000000000c000a74342d636f6e6669677300000001001574342d636f6e666967732d706172746974696f6e730000000500000002000000010000000000000001000000000000753001",
+            "fields": {
+                "messageSize": 76,
+                "apiKey": 37,
+                "apiVersion": 0,
+                "correlationId": 12,
+                "clientId": "t4-configs",
+                "topics": {
+                    "t4-configs-partitions": {
+                        "topic": "t4-configs-partitions",
+                        "count": 5,
+                        "assignment": [
+                            [
+                                0
+                            ],
+                            [
+                                0
+                            ]
+                        ]
+                    }
+                },
+                "timeout": 30000,
+                "validateOnly": true
+            }
+        },
+        {
+            "id": "createpartitions.response.v0.assignment",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer to the validated request: the error code 0, and the topic still has three partitions afterwards.",
+            "hex": "000000270000000c0000000000000001001574342d636f6e666967732d706172746974696f6e730000ffff",
+            "fields": {
+                "messageSize": 39,
+                "correlationId": 12,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-configs-partitions": {
+                        "topic": "t4-configs-partitions",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "createpartitions.request.v0.shrink",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "CreatePartitions request v0 that asks for FEWER partitions than the topic has.",
+            "hex": "0000003c002500000000000d000a74342d636f6e6669677300000001001574342d636f6e666967732d706172746974696f6e7300000002ffffffff0000753000",
+            "fields": {
+                "messageSize": 60,
+                "apiKey": 37,
+                "apiVersion": 0,
+                "correlationId": 13,
+                "clientId": "t4-configs",
+                "topics": {
+                    "t4-configs-partitions": {
+                        "topic": "t4-configs-partitions",
+                        "count": 2,
+                        "assignment": null
+                    }
+                },
+                "timeout": 30000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createpartitions.response.v0.shrink",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The refusal: the error code 37 (InvalidPartitions) and the message of the controller. The api can only ever grow a topic - a count equal to the current one is refused as well, with `Topic already has 3 partitions.`.",
+            "hex": "0000006e0000000d0000000000000001001574342d636f6e666967732d706172746974696f6e7300250047546f7069632063757272656e746c7920686173203320706172746974696f6e732c20776869636820697320686967686572207468616e207468652072657175657374656420322e",
+            "fields": {
+                "messageSize": 110,
+                "correlationId": 13,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-configs-partitions": {
+                        "topic": "t4-configs-partitions",
+                        "errorCode": 37,
+                        "errorMessage": "Topic currently has 3 partitions, which is higher than the requested 2."
+                    }
+                }
+            }
+        },
+        {
+            "id": "createpartitions.request.v0.unknown-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "CreatePartitions request v0 for a topic that does not exist. Unlike DescribeConfigs, this api knows the difference.",
+            "hex": "00000038002500000000000e000a74342d636f6e6669677300000001001174342d636f6e666967732d616273656e7400000005ffffffff0000753000",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 37,
+                "apiVersion": 0,
+                "correlationId": 14,
+                "clientId": "t4-configs",
+                "topics": {
+                    "t4-configs-absent": {
+                        "topic": "t4-configs-absent",
+                        "count": 5,
+                        "assignment": null
+                    }
+                },
+                "timeout": 30000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createpartitions.response.v0.unknown-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The refusal: the error code 3 (UnknownTopicOrPartition) with the message of the controller. The topic is not created by the request either.",
+            "hex": "000000500000000e0000000000000001001174342d636f6e666967732d616273656e740003002d54686520746f706963202774342d636f6e666967732d616273656e742720646f6573206e6f742065786973742e",
+            "fields": {
+                "messageSize": 80,
+                "correlationId": 14,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-configs-absent": {
+                        "topic": "t4-configs-absent",
+                        "errorCode": 3,
+                        "errorMessage": "The topic 't4-configs-absent' does not exist."
+                    }
+                }
+            }
+        }
+    ]
+}

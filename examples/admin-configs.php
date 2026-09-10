@@ -12,19 +12,23 @@
 declare(strict_types=1);
 
 /**
- * The three admin apis Kafka 0.11 added: DescribeConfigs (32), AlterConfigs (33) and DeleteRecords (21).
+ * The configuration apis of a Kafka 1.1 broker: DescribeConfigs (32), AlterConfigs (33) and DeleteRecords (21).
  *
  * Before them a client had to talk to **ZooKeeper** to read or change the configuration of a topic, and there was
- * no way at all to remove records from a partition before their retention was over. KIP-133 moved the
- * configuration into the protocol and KIP-107 added the api that moves the **low watermark** of a partition
- * forward, which is what a data-retention request of an application boils down to.
+ * no way at all to remove records from a partition before their retention was over. KIP-133 (Kafka 0.11) moved the
+ * configuration into the protocol, KIP-107 added the api that moves the **low watermark** of a partition forward,
+ * and KIP-226 (Kafka 1.1) added the **version 1** of DescribeConfigs and the dynamic broker configuration.
  *
- * Three properties of these apis are worth knowing, and the example shows all three:
+ * Four properties of these apis are worth knowing, and the example shows all four:
  *
- *  - `alterConfigs()` **replaces** the whole configuration of a topic: an option that was set and is not in the
- *    request is reset to its default, which is what `Config::nonDefaultValues()` exists for;
- *  - a 0.11 broker alters **topics only** - a broker resource is refused with 42, dynamic broker configuration is
- *    Kafka 1.1 - and `describeConfigs()` of a broker resource is answered by that broker alone;
+ *  - every entry of a DescribeConfigs v1 answer says WHERE its value comes from (`ConfigEntry::$source`) and, with
+ *    `$includeSynonyms`, every other place the broker looked (`ConfigEntry::$synonyms`);
+ *  - `alterConfigs()` **replaces** the whole configuration of a resource: an option that was set and is not in the
+ *    request is reset, which is what `Config::ownValues()` exists for - `nonDefaultValues()` also reports what the
+ *    broker configuration gives the topic, and sending that back would write it into the topic;
+ *  - a 1.1 broker alters a **broker** resource as well, but only the options of `AllDynamicConfigs`; a static one
+ *    is refused with 42 and the names it cannot update. `describeConfigs()` of a broker resource is answered by
+ *    that broker alone, and the resource with an EMPTY name is the cluster-wide default;
  *  - `deleteRecords()` is served by the **leader** of every partition, like a produce, and answers the new low
  *    watermark; deleting at or below the current one is not an error.
  *
@@ -33,12 +37,13 @@ declare(strict_types=1);
  *   php examples/admin-configs.php my-topic
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/admin-configs.php
  *
- * @see docs/protocol/0.11.0.md, sections "DescribeConfigs API (key 32, v0)", "AlterConfigs API (key 33, v0)" and
+ * @see docs/protocol/1.1.md, sections "DescribeConfigs API (key 32, v0 and v1)", "AlterConfigs API (key 33, v0)" and
  *      "DeleteRecords API (key 21, v0)"
  */
 
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\ConfigResource;
+use Protocol\Kafka\Admin\ConfigSource;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Common\ClientConfig;
@@ -74,8 +79,13 @@ $topicResource = ConfigResource::topic($topic);
 $topicKey      = $topicResource->key();                    // "topic:kafka-client-example-configs"
 
 // A resource is named with a ConfigResource and addressed in the result by its key(), because PHP cannot use an
-// object as an array key. Without a list of option names the broker answers all ~40 entries of a topic.
-$configs = $admin->describeConfigs([$topicResource], ['retention.ms', 'cleanup.policy', 'message.format.version']);
+// object as an array key. Without a list of option names the broker answers all ~40 entries of a topic; the third
+// argument is the `include_synonyms` of KIP-226, which fills ConfigEntry::$synonyms.
+$configs = $admin->describeConfigs(
+    [$topicResource],
+    ['retention.ms', 'cleanup.policy', 'segment.bytes'],
+    true
+);
 
 echo "Configuration of {$topic}\n";
 foreach ($configs[$topicKey]->entries as $entry) {
@@ -83,14 +93,23 @@ foreach ($configs[$topicKey]->entries as $entry) {
         "  %-24s = %-12s %s%s",
         $entry->name,
         $entry->value ?? '<null>',
-        $entry->isDefault ? '(default)' : '(set on the topic)',
+        ConfigSource::nameOf($entry->source),
         PHP_EOL
     );
+    foreach ($entry->synonyms as $synonym) {
+        printf(
+            "      %-20s = %-12s %s%s",
+            $synonym->name,
+            $synonym->value ?? '<null>',
+            ConfigSource::nameOf($synonym->source),
+            PHP_EOL
+        );
+    }
 }
 
-// nonDefaultValues() is the whole point of the "replaces everything" rule: read what the topic really has, change
-// one option, and send the result back. Without it `retention.ms` alone would reset every other option.
-$current = $admin->describeConfigs([$topicResource])[$topicKey]->nonDefaultValues();
+// ownValues() is the whole point of the "replaces everything" rule: read what the topic really has, change one
+// option, and send the result back. Without it `retention.ms` alone would reset every other option of the topic.
+$current = $admin->describeConfigs([$topicResource])[$topicKey]->ownValues();
 $altered = $admin->alterConfigs([$topicKey => ['retention.ms' => '3600000'] + $current]);
 
 echo "\nalterConfigs(): " . ($altered[$topicKey] === null
@@ -98,18 +117,39 @@ echo "\nalterConfigs(): " . ($altered[$topicKey] === null
     : 'error ' . $altered[$topicKey]->getCode() . ' - ' . $altered[$topicKey]->getMessage()) . "\n";
 
 // Nothing is thrown for a resource that was refused: the result has one entry per resource, exactly like
-// createTopics(). A broker resource is answered 42, because a 0.11 broker cannot change its own configuration.
+// createTopics(). A 1.1 broker takes a broker resource, but only for the options KIP-226 made dynamic - a static
+// one is answered with 42 and the names it cannot update at runtime.
 $brokerKey  = ConfigResource::broker(0)->key();
 $refused    = $admin->alterConfigs([$brokerKey => ['log.retention.hours' => '1']]);
-echo 'A broker resource is refused with the code ' . ($refused[$brokerKey]?->getCode() ?? 0) . ': '
+echo 'A static broker option is refused with the code ' . ($refused[$brokerKey]?->getCode() ?? 0) . ': '
     . ($refused[$brokerKey]?->getContext()['error'] ?? 'accepted?!') . "\n";
 
-// The live KafkaConfig of a broker, which only that broker can answer; every entry of it is read-only, and the
-// value of a sensitive option (a password) is never sent and arrives as null
-$brokerConfig = $admin->describeConfigs([ConfigResource::broker(0)], ['log.retention.hours', 'num.partitions']);
+// A dynamic one is applied at runtime and reported with the source DYNAMIC_BROKER_CONFIG afterwards; the same
+// option on ConfigResource::defaultBroker() - the resource type 4 with an empty name - is the cluster-wide
+// default that every broker picks up, with the source DYNAMIC_DEFAULT_BROKER_CONFIG.
+//
+//   $admin->alterConfigs([$brokerKey => ['log.cleaner.backoff.ms' => '16000']]);
+//   $admin->alterConfigs([ConfigResource::defaultBroker()->key() => ['log.cleaner.threads' => '2']]);
+//
+// The example does not change the broker it is run against; it only reads it.
+
+// The live KafkaConfig of a broker, which only that broker can answer. Since KIP-226 an entry is read-only when it
+// is NOT dynamically updatable, and the value of a sensitive option (a password) is never sent and arrives as null
+$brokerConfig = $admin->describeConfigs(
+    [ConfigResource::broker(0)],
+    ['log.retention.hours', 'num.partitions', 'log.cleaner.backoff.ms', 'ssl.key.password'],
+    true
+);
 echo "\nConfiguration of broker 0\n";
 foreach ($brokerConfig[$brokerKey]->entries as $entry) {
-    printf("  %-24s = %s%s", $entry->name, $entry->value ?? '<null>', PHP_EOL);
+    printf(
+        "  %-24s = %-12s %s%s%s",
+        $entry->name,
+        $entry->value ?? '<null>',
+        ConfigSource::nameOf($entry->source),
+        $entry->isReadOnly ? ', not dynamically updatable' : '',
+        PHP_EOL
+    );
 }
 
 $producer = new KafkaProducer($configuration + [ProducerConfig::ACKS => ProducerConfig::ACKS_ALL]);

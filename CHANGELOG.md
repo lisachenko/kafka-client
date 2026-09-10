@@ -126,6 +126,52 @@ section grows with every ticket that lands.
   replica the broker does not host.
 - **`examples/admin-log-dirs.php`** — the disks of every broker, a replica moved between two of
   them and watched while the mover copies it, and the two error codes the api has of its own.
+- **DescribeConfigs v1 (key 32) — the config source and the synonyms of KIP-226, Kafka 1.1.** The
+  client sends **version 1** now: the request carries the trailing `include_synonyms` boolean
+  (`AdminClient::describeConfigs($resources, $configNames, $includeSynonyms)`), and every entry of
+  the answer replaces the `is_default` boolean of version 0 with a `config_source` int8 and gains
+  the list of the places the broker looked for that value. New `Admin\ConfigSource` (the ids of
+  `DescribeConfigsResponse.ConfigSource` @ 1.1.1: `UNKNOWN` 0, `TOPIC_CONFIG` 1,
+  `DYNAMIC_BROKER_CONFIG` 2, `DYNAMIC_DEFAULT_BROKER_CONFIG` 3, `STATIC_BROKER_CONFIG` 4,
+  `DEFAULT_CONFIG` 5) and `Admin\ConfigSynonym`; `Admin\ConfigEntry` gained `$source` and
+  `$synonyms`, and its `$isDefault` is derived from the source exactly as `ConfigEntry.isDefault()`
+  does it. `Admin\Config::ownValues()` is new and is the set a read-modify-write has to send back
+  through AlterConfigs — since KIP-226 `nonDefaultValues()` also reports the options that only the
+  **broker** configuration sets. The version 0 of the api stays available as
+  `DescribeConfigsRequestV0`/`DescribeConfigsResponseV0` (with `…ResponseResourceV0` and
+  `…ResponseConfigEntryV0`), and a client that reads it derives the source back from the boolean
+  and the resource type, which is what the Java client does.
+- **The dynamic broker configuration of KIP-226 through AlterConfigs (key 33)** — the frame did not
+  change, the broker did: a **broker** resource is accepted now, where a 0.11 broker refused every
+  one of them with 42. `ConfigResource::defaultBroker()` names the cluster-wide default (the
+  resource type 4 with an **empty** name, `/config/brokers/<default>` in ZooKeeper), which every
+  broker of the cluster picks up and reports with the source `DYNAMIC_DEFAULT_BROKER_CONFIG`, while
+  a value set for one broker wins over it with `DYNAMIC_BROKER_CONFIG`. Only the options of
+  `DynamicBrokerConfig.AllDynamicConfigs` can be changed at runtime; anything else is answered with
+  42 and `Cannot update these configs dynamically: Set(…)`, and the validation refuses the whole
+  resource, not the single option.
+- **CreatePartitions (key 37, v0, KIP-195, Kafka 1.0)** — `CreatePartitionsRequest`/`Response`,
+  `Data\CreatePartitionsRequestTopic`/`…ResponseTopic` and the value object `Admin\NewPartitions`
+  with the Java factory `increaseTo($totalCount, $newAssignments)`.
+  `AdminClient::createPartitions($newPartitions, $timeoutMs, $validateOnly)` sends the request to
+  the active controller and repeats it once on 41, exactly like `createTopics()`, and reports one
+  entry per topic without throwing. The count is what the topic should have **afterwards**: the api
+  can only grow a topic (37 `Topic already has 3 partitions.` otherwise), and an assignment names
+  the brokers of every ADDED partition (39 when its length or width does not fit).
+- **DeleteGroups (key 42, v0, KIP-229, Kafka 1.1)** — `DeleteGroupsRequest`/`Response` and
+  `Data\DeleteGroupsResponseGroup`. `AdminClient::deleteConsumerGroups($groupIds)` looks a
+  coordinator up for every group, sends one request per coordinator and reports one entry per group:
+  `null` when the group and its committed offsets are gone, the code **68** (`GroupNotEmpty`) for a
+  group that still has a member and **69** (`GroupIdNotFound`) for one the coordinator does not
+  know. A deleted group disappears from `listGroups()`, its offsets answer -1 in an OffsetFetch and
+  `describeGroup()` reports it as `Dead`.
+- **Wire vectors of the four apis** — `docs/protocol/vectors/create-partitions.json` and
+  `delete-groups.json` (new, eight and six frames), plus eight DescribeConfigs v1 and six
+  AlterConfigs frames captured on the 1.1.1 container: a topic with and without `include_synonyms`,
+  the broker resource with a dynamic option and a sensitive one, the cluster-wide default resource,
+  the accepted and the refused AlterConfigs of a broker, the growth of a topic, an assignment with
+  `validate_only`, the 37 of a shrink, the 3 of an unknown topic, and the 0/68/69 of DeleteGroups.
+  The six version 0 vectors of DescribeConfigs are replayed through the new `…V0` classes.
 
 ### Changed
 
