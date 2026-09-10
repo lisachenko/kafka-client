@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
  * Version 1 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of the error code;
  * {@see ListGroupsResponseV0} is the answer without it.
  *
- * @see docs/protocol/0.11.0.md, sections "ListGroups API (key 16, v0 and v1)" and "Quotas and throttle time"
+ * @see docs/protocol/1.1.md, sections "ListGroups API (key 16, v0 and v1)" and "Quotas and throttle time"
  */
 class ListGroupsResponse extends AbstractResponse
 {

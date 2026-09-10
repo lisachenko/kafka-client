@@ -119,7 +119,7 @@ use Throwable;
  * {@see \Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter} before poll() returns, because a 0.11.0.3
  * broker sends them and only names them. The default is `read_uncommitted`, which shows every record of the log.
  *
- * @see docs/protocol/0.11.0.md, section "Transactions"
+ * @see docs/protocol/1.1.md, section "Transactions"
  */
 class KafkaConsumer
 {

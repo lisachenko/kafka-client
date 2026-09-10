@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
  * Byte-exact tests for the SaslHandshake API (key 17, v0, Kafka 0.10.0 / KIP-43) and for the token frames that
  * follow it.
  *
- * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/1.1.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  */
 #[CoversClass(SaslHandshakeRequest::class)]
 #[CoversClass(SaslHandshakeResponse::class)]

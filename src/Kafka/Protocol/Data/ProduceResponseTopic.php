@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * or 1 answer carries no `LogAppendTime` ({@see ProduceResponseTopicV0}) - which is what the version constant of
  * this DTO picks in {@see self::partitionClass()}. Version 3 changed nothing about the answer at all.
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v3)"
  */
 class ProduceResponseTopic implements BinarySchemaInterface
 {

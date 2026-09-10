@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponseAbortedTransaction;
  * A batch of the legacy message formats v0 and v1 has no producer id at all and is always kept: transactions do
  * not exist below the message format v2.
  *
- * @see docs/protocol/0.11.0.md, section "Transactions"
+ * @see docs/protocol/1.1.md, section "Transactions"
  */
 final class AbortedTransactionFilter
 {

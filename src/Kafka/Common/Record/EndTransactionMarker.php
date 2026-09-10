@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the ones of the transaction it ends and whose `baseSequence` is -1: the marker is not part of the sequence of the
  * producer.
  *
- * @see docs/protocol/0.11.0.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
  * @see org/apache/kafka/common/record/EndTransactionMarker.java @ 0.11.0.3
  */
 class EndTransactionMarker implements BinarySchemaInterface

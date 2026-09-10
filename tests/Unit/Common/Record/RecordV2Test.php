@@ -28,7 +28,7 @@ use Protocol\Kafka\IO\StringStream;
  * the record `alpha` without a key, without headers and at the offset and the timestamp of its batch is
  * `16 00 00 00 01 0a 61 6c 70 68 61 00`.
  *
- * @see docs/protocol/0.11.0.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
  */
 #[CoversClass(RecordV2::class)]
 final class RecordV2Test extends TestCase

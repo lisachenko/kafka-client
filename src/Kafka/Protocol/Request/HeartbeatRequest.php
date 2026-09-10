@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * request ({@see HeartbeatRequestV0}) puts the same bytes on the wire and only reads its answer with
  * {@see HeartbeatResponseV0}.
  *
- * @see docs/protocol/0.11.0.md, section "Heartbeat API (key 12, v0 and v1)"
+ * @see docs/protocol/1.1.md, section "Heartbeat API (key 12, v0 and v1)"
  */
 class HeartbeatRequest extends AbstractRequest
 {

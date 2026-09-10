@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * class only lowers the version constant that {@see CreateTopicsResponse::getScheme()} follows; the entries are the
  * `TOPIC_ERROR` of version 1, with the `error_message` that {@see CreateTopicsResponseV0} does not have.
  *
- * @see docs/protocol/0.11.0.md, section "CreateTopics API (key 19, v0, v1 and v2)"
+ * @see docs/protocol/1.1.md, section "CreateTopics API (key 19, v0, v1 and v2)"
  */
 final class CreateTopicsResponseV1 extends CreateTopicsResponse
 {

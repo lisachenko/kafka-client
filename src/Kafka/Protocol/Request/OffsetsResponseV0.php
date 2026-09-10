@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see OffsetsResponse::topicClass()} follows. Reading a version 0 answer with the version 1 class would run past
  * the end of the frame.
  *
- * @see docs/protocol/0.11.0.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/1.1.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
  */
 final class OffsetsResponseV0 extends OffsetsResponse
 {

@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the transport: that the handshake succeeds against the certificate of the broker, that it fails against any other
  * trust anchor, and above all *which endpoint the broker advertises* to a client that reached it over TLS.
  *
- * @see docs/protocol/0.11.0.md, section "Transport security (SSL)"
+ * @see docs/protocol/1.1.md, section "Transport security (SSL)"
  */
 #[CoversClass(SocketStream::class)]
 #[CoversClass(SecurityProtocol::class)]
@@ -137,7 +137,7 @@ final class SslTransportTest extends IntegrationTestCase
         $records = [[null, 'encrypted'], ['key', 'and authenticated']];
 
         // The batch is a message set of the specification, which only a request below version 3 may carry: a
-        // Produce v3 accepts the message format v2 alone, see docs/protocol/0.11.0.md
+        // Produce v3 accepts the message format v2 alone, see docs/protocol/1.1.md
         new ProduceRequestV2(
             [$topic => [0 => SpecMessageSet::of($records)]],
             1,

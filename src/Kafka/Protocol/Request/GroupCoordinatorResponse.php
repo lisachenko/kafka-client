@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
  * `__transaction_state` for a transactional id - the answer is the error code 15 (GroupCoordinatorNotAvailable)
  * with the coordinator `-1:"":-1`, so the lookup is worth retrying.
  *
- * @see docs/protocol/0.11.0.md, section "GroupCoordinator API (key 10, v0 and v1)"
+ * @see docs/protocol/1.1.md, section "GroupCoordinator API (key 10, v0 and v1)"
  */
 class GroupCoordinatorResponse extends AbstractResponse
 {

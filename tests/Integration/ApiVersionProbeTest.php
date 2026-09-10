@@ -33,7 +33,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  *
  * Kafka 0.10.0 added the api that answers that question - **ApiVersions**, key 18 - so this class no longer has to
  * guess it the way the `0.8.x` and `0.9.x` lines did. The first half of the suite asks the broker with
- * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/0.11.0.md`.
+ * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/1.1.md`.
  *
  * The second half is still a raw probe ({@see RawApiProbe}), because the *edges* of that table are not in it: what
  * the broker does with a key or a version it does not serve is behaviour, not data. Kafka 0.10 changed that
@@ -57,7 +57,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * things to change - CreateTopics, DeleteTopics, DeleteRecords, WriteTxnMarkers, AlterConfigs - is sent with an
  * empty array.
  *
- * @see docs/protocol/0.11.0.md, section "API keys"
+ * @see docs/protocol/1.1.md, section "API keys"
  */
 #[CoversClass(ApiKeys::class)]
 #[CoversClass(ApiVersionsRequest::class)]

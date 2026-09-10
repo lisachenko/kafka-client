@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see ProduceResponse::getScheme()} and {@see \Protocol\Kafka\Protocol\Data\ProduceResponseTopic} follow.
  * Reading a version 0 answer with a higher version class would run past the end of the frame.
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v3)"
  */
 final class ProduceResponseV0 extends ProduceResponse
 {

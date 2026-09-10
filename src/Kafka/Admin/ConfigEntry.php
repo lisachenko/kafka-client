@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigEntry;
  *  - `isReadOnly` is true for every option of a **broker** resource, because a 0.11 broker cannot change its own
  *    configuration at runtime, and false for every option of a topic.
  *
- * @see docs/protocol/0.11.0.md, section "DescribeConfigs API (key 32, v0)"
+ * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0)"
  */
 final class ConfigEntry
 {

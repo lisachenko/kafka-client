@@ -258,7 +258,7 @@ final class ConsumerConfig extends GeneralConfig
      * A control batch - the COMMIT or ABORT marker the transaction coordinator appends - is never handed to an
      * application in either level.
      *
-     * @see docs/protocol/0.11.0.md, section "Transactions"
+     * @see docs/protocol/1.1.md, section "Transactions"
      */
     public const string ISOLATION_LEVEL = 'isolation.level';
 

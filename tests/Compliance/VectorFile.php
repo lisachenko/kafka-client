@@ -18,7 +18,7 @@ use RuntimeException;
 /**
  * Reader of the wire vectors that live next to the protocol document.
  *
- * The vectors in `docs/protocol/vectors/*.json` are the machine-readable half of `docs/protocol/0.11.0.md`: the
+ * The vectors in `docs/protocol/vectors/*.json` are the machine-readable half of `docs/protocol/1.1.md`: the
  * document shows every one of them as an annotated hex dump, the JSON files carry the same bytes together with the
  * values that the message decodes into. Both halves are kept in step by {@see DocumentationSyncTest}.
  */
@@ -32,7 +32,7 @@ final class VectorFile
     /**
      * Location of the protocol document that the vectors are documented in
      */
-    public const string PROTOCOL_DOCUMENT = __DIR__ . '/../../docs/protocol/0.11.0.md';
+    public const string PROTOCOL_DOCUMENT = __DIR__ . '/../../docs/protocol/1.1.md';
 
     /**
      * Returns the vectors of one api as a PHPUnit data provider, indexed by the vector id

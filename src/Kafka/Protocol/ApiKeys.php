@@ -18,14 +18,15 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol;
 
 /**
- * Numeric codes that the ApiKey in the request can take, as of Kafka 0.11.0.3.
+ * Numeric codes that the ApiKey in the request can take, as of Kafka 1.1.1.
  *
- * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 0.11.0.3: SaslHandshake (17) and ApiVersions (18)
- * arrived with Kafka 0.10.0, CreateTopics (19) and DeleteTopics (20) with 0.10.1, and the keys 21 to 33 (DeleteRecords,
- * the idempotent and transactional producer apis, the ACL and config apis) with 0.11.0. The constants above 20 were
- * kept by the cascade merge of `0.10.x` into this line; their requests are implemented by the tickets of the 0.11
- * line (see docs/handoff/main.md). A broker of 0.10 or later answers an ApiVersions request with the keys and
- * versions it serves; a request with a key or version it cannot parse closes the connection.
+ * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 1.1.1: SaslHandshake (17) and ApiVersions (18)
+ * arrived with Kafka 0.10.0, CreateTopics (19) and DeleteTopics (20) with 0.10.1, the keys 21 to 33 (DeleteRecords,
+ * the idempotent and transactional producer apis, the ACL and config apis) with 0.11.0, the keys 34 to 37
+ * (AlterReplicaLogDirs and DescribeLogDirs of KIP-113, SaslAuthenticate of KIP-152, CreatePartitions of KIP-195)
+ * with 1.0.0 and the keys 38 to 42 (the delegation token apis of KIP-48, DeleteGroups of KIP-229) with 1.1.0.
+ * A broker of 0.10 or later answers an ApiVersions request with the keys and versions it serves; a request with a
+ * key or version it cannot parse closes the connection.
  */
 class ApiKeys
 {
@@ -69,4 +70,13 @@ class ApiKeys
     public const DELETE_ACLS             = 31;
     public const DESCRIBE_CONFIGS        = 32;
     public const ALTER_CONFIGS           = 33;
+    public const ALTER_REPLICA_LOG_DIRS  = 34;
+    public const DESCRIBE_LOG_DIRS       = 35;
+    public const SASL_AUTHENTICATE       = 36;
+    public const CREATE_PARTITIONS       = 37;
+    public const CREATE_DELEGATION_TOKEN   = 38;
+    public const RENEW_DELEGATION_TOKEN    = 39;
+    public const EXPIRE_DELEGATION_TOKEN   = 40;
+    public const DESCRIBE_DELEGATION_TOKEN = 41;
+    public const DELETE_GROUPS             = 42;
 }

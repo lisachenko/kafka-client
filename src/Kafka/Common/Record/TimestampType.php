@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Common\Record;
  * A message of format v0 has no timestamp at all, which is what {@see TimestampType::NO_TIMESTAMP_TYPE} stands for;
  * the values are the ids of the `TimestampType` enum of the Java client.
  *
- * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
+ * @see docs/protocol/1.1.md, section "MessageSet and Message"
  * @see org/apache/kafka/common/record/TimestampType.java @ 0.10.2.2
  */
 final class TimestampType

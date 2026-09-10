@@ -62,7 +62,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV4;
  *   FetchResponse v5        => … HighwaterMarkOffset LastStableOffset LogStartOffset [AbortedTransactions] …
  * </pre>
  *
- * @see docs/protocol/0.11.0.md, sections "Fetch API (key 1, v0 to v5)" and "MessageSet and Message"
+ * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v5)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV4::class)]

@@ -38,7 +38,7 @@ use function strlen;
  * 0.11 uses them, only the records inside a batch do; the *raw* varints of `main` (`TYPE_VARINT` 5, `TYPE_VARLONG` 6,
  * `TYPE_VARCHAR` 7) are not on the wire of any api of 0.11 and stay reserved numbers here.
  *
- * @see docs/protocol/0.11.0.md
+ * @see docs/protocol/1.1.md
  */
 class BinarySchema
 {

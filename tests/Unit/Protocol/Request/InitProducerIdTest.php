@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
 /**
  * Byte-exact tests for the InitProducerId API of Kafka 0.11 (api key 22, v0).
  *
- * @see docs/protocol/0.11.0.md, section "InitProducerId API (key 22, v0)"
+ * @see docs/protocol/1.1.md, section "InitProducerId API (key 22, v0)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
 #[CoversClass(InitProducerIdResponse::class)]

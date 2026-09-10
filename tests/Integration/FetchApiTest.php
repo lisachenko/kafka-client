@@ -52,7 +52,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * answer - in the order of the partitions of the request, and always with at least one complete message in the
  * first non-empty one.
  *
- * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
+ * @see docs/protocol/1.1.md, section "Fetch API (key 1, v0 to v5)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV2::class)]
@@ -385,7 +385,7 @@ final class FetchApiTest extends IntegrationTestCase
     private function produce(int $partition, array $records): void
     {
         $stream = $this->connect();
-        // A message set may only travel in a request below version 3, see docs/protocol/0.11.0.md
+        // A message set may only travel in a request below version 3, see docs/protocol/1.1.md
         new ProduceRequestV2(
             [$this->topic => [$partition => MessageSet::fromRecords($records)]],
             1,

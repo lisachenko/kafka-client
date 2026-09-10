@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * expires them; only then does it become {@see self::STATE_DEAD} and disappear from ListGroups. A 0.9.0.1
  * coordinator had no such state and answered `Dead` from the moment the last member had left.
  *
- * @see docs/protocol/0.11.0.md, section "DescribeGroups API (key 15, v0 and v1)"
+ * @see docs/protocol/1.1.md, section "DescribeGroups API (key 15, v0 and v1)"
  */
 class DescribeGroupResponseMetadata implements BinarySchemaInterface
 {

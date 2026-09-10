@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV0;
  * The request of the two versions is one and the same body - `DELETE_TOPICS_REQUEST_V1 = DELETE_TOPICS_REQUEST_V0`
  * - and only the answer of version 1 opens with the `ThrottleTimeMs`.
  *
- * @see docs/protocol/0.11.0.md, section "DeleteTopics API (key 20, v0 and v1)"
+ * @see docs/protocol/1.1.md, section "DeleteTopics API (key 20, v0 and v1)"
  */
 #[CoversClass(DeleteTopicsRequest::class)]
 #[CoversClass(DeleteTopicsRequestV0::class)]

@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * into the partitions, that a second producer of the same transactional id fences the first one, and what the
  * coordinator answers to the illegal state transitions of the api.
  *
- * @see docs/protocol/0.11.0.md, section "Transactions"
+ * @see docs/protocol/1.1.md, section "Transactions"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(TransactionManager::class)]

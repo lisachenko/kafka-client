@@ -57,7 +57,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
  * {@see FetchResponseV0} exist - the version constant selects both the fields of the answer and the class of a
  * partition entry.
  *
- * @see docs/protocol/0.11.0.md, section "Fetch API (key 1, v0 to v5)"
+ * @see docs/protocol/1.1.md, section "Fetch API (key 1, v0 to v5)"
  */
 class FetchResponse extends AbstractResponse
 {

@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `Protocol.java` @ 0.11.0.3, verified against the broker - so there is no partition class of version 3: the
  * `LogStartOffset` that the Produce answer eventually got belongs to Kafka 1.0 (Produce v5).
  *
- * @see docs/protocol/0.11.0.md, section "Produce API (key 0, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v3)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {
@@ -94,7 +94,7 @@ class ProduceResponsePartition implements BinarySchemaInterface
      * those answers carries a throttle time of its own.
      *
      * @see \Protocol\Kafka\Producer\RecordMetadata::$throttleTimeMs
-     * @see docs/protocol/0.11.0.md, section "Quotas and throttle time"
+     * @see docs/protocol/1.1.md, section "Quotas and throttle time"
      */
     public int $throttleTimeMs = 0;
 

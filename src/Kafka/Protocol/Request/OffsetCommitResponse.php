@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
  * Kafka 0.11) put a `throttle_time_ms` in front of it. {@see OffsetCommitResponseV2},
  * {@see OffsetCommitResponseV1} and {@see OffsetCommitResponseV0} lower the version constant this scheme follows.
  *
- * @see docs/protocol/0.11.0.md, sections "OffsetCommit API (key 8, v0 to v3)" and "Quotas and throttle time"
+ * @see docs/protocol/1.1.md, sections "OffsetCommit API (key 8, v0 to v3)" and "Quotas and throttle time"
  */
 class OffsetCommitResponse extends AbstractResponse
 {

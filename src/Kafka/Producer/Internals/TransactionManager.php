@@ -94,7 +94,7 @@ use Throwable;
  * an open transaction), which is why {@see TransactionManager::resetProducerId()} refuses it.
  *
  * @see \Protocol\Kafka\Client::initProducerId()
- * @see docs/protocol/0.11.0.md, sections "InitProducerId API (key 22, v0)" and "The idempotent producer"
+ * @see docs/protocol/1.1.md, sections "InitProducerId API (key 22, v0)" and "The idempotent producer"
  */
 class TransactionManager
 {

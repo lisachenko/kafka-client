@@ -30,7 +30,7 @@ use Throwable;
  * {@see \Protocol\Kafka\Common\Cluster::bootstrap()} and {@see \Protocol\Kafka\Network\RetryPolicy} - instead of
  * being attempted again until a timeout runs out. Nothing about the connection will be different next time.
  *
- * @see docs/protocol/0.11.0.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/1.1.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  */
 class SaslAuthenticationException extends RuntimeException implements ClientExceptionInterface
 {

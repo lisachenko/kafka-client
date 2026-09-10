@@ -28,7 +28,7 @@ use Protocol\Kafka\Common\Record\Message;
  * message format v1 batch, which is the interesting case because the Java compressor emits back references that a
  * decoder has to expand correctly.
  *
- * @see docs/protocol/0.11.0.md, section "MessageSet and Message"
+ * @see docs/protocol/1.1.md, section "MessageSet and Message"
  */
 #[CoversClass(Lz4::class)]
 final class Lz4Test extends TestCase

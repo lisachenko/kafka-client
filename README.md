@@ -18,7 +18,7 @@ snapshot of the 0.11 line: the lines below live on `0.10.x` (Kafka 0.10.2.2), `0
 every wire vector the lower lines captured is replayed against the classes of this branch,
 because a 0.11.0.3 broker still speaks all of it. What the 0.11 protocol cannot do is simply absent, and
 [what that is](#supported-kafka-protocol-versions) is listed below. The grammar this branch
-implements is written down, byte for byte, in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md).
+implements is written down, byte for byte, in [docs/protocol/1.1.md](docs/protocol/1.1.md).
 
 Installation
 ------------
@@ -144,7 +144,7 @@ finished and refuses every further send. `45` (`OutOfOrderSequenceException`) me
 and the broker no longer agree on what is in the log: the batch that hit it is reported to the
 caller, and the producer starts over with a new producer id — everything written under the old one
 loses its deduplication. Both are documented, with what a real 0.11.0.3 broker answers, in
-[docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), section "The idempotent producer".
+[docs/protocol/1.1.md](docs/protocol/1.1.md), section "The idempotent producer".
 
 ### Transactions
 
@@ -217,7 +217,7 @@ $producer->commitTransaction();
 The consumer of that loop runs with `enable.auto.commit = false` and `read_committed`. A runnable
 version is [examples/transactional-producer.php](examples/transactional-producer.php); the wire
 protocol behind it — the five apis 24 to 28, the control batches and the last stable offset — is in
-[docs/protocol/0.11.0.md](docs/protocol/0.11.0.md), section "Transactions".
+[docs/protocol/1.1.md](docs/protocol/1.1.md), section "Transactions".
 
 Consumer API
 ------------
@@ -827,8 +827,8 @@ is skipped when it is unset:
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or
 accepted — through the request and response classes and checks that the annotated dumps of
-[docs/protocol/0.11.0.md](docs/protocol/0.11.0.md) still hold the same bytes, and that every
-`@see docs/protocol/0.11.0.md, section "…"` of the sources names a heading that exists, so the
+[docs/protocol/1.1.md](docs/protocol/1.1.md) still hold the same bytes, and that every
+`@see docs/protocol/1.1.md, section "…"` of the sources names a heading that exists, so the
 document and the code cannot drift apart.
 
 Examples

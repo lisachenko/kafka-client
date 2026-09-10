@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
  * {@see KafkaException::NO_ERROR} here, because the whole answer of those versions is made of per-partition
  * results.
  *
- * @see docs/protocol/0.11.0.md, sections "OffsetFetch API (key 9, v0 to v3)" and "Quotas and throttle time"
+ * @see docs/protocol/1.1.md, sections "OffsetFetch API (key 9, v0 to v3)" and "Quotas and throttle time"
  */
 class OffsetFetchResponse extends AbstractResponse
 {

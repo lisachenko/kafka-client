@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponseTopic;
  * has to look at the partitions to learn what happened to the transaction, which is what
  * {@see \Protocol\Kafka\Client::addPartitionsToTxn()} does.
  *
- * @see docs/protocol/0.11.0.md, section "AddPartitionsToTxn API (key 24, v0)"
+ * @see docs/protocol/1.1.md, section "AddPartitionsToTxn API (key 24, v0)"
  */
 class AddPartitionsToTxnResponse extends AbstractResponse
 {

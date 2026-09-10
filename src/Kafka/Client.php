@@ -126,7 +126,7 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/0.11.0.md
+ * @see docs/protocol/1.1.md
  */
 class Client
 {
@@ -405,7 +405,7 @@ class Client
             );
         }
 
-        // The wire format carries one opaque record set per topic-partition, see docs/protocol/0.11.0.md
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/1.1.md
         $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {

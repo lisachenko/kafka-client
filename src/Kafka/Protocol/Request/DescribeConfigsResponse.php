@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResource;
  * | 31   | ClusterAuthorizationFailed | The client may not read a broker resource                                |
  * | 42   | InvalidRequest             | An unknown resource type, or a broker id that is not the one that answers|
  *
- * @see docs/protocol/0.11.0.md, section "DescribeConfigs API (key 32, v0)"
+ * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0)"
  */
 class DescribeConfigsResponse extends AbstractResponse
 {

@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     Isr                => [int32]
  * </pre>
  *
- * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
+ * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v4)"
  */
 class PartitionMetadata implements BinarySchemaInterface
 {

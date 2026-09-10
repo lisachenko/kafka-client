@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
  * The whole request carries no timeout and no top-level anything: it is a plain array of resources, and every
  * resource of it gets an entry in the answer, with an error code of its own.
  *
- * @see docs/protocol/0.11.0.md, section "DescribeConfigs API (key 32, v0)"
+ * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0)"
  */
 class DescribeConfigsRequest extends AbstractRequest
 {

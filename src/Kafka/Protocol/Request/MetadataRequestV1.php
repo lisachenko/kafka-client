@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * differs - a version 1 answer has no `ClusterId` ({@see MetadataResponseV1}) - so a client that asks with this
  * class has to read the answer with the matching response class.
  *
- * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
+ * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v4)"
  */
 final class MetadataRequestV1 extends MetadataRequest
 {

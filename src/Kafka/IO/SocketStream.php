@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
  * tokens of that mechanism as bare size-prefixed frames ({@see SocketStream::authenticate()}). Only the PLAIN
  * mechanism is implemented, see {@see SaslMechanism}.
  *
- * @see docs/protocol/0.11.0.md, section "Transport security (SSL)"
+ * @see docs/protocol/1.1.md, section "Transport security (SSL)"
  */
 class SocketStream extends AbstractStream
 {

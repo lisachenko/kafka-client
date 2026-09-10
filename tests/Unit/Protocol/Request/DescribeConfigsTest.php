@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 /**
  * Byte-exact tests for the DescribeConfigs API of Kafka 0.11 (api key 32, v0).
  *
- * @see docs/protocol/0.11.0.md, section "DescribeConfigs API (key 32, v0)"
+ * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0)"
  */
 #[CoversClass(DescribeConfigsRequest::class)]
 #[CoversClass(DescribeConfigsResponse::class)]

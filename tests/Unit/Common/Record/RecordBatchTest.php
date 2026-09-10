@@ -33,7 +33,7 @@ use Protocol\Kafka\Common\Utils\ByteUtils;
  * the very same bytes; the same batches are replayed as wire vectors by `tests/Compliance`, together with the
  * batches that only a raw Produce v3 frame can write.
  *
- * @see docs/protocol/0.11.0.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
  */
 #[CoversClass(RecordBatch::class)]
 final class RecordBatchTest extends TestCase

@@ -1,7 +1,7 @@
 Wire vectors of the Kafka 0.11.0.3 protocol
 ===========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
-machine-readable half of [`../0.11.0.md`](../0.11.0.md), whose "Wire vectors" section shows the same bytes as annotated
+machine-readable half of [`../1.1.md`](../1.1.md), whose "Wire vectors" section shows the same bytes as annotated
 hex dumps. There are **229** of them in 30 files: the 120 the three lines below captured, which a 0.11.0.3 broker
 still answers unchanged, and the **109** frames of what Kafka 0.11 added.
 

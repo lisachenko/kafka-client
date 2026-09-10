@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResource;
  *   $configs[ConfigResource::topic('events')->key()]->get('retention.ms')?->value;
  * </code>
  *
- * @see docs/protocol/0.11.0.md, section "DescribeConfigs API (key 32, v0)"
+ * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0)"
  */
 final class Config
 {

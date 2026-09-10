@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Common;
  * {@see Node::getScheme()} follows; the `rack` property of the parent stays null for it. Reading a version 0
  * answer with the version 1 entry would take the first bytes of the topic array for the length of a rack string.
  *
- * @see docs/protocol/0.11.0.md, section "Metadata API (key 3, v0 to v4)"
+ * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v4)"
  */
 final class NodeV0 extends Node
 {

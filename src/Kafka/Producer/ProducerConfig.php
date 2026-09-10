@@ -180,7 +180,7 @@ final class ProducerConfig extends GeneralConfig
      * headers, for the producer id and the sequence numbers of an idempotent producer and for a transactional id.
      * A batch of the formats v0 and v1 is sent as Produce v2 and its headers are dropped.
      *
-     * @see docs/protocol/0.11.0.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
+     * @see docs/protocol/1.1.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
      */
     public const string MESSAGE_FORMAT_VERSION = 'message.format.version';
 
@@ -249,7 +249,7 @@ final class ProducerConfig extends GeneralConfig
      * broker. This client is synchronous - {@see KafkaProducer::flush()} writes one produce request and reads its
      * answer before the next one - so it has no such option and satisfies the requirement by construction.
      *
-     * @see docs/protocol/0.11.0.md, section "The idempotent producer"
+     * @see docs/protocol/1.1.md, section "The idempotent producer"
      */
     public const string ENABLE_IDEMPOTENCE = 'enable.idempotence';
 
@@ -285,7 +285,7 @@ final class ProducerConfig extends GeneralConfig
      * a transactional id - a broker answers it with the error code 42 - and is refused here as a configuration
      * error.
      *
-     * @see docs/protocol/0.11.0.md, section "Transactions"
+     * @see docs/protocol/1.1.md, section "Transactions"
      */
     public const string TRANSACTIONAL_ID = 'transactional.id';
 

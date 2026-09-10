@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * {@see RawRecordBatchProbe}; that is also the only way to make the broker write a **control batch** without a
  * transactional producer.
  *
- * @see docs/protocol/0.11.0.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
  */
 #[CoversClass(RecordBatch::class)]
 #[CoversClass(RecordV2::class)]

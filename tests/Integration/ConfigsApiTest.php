@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
  * every AlterConfigs of a broker resource, which is one of the assertions below, and the container is shared with
  * the other suites of this branch.
  *
- * @see docs/protocol/0.11.0.md, sections "DescribeConfigs API (key 32, v0)" and "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/1.1.md, sections "DescribeConfigs API (key 32, v0)" and "AlterConfigs API (key 33, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Config::class)]
