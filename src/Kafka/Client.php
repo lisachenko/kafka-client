@@ -43,6 +43,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
+use Protocol\Kafka\Consumer\Internals\FetchSessionHandler;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\IO\SocketStream;
@@ -139,6 +140,25 @@ class Client
      * Fallback for `request.timeout.ms` when the configuration does not carry it
      */
     private const int DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+
+    /**
+     * How often {@see self::fetchPartitionsWithSessions()} answers a fetch session error with a full fetch of its
+     * own, before it leaves the recovery to the next call
+     *
+     * This is not a retry of a failed request - a session error costs no partition anything and needs neither a
+     * metadata refresh nor a backoff - it is the full fetch that the broker asked for by answering 70 or 71, and
+     * one of them is always enough: it opens a new session and is answered with every partition of it.
+     */
+    private const int SESSION_ERROR_ATTEMPTS = 1;
+
+    /**
+     * Incremental fetch session of every broker this client fetched from with sessions, by node id
+     *
+     * @see self::fetchPartitionsWithSessions()
+     *
+     * @var array<int, FetchSessionHandler>
+     */
+    private array $fetchSessionHandlers = [];
 
     public function __construct(
         /**
@@ -639,54 +659,247 @@ class Client
                 $isolationLevel
             ),
             FetchResponse::class,
-            static function (array $result, FetchResponse $response, array &$errors) use (
+            static fn(array $result, FetchResponse $response, array &$errors): array => self::collectFetchedPartitions(
+                $result,
+                $response,
                 $topicPartitionOffsets,
-                $checkCrcs
-            ): array {
-                foreach ($response->topics as $topic => $topicResponse) {
-                    /** @var FetchResponsePartition $responsePartition */
-                    foreach ($topicResponse->partitions as $partitionId => $responsePartition) {
-                        if ($responsePartition->errorCode !== KafkaException::NO_ERROR) {
-                            $errors[$topic][$partitionId] = KafkaException::fromCode(
-                                $responsePartition->errorCode,
-                                ['topic' => $topic, 'partitionId' => $partitionId]
-                            );
-                            continue;
-                        }
-                        $fetchOffset = (int) ($topicPartitionOffsets[$topic][$partitionId] ?? 0);
-                        try {
-                            // The schema engine hands over the raw bytes of the record set, because the broker is
-                            // allowed to cut its last batch short. The record layer looks at the message format of
-                            // every batch, drops that partial trailing one, unwraps a compressed batch into the
-                            // records it holds and keeps the control markers of a transaction to itself.
-                            $records = MemoryRecords::fromBuffer($responsePartition->messageSet ?? '', $checkCrcs);
-                        } catch (KafkaException $exception) {
-                            // A corrupt message only spoils its own partition, the others are still readable
-                            $errors[$topic][$partitionId] = $exception;
-                            continue;
-                        }
-                        $result[$topic][$partitionId] = new FetchedPartition(
-                            new TopicPartition((string) $topic, (int) $partitionId),
-                            $fetchOffset,
-                            $responsePartition->errorCode,
-                            $responsePartition->highWaterMarkOffset,
-                            $records,
-                            // From version 3 on the broker guarantees that the first non-empty partition of an
-                            // answer holds a complete message, and an empty partition simply means that the
-                            // `fetch.max.bytes` of the answer were used up by the ones in front of it
-                            FetchRequest::VERSION < 3 && $responsePartition->isSingleMessageTooLarge($fetchOffset),
-                            $response->throttleTimeMs,
-                            $responsePartition->lastStableOffset,
-                            $responsePartition->logStartOffset,
-                            $responsePartition->abortedTransactions
-                        );
-                    }
-                }
-
-                return $result;
-            },
+                $checkCrcs,
+                $errors
+            ),
             $timeout
         );
+    }
+
+    /**
+     * Fetches messages the way a consumer does: with an **incremental fetch session** per broker (KIP-227)
+     *
+     * The frame, the isolation level and everything that is read out of an answer are the ones of
+     * {@see self::fetchPartitions()}; what is different is what travels in the request and what comes back:
+     *
+     * * the **first** request to a broker is a full fetch with the epoch 0, which asks it to open a fetch session
+     *   and is answered with the id of that session and with every partition of the request;
+     * * every following request to it is an **incremental** fetch of that session and states only the partitions
+     *   whose fetch offset moved since the last one - the broker remembers the others. A partition that is not in
+     *   `$topicPartitionOffsets` any more (a rebalance took it away, {@see \Protocol\Kafka\Consumer\KafkaConsumer}
+     *   paused it, its topic was deleted) travels in the `forgotten_topics_data` of that request and is dropped
+     *   from the session;
+     * * the answer of an incremental fetch carries **only the partitions that have news**, up to an answer with no
+     *   topic at all, so the returned array holds only those. A partition that is missing from it has nothing new:
+     *   its position, its high water mark and everything else the caller knows about it are still valid, which is
+     *   why this method reports what came back instead of an entry per requested partition.
+     *
+     * The session state lives in one {@see FetchSessionHandler} per node ({@see self::getFetchSessionHandlers()}),
+     * which also does the recovery: a broker that answers **70** `FetchSessionIdNotFound` - it evicted the session,
+     * its cache holds 1000 of them - or **71** `InvalidFetchSessionEpoch` - a request or an answer was lost - is
+     * asked again with a full fetch right away, so that a caller never sees a session error; the same happens when
+     * a connection drops before the answer arrives. A partition that a broker answers with a retriable error is
+     * handled as in {@see self::fetchPartitions()}, except that the request that follows the metadata refresh
+     * carries the **whole** set again: an incremental request that carried the failed partitions alone would tell
+     * the broker to forget all the others.
+     *
+     * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
+     * @param int                            $timeout               Timeout in ms to wait for fetching
+     *
+     * @return array<string, array<int, FetchedPartition>> [topic => [partition => FetchedPartition]], only the
+     *         partitions the brokers answered
+     *
+     * @throws TopicPartitionRequestException If the request only succeeded on some of the topic-partitions
+     */
+    public function fetchPartitionsWithSessions(array $topicPartitionOffsets, int $timeout): array
+    {
+        $timeout        = (int) min($this->configuration[ConsumerConfig::FETCH_MAX_WAIT_MS], $timeout);
+        $checkCrcs      = (bool) ($this->configuration[ConsumerConfig::CHECK_CRCS] ?? true);
+        $isolationLevel = $this->isolationLevel();
+        $policy         = RetryPolicy::fromConfiguration($this->configuration);
+        $maxAttempts    = $policy->getMaxAttempts();
+
+        $result          = [];
+        $permanentErrors = [];
+        $pending         = $topicPartitionOffsets;
+        $attempt         = 1;
+        $sessionAttempts = self::SESSION_ERROR_ATTEMPTS;
+
+        while (true) {
+            $errors         = [];
+            $sessionErrors  = [];
+            $requestedNodes = [];
+            $answeredNodes  = [];
+
+            $round = $this->dispatch(
+                $pending,
+                function (array $nodeTopicRequest, int $correlationId, int $nodeId) use (
+                    &$requestedNodes,
+                    $timeout,
+                    $isolationLevel
+                ): FetchRequest {
+                    $handler = $this->fetchSessionHandlers[$nodeId] ??= new FetchSessionHandler($nodeId);
+                    $builder = $handler->newBuilder();
+                    foreach ($nodeTopicRequest as $topic => $partitionOffsets) {
+                        foreach ($partitionOffsets as $partitionId => $fetchOffset) {
+                            $builder->add(
+                                new TopicPartition((string) $topic, (int) $partitionId),
+                                (int) $fetchOffset
+                            );
+                        }
+                    }
+                    $requestData             = $builder->build();
+                    $requestedNodes[$nodeId] = true;
+
+                    return new FetchRequest(
+                        $requestData->toSend,
+                        $timeout,
+                        $this->configuration[ConsumerConfig::FETCH_MIN_BYTES],
+                        $this->configuration[ConsumerConfig::MAX_PARTITION_FETCH_BYTES],
+                        -1,
+                        $this->configuration[ConsumerConfig::CLIENT_ID],
+                        $correlationId,
+                        (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES]
+                            ?? FetchRequest::DEFAULT_MAX_BYTES),
+                        $isolationLevel,
+                        $requestData->metadata,
+                        $requestData->toForget
+                    );
+                },
+                FetchResponse::class,
+                function (array $result, FetchResponse $response, array &$errors, int $nodeId) use (
+                    $pending,
+                    $checkCrcs,
+                    &$answeredNodes,
+                    &$sessionErrors
+                ): array {
+                    $answeredNodes[$nodeId] = true;
+                    $handler                = $this->fetchSessionHandlers[$nodeId] ?? null;
+                    if ($handler !== null && !$handler->handleResponse($response)) {
+                        // A session error - 70 or 71 - is answered with an empty topics array and costs no
+                        // partition anything; the handler is back at a full fetch, which is sent right away
+                        $sessionErrors[$nodeId] = $response->errorCode;
+
+                        return $result;
+                    }
+
+                    return self::collectFetchedPartitions($result, $response, $pending, $checkCrcs, $errors);
+                },
+                $timeout,
+                $errors
+            );
+            $result = self::mergeResult($result, $round);
+
+            // A broker that never answered leaves its session in an unknown state: the next request to it closes
+            // whatever is left of it and opens a new one
+            foreach (array_keys($requestedNodes) as $nodeId) {
+                if (!isset($answeredNodes[$nodeId])) {
+                    $this->fetchSessionHandlers[$nodeId]->handleError();
+                }
+            }
+
+            $hasRetriable = false;
+            foreach ($errors as $topic => $partitionErrors) {
+                foreach ($partitionErrors as $partitionId => $error) {
+                    $canRetry = $attempt < $maxAttempts
+                        && RetryPolicy::isRetriable($error)
+                        && isset($pending[$topic][$partitionId]);
+                    if ($canRetry) {
+                        $hasRetriable = true;
+                    } else {
+                        $permanentErrors[$topic][$partitionId] = $error;
+                    }
+                }
+            }
+
+            if ($hasRetriable) {
+                // The error codes 3, 5, 6 and a dropped connection all mean the same thing: the leader this client
+                // has in its metadata is not the leader of that partition any more
+                $this->reloadCluster();
+                $policy->backoff();
+                $attempt++;
+            } elseif ($sessionErrors !== [] && $sessionAttempts > 0) {
+                $sessionAttempts--;
+            } else {
+                break;
+            }
+
+            $pending = self::withoutPartitions($topicPartitionOffsets, $permanentErrors);
+            if ($pending === []) {
+                break;
+            }
+        }
+
+        if ($permanentErrors !== []) {
+            throw new TopicPartitionRequestException($result, $permanentErrors);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns the incremental fetch session this client holds with every broker it fetched from, by node id
+     *
+     * @return array<int, FetchSessionHandler>
+     */
+    public function getFetchSessionHandlers(): array
+    {
+        return $this->fetchSessionHandlers;
+    }
+
+    /**
+     * Merges one Fetch answer into the result of a fetch, reporting the error of every partition that failed
+     *
+     * @param array<string, array<int, FetchedPartition>> $result                Partitions that are already known
+     * @param FetchResponse                               $response              Answer of one broker
+     * @param array<string, array<int, int>>              $topicPartitionOffsets Offset every partition was asked at
+     * @param bool                                        $checkCrcs             Whether to verify every checksum
+     * @param array<string, array<int, Exception>>        $errors                Collects the error of each partition
+     *
+     * @return array<string, array<int, FetchedPartition>>
+     */
+    private static function collectFetchedPartitions(
+        array $result,
+        FetchResponse $response,
+        array $topicPartitionOffsets,
+        bool $checkCrcs,
+        array &$errors
+    ): array {
+        foreach ($response->topics as $topic => $topicResponse) {
+            /** @var FetchResponsePartition $responsePartition */
+            foreach ($topicResponse->partitions as $partitionId => $responsePartition) {
+                if ($responsePartition->errorCode !== KafkaException::NO_ERROR) {
+                    $errors[$topic][$partitionId] = KafkaException::fromCode(
+                        $responsePartition->errorCode,
+                        ['topic' => $topic, 'partitionId' => $partitionId]
+                    );
+                    continue;
+                }
+                $fetchOffset = (int) ($topicPartitionOffsets[$topic][$partitionId] ?? 0);
+                try {
+                    // The schema engine hands over the raw bytes of the record set, because the broker is
+                    // allowed to cut its last batch short. The record layer looks at the message format of
+                    // every batch, drops that partial trailing one, unwraps a compressed batch into the
+                    // records it holds and keeps the control markers of a transaction to itself.
+                    $records = MemoryRecords::fromBuffer($responsePartition->messageSet ?? '', $checkCrcs);
+                } catch (KafkaException $exception) {
+                    // A corrupt message only spoils its own partition, the others are still readable
+                    $errors[$topic][$partitionId] = $exception;
+                    continue;
+                }
+                $result[$topic][$partitionId] = new FetchedPartition(
+                    new TopicPartition((string) $topic, (int) $partitionId),
+                    $fetchOffset,
+                    $responsePartition->errorCode,
+                    $responsePartition->highWaterMarkOffset,
+                    $records,
+                    // From version 3 on the broker guarantees that the first non-empty partition of an
+                    // answer holds a complete message, and an empty partition simply means that the
+                    // `fetch.max.bytes` of the answer were used up by the ones in front of it
+                    FetchRequest::VERSION < 3 && $responsePartition->isSingleMessageTooLarge($fetchOffset),
+                    $response->throttleTimeMs,
+                    $responsePartition->lastStableOffset,
+                    $responsePartition->logStartOffset,
+                    $responsePartition->abortedTransactions
+                );
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -1514,10 +1727,14 @@ class Client
     /**
      * Performs one round of the fan-out: one request per leader, then the answers as they arrive
      *
-     * @param array<string, array<int, mixed>>       $topicPartitionsRequest Request data per topic-partition
-     * @param Closure(array, int): AbstractRequest   $nodeRequest            Builds the request of one node
+     * Both closures are called with the id of the node they belong to as their last argument, which is what a
+     * request that carries per-broker state - the incremental fetch session of {@see FetchSessionHandler} - needs
+     * to find that state again; a closure that does not care about it simply declares fewer parameters.
+     *
+     * @param array<string, array<int, mixed>>          $topicPartitionsRequest Request data per topic-partition
+     * @param Closure(array, int, int): AbstractRequest $nodeRequest            Builds the request of one node
      * @param class-string<AbstractResponse> $responseClass          Class of the expected response
-     * @param Closure(array, mixed, array): array    $responseAggregator     Merges one answer into the result
+     * @param Closure(array, mixed, array, int): array  $responseAggregator     Merges one answer into the result
      * @param int|null                               $timeout                How long to wait for the answers
      * @param array<string, array<int, Exception>>   $exceptions             Collects the error of each partition
      *
@@ -1554,7 +1771,7 @@ class Client
         foreach ($requestByNode as $nodeId => $nodeTopicPartitions) {
             try {
                 $correlationId = AbstractRequest::nextCorrelationId();
-                $request       = $nodeRequest($nodeTopicPartitions, $correlationId);
+                $request       = $nodeRequest($nodeTopicPartitions, $correlationId, $nodeId);
                 $stream        = $this->connectionTo($nodeId);
                 if ($stream instanceof SocketStream) {
                     // Opened before the request is written, so that the answers of every leader can be awaited at
@@ -1643,8 +1860,8 @@ class Client
         }
 
         $result = [];
-        foreach ($responses as $response) {
-            $result = $responseAggregator($result, $response, $exceptions);
+        foreach ($responses as $nodeId => $response) {
+            $result = $responseAggregator($result, $response, $exceptions, $nodeId);
         }
 
         return $result;
@@ -1712,6 +1929,28 @@ class Client
         }
 
         return $result;
+    }
+
+    /**
+     * Returns the given topic-partitions without the ones the second array holds
+     *
+     * @param array<string, array<int, mixed>> $topicPartitions Partitions to filter
+     * @param array<string, array<int, mixed>> $toRemove        Partitions to leave out
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private static function withoutPartitions(array $topicPartitions, array $toRemove): array
+    {
+        foreach ($toRemove as $topic => $partitions) {
+            foreach (array_keys($partitions) as $partitionId) {
+                unset($topicPartitions[$topic][$partitionId]);
+            }
+            if (($topicPartitions[$topic] ?? null) === []) {
+                unset($topicPartitions[$topic]);
+            }
+        }
+
+        return $topicPartitions;
     }
 
     /**

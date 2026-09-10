@@ -651,6 +651,37 @@ final class KafkaConsumerTest extends TestCase
         );
     }
 
+    public function testAnAnswerThatLeavesPartitionsOutKeepsTheirPositionAndTheirPlaceInTheFetchOrder(): void
+    {
+        // The consumer fetches through an incremental fetch session (KIP-227), so a partition that has nothing new
+        // is simply not in the answer - and everything the consumer knows about it is still valid
+        $client                              = $this->clientWithLog([0 => 2, 1 => 1]);
+        $client->answerOnlyChangedPartitions = true;
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->assign([self::TOPIC => [0, 1]]);
+        $consumer->poll(10);
+
+        // Both logs are read to their end, so the second answer carries the partition 1 and nothing else
+        $client->append(self::TOPIC, 1, ['value-1']);
+        $second = $consumer->poll(10);
+
+        self::assertSame([self::TOPIC => [1]], array_map(array_keys(...), $second));
+        self::assertSame(2, $consumer->position(self::TOPIC, 0), 'the partition that was left out keeps its place');
+        self::assertSame(2, $consumer->position(self::TOPIC, 1));
+
+        $consumer->poll(10);
+
+        self::assertSame(
+            [0 => 2, 1 => 2],
+            $client->fetchCalls[2][self::TOPIC],
+            'the positions of every partition are stated again, the session leaves out what did not move'
+        );
+    }
+
     public function testAPartitionOfAFreshAssignmentIsAppendedBehindTheKnownOrder(): void
     {
         $client   = $this->clientWithLog([0 => 1, 1 => 1]);
