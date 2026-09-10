@@ -104,6 +104,28 @@ section grows with every ticket that lands.
   fetch session (the full fetch that opens it, the incremental fetch that is answered with the one
   partition that changed, the fetch that forgets a partition, and the two session errors **70** and
   **71**) and the v5 pair of Metadata.
+- **The two JBOD apis of KIP-113, Kafka 1.0** — `DescribeLogDirs` (key 35, v0) and
+  `AlterReplicaLogDirs` (key 34, v0), with `Admin\AdminClient::describeLogDirs()` and
+  `Admin\AdminClient::alterReplicaLogDirs()`. Both are **broker-local**, so the first takes a list
+  of broker ids and answers `array<int, array<string, Admin\LogDirInfo>>` — broker id, then the
+  absolute path of each `log.dirs` entry — and the second is keyed by an
+  `Admin\TopicPartitionReplica` (`topic-partition-brokerId`, the `toString()` of the Java class)
+  and reports `null` or the exception of each replica, like `alterConfigs()`. A replica is an
+  `Admin\ReplicaInfo` with `size`, `offsetLag` and `isFuture`. The request array of DescribeLogDirs
+  is **nullable**: `null` asks for every replica of the broker, an empty array only for the
+  directories themselves. `alterReplicaLogDirs()` answers as soon as the move is **accepted** — the
+  copy runs in a `ReplicaAlterLogDirsThread`, and the replica is reported in both directories, the
+  destination with `isFuture = true` and an `offsetLag` that counts down, until the mover swaps the
+  logs in.
+- **Wire vectors of the two apis** — `docs/protocol/vectors/describe-log-dirs.json` and
+  `alter-replica-log-dirs.json`, six frames each, captured on the two log directories of the
+  container: both shapes of the nullable topic array (the empty one answers 64 bytes, the null one
+  answered 235 207 bytes for the several thousand replicas of the shared container and is therefore
+  not stored), the answer for one named partition, the answer taken **while a real move was
+  running**, the accepted move, the **57** of a path that is not in `log.dirs` and the **9** of a
+  replica the broker does not host.
+- **`examples/admin-log-dirs.php`** — the disks of every broker, a replica moved between two of
+  them and watched while the mover copies it, and the two error codes the api has of its own.
 
 ### Changed
 
