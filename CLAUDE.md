@@ -3,10 +3,17 @@
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
 (Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
-(Kafka 0.11.0.3, **complete**) → `main` (Kafka **1.1.1**, **in development**). See `docs/CASCADE.md`
-and, for the current line, `docs/handoff/<branch>.md`: `docs/handoff/0.11.x.md` carries the release
-notes of the 0.11 line with the plan it was built from below them, `docs/handoff/main.md` the plan of
-the 1.x line. The grammar of the line in development is `docs/protocol/1.1.md`.
+(Kafka 0.11.0.3, **complete**) → `main` (Kafka **1.1.1**, **complete**). See `docs/CASCADE.md` and,
+for each line, `docs/handoff/<branch>.md`: every one of those files carries the release notes of its
+line with the plan it was built from below them — `docs/handoff/main.md` is the record of the 1.x
+line. The grammar `main` implements is `docs/protocol/1.1.md`.
+
+**The next line is Kafka 2.0.1**, and it starts from `main` as it stands: no api key and no message
+format is added, almost every api is bumped by one version with a byte-identical schema (KIP-219),
+`OffsetsForLeaderEpochResponse` v1 gains a `leader_epoch`, the three ACL apis gain a
+`resource_pattern_type` (KIP-290) and the error code **72** `LISTENER_NOT_FOUND` is added. What it
+adds api by api, the ticket plan, the environment recipe and the pitfalls of the 1.x session are in
+`docs/handoff/2.0.x.md`; the finished 1.x tree is branched off as `1.x` so that `main` can carry it.
 
 ## Hard rules (owner's decisions)
 
@@ -70,7 +77,13 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   (`docker/kafka-<version>/`, ZooKeeper bundled, advertised as 127.0.0.1:9092). On `main` that is
   **`docker/kafka-1.1.1`**, the container `kafka-1-1-1`; on `0.11.x` it is `docker/kafka-0.11.0.3`, the
   container `kafka-0-11-0-3`. Either way it has the four listeners PLAINTEXT 9092, SSL 9093,
-  SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch carries.
+  SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch carries — the first
+  ticket of a new line adds its image, points `docker-compose.yml` and every fixture at it and
+  **deletes the one below**. A stale container name does not fail a test, it makes it *skip*: grep the
+  tree for the old container and the old image directory (`tests/Fixture/ClientQuota`,
+  `MessageFormatV1Test`, `RecordBatchV2Test`, `tests/Unit/IO/SocketStreamSslTest.php`,
+  `tests/Unit/IO/LocalTlsServer.php`, the examples) before the baseline is measured, and demand zero
+  skips from every gate.
 - In the remote sandbox the Docker daemon may not be running: `nohup dockerd >/tmp/dockerd.log 2>&1 &`
   and wait for `docker info` to answer. Old Docker Hub images with v1 manifests cannot be pulled;
   build the image from `docker/` (the Kafka tarball comes from archive.apache.org, which is reachable).
