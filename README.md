@@ -732,9 +732,9 @@ its broker speaks. The table below is the literal answer of the container, read 
 `Client::apiVersions()` and pinned by `tests/Integration/ApiVersionProbeTest.php`.
 
 The "this branch" column lists the versions this client has a class for; the one in **bold** is the
-version it sends. Every version of a 1.1.1 broker is implemented and exercised against the container;
-the only piece of Kafka 1.x still named after a ticket is the *consumer* half of the incremental
-fetch sessions (T8) — the Fetch v7 frame itself is here.
+version it sends. Every version of a 1.1.1 broker is implemented and exercised against the container,
+the incremental fetch sessions of KIP-227 included — the Fetch v7 frame in `Client` and one session
+per broker in `KafkaConsumer`.
 
 | Api key | API                  | Versions in 1.1.1 | Client-facing | `0.10.x` | `0.11.x` | `main` (this branch)         |
 |---------|----------------------|-------------------|---------------|----------|----------|------------------------------|
