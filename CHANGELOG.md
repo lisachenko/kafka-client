@@ -65,6 +65,45 @@ section grows with every ticket that lands.
   Kafka 1.1 answers there, where 1.0.2 still filled it), the accepted `SaslAuthenticate` exchange,
   the 58 of a wrong password and the 34 of a second `SaslAuthenticate`. The v0 vectors of the
   handshake are replayed through `SaslHandshakeRequestV0` from now on.
+- **Produce v4 and v5 (Kafka 1.0)** — the body of the versions 3, 4 and 5 is one and the same
+  (`PRODUCE_REQUEST_V5` is `PRODUCE_REQUEST_V4` is `PRODUCE_REQUEST_V3` @ 1.1.1). Version 4 states
+  that the client understands the error code **56** `KAFKA_STORAGE_ERROR`, which a broker translates
+  to 6 `NOT_LEADER_FOR_PARTITION` for a version 3 or lower; version 5 appends **`log_start_offset`**
+  to every partition entry of the answer. `ProduceRequest::VERSION` is 5 with `ProduceRequestV4` and
+  `ProduceRequestV3` below it, `ProduceResponse` is v5 with `ProduceResponseV4`/`V3` and the new
+  `ProduceResponsePartitionV2`/`ProduceResponseTopicV2` for the frame the versions 2 to 4 share, and
+  `ProduceResponsePartition::$logStartOffset` is `-1` (`INVALID_OFFSET`) below version 5.
+  `Client::produce()` sends **v5** for the message format v2 and keeps v2 for the legacy message
+  sets; the `ProduceRequest::__construct()` signature is unchanged.
+- **Fetch v6 and v7 with the incremental fetch sessions of KIP-227 (Kafka 1.0 and 1.1)** — v6 is the
+  v5 frame in both directions and states that the client understands the error code 56; **v7** adds
+  `session_id` and `epoch` (int32) between the isolation level and the topics array and a trailing
+  `forgotten_topics_data`, and the answer gains a top-level `error_code` and `session_id` behind the
+  throttle time. New: `Protocol\Request\FetchMetadata` — the Java `FetchMetadata`, field for field,
+  with `INVALID_SESSION_ID`, `INITIAL_EPOCH`, `FINAL_EPOCH`, `legacy()`, `initial()`,
+  `newIncremental()`, `nextIncremental()`, `nextCloseExisting()` and `isFull()` (the Java constants
+  `LEGACY` and `INITIAL` are factory methods here, because a PHP class constant cannot hold an
+  object) — and `Protocol\Data\FetchRequestForgottenTopic`. `FetchRequest::VERSION` is 7 with
+  `FetchRequestV6`/`V5` below it and two new optional constructor arguments (`?FetchMetadata
+  $metadata = null`, `array $forgottenTopicPartitions = []`); `FetchResponse` is v7 with
+  `FetchResponseV6`/`V5` and the new `$errorCode`/`$sessionId`, both 0 below version 7.
+  `Client::fetchPartitions()` sends v7 with the **session-less** metadata (`session_id 0`,
+  `epoch -1`), which a 1.1.1 broker serves exactly as it serves a Fetch v6; the sessions in the
+  consumer are a ticket of their own.
+- **Metadata v5 (Kafka 1.0, KIP-112/113)** — every partition entry of the answer gains
+  **`offline_replicas`**, the replicas whose broker is down or whose log directory has failed; the
+  request is the version 4 frame. `MetadataRequest`/`MetadataResponse` are v5 with
+  `MetadataRequestV4`/`MetadataResponseV4` below them, `Common\PartitionMetadata` gains
+  `$offlineReplicas` (`[]` below version 5) with `PartitionMetadataV0` for the entry of the versions
+  0 to 4, and `Common\TopicMetadataV1` carries the topic entry of the versions 1 to 4.
+  `Cluster`, `TopicMetadata` and `AdminClient::describeTopics()` pass the new field through; on a
+  one-broker cluster it is always empty.
+- **Wire vectors of the three apis** — sixteen frames captured on the 1.1.1 container with the
+  client id and topic `t3-vectors`: the v4 and v5 pairs of Produce (the v5 answer after a
+  `DeleteRecords`, so its `log_start_offset` is 2), the v6 pair of Fetch, the six frames of one
+  fetch session (the full fetch that opens it, the incremental fetch that is answered with the one
+  partition that changed, the fetch that forgets a partition, and the two session errors **70** and
+  **71**) and the v5 pair of Metadata.
 
 ### Changed
 
@@ -84,7 +123,9 @@ section grows with every ticket that lands.
   the container and recorded in the document: a duplicate of any of the **last five** batches of a
   producer id and partition is answered as the original append (0.11 kept one batch and answered 45
   for anything older); a Fetch below v4 of a partition whose records carry headers is **served with
-  the headers dropped** and the error code 0, where 0.11 refused it with -1; `is_default` of a
+  the headers dropped** and the error code 0, where 0.11 refused it with -1 — measured with a batch
+  of three records of which only the middle one has a header, so no record is skipped and the
+  timestamps survive down to the message format v1; `is_default` of a
   DescribeConfigs v0 answer is derived from the KIP-226 config **source**, so a topic option whose
   broker synonym stands in the `server.properties` is not a default any more; `is_read_only` of a
   broker entry means "not dynamically updatable"; AlterConfigs **accepts** a broker resource and

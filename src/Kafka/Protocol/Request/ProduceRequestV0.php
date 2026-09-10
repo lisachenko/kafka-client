@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * a version 0 request is answered without the `ThrottleTime` field and without the `LogAppendTime` of a
  * partition, see {@see ProduceResponseV0}.
  *
- * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
  */
 final class ProduceRequestV0 extends ProduceRequest
 {

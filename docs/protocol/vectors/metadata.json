@@ -1,8 +1,8 @@
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v4)",
-    "description": "Wire vectors of the Metadata API (key 3, v0 to v4), replayed by tests/Compliance.",
+    "section": "Metadata API (key 3, v0 to v5)",
+    "description": "Wire vectors of the Metadata API (key 3, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
@@ -501,7 +501,7 @@
         {
             "id": "metadata.request.v4.single-topic",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV4",
             "version": 4,
             "source": "broker",
             "description": "Metadata request v4 with `allow_auto_topic_creation = true`, which is what a consumer or a producer sends.",
@@ -521,7 +521,7 @@
         {
             "id": "metadata.response.v4.single-topic",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV4",
             "version": 4,
             "source": "broker",
             "description": "Metadata answer v4, byte for byte the layout of v3: what version 4 added is a field of the request.",
@@ -587,7 +587,7 @@
         {
             "id": "metadata.request.v4.no-auto-creation",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV4",
             "version": 4,
             "source": "broker",
             "description": "Metadata request v4 with `allow_auto_topic_creation = false` for a topic that does not exist, which is what the AdminClient sends.",
@@ -607,7 +607,7 @@
         {
             "id": "metadata.response.v4.unknown-topic",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The answer to it: the error code 3 (UnknownTopicOrPartition) for the topic, which stays uncreated.",
@@ -632,6 +632,95 @@
                         "topic": "t3-throttle-absent",
                         "isInternal": false,
                         "partitions": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "Metadata v5 for one topic, with allow_auto_topic_creation = false. The frame is the one of version 4, byte for byte; what the version states is that the client understands the offline_replicas of the answer.",
+            "hex": "000000250003000500000012000a74332d766563746f727300000001000a74332d766563746f727300",
+            "fields": {
+                "messageSize": 37,
+                "apiKey": 3,
+                "apiVersion": 5,
+                "correlationId": 18,
+                "clientId": "t3-vectors",
+                "topics": [
+                    "t3-vectors"
+                ],
+                "allowAutoTopicCreation": false
+            }
+        },
+        {
+            "id": "metadata.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer of that request. Every partition entry ends with the offline_replicas array that version 5 added (KIP-112/113), which is empty on the one-broker container: no replica of the topic is on a broker that is down or on a log directory that failed.",
+            "hex": "000000ae0000001200000000000000010000000000093132372e302e302e3100002384ffff0016774f5237346b6f44537853707938336b61447933725100000000000000010000000a74332d766563746f72730000000003000000000002000000000000000100000000000000010000000000000000000000000001000000000000000100000000000000010000000000000000000000000000000000000000000100000000000000010000000000000000",
+            "fields": {
+                "messageSize": 174,
+                "correlationId": 18,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "wOR74koDSxSpy83kaDy3rQ",
+                "controllerId": 0,
+                "topics": {
+                    "t3-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t3-vectors",
+                        "isInternal": false,
+                        "partitions": {
+                            "2": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 2,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            },
+                            "1": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 1,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            },
+                            "0": {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        }
                     }
                 }
             }

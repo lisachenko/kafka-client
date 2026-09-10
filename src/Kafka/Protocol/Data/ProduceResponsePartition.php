@@ -24,27 +24,36 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Produce response partition DTO
  *
  * <pre>
- *   Partition ErrorCode Offset LogAppendTime
- *     Partition     => int32
- *     ErrorCode     => int16
- *     Offset        => int64
- *     LogAppendTime => int64
+ *   Partition ErrorCode Offset LogAppendTime LogStartOffset
+ *     Partition      => int32
+ *     ErrorCode      => int16
+ *     Offset         => int64
+ *     LogAppendTime  => int64
+ *     LogStartOffset => int64
  * </pre>
  *
  * `LogAppendTime` arrived with version 2 of this API (Kafka 0.10.0, message format v1) and is absent from the
- * answer of a version 0 or 1 request, which is what {@see ProduceResponsePartitionV0} decodes. Version 3 of the
- * api (Kafka 0.11.0) left the partition entry untouched - `PRODUCE_RESPONSE_V3` **is** `PRODUCE_RESPONSE_V2` in
- * `Protocol.java` @ 0.11.0.3, verified against the broker - so there is no partition class of version 3: the
- * `LogStartOffset` that the Produce answer eventually got belongs to Kafka 1.0 (Produce v5).
+ * answer of a version 0 or 1 request, which is what {@see ProduceResponsePartitionV0} decodes. The versions 3 and
+ * 4 of the api left the partition entry untouched - `PRODUCE_RESPONSE_V4` **is** `PRODUCE_RESPONSE_V3` **is**
+ * `PRODUCE_RESPONSE_V2` in `ProduceResponse.schemaVersions()` @ 1.1.1, verified against the broker - and
+ * {@see ProduceResponsePartitionV2} is the entry those three versions share.
  *
- * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v3)"
+ * **Version 5 (Kafka 1.0) appended `LogStartOffset`**, which is what this class adds, see
+ * {@see self::$logStartOffset}.
+ *
+ * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {
     /**
      * Version of the Produce API that this DTO is unpacked from
      */
-    public const int VERSION = 2;
+    public const int VERSION = 5;
+
+    /**
+     * Value of `LogStartOffset` for an answer of a version below 5, which does not carry the field
+     */
+    public const int INVALID_OFFSET = -1;
 
     /**
      * Value of `LogAppendTime` for a topic that stamps its records with a `CreateTime`, i.e. "no append time"
@@ -86,6 +95,22 @@ class ProduceResponsePartition implements BinarySchemaInterface
     public int $logAppendTime = self::NO_LOG_APPEND_TIME;
 
     /**
+     * Earliest offset the log of this partition still holds, the field version 5 added (Kafka 1.0).
+     *
+     * Everything below it has been deleted by the retention of the topic or by a DeleteRecords request, so a
+     * producer that is answered with 59 `UnknownProducerIdException` can tell a **spurious** out-of-order sequence
+     * - the broker forgot the producer state of this partition because its records fell below this offset, and the
+     * producer only has to reset its sequence numbers - from a real gap in its own sequence, which is a bug of the
+     * producer. `ProduceResponse.INVALID_OFFSET` @ 1.1.1 is -1, which is what an answer below version 5 leaves
+     * here, see {@see self::INVALID_OFFSET}.
+     *
+     * @since Version 5 of protocol
+     *
+     * @see \Protocol\Kafka\Producer\Internals\TransactionManager
+     */
+    public int $logStartOffset = self::INVALID_OFFSET;
+
+    /**
      * Milliseconds the broker delayed the answer this partition arrived in, because of a produce quota.
      *
      * This is **not** a field of the wire format - the Produce API reports its `ThrottleTime` once per response,
@@ -110,6 +135,9 @@ class ProduceResponsePartition implements BinarySchemaInterface
         ];
         if (static::VERSION >= 2) {
             $scheme['logAppendTime'] = BinarySchema::TYPE_INT64;
+        }
+        if (static::VERSION >= 5) {
+            $scheme['logStartOffset'] = BinarySchema::TYPE_INT64;
         }
 
         return $scheme;

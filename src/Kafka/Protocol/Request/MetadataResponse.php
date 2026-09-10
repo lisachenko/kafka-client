@@ -22,13 +22,14 @@ use Protocol\Kafka\Common\NodeV0;
 use Protocol\Kafka\Common\RestorableTrait;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicMetadataV0;
+use Protocol\Kafka\Common\TopicMetadataV1;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Metadata response object, version 4 (key 3)
+ * Metadata response object, version 5 (key 3)
  *
  * <pre>
- *   Metadata Response (Version: 3 and 4) => throttle_time_ms [brokers] cluster_id controller_id [topic_metadata]
+ *   Metadata Response (Version: 5) => throttle_time_ms [brokers] cluster_id controller_id [topic_metadata]
  *     throttle_time_ms => INT32     -- since version 3
  *     brokers => node_id host port rack
  *       node_id => INT32
@@ -41,20 +42,26 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *       topic_error_code => INT16
  *       topic            => STRING
  *       is_internal      => BOOLEAN
- *       partition_metadata => partition_error_code partition_id leader [replicas] [isr]
+ *       partition_metadata => partition_error_code partition_id leader [replicas] [isr] [offline_replicas]
+ *         offline_replicas => ARRAY of INT32  -- since version 5
  * </pre>
  *
- * The five versions of this answer differ in what surrounds the topics, and each field arrived in a different
+ * The six versions of this answer differ in what surrounds the topics, and each field arrived in a different
  * Kafka release: version 1 (Kafka 0.10.0) added `ControllerId`, the `Rack` of every broker and the `IsInternal`
  * flag of every topic; version 2 (Kafka 0.10.1) inserted `ClusterId` BEFORE the controller id, which is why a v2
  * answer can not be read with the v1 class and vice versa; version 3 (KIP-124, Kafka 0.11) opened the answer with
  * a `throttle_time_ms`; and version 4 changed nothing at all here - `METADATA_RESPONSE_V4 = METADATA_RESPONSE_V3`
- * in `Protocol.java` @ 0.11.0.3 - because what it added, `allow_auto_topic_creation`, is a field of the REQUEST
- * ({@see MetadataRequest}). {@see MetadataResponseV3}, {@see MetadataResponseV2}, {@see MetadataResponseV1} and
- * {@see MetadataResponseV0} lower the version constant this scheme follows.
+ * in `MetadataResponse.schemaVersions()` @ 1.1.1 - because what it added, `allow_auto_topic_creation`, is a field
+ * of the REQUEST ({@see MetadataRequest}).
+ *
+ * **Version 5 (Kafka 1.0, KIP-112/113) appended `offline_replicas` to every partition entry**, the replicas of the
+ * partition that are not available because their broker is down or the log directory that holds them failed, see
+ * {@see \Protocol\Kafka\Common\PartitionMetadata::$offlineReplicas}. {@see MetadataResponseV4},
+ * {@see MetadataResponseV3}, {@see MetadataResponseV2}, {@see MetadataResponseV1} and {@see MetadataResponseV0}
+ * lower the version constant this scheme follows.
  *
  * `ControllerId` is the broker id of the active controller, or `-1` (`MetadataResponse.NO_CONTROLLER_ID` @
- * 0.11.0.3) while the cluster is electing one; it is what {@see \Protocol\Kafka\Admin\AdminClient::findController()}
+ * 1.1.1) while the cluster is electing one; it is what {@see \Protocol\Kafka\Admin\AdminClient::findController()}
  * asks for. `ClusterId` is the identifier that a 0.10.1 broker generates once and keeps in ZooKeeper under
  * `/cluster/id`, so every broker of one cluster answers the same one; it is null when the answer comes from a
  * broker that has none.
@@ -62,7 +69,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/1.1.md, sections "Metadata API (key 3, v0 to v4)" and "Cluster readiness"
+ * @see docs/protocol/1.1.md, sections "Metadata API (key 3, v0 to v5)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
@@ -71,7 +78,7 @@ class MetadataResponse extends AbstractResponse
     /**
      * Version of the Metadata API that this class unpacks
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * Broker id that the answer reports while the cluster has no active controller
@@ -157,6 +164,10 @@ class MetadataResponse extends AbstractResponse
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 1 ? TopicMetadata::class : TopicMetadataV0::class;
+        return match (true) {
+            static::VERSION >= 5 => TopicMetadata::class,
+            static::VERSION >= 1 => TopicMetadataV1::class,
+            default              => TopicMetadataV0::class,
+        };
     }
 }
