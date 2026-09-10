@@ -728,10 +728,10 @@ still implementing.
 | 35      | DescribeLogDirs      | v0                | yes           | –        | –        | **v0**                       |
 | 36      | SaslAuthenticate     | v0                | yes           | –        | –        | **v0**                       |
 | 37      | CreatePartitions     | v0                | controller    | –        | –        | **v0**                       |
-| 38      | CreateDelegationToken | v0               | yes           | –        | –        | T7 (optional)                |
-| 39      | RenewDelegationToken | v0                | yes           | –        | –        | T7 (optional)                |
-| 40      | ExpireDelegationToken | v0               | yes           | –        | –        | T7 (optional)                |
-| 41      | DescribeDelegationToken | v0             | yes           | –        | –        | T7 (optional)                |
+| 38      | CreateDelegationToken | v0               | yes           | –        | –        | **v0**                       |
+| 39      | RenewDelegationToken | v0                | yes           | –        | –        | **v0**                       |
+| 40      | ExpireDelegationToken | v0               | yes           | –        | –        | **v0**                       |
+| 41      | DescribeDelegationToken | v0             | yes           | –        | –        | **v0**                       |
 | 42      | DeleteGroups         | v0                | yes           | –        | –        | **v0**                       |
 
 `offsets.storage = zookeeper` sends version 0 of OffsetCommit and OffsetFetch instead of the bold
@@ -743,10 +743,14 @@ without an `authorizer.class.name` — a 1.1.1 broker answers all three with the
 `SecurityDisabled` — and every wire vector of this repository is captured from a real broker, so
 they wait for a container that has an authorizer configured.
 
-**The four delegation-token apis (38 to 41) are optional on this line.** The container carries a
-`delegation.token.master.key`, so they can be implemented and verified over the SASL listeners, but
-*using* a token means authenticating with SASL/SCRAM, which this client does not have — it speaks
-SASL/PLAIN only.
+**The four delegation-token apis (38 to 41) are implemented, and a token cannot be used to
+authenticate.** `AdminClient::createDelegationToken()`, `renewDelegationToken()`,
+`expireDelegationToken()` and `describeDelegationToken()` speak them over an authenticated channel —
+one of the SASL listeners, because KIP-48 derives the owner of a token from the principal of the
+connection and answers the error code 64 on a PLAINTEXT or one-way-SSL one. What is missing is the
+other half of KIP-48: *using* a token means a SASL/SCRAM login whose user name is the token id and
+whose password is the base64 HMAC, and this client speaks SASL/PLAIN only. The four apis are
+verified against a real 1.1.1 broker, the login with their result is not implemented.
 
 What the five lines can do beyond the api versions themselves. A cell that names a ticket
 (`T<n>`) is a capability of Kafka 1.x that the line is still implementing:
@@ -784,7 +788,7 @@ What the five lines can do beyond the api versions themselves. A cell that names
 | Dynamic broker configuration, config sources and synonyms (KIP-226) | 1.1 | –  | –       | –        | –        | **yes** |
 | Admin: `createPartitions()`, `deleteConsumerGroups()`  | 1.0 / 1.1  | –       | –       | –        | –        | **yes** |
 | Admin: `describeLogDirs()`, `alterReplicaLogDirs()`    | 1.0        | –       | –       | –        | –        | yes    |
-| Delegation tokens (KIP-48)                             | 1.1        | –       | –       | –        | –        | T7 (optional) |
+| Delegation tokens (KIP-48)                             | 1.1        | –       | –       | –        | –        | **issued, renewed, expired, described** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | **-1 … 71** |
 
 Everything a later Kafka added is missing here, by design:

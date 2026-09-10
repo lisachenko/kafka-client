@@ -326,6 +326,14 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function delegationTokensVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('apiVersionsVectors')]
@@ -745,6 +753,18 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('txnOffsetCommitVectors')]
     public function testTxnOffsetCommitApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * The four delegation token apis of KIP-48 share one vector file, so every request vector of it carries the api
+     * key of its own api and the file itself declares none.
+     *
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('delegationTokensVectors')]
+    public function testDelegationTokenApis(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

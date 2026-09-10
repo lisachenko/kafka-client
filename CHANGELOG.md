@@ -172,6 +172,27 @@ section grows with every ticket that lands.
   the accepted and the refused AlterConfigs of a broker, the growth of a topic, an assignment with
   `validate_only`, the 37 of a shrink, the 3 of an unknown topic, and the 0/68/69 of DeleteGroups.
   The six version 0 vectors of DescribeConfigs are replayed through the new `…V0` classes.
+- **The four delegation-token apis of KIP-48 (keys 38 to 41, all v0, Kafka 1.1)** —
+  `CreateDelegationTokenRequest`/`Response`, `RenewDelegationToken…`, `ExpireDelegationToken…` and
+  `DescribeDelegationToken…` with `Data\DescribeDelegationTokenResponseToken`, the principal struct
+  `Common\Security\KafkaPrincipal` that all four embed, and the value objects
+  `Admin\DelegationToken` and `Admin\TokenInformation` (the names of the Java client). The
+  `AdminClient` gained `createDelegationToken(array $renewers = [], int $maxLifeTimeMs = -1)`,
+  `renewDelegationToken(string $hmac, int $renewTimePeriodMs = -1)`,
+  `expireDelegationToken(string $hmac, int $expiryTimePeriodMs = -1)` and
+  `describeDelegationToken(?array $owners = null)`, each of them served by any broker of the
+  cluster. **`throttle_time_ms` is the last field of all four answers**, not the first one — an api
+  added after KIP-124 appends it. A token is named by the raw bytes of its **HMAC**, never by its
+  id; `DelegationToken::hmacAsBase64String()` is the form `kafka-delegation-tokens.sh` prints.
+- **Limitation: a delegation token can be issued but not used.** Authenticating *with* a token is a
+  SASL/SCRAM login whose user name is the token id and whose password is the base64 HMAC, and this
+  client speaks SASL/**PLAIN** only. The four apis are implemented and verified against a real
+  1.1.1 broker; the login with their result is not implemented. See "What is not in Kafka 1.1.1".
+- **Wire vectors of the token apis** — the new `docs/protocol/vectors/delegation-tokens.json`, the
+  one vector file that holds several apis (its `apiKey` is null and every request vector carries the
+  key of its own api). Its fourteen frames are one life of one token on the SASL_PLAINTEXT listener
+  with the client id `t7-vectors` and the principal `User:kafkatest`, plus the error answers 67, 63,
+  62, 66 and the two 64s of the PLAINTEXT listener.
 
 ### Changed
 

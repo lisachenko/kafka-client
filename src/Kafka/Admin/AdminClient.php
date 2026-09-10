@@ -27,6 +27,7 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\Stream;
@@ -51,14 +52,20 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
@@ -71,6 +78,8 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
 
 /**
  * Kafka low-level administrative client
@@ -1447,5 +1456,194 @@ class AdminClient
             $responseClass,
             ['node' => $brokerId]
         );
+    }
+
+    /**
+     * Issues a delegation token for the principal of this client (ApiKey 38, Kafka 1.1, KIP-48)
+     *
+     * KIP-48 gave a cluster a second kind of credential: a short-lived token that a client can hand to a worker
+     * process instead of the credential it authenticated with. The **owner** of the token is not in the request -
+     * it is the principal of the connection - which is why the api only works on a channel that authenticated
+     * somebody: a PLAINTEXT connection, a one-way SSL one and a connection that itself authenticated with a token
+     * are all answered with the error code 64 (`UnsupportedByAuthenticationException`) before the body is read.
+     * The connection of this client is the one that {@see \Protocol\Kafka\Common\ClientConfig::SECURITY_PROTOCOL}
+     * and the SASL options of its configuration describe.
+     *
+     * `$renewers` are the principals that may renew or expire the token besides its owner, as
+     * {@see KafkaPrincipal} objects or as the `<type>:<name>` strings every Kafka tool prints. Only the type
+     * {@see KafkaPrincipal::USER_TYPE} is accepted, anything else is the error code 67.
+     *
+     * `$maxLifeTimeMs` is a **period**, not a timestamp: the broker caps it at its own
+     * `delegation.token.max.lifetime.ms` (7 days by default), and the default -1 asks for exactly that maximum.
+     * The `expiryTimestamp` of the answer is the earlier of that maximum and
+     * `now + delegation.token.expiry.time.ms` (24 hours by default), i.e. the moment the token has to be renewed
+     * by ({@see self::renewDelegationToken()}).
+     *
+     * **A token this client issues cannot be used by this client.** Authenticating *with* a token is SASL/SCRAM
+     * with the token id as the user name and the base64 hmac as the password, and this package speaks `PLAIN`
+     * alone - see {@see DelegationToken}.
+     *
+     * @param list<KafkaPrincipal|string> $renewers      Principals that may renew the token besides its owner
+     * @param int                         $maxLifeTimeMs Maximum lifetime in milliseconds, -1 for the maximum of
+     *        the broker
+     *
+     * @throws KafkaException If the broker refused the request - 61 when it has no `delegation.token.master.key`,
+     *         64 when the connection authenticated nobody, 67 for a renewer that is not a `User`
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     */
+    public function createDelegationToken(
+        array $renewers = [],
+        int $maxLifeTimeMs = CreateDelegationTokenRequest::DEFAULT_MAX_LIFE_TIME
+    ): DelegationToken {
+        // The answer does not repeat the renewers of the request, so the list of the caller is the only place the
+        // information of the issued token can take them from - as the Scala `AdminClient.createToken` does as well
+        $principals = KafkaPrincipal::listOf($renewers);
+
+        /** @var CreateDelegationTokenResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): CreateDelegationTokenRequest => new CreateDelegationTokenRequest(
+                $principals,
+                $maxLifeTimeMs,
+                $this->clientId(),
+                $correlationId
+            ),
+            CreateDelegationTokenResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['owner' => (string) $response->owner]);
+        }
+
+        return DelegationToken::fromCreateResponse($response, $principals);
+    }
+
+    /**
+     * Moves the expiry of a delegation token forward (ApiKey 39, Kafka 1.1, KIP-48)
+     *
+     * A token is named by the raw bytes of its **hmac** - {@see DelegationToken::$hmac}, of which
+     * {@see DelegationToken::hmacAsBase64String()} is the form the Kafka tools print - and never by its id.
+     *
+     * `$renewTimePeriodMs` is a period counted from *now*: the new expiry is `min(maxTimestamp, now + period)`, so
+     * a renewal can never move the expiry past the maximum lifetime the token was issued with, and -1 asks for the
+     * `delegation.token.expiry.time.ms` of the broker. Only the owner of the token and the principals its renewers
+     * name may renew it, everybody else is answered with 63.
+     *
+     * @param string $hmac              Raw bytes of the HMAC of the token
+     * @param int    $renewTimePeriodMs Milliseconds from now that the token should stay valid for
+     *
+     * @throws KafkaException If the broker refused the request - 62 for an hmac no token of the cluster has, 63
+     *         for a principal that may not renew it, 66 for a token that is already past its expiry, 64 on a
+     *         connection that authenticated nobody
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return int Milliseconds since the epoch at which the token now expires
+     */
+    public function renewDelegationToken(
+        string $hmac,
+        int $renewTimePeriodMs = RenewDelegationTokenRequest::DEFAULT_RENEW_TIME_PERIOD
+    ): int {
+        /** @var RenewDelegationTokenResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): RenewDelegationTokenRequest => new RenewDelegationTokenRequest(
+                $hmac,
+                $renewTimePeriodMs,
+                $this->clientId(),
+                $correlationId
+            ),
+            RenewDelegationTokenResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['renewTimePeriodMs' => $renewTimePeriodMs]);
+        }
+
+        return $response->expiryTimestamp;
+    }
+
+    /**
+     * Shortens the life of a delegation token, or ends it now (ApiKey 40, Kafka 1.1, KIP-48)
+     *
+     * The api is the mirror image of {@see self::renewDelegationToken()} and the same principals may call it, but
+     * the sign of the period decides what happens: a **negative** one
+     * ({@see ExpireDelegationTokenRequest::EXPIRE_IMMEDIATELY}, the default) deletes the token from ZooKeeper and
+     * from the token cache of every broker at once and answers with the clock of the broker, a non-negative one
+     * sets the expiry to `min(maxTimestamp, now + period)` and leaves the token in place.
+     *
+     * A token that was deleted is answered with **62** (`DelegationTokenNotFoundException`) afterwards, not with
+     * the 66 of a token that is merely past its expiry.
+     *
+     * @param string $hmac               Raw bytes of the HMAC of the token
+     * @param int    $expiryTimePeriodMs Milliseconds from now the token should still live, negative to delete it
+     *
+     * @throws KafkaException If the broker refused the request - 62, 63, 64 and 66 as for the renew api
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return int Milliseconds since the epoch at which the token expires, or expired
+     */
+    public function expireDelegationToken(
+        string $hmac,
+        int $expiryTimePeriodMs = ExpireDelegationTokenRequest::EXPIRE_IMMEDIATELY
+    ): int {
+        /** @var ExpireDelegationTokenResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): ExpireDelegationTokenRequest => new ExpireDelegationTokenRequest(
+                $hmac,
+                $expiryTimePeriodMs,
+                $this->clientId(),
+                $correlationId
+            ),
+            ExpireDelegationTokenResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['expiryTimePeriodMs' => $expiryTimePeriodMs]);
+        }
+
+        return $response->expiryTimestamp;
+    }
+
+    /**
+     * Lists the delegation tokens this client may see (ApiKey 41, Kafka 1.1, KIP-48)
+     *
+     * The argument is a nullable array and its three shapes are three different questions:
+     *
+     *  * `null`, the default, asks for every token the caller may see;
+     *  * a non-empty list of owners asks for the tokens one of those principals owns or may renew;
+     *  * an empty array asks for nothing and is answered with an empty result.
+     *
+     * On a cluster without an authorizer - which is what the container of this repository is - "may see" is
+     * exactly "owns or may renew", so a client sees its own tokens and the ones it was named a renewer of. The
+     * described entries carry the hmac as well, so a token that is visible can also be renewed and expired.
+     *
+     * @param list<KafkaPrincipal|string>|null $owners Owners to ask for, null for every visible token
+     *
+     * @throws KafkaException If the broker refused the request - 61 when it has no `delegation.token.master.key`,
+     *         64 on a connection that authenticated nobody
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return array<string, DelegationToken> Every visible token, indexed by its token id
+     */
+    public function describeDelegationToken(?array $owners = null): array
+    {
+        /** @var DescribeDelegationTokenResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeDelegationTokenRequest => new DescribeDelegationTokenRequest(
+                $owners,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeDelegationTokenResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['owners' => $owners === null ? 'all' : count($owners)]);
+        }
+
+        $tokens = [];
+        foreach ($response->tokenDetails as $tokenId => $token) {
+            $tokens[$tokenId] = DelegationToken::fromResponseToken($token);
+        }
+
+        return $tokens;
     }
 }
