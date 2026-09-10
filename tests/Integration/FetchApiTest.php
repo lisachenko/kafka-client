@@ -188,29 +188,53 @@ final class FetchApiTest extends IntegrationTestCase
         self::assertSame($timestamp, $version3->getRecords()->getRecords()[0]->timestamp);
     }
 
-    public function testAPartitionWhoseRecordsCarryHeadersCanNotBeReadByAFetchBelowVersionFour(): void
+    /**
+     * A fetch below v4 of a partition whose records carry headers is served, and the headers are dropped
+     *
+     * **This is a behaviour change of Kafka 1.0** and one of the baseline failures of the 1.x line. A 0.11.0.3
+     * broker could not build such an answer at all: `MemoryRecordsBuilder.appendWithOffset` @ 0.11.0.3 threw
+     * "Magic v1 does not support record headers" out of the down-conversion, and the partition came back with the
+     * error code **-1** (UnknownServerError) and an empty record set. KAFKA-5760 replaced that with a
+     * down-conversion that simply **leaves the headers out**: `AbstractRecords.downConvert()` @ 1.1.1 builds a
+     * message of the format the request can read, copies key, value and timestamp, and warns
+     * `Down-converting records with headers` in the broker log instead of failing.
+     *
+     * A client of a 1.x broker therefore has to know that a record it reads with a Fetch below v4 may have carried
+     * headers it will never see, where a 0.11 broker refused the fetch outright. T3 of this line owns the semantics
+     * of the api; this test pins what the broker answers.
+     */
+    public function testAPartitionWhoseRecordsCarryHeadersIsDownConvertedWithoutThemBelowVersionFour(): void
     {
         $this->produceRecordBatch(0, [
             new Record('with a header', null, 0, null, self::currentTimestampMs())
                 ->withHeaders(new Header('trace-id', 'abc')),
         ]);
 
-        // `MemoryRecordsBuilder.appendWithOffset` @ 0.11.0.3: "Magic v1 does not support record headers". The
-        // broker can not build the answer of a client that asks below version 4 and reports the partition with the
-        // error code -1, UnknownServerError, and an empty record set - the rest of the answer is a normal frame
         $stream   = $this->connect();
         $version3 = $this->fetch($stream, FetchRequestV3::class, FetchResponseV3::class, 0, 79);
         $version1 = $this->fetch($stream, FetchRequestV1::class, FetchResponseV1::class, 0, 80);
 
-        self::assertSame(KafkaException::UNKNOWN, $version3->errorCode);
-        self::assertSame('', (string) $version3->messageSet);
-        self::assertSame(KafkaException::UNKNOWN, $version1->errorCode);
+        // Version 3 asks for the message format v1, which has timestamps but no place for a header
+        self::assertSame(KafkaException::NO_ERROR, $version3->errorCode);
+        self::assertSame(Message::MAGIC_V1, $version3->getRecords()->getMagic());
+        self::assertSame(['with a header'], self::valuesOf($version3));
+        self::assertSame([], $version3->getRecords()->getRecords()[0]->headers, 'the headers are gone');
 
-        // The very same partition is perfectly readable with a version 4 request
+        // ...and version 1 for the message format v0, which has neither
+        self::assertSame(KafkaException::NO_ERROR, $version1->errorCode);
+        self::assertSame(Message::MAGIC_V0, $version1->getRecords()->getMagic());
+        self::assertSame(['with a header'], self::valuesOf($version1));
+        self::assertSame([], $version1->getRecords()->getRecords()[0]->headers);
+
+        // The very same partition read with a version 4 request keeps the header
         $version4 = $this->fetchWithIsolationLevel($stream, 4, FetchRequest::READ_UNCOMMITTED, 81);
 
         self::assertSame(0, $version4->errorCode);
         self::assertSame(['with a header'], self::valuesOf($version4));
+        self::assertSame(['trace-id'], array_map(
+            static fn(Header $header): string => $header->key,
+            $version4->getRecords()->getRecords()[0]->headers
+        ));
     }
 
     public function testTheLastStableOffsetAndTheAbortedTransactionsAreTheAnswerOfAReadCommittedFetchAlone(): void

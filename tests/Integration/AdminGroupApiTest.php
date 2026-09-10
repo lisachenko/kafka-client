@@ -146,7 +146,15 @@ final class AdminGroupApiTest extends IntegrationTestCase
         self::assertSame($assignment, $described->memberAssignment, 'and so does the assignment of the leader');
     }
 
-    public function testDescribeGroupReportsAwaitingSyncWhileTheLeaderHasNotPublishedTheAssignment(): void
+    /**
+     * The state between the last JoinGroup and the leader's SyncGroup is called `CompletingRebalance` from Kafka 1.0
+     *
+     * `GroupMetadata.scala` called it `AwaitingSync` from 0.9 to 0.11 and the coordinator answered that string;
+     * Kafka 1.0 renamed the state and nothing else about it, so
+     * {@see DescribeGroupResponseMetadata::STATE_AWAITING_SYNC} is kept for the lines below and a broker of this
+     * line never sends it.
+     */
+    public function testDescribeGroupReportsCompletingRebalanceWhileTheLeaderHasNotPublishedTheAssignment(): void
     {
         $groupId = $this->uniqueGroupId();
         $member  = new RawGroupMember(
@@ -160,7 +168,12 @@ final class AdminGroupApiTest extends IntegrationTestCase
 
         $group = $this->admin->describeGroup($groupId);
 
-        self::assertSame(DescribeGroupResponseMetadata::STATE_AWAITING_SYNC, $group->state);
+        self::assertSame(DescribeGroupResponseMetadata::STATE_COMPLETING_REBALANCE, $group->state);
+        self::assertNotSame(
+            DescribeGroupResponseMetadata::STATE_AWAITING_SYNC,
+            $group->state,
+            'the 0.9 to 0.11 name of the very same state, which a 1.x broker never answers'
+        );
         self::assertSame('consumer', $group->protocolType);
         self::assertSame('', $group->protocol, 'the protocol is empty until the group is stable');
         self::assertCount(1, $group->members, 'the members are already known in this state');

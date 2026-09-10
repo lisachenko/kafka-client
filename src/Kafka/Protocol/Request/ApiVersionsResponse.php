@@ -44,12 +44,12 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
  * empty, and the frame is the **version 0** layout - without the throttle time - no matter which version was asked
  * for, because `ApiVersionsResponse.unsupportedVersionSend()` writes it with the hard-coded version `0`. That answer
  * is therefore read with {@see ApiVersionsResponseV0}, and the connection survives it, which no other unknown key or
- * version of a 0.11.0.3 broker does.
+ * version of a 1.1.1 broker does - not even ControlledShutdown, which answered every version up to 0.11.
  *
- * A 0.11.0.3 broker answers with the 34 keys 0 to 33; a client must not assume that, though - the whole point of
- * the api is that the set is whatever the broker on the other side reports, and a later broker reports more. The set
- * is not even fixed for one release: `ApiVersionsResponse.createApiVersionsResponse()` drops every api whose
- * `minRequiredInterBrokerMagic` is above the message format the broker runs with, so a 0.11 broker configured with
+ * A 1.1.1 broker answers with the 43 keys 0 to 42; a client must not assume that, though - the whole point of the
+ * api is that the set is whatever the broker on the other side reports, and a later broker reports more. The set is
+ * not even fixed for one release: `ApiVersionsResponse.apiVersionsResponse()` @ 1.1.1 drops every api whose
+ * `minRequiredInterBrokerMagic` is above the message format the broker runs with, so a 1.1 broker configured with
  * `inter.broker.protocol.version=0.10.2` reports fewer keys than the container of this repository does.
  *
  * @see docs/protocol/1.1.md, section "ApiVersions API (key 18, v0 and v1)"
