@@ -20,11 +20,11 @@ namespace Protocol\Kafka\Common;
  *   TopicMetadata => TopicErrorCode TopicName [PartitionMetadata]
  * </pre>
  *
- * `TOPIC_METADATA_V0` in `Protocol.java` @ 0.10.2.2. The class exists only to lower the version constant that
+ * `TOPIC_METADATA_V0` in `MetadataResponse.java` @ 1.1.1. The class exists only to lower the version constant that
  * {@see TopicMetadata::getScheme()} follows; the `isInternal` property of the parent stays null for it, which is
  * "the answer did not say", not "the topic is not internal".
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v4)"
+ * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
  */
 final class TopicMetadataV0 extends TopicMetadata
 {

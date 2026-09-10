@@ -351,7 +351,7 @@ final class ClientTest extends TestCase
         string $compressionType,
         int $expectedCodec
     ): void {
-        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -390,7 +390,7 @@ final class ClientTest extends TestCase
 
     public function testABatchIsSentAsItIsWithoutACompressionType(): void
     {
-        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 1]]]));
+        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 1]]]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)
@@ -573,15 +573,21 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 5, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes` and
-        // the isolation level `read_uncommitted`
-        self::assertStringStartsWith('00010005', $request, 'the Fetch api is spoken in version 5');
-        self::assertStringContainsString('0010000000', $request, 'fetch.max.bytes and read_uncommitted');
+        // ApiKey 1, ApiVersion 7, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch
+        self::assertStringStartsWith('00010007', $request, 'the Fetch api is spoken in version 7');
+        self::assertStringContainsString(
+            '00100000' . '00' . '00000000' . 'ffffffff',
+            $request,
+            'fetch.max.bytes, read_uncommitted and the session-less metadata of KIP-227'
+        );
         // The partitions travel in the order they were given, which is the order the broker fills the answer in;
-        // the -1 in front of every MaxBytes is the LogStartOffset of v5, which only a follower fills in
+        // the -1 in front of every MaxBytes is the LogStartOffset of v5, which only a follower fills in, and the
+        // trailing empty array is the `forgotten_topics_data` of version 7
         self::assertStringEndsWith(
             '00000001' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
-            . '00000000' . '0000000000000003' . 'ffffffffffffffff' . '00010000',
+            . '00000000' . '0000000000000003' . 'ffffffffffffffff' . '00010000'
+            . '00000000',
             $request
         );
     }
@@ -645,7 +651,7 @@ final class ClientTest extends TestCase
         yield 'read_committed'   => ['read_committed', '01'];
     }
 
-    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionThreeRecordBatch(): void
+    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionFiveRecordBatch(): void
     {
         $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
         $this->brokers
@@ -657,8 +663,8 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 3, correlation id, client id, then the null transactional id of a plain producer
-        self::assertStringStartsWith('00000003', $frame, 'the Produce api is spoken in version 3');
+        // ApiKey 0, ApiVersion 5, correlation id, client id, then the null transactional id of a plain producer
+        self::assertStringStartsWith('00000005', $frame, 'the Produce api is spoken in version 5');
         self::assertStringContainsString('74372d636c69656e74' . 'ffff', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
@@ -670,7 +676,7 @@ final class ClientTest extends TestCase
 
     public function testAMessageFormatBelowTheRecordBatchIsSentAsAProduceVersionTwo(): void
     {
-        $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
+        $leader = new BrokerConnection(ResponseFrame::produceV2(0, [self::TOPIC => [0 => [0, 5]]]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, $leader)

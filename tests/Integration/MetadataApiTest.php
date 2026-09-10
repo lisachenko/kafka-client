@@ -29,27 +29,31 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV1;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV4;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV2;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV4;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
  * Verifies the Metadata API v0 to v4 against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v4)"
+ * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
 #[CoversClass(MetadataRequestV1::class)]
 #[CoversClass(MetadataRequestV2::class)]
+#[CoversClass(MetadataRequestV4::class)]
 #[CoversClass(MetadataRequestV3::class)]
 #[CoversClass(MetadataResponse::class)]
 #[CoversClass(MetadataResponseV0::class)]
 #[CoversClass(MetadataResponseV1::class)]
 #[CoversClass(MetadataResponseV2::class)]
+#[CoversClass(MetadataResponseV4::class)]
 #[CoversClass(MetadataResponseV3::class)]
 #[CoversClass(Node::class)]
 #[CoversClass(NodeV0::class)]
@@ -211,8 +215,8 @@ final class MetadataApiTest extends IntegrationTestCase
 
     public function testVersionFourAnswersTheVerySameFrameAsVersionThree(): void
     {
-        // METADATA_RESPONSE_V4 = METADATA_RESPONSE_V3 in Protocol.java @ 0.11.0.3: what version 4 added is the
-        // `allow_auto_topic_creation` of the REQUEST, so the two answers only differ in the correlation id
+        // METADATA_RESPONSE_V4 = METADATA_RESPONSE_V3 in MetadataResponse.java @ 1.1.1: what version 4 added is
+        // the `allow_auto_topic_creation` of the REQUEST, so the two answers only differ in the correlation id
         $topic = self::uniqueTopicName('t3-metadata-v4');
         $this->awaitTopicWithLeaders($topic);
 
@@ -220,11 +224,70 @@ final class MetadataApiTest extends IntegrationTestCase
         new MetadataRequestV3([$topic], self::CLIENT_ID, 32)->writeTo($stream);
         $versionThree = MetadataResponseV3::unpack($stream);
 
-        new MetadataRequest([$topic], true, self::CLIENT_ID, 32)->writeTo($stream);
-        $versionFour = MetadataResponse::unpack($stream);
+        new MetadataRequestV4([$topic], true, self::CLIENT_ID, 32)->writeTo($stream);
+        $versionFour = MetadataResponseV4::unpack($stream);
 
         self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
         self::assertSame(0, $versionFour->throttleTimeMs);
+    }
+
+    public function testVersionFiveAppendsTheOfflineReplicasToEveryPartition(): void
+    {
+        // Version 5 (Kafka 1.0, KIP-112/113) appended `offline_replicas` to every partition entry: the replicas
+        // whose broker is down or whose log directory has failed. On the one-broker container the array is always
+        // EMPTY - the only broker holds every replica and is up - so the answer of version 5 is the answer of
+        // version 4 with four zero bytes appended to every partition.
+        $topic = self::uniqueTopicName('t3-metadata-v5');
+        $this->awaitTopicWithLeaders($topic);
+
+        $stream = $this->connect();
+        new MetadataRequestV4([$topic], true, self::CLIENT_ID, 41)->writeTo($stream);
+        $versionFour = MetadataResponseV4::unpack($stream);
+
+        new MetadataRequest([$topic], true, self::CLIENT_ID, 41)->writeTo($stream);
+        $versionFive = MetadataResponse::unpack($stream);
+
+        self::assertSame(
+            array_keys($versionFour->topics[$topic]->partitions),
+            array_keys($versionFive->topics[$topic]->partitions)
+        );
+        self::assertSame(
+            $versionFive->getMessageSize(),
+            $versionFour->getMessageSize() + 4 * count($versionFive->topics[$topic]->partitions),
+            'the only difference is the empty offline_replicas array of every partition'
+        );
+
+        foreach ($versionFive->topics[$topic]->partitions as $partitionId => $partition) {
+            self::assertSame([0], $partition->replicas, "partition {$partitionId} lives on the only broker");
+            self::assertSame([0], $partition->isr);
+            self::assertSame(
+                [],
+                $partition->offlineReplicas,
+                "no replica of the partition {$partitionId} can be offline on a one-broker cluster"
+            );
+            self::assertSame(
+                [],
+                $versionFour->topics[$topic]->partitions[$partitionId]->offlineReplicas,
+                'a version below 5 does not carry the field at all and leaves the empty default'
+            );
+        }
+    }
+
+    public function testTheAdminClientReportsTheOfflineReplicasOfEveryPartition(): void
+    {
+        // AdminClient::describeTopics() sends Metadata v5, so the TopicMetadata it hands over carries the offline
+        // replicas of every partition next to its replicas and its in-sync replicas
+        $topic = self::uniqueTopicName('t3-metadata-admin-v5');
+        $this->awaitTopicWithLeaders($topic);
+
+        $cluster   = Cluster::bootstrap($this->configuration(), $topic);
+        $described = new AdminClient($cluster, $this->configuration())->describeTopics([$topic]);
+
+        self::assertArrayHasKey($topic, $described);
+        self::assertCount(3, $described[$topic]->partitions);
+        foreach ($described[$topic]->partitions as $partition) {
+            self::assertSame([], $partition->offlineReplicas);
+        }
     }
 
     public function testAVersionFourRequestWithoutAutoCreationDoesNotCreateTheTopic(): void

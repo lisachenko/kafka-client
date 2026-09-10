@@ -47,7 +47,7 @@ That the older frames are still the current ones is not an assumption:
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v4)",
+    "section": "Metadata API (key 3, v0 to v5)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
