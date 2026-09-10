@@ -68,11 +68,14 @@ jobs:
         with:
           php-version: '8.4'
       - run: composer install --prefer-dist --no-progress
-      - name: Start Kafka 0.11.0.3
+      - name: Start Kafka 1.1.1
         run: docker compose up -d --wait
       - name: Run the integration suite
         env:
           KAFKA_BOOTSTRAP_SERVERS: 127.0.0.1:9092
+          KAFKA_SSL_BOOTSTRAP_SERVERS: 127.0.0.1:9093
+          KAFKA_SASL_BOOTSTRAP_SERVERS: 127.0.0.1:9094
+          KAFKA_SASL_SSL_BOOTSTRAP_SERVERS: 127.0.0.1:9095
         run: vendor/bin/phpunit --testsuite integration
       - name: Broker logs
         if: failure()

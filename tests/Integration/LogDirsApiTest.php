@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\ConfigResource;
 use Protocol\Kafka\Admin\LogDirInfo;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Admin\ReplicaInfo;
@@ -113,6 +114,19 @@ final class LogDirsApiTest extends IntegrationTestCase
      */
     private const int SMALL_RECORD_COUNT = self::BATCH_SIZE;
 
+    /**
+     * The mover quota of KIP-113, a dynamic per-broker option the broker applies at once (`BrokerConfigHandler` @
+     * 1.1.1 hands it to `quotaManagers.alterLogDirs`): with it the copy of a partition takes a known time on any disk
+     */
+    private const string MOVER_QUOTA_OPTION = 'replica.alter.log.dirs.io.max.bytes.per.second';
+
+    /**
+     * 1 MB/s: the {@see self::LARGE_RECORD_COUNT} partition of 8 MB then needs about eight seconds to move, so that a
+     * DescribeLogDirs sent right after the AlterReplicaLogDirs sees the future log filling - a CI runner copied the
+     * same partition in less than one request round trip without the quota
+     */
+    private const int MOVER_QUOTA_BYTES_PER_SECOND = 1000000;
+
     private Cluster $cluster;
 
     private AdminClient $admin;
@@ -126,6 +140,11 @@ final class LogDirsApiTest extends IntegrationTestCase
      */
     private array $createdTopics = [];
 
+    /**
+     * Whether {@see self::throttleMover()} set the mover quota of the broker, which tearDown removes again
+     */
+    private bool $moverThrottled = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -137,6 +156,13 @@ final class LogDirsApiTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
+        if ($this->moverThrottled) {
+            // An empty option map removes every dynamic option of the resource; the quota is the only one this
+            // class sets, and the handler applies the default (unbounded) again as soon as the entry is gone
+            $resource = ConfigResource::broker($this->brokerId());
+            self::assertSame([$resource->key() => null], $this->admin->alterConfigs([$resource->key() => []]));
+            $this->moverThrottled = false;
+        }
         if ($this->createdTopics !== []) {
             $this->admin->deleteTopics($this->createdTopics);
             $this->createdTopics = [];
@@ -387,6 +413,8 @@ final class LogDirsApiTest extends IntegrationTestCase
      */
     private function moveUntilTheFutureLogIsVisible(string $topic): array
     {
+        $this->throttleMover();
+
         $key      = TopicPartitionReplica::of($topic, 0, $this->brokerId())->key();
         $deadline = microtime(true) + self::MOVE_TIMEOUT;
 
@@ -410,6 +438,30 @@ final class LogDirsApiTest extends IntegrationTestCase
         } while (microtime(true) < $deadline);
 
         self::fail("No move of {$topic}-0 was caught while its future log was still filling");
+    }
+
+    /**
+     * Bounds the disk throughput of the mover of this broker, so that a move of the large partition stays visible
+     *
+     * The option travels as an ordinary dynamic broker configuration (KIP-226): AlterConfigs of the broker resource
+     * accepts it, DescribeConfigs reports it back as a `DYNAMIC_BROKER_CONFIG` entry - with a hidden value, because
+     * it is not a `KafkaConfig` option and the broker cannot tell its type - and the quota is applied at once.
+     */
+    private function throttleMover(): void
+    {
+        if ($this->moverThrottled) {
+            return;
+        }
+        $resource = ConfigResource::broker($this->brokerId());
+
+        self::assertSame(
+            [$resource->key() => null],
+            $this->admin->alterConfigs([
+                $resource->key() => [self::MOVER_QUOTA_OPTION => (string) self::MOVER_QUOTA_BYTES_PER_SECOND],
+            ]),
+            'the mover quota is a dynamic broker option a 1.1.1 broker accepts through AlterConfigs'
+        );
+        $this->moverThrottled = true;
     }
 
     /**

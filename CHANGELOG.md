@@ -312,6 +312,13 @@ delivered, how it was verified and what the line above it starts from is in
 
 ### Fixed
 
+- **`LogDirsApiTest` no longer depends on the speed of the disk.** The two tests that watch a replica move
+  in flight caught it on the container, where an 8 MB partition takes a quarter of a second, and missed it
+  on a CI runner that copied the same partition in less than one request round trip. They now bound the
+  mover with the dynamic broker option `replica.alter.log.dirs.io.max.bytes.per.second` (KIP-113) through
+  `alterConfigs()` of the broker resource — 1 MB/s, eight seconds for the move — and remove it again in
+  `tearDown()`. CI also runs the integration suite with the SSL and SASL listener variables now, so it
+  reports the same 549 tests with zero skips as the local gate.
 - **Seven integration tests were silently skipped against the 1.1.1 broker.** Three fixtures still
   named the container of the line below (`kafka-0-11-0-3`) and the SSL tests still pointed at its
   certificate, so `MessageFormatV1Test`, `RecordBatchV2Test` and the quota tests skipped themselves
