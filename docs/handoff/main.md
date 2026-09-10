@@ -77,11 +77,73 @@ more field guarded by `static::VERSION`, one more request class" on the pattern 
 
 ## The ApiVersions answer of a 1.1.1 broker
 
-<!-- probe -->
+The literal answer of a Kafka 1.1.1 container (the image recipe above, built in the scratchpad of the 0.11 session
+and probed with a raw ApiVersions v0 frame on 2026-09-10): `errorCode = 0`, **43 apis**, keys 0 to 42. It matches
+the `ApiKeys`/`schemaVersions()` of the sources at the tag 1.1.1 in every row, with one difference from the 0.11.0.3
+answer that is not a new version: **ControlledShutdown (7) is served as v0–v1 again** (a 0.11.0.3 broker reported
+`MinVersion = 1`), so the "key 7 is the one row whose minimum is not 0" statement of the 0.11 document is no longer
+true and `ApiVersionProbeTest::SERVED_APIS` changes in that row as well. `inter.broker.protocol.version` and
+`log.message.format.version` of the container are `1.1-IV0`.
+
+| ApiKey | Name | Min | Max | 0.11.0.3 | What changed |
+|---|---|---|---|---|---|
+| 0 | Produce | 0 | 5 | 0–3 | v4, v5 |
+| 1 | Fetch | 0 | 7 | 0–5 | v6, v7 |
+| 2 | ListOffsets | 0 | 2 | 0–2 | – |
+| 3 | Metadata | 0 | 5 | 0–4 | v5 |
+| 4 | LeaderAndIsr | 0 | 1 | 0 | broker→broker |
+| 5 | StopReplica | 0 | 0 | 0 | – |
+| 6 | UpdateMetadata | 0 | 4 | 0–3 | broker→broker |
+| 7 | ControlledShutdown | **0** | 1 | 1 | v0 served again |
+| 8 | OffsetCommit | 0 | 3 | 0–3 | – |
+| 9 | OffsetFetch | 0 | 3 | 0–3 | – |
+| 10 | FindCoordinator | 0 | 1 | 0–1 | – |
+| 11 | JoinGroup | 0 | 2 | 0–2 | – |
+| 12–16 | Heartbeat, LeaveGroup, SyncGroup, DescribeGroups, ListGroups | 0 | 1 | 0–1 | – |
+| 17 | SaslHandshake | 0 | 1 | 0 | v1 |
+| 18 | ApiVersions | 0 | 1 | 0–1 | – |
+| 19 | CreateTopics | 0 | 2 | 0–2 | – |
+| 20 | DeleteTopics | 0 | 1 | 0–1 | – |
+| 21–28 | DeleteRecords, InitProducerId, OffsetForLeaderEpoch, the transaction apis | 0 | 0 | 0 | – |
+| 29–31 | DescribeAcls, CreateAcls, DeleteAcls | 0 | 0 | 0 | – (still 54 without an authorizer) |
+| 32 | DescribeConfigs | 0 | 1 | 0 | v1 |
+| 33 | AlterConfigs | 0 | 0 | 0 | broker resources accepted |
+| 34 | AlterReplicaLogDirs | 0 | 0 | – | new |
+| 35 | DescribeLogDirs | 0 | 0 | – | new |
+| 36 | SaslAuthenticate | 0 | 0 | – | new |
+| 37 | CreatePartitions | 0 | 0 | – | new |
+| 38 | CreateDelegationToken | 0 | 0 | – | new |
+| 39 | RenewDelegationToken | 0 | 0 | – | new |
+| 40 | ExpireDelegationToken | 0 | 0 | – | new |
+| 41 | DescribeDelegationToken | 0 | 0 | – | new |
+| 42 | DeleteGroups | 0 | 0 | – | new |
+
+Raw frame of the answer, for the re-capture of `apiversions.response.v0` (client id `apiversions-probe`, correlation id 1):
+
+```
+0000010c0000000100000000002b000000000005000100000007000200000002000300000005000400000001000500000000000600000004000700000001000800000003000900000003000a00000001000b00000002000c00000001000d00000001000e00000001000f00000001001000000001001100000001001200000001001300000002001400000001001500000000001600000000001700000000001800000000001900000000001a00000000001b00000000001c00000000001d00000000001e00000000001f00000000002000000001002100000000002200000000002300000000002400000000002500000000002600000000002700000000002800000000002900000000002a00000000
+```
 
 ## Baseline: the inherited suite of 0.11.x against a 1.1.1 broker
 
-<!-- baseline -->
+Run on 2026-09-10 with the `0.11.x` tree at `64d767c` against the 1.1.1 container above, all four listeners:
+unit + compliance untouched (a broker is not involved), integration **426 tests, 21 failures, 0 skips**. Every
+failure is an expectation written for a 0.11.0.3 broker; all of them belong to T1 unless the row says otherwise,
+and each is a behaviour the 1.x document has to record:
+
+| Failing test | What the 1.1.1 broker does | Owner |
+|---|---|---|
+| `ApiVersionProbeTest` (6 + 3): `SERVED_APIS`, the two table tests, and "closes the connection" for Produce v4, Fetch v6, Metadata v5, LeaderAndIsr v1, UpdateMetadata v4, SaslHandshake v1 | serves the 43-key table above; the providers derive from `SERVED_APIS`, so the table is the only edit | T1 |
+| `ApiVersionProbeTest::testControlledShutdownAnswersEveryVersionItIsSent` (v2 above the table) and `AdminApiTest::testTheBrokerAnnouncesOnlyVersionOneOfControlledShutdown` | **ControlledShutdown is an ordinary Java-schema api now**: v0 is served (`MinVersion = 0`) and a version above the table **closes the connection** like every other api — the "last Scala api does not check its version" section of the 0.11 document is history | T1 |
+| `AdminGroupApiTest::testDescribeGroupReportsAwaitingSyncWhileTheLeaderHasNotPublishedTheAssignment` | the group state **`AwaitingSync` is called `CompletingRebalance`** (1.0); `DescribeGroups` answers the new name, so the constant, the document's group-state list and the test move | T1 |
+| `TopicAdminApiTest::testATopicWithoutPartitionsIsRefused` | the message is `Number of partitions must be larger than 0.` (capital N, trailing dot), same code 37 | T1 |
+| `IdempotentProducerTest::testADuplicateOfABatchThatIsNoLongerTheLastOneIsAnOutOfOrderSequence` | the **five-batch window**: a duplicate of a batch that is no longer the last one is answered as the original append, not with 45 (`ProducerStateManager.NumBatchesToRetain = 5`) | T6 (the idempotent producer of 1.x), T1 keeps the suite green by pinning the new answer |
+| `FetchApiTest::testAPartitionWhoseRecordsCarryHeadersCanNotBeReadByAFetchBelowVersionFour` | a Fetch below v4 of a partition whose records carry headers is answered with the error code **0** instead of the -1 of 0.11 — a 1.x broker down-converts such a batch (what it does with the headers is for T3 to measure with `DumpLogSegments` and a raw Fetch v3: dropped, or the batch skipped) | T3, T1 pins the answer |
+| `ConfigsApiTest` (6): a fresh topic reports entries of its own; the broker resource is no longer read-only throughout; `alterConfigs()` of a topic does not leave exactly the two options; `validate_only` and a null value are not followed by an empty own-options list; a broker resource is no longer refused with the 0.11 message | **KIP-226**: `DescribeConfigs` v0 on a 1.1 broker derives `is_default` from the config *source* (an option whose value comes from the broker's static configuration is not "default" any more), and `AlterConfigs` **accepts a broker resource** and validates it per option (`Cannot update these configs dynamically: Set(log.retention.hours)` for a static option; a dynamic one such as `log.cleaner.threads` is applied). T4 owns the semantics and the v1 of the api; T1 only makes the six tests state what the broker answers | T4 (T1 pins) |
+
+Not failing, worth noting: the whole message-format, transaction, `read_committed`, SASL/PLAIN (raw exchange after
+a v0 handshake still works on 1.1.1), quota, DeleteRecords and group-membership coverage of 0.11 passes unchanged,
+and the 229 vectors replay unchanged — a 1.1.1 broker speaks every version the four lines captured.
 
 ## Environment recipe (the one of the 0.11 line, re-targeted)
 
