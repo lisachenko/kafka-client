@@ -34,16 +34,15 @@ to `docs/protocol/1.1.md`, the api keys **34-42** and the error codes **56-71** 
 
 Everything was measured against a real Apache Kafka **1.1.1** broker (`docker/kafka-1.1.1/`, the container
 `kafka-1-1-1`, `inter.broker.protocol.version` and `log.message.format.version` `1.1-IV0`), never against the
-specification alone. The counts below are the state of the tree **before T8**, which lands after this file was
-written:
+specification alone:
 
-* **1717 unit tests** and **321 compliance tests**, replaying **314 wire vectors** in 36 files
-  ([`docs/protocol/vectors`](../protocol/vectors)) — the **85** frames this line captured on the 1.1.1 container
+* **1737 unit tests** and **325 compliance tests**, replaying **318 wire vectors** in 36 files
+  ([`docs/protocol/vectors`](../protocol/vectors)) — the **89** frames this line captured on the 1.1.1 container
   plus the **229** of the four lines below, which a 1.1.1 broker still answers unchanged. Two of the inherited
   vectors were re-captured rather than added: the two ApiVersions **answers**, whose whole content is the api-key
   table of the broker. Every vector is replayed in both directions, and `DocumentationSyncTest` holds the
   annotated dumps of the document and the vector files together.
-* **540 integration tests** over all four listeners — PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL
+* **549 integration tests** over all four listeners — PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL
   9095 — with unique topic, group and transactional-id names per test class, and **zero skips**.
 * The **api-key table** of the document is the literal ApiVersions answer of the broker.
   `tests/Integration/ApiVersionProbeTest.php` sends a real frame of every one of the 43 keys — bodies for the nine
@@ -188,10 +187,10 @@ written:
   directory that goes offline), **60** (a reassignment on a multi-broker cluster), **61** (a broker *without* a
   token master key — the image sets one on purpose), **65**, **53** and **30** (all three need an authorizer). The
   protocol document says so at every one of them.
-* **The consumer sends session-less full fetches until T8 lands.** `Client::fetchPartitions()` sends Fetch **v7**
-  with `session_id = 0` and `epoch = -1`, which a 1.1.1 broker serves exactly as it serves a Fetch v6; the
-  session state machine itself is measured, documented and pinned by `FetchSessionApiTest`, and the incremental
-  sessions in the consumer are ticket T8.
+* **`Client::fetchPartitions()` stays session-less on purpose**, while `KafkaConsumer` holds an incremental
+  fetch session with every broker it reads from (T8, `Client::fetchPartitionsWithSessions()`): the bare client
+  sends Fetch **v7** with `session_id = 0` and `epoch = -1`, which a 1.1.1 broker serves exactly as it serves a
+  Fetch v6, so one request is one answer for a caller that wants no state on the broker.
 * **`retries` defaults to 3 with `enable.idempotence`** (see above), and `max.in.flight.requests.per.connection`
   needs no option here — this client writes one produce request and reads its answer before the next.
 * **`AdminClient::listOffsets()` stays at `read_uncommitted`** while `KafkaConsumer` sends its `isolation.level`
