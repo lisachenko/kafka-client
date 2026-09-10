@@ -48,6 +48,8 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
@@ -908,12 +910,24 @@ class AdminClient
      *    that no node of the cluster has to any broker, so that the answer of the broker says what is wrong.
      *
      * `$configNames` filters the options of every resource of the call; `null`, the default, asks for all of them.
-     * The value of a **sensitive** option is never sent by the broker and arrives as `null`, and every option of a
-     * broker resource is reported as read-only, because a 0.11 broker cannot change its own configuration at
-     * runtime.
+     * The value of a **sensitive** option is never sent by the broker and arrives as `null`.
      *
-     * @param list<ConfigResource> $resources   Resources to describe
-     * @param list<string>|null    $configNames Options to read of every resource, null for all of them
+     * The request goes out as **version 1**, the version Kafka 1.1 added with KIP-226, so every entry of the answer
+     * carries the {@see ConfigSource} its value comes from instead of the bare `is_default` boolean of version 0,
+     * and `$includeSynonyms` asks the broker to list every place it looked for that value
+     * ({@see ConfigEntry::$synonyms}). Without the flag the synonym list of every entry is empty and nothing else
+     * changes. Two consequences of the version raise a caller of the 0.11 line should know about:
+     *
+     *  - `isDefault` now means "nobody configured it anywhere", not "the resource did not configure it": an option
+     *    whose broker-level synonym stands in the `server.properties` is reported with the source
+     *    `STATIC_BROKER_CONFIG`. {@see Config::ownValues()} is the set of options the resource itself carries;
+     *  - a broker entry is only read-only when it is **not** dynamically updatable
+     *    (`DynamicBrokerConfig.AllDynamicConfigs`), where a 0.11 broker reported every option of a broker resource
+     *    as read-only.
+     *
+     * @param list<ConfigResource> $resources       Resources to describe
+     * @param list<string>|null    $configNames     Options to read of every resource, null for all of them
+     * @param bool                 $includeSynonyms Ask for the synonyms of every option (version 1, KIP-226)
      *
      * @throws KafkaException If the broker refused one of the resources - 42 (InvalidRequest) for an unknown
      *         resource type or a broker id that is not the one that answers, 17 (InvalidTopic) for an illegal topic
@@ -922,8 +936,11 @@ class AdminClient
      *
      * @return array<string, Config> Configuration of every requested resource, indexed by its resource key
      */
-    public function describeConfigs(array $resources, ?array $configNames = null): array
-    {
+    public function describeConfigs(
+        array $resources,
+        ?array $configNames = null,
+        bool $includeSynonyms = false
+    ): array {
         $result = [];
         foreach ($this->groupByConfigNode($resources) as [$nodeId, $nodeResources]) {
             $entries       = array_map(
@@ -933,6 +950,7 @@ class AdminClient
             );
             $createRequest = fn(int $correlationId): DescribeConfigsRequest => new DescribeConfigsRequest(
                 $entries,
+                $includeSynonyms,
                 $this->clientId(),
                 $correlationId
             );
@@ -975,14 +993,27 @@ class AdminClient
      *
      * <code>
      *   $key     = ConfigResource::topic('events')->key();
-     *   $current = $admin->describeConfigs([ConfigResource::topic('events')])[$key]->nonDefaultValues();
+     *   $current = $admin->describeConfigs([ConfigResource::topic('events')])[$key]->ownValues();
      *   $admin->alterConfigs([$key => ['retention.ms' => '3600000'] + $current]);
      * </code>
      *
-     * **A 0.11 broker only alters topics.** Every other resource type is answered with the error code 42
-     * (InvalidRequest) and the message `AlterConfigs is only supported for topics, but resource type is BROKER` -
-     * dynamic broker configuration is Kafka 1.1 (KIP-226). Any broker of the cluster serves the request, there is
-     * no controller involved.
+     * **A 1.1 broker alters a broker resource as well** (KIP-226), where a 0.11 broker refused every one of them
+     * with the error code 42 and the message `AlterConfigs is only supported for topics, but resource type is
+     * BROKER`. The wire format did not change for it; what changed is the broker:
+     *
+     *  - the resource `broker:<id>` is the live configuration of THAT broker and is only served by it, exactly like
+     *    a DescribeConfigs of the same resource, so such a call has to be sent to the named node - this method
+     *    sends every resource of one call to any broker, which means that a broker resource has to be altered in a
+     *    call of its own against an {@see AdminClient} whose cluster the node answers, or through the default
+     *    resource below;
+     *  - the resource `broker:` - the **empty** name - is the cluster-wide default of KIP-226: the value is stored
+     *    in ZooKeeper under `/config/brokers/<default>`, every broker of the cluster picks it up, and a
+     *    DescribeConfigs reports it with the source `DYNAMIC_DEFAULT_BROKER_CONFIG`;
+     *  - only the options of `DynamicBrokerConfig.AllDynamicConfigs` can be changed at runtime. Everything else is
+     *    answered with 42 and `Cannot update these configs dynamically: Set(…)`, which names the offending options,
+     *    and the whole resource is refused - the entries are validated together.
+     *
+     * Any broker of the cluster serves the request, there is no controller involved.
      *
      * Every requested resource gets an entry in the result, keyed like the argument: `null` when its configuration
      * was replaced (or validated, with `$validateOnly`), the exception of its error code otherwise. Nothing is
@@ -1102,5 +1133,138 @@ class AdminClient
         }
 
         return KafkaException::fromCode($errorCode, $context);
+    }
+
+    /**
+     * Raises the number of partitions of existing topics (ApiKey 37, Kafka 1.0, KIP-195)
+     *
+     * The last piece of `kafka-topics.sh --alter` that needed ZooKeeper before Kafka 1.0. Every entry of
+     * `$newPartitions` maps a topic name to the number of partitions it should have **afterwards** - as a
+     * {@see NewPartitions}, or as a plain integer for `NewPartitions::increaseTo($count)`:
+     *
+     * <code>
+     *   $admin->createPartitions(['events' => 5, 'audit' => NewPartitions::increaseTo(2, [[0]])]);
+     * </code>
+     *
+     * The api can only ever GROW a topic: a count that is not above the current one is answered with the error code
+     * 37 (InvalidPartitions) and the message `Topic already has 3 partitions.`, because Kafka cannot merge two logs
+     * and the keys of a compacted topic would change their partition. The optional assignment names the brokers of
+     * every partition that is ADDED, in order, and has to have as many entries as partitions are added and as many
+     * brokers per entry as the replication factor of the topic - anything else is 39 (InvalidReplicaAssignment).
+     *
+     * The request is sent to the active controller ({@see self::findController()}), the only broker that serves it,
+     * and is repeated ONCE against a freshly looked up controller when the answer says 41 (NotController), exactly
+     * like {@see self::createTopics()}. Every requested topic gets an entry in the result: `null` when its partition
+     * count was raised (or validated, with `$validateOnly`), the exception of its error code otherwise - nothing is
+     * thrown for a topic that was refused.
+     *
+     * CAVEAT: `$timeoutMs` is the time the CONTROLLER waits for the new partitions to exist before it answers, as in
+     * `createTopics()`. A successful answer means the controller is done; the other brokers learn about the new
+     * partitions with their next metadata update, so a Metadata request may answer 5 (LeaderNotAvailable) for them
+     * for a moment.
+     *
+     * @param array<string, NewPartitions|int> $newPartitions Topics to grow, as topic name => new total count
+     * @param int                              $timeoutMs     How long the controller waits for the new partitions
+     * @param bool                             $validateOnly  Validate the request without adding anything
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws NotControllerException If no broker of the cluster is the active controller
+     *
+     * @return array<string, KafkaException|null> Error of every requested topic, null when it was grown
+     */
+    public function createPartitions(
+        array $newPartitions,
+        int $timeoutMs = 30000,
+        bool $validateOnly = false
+    ): array {
+        return $this->onController(
+            fn(Node $controller): array => $this->client()
+                ->createPartitions($controller, $newPartitions, $timeoutMs, $validateOnly)
+        );
+    }
+
+    /**
+     * Makes the coordinator forget consumer groups and their committed offsets (ApiKey 42, Kafka 1.1, KIP-229)
+     *
+     * The counterpart of `kafka-consumer-groups.sh --delete`, which had to write to ZooKeeper before Kafka 1.1.
+     * `GroupCoordinator.handleDeleteGroups` @ 1.1.1 removes the group from its cache and writes a tombstone for
+     * every offset the group committed, so the group disappears from {@see self::listGroups()} and an OffsetFetch of
+     * it answers -1 for every partition afterwards.
+     *
+     * **A group is only deletable when it has no member left.** An `Empty` group (every member left or timed out)
+     * and a `Dead` one are deleted; a group with a live member is answered with 68 (NonEmptyGroup) and keeps its
+     * offsets, and a group the coordinator has never heard of with 69 (GroupIdNotFound) - which is the one way to
+     * tell "there was nothing to delete" from "it is still in use".
+     *
+     * Groups that share a coordinator are deleted with a single request, and a coordinator is looked up for every
+     * group ({@see self::findCoordinator()}), because a broker answers a group it does not coordinate with 16
+     * (NotCoordinatorForGroup). Every requested group gets an entry in the result, keyed by the group id: `null`
+     * when it was deleted, the exception of its error code otherwise. Nothing is thrown for a group that was
+     * refused - one group of a call says nothing about the others - and an empty list is answered with an empty
+     * result without a single request.
+     *
+     * @param list<string> $groupIds Names of the groups to delete, duplicates are collapsed
+     *
+     * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If a coordinator could not be
+     *         looked up at all
+     *
+     * @return array<string, KafkaException|null> Error of every requested group, null when it was deleted
+     */
+    public function deleteConsumerGroups(array $groupIds): array
+    {
+        $coordinators  = [];
+        $groupsPerNode = [];
+        foreach (array_unique($groupIds) as $groupId) {
+            $coordinator                           = $this->findCoordinator($groupId);
+            $coordinators[$coordinator->nodeId]    = $coordinator;
+            $groupsPerNode[$coordinator->nodeId][] = $groupId;
+        }
+
+        $answered = [];
+        foreach ($groupsPerNode as $nodeId => $groups) {
+            /** @var DeleteGroupsResponse $response */
+            $response = $this->sendTo(
+                $coordinators[$nodeId]->getConnection($this->configuration),
+                fn(int $correlationId): DeleteGroupsRequest => new DeleteGroupsRequest(
+                    $groups,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DeleteGroupsResponse::class,
+                ['node' => $nodeId, 'groups' => $groups]
+            );
+
+            foreach ($groups as $groupId) {
+                $result             = $response->groups[$groupId] ?? null;
+                $answered[$groupId] = $result === null
+                    ? new UnknownErrorException(
+                        ['groupId' => $groupId, 'error' => 'The coordinator sent no result for this group']
+                    )
+                    : self::groupError($groupId, $result->errorCode);
+            }
+        }
+
+        $result = [];
+        foreach ($groupIds as $groupId) {
+            // A group that was deleted is answered with `null`, so the map has to be probed with array_key_exists()
+            // and not with `??`, which would turn every success into an unknown error
+            $result[$groupId] = array_key_exists($groupId, $answered)
+                ? $answered[$groupId]
+                : new UnknownErrorException(
+                    ['groupId' => $groupId, 'error' => 'The coordinator sent no result for this group']
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Turns the error code of one group of a DeleteGroups answer into the exception of the caller
+     */
+    private static function groupError(string $groupId, int $errorCode): ?KafkaException
+    {
+        return $errorCode === KafkaException::NO_ERROR
+            ? null
+            : KafkaException::fromCode($errorCode, ['groupId' => $groupId]);
     }
 }

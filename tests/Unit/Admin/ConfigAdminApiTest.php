@@ -18,6 +18,7 @@ use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\Config;
 use Protocol\Kafka\Admin\ConfigResource;
+use Protocol\Kafka\Admin\ConfigSource;
 use Protocol\Kafka\Admin\DeletedRecords;
 use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Client;
@@ -28,6 +29,7 @@ use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Tests\Compliance\VectorFile;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
 use Protocol\Kafka\Tests\Fixture\ResponseFrame;
@@ -40,7 +42,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/1.1.md, sections "DeleteRecords API (key 21, v0)", "DescribeConfigs API (key 32, v0)" and
+ * @see docs/protocol/1.1.md, sections "DeleteRecords API (key 21, v0)", "DescribeConfigs API (key 32, v0 and v1)" and
  *      "AlterConfigs API (key 33, v0)"
  */
 #[CoversClass(AdminClient::class)]
@@ -48,6 +50,11 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 final class ConfigAdminApiTest extends TestCase
 {
     private const string TOPIC = 't5-vectors';
+
+    /**
+     * The topic of the DescribeConfigs v1 vectors, which was created with `segment.bytes` of its own
+     */
+    private const string VECTOR_TOPIC = 't4-configs-own';
 
     private const string BOOTSTRAP_ADDRESS = 'tcp://bootstrap:9092';
 
@@ -69,19 +76,48 @@ final class ConfigAdminApiTest extends TestCase
 
     public function testDescribeConfigsOfATopicGoesToAnyBrokerAndIsKeyedByTheResource(): void
     {
+        // The answer of a 1.1.1 broker to the version 1 this client sends: the resource of the ANSWER is what the
+        // result is keyed by, and every entry carries its config source and its synonyms
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
-            ->on(self::FIRST_BROKER, new BrokerConnection(self::vector('describe-configs', 'describeconfigs.response.v0.topic')))
+            ->on(self::FIRST_BROKER, new BrokerConnection(
+                self::vector('describe-configs', 'describeconfigs.response.v1.topic')
+            ))
             ->install();
 
-        $configs = $this->adminClient()->describeConfigs([ConfigResource::topic(self::TOPIC)]);
+        $configs = $this->adminClient()->describeConfigs([ConfigResource::topic(self::VECTOR_TOPIC)], null, true);
 
-        self::assertSame(['topic:' . self::TOPIC], array_keys($configs));
-        $config = $configs['topic:' . self::TOPIC];
+        self::assertSame(['topic:' . self::VECTOR_TOPIC], array_keys($configs));
+        $config = $configs['topic:' . self::VECTOR_TOPIC];
         self::assertInstanceOf(Config::class, $config);
         self::assertSame('604800000', $config->value('retention.ms'));
-        self::assertSame('delete', $config->value('cleanup.policy'));
-        self::assertSame([], $config->nonDefaultValues(), 'the topic of the vector has no option of its own');
+        self::assertSame('104857600', $config->value('segment.bytes'));
+        self::assertSame(ConfigSource::TOPIC_CONFIG, $config->get('segment.bytes')->source);
+        self::assertSame(ConfigSource::DEFAULT_CONFIG, $config->get('retention.ms')->source);
+        self::assertTrue($config->get('retention.ms')->isDefault, 'derived from the source, not from a boolean');
+        self::assertCount(3, $config->get('segment.bytes')->synonyms);
+        self::assertSame(
+            ['segment.bytes' => '104857600'],
+            $config->ownValues(),
+            'the topic of the vector set exactly one option of its own'
+        );
+    }
+
+    public function testTheRequestIsTheVersionOneOfKip226(): void
+    {
+        $broker = new BrokerConnection(self::vector('describe-configs', 'describeconfigs.response.v1.topic'));
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_BROKER, $broker)
+            ->install();
+
+        $this->adminClient()->describeConfigs([ConfigResource::topic(self::VECTOR_TOPIC)], ['segment.bytes'], true);
+
+        // The received frame is the request without its Size, so the api key and the version open it
+        $frame = $broker->getReceivedFrames()[0];
+        self::assertSame(ApiKeys::DESCRIBE_CONFIGS, unpack('n', substr($frame, 0, 2))[1]);
+        self::assertSame(1, unpack('n', substr($frame, 2, 2))[1], 'the api version of the header is 1');
+        self::assertSame("\x01", substr($frame, -1), 'and include_synonyms is the last byte of the frame');
     }
 
     public function testDescribeConfigsOfABrokerGoesToThatBroker(): void
@@ -95,7 +131,15 @@ final class ConfigAdminApiTest extends TestCase
 
         self::assertSame(['broker:1'], array_keys($configs));
         self::assertSame('1', $configs['broker:1']->value('broker.id'));
-        self::assertTrue($configs['broker:1']->get('broker.id')->isReadOnly);
+        self::assertTrue($configs['broker:1']->get('broker.id')->isReadOnly, 'the id of a broker is never dynamic');
+        self::assertSame(ConfigSource::STATIC_BROKER_CONFIG, $configs['broker:1']->get('broker.id')->source);
+        self::assertFalse($configs['broker:1']->get('broker.id')->isDefault, 'a static value is not a default');
+        self::assertSame(
+            ['broker.id' => '1'],
+            $configs['broker:1']->nonDefaultValues(),
+            'while the resource itself owns nothing: ownValues() is empty'
+        );
+        self::assertSame([], $configs['broker:1']->ownValues());
         self::assertNotContains(
             self::FIRST_BROKER,
             $this->brokers->getOpenedAddresses(),
@@ -107,6 +151,8 @@ final class ConfigAdminApiTest extends TestCase
     {
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            // A resource that was refused carries no config entry at all, so its frame is the same in both
+            // versions of the api - the v0 vector of the 0.11 line is a valid v1 answer
             ->on(self::SECOND_BROKER, new BrokerConnection(
                 self::vector('describe-configs', 'describeconfigs.response.v0.unknown-broker')
             ))
@@ -250,7 +296,11 @@ final class ConfigAdminApiTest extends TestCase
     }
 
     /**
-     * A DescribeConfigs answer of one broker resource with its `broker.id`, which is read only and not a default
+     * A DescribeConfigs v1 answer of one broker resource with its `broker.id`
+     *
+     * `broker.id` is the one option of a broker that is read-only even on a 1.1 broker - no synonym of it is in
+     * `DynamicBrokerConfig.AllDynamicConfigs` - and its source is the `server.properties` of the container, with
+     * the built-in default `-1` behind it as a synonym.
      */
     private static function brokerConfigResponse(int $brokerId): string
     {
@@ -259,7 +309,11 @@ final class ConfigAdminApiTest extends TestCase
         $body .= pack('n', 0) . pack('n', 0xFFFF) . pack('c', ConfigResource::TYPE_BROKER);
         $body .= pack('n', strlen($name)) . $name;
         $body .= pack('N', 1) . pack('n', 9) . 'broker.id' . pack('n', strlen($name)) . $name;
-        $body .= pack('C', 1) . pack('C', 0) . pack('C', 0);
+        $body .= pack('C', 1) /* read_only */ . pack('c', ConfigSource::STATIC_BROKER_CONFIG) . pack('C', 0);
+        $body .= pack('N', 2);
+        $body .= pack('n', 9) . 'broker.id' . pack('n', strlen($name)) . $name
+            . pack('c', ConfigSource::STATIC_BROKER_CONFIG);
+        $body .= pack('n', 9) . 'broker.id' . pack('n', 2) . '-1' . pack('c', ConfigSource::DEFAULT_CONFIG);
 
         return ResponseFrame::of(0, $body);
     }

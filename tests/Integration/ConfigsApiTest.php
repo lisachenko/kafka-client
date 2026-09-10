@@ -18,6 +18,8 @@ use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\Config;
 use Protocol\Kafka\Admin\ConfigEntry;
 use Protocol\Kafka\Admin\ConfigResource;
+use Protocol\Kafka\Admin\ConfigSource;
+use Protocol\Kafka\Admin\ConfigSynonym;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
@@ -30,34 +32,46 @@ use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\AlterConfigsResponseResource;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigEntry;
+use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigEntryV0;
+use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigSynonym;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResource;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV0;
 
 /**
  * Exercises the DescribeConfigs (key 32) and AlterConfigs (key 33) apis against a real Kafka 1.1.1 broker.
  *
- * Both arrived with Kafka 0.11 (KIP-133) and Kafka 1.1 raised them with KIP-226: DescribeConfigs got a version 1
- * that answers a config **source** and its synonyms instead of an `is_default` boolean, and AlterConfigs started
- * accepting a **broker** resource for the options a broker can change at runtime. This class sends version 0 of
- * both and pins what a 1.1 broker answers to it - T4 of this line owns the version 1 and the dynamic broker
- * configuration. Nothing here changes a broker-level setting: every AlterConfigs of a broker resource below names
- * an option that is *not* dynamically updatable and is therefore refused, and the container is shared with the
- * other suites of this line.
+ * Both arrived with Kafka 0.11 (KIP-133) and Kafka 1.1 raised them with KIP-226: DescribeConfigs got a **version 1**
+ * that answers a config SOURCE and the synonyms of every option instead of an `is_default` boolean, and AlterConfigs
+ * - whose frame did not change at all - started accepting a **broker** resource for the options a broker can change
+ * at runtime. Both halves are measured here, against the version 1 the client sends and against the version 0 a
+ * 1.1.1 broker still serves.
  *
- * @see docs/protocol/1.1.md, sections "DescribeConfigs API (key 32, v0)" and "AlterConfigs API (key 33, v0)"
+ * The container is shared with the other suites of this line, so the two tests that really change a broker option
+ * touch `log.cleaner.backoff.ms` alone - a log-cleaner back-off nothing here depends on - and put the documented
+ * default back in a `finally`, explicitly and not by removing the entry, see the quirk in the AlterConfigs section.
+ *
+ * @see docs/protocol/1.1.md, sections "DescribeConfigs API (key 32, v0 and v1)" and "AlterConfigs API (key 33, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Config::class)]
 #[CoversClass(ConfigEntry::class)]
 #[CoversClass(ConfigResource::class)]
+#[CoversClass(ConfigSource::class)]
+#[CoversClass(ConfigSynonym::class)]
 #[CoversClass(DescribeConfigsRequest::class)]
+#[CoversClass(DescribeConfigsRequestV0::class)]
 #[CoversClass(DescribeConfigsResponse::class)]
+#[CoversClass(DescribeConfigsResponseV0::class)]
 #[CoversClass(DescribeConfigsRequestResource::class)]
 #[CoversClass(DescribeConfigsResponseResource::class)]
 #[CoversClass(DescribeConfigsResponseConfigEntry::class)]
+#[CoversClass(DescribeConfigsResponseConfigEntryV0::class)]
+#[CoversClass(DescribeConfigsResponseConfigSynonym::class)]
 #[CoversClass(AlterConfigsRequest::class)]
 #[CoversClass(AlterConfigsResponse::class)]
 #[CoversClass(AlterConfigsRequestResource::class)]
@@ -69,18 +83,29 @@ final class ConfigsApiTest extends IntegrationTestCase
      * The topic options that a 1.1 broker never reports as defaults, because the container sets their broker synonym
      *
      * KIP-226 replaced the `is_default` boolean of the DescribeConfigs answer with a config **source**, and the
-     * `is_default` of the version 0 answer is derived from it: `AdminManager.createTopicConfigEntry()` @ 1.1.1 walks
+     * `is_default` of a version 0 answer is derived from it: `AdminManager.createTopicConfigEntry()` @ 1.1.1 walks
      * `LogConfig.TopicConfigSynonyms`, and an option whose broker synonym stands in the `server.properties` of the
      * container gets the source `STATIC_BROKER_CONFIG` - which is not `DEFAULT_CONFIG`, so `is_default` is false
      * although the topic itself set nothing. A 0.11.0.3 broker answered `is_default = !topicProps.containsKey(name)`
      * and reported such an option as a default.
      *
      * The image of this line sets exactly one of them: `log.segment.bytes=1073741824`, the synonym of the topic
-     * option `segment.bytes` (`log.retention.hours` is set too, but the synonym of `retention.ms` that the broker
-     * looks at first is `log.retention.ms`, which is not set). T4 owns the api and its version 1, which reports the
-     * source itself.
+     * option `segment.bytes`. `log.retention.hours` is set too, and `retention.ms` is a default nevertheless: the
+     * synonyms of that option are looked up under `log.retention.ms`, and the `dropWhile` of
+     * `AdminManager.configSynonyms()` throws the whole list away when nothing in it carries that name.
      */
     private const array STATIC_BROKER_TOPIC_OPTIONS = ['segment.bytes' => '1073741824'];
+
+    /**
+     * The broker option the two dynamic tests change, with the value the `server.properties` of the image implies
+     *
+     * `log.cleaner.backoff.ms` is one of `LogCleaner.ReconfigurableConfigs` and therefore dynamically updatable,
+     * and nothing of this suite - or of the other suites that share the container - depends on how long the log
+     * cleaner sleeps between two runs.
+     */
+    private const string DYNAMIC_OPTION = 'log.cleaner.backoff.ms';
+
+    private const string DYNAMIC_OPTION_DEFAULT = '15000';
 
     private Cluster $cluster;
 
@@ -109,73 +134,126 @@ final class ConfigsApiTest extends IntegrationTestCase
         }
     }
 
-    public function testAFreshTopicHasOnlyTheOptionsTheBrokerSetsStatically(): void
+    public function testAFreshTopicInheritsEveryOptionAndSaysWhereItComesFrom(): void
     {
         $topic    = $this->createTopic('describe');
         $resource = ConfigResource::topic($topic);
 
-        $configs = $this->admin->describeConfigs([$resource]);
+        $configs = $this->admin->describeConfigs([$resource], null, true);
 
         self::assertSame([$resource->key()], array_keys($configs));
         $config = $configs[$resource->key()];
         self::assertGreaterThan(20, count($config->entries), 'a 1.1 topic has more than twenty options');
+        self::assertSame([], $config->ownValues(), 'a topic created without options has none of its own');
         self::assertSame(
             self::STATIC_BROKER_TOPIC_OPTIONS,
             $config->nonDefaultValues(),
-            'a topic created without options has none of its own but the ones the broker sets statically'
+            'but the one whose broker synonym the container sets is not a default any more'
         );
-        self::assertFalse($config->get('segment.bytes')->isDefault, 'log.segment.bytes IS in the server.properties');
-        self::assertSame('604800000', $config->value('retention.ms'), 'the broker default of seven days');
-        self::assertTrue($config->get('retention.ms')->isDefault, 'log.retention.ms is not in the server.properties');
-        self::assertFalse($config->get('retention.ms')->isReadOnly, 'a topic option can be altered');
-        self::assertFalse($config->get('retention.ms')->isSensitive);
-        self::assertFalse(
-            $config->get('segment.bytes')->isReadOnly,
-            'a topic entry is never read-only: `createTopicConfigEntry()` passes the flag as false'
+
+        $segment = $config->get('segment.bytes');
+        self::assertSame(ConfigSource::STATIC_BROKER_CONFIG, $segment->source, 'log.segment.bytes is configured');
+        self::assertFalse($segment->isDefault);
+        self::assertSame('1073741824', $segment->value);
+        self::assertFalse($segment->isReadOnly, 'a topic entry is never read-only');
+        self::assertFalse($segment->isSensitive);
+        self::assertSame(
+            ['log.segment.bytes', 'log.segment.bytes'],
+            array_map(static fn(ConfigSynonym $synonym): string => $synonym->name, $segment->synonyms),
+            'the synonyms of a topic option are the BROKER options behind it, here the static one and the default'
+        );
+        self::assertSame(
+            [ConfigSource::STATIC_BROKER_CONFIG, ConfigSource::DEFAULT_CONFIG],
+            array_map(static fn(ConfigSynonym $synonym): int => $synonym->source, $segment->synonyms),
+            'the winning source comes first, and it is the source of the entry itself'
+        );
+
+        $retention = $config->get('retention.ms');
+        self::assertSame(ConfigSource::DEFAULT_CONFIG, $retention->source);
+        self::assertTrue($retention->isDefault);
+        self::assertSame('604800000', $retention->value, 'the seven days of log.retention.hours=168');
+        self::assertSame(
+            [],
+            $retention->synonyms,
+            'and no synonym at all: the dropWhile of configSynonyms() drops a list without a log.retention.ms in it'
         );
     }
 
-    public function testATopicOptionOfTheRequestIsReportedAsNotDefault(): void
+    public function testAnOptionTheTopicSetsItselfIsReportedWithTheTopicSourceInFrontOfItsSynonyms(): void
     {
-        $topic    = $this->createTopic('created-with', ['retention.ms' => '3600000']);
+        $topic    = $this->createTopic('own-option', ['segment.bytes' => '104857600']);
         $resource = ConfigResource::topic($topic);
 
-        $config = $this->admin->describeConfigs([$resource], ['retention.ms', 'cleanup.policy'])[$resource->key()];
+        $config = $this->admin->describeConfigs([$resource], ['segment.bytes'], true)[$resource->key()];
 
-        self::assertEqualsCanonicalizing(
-            ['retention.ms', 'cleanup.policy'],
-            array_keys($config->entries),
-            'the broker walks a Scala map, so the entries are not in the order of the request'
+        $entry = $config->get('segment.bytes');
+        self::assertSame(ConfigSource::TOPIC_CONFIG, $entry->source);
+        self::assertSame('104857600', $entry->value);
+        self::assertFalse($entry->isDefault);
+        self::assertSame(['segment.bytes' => '104857600'], $config->ownValues());
+
+        self::assertCount(3, $entry->synonyms, 'its own value, and the two broker options it shadows');
+        self::assertSame('segment.bytes', $entry->synonyms[0]->name);
+        self::assertSame(ConfigSource::TOPIC_CONFIG, $entry->synonyms[0]->source);
+        self::assertSame('104857600', $entry->synonyms[0]->value);
+        self::assertSame('log.segment.bytes', $entry->synonyms[1]->name);
+        self::assertSame(ConfigSource::STATIC_BROKER_CONFIG, $entry->synonyms[1]->source);
+        self::assertSame(ConfigSource::DEFAULT_CONFIG, $entry->synonyms[2]->source);
+    }
+
+    public function testWithoutTheSynonymFlagTheAnswerCarriesTheSourceAndNoSynonym(): void
+    {
+        $topic    = $this->createTopic('no-synonyms', ['segment.bytes' => '104857600']);
+        $resource = ConfigResource::topic($topic);
+
+        $config = $this->admin->describeConfigs([$resource], ['segment.bytes'])[$resource->key()];
+
+        self::assertSame(ConfigSource::TOPIC_CONFIG, $config->get('segment.bytes')->source);
+        self::assertSame('104857600', $config->get('segment.bytes')->value);
+        self::assertSame(
+            [],
+            $config->get('segment.bytes')->synonyms,
+            'include_synonyms only decides whether the broker sends the list it built anyway'
         );
-        self::assertSame('3600000', $config->value('retention.ms'));
-        self::assertFalse($config->get('retention.ms')->isDefault, 'it was written into the ZooKeeper node');
-        self::assertTrue($config->get('cleanup.policy')->isDefault);
-        self::assertSame(['retention.ms' => '3600000'], $config->nonDefaultValues());
     }
 
     /**
-     * The `is_default` of a version 0 answer is derived from the config source of KIP-226
-     *
-     * A 0.11.0.3 broker answered `is_default = !topicProps.containsKey(name)`, i.e. "the topic did not set it". A 1.1
-     * broker answers the source instead - `TOPIC_CONFIG`, `STATIC_BROKER_CONFIG`, `DEFAULT_CONFIG`, … - and
-     * `DescribeConfigsResponse` writes `is_default = (source == DEFAULT_CONFIG)` into the version 0 frame. The two
-     * disagree for exactly the options whose **broker synonym** stands in the `server.properties` of the container.
+     * A 1.1.1 broker still serves the version 0, with the `is_default` derived from the source it computed
      */
-    public function testATopicOptionThatTheBrokerSetsStaticallyIsNotReportedAsADefault(): void
+    public function testTheVersionZeroAnswerOfAOnePointOneBrokerDerivesIsDefaultFromTheSource(): void
     {
-        $topic    = $this->createTopic('static-source');
-        $resource = ConfigResource::topic($topic);
+        $topic  = $this->createTopic('version-zero');
+        $stream = $this->connect();
 
-        $config = $this->admin->describeConfigs([$resource], ['segment.bytes', 'retention.ms'])[$resource->key()];
+        new DescribeConfigsRequestV0(
+            [new DescribeConfigsRequestResource(
+                ConfigResource::TYPE_TOPIC,
+                $topic,
+                ['segment.bytes', 'retention.ms']
+            )],
+            't5-configs',
+            42
+        )->writeTo($stream);
+        $response = DescribeConfigsResponseV0::unpack($stream);
 
+        $entries = $response->resources[0]->configEntries;
+        self::assertInstanceOf(DescribeConfigsResponseConfigEntryV0::class, $entries['segment.bytes']);
         self::assertFalse(
-            $config->get('segment.bytes')->isDefault,
-            'log.segment.bytes stands in the server.properties, so the source is STATIC_BROKER_CONFIG'
+            $entries['segment.bytes']->isDefault,
+            'the broker writes is_default = (source == DEFAULT_CONFIG), and log.segment.bytes is configured'
         );
-        self::assertSame('1073741824', $config->value('segment.bytes'));
-        self::assertTrue(
-            $config->get('retention.ms')->isDefault,
-            'log.retention.ms does not, and log.retention.hours is not the synonym the broker looks at first'
+        self::assertTrue($entries['retention.ms']->isDefault);
+        self::assertSame([], $entries['segment.bytes']->configSynonyms, 'version 0 has no synonyms on the wire');
+        self::assertSame(
+            ConfigSource::TOPIC_CONFIG,
+            $entries['segment.bytes']->source(ConfigResource::TYPE_TOPIC),
+            'a client derives the source back from the boolean and the resource type, as the Java client does - '
+            . 'and the derivation is lossy: the option is a STATIC_BROKER_CONFIG, which the boolean cannot say'
+        );
+        self::assertSame(
+            ConfigSource::DEFAULT_CONFIG,
+            $entries['retention.ms']->source(ConfigResource::TYPE_TOPIC),
+            'only the default is unambiguous'
         );
     }
 
@@ -219,8 +297,8 @@ final class ConfigsApiTest extends IntegrationTestCase
      * KIP-226 made dynamic - directly or through one of its synonyms - is answered as **writable**. `broker.id` is
      * still read-only, `log.retention.hours` is not, because its synonym `log.retention.ms` is a dynamic config.
      *
-     * Writable is not the same as updatable under this name, though: AlterConfigs of `log.retention.hours` is
-     * refused, see below. T4 owns the api and what a client should do with the distinction.
+     * Writable is not the same as updatable under this name, though: an AlterConfigs of `log.retention.hours` is
+     * refused, see below.
      */
     public function testABrokerEntryIsReadOnlyOnlyWhenItIsNotDynamicallyUpdatable(): void
     {
@@ -229,7 +307,8 @@ final class ConfigsApiTest extends IntegrationTestCase
 
         $config = $this->admin->describeConfigs(
             [$resource],
-            ['broker.id', 'log.retention.hours', 'ssl.keystore.password']
+            ['broker.id', 'log.retention.hours', 'ssl.key.password'],
+            true
         )[$resource->key()];
 
         self::assertSame((string) $brokerId, $config->value('broker.id'));
@@ -238,19 +317,34 @@ final class ConfigsApiTest extends IntegrationTestCase
             $config->get('log.retention.hours')->isReadOnly,
             'its synonym log.retention.ms is one of the dynamic configs of KIP-226'
         );
+        self::assertSame(ConfigSource::STATIC_BROKER_CONFIG, $config->get('broker.id')->source);
         self::assertFalse($config->get('broker.id')->isDefault, 'it is in the server.properties of the container');
+        self::assertSame(
+            [ConfigSource::STATIC_BROKER_CONFIG, ConfigSource::DEFAULT_CONFIG],
+            array_map(static fn(ConfigSynonym $synonym): int => $synonym->source, $config->get('broker.id')->synonyms),
+            'the value of the server.properties, and the -1 of the built-in default behind it'
+        );
 
-        $password = $config->get('ssl.keystore.password');
+        $password = $config->get('ssl.key.password');
         self::assertTrue($password->isSensitive);
         self::assertNull($password->value, 'the broker never sends the value of a PASSWORD option');
+        self::assertNotSame([], $password->synonyms, 'the container sets it in its server.properties');
+        self::assertNull($password->synonyms[0]->value, 'and its synonym carries no value either');
     }
 
     public function testABrokerIdThatIsNotTheOneThatAnswersIsRefused(): void
     {
         // The container runs a single broker, so an id that no broker has can only be answered by the wrong one
-        $this->expectException(InvalidRequestException::class);
-
-        $this->admin->describeConfigs([ConfigResource::broker(4242)], ['broker.id']);
+        try {
+            $this->admin->describeConfigs([ConfigResource::broker(4242)], ['broker.id']);
+            self::fail('a broker id that is not the one that answers has to be refused');
+        } catch (InvalidRequestException $exception) {
+            self::assertStringContainsString(
+                'Unexpected broker id, expected 0 or empty string, but received',
+                $exception->getMessage(),
+                'the sentence of a 1.1 broker names the empty string of KIP-226 as well'
+            );
+        }
     }
 
     public function testABrokerIdThatIsNotANumberIsRefused(): void
@@ -270,23 +364,25 @@ final class ConfigsApiTest extends IntegrationTestCase
         ]);
         self::assertSame([$resource->key() => null], $first);
         self::assertEqualsCanonicalizing(
-            ['retention.ms' => '3600000', 'cleanup.policy' => 'compact'] + self::STATIC_BROKER_TOPIC_OPTIONS,
-            $this->nonDefaults($resource),
-            'both options are now the topic\'s own, next to the ones the broker sets statically'
+            ['retention.ms' => '3600000', 'cleanup.policy' => 'compact'],
+            $this->ownValues($resource),
+            'both options are the topic\'s own now'
         );
 
         // The second request names only one of them, and the other one falls back to the broker default: the api
         // REPLACES the ZooKeeper node of the topic instead of patching it
         $second = $this->admin->alterConfigs([$resource->key() => ['retention.ms' => '7200000']]);
         self::assertSame([$resource->key() => null], $second);
-        self::assertEqualsCanonicalizing(
-            ['retention.ms' => '7200000'] + self::STATIC_BROKER_TOPIC_OPTIONS,
-            $this->nonDefaults($resource)
-        );
+        self::assertSame(['retention.ms' => '7200000'], $this->ownValues($resource));
 
         // And an empty entry list resets every option of the topic
         self::assertSame([$resource->key() => null], $this->admin->alterConfigs([$resource->key() => []]));
-        self::assertSame(self::STATIC_BROKER_TOPIC_OPTIONS, $this->nonDefaults($resource));
+        self::assertSame([], $this->ownValues($resource));
+        self::assertSame(
+            self::STATIC_BROKER_TOPIC_OPTIONS,
+            $this->nonDefaults($resource),
+            'what is left is what the broker configuration gives the topic'
+        );
     }
 
     public function testValidateOnlyChangesNothing(): void
@@ -297,11 +393,7 @@ final class ConfigsApiTest extends IntegrationTestCase
         $result = $this->admin->alterConfigs([$resource->key() => ['retention.ms' => '3600000']], true);
 
         self::assertSame([$resource->key() => null], $result, 'the request was valid');
-        self::assertSame(
-            self::STATIC_BROKER_TOPIC_OPTIONS,
-            $this->nonDefaults($resource),
-            'and nothing was written to ZooKeeper'
-        );
+        self::assertSame([], $this->ownValues($resource), 'and nothing was written to ZooKeeper');
     }
 
     public function testAnUnknownOptionNameIsRefusedWithForty(): void
@@ -338,7 +430,7 @@ final class ConfigsApiTest extends IntegrationTestCase
         $result = $this->admin->alterConfigs([$resource->key() => ['retention.ms' => null]]);
 
         self::assertInstanceOf(UnknownErrorException::class, $result[$resource->key()]);
-        self::assertSame(self::STATIC_BROKER_TOPIC_OPTIONS, $this->nonDefaults($resource), 'and nothing was changed');
+        self::assertSame([], $this->ownValues($resource), 'and nothing was changed');
     }
 
     public function testAlteringATopicThatDoesNotExistIsAnsweredWithMinusOne(): void
@@ -354,19 +446,89 @@ final class ConfigsApiTest extends IntegrationTestCase
     }
 
     /**
-     * A broker resource is accepted by AlterConfigs since KIP-226, and refused **per option**
+     * KIP-226: a dynamically updatable option of a broker resource is applied at runtime
+     */
+    public function testADynamicOptionOfABrokerResourceIsAppliedAndReportedWithItsSource(): void
+    {
+        $resource = ConfigResource::broker(array_key_first($this->admin->findAllBrokers()));
+
+        try {
+            $result = $this->admin->alterConfigs([$resource->key() => [self::DYNAMIC_OPTION => '16000']]);
+
+            self::assertSame(
+                [$resource->key() => null],
+                $result,
+                'a 0.11 broker refused every broker resource with 42 and "AlterConfigs is only supported for topics"'
+            );
+
+            $entry = $this->admin->describeConfigs([$resource], [self::DYNAMIC_OPTION], true)[$resource->key()]
+                ->get(self::DYNAMIC_OPTION);
+
+            self::assertSame('16000', $entry->value, 'the new value is live right away');
+            self::assertSame(ConfigSource::DYNAMIC_BROKER_CONFIG, $entry->source);
+            self::assertFalse($entry->isDefault);
+            self::assertFalse($entry->isReadOnly);
+            self::assertSame(
+                [ConfigSource::DYNAMIC_BROKER_CONFIG, ConfigSource::DEFAULT_CONFIG],
+                array_map(static fn(ConfigSynonym $synonym): int => $synonym->source, $entry->synonyms),
+                'the value that was set, and the built-in default it shadows'
+            );
+            self::assertSame(self::DYNAMIC_OPTION_DEFAULT, $entry->synonyms[1]->value);
+            self::assertSame(
+                [self::DYNAMIC_OPTION => '16000'],
+                $this->ownValues($resource),
+                'a dynamic broker config is the only thing a broker resource owns'
+            );
+        } finally {
+            $this->restoreTheDynamicOption($resource);
+        }
+    }
+
+    /**
+     * KIP-226: the broker resource with an EMPTY name is the cluster-wide default
+     */
+    public function testTheDefaultBrokerResourceHoldsTheClusterWideConfiguration(): void
+    {
+        $broker  = ConfigResource::broker(array_key_first($this->admin->findAllBrokers()));
+        $default = ConfigResource::defaultBroker();
+        self::assertSame('broker:', $default->key(), 'the resource type 4 with an empty name');
+
+        try {
+            $result = $this->admin->alterConfigs([$default->key() => [self::DYNAMIC_OPTION => '17000']]);
+            self::assertSame([$default->key() => null], $result);
+
+            $configs = $this->admin->describeConfigs([$default], null, true);
+            $entry   = $configs[$default->key()]->get(self::DYNAMIC_OPTION);
+
+            self::assertSame(
+                [self::DYNAMIC_OPTION],
+                array_keys($configs[$default->key()]->entries),
+                'the default resource holds the dynamic default configuration alone, not the options of a broker'
+            );
+            self::assertSame('17000', $entry->value);
+            self::assertSame(ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG, $entry->source);
+
+            $ofTheBroker = $this->admin->describeConfigs([$broker], [self::DYNAMIC_OPTION], true)[$broker->key()]
+                ->get(self::DYNAMIC_OPTION);
+            self::assertSame('17000', $ofTheBroker->value, 'every broker of the cluster picks the default up');
+            self::assertSame(ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG, $ofTheBroker->source);
+        } finally {
+            $this->admin->alterConfigs([$default->key() => []]);
+            $this->restoreTheDynamicOption($broker);
+        }
+    }
+
+    /**
+     * A broker resource is refused as a WHOLE when one of its options is not dynamically updatable
      *
      * A 0.11.0.3 broker refused every AlterConfigs of a broker resource outright, with the message
      * `AlterConfigs is only supported for topics, but resource type is BROKER`. A 1.1 broker takes the request,
      * hands the entries to `DynamicBrokerConfig.validate()` and answers 42 with the names it cannot change at
-     * runtime: `Cannot update these configs dynamically: Set(log.retention.hours)`. An option of the dynamic set -
-     * `log.cleaner.threads`, for instance - is really applied, which is why nothing here sends one: the container
-     * is shared with the other suites of this line, and T4 owns the api and the dynamic configuration.
+     * runtime.
      */
     public function testAStaticOptionOfABrokerResourceIsRefusedPerOptionAndChangesNothing(): void
     {
-        $brokerId = array_key_first($this->admin->findAllBrokers());
-        $resource = ConfigResource::broker($brokerId);
+        $resource = ConfigResource::broker(array_key_first($this->admin->findAllBrokers()));
         $before   = $this->admin->describeConfigs([$resource], ['log.retention.hours'])[$resource->key()];
 
         $result = $this->admin->alterConfigs([$resource->key() => ['log.retention.hours' => '169']]);
@@ -401,6 +563,76 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertInstanceOf(InvalidRequestException::class, $result[$resource->key()]);
     }
 
+    public function testASecurityOptionIsOnlyUpdatablePerBroker(): void
+    {
+        $default = ConfigResource::defaultBroker();
+
+        $result = $this->admin->alterConfigs([
+            $default->key() => ['ssl.keystore.location' => '/opt/kafka/ssl/broker.keystore.jks'],
+        ]);
+
+        $error = $result[$default->key()];
+        self::assertInstanceOf(InvalidRequestException::class, $error);
+        self::assertStringContainsString(
+            'These security configs can be dynamically updated only per-listener using the listener prefix',
+            $error->getMessage()
+        );
+        self::assertSame(
+            [],
+            $this->admin->describeConfigs([$default])[$default->key()]->entries,
+            'and the cluster-wide default configuration is still empty'
+        );
+    }
+
+    /**
+     * Quirk: an option name the broker does not know is ACCEPTED for a broker resource
+     *
+     * `DynamicBrokerConfig.validate()` only checks the names it knows - the non-dynamic ones, the security prefixes
+     * and the types - so a name that is no broker option at all passes the validation and is written into
+     * `/config/brokers/<id>` of ZooKeeper. A topic is validated against `LogConfig` and answers 40 for the same
+     * mistake.
+     */
+    public function testAnUnknownOptionNameOfABrokerResourceIsAccepted(): void
+    {
+        $resource = ConfigResource::broker(array_key_first($this->admin->findAllBrokers()));
+
+        try {
+            $result = $this->admin->alterConfigs([$resource->key() => ['no.such.broker.option' => '1']]);
+
+            self::assertSame(
+                [$resource->key() => null],
+                $result,
+                'the broker stores an option it has no idea about, where a topic answers 40'
+            );
+            $entry = $this->admin->describeConfigs([$resource], ['no.such.broker.option'], true)[$resource->key()]
+                ->get('no.such.broker.option');
+            self::assertNotNull($entry, 'and reports it back as a dynamic broker config of its own');
+            self::assertSame(ConfigSource::DYNAMIC_BROKER_CONFIG, $entry->source);
+            self::assertTrue(
+                $entry->isSensitive,
+                '`createBrokerConfigEntry()` cannot determine the type of an unknown option and treats it as a '
+                . 'secret to be safe, which is why the value is null on the wire'
+            );
+            self::assertNull($entry->value);
+            self::assertTrue($entry->isReadOnly, 'and no name of it is in AllDynamicConfigs');
+        } finally {
+            $this->admin->alterConfigs([$resource->key() => []]);
+        }
+    }
+
+    /**
+     * Puts the dynamic option back to the value the container starts with
+     *
+     * Removing the entry is NOT enough: a 1.1.1 broker keeps the last dynamic value in its live `KafkaConfig` when
+     * the entry disappears from ZooKeeper (the source falls back to `DEFAULT_CONFIG` while the value does not), so
+     * the documented default is written explicitly first and the entry is removed afterwards.
+     */
+    private function restoreTheDynamicOption(ConfigResource $resource): void
+    {
+        $this->admin->alterConfigs([$resource->key() => [self::DYNAMIC_OPTION => self::DYNAMIC_OPTION_DEFAULT]]);
+        $this->admin->alterConfigs([$resource->key() => []]);
+    }
+
     /**
      * Returns the options of a resource that are not defaults
      *
@@ -409,6 +641,16 @@ final class ConfigsApiTest extends IntegrationTestCase
     private function nonDefaults(ConfigResource $resource): array
     {
         return $this->admin->describeConfigs([$resource])[$resource->key()]->nonDefaultValues();
+    }
+
+    /**
+     * Returns the options the resource itself carries, i.e. the ones an AlterConfigs has to send back
+     *
+     * @return array<string, string|null>
+     */
+    private function ownValues(ConfigResource $resource): array
+    {
+        return $this->admin->describeConfigs([$resource])[$resource->key()]->ownValues();
     }
 
     /**

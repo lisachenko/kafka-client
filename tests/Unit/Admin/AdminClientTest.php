@@ -16,13 +16,17 @@ namespace Protocol\Kafka\Tests\Unit\Admin;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
+use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
+use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
+use Protocol\Kafka\Common\Errors\InvalidPartitionsException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
@@ -33,7 +37,9 @@ use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -642,6 +648,191 @@ final class AdminClientTest extends TestCase
         self::assertInstanceOf(UnknownErrorException::class, $result['t7-missing']);
     }
 
+    public function testCreatePartitionsReportsTheErrorOfEveryTopicOfTheAnswer(): void
+    {
+        [$controller] = $this->scriptCluster(
+            [
+                self::createPartitionsResponse([
+                    't7-grown'  => [KafkaException::NO_ERROR, null],
+                    't7-shrunk' => [KafkaException::INVALID_PARTITIONS, 'Topic already has 3 partitions.'],
+                ]),
+            ],
+            []
+        );
+
+        $result = $this->adminClient()->createPartitions([
+            't7-grown'  => 5,
+            't7-shrunk' => NewPartitions::increaseTo(2),
+        ]);
+
+        self::assertSame(['t7-grown', 't7-shrunk'], array_keys($result), 'in the order of the request');
+        self::assertNull($result['t7-grown']);
+        self::assertInstanceOf(InvalidPartitionsException::class, $result['t7-shrunk']);
+        self::assertSame(
+            ['topic' => 't7-shrunk', 'error' => 'Topic already has 3 partitions.'],
+            $result['t7-shrunk']->getContext(),
+            'the error message of the controller travels into the context of the exception'
+        );
+        self::assertSame(
+            self::requestFrame(
+                new CreatePartitionsRequest(
+                    ['t7-grown' => 5, 't7-shrunk' => NewPartitions::increaseTo(2)],
+                    30000,
+                    false,
+                    't10',
+                    $controller->getReceivedCorrelationIds()[0]
+                )
+            ),
+            $controller->getReceivedFrames()[0],
+            'the request goes to the controller, with the default timeout and without validate_only'
+        );
+    }
+
+    public function testCreatePartitionsSendsTheAssignmentOfTheAddedPartitions(): void
+    {
+        [$controller] = $this->scriptCluster(
+            [self::createPartitionsResponse(['t7-assigned' => [KafkaException::NO_ERROR, null]])],
+            []
+        );
+
+        $result = $this->adminClient()->createPartitions(
+            ['t7-assigned' => NewPartitions::increaseTo(3, [[0, 1], [1, 0]])],
+            5000,
+            true
+        );
+
+        self::assertSame(['t7-assigned' => null], $result);
+        self::assertSame(
+            self::requestFrame(
+                new CreatePartitionsRequest(
+                    ['t7-assigned' => NewPartitions::increaseTo(3, [[0, 1], [1, 0]])],
+                    5000,
+                    true,
+                    't10',
+                    $controller->getReceivedCorrelationIds()[0]
+                )
+            ),
+            $controller->getReceivedFrames()[0]
+        );
+    }
+
+    public function testCreatePartitionsIsRepeatedOnceAgainstAFreshlyLookedUpController(): void
+    {
+        // The same NotController dance as CreateTopics: the answer is 41 for every topic, and a second lookup
+        // finds the broker that is the controller now
+        [$first, $second] = $this->scriptCluster(
+            [self::createPartitionsResponse(['t7-moved' => [KafkaException::NOT_CONTROLLER, null]])],
+            [self::createPartitionsResponse(['t7-moved' => [KafkaException::NO_ERROR, null]])],
+            self::metadataResponse(0),
+            self::metadataResponse(1)
+        );
+
+        $result = $this->adminClient()->createPartitions(['t7-moved' => 4]);
+
+        self::assertSame(['t7-moved' => null], $result);
+        self::assertSame(1, $first->getRequestCount(), 'the broker that was the controller answered 41 once');
+        self::assertSame(1, $second->getRequestCount(), 'and the repeated request went to the new controller');
+    }
+
+    public function testATopicTheControllerDidNotAnswerForIsNotReportedAsGrown(): void
+    {
+        $this->scriptCluster([self::createPartitionsResponse([])], []);
+
+        $result = $this->adminClient()->createPartitions(['t7-missing' => 3]);
+
+        self::assertInstanceOf(UnknownErrorException::class, $result['t7-missing']);
+    }
+
+    public function testDeleteConsumerGroupsAsksTheCoordinatorAndReportsEveryGroup(): void
+    {
+        // A coordinator is looked up for every group of the call, and the groups that share one travel together
+        $broker = $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::deleteGroupsResponse([
+                self::ADMIN_GROUP   => KafkaException::NO_ERROR,
+                self::UNKNOWN_GROUP => KafkaException::GROUP_ID_NOT_FOUND,
+            ])
+        );
+
+        $result = $this->adminClient()->deleteConsumerGroups([self::ADMIN_GROUP, self::UNKNOWN_GROUP]);
+
+        self::assertSame([self::ADMIN_GROUP, self::UNKNOWN_GROUP], array_keys($result), 'in the order of the call');
+        self::assertNull($result[self::ADMIN_GROUP]);
+        self::assertInstanceOf(GroupIdNotFoundException::class, $result[self::UNKNOWN_GROUP]);
+
+        $lookupId = $broker->getReceivedCorrelationIds()[0];
+        self::assertSame(
+            self::requestFrame(new GroupCoordinatorRequest(
+                self::ADMIN_GROUP,
+                GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
+                't10',
+                $lookupId
+            )),
+            $broker->getReceivedFrames()[0],
+            'the coordinator of the first group is looked up first'
+        );
+        self::assertSame(
+            self::requestFrame(new DeleteGroupsRequest(
+                [self::ADMIN_GROUP, self::UNKNOWN_GROUP],
+                't10',
+                $broker->getReceivedCorrelationIds()[2]
+            )),
+            $broker->getReceivedFrames()[2],
+            'groups of one coordinator travel in a single request'
+        );
+    }
+
+    public function testDeleteConsumerGroupsReportsAGroupThatStillHasMembers(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::deleteGroupsResponse([self::ADMIN_GROUP => KafkaException::NON_EMPTY_GROUP])
+        );
+
+        $result = $this->adminClient()->deleteConsumerGroups([self::ADMIN_GROUP]);
+
+        self::assertInstanceOf(
+            GroupNotEmptyException::class,
+            $result[self::ADMIN_GROUP],
+            'a group with a live member is refused with 68 and nothing is thrown'
+        );
+        self::assertSame(['groupId' => self::ADMIN_GROUP], $result[self::ADMIN_GROUP]->getContext());
+    }
+
+    public function testDeleteConsumerGroupsLooksACoordinatorUpOnlyOncePerGroup(): void
+    {
+        $broker = $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::deleteGroupsResponse([self::ADMIN_GROUP => KafkaException::NO_ERROR])
+        );
+
+        $result = $this->adminClient()->deleteConsumerGroups([self::ADMIN_GROUP, self::ADMIN_GROUP]);
+
+        self::assertSame([self::ADMIN_GROUP => null], $result, 'a duplicate group is collapsed');
+        self::assertSame(2, $broker->getRequestCount(), 'one coordinator lookup and one DeleteGroups request');
+    }
+
+    public function testAGroupTheCoordinatorDidNotAnswerForIsAnUnknownError(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::deleteGroupsResponse([])
+        );
+
+        $result = $this->adminClient()->deleteConsumerGroups([self::ADMIN_GROUP]);
+
+        self::assertInstanceOf(UnknownErrorException::class, $result[self::ADMIN_GROUP]);
+    }
+
+    public function testDeletingNoGroupAtAllSendsNothing(): void
+    {
+        $broker = $this->scriptBroker();
+
+        self::assertSame([], $this->adminClient()->deleteConsumerGroups([]));
+        self::assertSame(0, $broker->getRequestCount(), 'not even a coordinator lookup');
+    }
+
     /**
      * Scripts a cluster of two brokers and returns the connections that will be handed out for them
      *
@@ -721,6 +912,39 @@ final class AdminClientTest extends TestCase
         $body = pack('N', 0) . pack('N', count($topics));
         foreach ($topics as $topic => $errorCode) {
             $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
+        }
+
+        return ResponseFrame::of(0, $body);
+    }
+
+    /**
+     * Builds a CreatePartitions answer of version 0: the throttle time and one entry per topic
+     *
+     * @param array<string, array{0: int, 1: string|null}> $topics Error code and message of every topic
+     */
+    private static function createPartitionsResponse(array $topics): string
+    {
+        $body = pack('N', 0) . pack('N', count($topics));
+        foreach ($topics as $topic => [$errorCode, $errorMessage]) {
+            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
+            $body .= $errorMessage === null
+                ? pack('n', 0xFFFF)
+                : pack('n', strlen($errorMessage)) . $errorMessage;
+        }
+
+        return ResponseFrame::of(0, $body);
+    }
+
+    /**
+     * Builds a DeleteGroups answer of version 0: the throttle time and one entry per group
+     *
+     * @param array<string, int> $groups Error code of every group
+     */
+    private static function deleteGroupsResponse(array $groups): string
+    {
+        $body = pack('N', 0) . pack('N', count($groups));
+        foreach ($groups as $groupId => $errorCode) {
+            $body .= pack('n', strlen((string) $groupId)) . $groupId . pack('n', $errorCode);
         }
 
         return ResponseFrame::of(0, $body);

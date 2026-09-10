@@ -31,6 +31,7 @@ declare(strict_types=1);
  */
 
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
@@ -98,6 +99,21 @@ echo "\nPartitions the controller created\n";
 foreach ($admin->describeTopics([$topic, $assigned]) as $name => $metadata) {
     echo "  {$name}: " . count($metadata->partitions) . " partition(s)\n";
 }
+
+// CreatePartitions (key 37, Kafka 1.0, KIP-195) raises the partition count of a topic that exists. The number is
+// what the topic should have AFTERWARDS, and the api can only ever grow a topic: a count that is not above the
+// current one is answered with 37 (InvalidPartitions).
+report("\nRaising {$topic} to five partitions", $admin->createPartitions([$topic => 5]));
+report("\nAsking for four partitions again", $admin->createPartitions([$topic => 4]));
+
+// NewPartitions::increaseTo() also names the brokers of every ADDED partition, the preferred leader first
+report(
+    "\nAdding a partition on a named broker",
+    $admin->createPartitions([$topic => NewPartitions::increaseTo(6, [[0]])])
+);
+
+$cluster->reload();
+echo '  ' . $topic . ' now has ' . count($admin->describeTopics([$topic])[$topic]->partitions) . " partition(s)\n";
 
 // A deletion needs `delete.topic.enable=true` on the broker; with a timeout of 0 the answer is 7 (RequestTimedOut)
 // although the deletion is under way and finishes a moment later.
