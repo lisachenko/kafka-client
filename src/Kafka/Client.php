@@ -76,6 +76,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
+use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
@@ -189,13 +190,16 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as **Produce v3** for the message format v2 (`message.format.version=0.11.0`, the
-     * default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version 3 request
-     * has no place for. Every accepted partition carries two values the broker reported next to its base offset:
-     * the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured with
-     * `message.timestamp.type=LogAppendTime`, and the `throttleTimeMs` of the answer it arrived in, which is 0
-     * without a `producer_byte_rate` quota. Version 3 added no field to the answer at all - `PRODUCE_RESPONSE_V3`
-     * is `PRODUCE_RESPONSE_V2` in `Protocol.java` @ 0.11.0.3 - so the two classes read the same frame.
+     * The request goes out as **Produce v5** for the message format v2 (`message.format.version=0.11.0`, `1.0` or
+     * `1.1`, the default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version
+     * 3 request has no place for. Every accepted partition carries three values the broker reported next to its
+     * base offset: the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured
+     * with `message.timestamp.type=LogAppendTime`, the `logStartOffset` of the partition, which version 5 (Kafka
+     * 1.0) appended to the answer and which a producer needs to tell a spurious `OutOfOrderSequence` from a real
+     * one, and the `throttleTimeMs` of the answer it arrived in, which is 0 without a `producer_byte_rate` quota.
+     * The versions 3 and 4 added no field to the answer at all - `PRODUCE_RESPONSE_V4` is `PRODUCE_RESPONSE_V3` is
+     * `PRODUCE_RESPONSE_V2` @ 1.1.1 - so the version this client sends is the first one that reports the log start
+     * offset.
      *
      * An idempotent (or, from the ticket that adds them, a transactional) producer hands over its
      * {@see TransactionManager}, which is the whole difference between "at least once" and "exactly once, in
@@ -422,7 +426,8 @@ class Client
         }
 
         // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the highest
-        // version that has no place for a transactional id
+        // version that has no place for a transactional id; the message format v2 goes out as Produce v5, the
+        // first version whose answer reports the log start offset of every partition
         $requestClass  = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceRequest::class : ProduceRequestV2::class;
         $createRequest = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
             => new $requestClass(
@@ -504,7 +509,7 @@ class Client
      * which would turn a naive fetch loop into an endless one, see
      * {@see FetchedPartition::isSingleMessageTooLarge()}.
      *
-     * The request goes out as **Fetch v5**, which means four things:
+     * The request goes out as **Fetch v7**, which means five things:
      *
      * * the record sets come back in the format the log holds them in - a broker converts them down to message
      *   format v1 for a request below version 4 and to format v0 below version 2 - so the records carry their
@@ -515,6 +520,10 @@ class Client
      *   partition has to rotate their order between calls, as {@see \Protocol\Kafka\Consumer\KafkaConsumer} does;
      * * the first non-empty partition of the answer ignores both limits and carries at least one complete message,
      *   so a partition can no longer be stuck on a message that is too large and this client never reports one;
+     * * the request carries the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()}, i.e. it opens no
+     *   incremental fetch session (KIP-227), and a 1.1.1 broker serves it exactly as it serves a Fetch v6: the
+     *   whole requested set comes back, and the answer reports the session id 0 and the top-level error code 0.
+     *   {@see FetchRequest} implements the whole frame, so a caller that wants a session builds the request itself;
      * * every partition of the answer reports its `lastStableOffset`, its `logStartOffset` and the transactions
      *   that were aborted in the range it covers, and the request states the `isolation.level` of the consumer -
      *   `read_uncommitted` unless it is configured otherwise, which is what the broker answers a -1 last stable

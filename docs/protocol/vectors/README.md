@@ -2,9 +2,9 @@ Wire vectors of the Kafka 1.1.1 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../1.1.md`](../1.1.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **252** of them in 33 files, every one of which a **1.1.1** broker speaks: **229** were
+hex dumps. There are **268** of them in 33 files, every one of which a **1.1.1** broker speaks: **229** were
 captured by the four lines below this one and are replayed against the classes of this line unchanged, the other
-**23** on the 1.1.1 container of this line.
+**39** on the 1.1.1 container of this line.
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
@@ -18,11 +18,11 @@ broker, and everything Kafka 0.11 added on the 0.11.0.3 container of the `0.11.x
 re-captured on every line: they now carry the **43** keys 0 to 42 of a Kafka 1.1.1 broker (272 and 276 bytes),
 where the 0.11 capture carried 34 and the 0.10 one 21. The two requests are unchanged — an ApiVersions frame has no
 body in either version. The vectors of what Kafka 1.x *adds* arrive with the ticket that implements each api:
-Produce v4/v5, Fetch v6/v7 and Metadata v5 (T3), SaslHandshake v1 and SaslAuthenticate (T2), DescribeConfigs v1,
-CreatePartitions and DeleteGroups (T4) and, optionally, the four delegation-token apis (T7). The two JBOD apis of
-KIP-113 are captured: `describe-log-dirs.json` (6) and `alter-replica-log-dirs.json` (6) hold the two log
-directories of the image, the null and the empty shape of the nullable topic array, the answer taken while a real
-replica move was running, and the 57 and 9 of AlterReplicaLogDirs.
+SaslHandshake v1 and SaslAuthenticate (T2), Produce v4/v5, Fetch v6/v7 and Metadata v5 (T3) and the two JBOD
+apis of KIP-113 are captured; DescribeConfigs v1, CreatePartitions and DeleteGroups (T4) and, optionally, the four
+delegation-token apis (T7) are still open. `describe-log-dirs.json` (6) and `alter-replica-log-dirs.json` (6) hold
+the two log directories of the image, the null and the empty shape of the nullable topic array, the answer taken
+while a real replica move was running, and the 57 and 9 of AlterReplicaLogDirs.
 
 | File | Vectors | What was captured on the 0.11.0.3 broker |
 |---|---|---|
@@ -60,7 +60,7 @@ one of them, to see the connection close.
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v4)",
+    "section": "Metadata API (key 3, v0 to v5)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

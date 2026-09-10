@@ -83,12 +83,14 @@ metadata next to the key and the value. `send()` stamps the create time of every
 not carry one, and `ProducerConfig::MESSAGE_FORMAT_VERSION` (`message.format.version`, `0.11.0` by
 default) selects the format a batch is written in — the record batch v2 by default, `0.10.x` for a
 message set with timestamps and `0.9.0` for one without. The format decides the version of the
-Produce request: only the message format v2 travels in a **Produce v3**, and only it has a place
+Produce request: only the message format v2 travels in a **Produce v5**, and only it has a place
 for the headers, for the producer id of an idempotent producer and for a transaction; a message set
-is sent as a Produce v2, and a 1.1.1 broker closes the connection on a Produce v3 that carries one.
-`RecordMetadata::$timestamp` reports what the **log** holds: the create time of the first record
-of the batch, or the `LogAppendTime` the broker answered with (Produce v2 and above) when the topic
-is configured with `message.timestamp.type=LogAppendTime`.
+is sent as a Produce v2, and a 1.1.1 broker closes the connection on a Produce v3 or above that
+carries one. `RecordMetadata::$timestamp` reports what the **log** holds: the create time of the
+first record of the batch, or the `LogAppendTime` the broker answered with (Produce v2 and above)
+when the topic is configured with `message.timestamp.type=LogAppendTime`. Version 5 (Kafka 1.0)
+also reports the `logStartOffset` of every partition it answers — the first offset the log still
+holds after a retention run or a `deleteRecords()` — on `ProduceResponsePartition`.
 
 Without a key a record is spread over the partitions that have a leader, with a key it goes to
 the partition that the murmur2 hash of the key selects, exactly as with the official Java
@@ -298,7 +300,7 @@ does not.
 of a record batch v2 carries the headers the producer wrote (`ConsumerRecord::$headers`, a list of
 `Common\Record\Header`), next to the key, the value, the timestamp and its type; a topic whose
 `message.format.version` is older simply has none. `ConsumerConfig::ISOLATION_LEVEL`
-(`isolation.level`, `read_uncommitted` by default) is sent as the isolation level of the Fetch v5
+(`isolation.level`, `read_uncommitted` by default) is sent as the isolation level of the Fetch v7
 request: with `read_committed` the broker answers only up to the **last stable offset** — the first
 record of a transaction that has neither committed nor aborted — and names the aborted transactions
 of the answer, whose records the consumer drops. The control batches of the transaction protocol are
@@ -387,9 +389,9 @@ foreach ($group->members as $memberId => $member) {
 | Method                                       | Wire API                | Notes                                                                |
 |----------------------------------------------|-------------------------|----------------------------------------------------------------------|
 | `getApiVersions()`                           | ApiVersions v1          | The version range of every api of **one** broker, indexed by api key; version 1 carries the throttle time |
-| `findAllBrokers()`                           | Metadata v4             | An empty result means "the cluster is not ready yet", see below      |
-| `listTopics()` / `describeTopics()`          | Metadata v4             | Asks with `allow_auto_topic_creation = false`, so an unknown topic is answered 3 and **not** created; `describeTopics([])` asks for every topic (the `null` array of v1) |
-| `findController()`                           | Metadata v4             | The `controller_id` of the answer; the two topic apis below need it   |
+| `findAllBrokers()`                           | Metadata v5             | An empty result means "the cluster is not ready yet", see below      |
+| `listTopics()` / `describeTopics()`          | Metadata v5             | Asks with `allow_auto_topic_creation = false`, so an unknown topic is answered 3 and **not** created; `describeTopics([])` asks for every topic (the `null` array of v1); every partition reports its `offlineReplicas` (v5, KIP-112/113) |
+| `findController()`                           | Metadata v5             | The `controller_id` of the answer; the two topic apis below need it   |
 | `createTopics()`                             | CreateTopics v2         | `NewTopic` with partitions/factor or an explicit assignment, plus topic configs; `validateOnly` checks without creating |
 | `deleteTopics()`                             | DeleteTopics v1         | Needs `delete.topic.enable=true` on the broker                        |
 | `listOffsets()`                              | Offsets v2              | Earliest, latest or by message timestamp; **one** offset per partition, sent to the partition leader, with the isolation level `read_uncommitted` |
@@ -435,7 +437,9 @@ and still answers the topic error code 5 (`LeaderNotAvailable`) with an empty pa
 the controller has elected the leaders — but the admin client no longer triggers it: Metadata v4
 (Kafka 0.11, KIP-4) added `allow_auto_topic_creation`, and every request of `AdminClient` sends it
 as `false`, so describing a topic that does not exist is answered with the code 3 and creates
-nothing. `createTopics()` is the explicit alternative that reports what went wrong.
+nothing. `createTopics()` is the explicit alternative that reports what went wrong. Metadata **v5**
+(Kafka 1.0, KIP-112/113) is what this client sends today, so every partition it describes also
+carries its `offlineReplicas` — the replicas whose broker is down or whose log directory failed.
 
 Metadata v1 and v2 also gave the cluster an identity of its own: `Cluster::clusterId()` is the
 `cluster_id` the broker generated (the `/cluster/id` znode), `Cluster::controller()` the node the
@@ -561,7 +565,7 @@ marked **(0.10)**.
 | `request.timeout.ms` | **305000** | has to exceed both timeouts above, because a JoinGroup blocks |
 | `fetch.min.bytes` / `fetch.max.wait.ms` | 1 / 500 | when the broker answers a fetch |
 | `fetch.max.bytes` **(0.10)** | 52428800 | request-level `max_bytes` of Fetch v3, the bound of a whole answer |
-| `isolation.level` **(0.11)** | `read_uncommitted` | `read_uncommitted` or `read_committed`: what a Fetch v4/v5 and an Offsets v2 make of transactional records |
+| `isolation.level` **(0.11)** | `read_uncommitted` | `read_uncommitted` or `read_committed`: what a Fetch v4 and above and an Offsets v2 make of transactional records |
 | `max.partition.fetch.bytes` | 65536 | per-partition bound; from Fetch v3 on the first partition is served whole even if it exceeds both |
 | `auto.offset.reset` | `latest` | `latest` or `earliest`, used when a partition has no committed offset |
 | `enable.auto.commit` / `auto.commit.interval.ms` | true / 0 | commit from `poll()`; 0 means "after every poll" |
@@ -578,7 +582,7 @@ marked **(0.10)**.
 | `timeout.ms` | 2000 | how long the broker waits for the replicas of a batch |
 | `batch.size` / `linger.ms` | 0 / 0 | when a batch is sent |
 | `compression.type` | `none` | `none`, `gzip`, `snappy`, **(0.10)** `lz4` |
-| `message.format.version` **(0.10)** | `0.11.0` | format a batch is written in, and with it the Produce version: `0.9.0` and below format v0, `0.10.x` format v1 with timestamps (both a Produce v2), `0.11.0` the record batch v2 with headers (a Produce v3) |
+| `message.format.version` **(0.10)** | `0.11.0` | format a batch is written in, and with it the Produce version: `0.9.0` and below format v0, `0.10.x` format v1 with timestamps (both a Produce v2), `0.11.0` the record batch v2 with headers (a Produce v5) |
 | `max.request.size` | 1048576 | biggest record this client will buffer |
 | `retries` / `retry.backoff.ms` | 0 / 100 | retry budget of a batch; **3** when `enable.idempotence` is on and it was not set |
 | `enable.idempotence` **(0.11)** | false | exactly once and in order per partition; implies `acks = all` and a non-zero `retries` |
@@ -682,10 +686,10 @@ still implementing.
 
 | Api key | API                  | Versions in 1.1.1 | Client-facing | `0.10.x` | `0.11.x` | `main` (this branch)         |
 |---------|----------------------|-------------------|---------------|----------|----------|------------------------------|
-| 0       | Produce              | v0 … v5           | yes           | v0, v1, v2 | v0 … v2, **v3** | v0, v1, v2, **v3**; v4, v5: T3 |
-| 1       | Fetch                | v0 … v7           | yes           | v0 … v3  | v0 … v4, **v5** | v0 … v4, **v5**; v6, v7: T3 |
+| 0       | Produce              | v0 … v5           | yes           | v0, v1, v2 | v0 … v2, **v3** | v0 … v4, **v5** (**v2** for `message.format.version` below 0.11.0) |
+| 1       | Fetch                | v0 … v7           | yes           | v0 … v3  | v0 … v4, **v5** | v0 … v6, **v7** (session-less; the sessions in the consumer: T8) |
 | 2       | Offsets              | v0 … v2           | yes           | v0, v1   | v0, v1, **v2** | v0, v1, **v2**              |
-| 3       | Metadata             | v0 … v5           | yes           | v0, v1, v2 | v0 … v3, **v4** | v0 … v3, **v4**; v5: T3  |
+| 3       | Metadata             | v0 … v5           | yes           | v0, v1, v2 | v0 … v3, **v4** | v0 … v4, **v5**             |
 | 4       | LeaderAndIsr         | v0, v1            | broker→broker | no       | no       | no                           |
 | 5       | StopReplica          | v0                | broker→broker | no       | no       | no                           |
 | 6       | UpdateMetadata       | v0 … v4           | broker→broker | no       | no       | no                           |
@@ -771,8 +775,8 @@ What the five lines can do beyond the api versions themselves. A cell that names
 | Idempotent producer (`enable.idempotence`)             | 0.11       | –       | –       | –        | yes      | yes    |
 | Transactional producer, `isolation.level`              | 0.11       | –       | –       | –        | yes      | yes    |
 | Framed SASL exchange (`SaslAuthenticate`, KIP-152)     | 1.0        | –       | –       | –        | –        | yes    |
-| `log_start_offset` of a produce answer, `offline_replicas` | 1.0    | –       | –       | –        | –        | T3     |
-| Incremental fetch sessions (KIP-227)                   | 1.1        | –       | –       | –        | –        | T3/T8  |
+| `log_start_offset` of a produce answer, `offline_replicas` | 1.0    | –       | –       | –        | –        | **yes** |
+| Incremental fetch sessions (KIP-227)                   | 1.1        | –       | –       | –        | –        | the frame; in the consumer: T8 |
 | Dynamic broker configuration, config sources and synonyms (KIP-226) | 1.1 | –  | –       | –        | –        | T4     |
 | Admin: `createPartitions()`, `deleteConsumerGroups()`  | 1.0 / 1.1  | –       | –       | –        | –        | T4     |
 | Admin: `describeLogDirs()`, `alterReplicaLogDirs()`    | 1.0        | –       | –       | –        | –        | yes    |
@@ -853,8 +857,8 @@ composer install
 composer check   # coding standards + static analysis + PHPUnit
 ```
 
-The suite is split in three — 1615 unit tests, 259 compliance tests replaying the 252 documented
-wire vectors, and 486 integration tests against a real broker over its four listeners:
+The suite is split in three — 1633 unit tests, 275 compliance tests replaying the 268 documented
+wire vectors, and 503 integration tests against a real broker over its four listeners:
 
 ```bash
 vendor/bin/phpunit --testsuite unit          # pure unit tests, no broker
