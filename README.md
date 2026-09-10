@@ -12,13 +12,15 @@ client, designed to stay close in spirit to the official Java client's API while
 natural in PHP.
 
 **This branch speaks the Apache Kafka 1.1.1 wire protocol** — the last release of the 1.x line,
-so it covers everything Kafka 1.0.0 and 1.1.0 added, and nothing later. `main` is the line in
-development: the frozen protocol snapshots below it live on `0.11.x` (Kafka 0.11.0.3), `0.10.x`
+so it covers everything Kafka 1.0.0 and 1.1.0 added, and nothing later. `main` is the top of the
+cascade: the frozen protocol snapshots below it live on `0.11.x` (Kafka 0.11.0.3), `0.10.x`
 (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every wire vector those
 lines captured is replayed against the classes of this branch, because a 1.1.1 broker still speaks
 all of it. What the 1.1 protocol cannot do is simply absent, and
 [what that is](#supported-kafka-protocol-versions) is listed below. The grammar this branch
-implements is written down, byte for byte, in [docs/protocol/1.1.md](docs/protocol/1.1.md).
+implements is written down, byte for byte, in [docs/protocol/1.1.md](docs/protocol/1.1.md); what
+the 1.x line delivered, how it was verified and what the line above it starts from is in
+[docs/handoff/main.md](docs/handoff/main.md).
 
 Installation
 ------------
@@ -27,9 +29,13 @@ Installation
 composer require lisachenko/kafka-client:dev-main
 ```
 
-`main` is the line in development, so it is installed by branch name; the frozen lines below it
-carry a numeric branch and are installed by constraint (`^0.11@dev` for `0.11.x`, `^0.10@dev` for
-`0.10.x`, and so on).
+**PHP 8.4 or newer, and nothing else** — `ext-openssl` is needed only for `SSL`/`SASL_SSL` and
+`ext-zlib` (bundled with PHP) for `gzip`; the `snappy` and `lz4` codecs are implemented in PHP and
+use `ext-snappy` only when it happens to be installed. `main` is the branch the top of the
+cascade lives on, so it is installed by branch name; the frozen lines below it carry a numeric
+branch and are installed by constraint (`^0.11@dev` for `0.11.x`, `^0.10@dev` for `0.10.x`, and so
+on). A line is frozen as a numeric branch when the line above it starts, so code that must keep
+speaking Kafka 1.1.1 pins the branch rather than `dev-main`.
 
 Producer API
 ------------
@@ -434,6 +440,10 @@ foreach ($group->members as $memberId => $member) {
 | `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v0  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
 | `createPartitions()`                         | CreatePartitions v0     | Raises the partition count of topics that exist (KIP-195); controller-only like `createTopics()`, and it can only ever grow a topic (37 otherwise) |
 | `deleteConsumerGroups()`                     | DeleteGroups v0         | Makes the coordinator forget groups and their committed offsets (KIP-229); a group with a live member is 68, one the coordinator does not know 69 |
+| `createDelegationToken()`                    | CreateDelegationToken v0   | Issues a token to the principal of the connection (KIP-48); needs an **authenticated** channel, otherwise 64 |
+| `renewDelegationToken()`                     | RenewDelegationToken v0    | Extends a token named by its raw HMAC; only its owner or one of its renewers may, otherwise 63 |
+| `expireDelegationToken()`                    | ExpireDelegationToken v0   | Moves the expiry forward, or **removes** the token when the period is negative |
+| `describeDelegationToken()`                  | DescribeDelegationToken v0 | The tokens of the given owners, `null` for every token the principal may see; the answer carries their HMACs |
 
 The three topic apis — `createTopics()`, `deleteTopics()` and `createPartitions()` — are served by
 the **controller** alone: `AdminClient` looks it up in the `controller_id` of a Metadata answer, and
@@ -488,18 +498,28 @@ and a partial failure is reported as a `TopicPartitionRequestException`. `descri
 through ZooKeeper: a resource is an `Admin\ConfigResource` (`topic()` / `broker()`) and is addressed
 in the result by its `key()`, because PHP cannot use an object as an array key. `alterConfigs()`
 **replaces** the whole configuration of a topic — an option that is left out is reset to its default,
-which is what `Config::nonDefaultValues()` exists for. A **broker** resource is where this line differs
+which is what `Config::ownValues()` exists for (`nonDefaultValues()` is the 0.11 name and, since
+KIP-226, also reports options that only the *broker* configuration sets). A **broker** resource is where this line differs
 from the one below it: KIP-226 made a 1.1 broker accept one and validate it **per option**, so an
 option it cannot change at runtime comes back as the error code 42 with
 `Cannot update these configs dynamically: Set(log.retention.hours)` while a dynamic one is applied,
 where a 0.11 broker refused every broker resource outright. Reading such a resource changed too — the
 `is_default` of an entry is derived from the KIP-226 config *source* and `is_read_only` means "not
-dynamically updatable" — and the version 1 of the api that reports the source and its synonyms is
-implemented by the ticket T4 of this line.
+dynamically updatable". This client sends **DescribeConfigs v1**, which reports that source directly
+and, with `$includeSynonyms`, every place the broker looked for the value; the version 0 frame is
+kept for the vectors of the line below and derives the source back from the boolean, which is lossy.
+
+**The disks of a broker and the tokens of a principal** are the two api families Kafka 1.x added on
+top of that. `describeLogDirs()` and `alterReplicaLogDirs()` (KIP-113) say which `log.dirs` entry a
+replica lives in and move it to another one — both broker-local, so they are addressed by broker id
+and by an `Admin\TopicPartitionReplica` rather than by a partition leader. The four token apis of
+KIP-48 issue, renew, expire and describe a delegation token over an authenticated connection; what
+they cannot do is *use* one, because authenticating with a token is a SASL/SCRAM login.
 
 [examples/admin.php](examples/admin.php), [examples/create-topic.php](examples/create-topic.php),
-[examples/admin-configs.php](examples/admin-configs.php) and
-[examples/admin-log-dirs.php](examples/admin-log-dirs.php) run all of it against the broker of
+[examples/admin-configs.php](examples/admin-configs.php),
+[examples/admin-log-dirs.php](examples/admin-log-dirs.php) and
+[examples/delegation-tokens.php](examples/delegation-tokens.php) run all of it against the broker of
 `docker-compose.yml`.
 
 Network client
@@ -581,7 +601,7 @@ marked **(0.10)**.
 | `retries` / `retry.backoff.ms` | 2 / 100 | retry budget for the codes 3, 5, 6 and a dropped connection |
 | `reconnect.backoff.ms` | 50 | pause before a reconnect |
 | `receive.buffer.bytes` / `send.buffer.bytes` | 32768 / 131072 | socket buffers |
-| `offsets.storage` | `kafka` | `kafka` (OffsetCommit v2 / OffsetFetch v2) or `zookeeper` (v0 of both) |
+| `offsets.storage` | `kafka` | `kafka` (OffsetCommit v3 / OffsetFetch v3) or `zookeeper` (v0 of both) |
 | `metadata.cache.file`, `stream.async.connect`, `stream.persistent.connection` | – / false / false | the PHP-specific options above |
 
 **Consumer** (`Consumer\ConsumerConfig`)
@@ -712,8 +732,9 @@ its broker speaks. The table below is the literal answer of the container, read 
 `Client::apiVersions()` and pinned by `tests/Integration/ApiVersionProbeTest.php`.
 
 The "this branch" column lists the versions this client has a class for; the one in **bold** is the
-version it sends. A cell that names a ticket (`T<n>`) is a version of Kafka 1.x that the line is
-still implementing.
+version it sends. Every version of a 1.1.1 broker is implemented and exercised against the container;
+the only piece of Kafka 1.x still named after a ticket is the *consumer* half of the incremental
+fetch sessions (T8) — the Fetch v7 frame itself is here.
 
 | Api key | API                  | Versions in 1.1.1 | Client-facing | `0.10.x` | `0.11.x` | `main` (this branch)         |
 |---------|----------------------|-------------------|---------------|----------|----------|------------------------------|
@@ -778,9 +799,10 @@ connection and answers the error code 64 on a PLAINTEXT or one-way-SSL one. What
 other half of KIP-48: *using* a token means a SASL/SCRAM login whose user name is the token id and
 whose password is the base64 HMAC, and this client speaks SASL/PLAIN only. The four apis are
 verified against a real 1.1.1 broker, the login with their result is not implemented.
+[examples/delegation-tokens.php](examples/delegation-tokens.php) runs one token's whole life against
+the SASL listener of `docker-compose.yml`.
 
-What the five lines can do beyond the api versions themselves. A cell that names a ticket
-(`T<n>`) is a capability of Kafka 1.x that the line is still implementing:
+What the five lines can do beyond the api versions themselves:
 
 | Feature                                                | Arrived in | `0.8.x` | `0.9.x` | `0.10.x` | `0.11.x` | `main` |
 |--------------------------------------------------------|------------|---------|---------|----------|----------|--------|
@@ -830,6 +852,8 @@ Everything a later Kafka added is missing here, by design:
 | Leader epochs in Fetch/Offsets/OffsetCommit (KIP-320) | 2.1   | no — `OffsetForLeaderEpoch` stays at v0 |
 | Flexible versions and tagged fields              | 2.4        | no — the request header is the plain one |
 | SASL/SCRAM and SASL/GSSAPI                       | 0.10.2 / 0.9 | no — PLAIN only, which is why a delegation token can be issued but not used |
+| ACL apis `DescribeAcls`/`CreateAcls`/`DeleteAcls` | 0.11       | no — they need a broker with an `authorizer.class.name` |
+| Replication apis `LeaderAndIsr`/`StopReplica`/`UpdateMetadata` | 0.8 | no — only a controller sends them; the probe checks that the broker answers them |
 
 Five properties of a 1.1.1 broker regularly surprise clients, and this implementation deals
 with all of them explicitly:
@@ -894,8 +918,8 @@ composer install
 composer check   # coding standards + static analysis + PHPUnit
 ```
 
-The suite is split in three — 1633 unit tests, 275 compliance tests replaying the 268 documented
-wire vectors, and 503 integration tests against a real broker over its four listeners:
+The suite is split in three — 1717 unit tests, 321 compliance tests replaying the 314 documented
+wire vectors, and 540 integration tests against a real broker over its four listeners, without a single skip:
 
 ```bash
 vendor/bin/phpunit --testsuite unit          # pure unit tests, no broker
@@ -916,7 +940,7 @@ is skipped when it is unset:
 | `KAFKA_SSL_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | `SslTransportTest`, against the certificate the container was built with (`docker/kafka-1.1.1/ssl/broker.crt`) |
 | `KAFKA_SASL_BOOTSTRAP_SERVERS` | – | the SASL/PLAIN tests over `SASL_PLAINTEXT` (`127.0.0.1:9094`) |
 | `KAFKA_SASL_SSL_BOOTSTRAP_SERVERS` | – | the same exchange inside TLS (`127.0.0.1:9095`) |
-| `KAFKA_CONTAINER` | `kafka-0-11-0-3` | the container the quota tests run `kafka-configs.sh` in |
+| `KAFKA_CONTAINER` | `kafka-1-1-1` | the container the quota tests and the log dumps run their scripts in |
 
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or
@@ -938,10 +962,11 @@ Every file in [examples/](examples) is runnable against the container of `docker
 | [`record-headers.php`](examples/record-headers.php) | the record headers of Kafka 0.11 (KIP-82), written and read back end to end |
 | [`idempotent-producer.php`](examples/idempotent-producer.php) | `enable.idempotence`: the producer id, the sequence numbers and what a duplicate batch answers |
 | [`transactional-producer.php`](examples/transactional-producer.php) | `transactional.id`, the consume-transform-produce loop and a `read_committed` consumer |
-| [`admin.php`](examples/admin.php) | brokers, cluster id and controller, topics, offsets, groups |
-| [`create-topic.php`](examples/create-topic.php) | `createTopics()` / `deleteTopics()` with `validateOnly` and the error of a topic |
-| [`admin-configs.php`](examples/admin-configs.php) | `describeConfigs()`, `alterConfigs()` and `deleteRecords()` — the admin apis of Kafka 0.11 |
+| [`admin.php`](examples/admin.php) | brokers, cluster id and controller, topics, offsets, groups, and `deleteConsumerGroups()` (KIP-229) |
+| [`create-topic.php`](examples/create-topic.php) | `createTopics()` / `deleteTopics()` with `validateOnly`, and `createPartitions()` growing a topic (KIP-195) |
+| [`admin-configs.php`](examples/admin-configs.php) | `describeConfigs()` with the config **sources and synonyms** of KIP-226, `alterConfigs()` on a topic and on a **broker** resource, and `deleteRecords()` |
 | [`admin-log-dirs.php`](examples/admin-log-dirs.php) | `describeLogDirs()` and `alterReplicaLogDirs()` — the disks of a broker and a replica moved between them (KIP-113) |
+| [`delegation-tokens.php`](examples/delegation-tokens.php) | the four token apis of KIP-48 over a SASL listener: create, describe, renew and expire |
 | [`offsets-for-times.php`](examples/offsets-for-times.php) | `offsetsForTimes()`, `beginningOffsets()`, `endOffsets()` |
 | [`ssl.php`](examples/ssl.php) | the SSL listener, 9093 |
 | [`sasl.php`](examples/sasl.php) | SASL/PLAIN over 9094, and over 9095 with `KAFKA_SASL_SSL_BOOTSTRAP_SERVERS` |

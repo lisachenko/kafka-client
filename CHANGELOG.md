@@ -14,8 +14,11 @@ Unreleased — the 1.x line (Kafka 1.1.1)
 
 The 1.x line, built on top of the `0.11.x` line it was cascade-merged from. Everything below is
 verified against a real Apache **1.1.1** broker (`docker/kafka-1.1.1/`, four listeners) and
-documented in [docs/protocol/1.1.md](docs/protocol/1.1.md). The line is in development; this
-section grows with every ticket that lands.
+documented in [docs/protocol/1.1.md](docs/protocol/1.1.md), whose **314** wire vectors
+[`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 85 frames this
+line captured and the 229 of the four lines below, which a 1.1.1 broker still speaks. What the line
+delivered, how it was verified and what the line above it starts from is in
+[docs/handoff/main.md](docs/handoff/main.md).
 
 ### Added
 
@@ -247,6 +250,15 @@ section grows with every ticket that lands.
   rebalance produces — with its answer, and `fetch.request.v7.close-existing` — the recovery from a
   session error: the client's own session id with the epoch 0 — with the answer that carries a
   **new** session id and every partition of the request.
+- **`examples/delegation-tokens.php`** — one token's whole life against a SASL listener of the
+  container: created with a renewer and a maximum lifetime, described, renewed (which lands on the
+  maximum lifetime rather than on the period that was asked for) and removed, with the **62** of
+  expiring it a second time.
+- **The release record of the line** — [docs/handoff/main.md](docs/handoff/main.md) is the release
+  notes of the 1.x line (what was built, how it was verified, the deviations the broker forced, the
+  known limitations) with the plan it was built from kept below them, and
+  [docs/handoff/2.0.x.md](docs/handoff/2.0.x.md) is the handoff of the next line: what Kafka 2.0.1
+  adds over 1.1.1 api by api, the error codes, a ticket plan and the pitfalls of this session.
 
 ### Changed
 
@@ -289,6 +301,34 @@ section grows with every ticket that lands.
   at version 0 and every observation of the 0.11 line was re-measured on the 1.1.1 coordinator with
   the same result, down to the defaults `transactional.id.expiration.ms = 604800000` and
   `transaction.abort.timed.out.transaction.cleanup.interval.ms = 60000`.
+- **The consistency pass over the documentation of the line** — `docs/protocol/1.1.md` no longer
+  names a ticket anywhere except at the consumer half of the fetch sessions, "Broker quirks and
+  observations" is grouped by api (with new groups for the KIP-226 configuration, CreatePartitions
+  and DeleteGroups, and for the delegation tokens), the "Wire vectors" preamble states the counts of
+  the line, and "What is not in Kafka 1.1.1" now also names the replication apis 4, 5 and 6.
+  `docs/protocol/vectors/README.md` lists what each file captured on the 1.1.1 container, the README
+  matrix and the feature and limitation tables are complete, and `docs/CASCADE.md` and `CLAUDE.md`
+  record the finished line.
+
+### Fixed
+
+- **Seven integration tests were silently skipped against the 1.1.1 broker.** Three fixtures still
+  named the container of the line below (`kafka-0-11-0-3`) and the SSL tests still pointed at its
+  certificate, so `MessageFormatV1Test`, `RecordBatchV2Test` and the quota tests skipped themselves
+  instead of running — the same pitfall the 0.11 line found. The fixtures name `kafka-1-1-1` and
+  `docker/kafka-1.1.1/ssl/broker.crt` now, and the suite runs with **zero** skips.
+- **Two docblocks asserted what a 1.1.1 broker contradicts** — `ApiVersionsResponse` claimed the
+  answer holds "34 keys 0 to 33" and `ControlledShutdownRequestV0` that the broker reports
+  `minVersion = 1` for the api key 7. Both are corrected against the api table of the container; no
+  behaviour changed.
+- **Seven examples still pointed at the line below.** `idempotent-producer.php` and
+  `record-headers.php` carried an `@see docs/protocol/0.11.0.md`; they and `producer.php` and
+  `transactional-producer.php` printed `docker exec kafka-0-11-0-3 …` commands that no container of
+  this branch answers; `ssl.php` and `sasl.php` read the broker certificate from
+  `docker/kafka-0.11.0.3/ssl/`, the image directory of the line below; and `admin.php` announced
+  itself as an example "for the Kafka 0.11.0.3 protocol". All of them name the 1.1.1 document,
+  container and image directory now — `DocumentationSyncTest` does not scan `examples/`, so nothing
+  had caught it.
 
 Unreleased — the 0.11.x line (Kafka 0.11.0.3)
 -------------------------------------------

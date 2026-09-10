@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Consumes a topic of a Kafka 0.11.0.3 cluster with the partitions picked by hand, see {@see KafkaConsumer}.
+ * Consumes a topic of a Kafka 1.1.1 cluster with the partitions picked by hand, see {@see KafkaConsumer}.
  *
  * Start the broker of this repository and run the example against it:
  *
