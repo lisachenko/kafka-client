@@ -3,9 +3,10 @@
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
 (Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
-(Kafka 0.11.0.3, **complete**) → `main` (Kafka 1.x, **next**). See `docs/CASCADE.md` and, for the
-current line, `docs/handoff/<branch>.md`: `docs/handoff/0.11.x.md` carries the release notes of the
-0.11 line with the plan it was built from below them, `docs/handoff/main.md` the plan of the 1.x line.
+(Kafka 0.11.0.3, **complete**) → `main` (Kafka **1.1.1**, **in development**). See `docs/CASCADE.md`
+and, for the current line, `docs/handoff/<branch>.md`: `docs/handoff/0.11.x.md` carries the release
+notes of the 0.11 line with the plan it was built from below them, `docs/handoff/main.md` the plan of
+the 1.x line. The grammar of the line in development is `docs/protocol/1.1.md`.
 
 ## Hard rules (owner's decisions)
 
@@ -66,10 +67,10 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 ### Kafka broker for integration tests
 
 - `docker compose up -d --wait` starts the broker of this branch's Kafka version
-  (`docker/kafka-<version>/`, ZooKeeper bundled, advertised as 127.0.0.1:9092). On `0.11.x` that is
-  **`docker/kafka-0.11.0.3`**, the container `kafka-0-11-0-3`, with the four listeners PLAINTEXT 9092,
-  SSL 9093, SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch carries (`main`
-  keeps it until the first ticket of the 1.x line replaces it with the broker of that line).
+  (`docker/kafka-<version>/`, ZooKeeper bundled, advertised as 127.0.0.1:9092). On `main` that is
+  **`docker/kafka-1.1.1`**, the container `kafka-1-1-1`; on `0.11.x` it is `docker/kafka-0.11.0.3`, the
+  container `kafka-0-11-0-3`. Either way it has the four listeners PLAINTEXT 9092, SSL 9093,
+  SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch carries.
 - In the remote sandbox the Docker daemon may not be running: `nohup dockerd >/tmp/dockerd.log 2>&1 &`
   and wait for `docker info` to answer. Old Docker Hub images with v1 manifests cannot be pulled;
   build the image from `docker/` (the Kafka tarball comes from archive.apache.org, which is reachable).
@@ -85,8 +86,23 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   the file. A one-broker cluster additionally needs `transaction.state.log.replication.factor=1` and
   `transaction.state.log.min.isr=1`, or `__transaction_state` cannot be created and every transactional request ends
   in the error code 15.
+- **1.1 specifics.** The tag **`1.1.1` does exist** in the Apache repository (and so does `1.0.2`, which is where a
+  field has to be attributed to the 1.0 release rather than to 1.1), so "@ 1.1.1" is that tag. **`Protocol.java` is
+  no longer the schema authority**: from Kafka 1.0 the layout of an api version is the `schemaVersions()` of
+  `clients/…/common/requests/<Api>{Request,Response}.java`, the api table is `common/protocol/ApiKeys.java` and the
+  errors are `common/protocol/Errors.java`. The `server.properties` shipped with 1.1.1 ends without a trailing
+  newline as well, so `start.sh` keeps appending one, and the one-broker `transaction.state.log.*=1` settings are
+  still needed. Two settings are new in this image: **two log directories**
+  (`log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2` — a partition lands in either, find it with
+  `docker exec kafka-1-1-1 ls /tmp/kafka-logs /tmp/kafka-logs-2`) and a
+  **`delegation.token.master.key`**, without which the token apis 38–41 answer 61 instead of 64. And **a 1.x broker
+  closes the socket on a version above its table for every api, ControlledShutdown included** — only ApiVersions
+  answers an unknown version with the error code 35.
 - Useful in-container tools: `docker exec <container> /opt/kafka/bin/kafka-topics.sh --zookeeper localhost:2181 --list`,
-  `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-run-class.sh kafka.tools.DumpLogSegments`.
+  `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-run-class.sh kafka.tools.DumpLogSegments`,
+  `kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list|--describe --group G`, `kafka-configs.sh` (both
+  `--zookeeper` for quotas and, from 1.1, `--bootstrap-server … --entity-type brokers` for the dynamic broker
+  configuration of KIP-226) and, from 1.1, `kafka-delegation-tokens.sh`.
   From 0.9 on, the console consumer joins a *group* only with `--new-consumer --bootstrap-server host:port` and
   a `--consumer.config <file>` carrying `group.id` (and, if it matters, `partition.assignment.strategy`).
 

@@ -32,8 +32,9 @@ sed -i "s/^broker.id=.*/broker.id=${BROKER_ID}/" config/server.properties
 sed -i "s/^num.partitions=.*/num.partitions=${NUM_PARTITIONS}/" config/server.properties
 sed -i "s/^#\?listeners=.*//; s/^#\?port=.*//" config/server.properties
 
-# The server.properties shipped with 0.11 ended without a trailing newline (its last line was
-# `group.initial.rebalance.delay.ms=0`); appending one is harmless when the file already has it
+# The server.properties shipped with Kafka ends without a trailing newline - 1.1.1 as well as 0.11
+# (its last byte is the `0` of `group.initial.rebalance.delay.ms=0`); appending one is harmless
+# when the file already has it
 echo >> config/server.properties
 
 # Two log directories (KIP-113): AlterReplicaLogDirs (34) can move a replica between them and

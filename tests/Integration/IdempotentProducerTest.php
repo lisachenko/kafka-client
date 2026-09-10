@@ -222,16 +222,58 @@ final class IdempotentProducerTest extends IntegrationTestCase
         self::assertSame(2, $this->latestOffset($topic));
     }
 
-    public function testADuplicateOfABatchThatIsNoLongerTheLastOneIsAnOutOfOrderSequence(): void
+    /**
+     * A Kafka 1.x broker remembers the last **five** batches of a producer id, not the one 0.11 remembered
+     *
+     * `ProducerStateManager.NumBatchesToRetain = 5` @ 1.0.2 and 1.1.1, where the same constant of 0.11.0.3 kept a
+     * single batch. The consequence is visible to a client: a duplicate of a batch that is no longer the last one
+     * is answered as the **original append** - the same base offset, the stored timestamp - as long as it is one of
+     * the last five, where a 0.11 broker answered 45 (`OutOfOrderSequence`) for anything but the very last batch.
+     * The 0.11 quirk "a duplicate of an older batch is 45" is therefore gone.
+     *
+     * T6 of this line owns the producer semantics that follow from it (a retry that spans several batches is no
+     * longer fatal); this test pins the window itself.
+     */
+    public function testADuplicateOfAnyOfTheLastFiveBatchesIsAnsweredAsTheOriginalAppend(): void
     {
-        // A 0.11.0.3 broker remembers exactly one batch per producer id and partition, so its duplicate check only
-        // ever recognises the batch it appended last; an older one is indistinguishable from a gap for it
         $topic   = $this->topic('old-duplicate');
         $manager = new TransactionManager($this->client);
         $records = $this->records(['first']);
 
-        $this->client->produce([$topic => [0 => $records]], $manager);
+        $first = $this->client->produce([$topic => [0 => $records]], $manager);
+        // Four more batches, so that the first one is the fifth-from-last the broker still remembers
         $this->produce($topic, $manager, ['second']);
+        $this->produce($topic, $manager, ['third']);
+        $this->produce($topic, $manager, ['fourth']);
+        $this->produce($topic, $manager, ['fifth']);
+
+        $retry = new TransactionManager($this->client);
+        $retry->setProducerIdAndEpoch($manager->getProducerIdAndEpoch());
+
+        $duplicate = $this->client->produce([$topic => [0 => $records]], $retry);
+
+        self::assertSame(0, $first[$topic][0]->baseOffset);
+        self::assertSame(
+            $first[$topic][0]->baseOffset,
+            $duplicate[$topic][0]->baseOffset,
+            'the broker still has the entry of that batch and answers with the offset it appended it at'
+        );
+        self::assertSame(5, $this->latestOffset($topic), 'and appended nothing');
+    }
+
+    /**
+     * The sixth batch pushes the first one out of the window, and only then is its duplicate an out of order sequence
+     */
+    public function testADuplicateOfABatchBelowTheWindowIsAnOutOfOrderSequence(): void
+    {
+        $topic   = $this->topic('evicted-duplicate');
+        $manager = new TransactionManager($this->client);
+        $records = $this->records(['first']);
+
+        $this->client->produce([$topic => [0 => $records]], $manager);
+        foreach (['second', 'third', 'fourth', 'fifth', 'sixth'] as $value) {
+            $this->produce($topic, $manager, [$value]);
+        }
 
         $retry = new TransactionManager($this->client);
         $retry->setProducerIdAndEpoch($manager->getProducerIdAndEpoch());
@@ -243,7 +285,7 @@ final class IdempotentProducerTest extends IntegrationTestCase
             self::assertInstanceOf(OutOfOrderSequenceException::class, $exception->getExceptions()[$topic][0]);
         }
 
-        self::assertSame(2, $this->latestOffset($topic));
+        self::assertSame(6, $this->latestOffset($topic));
     }
 
     public function testAnOldEpochIsFencedAndFinishesTheProducerForGood(): void

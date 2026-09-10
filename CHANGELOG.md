@@ -4,20 +4,50 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
-own: `0.11.x` implements the **Kafka 0.11.0.3 wire protocol** — the last release of the 0.11 line —
-and nothing above it. The lines below it are `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1)
-and `0.8.x` (Kafka 0.8.2.2), the line above it is `main` (Kafka 1.x, in development), and every
-line is merged upwards into the next one, so the sections below accumulate: what a line added
-stays true of every line above it.
+own: `main` implements the **Kafka 1.1.1 wire protocol** — the last release of the 1.x line — and
+nothing above it. The lines below it are `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2),
+`0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards into the next
+one, so the sections below accumulate: what a line added stays true of every line above it.
 
 Unreleased — the 1.x line (Kafka 1.1.1)
 ---------------------------------------
 
-The 1.x line, built on top of the `0.11.x` line it was cascade-merged from, and verified against a
-real Apache **1.1.1** broker (`docker/kafka-1.1.1/`, four listeners).
+The 1.x line, built on top of the `0.11.x` line it was cascade-merged from. Everything below is
+verified against a real Apache **1.1.1** broker (`docker/kafka-1.1.1/`, four listeners) and
+documented in [docs/protocol/1.1.md](docs/protocol/1.1.md). The line is in development; this
+section grows with every ticket that lands.
 
 ### Added
 
+- **The Kafka 1.1.1 broker of the line** — `docker/kafka-1.1.1/` with the four listeners of the
+  0.11 image (PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL 9095) and its
+  `transaction.state.log.*=1` settings, plus two new ones: **two log directories**
+  (`log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2`, so that `AlterReplicaLogDirs` can move a replica
+  instead of only answering 57) and a **`delegation.token.master.key`** (so that the token apis
+  answer 64 instead of 61). `inter.broker.protocol.version` and `log.message.format.version` are
+  `1.1-IV0`; `docker-compose.yml` builds it as the container `kafka-1-1-1`.
+- **Api keys 34-42** — `ALTER_REPLICA_LOG_DIRS` (34), `DESCRIBE_LOG_DIRS` (35),
+  `SASL_AUTHENTICATE` (36), `CREATE_PARTITIONS` (37), `CREATE_DELEGATION_TOKEN` (38),
+  `RENEW_DELEGATION_TOKEN` (39), `EXPIRE_DELEGATION_TOKEN` (40), `DESCRIBE_DELEGATION_TOKEN` (41)
+  and `DELETE_GROUPS` (42). `Protocol\ApiKeys` now ends at 42; everything above it is Kafka 2.x.
+- **Error codes 56-71** — `KafkaStorageException` (56), `LogDirNotFoundException` (57),
+  `SaslAuthenticationFailedException` (58), `UnknownProducerIdException` (59),
+  `ReassignmentInProgressException` (60) with Kafka 1.0, and `DelegationTokenDisabledException`
+  (61), `DelegationTokenNotFoundException` (62), `DelegationTokenOwnerMismatchException` (63),
+  `UnsupportedByAuthenticationException` (64), `DelegationTokenAuthorizationException` (65),
+  `DelegationTokenExpiredException` (66), `InvalidPrincipalTypeException` (67),
+  `GroupNotEmptyException` (68), `GroupIdNotFoundException` (69), `FetchSessionIdNotFoundException`
+  (70) and `InvalidFetchSessionEpochException` (71) with Kafka 1.1, each with its constant on
+  `KafkaException` and its entry in the code map. **56, 70 and 71 are the only retriable ones**, as
+  in `Errors.java` @ 1.1.1, and 59 extends `OutOfOrderSequenceException` because it is the special
+  case of an out-of-order sequence the broker can explain. Two identifiers deviate from the Java
+  client on purpose: 58 is `SaslAuthenticationFailedException`, because `SaslAuthenticationException`
+  is already the client-side exception of this package, and 64 keeps the Java *class* name
+  `UnsupportedByAuthenticationException` rather than its constant.
+- **`DescribeGroupResponseMetadata::STATE_COMPLETING_REBALANCE`** — Kafka 1.0 renamed the group
+  state between the last JoinGroup and the leader's SyncGroup from `AwaitingSync` to
+  `CompletingRebalance`, and that is the string a 1.x coordinator answers. `STATE_AWAITING_SYNC`
+  stays for the lines below, documented as the 0.9-to-0.11 name of the very same state.
 - **SaslHandshake v1 and the SaslAuthenticate api (key 36, v0)** — KIP-152, Kafka 1.0. The client
   now opens a SASL connection with a **v1** handshake (`SaslHandshakeRequest::VERSION = 1`,
   `SaslHandshakeRequestV0` for the frame of the lines below) and carries the PLAIN token inside a
@@ -35,6 +65,36 @@ real Apache **1.1.1** broker (`docker/kafka-1.1.1/`, four listeners).
   Kafka 1.1 answers there, where 1.0.2 still filled it), the accepted `SaslAuthenticate` exchange,
   the 58 of a wrong password and the 34 of a second `SaslAuthenticate`. The v0 vectors of the
   handshake are replayed through `SaslHandshakeRequestV0` from now on.
+
+### Changed
+
+- **The protocol document is `docs/protocol/1.1.md`** (renamed from `docs/protocol/0.11.0.md`, as
+  every line renames it), and its front matter, api-key table, "What is not in Kafka 1.1.1", error
+  codes, group-state tables and "Broker quirks and observations" now describe Kafka 1.1.1. The
+  section "The last Scala api does not check its version" became **"Every api of the table
+  validates its version"**: Kafka 1.0 moved ControlledShutdown to the schemas of the Java client,
+  so **ApiVersions is the only api left whose unknown version is answered** instead of costing the
+  connection.
+- **The api-key table is the 43-key answer of a 1.1.1 broker** (keys 0 to 42), re-captured into
+  `docs/protocol/vectors/api-versions.json` as `apiversions.response.v0` and `.v1`. Against
+  0.11.0.3 it raises Produce to v5, Fetch to v7, Metadata to v5, SaslHandshake to v1 and
+  DescribeConfigs to v1, adds the nine keys 34-42, and reports **ControlledShutdown as v0-v1**
+  where a 0.9-to-0.11 broker reported v1 alone.
+- **Behaviour of the broker that the inherited suite pinned differently** — all of it measured on
+  the container and recorded in the document: a duplicate of any of the **last five** batches of a
+  producer id and partition is answered as the original append (0.11 kept one batch and answered 45
+  for anything older); a Fetch below v4 of a partition whose records carry headers is **served with
+  the headers dropped** and the error code 0, where 0.11 refused it with -1; `is_default` of a
+  DescribeConfigs v0 answer is derived from the KIP-226 config **source**, so a topic option whose
+  broker synonym stands in the `server.properties` is not a default any more; `is_read_only` of a
+  broker entry means "not dynamically updatable"; AlterConfigs **accepts** a broker resource and
+  refuses it per option (`Cannot update these configs dynamically: Set(log.retention.hours)`); and
+  CreateTopics rewrote three of its error messages (`Number of partitions must be larger than 0.`,
+  `Replication factor: 2 larger than available brokers: 1.`, `Topic name "x" is illegal, it
+  contains a character other than …`).
+- **README** now announces the 1.x line: the badges point at `main`, the protocol-version matrix
+  lists all 43 api keys of a 1.1.1 broker with the ticket that raises each remaining one, and the
+  feature matrix gained a `main` column.
 
 Unreleased — the 0.11.x line (Kafka 0.11.0.3)
 -------------------------------------------

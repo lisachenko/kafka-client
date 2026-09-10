@@ -174,8 +174,11 @@ final class TopicAdminApiTest extends IntegrationTestCase
         $result = $this->admin->createTopics([new NewTopic($topic, 0, 1)]);
 
         self::assertInstanceOf(InvalidPartitionsException::class, $result[$topic]);
+        // The text changed with Kafka 1.0, the code (37) did not: `AdminUtils.assignReplicasToBrokers` @ 0.11.0.3
+        // threw "number of partitions must be larger than 0" and `AdminUtils`/`AdminZkClient` @ 1.1.1 throws
+        // "Number of partitions must be larger than 0." - a capital N and a trailing dot
         self::assertSame(
-            'number of partitions must be larger than 0',
+            'Number of partitions must be larger than 0.',
             $result[$topic]->getContext()['error'] ?? null
         );
     }

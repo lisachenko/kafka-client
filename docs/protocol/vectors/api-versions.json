@@ -26,22 +26,22 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponseV0",
             "version": 0,
             "source": "broker",
-            "description": "ApiVersions response v0 of a Kafka 0.11.0.3 broker: the 34 api keys 0 to 33 it serves, without a throttle time.",
-            "hex": "000000d600000064000000000022000000000003000100000005000200000002000300000004000400000000000500000000000600000003000700010001000800000003000900000003000a00000001000b00000002000c00000001000d00000001000e00000001000f00000001001000000001001100000000001200000001001300000002001400000001001500000000001600000000001700000000001800000000001900000000001a00000000001b00000000001c00000000001d00000000001e00000000001f00000000002000000000002100000000",
+            "description": "ApiVersions response v0 of a Kafka 1.1.1 broker: the 43 api keys 0 to 42 it serves, without a throttle time.",
+            "hex": "0000010c0000006400000000002b000000000005000100000007000200000002000300000005000400000001000500000000000600000004000700000001000800000003000900000003000a00000001000b00000002000c00000001000d00000001000e00000001000f00000001001000000001001100000001001200000001001300000002001400000001001500000000001600000000001700000000001800000000001900000000001a00000000001b00000000001c00000000001d00000000001e00000000001f00000000002000000001002100000000002200000000002300000000002400000000002500000000002600000000002700000000002800000000002900000000002a00000000",
             "fields": {
-                "messageSize": 214,
+                "messageSize": 268,
                 "correlationId": 100,
                 "errorCode": 0,
                 "apiVersions": [
                     {
                         "apiKey": 0,
                         "minVersion": 0,
-                        "maxVersion": 3
+                        "maxVersion": 5
                     },
                     {
                         "apiKey": 1,
                         "minVersion": 0,
-                        "maxVersion": 5
+                        "maxVersion": 7
                     },
                     {
                         "apiKey": 2,
@@ -51,12 +51,12 @@
                     {
                         "apiKey": 3,
                         "minVersion": 0,
-                        "maxVersion": 4
+                        "maxVersion": 5
                     },
                     {
                         "apiKey": 4,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 1
                     },
                     {
                         "apiKey": 5,
@@ -66,11 +66,11 @@
                     {
                         "apiKey": 6,
                         "minVersion": 0,
-                        "maxVersion": 3
+                        "maxVersion": 4
                     },
                     {
                         "apiKey": 7,
-                        "minVersion": 1,
+                        "minVersion": 0,
                         "maxVersion": 1
                     },
                     {
@@ -121,7 +121,7 @@
                     {
                         "apiKey": 17,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 1
                     },
                     {
                         "apiKey": 18,
@@ -196,10 +196,55 @@
                     {
                         "apiKey": 32,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 1
                     },
                     {
                         "apiKey": 33,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 34,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 35,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 36,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 37,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 38,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 39,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 40,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 41,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 42,
                         "minVersion": 0,
                         "maxVersion": 0
                     }
@@ -228,22 +273,22 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
             "version": 1,
             "source": "broker",
-            "description": "ApiVersions response v1 of the same broker: the same 34 keys followed by the throttle_time_ms that Kafka 0.11 appended.",
-            "hex": "000000da00000066000000000022000000000003000100000005000200000002000300000004000400000000000500000000000600000003000700010001000800000003000900000003000a00000001000b00000002000c00000001000d00000001000e00000001000f00000001001000000001001100000000001200000001001300000002001400000001001500000000001600000000001700000000001800000000001900000000001a00000000001b00000000001c00000000001d00000000001e00000000001f0000000000200000000000210000000000000000",
+            "description": "ApiVersions response v1 of the same broker: the same 43 keys followed by the throttle_time_ms that Kafka 0.11 appended.",
+            "hex": "000001100000006600000000002b000000000005000100000007000200000002000300000005000400000001000500000000000600000004000700000001000800000003000900000003000a00000001000b00000002000c00000001000d00000001000e00000001000f00000001001000000001001100000001001200000001001300000002001400000001001500000000001600000000001700000000001800000000001900000000001a00000000001b00000000001c00000000001d00000000001e00000000001f00000000002000000001002100000000002200000000002300000000002400000000002500000000002600000000002700000000002800000000002900000000002a0000000000000000",
             "fields": {
-                "messageSize": 218,
+                "messageSize": 272,
                 "correlationId": 102,
                 "errorCode": 0,
                 "apiVersions": [
                     {
                         "apiKey": 0,
                         "minVersion": 0,
-                        "maxVersion": 3
+                        "maxVersion": 5
                     },
                     {
                         "apiKey": 1,
                         "minVersion": 0,
-                        "maxVersion": 5
+                        "maxVersion": 7
                     },
                     {
                         "apiKey": 2,
@@ -253,12 +298,12 @@
                     {
                         "apiKey": 3,
                         "minVersion": 0,
-                        "maxVersion": 4
+                        "maxVersion": 5
                     },
                     {
                         "apiKey": 4,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 1
                     },
                     {
                         "apiKey": 5,
@@ -268,11 +313,11 @@
                     {
                         "apiKey": 6,
                         "minVersion": 0,
-                        "maxVersion": 3
+                        "maxVersion": 4
                     },
                     {
                         "apiKey": 7,
-                        "minVersion": 1,
+                        "minVersion": 0,
                         "maxVersion": 1
                     },
                     {
@@ -323,7 +368,7 @@
                     {
                         "apiKey": 17,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 1
                     },
                     {
                         "apiKey": 18,
@@ -398,10 +443,55 @@
                     {
                         "apiKey": 32,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 1
                     },
                     {
                         "apiKey": 33,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 34,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 35,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 36,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 37,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 38,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 39,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 40,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 41,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    {
+                        "apiKey": 42,
                         "minVersion": 0,
                         "maxVersion": 0
                     }
