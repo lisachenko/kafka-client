@@ -403,6 +403,8 @@ foreach ($group->members as $memberId => $member) {
 | `deleteRecords()`                            | DeleteRecords v0        | Moves the **low watermark** of a partition forward (KIP-107); sent to the partition leader, answers a `DeletedRecords` per partition |
 | `describeConfigs()`                          | DescribeConfigs v0      | The configuration of a topic or a broker (KIP-133); a broker resource is only answered by that broker, and a sensitive value comes back `null` |
 | `alterConfigs()`                             | AlterConfigs v0         | **Replaces** the whole configuration of a topic; a 1.1 broker takes a broker resource too and refuses the options it cannot change at runtime with 42 (KIP-226, ticket T4) |
+| `describeLogDirs()`                          | DescribeLogDirs v0      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories |
+| `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v0  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
 
 Both topic apis are served by the **controller** alone: `AdminClient` looks it up in the
 `controller_id` of a Metadata answer, and repeats the request once against a freshly looked up
@@ -464,8 +466,9 @@ where a 0.11 broker refused every broker resource outright. Reading such a resou
 dynamically updatable" — and the version 1 of the api that reports the source and its synonyms is
 implemented by the ticket T4 of this line.
 
-[examples/admin.php](examples/admin.php), [examples/create-topic.php](examples/create-topic.php) and
-[examples/admin-configs.php](examples/admin-configs.php) run all of it against the broker of
+[examples/admin.php](examples/admin.php), [examples/create-topic.php](examples/create-topic.php),
+[examples/admin-configs.php](examples/admin-configs.php) and
+[examples/admin-log-dirs.php](examples/admin-log-dirs.php) run all of it against the broker of
 `docker-compose.yml`.
 
 Network client
@@ -717,8 +720,8 @@ still implementing.
 | 31      | DeleteAcls           | v0                | yes           | –        | no       | no, see below                |
 | 32      | DescribeConfigs      | v0, v1            | yes           | –        | **v0**   | **v0**; v1: T4               |
 | 33      | AlterConfigs         | v0                | yes           | –        | **v0**   | **v0**                       |
-| 34      | AlterReplicaLogDirs  | v0                | yes           | –        | –        | T5                           |
-| 35      | DescribeLogDirs      | v0                | yes           | –        | –        | T5                           |
+| 34      | AlterReplicaLogDirs  | v0                | yes           | –        | –        | **v0**                       |
+| 35      | DescribeLogDirs      | v0                | yes           | –        | –        | **v0**                       |
 | 36      | SaslAuthenticate     | v0                | yes           | –        | –        | **v0**                       |
 | 37      | CreatePartitions     | v0                | controller    | –        | –        | T4                           |
 | 38      | CreateDelegationToken | v0               | yes           | –        | –        | **v0**                       |
@@ -780,7 +783,7 @@ What the five lines can do beyond the api versions themselves. A cell that names
 | Incremental fetch sessions (KIP-227)                   | 1.1        | –       | –       | –        | –        | the frame; in the consumer: T8 |
 | Dynamic broker configuration, config sources and synonyms (KIP-226) | 1.1 | –  | –       | –        | –        | T4     |
 | Admin: `createPartitions()`, `deleteConsumerGroups()`  | 1.0 / 1.1  | –       | –       | –        | –        | T4     |
-| Admin: `describeLogDirs()`, `alterReplicaLogDirs()`    | 1.0        | –       | –       | –        | –        | T5     |
+| Admin: `describeLogDirs()`, `alterReplicaLogDirs()`    | 1.0        | –       | –       | –        | –        | yes    |
 | Delegation tokens (KIP-48)                             | 1.1        | –       | –       | –        | –        | **issued, renewed, expired, described** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | **-1 … 71** |
 
@@ -858,8 +861,8 @@ composer install
 composer check   # coding standards + static analysis + PHPUnit
 ```
 
-The suite is split in three — 1487 unit tests, 236 compliance tests replaying the 229 documented
-wire vectors, and 426 integration tests against a real broker over its four listeners:
+The suite is split in three — 1633 unit tests, 275 compliance tests replaying the 268 documented
+wire vectors, and 503 integration tests against a real broker over its four listeners:
 
 ```bash
 vendor/bin/phpunit --testsuite unit          # pure unit tests, no broker
@@ -905,6 +908,7 @@ Every file in [examples/](examples) is runnable against the container of `docker
 | [`admin.php`](examples/admin.php) | brokers, cluster id and controller, topics, offsets, groups |
 | [`create-topic.php`](examples/create-topic.php) | `createTopics()` / `deleteTopics()` with `validateOnly` and the error of a topic |
 | [`admin-configs.php`](examples/admin-configs.php) | `describeConfigs()`, `alterConfigs()` and `deleteRecords()` — the admin apis of Kafka 0.11 |
+| [`admin-log-dirs.php`](examples/admin-log-dirs.php) | `describeLogDirs()` and `alterReplicaLogDirs()` — the disks of a broker and a replica moved between them (KIP-113) |
 | [`offsets-for-times.php`](examples/offsets-for-times.php) | `offsetsForTimes()`, `beginningOffsets()`, `endOffsets()` |
 | [`ssl.php`](examples/ssl.php) | the SSL listener, 9093 |
 | [`sasl.php`](examples/sasl.php) | SASL/PLAIN over 9094, and over 9095 with `KAFKA_SASL_SSL_BOOTSTRAP_SERVERS` |

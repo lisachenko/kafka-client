@@ -20,6 +20,7 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
+use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
@@ -45,6 +46,8 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
+use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
+use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
@@ -57,6 +60,8 @@ use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -1116,6 +1121,177 @@ class AdminClient
         }
 
         return KafkaException::fromCode($errorCode, $context);
+    }
+
+    /**
+     * Reports what each log directory of the given brokers holds (ApiKey 35, Kafka 1.0, KIP-113)
+     *
+     * A broker of Kafka 1.x may have more than one data directory (`log.dirs`), and every replica lives in exactly
+     * one of them. This api says which - and it is **broker-local**: `KafkaApis.handleDescribeLogDirsRequest` @
+     * 1.1.1 asks the local `ReplicaManager`, so each broker only knows about its own disks and one request goes to
+     * each of them. The result is therefore indexed by the broker id first and by the absolute path of the
+     * directory second.
+     *
+     * `$topicPartitions` selects the replicas to report:
+     *
+     *  - `null`, the default, asks for **every** replica of every directory, which is what the Java admin client
+     *    and `kafka-log-dirs.sh --describe` send. The answer of a busy broker is large - hundreds of kilobytes for
+     *    a few thousand partitions - so name the partitions when they are known;
+     *  - an **empty array** asks for no replica at all and answers the directories alone, which is the cheapest way
+     *    to ask which disks a broker has and whether they are online;
+     *  - a `topic => list of partition ids` map, or an iterable of {@see TopicPartition}, asks for those replicas.
+     *
+     * A replica that this broker does not have is not an error and simply produces no entry, and a directory that
+     * is offline is reported with the error 56 (KafkaStorageError) in {@see LogDirInfo::$error} and no replica.
+     *
+     * @param list<int>                                              $brokerIds       Brokers to ask, by node id
+     * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Replicas to report, null for
+     *        every replica of every log directory
+     *
+     * @throws BrokerNotAvailableException If a requested broker id is not a node of the cluster
+     *
+     * @return array<int, array<string, LogDirInfo>> Directories of every asked broker, as broker id => path => info
+     */
+    public function describeLogDirs(array $brokerIds, ?array $topicPartitions = null): array
+    {
+        $topics = $topicPartitions === null ? null : self::normalizeTopicPartitions($topicPartitions);
+
+        $result = [];
+        foreach ($brokerIds as $brokerId) {
+            $brokerId = (int) $brokerId;
+
+            /** @var DescribeLogDirsResponse $response */
+            $response = $this->sendToBroker(
+                $brokerId,
+                fn(int $correlationId): DescribeLogDirsRequest => new DescribeLogDirsRequest(
+                    $topics,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DescribeLogDirsResponse::class
+            );
+
+            $directories = [];
+            foreach ($response->logDirs as $logDir) {
+                $directories[$logDir->logDir] = LogDirInfo::fromResponseLogDir($logDir);
+            }
+            $result[$brokerId] = $directories;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Moves the given replicas to another log directory of the broker that holds them (ApiKey 34, Kafka 1.0, KIP-113)
+     *
+     * The argument maps a {@see TopicPartitionReplica::key()} - `events-0-1` - to the **absolute** path of the
+     * directory the replica should live in, and this method groups it by the broker each replica names, because the
+     * api is broker-local like {@see self::describeLogDirs()}:
+     *
+     * <code>
+     *   $admin->alterReplicaLogDirs([
+     *       TopicPartitionReplica::of('events', 0, 1)->key() => '/mnt/disk-2/kafka-logs',
+     *   ]);
+     * </code>
+     *
+     * **The answer only says that the move was accepted.** The broker creates the future log and starts the
+     * `ReplicaAlterLogDirsThread` while it handles the request, then answers 0; the copy runs in the background and
+     * the replica is reported by {@see self::describeLogDirs()} in *both* directories - as the current log of the
+     * source and as the log with {@see ReplicaInfo::$isFuture} of the destination - until the mover swaps it in.
+     * Naming the directory the replica already sits in is not an error either: the broker answers 0 and creates
+     * nothing.
+     *
+     * Every requested replica gets an entry in the result, keyed like the argument: `null` when the move was
+     * accepted, the exception of its error code otherwise - 57 (LogDirNotFound) for a path that is not one of the
+     * directories of `log.dirs` or that is relative, 9 (ReplicaNotAvailable) for a partition the broker does not
+     * host, 56 (KafkaStorageError) for a directory that is offline. Nothing is thrown for a replica that was
+     * refused, exactly like {@see self::alterConfigs()}.
+     *
+     * @param array<string, string> $replicaAssignment Destination of every replica, as replica key => absolute path
+     *
+     * @throws BrokerNotAvailableException If a replica names a broker id that is not a node of the cluster
+     *
+     * @return array<string, KafkaException|null> Error of every requested replica, null when the move was accepted
+     */
+    public function alterReplicaLogDirs(array $replicaAssignment): array
+    {
+        $requestByBroker = [];
+        foreach ($replicaAssignment as $replicaKey => $logDir) {
+            $replica = TopicPartitionReplica::fromKey((string) $replicaKey);
+
+            $requestByBroker[$replica->brokerId][$logDir][$replica->topic][] = $replica->partition;
+        }
+
+        $answered = [];
+        foreach ($requestByBroker as $brokerId => $logDirs) {
+            /** @var AlterReplicaLogDirsResponse $response */
+            $response = $this->sendToBroker(
+                $brokerId,
+                fn(int $correlationId): AlterReplicaLogDirsRequest => new AlterReplicaLogDirsRequest(
+                    $logDirs,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                AlterReplicaLogDirsResponse::class
+            );
+
+            foreach ($response->topics as $topicResult) {
+                foreach ($topicResult->partitions as $partitionResult) {
+                    $key = TopicPartitionReplica::of(
+                        $topicResult->topic,
+                        $partitionResult->partition,
+                        $brokerId
+                    )->key();
+
+                    $answered[$key] = $partitionResult->errorCode === KafkaException::NO_ERROR
+                        ? null
+                        : KafkaException::fromCode($partitionResult->errorCode, ['replica' => $key]);
+                }
+            }
+        }
+
+        $result = [];
+        foreach (array_keys($replicaAssignment) as $replicaKey) {
+            $replicaKey = (string) $replicaKey;
+            // A replica that was accepted is answered with `null`, so the map has to be probed with
+            // array_key_exists() and not with `??`, which would turn every success into an unknown error
+            $result[$replicaKey] = array_key_exists($replicaKey, $answered)
+                ? $answered[$replicaKey]
+                : new UnknownErrorException(
+                    ['replica' => $replicaKey, 'error' => 'The broker sent no result for this replica']
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Sends one request to the broker of the given node id, which is the only one that can answer it
+     *
+     * The two JBOD apis of KIP-113 are about the disks of one broker, so there is no fallback to another node the
+     * way {@see self::sendAnyNode()} has one: a broker id that the cluster does not have is a mistake of the
+     * caller, and asking a different broker would answer with *its* directories instead.
+     *
+     * @param Closure(int): AbstractRequest  $createRequest Builds the request for a given correlation id
+     * @param class-string<AbstractResponse> $responseClass Response class to unpack the answer with
+     *
+     * @throws BrokerNotAvailableException If the node id is not a broker of the cluster
+     */
+    private function sendToBroker(int $brokerId, Closure $createRequest, string $responseClass): AbstractResponse
+    {
+        $node = $this->nodeById($brokerId);
+        if ($node === null) {
+            throw new BrokerNotAvailableException(
+                ['node' => $brokerId, 'error' => 'The cluster has no broker with this node id']
+            );
+        }
+
+        return $this->sendTo(
+            $node->getConnection($this->configuration),
+            $createRequest,
+            $responseClass,
+            ['node' => $brokerId]
+        );
     }
 
     /**
