@@ -258,7 +258,7 @@ final class ProducerConfig extends GeneralConfig
      * from the producer before proactively aborting the ongoing transaction.
      *
      * It travels in the `InitProducerId` request and is only meaningful for a producer that has a transactional
-     * id: with a `null` one a 0.11.0.3 broker ignores the field entirely. A value above the broker's
+     * id: with a `null` one a 1.1.1 broker ignores the field entirely, as a 0.11.0.3 one did. A value above the broker's
      * `transaction.max.timeout.ms` (900000 by default) is refused with the error code 50
      * (`InvalidTransactionTimeout`).
      */
@@ -293,10 +293,14 @@ final class ProducerConfig extends GeneralConfig
      * The `retries` an idempotent producer gets when the configuration does not name a value.
      *
      * The Java producer overrides the default to `Integer.MAX_VALUE` here, because its background sender bounds a
-     * batch by `request.timeout.ms` rather than by a number of attempts. This client has no sender thread: `retries`
-     * is a loop inside {@see \Protocol\Kafka\Client::produce()} that {@see KafkaProducer::flush()} blocks on, so an
-     * unbounded budget would be an unbounded flush. Three attempts on top of the first one is the deliberate
-     * deviation, and a caller that wants more simply configures `retries`.
+     * batch by `request.timeout.ms` rather than by a number of attempts - `KafkaProducer.configureRetries()` @
+     * 1.1.1 does exactly what the 0.11.0.3 one did, so nothing about this decision changed with the 1.x line.
+     * This client has no sender thread: `retries` is a loop inside {@see \Protocol\Kafka\Client::produce()} that
+     * {@see KafkaProducer::flush()} blocks on, so an unbounded budget would be an unbounded flush. Three attempts
+     * on top of the first one is the deliberate deviation, and a caller that wants more simply configures
+     * `retries`. The budget of a 1.x producer is spent on two things: a retriable error of a partition, and the
+     * **59** `UnknownProducerId` whose sequence reset {@see \Protocol\Kafka\Client::produce()} answers with one
+     * further attempt (see {@see \Protocol\Kafka\Producer\Internals\TransactionManager::canRetryBatch()}).
      */
     public const int DEFAULT_IDEMPOTENT_RETRIES = 3;
 

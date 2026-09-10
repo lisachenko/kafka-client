@@ -25,6 +25,7 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig;
@@ -37,13 +38,18 @@ use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises the idempotent producer of KIP-98 against a real Kafka 0.11.0.3 broker.
+ * Exercises the idempotent producer of KIP-98 against a real Kafka 1.1.1 broker.
  *
- * Two things are verified here and nowhere else: that `InitProducerId` (key 22) really hands out what the protocol
- * document says it does - a fresh id with the epoch 0 for a null transactional id, the same id with a bumped epoch
- * for a real one - and that the **broker** deduplicates what this client stamps onto its batches. The second half
- * is the whole point of the guarantee, and it can only be seen against a log: a batch that is sent twice has to
- * come back with the offset of the first append and must not appear twice in the partition.
+ * Three things are verified here and nowhere else: that `InitProducerId` (key 22) really hands out what the
+ * protocol document says it does - a fresh id with the epoch 0 for a null transactional id, the same id with a
+ * bumped epoch for a real one - that the **broker** deduplicates what this client stamps onto its batches, and
+ * what a **1.x** broker does that a 0.11 one did not: it remembers the last **five** batches of a producer and
+ * partition instead of the last one, and it has an error of its own for "I have no state of this producer",
+ * **59** `UnknownProducerId`, which this client answers by numbering the partition from the sequence 0 again when
+ * the `logStartOffset` of the answer shows that the records were deleted under it.
+ *
+ * The deduplication is the whole point of the guarantee, and it can only be seen against a log: a batch that is
+ * sent twice has to come back with the offset of the first append and must not appear twice in the partition.
  *
  * @see docs/protocol/1.1.md, sections "InitProducerId API (key 22, v0)" and "The idempotent producer"
  */
@@ -225,40 +231,62 @@ final class IdempotentProducerTest extends IntegrationTestCase
     /**
      * A Kafka 1.x broker remembers the last **five** batches of a producer id, not the one 0.11 remembered
      *
-     * `ProducerStateManager.NumBatchesToRetain = 5` @ 1.0.2 and 1.1.1, where the same constant of 0.11.0.3 kept a
+     * `ProducerStateEntry.NumBatchesToRetain = 5` @ 1.0.2 and 1.1.1, where the same constant of 0.11.0.3 kept a
      * single batch. The consequence is visible to a client: a duplicate of a batch that is no longer the last one
      * is answered as the **original append** - the same base offset, the stored timestamp - as long as it is one of
      * the last five, where a 0.11 broker answered 45 (`OutOfOrderSequence`) for anything but the very last batch.
-     * The 0.11 quirk "a duplicate of an older batch is 45" is therefore gone.
+     * The 0.11 quirk "a duplicate of an older batch is 45" is therefore gone, and a producer whose acknowledgement
+     * of several batches in a row was lost is no longer fatally out of sequence.
      *
-     * T6 of this line owns the producer semantics that follow from it (a retry that spans several batches is no
-     * longer fatal); this test pins the window itself.
+     * Every one of the five is re-sent here, not only the oldest of them, because "five" is the number the whole
+     * decision of {@see TransactionManager::canRetryBatch()} rests on.
      */
     public function testADuplicateOfAnyOfTheLastFiveBatchesIsAnsweredAsTheOriginalAppend(): void
     {
-        $topic   = $this->topic('old-duplicate');
-        $manager = new TransactionManager($this->client);
-        $records = $this->records(['first']);
+        $topic     = $this->topic('old-duplicate');
+        $manager   = new TransactionManager($this->client);
+        $partition = new TopicPartition($topic, 0);
 
-        $first = $this->client->produce([$topic => [0 => $records]], $manager);
-        // Four more batches, so that the first one is the fifth-from-last the broker still remembers
-        $this->produce($topic, $manager, ['second']);
-        $this->produce($topic, $manager, ['third']);
-        $this->produce($topic, $manager, ['fourth']);
-        $this->produce($topic, $manager, ['fifth']);
+        /** @var list<array{list<Record>, int}> $batches */
+        $batches = [];
+        foreach (['first', 'second', 'third', 'fourth', 'fifth'] as $value) {
+            $records   = $this->records([$value]);
+            $answer    = $this->client->produce([$topic => [0 => $records]], $manager);
+            $batches[] = [$records, $answer[$topic][0]->baseOffset];
+        }
 
-        $retry = new TransactionManager($this->client);
-        $retry->setProducerIdAndEpoch($manager->getProducerIdAndEpoch());
+        self::assertSame([0, 1, 2, 3, 4], array_column($batches, 1), 'one record per batch, five batches');
+        self::assertSame(5, $manager->sequenceNumber($partition));
+        self::assertSame(4, $manager->lastAckedOffset($partition));
 
-        $duplicate = $this->client->produce([$topic => [0 => $records]], $retry);
+        foreach ($batches as $index => [$records, $baseOffset]) {
+            // The batch as the producer that lost the acknowledgement would send it again: the same producer id,
+            // the same epoch and the same sequence numbers, because nothing told that producer it was appended
+            $retry = new TransactionManager($this->client);
+            $retry->setProducerIdAndEpoch($manager->getProducerIdAndEpoch());
+            $retry->incrementSequenceNumber($partition, $index);
 
-        self::assertSame(0, $first[$topic][0]->baseOffset);
-        self::assertSame(
-            $first[$topic][0]->baseOffset,
-            $duplicate[$topic][0]->baseOffset,
-            'the broker still has the entry of that batch and answers with the offset it appended it at'
-        );
-        self::assertSame(5, $this->latestOffset($topic), 'and appended nothing');
+            $duplicate = $this->client->produce([$topic => [0 => $records]], $retry);
+
+            self::assertSame(
+                $baseOffset,
+                $duplicate[$topic][0]->baseOffset,
+                "the broker still has the entry of the batch {$index} batches from the start of the window"
+            );
+            self::assertNotSame(
+                -1,
+                $duplicate[$topic][0]->logAppendTime,
+                'and gives the duplicate away with the stored timestamp of the original append'
+            );
+            self::assertSame($index + 1, $retry->sequenceNumber($partition), 'the duplicate counts as an append');
+            self::assertSame(
+                $baseOffset,
+                $retry->lastAckedOffset($partition),
+                'and the offset of that append is what the producer remembers for the partition'
+            );
+        }
+
+        self::assertSame(5, $this->latestOffset($topic), 'and nothing at all was appended');
     }
 
     /**
@@ -282,10 +310,101 @@ final class IdempotentProducerTest extends IntegrationTestCase
             $this->client->produce([$topic => [0 => $records]], $retry);
             self::fail('a duplicate of a batch the broker no longer remembers has to be reported');
         } catch (TopicPartitionRequestException $exception) {
-            self::assertInstanceOf(OutOfOrderSequenceException::class, $exception->getExceptions()[$topic][0]);
+            $error = $exception->getExceptions()[$topic][0];
+
+            self::assertInstanceOf(OutOfOrderSequenceException::class, $error);
+            self::assertNotInstanceOf(
+                UnknownProducerIdException::class,
+                $error,
+                'the producer id is perfectly well known, only the batch is too old'
+            );
+            self::assertSame(0, $error->getContext()['logStartOffset'], 'and nothing of the log was deleted');
         }
 
         self::assertSame(6, $this->latestOffset($topic));
+    }
+
+    /**
+     * Every record of a producer being deleted is the **59** of Kafka 1.0, and this client repairs it
+     *
+     * `ProducerStateManager.truncateHead()` @ 1.1.1 drops the entry of every producer whose last record fell below
+     * the new log start offset, so the next batch of that producer meets a broker that has no state of it. A first
+     * sequence other than 0 is then answered with **59** `UnknownProducerId` (`ProducerAppendInfo.checkSequence`),
+     * and the `logStartOffset` that Produce v5 added to the answer is what lets the producer tell that case from a
+     * real out-of-order sequence: its records are below the start of the log, so the partition is numbered from 0
+     * again and the batch is sent once more - under the very same producer id.
+     */
+    public function testAProducerWhoseRecordsWereAllDeletedNumbersThePartitionFromZeroAgain(): void
+    {
+        $topic     = $this->topic('deleted-records');
+        $manager   = new TransactionManager($this->client);
+        $partition = new TopicPartition($topic, 0);
+
+        $first = $this->produce($topic, $manager, ['one', 'two']);
+
+        self::assertSame(0, $first[$topic][0]->baseOffset);
+        self::assertSame(0, $first[$topic][0]->logStartOffset, 'an untouched log starts at 0');
+        self::assertSame(1, $manager->lastAckedOffset($partition));
+
+        $producerId = $manager->getProducerIdAndEpoch()->producerId;
+
+        // Everything the producer wrote, and with the last of those records the state the broker held it by
+        self::assertSame(2, $this->admin->deleteRecords([$topic => [0 => 2]])[$topic][0]->lowWatermark);
+
+        $second = $this->produce($topic, $manager, ['after the deletion']);
+
+        self::assertSame(2, $second[$topic][0]->baseOffset, 'the batch that was sent again was appended');
+        self::assertSame(2, $second[$topic][0]->logStartOffset, 'and the answer reports the new start of the log');
+        self::assertSame(
+            $producerId,
+            $manager->getProducerIdAndEpoch()->producerId,
+            'the producer id survives - only the numbering of that one partition starts over'
+        );
+        self::assertSame(1, $manager->sequenceNumber($partition), 'at the sequence 0, so the next batch is 1');
+        self::assertSame(2, $manager->lastAckedOffset($partition));
+        self::assertSame(3, $this->latestOffset($topic));
+    }
+
+    /**
+     * A 1.1.1 broker answers a first batch of an unknown producer id with 59, where 0.11.0.3 answered 45
+     *
+     * `ProducerAppendInfo.checkSequence` @ 1.1.1 throws `UnknownProducerIdException` when the log holds no entry
+     * of the producer id at all (`NO_PRODUCER_EPOCH`) and the batch does not start at the sequence 0; 0.11.0.3,
+     * which had no such
+     * error code, answered every one of those with `OutOfOrderSequenceException`. This client only repairs it when
+     * the `logStartOffset` of the answer says that its records were deleted, which is why the producer of this
+     * test claims an acknowledged offset that is not below the start of the log.
+     */
+    public function testAFirstBatchOfAnUnknownProducerIdThatDoesNotStartAtZeroIsAnUnknownProducerId(): void
+    {
+        $topic     = $this->topic('unknown-id');
+        $manager   = new TransactionManager($this->client);
+        $partition = new TopicPartition($topic, 0);
+        $manager->maybeInitProducerId();
+
+        // Nothing a producer would ever do - it is what the first batch of a producer whose acknowledgement of an
+        // earlier one was lost looks like to a broker that never saw that earlier batch
+        $manager->incrementSequenceNumber($partition, 5);
+        $manager->updateLastAckedOffset($partition, 0, 1);
+
+        try {
+            $this->produce($topic, $manager, ['not the first sequence']);
+            self::fail('a first batch that does not start at 0 has to be reported');
+        } catch (TopicPartitionRequestException $exception) {
+            $error = $exception->getExceptions()[$topic][0];
+
+            self::assertInstanceOf(UnknownProducerIdException::class, $error);
+            self::assertInstanceOf(
+                OutOfOrderSequenceException::class,
+                $error,
+                'the 59 of the Java client is a special case of the 45 it replaces'
+            );
+            self::assertSame(0, $error->getContext()['logStartOffset'], 'nothing of this log was deleted');
+        }
+
+        self::assertFalse($manager->hasProducerId(), 'a 59 a retry can not fix throws the producer id away');
+        self::assertFalse($manager->hasFatalError());
+        self::assertSame(0, $this->latestOffset($topic), 'and the refused batch was not appended');
     }
 
     public function testAnOldEpochIsFencedAndFinishesTheProducerForGood(): void

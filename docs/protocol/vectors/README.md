@@ -18,11 +18,13 @@ broker, and everything Kafka 0.11 added on the 0.11.0.3 container of the `0.11.x
 re-captured on every line: they now carry the **43** keys 0 to 42 of a Kafka 1.1.1 broker (272 and 276 bytes),
 where the 0.11 capture carried 34 and the 0.10 one 21. The two requests are unchanged — an ApiVersions frame has no
 body in either version. The vectors of what Kafka 1.x *adds* arrive with the ticket that implements each api:
-SaslHandshake v1 and SaslAuthenticate (T2), Produce v4/v5, Fetch v6/v7 and Metadata v5 (T3) and the two JBOD
-apis of KIP-113 are captured; DescribeConfigs v1, CreatePartitions and DeleteGroups (T4) and, optionally, the four
-delegation-token apis (T7) are still open. `describe-log-dirs.json` (6) and `alter-replica-log-dirs.json` (6) hold
-the two log directories of the image, the null and the empty shape of the nullable topic array, the answer taken
-while a real replica move was running, and the 57 and 9 of AlterReplicaLogDirs.
+SaslHandshake v1 and SaslAuthenticate (T2), Produce v4/v5, Fetch v6/v7 and Metadata v5 (T3), DescribeConfigs v1,
+CreatePartitions and DeleteGroups (T4), the two JBOD apis of KIP-113 (T5), the two Produce v5 answers that Kafka
+1.x changed for the idempotent producer (T6) and the four delegation-token apis (T7) are all captured. `describe-log-dirs.json` (6) and `alter-replica-log-dirs.json` (6) hold the two log
+directories of the image, the null and the empty shape of the nullable topic array, the answer taken while a real
+replica move was running, and the 57 and 9 of AlterReplicaLogDirs. The four producer frames in `produce.json` hold
+a duplicate of a batch inside the **five-batch window** and the **59** `UNKNOWN_PRODUCER_ID` of a producer whose
+records were deleted, with the `log_start_offset` that decides what a client does about it.
 
 | File | Vectors | What was captured on the 0.11.0.3 broker |
 |---|---|---|

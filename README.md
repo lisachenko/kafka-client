@@ -144,12 +144,24 @@ deduplicate against what the previous one wrote, and a record your application s
 is a new batch, which the broker has no way of recognising. Deduplication across sessions is what a
 `transactional.id` is for.
 
-Two error codes of the broker say that the producer state itself is broken. `47`
+A **Kafka 1.x** broker widens the guarantee in two ways that need no option: it recognises a
+duplicate of any of the **last five** batches of a producer and partition, not only of the very
+last one, so a producer whose acknowledgements of several batches in a row were lost is still
+answered with the original offsets instead of being thrown out of sequence; and it tells a client
+when it has lost the state of a producer altogether, which a 0.11 broker could not.
+
+Three error codes of the broker say something about the producer state itself. `47`
 (`ProducerFencedException`) means another producer took the producer id over: the producer is
 finished and refuses every further send. `45` (`OutOfOrderSequenceException`) means the producer
 and the broker no longer agree on what is in the log: the batch that hit it is reported to the
 caller, and the producer starts over with a new producer id — everything written under the old one
-loses its deduplication. Both are documented, with what a real 1.1.1 broker answers, in
+loses its deduplication. `59` (`UnknownProducerIdException`, Kafka 1.0, a subclass of the previous
+one) means the broker has no state of this producer for that partition — because every record it
+wrote there was deleted by `deleteRecords()` or by a retention run. That one the producer
+**repairs by itself**: the `logStartOffset` that Produce v5 added to the answer shows that the
+records fell below the start of the log, so the partition is numbered from the sequence 0 again
+and the batch is sent once more, under the same producer id and without touching any other
+partition. All three are documented, with what a real 1.1.1 broker answers, in
 [docs/protocol/1.1.md](docs/protocol/1.1.md), section "The idempotent producer".
 
 ### Transactions
@@ -784,6 +796,8 @@ What the five lines can do beyond the api versions themselves. A cell that names
 | Transactional producer, `isolation.level`              | 0.11       | –       | –       | –        | yes      | yes    |
 | Framed SASL exchange (`SaslAuthenticate`, KIP-152)     | 1.0        | –       | –       | –        | –        | yes    |
 | `log_start_offset` of a produce answer, `offline_replicas` | 1.0    | –       | –       | –        | –        | **yes** |
+| The five-batch duplicate window of a producer id        | 1.0        | –       | –       | –        | –        | **yes** |
+| `UnknownProducerId` (59) repaired from the `log_start_offset` | 1.0  | –   | –       | –        | –        | **yes** |
 | Incremental fetch sessions (KIP-227)                   | 1.1        | –       | –       | –        | –        | the frame; in the consumer: T8 |
 | Dynamic broker configuration, config sources and synonyms (KIP-226) | 1.1 | –  | –       | –        | –        | **yes** |
 | Admin: `createPartitions()`, `deleteConsumerGroups()`  | 1.0 / 1.1  | –       | –       | –        | –        | **yes** |

@@ -104,6 +104,33 @@ section grows with every ticket that lands.
   fetch session (the full fetch that opens it, the incremental fetch that is answered with the one
   partition that changed, the fetch that forgets a partition, and the two session errors **70** and
   **71**) and the v5 pair of Metadata.
+- **The idempotent producer of Kafka 1.x: `UNKNOWN_PRODUCER_ID` (59) is repaired instead of
+  reported** — the broker drops the state of a producer id when every record it wrote into a
+  partition is deleted (`DeleteRecords`, or a retention run), and answers the next batch of that
+  producer with the code 59 rather than with the 45 of a 0.11 broker.
+  `Producer\Internals\TransactionManager` now keeps the **offset of the last record the broker
+  acknowledged** for every topic-partition (`lastAckedOffset()`, `updateLastAckedOffset()`, fed by
+  a new `$baseOffset` argument of `batchCompleted()`) and decides on it, exactly as
+  `TransactionManager.canRetry()` @ 1.1.1 does: the new **`canRetryBatch()`** answers `true` for a
+  59 whose `logStartOffset` is `-1` (the partition moved away from the broker, so the same batch is
+  sent again unchanged) and for one whose `logStartOffset` is **above** that offset — the records
+  really were deleted — after **`startSequencesAtBeginning()`** has numbered *that* partition from
+  the sequence 0 again, keeping the producer id and every other partition. `Client::produce()` sends
+  the repaired batch once more, within `retries` and `retry.backoff.ms`; a 59 that this cannot
+  explain reaches `batchFailed()` as the `OutOfOrderSequence` it is a subclass of. It holds for a
+  transactional producer too — the 1.1.1 coordinator accepts the batch that starts the partition
+  over under the epoch of the open transaction, so a deletion under an open transaction is no longer
+  an abort.
+- **The `log_start_offset` of a refused partition travels with its exception** —
+  `Client::produce()` puts it into the context of the `KafkaException` of every failed partition of
+  a Produce answer, so an application that catches a `TopicPartitionRequestException` can read
+  `getContext()['logStartOffset']` next to the topic and the partition.
+- **Wire vectors of what 1.x changed for the producer** — four Produce **v5** frames captured on the
+  1.1.1 container with the client id and topic `t6-idempotent`: the request and the answer of a
+  duplicate of the batch **four batches back** (error code 0, the base offset of the original append
+  and its stored timestamp — the five-batch window, where a 0.11 broker answered 45), and the
+  request and the answer of the batch that follows a `DeleteRecords` of the whole partition (error
+  code **59** with `log_start_offset = 5`).
 - **The two JBOD apis of KIP-113, Kafka 1.0** — `DescribeLogDirs` (key 35, v0) and
   `AlterReplicaLogDirs` (key 34, v0), with `Admin\AdminClient::describeLogDirs()` and
   `Admin\AdminClient::alterReplicaLogDirs()`. Both are **broker-local**, so the first takes a list
@@ -211,7 +238,10 @@ section grows with every ticket that lands.
 - **Behaviour of the broker that the inherited suite pinned differently** — all of it measured on
   the container and recorded in the document: a duplicate of any of the **last five** batches of a
   producer id and partition is answered as the original append (0.11 kept one batch and answered 45
-  for anything older); a Fetch below v4 of a partition whose records carry headers is **served with
+  for anything older), while a **first** batch of a producer id the broker has no entry for that
+  does not start at the sequence 0 is **59**, where 0.11.0.3 answered 45 — the 45 is left for an
+  entry that exists, i.e. a gap in the sequence or an epoch bump that does not restart at 0; a Fetch
+  below v4 of a partition whose records carry headers is **served with
   the headers dropped** and the error code 0, where 0.11 refused it with -1 — measured with a batch
   of three records of which only the middle one has a header, so no record is skipped and the
   timestamps survive down to the message format v1; `is_default` of a
@@ -225,6 +255,13 @@ section grows with every ticket that lands.
 - **README** now announces the 1.x line: the badges point at `main`, the protocol-version matrix
   lists all 43 api keys of a 1.1.1 broker with the ticket that raises each remaining one, and the
   feature matrix gained a `main` column.
+- **The "Idempotent producer" section of the README and the sections "The idempotent producer" and
+  "Transactions" of the protocol document** describe the 1.x producer: the five-batch window, the
+  error code 59 with the `log_start_offset` that decides what to do about it, and the whole
+  behaviour table re-measured against the 1.1.1 container. The transaction apis 24-28 are unchanged
+  at version 0 and every observation of the 0.11 line was re-measured on the 1.1.1 coordinator with
+  the same result, down to the defaults `transactional.id.expiration.ms = 604800000` and
+  `transaction.abort.timed.out.transaction.cleanup.interval.ms = 60000`.
 
 Unreleased — the 0.11.x line (Kafka 0.11.0.3)
 -------------------------------------------
