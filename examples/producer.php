@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Produces a handful of records to a topic of a Kafka 0.11.0.3 cluster.
+ * Produces a handful of records to a topic of a Kafka 1.1.1 cluster.
  *
  * Run it against the broker of the development environment:
  *
@@ -148,5 +148,5 @@ try {
 }
 
 echo "Done. Read the records back with the console consumer of the broker container:\n";
-echo "  docker exec kafka-0-11-0-3 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
+echo "  docker exec kafka-1-1-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
     . " --new-consumer --topic {$topic} --from-beginning --max-messages 12\n";

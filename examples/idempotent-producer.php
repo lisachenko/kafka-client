@@ -31,7 +31,7 @@ declare(strict_types=1);
  *   php examples/idempotent-producer.php my-topic
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/idempotent-producer.php
  *
- * @see docs/protocol/0.11.0.md, sections "The idempotent producer" and "InitProducerId API (key 22, v0)"
+ * @see docs/protocol/1.1.md, sections "The idempotent producer" and "InitProducerId API (key 22, v0)"
  */
 
 use Protocol\Kafka\Client;
@@ -128,5 +128,5 @@ echo "Every batch above carries the id of this producer, the epoch and the seque
 echo "sending one of them again would be answered with the offset of the original append and written nowhere.\n";
 
 echo "\nSee the producer id, the epoch and the sequences of the batches in the log:\n";
-echo "  docker exec kafka-0-11-0-3 /opt/kafka/bin/kafka-run-class.sh kafka.tools.DumpLogSegments"
+echo "  docker exec kafka-1-1-1 /opt/kafka/bin/kafka-run-class.sh kafka.tools.DumpLogSegments"
     . " --files /tmp/kafka-logs/{$topic}-0/00000000000000000000.log --print-data-log --deep-iteration\n";

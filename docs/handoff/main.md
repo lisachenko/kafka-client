@@ -1,3 +1,226 @@
+# The 1.x line (Kafka 1.1.1) — release notes
+
+**State: complete.** `main` speaks the Apache Kafka **1.1.1** wire protocol — the last release of the 1.x line, so
+it covers everything Kafka 1.0.0 and 1.1.0 added (1.0.1, 1.0.2 and 1.1.1 changed nothing on the wire) — on the
+`BinarySchema` engine that came up the cascade from `0.10.x`. The line was built on the integration branch
+`claude/kafka-1x-client-iaoh4f` (epic [#90](https://github.com/lisachenko/kafka-client/issues/90)) and merged into
+`main` as one pull request. This file is the release record of the line; the plan it was built from is kept below,
+under "The original plan", exactly as the `0.11.x` line wrote it.
+
+The grammar is [`docs/protocol/1.1.md`](../protocol/1.1.md), the machine-readable frames are in
+[`docs/protocol/vectors`](../protocol/vectors), and what a client cannot read out of the grammar is in that
+document's "Broker quirks and observations" section. What the **next** line starts from is
+[`docs/handoff/2.0.x.md`](2.0.x.md).
+
+## What was built
+
+| Ticket | PR | What it delivered |
+|---|---|---|
+| **T1** #91 | [#101](https://github.com/lisachenko/kafka-client/pull/101) | The api-key table as the literal **43-key** ApiVersions answer of the container, the document/README/CHANGELOG of the line, the group state **`CompletingRebalance`**, and the 21 inherited integration failures turned into assertions of what a 1.1.1 broker really does |
+| **T2** #92 | [#100](https://github.com/lisachenko/kafka-client/pull/100) | **SaslHandshake v1 and SaslAuthenticate (36)** of KIP-152: the framed token exchange, so a refused credential is the error code **58** with the broker's message instead of a silently closed socket; the raw v0 exchange stays implemented |
+| **T3** #93 | [#102](https://github.com/lisachenko/kafka-client/pull/102) | **Produce v4/v5** (the `log_start_offset`), **Fetch v6/v7** with the fetch-session frame of KIP-227 (`FetchMetadata`, `FetchRequestForgottenTopic`, the top-level `error_code`/`session_id`) and **Metadata v5** (`offline_replicas`) |
+| **T4** #94 | [#104](https://github.com/lisachenko/kafka-client/pull/104) | **DescribeConfigs v1** with the config **source** and the **synonyms** of KIP-226, the **dynamic broker configuration** through AlterConfigs, **CreatePartitions (37)** and **DeleteGroups (42)** |
+| **T5** #95 | [#103](https://github.com/lisachenko/kafka-client/pull/103) | The two JBOD apis of KIP-113: **DescribeLogDirs (35)** and **AlterReplicaLogDirs (34)**, with `LogDirInfo`, `ReplicaInfo` and `TopicPartitionReplica` |
+| **T6** #96 | [#106](https://github.com/lisachenko/kafka-client/pull/106) | **The idempotent producer of 1.x**: the five-batch duplicate window, and **59** `UNKNOWN_PRODUCER_ID` repaired from the `log_start_offset` instead of reported (`lastAckedOffset()`, `startSequencesAtBeginning()`, `canRetryBatch()`) |
+| **T7** #97 | [#105](https://github.com/lisachenko/kafka-client/pull/105) | **The four delegation-token apis 38-41** of KIP-48 with `KafkaPrincipal`, `DelegationToken` and `TokenInformation` — issued, renewed, expired and described over a SASL listener |
+| **T8** #98 | *PR pending — the coordinator fills the number in* | **The incremental fetch sessions in the consumer** (KIP-227): the session state machine of `FetchSessionHandler` on top of T3's frame |
+| **T9** #99 | [#107](https://github.com/lisachenko/kafka-client/pull/107) | This file, the consistency pass over the document, the vectors README, the README matrix, the CHANGELOG, the examples, `docs/CASCADE.md`, `CLAUDE.md` and the handoff of the next line |
+
+The **foundation** of the line, on the integration branch before T1: the broker image `docker/kafka-1.1.1/` with
+the four listeners plus two log directories and a delegation-token master key, the rename of the protocol document
+to `docs/protocol/1.1.md`, the api keys **34-42** and the error codes **56-71** with one exception class each.
+
+## How it was verified
+
+Everything was measured against a real Apache Kafka **1.1.1** broker (`docker/kafka-1.1.1/`, the container
+`kafka-1-1-1`, `inter.broker.protocol.version` and `log.message.format.version` `1.1-IV0`), never against the
+specification alone. The counts below are the state of the tree **before T8**, which lands after this file was
+written:
+
+* **1717 unit tests** and **321 compliance tests**, replaying **314 wire vectors** in 36 files
+  ([`docs/protocol/vectors`](../protocol/vectors)) — the **85** frames this line captured on the 1.1.1 container
+  plus the **229** of the four lines below, which a 1.1.1 broker still answers unchanged. Two of the inherited
+  vectors were re-captured rather than added: the two ApiVersions **answers**, whose whole content is the api-key
+  table of the broker. Every vector is replayed in both directions, and `DocumentationSyncTest` holds the
+  annotated dumps of the document and the vector files together.
+* **540 integration tests** over all four listeners — PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL
+  9095 — with unique topic, group and transactional-id names per test class, and **zero skips**.
+* The **api-key table** of the document is the literal ApiVersions answer of the broker.
+  `tests/Integration/ApiVersionProbeTest.php` sends a real frame of every one of the 43 keys — bodies for the nine
+  keys 34-42 included — and one frame **above** every one of them, to see the connection close; the api key 43
+  (`ElectPreferredLeaders`, Kafka 2.2) is what it sends to see an unknown key close it.
+* **Ten of the sixteen error codes this line adds are observed on the container** (57, 58, 59, 62, 63, 64, 66, 67,
+  68, 69). The codes **56**, **60**, **61** and **65** cannot be produced on it and are implemented from
+  `Errors.java` alone; **70** and **71** are reachable only from a consumer that keeps a fetch session.
+
+## Deviations from the plan, forced by the broker
+
+**Framing and the api surface**
+
+* **ControlledShutdown (7) is served as v0 *and* v1**, where every broker from 0.9 to 0.11 reported the single
+  version 1. Kafka 1.0 moved the api to the schemas of the Java client and gave `RequestHeader` a
+  `CONTROLLED_SHUTDOWN_V0_SCHEMA` for the one frame whose header has no client id — so v2 now closes the
+  connection, and **ApiVersions is the only api left that answers an unknown version**. The document's section
+  "The last Scala api does not check its version" became "Every api of the table validates its version".
+* **The 34 answer of a second SaslHandshake carries an EMPTY mechanism list.**
+  `KafkaApis.handleSaslHandshakeRequest` passes `config.saslEnabledMechanisms` in 1.0.2 and
+  `Collections.emptySet()` in 1.1.1, so the inherited "34 with the enabled mechanisms" is no longer true. A second
+  `SaslAuthenticate` on an authenticated connection is also a 34 — and leaves the connection **usable**, because
+  it is `KafkaApis` that answers it and not the authenticator.
+* **`throttle_time_ms` is the LAST field of every api added after KIP-124** — all four delegation-token answers,
+  SaslAuthenticate (36), DescribeLogDirs (35) and AlterReplicaLogDirs (34). Reading it as the first int32 of such
+  an answer decodes an error code as a throttle time.
+
+**Produce, Fetch and the message format**
+
+* **A record with headers is down-converted *without* them, and the fetch succeeds.** A Fetch below v4 of such a
+  partition is answered with the error code **0** and the whole record set, headers dropped
+  (`AbstractRecords.downConvert()` @ 1.1.1), where a 0.11.0.3 broker refused the whole partition with **-1** and
+  an empty record set. Measured with a batch of three records of which only the middle one has a header: nothing
+  is skipped and the stored batch is untouched.
+* **An incremental fetch with an empty topic array is not "only the partitions that changed".** The session caches
+  the **fetch offsets**, so a partition whose offset the client did not move is answered with the same records
+  again; a client has to send its new offsets in the topics array. The plan said otherwise.
+* **A fetch-session error does not destroy the session.** Both **70** (unknown session id) and **71** (wrong
+  epoch) are answered with `session_id = 0` and an empty topic array, and the session survives a 71 — the next
+  request with the right epoch is served.
+* **The error code 56 (`KafkaStorageError`) is not producible on the container.** It needs a log directory that
+  goes offline, and the two `log.dirs` of the image are the disks every other test writes to; the 56/6 translation
+  of Produce v4 and Fetch v6 is therefore documented from the sources and from the api version alone.
+* **`FetchMetadata::LEGACY` and `::INITIAL` are static factory methods** (`legacy()`, `initial()`): a PHP class
+  constant cannot hold an object. `FetchResponse::$errorCode` and `$sessionId` are plain typed properties with
+  defaults, not `readonly`, because a readonly property cannot have one.
+
+**The idempotent producer**
+
+* **A first batch of a producer id the broker has no entry for is 59, not 45.** The inherited row "a first batch
+  that does not start at 0 is 45" does not hold: `ProducerAppendInfo.checkSequence` @ 1.1.1 throws
+  `UnknownProducerIdException` when the entry is missing altogether and keeps the 45 for an entry that exists — a
+  gap, or an epoch bump that does not restart at 0.
+* **A 59 is not fatal for a transactional producer.** The ticket said it was, as in Java;
+  `TransactionManager.canRetry()` @ 1.1.1 does not exclude a transactional producer from the sequence reset, and
+  the 1.1.1 coordinator accepts the batch that starts the partition over under the epoch of the open transaction.
+  An unrepairable 59 leaves the producer in `ABORTABLE_ERROR`, not in the fatal state.
+* **The duplicate window is exactly five batches**, measured in both directions: each of five batches re-sent in
+  turn is answered as its own original append, and the first one becomes a **45** as soon as a sixth batch has
+  pushed it out.
+* **`retries` stays 3 with `enable.idempotence`.** The Java producer overrides it to `Integer.MAX_VALUE` because
+  it has a background sender; this client has none, and an unbounded budget would be an unbounded `flush()`. The
+  deviation of the 0.11 line stands unchanged.
+
+**The configuration apis**
+
+* **`is_default` of a version 0 answer derives from the KIP-226 config source**, so a topic option whose broker
+  synonym stands in the `server.properties` is not a default any more; **`is_read_only` of a broker entry means
+  "not dynamically updatable"** (`broker.id` yes, `log.retention.hours` no — although altering it is still
+  refused); and **AlterConfigs accepts a broker resource** and refuses it **per option** with 42 and
+  `Cannot update these configs dynamically: Set(…)`, where 0.11 refused every broker resource outright.
+* **`log.retention.ms` has no synonyms at all on the container.** `AdminManager.configSynonyms()` ends with
+  `dropWhile(_.name != name)`, which drops the *whole* list when nothing in it carries the requested name — the
+  container sets `log.retention.hours`, so `retention.ms` comes back with the source `DEFAULT_CONFIG` and an empty
+  synonym array. The "three synonyms of different names" the ticket expected is the topic option `segment.bytes`
+  of a topic that sets it.
+* **An unknown option NAME of a broker resource is accepted**, stored in ZooKeeper and reported back as a
+  `DYNAMIC_BROKER_CONFIG` that is *sensitive* with a `null` value. A topic answers 40 for the same mistake.
+* **Removing a dynamic broker option does not restore the live value**: the config store is empty while
+  `KafkaConfig` keeps the last value, so a test has to write the documented default back explicitly first.
+* **CreateTopics rewrote three of its error messages** (the codes are unchanged):
+  `Number of partitions must be larger than 0.`, `Replication factor: 2 larger than available brokers: 1.` and
+  `Topic name "x" is illegal, it contains a character other than …`. The "unexpected broker id" message of
+  DescribeConfigs changed too, and now quotes a Scala interpolation bug:
+  `Unexpected broker id, expected 0 or empty string, but received Resource(type=BROKER, name='7'}.name`.
+* **CreatePartitions and DeleteGroups answer where the ticket guessed**: an unknown topic is **3**, a duplicate
+  topic **42**, a shrink **37**; a DeleteGroups of an empty group id is **24**, and an `Empty` group **without a
+  committed offset** is dropped by `cleanupGroupMetadata()` every 600 s, so a group a test wants to delete has to
+  carry an offset.
+
+**The log directories**
+
+* **An unknown replica of AlterReplicaLogDirs is 9 (`ReplicaNotAvailable`), not 3.**
+  `ReplicaManager.getReplicaOrException` throws it for a partition the topic does not have *and* for a topic the
+  cluster has never heard of; the api has no code 3 at all, and neither api creates a topic.
+* **DescribeLogDirs has no error for an unknown replica** — it simply produces no entry.
+* **A relative path that names one of `log.dirs` is 57**, because `LogManager.isLogDirOnline` compares absolute
+  paths; and **naming the directory a replica already sits in is 0 and a no-op**, which is also how a **running
+  move is cancelled**.
+* **A move is faster than a round trip.** An 8 MB partition moves in about 0.25 s and a 23 KB one in about 0.1 s,
+  so a test that wants to see `is_future = true` has to write megabytes and repeat the move.
+
+**The delegation tokens**
+
+* **The plan expected 62, 63, 66 and 67 to be unobservable** ("a token cannot be used without SCRAM"). They are
+  all answered by the four apis of KIP-48 themselves, which need no SCRAM at all, and were measured against a
+  token this client issued. Only **60**, **61** and **65** stay unobservable on the container.
+* **Deleting a token and letting it expire are different states.** A negative `expiry_time_period` removes the
+  token and every later request for it is **62**; a token that merely ran past its expiry is **66** for both the
+  renew and the expire api and **cannot be removed through the protocol at all** — only the broker's sweeper
+  deletes it, every `delegation.token.expiry.check.interval.ms` (one hour).
+* **Without an authorizer every authenticated principal can DESCRIBE every token, HMAC included.**
+  `DelegationTokenManager.filterToken` falls back to `authorize(...)`, and `KafkaApis.authorize` is
+  `authorizer.forall(...)` — `true` when there is none. Renewing and expiring still check owner-or-renewer (63).
+* **`delegation-tokens.json` is the first vector file that holds several apis**: its `apiKey` is `null` and every
+  request vector carries the key of its own api.
+
+**Identifiers**
+
+* **The error code 58 is `SaslAuthenticationFailedException` here**, not the Java `SaslAuthenticationException`:
+  that name has belonged to the client-side exception of the socket layer since the 0.10 line, and it is
+  deliberately not a `KafkaException`. The wire exception travels as its cause. The code 64 keeps the Java *class*
+  name `UnsupportedByAuthenticationException` although its constant reads `DELEGATION_TOKEN_REQUEST_NOT_ALLOWED`.
+* **The group state `AwaitingSync` is called `CompletingRebalance`** from Kafka 1.0 on, and that is the string a
+  1.x coordinator answers. `STATE_AWAITING_SYNC` stays as the 0.9-to-0.11 name of the very same state.
+
+## Known limitations
+
+* **No ACL apis** (`DescribeAcls` 29, `CreateAcls` 30, `DeleteAcls` 31), by decision 4 of the epic, inherited from
+  the 0.11 line: they do nothing on a broker without an `authorizer.class.name` — a 1.1.1 broker answers all three
+  with the error code 54 — and every wire vector of this repository comes from a real broker. The error codes 53
+  and 65 belong to the same family and are implemented from the sources alone.
+* **A delegation token can be issued but not used.** The four apis of KIP-48 are implemented and verified;
+  authenticating *with* a token is a SASL/SCRAM login whose user name is the token id and whose password is the
+  base64 HMAC, and this client speaks SASL/**PLAIN** only.
+* **The replication apis `LeaderAndIsr` (4), `StopReplica` (5) and `UpdateMetadata` (6) are not implemented.**
+  A 1.1.1 broker serves them and the probe checks that it does (they answer 11, `StaleControllerEpoch`, for the
+  stale controller epoch it sends), but only a controller ever sends them. `OffsetForLeaderEpoch` (23) and
+  `WriteTxnMarkers` (27) have classes and wire vectors and no client method either.
+* **Six error codes are implemented from the sources and never observed on the container**: **56** (a log
+  directory that goes offline), **60** (a reassignment on a multi-broker cluster), **61** (a broker *without* a
+  token master key — the image sets one on purpose), **65**, **53** and **30** (all three need an authorizer). The
+  protocol document says so at every one of them.
+* **The consumer sends session-less full fetches until T8 lands.** `Client::fetchPartitions()` sends Fetch **v7**
+  with `session_id = 0` and `epoch = -1`, which a 1.1.1 broker serves exactly as it serves a Fetch v6; the
+  session state machine itself is measured, documented and pinned by `FetchSessionApiTest`, and the incremental
+  sessions in the consumer are ticket T8.
+* **`retries` defaults to 3 with `enable.idempotence`** (see above), and `max.in.flight.requests.per.connection`
+  needs no option here — this client writes one produce request and reads its answer before the next.
+* **`AdminClient::listOffsets()` stays at `read_uncommitted`** while `KafkaConsumer` sends its `isolation.level`
+  in the Fetch and in the Offsets request alike: an administrator asks what is in the log, a consumer asks what it
+  may read. A deliberate difference, not an omission.
+* **Everything above Kafka 1.1.1 is out of scope by design**: the api keys above 42, the error codes above 71,
+  Produce v6 / Fetch v8 / Metadata v6 and the other versions of Kafka 2.x, the leader epoch of KIP-320, flexible
+  versions and tagged fields, SASL/SCRAM and SASL/GSSAPI. The api-key table of the document is the ceiling, and a
+  frame above it costs the connection.
+
+## What the line above starts from
+
+The next line is **Kafka 2.0.1**, and its handoff — what 2.0 adds over 1.1.1 api by api with the class to start
+from, the one new error code, the ticket plan, the environment recipe, the pitfalls of this session and the open
+questions — is [`docs/handoff/2.0.x.md`](2.0.x.md).
+
+The short version: Kafka 2.0 adds **no api key** and **no message format**; it bumps almost every api by one
+version with a **byte-identical schema** (KIP-219, which makes honouring `throttle_time_ms` the client's job),
+gives `OffsetsForLeaderEpochResponse` v1 a per-partition `leader_epoch` (KIP-279), adds `resource_pattern_type` to
+the three ACL apis (KIP-290) and one error code, **72** `LISTENER_NOT_FOUND` (retriable). Everything this line
+built — the schema engine, the record batch v2, the transaction protocol, the fetch sessions, the vectors and the
+compliance suite — carries over unchanged.
+
+---
+
+# The original plan
+
+Everything below is the handoff that the `0.11.x` line wrote for this one, kept as the record of what was decided
+before the work started. It describes the state **at handoff**, not the state of the branch today.
+
 # Handoff: the `main` line (Kafka 1.x)
 
 State at handoff: the `0.11.x` line is **complete**. Everything a Kafka 0.11.0.3 broker speaks is implemented on the

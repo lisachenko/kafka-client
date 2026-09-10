@@ -12,7 +12,7 @@
 declare(strict_types=1);
 
 /**
- * Talks to the SSL listener of a Kafka 0.11.0.3 cluster.
+ * Talks to the SSL listener of a Kafka 1.1.1 cluster.
  *
  * Kafka 0.9 is the release that added transport security: a broker binds one listener per security protocol
  * (`listeners=PLAINTEXT://...,SSL://...`) and every listener serves the identical request set, so encryption changes
@@ -21,7 +21,7 @@ declare(strict_types=1);
  * over plaintext.
  *
  * The broker of this repository advertises PLAINTEXT on 9092, SSL on 9093, SASL_PLAINTEXT on 9094 and SASL_SSL on
- * 9095, with the self-signed test certificate of `docker/kafka-0.11.0.3/ssl/broker.crt`, which is also the CA file
+ * 9095, with the self-signed test certificate of `docker/kafka-1.1.1/ssl/broker.crt`, which is also the CA file
  * the client verifies it against:
  *
  *   docker compose up -d
@@ -59,7 +59,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 $sslBootstrapServer = getenv('KAFKA_SSL_BOOTSTRAP_SERVERS') ?: '127.0.0.1:9093';
 $brokerAddress      = 'tcp://' . trim(explode(',', $sslBootstrapServer)[0]);
 $topic              = $argv[1] ?? 'kafka-client-example-ssl';
-$certificate        = dirname(__DIR__) . '/docker/kafka-0.11.0.3/ssl/broker.crt';
+$certificate        = dirname(__DIR__) . '/docker/kafka-1.1.1/ssl/broker.crt';
 
 if (!extension_loaded('openssl')) {
     echo "The openssl extension is required for security.protocol = SSL\n";

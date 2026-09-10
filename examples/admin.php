@@ -10,12 +10,21 @@
  */
 
 /**
- * Admin API example for the Kafka 0.11.0.3 protocol.
+ * Admin API example for the Kafka 1.1.1 protocol: the cluster and its controller, the api table of a broker, the
+ * topics, the offsets of a partition, and the consumer groups - listed, described and, since Kafka 1.1 (KIP-229),
+ * deleted through the protocol with `deleteConsumerGroups()`.
+ *
+ * The configuration apis of the same client are in {@see examples/admin-configs.php}, the log directories of a
+ * broker in {@see examples/admin-log-dirs.php}, the topic apis in {@see examples/create-topic.php} and the
+ * delegation tokens of KIP-48 in {@see examples/delegation-tokens.php}.
  *
  * Start the broker of docker-compose.yml and run:
  *
  *   docker compose up -d
  *   php examples/admin.php [topic] [groupId]
+ *
+ * @see docs/protocol/1.1.md, sections "Metadata API (key 3, v0 to v5)", "ListGroups API (key 16, v0 and v1)",
+ *      "DescribeGroups API (key 15, v0 and v1)" and "DeleteGroups API (key 42, v0)"
  */
 
 declare(strict_types=1);

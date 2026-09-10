@@ -78,7 +78,7 @@ $securityProtocol       = $saslSslBootstrapServer !== ''
     : SecurityProtocol::SASL_PLAINTEXT;
 $brokerAddress          = 'tcp://' . trim(explode(',', $saslBootstrapServer)[0]);
 $topic                  = $argv[1] ?? 'kafka-client-example-sasl';
-$certificate            = dirname(__DIR__) . '/docker/kafka-0.11.0.3/ssl/broker.crt';
+$certificate            = dirname(__DIR__) . '/docker/kafka-1.1.1/ssl/broker.crt';
 
 if ($securityProtocol === SecurityProtocol::SASL_SSL && !extension_loaded('openssl')) {
     echo "The openssl extension is required for security.protocol = SASL_SSL\n";
