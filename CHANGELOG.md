@@ -91,8 +91,8 @@ delivered, how it was verified and what the line above it starts from is in
   $metadata = null`, `array $forgottenTopicPartitions = []`); `FetchResponse` is v7 with
   `FetchResponseV6`/`V5` and the new `$errorCode`/`$sessionId`, both 0 below version 7.
   `Client::fetchPartitions()` sends v7 with the **session-less** metadata (`session_id 0`,
-  `epoch -1`), which a 1.1.1 broker serves exactly as it serves a Fetch v6; the sessions in the
-  consumer are a ticket of their own.
+  `epoch -1`), which a 1.1.1 broker serves exactly as it serves a Fetch v6; the sessions themselves
+  are driven by the consumer, see the KIP-227 entry below.
 - **Metadata v5 (Kafka 1.0, KIP-112/113)** — every partition entry of the answer gains
   **`offline_replicas`**, the replicas whose broker is down or whose log directory has failed; the
   request is the version 4 frame. `MetadataRequest`/`MetadataResponse` are v5 with
@@ -223,6 +223,33 @@ delivered, how it was verified and what the line above it starts from is in
   key of its own api). Its fourteen frames are one life of one token on the SASL_PLAINTEXT listener
   with the client id `t7-vectors` and the principal `User:kafkatest`, plus the error answers 67, 63,
   62, 66 and the two 64s of the PLAINTEXT listener.
+- **The incremental fetch sessions of KIP-227 in the consumer (Kafka 1.1)** — `KafkaConsumer` now
+  holds one fetch session per broker it reads from. New `Consumer\Internals\FetchSessionHandler`
+  (the `org.apache.kafka.clients.FetchSessionHandler` of the Java client: `newBuilder()` →
+  `FetchSessionHandlerBuilder::add(TopicPartition, int $fetchOffset)` → `build()` gives the
+  `FetchRequestData` of the next request with its `toSend`, `toForget`, `sessionPartitions` and
+  `metadata`; `handleResponse()` says whether the answer may be read and moves the epoch on,
+  `handleError()` puts the handler back to a full fetch), and the new
+  `Client::fetchPartitionsWithSessions()`, which the consumer fetches through and which returns
+  **only the partitions the brokers answered** — an incremental answer leaves out everything that
+  has no news, and the state of those partitions stays valid. The Java `PartitionData` triple is a
+  single fetch offset here, because a Fetch request of this client carries one `MaxBytes` for every
+  partition and a `LogStartOffset` that only a follower fills in. `Client::fetchPartitions()` keeps
+  its signature and its session-less behaviour for the bare client, and
+  `Client::getFetchSessionHandlers()` reports the sessions a client holds. The first request to a
+  broker opens the session with a full fetch, every following one states only the positions that
+  moved, a partition that leaves the assignment (a rebalance, `pause()`, a deleted topic) travels in
+  `forgotten_topics_data`, and the error codes **70** and **71**, a broker that hands out no session
+  at all and a request that was never answered are all handled inside the client: a `poll()` never
+  sees a session error. Verified against the 1.1.1 container in
+  `tests/Integration/FetchSessionConsumerTest.php`, including a real two-member rebalance and a
+  session cache filled to its 1000 slots.
+- **Wire vectors of the consumer side of a session** (`fetch.json`, four more Fetch v7 frames with
+  the client id and topic `t8-vectors`): `fetch.request.v7.incremental-forgotten` — an incremental
+  fetch that states the two positions that moved **and** forgets a third partition, the frame a
+  rebalance produces — with its answer, and `fetch.request.v7.close-existing` — the recovery from a
+  session error: the client's own session id with the epoch 0 — with the answer that carries a
+  **new** session id and every partition of the request.
 - **`examples/delegation-tokens.php`** — one token's whole life against a SASL listener of the
   container: created with a renewer and a maximum lifetime, described, renewed (which lands on the
   maximum lifetime rather than on the period that was asked for) and removed, with the **62** of

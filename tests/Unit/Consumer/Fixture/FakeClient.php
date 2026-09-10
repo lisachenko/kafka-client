@@ -108,6 +108,11 @@ final class FakeClient extends Client
     public bool $ignoreFetchOffset = false;
 
     /**
+     * Answer a fetch only with the partitions that carry records, as an incremental fetch session does
+     */
+    public bool $answerOnlyChangedPartitions = false;
+
+    /**
      * Partitions whose next message does not fit into the requested fetch size, as [topic][partition] => true
      *
      * @var array<string, array<int, bool>>
@@ -265,6 +270,36 @@ final class FakeClient extends Client
         }
 
         return $result;
+    }
+
+    /**
+     * Answers a fetch the way an **incremental fetch session** does (KIP-227), i.e. without a broker.
+     *
+     * The consumer fetches through this method, so the fake has to answer it; with
+     * {@see self::$answerOnlyChangedPartitions} it also leaves out every partition that has nothing new, which is
+     * what a real broker does for every request of a session but the first one.
+     *
+     * @inheritdoc
+     */
+    public function fetchPartitionsWithSessions(array $topicPartitionOffsets, int $timeout): array
+    {
+        $answer = $this->fetchPartitions($topicPartitionOffsets, $timeout);
+        if (!$this->answerOnlyChangedPartitions) {
+            return $answer;
+        }
+
+        foreach ($answer as $topic => $partitions) {
+            foreach ($partitions as $partition => $fetchedPartition) {
+                if ($fetchedPartition->count() === 0) {
+                    unset($answer[$topic][$partition]);
+                }
+            }
+            if ($answer[$topic] === []) {
+                unset($answer[$topic]);
+            }
+        }
+
+        return $answer;
     }
 
     /**

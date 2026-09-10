@@ -912,6 +912,178 @@
                 "sessionId": 0,
                 "topics": []
             }
+        },
+        {
+            "id": "fetch.request.v7.incremental-forgotten",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 7,
+            "source": "broker",
+            "description": "The incremental fetch of a consumer whose assignment changed: the topics array carries the positions that moved since the last request - and only those - while the partition that left the assignment travels in forgotten_topics_data. This is what FetchSessionHandler builds after a rebalance.",
+            "hex": "000000890001000700000027000a74382d766563746f7273ffffffff000001f4000000010010000000362761e90000000100000001000a74382d766563746f727300000002000000000000000000000001ffffffffffffffff00010000000000010000000000000001ffffffffffffffff0001000000000001000a74382d766563746f72730000000100000002",
+            "fields": {
+                "messageSize": 137,
+                "apiKey": 1,
+                "apiVersion": 7,
+                "correlationId": 39,
+                "clientId": "t8-vectors",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "maxBytes": 1048576,
+                "isolationLevel": 0,
+                "sessionId": 908550633,
+                "epoch": 1,
+                "topicPartitions": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 1,
+                                "logStartOffset": -1,
+                                "maxBytes": 65536
+                            },
+                            {
+                                "partition": 1,
+                                "fetchOffset": 1,
+                                "logStartOffset": -1,
+                                "maxBytes": 65536
+                            }
+                        ]
+                    }
+                },
+                "forgottenTopics": [
+                    {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            2
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "fetch.response.v7.incremental-forgotten",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 7,
+            "source": "broker",
+            "description": "The answer of that request: the forgotten partition is gone from the session, and of the two that are left only the one whose log grew is answered.",
+            "hex": "0000009a00000027000000000000362761e900000001000a74382d766563746f7273000000010000000000000000000000000002ffffffffffffffff0000000000000000ffffffff0000005200000000000000010000004600000000021154ac20000000000000000001a08c93bb3b000001a08c93bb3bffffffffffffffffffffffffffff00000001280000000a6b65792d301273657373696f6e2d6400",
+            "fields": {
+                "messageSize": 154,
+                "correlationId": 39,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 908550633,
+                "topics": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": -1,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": "00000000000000010000004600000000021154ac20000000000000000001a08c93bb3b000001a08c93bb3bffffffffffffffffffffffffffff00000001280000000a6b65792d301273657373696f6e2d6400"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v7.close-existing",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 7,
+            "source": "broker",
+            "description": "The way back from the error codes 70 and 71: the session id the client holds with the epoch 0, which is a full fetch - it removes the session the broker may still have and asks for a new one in the same request, FetchMetadata::nextCloseExisting().",
+            "hex": "000000750001000700000028000a74382d766563746f7273ffffffff000001f4000000010010000000362761e90000000000000001000a74382d766563746f727300000002000000000000000000000002ffffffffffffffff00010000000000010000000000000001ffffffffffffffff0001000000000000",
+            "fields": {
+                "messageSize": 117,
+                "apiKey": 1,
+                "apiVersion": 7,
+                "correlationId": 40,
+                "clientId": "t8-vectors",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "maxBytes": 1048576,
+                "isolationLevel": 0,
+                "sessionId": 908550633,
+                "epoch": 0,
+                "topicPartitions": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 2,
+                                "logStartOffset": -1,
+                                "maxBytes": 65536
+                            },
+                            {
+                                "partition": 1,
+                                "fetchOffset": 1,
+                                "logStartOffset": -1,
+                                "maxBytes": 65536
+                            }
+                        ]
+                    }
+                },
+                "forgottenTopics": []
+            }
+        },
+        {
+            "id": "fetch.response.v7.close-existing",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 7,
+            "source": "broker",
+            "description": "The answer of that full fetch: a NEW session id - the broker never reuses the old one - and every partition the request asked for.",
+            "hex": "0000006e000000280000000000007d0f463f00000001000a74382d766563746f7273000000020000000000000000000000000002ffffffffffffffff0000000000000000ffffffff000000000000000100000000000000000001ffffffffffffffff0000000000000000ffffffff00000000",
+            "fields": {
+                "messageSize": 110,
+                "correlationId": 40,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 2098153023,
+                "topics": {
+                    "t8-vectors": {
+                        "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": -1,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": ""
+                                }
+                            },
+                            {
+                                "partition": 1,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 1,
+                                "lastStableOffset": -1,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": ""
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
         }
     ]
 }

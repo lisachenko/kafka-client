@@ -328,6 +328,21 @@ stable offset instead of the log end offset — a consumer that compares its pos
 a partition compares it against the offset it can really reach. `AdminClient::listOffsets()` stays at
 `read_uncommitted` on purpose: an administrator asks what is in the log.
 
+**Incremental fetch sessions** (Kafka 1.1, KIP-227) are what the consumer adds on this side. Every
+broker it reads from holds a *fetch session* for it: the first request states the whole assignment
+and opens the session, every following one states only the partitions whose position moved and lets
+the broker fill in the rest, a partition that leaves the assignment — a rebalance, `pause()`, a
+topic that is gone — is dropped from the session with the `forgotten_topics_data` of the next
+request, and the answer carries only the partitions that have news. A consumer of many partitions
+therefore stops repeating its partition list in every fetch, and the broker stops answering
+partitions that have nothing to say. None of it is visible in `poll()`: the error codes **70**
+(`FetchSessionIdNotFound`, the broker no longer knows the session) and **71**
+(`InvalidFetchSessionEpoch`, a request or an answer was lost) are answered with a full fetch by the
+client itself, in the same call, and a broker that hands out no session at all — one below Kafka
+1.1, or one whose cache of 1000 sessions is full — leaves the consumer on plain full fetches.
+`Client::fetchPartitions()` keeps its session-less behaviour for callers that want one request and
+one answer; the consumer fetches through `Client::fetchPartitionsWithSessions()`.
+
 **Offsets by timestamp** (Kafka 0.10.1, KIP-79) are what the record timestamps buy on the consumer
 side: `offsetsForTimes(['test' => [0 => $millis]])` answers the first record of each partition
 whose timestamp is at or after the given one, as an `OffsetAndTimestamp` (or `null` when the
@@ -724,7 +739,7 @@ fetch sessions (T8) — the Fetch v7 frame itself is here.
 | Api key | API                  | Versions in 1.1.1 | Client-facing | `0.10.x` | `0.11.x` | `main` (this branch)         |
 |---------|----------------------|-------------------|---------------|----------|----------|------------------------------|
 | 0       | Produce              | v0 … v5           | yes           | v0, v1, v2 | v0 … v2, **v3** | v0 … v4, **v5** (**v2** for `message.format.version` below 0.11.0) |
-| 1       | Fetch                | v0 … v7           | yes           | v0 … v3  | v0 … v4, **v5** | v0 … v6, **v7** (session-less; the sessions in the consumer: T8) |
+| 1       | Fetch                | v0 … v7           | yes           | v0 … v3  | v0 … v4, **v5** | v0 … v6, **v7** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer) |
 | 2       | Offsets              | v0 … v2           | yes           | v0, v1   | v0, v1, **v2** | v0, v1, **v2**              |
 | 3       | Metadata             | v0 … v5           | yes           | v0, v1, v2 | v0 … v3, **v4** | v0 … v4, **v5**             |
 | 4       | LeaderAndIsr         | v0, v1            | broker→broker | no       | no       | no                           |
@@ -820,7 +835,7 @@ What the five lines can do beyond the api versions themselves:
 | `log_start_offset` of a produce answer, `offline_replicas` | 1.0    | –       | –       | –        | –        | **yes** |
 | The five-batch duplicate window of a producer id        | 1.0        | –       | –       | –        | –        | **yes** |
 | `UnknownProducerId` (59) repaired from the `log_start_offset` | 1.0  | –   | –       | –        | –        | **yes** |
-| Incremental fetch sessions (KIP-227)                   | 1.1        | –       | –       | –        | –        | the frame; in the consumer: T8 |
+| Incremental fetch sessions (KIP-227)                   | 1.1        | –       | –       | –        | –        | **yes, one session per broker in the consumer** |
 | Dynamic broker configuration, config sources and synonyms (KIP-226) | 1.1 | –  | –       | –        | –        | **yes** |
 | Admin: `createPartitions()`, `deleteConsumerGroups()`  | 1.0 / 1.1  | –       | –       | –        | –        | **yes** |
 | Admin: `describeLogDirs()`, `alterReplicaLogDirs()`    | 1.0        | –       | –       | –        | –        | yes    |
