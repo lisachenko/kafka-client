@@ -37,32 +37,37 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * and the list of replicas that are currently in-sync.
  *
  * <pre>
- *   Metadata Request (Version: 4) => [topics] allow_auto_topic_creation
+ *   Metadata Request (Version: 5) => [topics] allow_auto_topic_creation
  *     topics                    => NULLABLE_ARRAY of STRING
  *     allow_auto_topic_creation => BOOLEAN     -- since version 4
  * </pre>
  *
  * The versions 1, 2 and 3 send the very same frame - `METADATA_REQUEST_V2 = METADATA_REQUEST_V1` and
- * `METADATA_REQUEST_V3 = METADATA_REQUEST_V2` in `Protocol.java` @ 0.11.0.3 - and differ in their ANSWER alone
- * ({@see MetadataRequestV3}, {@see MetadataRequestV2}, {@see MetadataRequestV1}). Version 1 (Kafka 0.10.0) made the
+ * `METADATA_REQUEST_V3 = METADATA_REQUEST_V2` in `MetadataRequest.schemaVersions()` @ 1.1.1 - and differ in their
+ * ANSWER alone ({@see MetadataRequestV3}, {@see MetadataRequestV2}, {@see MetadataRequestV1}). Version 1 (Kafka 0.10.0) made the
  * topic array NULLABLE, which is the whole point of it: a client can now tell the two intentions apart that version
  * 0 ({@see MetadataRequestV0}) had to express with the same empty array.
  *
- * | topics | frame         | 0.11.0.3 broker answers                                                     |
+ * | topics | frame         | 1.1.1 broker answers                                                        |
  * |--------|---------------|-----------------------------------------------------------------------------|
  * | `null` | `ff ff ff ff` | every topic of the cluster, the internal `__consumer_offsets` included       |
  * | `[]`   | `00 00 00 00` | no topic at all - the brokers of the cluster and an empty topic array        |
  *
- * An empty array creates nothing either: `KafkaApis.handleTopicMetadataRequest` @ 0.11.0.3 only auto-creates the
+ * An empty array creates nothing either: `KafkaApis.handleTopicMetadataRequest` @ 1.1.1 only auto-creates the
  * topics that the request NAMES, so `[]` is the cheapest way to ask a broker for the members of the cluster.
  *
  * **Version 4 (KIP-4, Kafka 0.11) is what finally lets a client ask WITHOUT creating anything.** Until then, a
  * metadata request for a topic that does not exist created it whenever the broker ran with the default
  * `auto.create.topics.enable=true`; the trailing `allow_auto_topic_creation` is the client half of that decision,
- * and `KafkaApis.handleTopicMetadataRequest` @ 0.11.0.3 auto-creates a named topic only when
+ * and `KafkaApis.handleTopicMetadataRequest` @ 1.1.1 auto-creates a named topic only when
  * `config.autoCreateTopicsEnable && metadataRequest.allowAutoTopicCreation` holds. A request below version 4 has no
  * such field and `MetadataRequest.allowAutoTopicCreation()` answers `true` for it, so the older versions behave
  * exactly as they did.
+ *
+ * **Version 5 (Kafka 1.0, KIP-112/113) sends the very same frame again** - `METADATA_REQUEST_V5` is
+ * `METADATA_REQUEST_V4` in `MetadataRequest.schemaVersions()` @ 1.1.1 - and states that the client understands the
+ * `offline_replicas` array that the ANSWER gained ({@see MetadataResponse}), which is what
+ * {@see MetadataRequestV4} lowers the version constant for.
  *
  * The flag is `true` by default here, which is the behaviour of every version below 4 and of
  * {@see \Protocol\Kafka\Common\Cluster}, whose consumers and producers expect a named topic to spring into
@@ -70,7 +75,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v4)"
+ * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
  */
 class MetadataRequest extends AbstractRequest
 {
@@ -82,7 +87,7 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * @param list<string>|null $topics                    Topics to fetch the metadata for, null asks for every topic

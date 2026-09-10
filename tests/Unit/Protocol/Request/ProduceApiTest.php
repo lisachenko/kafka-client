@@ -21,57 +21,71 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV0;
+use Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV2;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 
 /**
- * Byte-exact tests of the Produce API, versions 0 to 3.
+ * Byte-exact tests of the Produce API, versions 0 to 5.
  *
  * <pre>
  *   ProduceRequest v0-v2 => RequiredAcks int16 Timeout int32 [TopicName [Partition int32 MessageSetSize int32
  *                                                                        MessageSet]]
- *   ProduceRequest v3    => TransactionalId nullable_string RequiredAcks int16 Timeout int32
+ *   ProduceRequest v3-v5 => TransactionalId nullable_string RequiredAcks int16 Timeout int32
  *                           [TopicName [Partition int32 RecordSetSize int32 RecordSet]]
  *   ProduceResponse v0   => [TopicName [Partition int32 ErrorCode int16 Offset int64]]
  *   ProduceResponse v1   => [TopicName [Partition int32 ErrorCode int16 Offset int64]] ThrottleTime int32
- *   ProduceResponse v2   => [TopicName [Partition int32 ErrorCode int16 Offset int64 LogAppendTime int64]]
+ *   ProduceResponse v2-4 => [TopicName [Partition int32 ErrorCode int16 Offset int64 LogAppendTime int64]]
  *                           ThrottleTime int32
- *   ProduceResponse v3   => the frame of version 2, byte for byte
+ *   ProduceResponse v5   => [TopicName [Partition int32 ErrorCode int16 Offset int64 LogAppendTime int64
+ *                                       LogStartOffset int64]] ThrottleTime int32
  * </pre>
  *
- * The body of the request is the same in the versions 0 to 2 and gains the nullable `TransactionalId` in version 3;
- * the answer of version 1 carries the throttle time of a quota violation at its very end and version 2 puts the
- * `LogAppendTime` the broker stamped the batch with behind the offset of every partition. Version 3 left the
- * answer alone - `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` @ 0.11.0.3.
+ * The body of the request is the same in the versions 0 to 2 and gains the nullable `TransactionalId` in version 3,
+ * which the versions 4 and 5 send unchanged; the answer of version 1 carries the throttle time of a quota violation
+ * at its very end, version 2 puts the `LogAppendTime` the broker stamped the batch with behind the offset of every
+ * partition, and version 5 (Kafka 1.0) appends the `LogStartOffset` of the partition to it. The versions 3 and 4
+ * left the answer alone - `PRODUCE_RESPONSE_V4` is `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` @ 1.1.1.
  *
  * The message sets are built by {@see SpecMessageSet} directly from the specification and the record batch is a
  * captured one, so that the request classes are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/1.1.md, sections "Produce API (key 0, v0 to v3)", "MessageSet and Message" and
+ * @see docs/protocol/1.1.md, sections "Produce API (key 0, v0 to v5)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 #[CoversClass(ProduceRequest::class)]
+#[CoversClass(ProduceRequestV4::class)]
+#[CoversClass(ProduceRequestV3::class)]
 #[CoversClass(ProduceRequestV2::class)]
 #[CoversClass(ProduceRequestV1::class)]
 #[CoversClass(ProduceRequestV0::class)]
 #[CoversClass(ProduceResponse::class)]
+#[CoversClass(ProduceResponseV4::class)]
+#[CoversClass(ProduceResponseV3::class)]
 #[CoversClass(ProduceResponseV2::class)]
 #[CoversClass(ProduceResponseV1::class)]
 #[CoversClass(ProduceResponseV0::class)]
 #[CoversClass(ProduceRequestTopic::class)]
 #[CoversClass(ProduceRequestPartition::class)]
 #[CoversClass(ProduceResponseTopic::class)]
+#[CoversClass(ProduceResponseTopicV2::class)]
 #[CoversClass(ProduceResponseTopicV0::class)]
 #[CoversClass(ProduceResponsePartition::class)]
+#[CoversClass(ProduceResponsePartitionV2::class)]
 #[CoversClass(ProduceResponsePartitionV0::class)]
 final class ProduceApiTest extends TestCase
 {
@@ -113,6 +127,16 @@ final class ProduceApiTest extends TestCase
      * The same header with the api version 3 in it and two bytes more, the `ff ff` of a null `TransactionalId`
      */
     private const string REQUEST_HEADER_V3_HEX = '0000004d' . '0000' . '0003' . '00000005' . '0004' . '74657374';
+
+    /**
+     * The same header with the api version 4 in it, the only byte a version 4 request differs from a version 3 one
+     */
+    private const string REQUEST_HEADER_V4_HEX = '0000004d' . '0000' . '0004' . '00000005' . '0004' . '74657374';
+
+    /**
+     * The same header with the api version 5 in it, the version this client sends for the message format v2
+     */
+    private const string REQUEST_HEADER_V5_HEX = '0000004d' . '0000' . '0005' . '00000005' . '0004' . '74657374';
 
     /**
      * The same header with the api version 1 in it, the only byte a version 1 request differs in
@@ -251,7 +275,7 @@ final class ProduceApiTest extends TestCase
 
     public function testVersion3RequestPrefixesTheBodyWithANullTransactionalId(): void
     {
-        $request = new ProduceRequest(
+        $request = new ProduceRequestV3(
             ['orders' => [0 => SpecMessageSet::of([[null, 'hello']])]],
             1,
             1000,
@@ -269,9 +293,34 @@ final class ProduceApiTest extends TestCase
         self::assertNull($request->getTransactionalId());
     }
 
+    public function testTheVersionsThreeToFiveSendOneAndTheSameBody(): void
+    {
+        $frames = [];
+        foreach ([3 => ProduceRequestV3::class, 4 => ProduceRequestV4::class, 5 => ProduceRequest::class] as $version => $requestClass) {
+            $request          = new $requestClass(
+                ['orders' => [0 => SpecMessageSet::of([[null, 'hello']])]],
+                1,
+                1000,
+                'test',
+                5
+            );
+            $frames[$version] = bin2hex((string) $request);
+        }
+
+        // `PRODUCE_REQUEST_V5` is `PRODUCE_REQUEST_V4` is `PRODUCE_REQUEST_V3` @ 1.1.1: what the two later
+        // versions state is that the client understands the error code 56 (v4) and the LogStartOffset of the
+        // answer (v5), not that the request looks different - only the api version of the header does
+        $body = 'ffff' . '0001' . self::REQUEST_BODY_HEX;
+        self::assertSame(self::REQUEST_HEADER_V3_HEX . $body, $frames[3]);
+        self::assertSame(self::REQUEST_HEADER_V4_HEX . $body, $frames[4]);
+        self::assertSame(self::REQUEST_HEADER_V5_HEX . $body, $frames[5]);
+        self::assertSame(ProduceRequestV3::getScheme(), ProduceRequest::getScheme());
+        self::assertSame(5, ProduceRequest::VERSION, 'the client sends version 5 for the message format v2');
+    }
+
     public function testVersion3RequestCarriesTheTransactionalIdOfItsProducer(): void
     {
-        $request = new ProduceRequest(
+        $request = new ProduceRequestV3(
             ['orders' => [0 => hex2bin(self::RECORD_BATCH_HEX)]],
             -1,
             1000,
@@ -328,7 +377,7 @@ final class ProduceApiTest extends TestCase
             . '00000000'
         );
 
-        $response = ProduceResponse::unpack(new StringStream($frame));
+        $response = ProduceResponseV2::unpack(new StringStream($frame));
 
         self::assertSame(3, $response->getCorrelationId());
         self::assertSame(['orders'], array_keys($response->topics));
@@ -355,7 +404,7 @@ final class ProduceApiTest extends TestCase
             . '00000000'
         );
 
-        $response  = ProduceResponse::unpack(new StringStream($frame));
+        $response  = ProduceResponseV2::unpack(new StringStream($frame));
         $partition = $response->topics['orders']->partitions[0];
 
         self::assertSame(1489324800000, $partition->logAppendTime);
@@ -377,16 +426,17 @@ final class ProduceApiTest extends TestCase
             . '000000fa'
         );
 
-        $response = ProduceResponse::unpack(new StringStream($frame));
+        $response = ProduceResponseV2::unpack(new StringStream($frame));
 
         self::assertSame(250, $response->throttleTime);
         self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
     }
 
-    public function testTheAnswerOfAVersion3RequestIsTheFrameOfAVersion2One(): void
+    public function testTheAnswerOfTheVersionsThreeAndFourIsTheFrameOfAVersionTwoOne(): void
     {
-        // `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` in Protocol.java @ 0.11.0.3, and the broker really answers
-        // a version 3 request with that frame - the `LogStartOffset` of the Produce answer is Kafka 1.0 (v5)
+        // `PRODUCE_RESPONSE_V4` is `PRODUCE_RESPONSE_V3` is `PRODUCE_RESPONSE_V2` in ProduceResponse.java @ 1.1.1,
+        // and the broker really answers a version 3 and a version 4 request with that frame - the `LogStartOffset`
+        // of the Produce answer is Kafka 1.0 (v5)
         $frame = hex2bin(
             '0000002e' . '00000003'
             . '00000001' . '0006' . '6f7264657273' . '00000001'
@@ -394,14 +444,58 @@ final class ProduceApiTest extends TestCase
             . '000000fa'
         );
 
-        $version3 = ProduceResponse::unpack(new StringStream($frame));
+        $version4 = ProduceResponseV4::unpack(new StringStream($frame));
+        $version3 = ProduceResponseV3::unpack(new StringStream($frame));
         $version2 = ProduceResponseV2::unpack(new StringStream($frame));
 
-        self::assertSame(ProduceResponse::getScheme(), ProduceResponseV2::getScheme());
-        self::assertSame(250, $version3->throttleTime);
+        self::assertSame(ProduceResponseV4::getScheme(), ProduceResponseV2::getScheme());
+        self::assertSame(ProduceResponseV3::getScheme(), ProduceResponseV2::getScheme());
+        self::assertSame(250, $version4->throttleTime);
+        self::assertSame(42, $version4->topics['orders']->partitions[0]->baseOffset);
         self::assertSame(42, $version3->topics['orders']->partitions[0]->baseOffset);
         self::assertSame(42, $version2->topics['orders']->partitions[0]->baseOffset);
-        self::assertSame($frame, (string) $version3, 'the response has to survive a round trip');
+        self::assertSame(
+            ProduceResponsePartition::INVALID_OFFSET,
+            $version4->topics['orders']->partitions[0]->logStartOffset,
+            'a version below 5 does not report a log start offset at all'
+        );
+        self::assertSame($frame, (string) $version4, 'the response has to survive a round trip');
+    }
+
+    public function testVersion5AnswerAppendsTheLogStartOffsetToEveryPartition(): void
+    {
+        //   The version 2 answer with eight bytes more per partition: the LogStartOffset 17, i.e. the earliest
+        //   offset the log of that partition still holds after a DeleteRecords or a retention run
+        $frame = hex2bin(
+            '00000036' . '00000003'
+            . '00000001' . '0006' . '6f7264657273' . '00000001'
+            . '00000000' . '0000' . '000000000000002a' . 'ffffffffffffffff' . '0000000000000011'
+            . '00000000'
+        );
+
+        $response  = ProduceResponse::unpack(new StringStream($frame));
+        $partition = $response->topics['orders']->partitions[0];
+
+        self::assertSame(42, $partition->baseOffset);
+        self::assertSame(-1, $partition->logAppendTime);
+        self::assertSame(17, $partition->logStartOffset);
+        self::assertSame(0, $response->throttleTime);
+        self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
+    }
+
+    public function testAVersion5AnswerOfAnUntouchedLogReportsTheLogStartOffsetZero(): void
+    {
+        $frame = hex2bin(
+            '00000036' . '00000003'
+            . '00000001' . '0006' . '6f7264657273' . '00000001'
+            . '00000000' . '0000' . '000000000000002a' . 'ffffffffffffffff' . '0000000000000000'
+            . '00000000'
+        );
+
+        $response = ProduceResponse::unpack(new StringStream($frame));
+
+        self::assertSame(0, $response->topics['orders']->partitions[0]->logStartOffset);
+        self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
     }
 
     public function testVersion1ResponseHasNoLogAppendTimeInItsPartitions(): void
@@ -447,8 +541,14 @@ final class ProduceApiTest extends TestCase
     {
         self::assertSame(
             ['partition' => BinarySchema::TYPE_INT32, 'errorCode' => BinarySchema::TYPE_INT16,
-                'baseOffset' => BinarySchema::TYPE_INT64, 'logAppendTime' => BinarySchema::TYPE_INT64],
+                'baseOffset' => BinarySchema::TYPE_INT64, 'logAppendTime' => BinarySchema::TYPE_INT64,
+                'logStartOffset' => BinarySchema::TYPE_INT64],
             ProduceResponsePartition::getScheme()
+        );
+        self::assertSame(
+            ['partition' => BinarySchema::TYPE_INT32, 'errorCode' => BinarySchema::TYPE_INT16,
+                'baseOffset' => BinarySchema::TYPE_INT64, 'logAppendTime' => BinarySchema::TYPE_INT64],
+            ProduceResponsePartitionV2::getScheme()
         );
         self::assertSame(
             ['partition' => BinarySchema::TYPE_INT32, 'errorCode' => BinarySchema::TYPE_INT16,
@@ -458,10 +558,19 @@ final class ProduceApiTest extends TestCase
         self::assertSame(
             ['topic' => ProduceResponseTopic::class],
             ProduceResponse::getScheme()['topics'],
-            'the versions 2 and 3 read the partition entries with the LogAppendTime'
+            'version 5 reads the partition entries with the LogStartOffset'
         );
         self::assertSame(
-            ['topic' => ProduceResponseTopic::class],
+            ['topic' => ProduceResponseTopicV2::class],
+            ProduceResponseV4::getScheme()['topics'],
+            'the versions 2, 3 and 4 read the partition entries with the LogAppendTime alone'
+        );
+        self::assertSame(
+            ['topic' => ProduceResponseTopicV2::class],
+            ProduceResponseV3::getScheme()['topics']
+        );
+        self::assertSame(
+            ['topic' => ProduceResponseTopicV2::class],
             ProduceResponseV2::getScheme()['topics']
         );
         self::assertSame(

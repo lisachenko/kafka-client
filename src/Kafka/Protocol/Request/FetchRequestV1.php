@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * fact that the broker guarantees no progress: a message that is bigger than the `MaxBytes` of its partition comes
  * back as an incomplete set instead of being returned in full, see {@see FetchRequest::$maxBytes}.
  *
- * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v5)" and "MessageSet and Message"
+ * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)" and "MessageSet and Message"
  */
 final class FetchRequestV1 extends FetchRequest
 {

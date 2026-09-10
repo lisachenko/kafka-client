@@ -229,6 +229,11 @@ class AdminClient
      * array of Metadata v1, because an empty array means "no topic at all" from that version on. Which of the
      * answered topics Kafka keeps for itself is in {@see TopicMetadata::$isInternal}.
      *
+     * The request goes out as **Metadata v5** (Kafka 1.0, KIP-112/113), so every partition of the answer reports
+     * its {@see \Protocol\Kafka\Common\PartitionMetadata::$offlineReplicas} next to its replicas and its
+     * in-sync replicas: the replicas whose broker is down or whose log directory has failed. On a one-broker
+     * cluster that array is always empty.
+     *
      * @param list<string> $topics Topics to describe, an empty list asks for every topic of the cluster
      *
      * @return array<string, TopicMetadata>

@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the version constant to the version of the request it belongs to. Its message sets are the ones the log holds:
  * from version 2 on the broker no longer converts them down to message format v0, see {@see FetchRequestV2}.
  *
- * @see docs/protocol/1.1.md, section "Fetch API (key 1, v0 to v5)"
+ * @see docs/protocol/1.1.md, section "Fetch API (key 1, v0 to v7)"
  */
 final class FetchResponseV2 extends FetchResponse
 {

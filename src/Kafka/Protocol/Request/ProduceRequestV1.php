@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * field of the header, so this class only lowers the version constant. What the version does change is the answer:
  * a version 1 request is answered without the `LogAppendTime` of every partition, see {@see ProduceResponseV1}.
  *
- * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v3)"
+ * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
  */
 final class ProduceRequestV1 extends ProduceRequest
 {
