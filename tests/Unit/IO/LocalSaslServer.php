@@ -25,6 +25,11 @@ use RuntimeException;
  * with, which is how every path a real broker can take is reproduced here: the accepted handshake, the refused
  * mechanism, and the connection that is dropped instead of an answer.
  *
+ * The child speaks **both** exchanges of a Kafka 1.1.1 broker and decides between them the way
+ * `SaslServerAuthenticator.handleHandshakeRequest()` @ 1.1.1 does - on the `ApiVersion` of the handshake alone: a
+ * v1 handshake is followed by `SaslAuthenticate` requests with a header and an error code, a v0 one by bare
+ * size-prefixed token frames.
+ *
  * @see \Protocol\Kafka\Tests\Integration\SaslTransportTest for the same exchange against a real broker
  */
 final class LocalSaslServer
@@ -40,9 +45,19 @@ final class LocalSaslServer
     public const string SCENARIO_UNSUPPORTED_MECHANISM = 'unsupported-mechanism';
 
     /**
+     * The handshake itself is refused with the error code 34 and an empty mechanism list, then the broker closes
+     */
+    public const string SCENARIO_ILLEGAL_SASL_STATE = 'illegal-sasl-state';
+
+    /**
      * The credentials are refused: the connection is closed during the token exchange, without an answer
      */
     public const string SCENARIO_REFUSE_CREDENTIALS = 'refuse-credentials';
+
+    /**
+     * The credentials are refused with the error code 58 and a message, the answer of a v1 exchange
+     */
+    public const string SCENARIO_INVALID_CREDENTIALS = 'invalid-credentials';
 
     /**
      * The broker answers the token with a token of its own, which the PLAIN mechanism does not define
@@ -53,6 +68,11 @@ final class LocalSaslServer
      * The handshake is answered with the correlation id of another request
      */
     public const string SCENARIO_WRONG_CORRELATION_ID = 'wrong-correlation-id';
+
+    /**
+     * The message a 1.1.1 broker answers a refused PLAIN credential with
+     */
+    public const string INVALID_CREDENTIALS_MESSAGE = 'Authentication failed: Invalid username or password';
 
     /**
      * How long the child waits for a connection before it gives up, in seconds
@@ -217,12 +237,20 @@ final class LocalSaslServer
             if ($handshake === null) {
                 exit(0);
             }
-            // The correlation id the client generated, echoed back in the response header
-            $correlationId = bin2hex(substr($handshake, 8, 4));
+            // The version of the handshake decides how the tokens after it are framed, and the correlation id the
+            // client generated is echoed back in the response header
+            $handshakeVersion = unpack('nversion', substr($handshake, 6, 2))['version'];
+            $correlationId    = bin2hex(substr($handshake, 8, 4));
 
             if ($scenario === 'unsupported-mechanism') {
                 // ErrorCode 33, EnabledMechanisms = ["GSSAPI"]
                 $answer('00000012' . $correlationId . '0021' . '00000001' . '0006' . bin2hex('GSSAPI'));
+                fclose($connection);
+                exit(0);
+            }
+            if ($scenario === 'illegal-sasl-state') {
+                // ErrorCode 34 with an empty mechanism list, the answer of KafkaApis @ 1.1.1
+                $answer('0000000a' . $correlationId . '0022' . '00000000');
                 fclose($connection);
                 exit(0);
             }
@@ -243,7 +271,24 @@ final class LocalSaslServer
                 fclose($connection);
                 exit(0);
             }
-            if ($scenario === 'unexpected-token') {
+
+            if ($handshakeVersion >= 1) {
+                // The token arrived as a SaslAuthenticate request; the answer carries its correlation id, an error
+                // code, a nullable error message and the token of the broker
+                $tokenCorrelationId = bin2hex(substr($token, 8, 4));
+                if ($scenario === 'invalid-credentials') {
+                    // ErrorCode 58 (0x003a), the message of the broker, and the empty token
+                    $message = 'Authentication failed: Invalid username or password';
+                    $body    = $tokenCorrelationId . '003a' . sprintf('%04x', strlen($message))
+                        . bin2hex($message) . '00000000';
+                    $answer(sprintf('%08x', strlen($body) / 2) . $body);
+                    fclose($connection);
+                    exit(0);
+                }
+                $body = $tokenCorrelationId . '0000' . 'ffff'
+                    . ($scenario === 'unexpected-token' ? '00000004' . bin2hex('more') : '00000000');
+                $answer(sprintf('%08x', strlen($body) / 2) . $body);
+            } elseif ($scenario === 'unexpected-token') {
                 $answer('00000004' . bin2hex('more'));
             } else {
                 // The empty token of a completed PLAIN exchange

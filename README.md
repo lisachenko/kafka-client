@@ -622,7 +622,8 @@ self-signed certificate is checked in as `docker/kafka-0.11.0.3/ssl/broker.crt`.
 **SASL/PLAIN works on this branch.** Kafka 0.9 did have SASL, but only GSSAPI (Kerberos) and
 negotiated *outside* the Kafka protocol; Kafka 0.10.0 (KIP-43) added the `SaslHandshake` request
 (api key 17) and the PLAIN mechanism, which is what makes authentication implementable in pure
-PHP:
+PHP, and Kafka 1.0 (KIP-152) added the `SaslAuthenticate` request (api key 36), which is what makes
+a refused password reportable:
 
 ```php
 $producer = new KafkaProducer([
@@ -635,14 +636,20 @@ $producer = new KafkaProducer([
 ```
 
 The handshake and the token exchange happen inside `connect()`, before the first ordinary request:
-one `SaslHandshake` frame naming the mechanism, then `\0<username>\0<password>` as a bare
-size-prefixed frame (the `SaslAuthenticate` request that wraps such a token is Kafka 1.0), answered
-with an empty token. PLAIN sends the password in clear text, so use `SASL_SSL` outside a trusted
-network — the very same exchange, inside the TLS channel. Wrong credentials have no error code
-before Kafka 1.0: the broker closes the connection, and this client reports a
-`SaslAuthenticationException` instead of retrying. `GSSAPI` and the SCRAM mechanisms of 0.10.2 are
-refused with an explanation before a socket is opened. See [examples/sasl.php](examples/sasl.php)
-and the "SASL/PLAIN" section of the protocol document.
+one `SaslHandshake` frame naming the mechanism, then the PLAIN token `\0<username>\0<password>`,
+answered with an empty token. **Kafka 1.0 (KIP-152) gave that token a request of its own** —
+`SaslAuthenticate`, api key 36 — and version 1 of the handshake is how a client asks for it; this
+client sends **v1**, so the token travels as an ordinary framed request and a refused credential
+comes back as the error code **58** with the message of the broker
+(`Authentication failed: Invalid username or password`) instead of a silently closed socket. The
+raw, unframed exchange of a v0 handshake is still implemented and still served by a 1.1.1 broker —
+it is what the four lines below speak. PLAIN sends the password in clear text, so use `SASL_SSL`
+outside a trusted network: the very same exchange, inside the TLS channel. Either way a refusal is
+a `SaslAuthenticationException` — carrying the code and the message when there is one — which
+leaves every retry loop of the client, because nothing about the connection would be different next
+time. `GSSAPI` and the SCRAM mechanisms of 0.10.2 are refused with an explanation before a socket is
+opened. See [examples/sasl.php](examples/sasl.php), the "SASL/PLAIN" section of the protocol
+document and its "SaslAuthenticate API (key 36, v0)" section.
 
 Supported Kafka protocol versions
 ----------------------------------

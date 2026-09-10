@@ -1,13 +1,13 @@
 {
     "api": "sasl-handshake",
     "apiKey": 17,
-    "section": "Transport security (SSL)",
-    "description": "Wire vectors of the SaslHandshake API (key 17, v0, Kafka 0.10.0 / KIP-43) and of the SASL/PLAIN token frames that follow it, replayed by tests/Compliance.",
+    "section": "SaslHandshake API (key 17, v0 and v1)",
+    "description": "Wire vectors of the SaslHandshake API (key 17, v0 of Kafka 0.10.0 / KIP-43 and v1 of Kafka 1.0 / KIP-152) and of the raw SASL/PLAIN token frames that follow a v0 handshake, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "saslhandshake.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeRequestV0",
             "version": 0,
             "source": "broker",
             "description": "SaslHandshake request v0 selecting the PLAIN mechanism, sent as the very first frame of a connection to the SASL_PLAINTEXT listener.",
@@ -44,7 +44,7 @@
             "class": "Protocol\\Kafka\\Common\\Security\\SaslToken",
             "version": 0,
             "source": "broker",
-            "description": "The initial response of the PLAIN mechanism, `authzid \\0 authcid \\0 passwd` for the user kafkatest: a bare size-prefixed frame, with no request header and no correlation id - the SaslAuthenticate request that wraps it is Kafka 1.0.",
+            "description": "The initial response of the PLAIN mechanism, `authzid \\0 authcid \\0 passwd` for the user kafkatest, as it travels after a v0 handshake: a bare size-prefixed frame, with no request header and no correlation id. The same payload is the sasl_auth_bytes of saslauthenticate.request.v0 after a v1 handshake.",
             "hex": "0000001b006b61666b6174657374006b61666b61746573742d736563726574",
             "fields": {
                 "token": {
@@ -58,7 +58,7 @@
             "class": "Protocol\\Kafka\\Common\\Security\\SaslToken",
             "version": 0,
             "source": "broker",
-            "description": "The answer of a completed PLAIN exchange: the empty token that PlainSaslServer.evaluateResponse() returns, i.e. a frame of four zero bytes. Ordinary requests follow it on the same connection.",
+            "description": "The answer of a completed PLAIN exchange after a v0 handshake: the empty token that PlainSaslServer.evaluateResponse() returns, i.e. a frame of four zero bytes. Ordinary requests follow it on the same connection.",
             "hex": "00000000",
             "fields": {
                 "token": {
@@ -69,7 +69,7 @@
         {
             "id": "saslhandshake.request.v0.unsupported-mechanism",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeRequestV0",
             "version": 0,
             "source": "broker",
             "description": "SaslHandshake request v0 asking for GSSAPI on a broker whose sasl.enabled.mechanisms is PLAIN.",
@@ -98,6 +98,106 @@
                 "enabledMechanisms": [
                     "PLAIN"
                 ]
+            }
+        },
+        {
+            "id": "saslhandshake.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "SaslHandshake request v1 selecting the PLAIN mechanism: the frame of v0 with another api version, and the promise that the tokens will follow inside SaslAuthenticate requests. It is what this client sends as the very first frame of a connection to a SASL listener.",
+            "hex": "000000130011000100000015000274320005504c41494e",
+            "fields": {
+                "messageSize": 19,
+                "apiKey": 17,
+                "apiVersion": 1,
+                "correlationId": 21,
+                "clientId": "t2",
+                "mechanism": "PLAIN"
+            }
+        },
+        {
+            "id": "saslhandshake.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer of a broker that accepted the mechanism, byte for byte the v0 answer: the response schema of v1 is the one of v0.",
+            "hex": "00000011000000150000000000010005504c41494e",
+            "fields": {
+                "messageSize": 17,
+                "correlationId": 21,
+                "errorCode": 0,
+                "enabledMechanisms": [
+                    "PLAIN"
+                ]
+            }
+        },
+        {
+            "id": "saslhandshake.request.v1.unsupported-mechanism",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "SaslHandshake request v1 asking for GSSAPI on a broker whose sasl.enabled.mechanisms is PLAIN.",
+            "hex": "000000140011000100000019000274320006475353415049",
+            "fields": {
+                "messageSize": 20,
+                "apiKey": 17,
+                "apiVersion": 1,
+                "correlationId": 25,
+                "clientId": "t2",
+                "mechanism": "GSSAPI"
+            }
+        },
+        {
+            "id": "saslhandshake.response.v1.unsupported-mechanism",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "Error code 33 (UnsupportedSaslMechanism) together with the mechanisms the broker does have; the version of the handshake changes nothing about it. The broker closes the connection right after this frame.",
+            "hex": "00000011000000190021000000010005504c41494e",
+            "fields": {
+                "messageSize": 17,
+                "correlationId": 25,
+                "errorCode": 33,
+                "enabledMechanisms": [
+                    "PLAIN"
+                ]
+            }
+        },
+        {
+            "id": "saslhandshake.request.v1.illegal-state",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "A second SaslHandshake on a connection that already performed one - the handshake is answered exactly once.",
+            "hex": "00000013001100010000001e000274320005504c41494e",
+            "fields": {
+                "messageSize": 19,
+                "apiKey": 17,
+                "apiVersion": 1,
+                "correlationId": 30,
+                "clientId": "t2",
+                "mechanism": "PLAIN"
+            }
+        },
+        {
+            "id": "saslhandshake.response.v1.illegal-state",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslHandshakeResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The error code 34 (IllegalSaslState) with an EMPTY mechanism list, which is the shortest SaslHandshake answer there is: the error response of the api carries Collections.emptyList(). A v0 handshake never reaches this answer - the second frame is read as a token and the connection is closed. The broker closes the connection after it.",
+            "hex": "0000000a0000001e002200000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 30,
+                "errorCode": 34,
+                "enabledMechanisms": []
             }
         }
     ]

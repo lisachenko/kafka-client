@@ -29,7 +29,10 @@ use Protocol\Kafka\Common\Security\SecurityProtocol;
 use Protocol\Kafka\Common\Security\SslProtocol;
 use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateRequest;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponse;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeRequest;
+use Protocol\Kafka\Protocol\Request\SaslHandshakeRequestV0;
 use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
 
 /**
@@ -43,7 +46,8 @@ use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
  *
  * `SASL_PLAINTEXT` and `SASL_SSL` add an authentication exchange to that, right after the connection is opened and,
  * for `SASL_SSL`, right after the TLS handshake: one `SaslHandshake` request that names the mechanism, and then the
- * tokens of that mechanism as bare size-prefixed frames ({@see SocketStream::authenticate()}). Only the PLAIN
+ * tokens of that mechanism - from Kafka 1.0 on inside `SaslAuthenticate` requests, which is what a **v1** handshake
+ * asks for, and as bare size-prefixed frames after a v0 one ({@see SocketStream::authenticate()}). Only the PLAIN
  * mechanism is implemented, see {@see SaslMechanism}.
  *
  * @see docs/protocol/1.1.md, section "Transport security (SSL)"
@@ -349,31 +353,56 @@ class SocketStream extends AbstractStream
     }
 
     /**
-     * Authenticates the freshly opened connection with SASL, as `SaslServerAuthenticator` @ 0.10.2.2 expects it.
+     * Version of the `SaslHandshake` request this stream opens the authentication with.
      *
-     * The exchange has two halves, and only the first one is a Kafka request: `SaslHandshake` (api key 17, v0) names
-     * the mechanism and is answered with the error code and the mechanisms the broker enabled. Everything after it
-     * is the mechanism's own token exchange, framed by nothing but the 4-byte length prefix that every Kafka frame
-     * carries - there is no header, no api key and no correlation id, because the request that wraps the tokens
-     * (`SaslAuthenticate`, api key 36) only arrived with Kafka 1.0. For PLAIN the exchange is a single round trip:
-     * the client sends `\0<username>\0<password>` and the broker answers with an empty token, after which the
-     * connection carries ordinary requests.
+     * This is the one switch between the two SASL exchanges a Kafka 1.1.1 broker serves, and it is deliberately not
+     * a `ClientConfig` option: a client has nothing to gain from the older one. Version **1** is what
+     * {@see SaslHandshakeRequest} declares and therefore what is sent - the tokens are then framed as
+     * {@see SaslAuthenticateRequest} and a refused credential comes back as the error code 58. Overriding this with
+     * `SaslHandshakeRequestV0::VERSION` selects the raw, unframed exchange of the lines up to 0.11, which a 1.1.1
+     * broker still serves unchanged; the tests use it to keep that path covered.
      *
-     * A broker that refuses the credentials simply closes the connection - `PlainSaslServer` throws a
-     * `SaslException`, which reaches the socket layer as an `IOException` and has no error code before Kafka 1.0.
+     * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest
+     */
+    protected function saslHandshakeVersion(): int
+    {
+        return SaslHandshakeRequest::VERSION;
+    }
+
+    /**
+     * Authenticates the freshly opened connection with SASL, as `SaslServerAuthenticator` @ 1.1.1 expects it.
      *
-     * @throws SaslAuthenticationException When the broker rejected the credentials by closing the connection
+     * The exchange opens with a Kafka request in both of its shapes: `SaslHandshake` (api key 17) names the
+     * mechanism and is answered with an error code and the mechanisms the broker enabled. Its **version decides how
+     * the tokens after it travel**, and the broker switches on nothing else:
+     *
+     * * **v1** (Kafka 1.0, KIP-152, the version this client sends): every token is the single field of a
+     *   {@see SaslAuthenticateRequest}, an ordinary request with a header and a correlation id, and every answer is
+     *   a {@see SaslAuthenticateResponse} with an error code, a message and the token of the broker. Wrong
+     *   credentials are the error code **58** with a message instead of a silently dropped connection.
+     * * **v0** (Kafka 0.10, KIP-43): the tokens are bare size-prefixed frames with no header at all, and a broker
+     *   that refuses them closes the connection without an answer - there is no error code in that exchange.
+     *
+     * For PLAIN either shape is a single round trip: the client sends `\0<username>\0<password>` and the broker
+     * answers with an empty token, after which the connection carries ordinary requests.
+     *
+     * @throws SaslAuthenticationException When the broker refused the credentials, however it said so
      * @throws KafkaException When the broker refused the mechanism (error code 33)
      */
     private function authenticate(): void
     {
-        $clientId      = (string) ($this->configuration[ClientConfig::CLIENT_ID] ?? '');
-        $correlationId = AbstractRequest::nextCorrelationId();
+        $clientId         = (string) ($this->configuration[ClientConfig::CLIENT_ID] ?? '');
+        $correlationId    = AbstractRequest::nextCorrelationId();
+        $handshakeVersion = $this->saslHandshakeVersion();
 
         $this->isAuthenticating = true;
 
         try {
-            new SaslHandshakeRequest($this->saslMechanism, $clientId, $correlationId)->writeTo($this);
+            $handshake = $handshakeVersion >= SaslHandshakeRequest::VERSION
+                ? new SaslHandshakeRequest($this->saslMechanism, $clientId, $correlationId)
+                : new SaslHandshakeRequestV0($this->saslMechanism, $clientId, $correlationId);
+            $handshake->writeTo($this);
+
             $response = ResponseValidator::read(
                 SaslHandshakeResponse::class,
                 $this,
@@ -382,8 +411,9 @@ class SocketStream extends AbstractStream
             );
 
             if ($response->errorCode !== 0) {
-                // 33 UnsupportedSaslMechanism is the only code a 0.10.2.2 broker answers here; the connection is
-                // closed by the broker right afterwards, so there is nothing to recover on it
+                // 33 UnsupportedSaslMechanism is the code of a mechanism the broker has not enabled and 34
+                // IllegalSaslState the one of a handshake that came at the wrong moment; the broker closes the
+                // connection right after either of them, so there is nothing to recover on it
                 throw KafkaException::fromCode($response->errorCode, [
                     'mechanism'         => $this->saslMechanism,
                     'enabledMechanisms' => $response->enabledMechanisms,
@@ -392,14 +422,92 @@ class SocketStream extends AbstractStream
                 ]);
             }
 
-            $this->exchangePlainToken();
+            if ($handshakeVersion >= SaslHandshakeRequest::VERSION) {
+                $this->exchangeFramedPlainToken($clientId);
+            } else {
+                $this->exchangePlainToken();
+            }
         } finally {
             $this->isAuthenticating = false;
         }
     }
 
     /**
-     * Performs the token exchange of the PLAIN mechanism on an already handshaken connection
+     * Performs the token exchange of the PLAIN mechanism inside `SaslAuthenticate` requests (SaslHandshake v1)
+     *
+     * @param string $clientId Client id of the connection, carried by the header of the request
+     *
+     * @throws SaslAuthenticationException When the broker refused the credentials or answered something else
+     */
+    private function exchangeFramedPlainToken(string $clientId): void
+    {
+        $username      = (string) $this->configuration[ClientConfig::SASL_USERNAME];
+        $password      = (string) $this->configuration[ClientConfig::SASL_PASSWORD];
+        $correlationId = AbstractRequest::nextCorrelationId();
+
+        $token = SaslToken::ofPlainCredentials($username, $password);
+        new SaslAuthenticateRequest($token->token, $clientId, $correlationId)->writeTo($this);
+
+        try {
+            $answer = ResponseValidator::read(
+                SaslAuthenticateResponse::class,
+                $this,
+                $correlationId,
+                ['host' => $this->host, 'port' => $this->port]
+            );
+        } catch (NetworkException $exception) {
+            // A 1.1.1 broker answers this request even when it refuses the credentials, so a closed connection here
+            // means something else entirely - a v1 handshake it never got, or a frame it could not parse
+            throw new SaslAuthenticationException(
+                [
+                    'error'     => 'The broker closed the connection instead of answering the SaslAuthenticate '
+                        . 'request of the SASL token exchange',
+                    'mechanism' => $this->saslMechanism,
+                    'username'  => $username,
+                    'host'      => $this->host,
+                    'port'      => $this->port,
+                ],
+                $exception
+            );
+        }
+
+        if ($answer->errorCode !== 0) {
+            // 58 SaslAuthenticationFailed is what wrong credentials look like from Kafka 1.0 on, and the broker
+            // closes the connection right after this answer; 34 IllegalSaslState is a request at the wrong moment
+            throw new SaslAuthenticationException(
+                [
+                    'error'        => (string) ($answer->errorMessage ?? 'the broker refused the credentials'),
+                    'errorCode'    => $answer->errorCode,
+                    'errorMessage' => $answer->errorMessage,
+                    'mechanism'    => $this->saslMechanism,
+                    'username'     => $username,
+                    'host'         => $this->host,
+                    'port'         => $this->port,
+                ],
+                KafkaException::fromCode($answer->errorCode, [
+                    'errorMessage' => $answer->errorMessage,
+                    'mechanism'    => $this->saslMechanism,
+                ])
+            );
+        }
+
+        // PLAIN has exactly one round trip: `PlainSaslServer.evaluateResponse()` answers with `new byte[0]`, which
+        // the broker sends back as the empty `sasl_auth_bytes` of the response. Anything else would mean that the
+        // mechanism expects another token, and PLAIN never does.
+        if ($answer->saslAuthBytes !== null && $answer->saslAuthBytes !== '') {
+            throw new SaslAuthenticationException([
+                'error'     => 'The broker answered the PLAIN token with a non-empty token, which the mechanism '
+                    . 'does not define',
+                'mechanism' => $this->saslMechanism,
+                'answer'    => bin2hex($answer->saslAuthBytes),
+                'host'      => $this->host,
+                'port'      => $this->port,
+            ]);
+        }
+    }
+
+    /**
+     * Performs the raw token exchange of the PLAIN mechanism on a connection handshaken with v0
      *
      * @throws SaslAuthenticationException When the broker rejected the credentials by closing the connection
      */
@@ -416,7 +524,8 @@ class SocketStream extends AbstractStream
             throw new SaslAuthenticationException(
                 [
                     'error'     => 'The broker closed the connection during the SASL token exchange, which is how a '
-                        . 'Kafka 0.10 broker rejects credentials - there is no error code for it before Kafka 1.0',
+                        . 'broker rejects credentials after a SaslHandshake v0 - the error code 58 of Kafka 1.0 '
+                        . 'needs the framed SaslAuthenticate exchange of a v1 handshake',
                     'mechanism' => $this->saslMechanism,
                     'username'  => $username,
                     'host'      => $this->host,
@@ -499,7 +608,7 @@ class SocketStream extends AbstractStream
     }
 
     /**
-     * Explains why a mechanism that a Kafka 0.10.2.2 broker knows is not available in this client
+     * Explains why a mechanism that a Kafka 1.1.1 broker knows is not available in this client
      */
     private static function unsupportedMechanismMessage(string $mechanism): string
     {
@@ -510,7 +619,7 @@ class SocketStream extends AbstractStream
                 . 'tokens a broker would accept',
             SaslMechanism::SCRAM_SHA_256, SaslMechanism::SCRAM_SHA_512 => 'the SCRAM mechanisms of Kafka 0.10.2 '
                 . '(KIP-84) need the multi-round exchange of RFC 5802, which this client does not perform',
-            default => 'a Kafka 0.10.2.2 broker only knows ' . implode(', ', SaslMechanism::all()),
+            default => 'a Kafka 1.1.1 broker only knows ' . implode(', ', SaslMechanism::all()),
         };
 
         return "The SASL mechanism {$mechanism} is not implemented: {$reason}. Use {$implemented}.";
