@@ -1,0 +1,100 @@
+{
+    "api": "sasl-authenticate",
+    "apiKey": 36,
+    "section": "SaslAuthenticate API (key 36, v0)",
+    "description": "Wire vectors of the SaslAuthenticate API (key 36, v0, Kafka 1.0 / KIP-152), the request that carries the SASL tokens after a SaslHandshake v1, replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "saslauthenticate.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "SaslAuthenticate request v0 carrying the PLAIN token of the user kafkatest, sent right after a SaslHandshake v1 on the SASL_PLAINTEXT listener. The bytes of the token are the very ones a v0 exchange writes on the socket raw.",
+            "hex": "0000002b0024000000000016000274320000001b006b61666b6174657374006b61666b61746573742d736563726574",
+            "fields": {
+                "messageSize": 43,
+                "apiKey": 36,
+                "apiVersion": 0,
+                "correlationId": 22,
+                "clientId": "t2",
+                "saslAuthBytes": {
+                    "$bytes": "006b61666b6174657374006b61666b61746573742d736563726574"
+                }
+            }
+        },
+        {
+            "id": "saslauthenticate.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of a completed PLAIN exchange: error code 0, no error message at all (the nullable string -1) and the empty token of PlainSaslServer.evaluateResponse(). There is no throttle_time_ms: the api is one of the four KIP-124 left out.",
+            "hex": "0000000c000000160000ffff00000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 22,
+                "errorCode": 0,
+                "errorMessage": null,
+                "saslAuthBytes": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "saslauthenticate.request.v0.invalid-credentials",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same request with a wrong password for an existing user.",
+            "hex": "0000002700240000000000180002743200000017006b61666b61746573740077726f6e672d736563726574",
+            "fields": {
+                "messageSize": 39,
+                "apiKey": 36,
+                "apiVersion": 0,
+                "correlationId": 24,
+                "clientId": "t2",
+                "saslAuthBytes": {
+                    "$bytes": "006b61666b61746573740077726f6e672d736563726574"
+                }
+            }
+        },
+        {
+            "id": "saslauthenticate.response.v0.invalid-credentials",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "What Kafka 1.0 added to the exchange: the error code 58 (SaslAuthenticationFailed) and the message of the broker, where a 0.11 broker closed the connection without a word. An unknown user is answered with exactly the same frame. The broker closes the connection right after it.",
+            "hex": "0000003f00000018003a003341757468656e7469636174696f6e206661696c65643a20496e76616c696420757365726e616d65206f722070617373776f726400000000",
+            "fields": {
+                "messageSize": 63,
+                "correlationId": 24,
+                "errorCode": 58,
+                "errorMessage": "Authentication failed: Invalid username or password",
+                "saslAuthBytes": {
+                    "$bytes": ""
+                }
+            }
+        },
+        {
+            "id": "saslauthenticate.response.v0.illegal-state",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "A second SaslAuthenticate request on an authenticated connection reaches KafkaApis instead of the authenticator, which answers the error code 34 (IllegalSaslState) with its message and leaves the connection usable.",
+            "hex": "0000004d0000001c002200415361736c41757468656e7469636174652072657175657374207265636569766564206166746572207375636365737366756c2061757468656e7469636174696f6e00000000",
+            "fields": {
+                "messageSize": 77,
+                "correlationId": 28,
+                "errorCode": 34,
+                "errorMessage": "SaslAuthenticate request received after successful authentication",
+                "saslAuthBytes": {
+                    "$bytes": ""
+                }
+            }
+        }
+    ]
+}

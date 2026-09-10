@@ -17,7 +17,7 @@ namespace Protocol\Kafka\Common\Security;
  * Possible values for the `sasl.mechanism` configuration parameter, i.e. the `Mechanism` of a SaslHandshake request.
  *
  * The names are the SASL mechanism names of the IANA registry, which is what the broker compares the `Mechanism`
- * field against (`sasl.enabled.mechanisms` of the broker, `GSSAPI` by default). A Kafka 0.10.2.2 broker can enable
+ * field against (`sasl.enabled.mechanisms` of the broker, `GSSAPI` by default). A Kafka 1.1.1 broker can enable
  * `GSSAPI` (0.9), `PLAIN` (0.10.0, KIP-43) and the two SCRAM mechanisms (0.10.2, KIP-84).
  *
  * This client implements **PLAIN** only:
@@ -67,7 +67,7 @@ final class SaslMechanism
     }
 
     /**
-     * Returns every mechanism a Kafka 0.10.2.2 broker can enable
+     * Returns every mechanism a Kafka 1.1.1 broker can enable
      *
      * @return list<string>
      */

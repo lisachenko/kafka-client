@@ -10,6 +10,32 @@ and `0.8.x` (Kafka 0.8.2.2), the line above it is `main` (Kafka 1.x, in developm
 line is merged upwards into the next one, so the sections below accumulate: what a line added
 stays true of every line above it.
 
+Unreleased — the 1.x line (Kafka 1.1.1)
+---------------------------------------
+
+The 1.x line, built on top of the `0.11.x` line it was cascade-merged from, and verified against a
+real Apache **1.1.1** broker (`docker/kafka-1.1.1/`, four listeners).
+
+### Added
+
+- **SaslHandshake v1 and the SaslAuthenticate api (key 36, v0)** — KIP-152, Kafka 1.0. The client
+  now opens a SASL connection with a **v1** handshake (`SaslHandshakeRequest::VERSION = 1`,
+  `SaslHandshakeRequestV0` for the frame of the lines below) and carries the PLAIN token inside a
+  `SaslAuthenticateRequest`, whose `SaslAuthenticateResponse` finally has an error code: wrong
+  credentials are the code **58** (`SaslAuthenticationFailedException`) with the message of the
+  broker — `Authentication failed: Invalid username or password` — where a 0.11 broker closed the
+  connection without a word. `SaslAuthenticationException`, the client-side exception the socket
+  layer raises, carries that code, the broker's message and the wire exception as its cause, and
+  still leaves every retry loop of the client. The raw, unframed exchange of a v0 handshake stays
+  implemented and is still served by a 1.1.1 broker; `IO\SocketStream` selects it through a single
+  protected method, and both paths are covered by the unit and the integration suite.
+- **Wire vectors of the two apis** — `docs/protocol/vectors/sasl-authenticate.json` (new) and six
+  more entries in `sasl-handshake.json`: the v1 handshake and its answer, the 33 of a mechanism the
+  broker has not enabled, the 34 of a second handshake (with the **empty** mechanism list that
+  Kafka 1.1 answers there, where 1.0.2 still filled it), the accepted `SaslAuthenticate` exchange,
+  the 58 of a wrong password and the 34 of a second `SaslAuthenticate`. The v0 vectors of the
+  handshake are replayed through `SaslHandshakeRequestV0` from now on.
+
 Unreleased — the 0.11.x line (Kafka 0.11.0.3)
 -------------------------------------------
 

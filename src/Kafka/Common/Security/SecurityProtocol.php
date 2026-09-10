@@ -64,7 +64,7 @@ final class SecurityProtocol
     }
 
     /**
-     * Returns every protocol a Kafka 0.10.2.2 broker can bind a listener for
+     * Returns every protocol a Kafka 1.1.1 broker can bind a listener for
      *
      * @return list<string>
      */
