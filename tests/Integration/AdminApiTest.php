@@ -164,25 +164,27 @@ final class AdminApiTest extends IntegrationTestCase
         $this->admin->controlledShutdown(self::UNKNOWN_BROKER_ID);
     }
 
-    public function testTheBrokerAnnouncesOnlyVersionOneOfControlledShutdown(): void
+    public function testTheBrokerAnnouncesBothVersionsOfControlledShutdown(): void
     {
-        // A 0.10.2.2 broker reports `minVersion = 1` for key 7: version 0 uses a request header without a client id,
-        // which the Java client of 0.10 cannot build any more, so the protocol retires it.
+        // A 0.9 to 0.11 broker reported `minVersion = 1` for key 7: version 0 uses a request header without a client
+        // id, which the Java client of those releases could not build, so the protocol retired it. Kafka 1.0 gave
+        // `RequestHeader` a schema of its own for that one frame (`CONTROLLED_SHUTDOWN_V0_SCHEMA`) and moved the api
+        // to the Java schemas altogether, so a 1.1.1 broker announces **v0 and v1** again.
         $nodes       = $this->cluster->nodes();
         $apiVersions = $this->admin->getApiVersions(reset($nodes));
 
-        self::assertSame(1, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->minVersion);
+        self::assertSame(0, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->minVersion);
         self::assertSame(1, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->maxVersion);
     }
 
     public function testBothVersionsOfControlledShutdownAreStillServedByTheBroker(): void
     {
-        // ...and yet the retired version still works, because key 7 is the last api a 0.10.2.2 broker parses with
-        // its Scala class: `RequestChannel.Request` calls `ControlledShutdownRequest.readFrom()` for it before the
-        // header is parsed at all, and that parser only asks whether the version is above 0, to decide whether a
-        // client id follows. Every other key or version the broker does not serve closes the connection, so this is
-        // one of the two exceptions of the whole protocol - the other one is ApiVersions itself. The AdminClient
-        // sends v1, which is what the api table promises; v0 is kept for the 0.8/0.9 lines and their vectors.
+        // Both announced versions really are answered. Up to 0.11 this test proved something else: key 7 was the
+        // last api a broker parsed with its Scala class, which never validated the version, so v0 was answered
+        // although the table did not contain it - and so was any version above 1. On this line the api is an
+        // ordinary Java-schema api and v2 closes the connection like every other unknown version
+        // (`ApiVersionProbeTest::testControlledShutdownAboveItsMaximumVersionClosesTheConnection`). The AdminClient
+        // sends v1; v0 is kept for the 0.8/0.9 lines and their vectors.
         $stream = $this->connect();
 
         new ControlledShutdownRequestV0(self::UNKNOWN_BROKER_ID, 4200)->writeTo($stream);

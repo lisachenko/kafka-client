@@ -456,10 +456,15 @@ class AdminClient
      * Describes one consumer group: its state, the protocol its members agreed on and the members themselves
      *
      * The request goes to the coordinator of the group ({@see self::findCoordinator()}), the only broker that knows
-     * anything about it. The state is one of `PreparingRebalance`, `AwaitingSync`, `Stable` and `Dead`
-     * (`kafka/coordinator/GroupMetadata.scala` @ 0.10.2.2); a group the coordinator has never heard of, or that has
-     * lost its last member, is NOT an error - it is answered with the error code 0, the state `Dead`, an empty
-     * protocol type and no members.
+     * anything about it. The state is one of `PreparingRebalance`, `CompletingRebalance`, `Stable`, `Empty` and
+     * `Dead` (`kafka/coordinator/group/GroupMetadata.scala` @ 1.1.1), i.e. one of the `STATE_*` constants of
+     * {@see DescribeGroupResponseMetadata}; a group the coordinator has never heard of, or that has lost its last
+     * member and outlived its committed offsets, is NOT an error - it is answered with the error code 0, the state
+     * `Dead`, an empty protocol type and no members.
+     *
+     * Kafka 1.0 renamed the state between the last JoinGroup and the leader's SyncGroup from `AwaitingSync` to
+     * **`CompletingRebalance`**; a broker of this line answers the new name, and
+     * {@see DescribeGroupResponseMetadata::STATE_AWAITING_SYNC} is kept only for the lines below.
      *
      * @param string $groupId Name of the group
      *

@@ -1,21 +1,31 @@
-Wire vectors of the Kafka 0.11.0.3 protocol
-===========================================
+Wire vectors of the Kafka 1.1.1 protocol
+========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../1.1.md`](../1.1.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **229** of them in 30 files: the 120 the three lines below captured, which a 0.11.0.3 broker
-still answers unchanged, and the **109** frames of what Kafka 0.11 added.
+hex dumps. There are **229** of them in 30 files, every one of which a **1.1.1** broker still speaks — the four
+lines below this one captured all of them, and the compliance suite replays them against the classes of this line
+unchanged.
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
 - Produce v1, Fetch v1, OffsetCommit v2, ControlledShutdown v1, the group membership apis and the consumer protocol
 structures - on a 0.9.0.1 broker, those of `0.10.x` - message format v1, Metadata v1/v2, Produce v2, Fetch v2/v3,
 Offsets v1, OffsetFetch v2, JoinGroup v1, CreateTopics v0/v1, DeleteTopics v0 and SaslHandshake v0 - on a 0.10.2.2
-broker, and everything Kafka 0.11 adds on the 0.11.0.3 container of `docker-compose.yml`:
+broker, and everything Kafka 0.11 added on the 0.11.0.3 container of the `0.11.x` line:
+
+**What the 1.x line captures on the `kafka-1-1-1` container of `docker-compose.yml`.** The answer of
+**ApiVersions** *is* the api-key table of the broker, so `apiversions.response.v0` and `apiversions.response.v1` are
+re-captured on every line: they now carry the **43** keys 0 to 42 of a Kafka 1.1.1 broker (272 and 276 bytes),
+where the 0.11 capture carried 34 and the 0.10 one 21. The two requests are unchanged — an ApiVersions frame has no
+body in either version. The vectors of what Kafka 1.x *adds* arrive with the ticket that implements each api:
+Produce v4/v5, Fetch v6/v7 and Metadata v5 (T3), SaslHandshake v1 and SaslAuthenticate (T2), DescribeConfigs v1,
+CreatePartitions and DeleteGroups (T4), DescribeLogDirs and AlterReplicaLogDirs (T5) and, optionally, the four
+delegation-token apis (T7).
 
 | File | Vectors | What was captured on the 0.11.0.3 broker |
 |---|---|---|
 | `message-format.json` | 13 of 20 | The **record batch v2** (magic 2): the four codecs, a `LogAppendTime` batch, a three-batch region, record **headers**, null keys and values, a transactional batch, the two real **control batches** with their COMMIT and ABORT markers, and the two down-conversions of a 0.11 log to the message formats v1 and v0 |
-| `api-versions.json` | 5 of 5 | ApiVersions **v0 and v1**: the 34 keys the broker serves, in both layouts, and the error code 35 of an unknown version (the two v0 frames were re-captured here) |
+| `api-versions.json` | 5 of 5 | ApiVersions **v0 and v1**, and the error code 35 of an unknown version. **The two answers are re-captured on this line** and hold the 43 keys of a 1.1.1 broker; the 0.11 capture held 34 |
 | `metadata.json` | 6 of 17 | Metadata **v3 and v4**, and the v4 answer of an absent topic asked for with `allow_auto_topic_creation = false` |
 | `offsets.json` | 4 of 14 | Offsets **v2** in both isolation levels |
 | `offset-commit.json`, `offset-fetch.json` | 2 of 8, 2 of 15 | OffsetCommit **v3** and OffsetFetch **v3** |
@@ -40,8 +50,9 @@ The remaining three files - `consumer-protocol.json`, `controlled-shutdown.json`
 no 0.11 frame at all: their apis and structures are unchanged since the line that captured them.
 
 That the older frames are still the current ones is not an assumption:
-`tests/Integration/ApiVersionProbeTest.php` asks the 0.11.0.3 broker with a real **ApiVersions** request
-(`api-versions.json`) which versions it serves, and sends a frame of every one of them.
+`tests/Integration/ApiVersionProbeTest.php` asks the 1.1.1 broker with a real **ApiVersions** request
+(`api-versions.json`) which versions it serves, and sends a frame of every one of them — and one frame above every
+one of them, to see the connection close.
 
 ```json
 {

@@ -199,7 +199,23 @@ final class FetchApiTest extends IntegrationTestCase
         self::assertSame($timestamp, $version3->getRecords()->getRecords()[0]->timestamp);
     }
 
-    public function testAPartitionWhoseRecordsCarryHeadersLosesThemInAFetchBelowVersionFour(): void
+    /**
+     * A fetch below v4 of a partition whose records carry headers is served, and the headers are dropped
+     *
+     * **This is a behaviour change of Kafka 1.0.** A 0.11.0.3 broker could not build such an answer at all:
+     * `MemoryRecordsBuilder.appendWithOffset` @ 0.11.0.3 threw "Magic v1 does not support record headers" out of
+     * the down-conversion, and the partition came back with the error code **-1** (UnknownServerError) and an
+     * empty record set. KAFKA-5760 replaced that with a down-conversion that simply **leaves the headers out**:
+     * `AbstractRecords.convertRecordBatch()` @ 1.1.1 builds a message of the format the request can read, copies
+     * key, value and timestamp, and warns `Down-converting records with headers` in the broker log instead of
+     * failing.
+     *
+     * A client of a 1.x broker therefore has to know that a record it reads with a Fetch below v4 may have carried
+     * headers it will never see, where a 0.11 broker refused the fetch outright. The batch below holds three
+     * records and only the middle one has a header, so the test also pins that **no record is skipped** and that
+     * the offsets of the answer are the offsets of the log.
+     */
+    public function testAPartitionWhoseRecordsCarryHeadersIsDownConvertedWithoutThemBelowVersionFour(): void
     {
         $timestamp = self::currentTimestampMs();
         $this->produceRecordBatch(0, [

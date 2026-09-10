@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0;
 use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 
 /**
- * Establishes which api keys and versions a real Kafka 0.11.0.3 broker serves.
+ * Establishes which api keys and versions a real Kafka 1.1.1 broker serves.
  *
  * Kafka 0.10.0 added the api that answers that question - **ApiVersions**, key 18 - so this class no longer has to
  * guess it the way the `0.8.x` and `0.9.x` lines did. The first half of the suite asks the broker with
@@ -37,19 +37,22 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  *
  * The second half is still a raw probe ({@see RawApiProbe}), because the *edges* of that table are not in it: what
  * the broker does with a key or a version it does not serve is behaviour, not data. Kafka 0.10 changed that
- * behaviour and 0.11 kept it, and this is where it is verified:
+ * behaviour and every release since keeps it, and this is where it is verified:
  *
  * * A 0.9.0.1 broker **dropped** a frame it could not parse and kept the connection open, so a client waited for its
  *   own timeout ({@see RawApiProbe::SILENT}).
- * * A 0.11.0.3 broker **closes the connection** ({@see RawApiProbe::CLOSED}). `SocketServer.processCompletedReceives`
- *   @ 0.11.0.3 catches the `InvalidRequestException` that `RequestChannel.Request` throws for an api key or version
- *   `AbstractRequest.getRequest()` does not know, and the `SchemaException` of a body that does not match the
- *   schema, and calls `close()` on the channel; `docker logs kafka-0-11-0-3` shows
+ * * A 1.1.1 broker **closes the connection** ({@see RawApiProbe::CLOSED}). `SocketServer.processCompletedReceives`
+ *   @ 1.1.1 catches the `InvalidRequestException` that `RequestChannel.Request` throws for an api key or version
+ *   `AbstractRequest.parseRequest()` does not know, and the `SchemaException` of a body that does not match the
+ *   schema, and calls `close()` on the channel; `docker logs kafka-1-1-1` shows
  *   `ERROR Closing socket for ... because of error` with the reason.
  *
- * Two apis are exceptions to that rule and both are verified here: ApiVersions itself, which answers an unknown
- * version with the error code 35, and ControlledShutdown, the last api that a 0.11.0.3 broker still parses with the
- * Scala class of the 0.8 line, which answers every version.
+ * **Exactly one api is an exception to that rule on this line**: ApiVersions itself, which answers an unknown
+ * version with the error code 35 on a connection that stays open. ControlledShutdown was the second exception up to
+ * and including 0.11 - a broker of those lines parsed key 7 with the Scala class of the 0.8 line, which never
+ * looked at the version - and it is one no longer: Kafka 1.0 moved the api to the schemas of the Java client, so v0
+ * is served (and reported, with `MinVersion = 0`), v1 is served, and v2 closes the connection like every other
+ * version above the table.
  *
  * The probe never changes the state of the cluster: the broker-to-broker apis are sent with the stale controller
  * epoch -1 and empty partition sets, ControlledShutdown asks for a broker id that does not exist, the group and
@@ -73,58 +76,69 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     private const int UNKNOWN_BROKER_ID = 4242;
 
     /**
-     * The api table of Kafka 0.11.0.3, as `api key => [minimum version, maximum version]`
+     * The api table of Kafka 1.1.1, as `api key => [minimum version, maximum version]`
      *
-     * This is what `Protocol.CURR_VERSION` @ 0.11.0.3 declares and what the container really answers. Key 7 is the
-     * only entry whose minimum is not 0: ControlledShutdown v0 uses a request header without a client id, which the
-     * Java client cannot build any more.
+     * This is what the `schemaVersions()` of the request classes @ 1.1.1 declare - `Protocol.java` stopped being the
+     * schema authority in Kafka 1.0 - and what the container really answers. **Every minimum is 0 on this line**:
+     * key 7 reported `MinVersion = 1` up to 0.11.0.3, because a 0.11 broker parsed ControlledShutdown with a Scala
+     * class that could not build the client-id-less header of v0 through the Java schemas; Kafka 1.0 gave
+     * `RequestHeader` a schema of its own for that one frame, so v0 is a served version again.
      *
-     * The set itself is not a constant of the release: `ApiVersionsResponse.createApiVersionsResponse()` drops every
-     * api whose `minRequiredInterBrokerMagic` is above the message format the broker runs with, so a 0.11 broker
-     * configured with `inter.broker.protocol.version=0.10.2` reports fewer keys than this. The container runs the
-     * default 0.11.0 format, which is where these 34 keys come from.
+     * The set itself is not a constant of the release: `ApiVersionsResponse.apiVersionsResponse()` @ 1.1.1 drops every
+     * api whose `minRequiredInterBrokerMagic` is above the message format the broker runs with, so a 1.1 broker
+     * configured with `inter.broker.protocol.version=0.10.2` reports fewer keys than this. The container runs
+     * `1.1-IV0` (magic 2), which is where these 43 keys come from.
      */
     private const array SERVED_APIS = [
-        ApiKeys::PRODUCE                 => [0, 3],
-        ApiKeys::FETCH                   => [0, 5],
-        ApiKeys::OFFSETS                 => [0, 2],
-        ApiKeys::METADATA                => [0, 4],
-        ApiKeys::LEADER_AND_ISR          => [0, 0],
-        ApiKeys::STOP_REPLICA            => [0, 0],
-        ApiKeys::UPDATE_METADATA         => [0, 3],
-        ApiKeys::CONTROLLED_SHUTDOWN     => [1, 1],
-        ApiKeys::OFFSET_COMMIT           => [0, 3],
-        ApiKeys::OFFSET_FETCH            => [0, 3],
-        ApiKeys::GROUP_COORDINATOR       => [0, 1],
-        ApiKeys::JOIN_GROUP              => [0, 2],
-        ApiKeys::HEARTBEAT               => [0, 1],
-        ApiKeys::LEAVE_GROUP             => [0, 1],
-        ApiKeys::SYNC_GROUP              => [0, 1],
-        ApiKeys::DESCRIBE_GROUPS         => [0, 1],
-        ApiKeys::LIST_GROUPS             => [0, 1],
-        ApiKeys::SASL_HANDSHAKE          => [0, 0],
-        ApiKeys::API_VERSIONS            => [0, 1],
-        ApiKeys::CREATE_TOPICS           => [0, 2],
-        ApiKeys::DELETE_TOPICS           => [0, 1],
-        ApiKeys::DELETE_RECORDS          => [0, 0],
-        ApiKeys::INIT_PRODUCER_ID        => [0, 0],
-        ApiKeys::OFFSET_FOR_LEADER_EPOCH => [0, 0],
-        ApiKeys::ADD_PARTITIONS_TO_TXN   => [0, 0],
-        ApiKeys::ADD_OFFSETS_TO_TXN      => [0, 0],
-        ApiKeys::END_TXN                 => [0, 0],
-        ApiKeys::WRITE_TXN_MARKERS       => [0, 0],
-        ApiKeys::TXN_OFFSET_COMMIT       => [0, 0],
-        ApiKeys::DESCRIBE_ACLS           => [0, 0],
-        ApiKeys::CREATE_ACLS             => [0, 0],
-        ApiKeys::DELETE_ACLS             => [0, 0],
-        ApiKeys::DESCRIBE_CONFIGS        => [0, 0],
-        ApiKeys::ALTER_CONFIGS           => [0, 0],
+        ApiKeys::PRODUCE                     => [0, 5],
+        ApiKeys::FETCH                       => [0, 7],
+        ApiKeys::OFFSETS                     => [0, 2],
+        ApiKeys::METADATA                    => [0, 5],
+        ApiKeys::LEADER_AND_ISR              => [0, 1],
+        ApiKeys::STOP_REPLICA                => [0, 0],
+        ApiKeys::UPDATE_METADATA             => [0, 4],
+        ApiKeys::CONTROLLED_SHUTDOWN         => [0, 1],
+        ApiKeys::OFFSET_COMMIT               => [0, 3],
+        ApiKeys::OFFSET_FETCH                => [0, 3],
+        ApiKeys::GROUP_COORDINATOR           => [0, 1],
+        ApiKeys::JOIN_GROUP                  => [0, 2],
+        ApiKeys::HEARTBEAT                   => [0, 1],
+        ApiKeys::LEAVE_GROUP                 => [0, 1],
+        ApiKeys::SYNC_GROUP                  => [0, 1],
+        ApiKeys::DESCRIBE_GROUPS             => [0, 1],
+        ApiKeys::LIST_GROUPS                 => [0, 1],
+        ApiKeys::SASL_HANDSHAKE              => [0, 1],
+        ApiKeys::API_VERSIONS                => [0, 1],
+        ApiKeys::CREATE_TOPICS               => [0, 2],
+        ApiKeys::DELETE_TOPICS               => [0, 1],
+        ApiKeys::DELETE_RECORDS              => [0, 0],
+        ApiKeys::INIT_PRODUCER_ID            => [0, 0],
+        ApiKeys::OFFSET_FOR_LEADER_EPOCH     => [0, 0],
+        ApiKeys::ADD_PARTITIONS_TO_TXN       => [0, 0],
+        ApiKeys::ADD_OFFSETS_TO_TXN          => [0, 0],
+        ApiKeys::END_TXN                     => [0, 0],
+        ApiKeys::WRITE_TXN_MARKERS           => [0, 0],
+        ApiKeys::TXN_OFFSET_COMMIT           => [0, 0],
+        ApiKeys::DESCRIBE_ACLS               => [0, 0],
+        ApiKeys::CREATE_ACLS                 => [0, 0],
+        ApiKeys::DELETE_ACLS                 => [0, 0],
+        ApiKeys::DESCRIBE_CONFIGS            => [0, 1],
+        ApiKeys::ALTER_CONFIGS               => [0, 0],
+        ApiKeys::ALTER_REPLICA_LOG_DIRS      => [0, 0],
+        ApiKeys::DESCRIBE_LOG_DIRS           => [0, 0],
+        ApiKeys::SASL_AUTHENTICATE           => [0, 0],
+        ApiKeys::CREATE_PARTITIONS           => [0, 0],
+        ApiKeys::CREATE_DELEGATION_TOKEN     => [0, 0],
+        ApiKeys::RENEW_DELEGATION_TOKEN      => [0, 0],
+        ApiKeys::EXPIRE_DELEGATION_TOKEN     => [0, 0],
+        ApiKeys::DESCRIBE_DELEGATION_TOKEN   => [0, 0],
+        ApiKeys::DELETE_GROUPS               => [0, 0],
     ];
 
     /**
-     * The first api key above the table; `AlterReplicaLogDirs` is Kafka 1.0 and no 0.11.0.3 broker knows it
+     * The first api key above the table; `ElectPreferredLeaders` is Kafka 2.2 and no 1.1.1 broker knows it
      */
-    private const int UNKNOWN_API_KEY = 34;
+    private const int UNKNOWN_API_KEY = 43;
 
     /**
      * Cluster of this test class, resolved once
@@ -150,7 +164,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         $this->transactionalId = 't1-probe-txn-' . $suffix;
     }
 
-    public function testTheBrokerReportsEveryApiOfKafka01103(): void
+    public function testTheBrokerReportsEveryApiOfKafka111(): void
     {
         $response = $this->client()->apiVersions($this->anyNode());
 
@@ -192,21 +206,24 @@ final class ApiVersionProbeTest extends IntegrationTestCase
 
         self::assertSame(array_keys(self::SERVED_APIS), array_keys($apiVersions));
         self::assertSame(ApiKeys::API_VERSIONS, $apiVersions[ApiKeys::API_VERSIONS]->apiKey);
-        self::assertSame(1, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->minVersion);
+        self::assertSame(0, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->minVersion, 'Kafka 1.0 serves v0 again');
     }
 
     public function testTheAnswerIsIndexedByApiKey(): void
     {
         $response = $this->client()->apiVersions($this->anyNode());
 
-        self::assertTrue($response->supports(ApiKeys::FETCH, 5), 'Fetch v5 arrived with Kafka 0.11');
-        self::assertFalse($response->supports(ApiKeys::FETCH, 6), 'Fetch v6 is Kafka 1.0');
-        self::assertFalse($response->supports(ApiKeys::CONTROLLED_SHUTDOWN, 0), 'the minimum version is inclusive');
-        self::assertSame(4, $response->maxVersionOf(ApiKeys::METADATA));
-        self::assertSame(0, $response->maxVersionOf(ApiKeys::DELETE_RECORDS), 'DeleteRecords (21) is Kafka 0.11');
+        self::assertTrue($response->supports(ApiKeys::FETCH, 7), 'Fetch v7 arrived with Kafka 1.1 (KIP-227)');
+        self::assertFalse($response->supports(ApiKeys::FETCH, 8), 'Fetch v8 is Kafka 2.0');
+        self::assertTrue(
+            $response->supports(ApiKeys::CONTROLLED_SHUTDOWN, 0),
+            'the minimum version of key 7 is 0 again since Kafka 1.0'
+        );
+        self::assertSame(5, $response->maxVersionOf(ApiKeys::METADATA));
+        self::assertSame(0, $response->maxVersionOf(ApiKeys::DELETE_GROUPS), 'DeleteGroups (42) is Kafka 1.1');
         self::assertNull(
             $response->maxVersionOf(self::UNKNOWN_API_KEY),
-            'AlterReplicaLogDirs (34) is Kafka 1.0 and is not reported at all'
+            'the api key 43 (ElectPreferredLeaders, Kafka 2.2) is not reported at all'
         );
     }
 
@@ -244,8 +261,10 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     /**
      * The first version above every api of the table, plus the first api key above it
      *
-     * The two exceptions of the table are not here: ControlledShutdown (7) answers every version and ApiVersions
-     * (18) answers an unknown version with the error code 35; both have a test of their own below.
+     * ApiVersions (18) is the only api that is not here, because it is the only one whose unknown version is
+     * answered instead of costing the connection; it has a test of its own below. **ControlledShutdown (7) is in
+     * the list on this line**: up to 0.11 it answered every version it was sent, and since Kafka 1.0 it is an
+     * ordinary Java-schema api that hangs up above v1 like all the others.
      *
      * @return array<string, array{int, int}>
      */
@@ -253,12 +272,12 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     {
         $cases = [];
         foreach (self::SERVED_APIS as $apiKey => [, $maxVersion]) {
-            if ($apiKey === ApiKeys::CONTROLLED_SHUTDOWN || $apiKey === ApiKeys::API_VERSIONS) {
+            if ($apiKey === ApiKeys::API_VERSIONS) {
                 continue;
             }
             $cases["key {$apiKey} v" . ($maxVersion + 1)] = [$apiKey, $maxVersion + 1];
         }
-        $cases['key ' . self::UNKNOWN_API_KEY . ' v0 (Kafka 1.0)'] = [self::UNKNOWN_API_KEY, 0];
+        $cases['key ' . self::UNKNOWN_API_KEY . ' v0 (Kafka 2.2)'] = [self::UNKNOWN_API_KEY, 0];
 
         return $cases;
     }
@@ -272,7 +291,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             RawApiProbe::CLOSED,
             $result['status'],
             "The broker did not close the connection for the api key {$apiKey} version {$apiVersion}, which Kafka "
-            . '0.11.0.3 does not serve'
+            . '1.1.1 does not serve'
         );
         self::assertNull($result['correlationId'], 'a closed connection carries no response frame');
     }
@@ -280,7 +299,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     /**
      * ApiVersions is the one api whose unknown version is answered instead of costing the connection
      *
-     * `RequestChannel.Request` @ 0.11.0.3 builds a dummy ApiVersions request for a version it cannot parse, so that
+     * `RequestChannel.Request` @ 1.1.1 builds a dummy ApiVersions request for a version it cannot parse, so that
      * `KafkaApis.handleApiVersionsRequest` can answer `ApiVersionsResponse.unsupportedVersionSend()` - the error
      * code 35 with an empty api array, written in the **version 0** layout, i.e. without the throttle time that the
      * version 1 answer of the same broker carries.
@@ -307,13 +326,15 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     }
 
     /**
-     * ControlledShutdown is the last api a 0.11.0.3 broker parses with its Scala class, and it ignores the version
+     * ControlledShutdown is an ordinary Java-schema api since Kafka 1.0, and both of its versions are served
      *
-     * `RequestChannel.Request` calls `ControlledShutdownRequest.readFrom()` for key 7 before the request header is
-     * even parsed - "this will be removed once we remove support for v0 of ControlledShutdownRequest", says the
-     * source, still, in 0.11 - and that parser only asks whether the version is above 0, to decide whether a client
-     * id follows. The frame of the retired version 0 is therefore still answered, and so is a version above the
-     * maximum, although ApiVersions reports the single version 1 for the api.
+     * Up to 0.11 key 7 was the last api a broker parsed with the Scala `ControlledShutdownRequest.readFrom()`, which
+     * never validated the version: v0, v1 and anything above were all answered, although ApiVersions reported the
+     * single version 1. Kafka 1.0 finished the move to the Java schemas and gave `RequestHeader` a schema of its own
+     * for the one frame that needs it (`CONTROLLED_SHUTDOWN_V0_SCHEMA`, the header without a client id), so **v0 is
+     * a served version again** - `MinVersion = 0` in the table - and everything above v1 is refused like any other
+     * unknown version. The two halves are pinned separately: the served versions here, v2 by
+     * {@see self::unservedApiProvider()}.
      *
      * @return array<string, array{int, bool}>
      */
@@ -321,13 +342,12 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     {
         return [
             'v0, the header without a client id' => [0, false],
-            'v1, the version of the table'        => [1, true],
-            'v2, above the table'                 => [2, true],
+            'v1, the common header'              => [1, true],
         ];
     }
 
     #[DataProvider('controlledShutdownVersionProvider')]
-    public function testControlledShutdownAnswersEveryVersionItIsSent(int $apiVersion, bool $withClientId): void
+    public function testControlledShutdownAnswersBothOfItsVersions(int $apiVersion, bool $withClientId): void
     {
         $probe  = new RawApiProbe(self::firstBootstrapServer());
         $result = $probe->send(
@@ -343,8 +363,28 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         self::assertSame(
             KafkaException::BROKER_NOT_AVAILABLE,
             self::errorCodeOf($result['body']),
-            'the controller does not know the broker id, and says so for every version'
+            'the controller does not know the broker id, and says so for both versions'
         );
+    }
+
+    /**
+     * The version above the table costs the connection for key 7 as well - the second exception of 0.11 is gone
+     *
+     * This is the one behavioural difference between a 0.11.0.3 and a 1.1.1 broker that is not a new api version:
+     * `ApiVersionProbeTest` of the `0.11.x` line asserted that ControlledShutdown v2 is *answered*.
+     */
+    public function testControlledShutdownAboveItsMaximumVersionClosesTheConnection(): void
+    {
+        $probe  = new RawApiProbe(self::firstBootstrapServer());
+        $result = $probe->send(
+            ApiKeys::CONTROLLED_SHUTDOWN,
+            2,
+            RawApiProbe::int32(self::UNKNOWN_BROKER_ID),
+            4002
+        );
+        $probe->close();
+
+        self::assertSame(RawApiProbe::CLOSED, $result['status']);
     }
 
     /**
@@ -375,12 +415,12 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     public function testAClosedConnectionDoesNotAffectTheNextOne(): void
     {
         $closed = $this->probe(self::UNKNOWN_API_KEY, 0, 6001);
-        $served = $this->probe(ApiKeys::METADATA, 4, 6002);
+        $served = $this->probe(ApiKeys::METADATA, 5, 6002);
 
         self::assertSame(
             RawApiProbe::CLOSED,
             $closed['status'],
-            'AlterReplicaLogDirs (34) is a Kafka 1.0 api key'
+            'the api key 43 is above the table of Kafka 1.1.1'
         );
         self::assertSame(RawApiProbe::ANSWERED, $served['status']);
         self::assertSame(6002, $served['correlationId']);
@@ -394,20 +434,35 @@ final class ApiVersionProbeTest extends IntegrationTestCase
         $emptyProduceV0 = $this->probe(ApiKeys::PRODUCE, 0, 7000)['body'];
         $emptyProduceV1 = $this->probe(ApiKeys::PRODUCE, 1, 7001)['body'];
         $emptyProduceV3 = $this->probe(ApiKeys::PRODUCE, 3, 7003)['body'];
+        $emptyProduceV5 = $this->probe(ApiKeys::PRODUCE, 5, 7007)['body'];
         $emptyFetchV0   = $this->probe(ApiKeys::FETCH, 0, 7004)['body'];
         $emptyFetchV1   = $this->probe(ApiKeys::FETCH, 1, 7005)['body'];
         $emptyFetchV5   = $this->probe(ApiKeys::FETCH, 5, 7006)['body'];
+        $emptyFetchV6   = $this->probe(ApiKeys::FETCH, 6, 7008)['body'];
+        $emptyFetchV7   = $this->probe(ApiKeys::FETCH, 7, 7009)['body'];
 
         // An empty topic array is four zero bytes, the throttle time of an unthrottled client four more. Everything
-        // Kafka 0.11 adds to these two apis - `transactional_id`, `log_start_offset`, `isolation_level`,
-        // `last_stable_offset`, the aborted transactions - sits inside a partition entry, so an answer without a
-        // single topic is the same eight bytes it was in 0.10.
+        // Kafka 0.11 adds to these two apis - `transactional_id`, `isolation_level`, `last_stable_offset`, the
+        // aborted transactions - and everything Kafka 1.0 adds to Produce - `log_start_offset` of v5 - sits inside a
+        // partition entry, so an answer without a single topic is the same eight bytes it was in 0.10.
         self::assertSame(4, strlen($emptyProduceV0));
         self::assertSame(8, strlen($emptyProduceV1));
         self::assertSame(8, strlen($emptyProduceV3));
+        self::assertSame(8, strlen($emptyProduceV5));
         self::assertSame(4, strlen($emptyFetchV0));
         self::assertSame(8, strlen($emptyFetchV1));
         self::assertSame(8, strlen($emptyFetchV5));
+        self::assertSame(8, strlen($emptyFetchV6));
+
+        // Fetch v7 is the one exception: KIP-227 put a top-level `error_code` int16 and a `session_id` int32 in
+        // front of the topic array of the answer, so an empty fetch answer of that version is six bytes longer
+        self::assertSame(14, strlen($emptyFetchV7));
+        self::assertSame(0, self::errorCodeBehindTheThrottleTimeOf($emptyFetchV7), 'the top-level error of KIP-227');
+        self::assertSame(
+            0,
+            (int) unpack('N', substr($emptyFetchV7, 6, 4))[1],
+            'session_id 0: the client asked for a session-less full fetch'
+        );
     }
 
     /**
@@ -447,7 +502,7 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     /**
      * The ACL apis (29, 30, 31) are served, and answer 54 while the broker has no authorizer
      *
-     * This is why the epic left them out of the line: `KafkaApis.handleDescribeAcls` @ 0.11.0.3 answers
+     * This is why the epic left them out of the line: `KafkaApis.handleDescribeAcls` @ 1.1.1 answers
      * `Errors.SECURITY_DISABLED` for every one of them unless `authorizer.class.name` is configured, so no wire
      * vector of a real answer can be captured on the shared container. The keys themselves are in `ApiKeys` and in
      * the api-key table, because the broker reports them.
@@ -486,17 +541,77 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      *
      * On a SASL listener the request never reaches the api layer: `SaslServerAuthenticator` intercepts it while the
      * connection is still unauthenticated and answers it there. Everything that does get through to
-     * `KafkaApis.handleSaslHandshakeRequest` @ 0.11.0.3 is therefore a handshake that arrived at the wrong moment,
+     * `KafkaApis.handleSaslHandshakeRequest` @ 1.1.1 is therefore a handshake that arrived at the wrong moment,
      * and that method answers a constant **34** (IllegalSaslState) with the mechanisms the broker has enabled - no
      * matter which mechanism was asked for. The handshake itself belongs to the SASL listeners; this only pins that
-     * the key is served on every listener.
+     * the key is served on every listener, in both of its versions - Kafka 1.0 added the v1 that promises a framed
+     * {@see ApiKeys::SASL_AUTHENTICATE} exchange (T2 of this line).
      */
     public function testSaslHandshakeOnThePlaintextListenerIsAnsweredWithIllegalSaslState(): void
     {
-        $result = $this->probe(ApiKeys::SASL_HANDSHAKE, 0, 9001);
+        $versionZero = $this->probe(ApiKeys::SASL_HANDSHAKE, 0, 9001);
+        $versionOne  = $this->probe(ApiKeys::SASL_HANDSHAKE, 1, 9002);
+
+        self::assertSame(RawApiProbe::ANSWERED, $versionZero['status']);
+        self::assertSame(KafkaException::ILLEGAL_SASL_STATE, self::errorCodeOf($versionZero['body']));
+        self::assertSame(RawApiProbe::ANSWERED, $versionOne['status']);
+        self::assertSame(KafkaException::ILLEGAL_SASL_STATE, self::errorCodeOf($versionOne['body']));
+    }
+
+    /**
+     * SaslAuthenticate (36) on an already authenticated connection answers 34 with a message
+     *
+     * Like the handshake, the api never reaches `KafkaApis` on a SASL listener - `SaslServerAuthenticator` consumes
+     * it while the connection is being authenticated. What arrives at `KafkaApis.handleSaslAuthenticateRequest`
+     * @ 1.1.1 is therefore always a request that came too late, and the method answers **34** with the message
+     * `SaslAuthenticate request received after successful authentication`. On the PLAINTEXT listener of the
+     * container - where there is no authentication at all - that is the answer as well, which is what makes the key
+     * safe to probe. The framed token exchange itself belongs to T2 and the SASL listeners.
+     */
+    public function testSaslAuthenticateOnThePlaintextListenerIsAnsweredWithIllegalSaslState(): void
+    {
+        $result = $this->probe(ApiKeys::SASL_AUTHENTICATE, 0, 9003);
 
         self::assertSame(RawApiProbe::ANSWERED, $result['status']);
         self::assertSame(KafkaException::ILLEGAL_SASL_STATE, self::errorCodeOf($result['body']));
+        self::assertStringContainsString(
+            'SaslAuthenticate request received after successful authentication',
+            $result['body']
+        );
+    }
+
+    /**
+     * The four delegation-token apis (38-41) are served and refuse a PLAINTEXT connection with 64
+     *
+     * KIP-48 lets a token be issued only over a channel that authenticated a real principal: `KafkaApis` @ 1.1.1
+     * checks `isValidPrincipalType` and the security protocol of the listener first, and answers **64**
+     * (`DELEGATION_TOKEN_REQUEST_NOT_ALLOWED`) on PLAINTEXT and on a one-way SSL channel, before the token manager
+     * is asked anything. The container does carry a `delegation.token.master.key`, so the answer is not the 61 of a
+     * broker without one; both codes are new in Kafka 1.1.
+     *
+     * @return array<string, array{int}>
+     */
+    public static function delegationTokenApiProvider(): array
+    {
+        return [
+            'CreateDelegationToken (38)'   => [ApiKeys::CREATE_DELEGATION_TOKEN],
+            'RenewDelegationToken (39)'    => [ApiKeys::RENEW_DELEGATION_TOKEN],
+            'ExpireDelegationToken (40)'   => [ApiKeys::EXPIRE_DELEGATION_TOKEN],
+            'DescribeDelegationToken (41)' => [ApiKeys::DESCRIBE_DELEGATION_TOKEN],
+        ];
+    }
+
+    #[DataProvider('delegationTokenApiProvider')]
+    public function testTheDelegationTokenApisRefuseAPlaintextConnection(int $apiKey): void
+    {
+        $result = $this->probe($apiKey, 0, 9200 + $apiKey);
+
+        self::assertSame(RawApiProbe::ANSWERED, $result['status']);
+        self::assertSame(
+            KafkaException::DELEGATION_TOKEN_REQUEST_NOT_ALLOWED,
+            self::errorCodeOf($result['body']),
+            'a delegation token is only issued over an authenticated channel'
+        );
     }
 
     /**
@@ -536,10 +651,14 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             ApiKeys::PRODUCE  => ($apiVersion >= 3 ? $nullString : '') . pack('n', 1) . RawApiProbe::int32(1000)
                 . $emptyArray,
             // ReplicaId -1 (an ordinary consumer), MaxWaitTime, MinBytes, the MaxBytes of v3, the isolation level
-            // of v4 (0 = read_uncommitted), and no topic
+            // of v4 (0 = read_uncommitted), the session of v7 (KIP-227: id 0 and epoch -1 are the session-less full
+            // fetch every version below sends), no topic - and, on v7, no forgotten topic either
             ApiKeys::FETCH    => RawApiProbe::int32(-1) . RawApiProbe::int32(100) . RawApiProbe::int32(0)
                 . ($apiVersion >= 3 ? RawApiProbe::int32(1048576) : '')
-                . ($apiVersion >= 4 ? pack('c', 0) : '') . $emptyArray,
+                . ($apiVersion >= 4 ? pack('c', 0) : '')
+                . ($apiVersion >= 7 ? RawApiProbe::int32(0) . RawApiProbe::int32(-1) : '')
+                . $emptyArray
+                . ($apiVersion >= 7 ? $emptyArray : ''),
             ApiKeys::OFFSETS  => RawApiProbe::int32(-1) . ($apiVersion >= 2 ? pack('c', 0) : '') . $emptyArray,
             // v0 reads an empty array as "every topic", v1 and above as "no topic"; v4 ends with
             // `allow_auto_topic_creation`, which is sent as false so that the probe creates nothing
@@ -601,9 +720,25 @@ final class ApiVersionProbeTest extends IntegrationTestCase
                 . pack('c', 1) . pack('c', 1),
             ApiKeys::CREATE_ACLS             => $emptyArray,
             ApiKeys::DELETE_ACLS             => $emptyArray,
-            // No resource to describe and none to change
-            ApiKeys::DESCRIBE_CONFIGS        => $emptyArray,
+            // No resource to describe and none to change; v1 of DescribeConfigs ends with `include_synonyms`
+            ApiKeys::DESCRIBE_CONFIGS        => $emptyArray . ($apiVersion >= 1 ? pack('C', 0) : ''),
             ApiKeys::ALTER_CONFIGS           => $emptyArray . pack('C', 1),
+            // No replica to move and no log directory to describe: an empty topic array is "nothing", where the
+            // null array of DescribeLogDirs would ask for every partition of both log directories of the container
+            ApiKeys::ALTER_REPLICA_LOG_DIRS  => $emptyArray,
+            ApiKeys::DESCRIBE_LOG_DIRS       => $emptyArray,
+            // An empty token: the api is answered with 34 on every listener that did not authenticate with it
+            ApiKeys::SASL_AUTHENTICATE       => RawApiProbe::bytes(''),
+            // No topic whose partition count should grow, and `validate_only` on top of that
+            ApiKeys::CREATE_PARTITIONS       => $emptyArray . RawApiProbe::int32(1000) . pack('C', 1),
+            // The token apis are refused on a PLAINTEXT connection before anything is read out of their body, so
+            // the smallest well-formed frame of each is enough: no renewer, no hmac, no owner
+            ApiKeys::CREATE_DELEGATION_TOKEN => $emptyArray . RawApiProbe::int64(-1),
+            ApiKeys::RENEW_DELEGATION_TOKEN  => RawApiProbe::bytes('') . RawApiProbe::int64(-1),
+            ApiKeys::EXPIRE_DELEGATION_TOKEN => RawApiProbe::bytes('') . RawApiProbe::int64(-1),
+            ApiKeys::DESCRIBE_DELEGATION_TOKEN => RawApiProbe::int32(-1),
+            // No group to delete
+            ApiKeys::DELETE_GROUPS           => $emptyArray,
             default                          => '',
         };
     }

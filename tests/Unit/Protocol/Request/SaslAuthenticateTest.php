@@ -1,0 +1,152 @@
+<?php
+
+/*
+ * This file is part of the lisachenko/kafka-client package.
+ *
+ * (c) Alexander Lisachenko <lisachenko.it@gmail.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
+
+namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
+
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\IllegalSaslStateException;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\SaslAuthenticationFailedException;
+use Protocol\Kafka\Common\Security\SaslToken;
+use Protocol\Kafka\IO\StringStream;
+use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateRequest;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponse;
+
+/**
+ * Byte-exact tests for the SaslAuthenticate API (key 36, v0, Kafka 1.0 / KIP-152).
+ *
+ * The request carries the token that a v0 exchange would write on the socket raw, and the answer is the one thing
+ * the raw exchange never had: an error code with a message.
+ *
+ * @see docs/protocol/1.1.md, section "SaslAuthenticate API (key 36, v0)"
+ */
+#[CoversClass(SaslAuthenticateRequest::class)]
+#[CoversClass(SaslAuthenticateResponse::class)]
+#[CoversClass(SaslToken::class)]
+final class SaslAuthenticateTest extends TestCase
+{
+    /**
+     * SaslAuthenticate request v0 carrying the PLAIN token of `kafkatest`, correlation id 2, client id "test".
+     *
+     *   Size          => 00 00 00 2d (45 bytes)
+     *   ApiKey        => 00 24 (36)
+     *   ApiVersion    => 00 00
+     *   CorrelationId => 00 00 00 02
+     *   ClientId      => 00 04 "test"
+     *   SaslAuthBytes => 00 00 00 1b, "\0kafkatest\0kafkatest-secret"
+     */
+    private const string REQUEST_HEX = '0000002d'
+        . '0024'
+        . '0000'
+        . '00000002'
+        . '0004' . '74657374'
+        . '0000001b' . '006b61666b6174657374006b61666b61746573742d736563726574';
+
+    /**
+     * The answer of a completed PLAIN exchange: no error, no message, and the empty token of the mechanism.
+     *
+     *   Size            => 00 00 00 0c (12 bytes)
+     *   CorrelationId   => 00 00 00 02
+     *   ErrorCode       => 00 00
+     *   ErrorMessage    => ff ff (null)
+     *   SaslAuthBytes   => 00 00 00 00
+     */
+    private const string RESPONSE_HEX = '0000000c' . '00000002' . '0000' . 'ffff' . '00000000';
+
+    /**
+     * The answer to a wrong password: the error code 58 and the message of the broker.
+     */
+    private const string REFUSED_RESPONSE_HEX = '0000003f'
+        . '00000002'
+        . '003a'
+        . '0033' . '41757468656e7469636174696f6e206661696c65643a20496e76616c696420757365726e616d65206f722070617373776f7264'
+        . '00000000';
+
+    /**
+     * The answer to a request that arrived after the authentication was already complete: the error code 34.
+     */
+    private const string ILLEGAL_STATE_RESPONSE_HEX = '0000004d'
+        . '00000002'
+        . '0022'
+        . '0041' . '5361736c41757468656e74696361746520726571756573742072656365697665642061667465'
+        . '72207375636365737366756c2061757468656e7469636174696f6e'
+        . '00000000';
+
+    public function testRequestIsPackedAccordingToTheSpec(): void
+    {
+        $token   = SaslToken::ofPlainCredentials('kafkatest', 'kafkatest-secret');
+        $request = new SaslAuthenticateRequest($token->token, 'test', 2);
+
+        self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
+        self::assertSame(ApiKeys::SASL_AUTHENTICATE, $request->getApiKey());
+        self::assertSame(0, $request->getApiVersion(), 'a 1.1.1 broker serves version 0 only');
+    }
+
+    /**
+     * The token of the request is byte for byte the payload of the frame a v0 exchange writes on the socket: the
+     * length prefix of the `bytes` field is the same `INT32` the bare token frame carries.
+     */
+    public function testTheRequestCarriesExactlyTheBytesOfTheRawToken(): void
+    {
+        $token = SaslToken::ofPlainCredentials('kafkatest', 'kafkatest-secret');
+        $frame = bin2hex((string) new SaslAuthenticateRequest($token->token, 'test', 2));
+
+        self::assertStringEndsWith(bin2hex($token->pack()), $frame);
+    }
+
+    public function testResponseOfACompletedExchangeIsUnpackedAccordingToTheSpec(): void
+    {
+        $response = SaslAuthenticateResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+
+        self::assertSame(2, $response->getCorrelationId());
+        self::assertSame(0, $response->errorCode);
+        self::assertNull($response->errorMessage, 'a successful answer carries no message');
+        self::assertSame('', $response->saslAuthBytes, 'PLAIN answers with the empty token');
+    }
+
+    public function testRefusedCredentialsCarryTheErrorCode58AndTheMessageOfTheBroker(): void
+    {
+        $response = SaslAuthenticateResponse::unpack(new StringStream((string) hex2bin(self::REFUSED_RESPONSE_HEX)));
+
+        self::assertSame(KafkaException::SASL_AUTHENTICATION_FAILED, $response->errorCode);
+        self::assertSame('Authentication failed: Invalid username or password', $response->errorMessage);
+        self::assertSame('', $response->saslAuthBytes, 'an answer with an error code carries no token');
+        self::assertInstanceOf(
+            SaslAuthenticationFailedException::class,
+            KafkaException::fromCode($response->errorCode),
+            'the error code 58 of Kafka 1.0 maps onto its own exception'
+        );
+    }
+
+    public function testARequestAfterTheAuthenticationIsAnsweredWithTheIllegalSaslState(): void
+    {
+        $response = SaslAuthenticateResponse::unpack(
+            new StringStream((string) hex2bin(self::ILLEGAL_STATE_RESPONSE_HEX))
+        );
+
+        self::assertSame(KafkaException::ILLEGAL_SASL_STATE, $response->errorCode);
+        self::assertSame('SaslAuthenticate request received after successful authentication', $response->errorMessage);
+        self::assertInstanceOf(IllegalSaslStateException::class, KafkaException::fromCode($response->errorCode));
+    }
+
+    public function testEveryAnswerSurvivesADecodeAndEncodeRoundTrip(): void
+    {
+        foreach ([self::RESPONSE_HEX, self::REFUSED_RESPONSE_HEX, self::ILLEGAL_STATE_RESPONSE_HEX] as $hex) {
+            $response = SaslAuthenticateResponse::unpack(new StringStream((string) hex2bin($hex)));
+
+            self::assertSame($hex, bin2hex((string) $response));
+        }
+    }
+}

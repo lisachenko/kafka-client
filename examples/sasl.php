@@ -12,12 +12,13 @@
 declare(strict_types=1);
 
 /**
- * Authenticates against the SASL listeners of a Kafka 0.11.0.3 cluster with SASL/PLAIN.
+ * Authenticates against the SASL listeners of a Kafka 1.1.1 cluster with SASL/PLAIN.
  *
  * Kafka 0.10.0 (KIP-43) made SASL part of the protocol: a connection to a `SASL_PLAINTEXT`/`SASL_SSL` listener
  * starts with a `SaslHandshake` request (api key 17) that names the mechanism, and the tokens of that mechanism
- * follow as bare size-prefixed frames - for PLAIN a single `\0<username>\0<password>`, answered with an empty
- * token. Everything after it is an ordinary Kafka connection, so the producer, the consumer and the admin client
+ * follow it - for PLAIN a single `\0<username>\0<password>`, answered with an empty token. Kafka 1.0 (KIP-152)
+ * gave those tokens a request of their own, `SaslAuthenticate` (api key 36), which is what a **v1** handshake asks
+ * for and what this client sends. Everything after it is an ordinary Kafka connection, so the producer, the consumer and the admin client
  * of this package work exactly as they do over plaintext; only these three options are added:
  *
  *   security.protocol = SASL_PLAINTEXT | SASL_SSL
@@ -28,7 +29,7 @@ declare(strict_types=1);
  * and the password are plain options here.
  *
  * The broker of this repository advertises PLAINTEXT on 9092, SSL on 9093, SASL_PLAINTEXT on 9094 and SASL_SSL on
- * 9095, with the users of `docker/kafka-0.11.0.3/jaas.conf`:
+ * 9095, with the users of `docker/kafka-1.1.1/jaas.conf`:
  *
  *   docker compose up -d
  *   php examples/sasl.php                                             # SASL_PLAINTEXT on 9094
@@ -42,8 +43,10 @@ declare(strict_types=1);
  * and SCRAM needs the multi-round exchange of RFC 5802. Both are refused with an InvalidConfigurationException that
  * names the reason, instead of failing somewhere in the middle of a connection.
  *
- * Wrong credentials have no error code before Kafka 1.0 - the broker simply closes the connection during the token
- * exchange - which this client reports as a SaslAuthenticationException.
+ * Wrong credentials are answered with the error code 58 and a message from Kafka 1.0 on (`Authentication failed:
+ * Invalid username or password`), and the broker closes the connection right after that frame; before 1.0 it closed
+ * the connection without a word. Either way this client reports a SaslAuthenticationException, which carries the
+ * code and the message of the broker when there is one.
  */
 
 use Protocol\Kafka\Admin\AdminClient;
@@ -109,7 +112,7 @@ if ($securityProtocol === SecurityProtocol::SASL_SSL) {
 }
 
 // The handshake and the token exchange happen inside this call: wrong credentials are reported here, as a
-// SaslAuthenticationException - the broker answers them by closing the connection, without an error code.
+// SaslAuthenticationException carrying the error code 58 and the message the broker answered with.
 try {
     $cluster = Cluster::bootstrap($configuration);
 } catch (SaslAuthenticationException $exception) {

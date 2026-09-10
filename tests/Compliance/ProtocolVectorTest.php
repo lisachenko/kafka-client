@@ -192,6 +192,14 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function saslAuthenticateVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function createTopicsVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -552,6 +560,15 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('saslHandshakeVectors')]
     public function testSaslHandshakeApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('saslAuthenticateVectors')]
+    public function testSaslAuthenticateApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }
