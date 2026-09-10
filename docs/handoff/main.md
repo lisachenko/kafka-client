@@ -24,7 +24,7 @@ document's "Broker quirks and observations" section. What the **next** line star
 | **T6** #96 | [#106](https://github.com/lisachenko/kafka-client/pull/106) | **The idempotent producer of 1.x**: the five-batch duplicate window, and **59** `UNKNOWN_PRODUCER_ID` repaired from the `log_start_offset` instead of reported (`lastAckedOffset()`, `startSequencesAtBeginning()`, `canRetryBatch()`) |
 | **T7** #97 | [#105](https://github.com/lisachenko/kafka-client/pull/105) | **The four delegation-token apis 38-41** of KIP-48 with `KafkaPrincipal`, `DelegationToken` and `TokenInformation` — issued, renewed, expired and described over a SASL listener |
 | **T8** #98 | *PR pending — the coordinator fills the number in* | **The incremental fetch sessions in the consumer** (KIP-227): the session state machine of `FetchSessionHandler` on top of T3's frame |
-| **T9** #99 | *PR-NUMBER-PLACEHOLDER* | This file, the consistency pass over the document, the vectors README, the README matrix, the CHANGELOG, the examples, `docs/CASCADE.md`, `CLAUDE.md` and the handoff of the next line |
+| **T9** #99 | [#107](https://github.com/lisachenko/kafka-client/pull/107) | This file, the consistency pass over the document, the vectors README, the README matrix, the CHANGELOG, the examples, `docs/CASCADE.md`, `CLAUDE.md` and the handoff of the next line |
 
 The **foundation** of the line, on the integration branch before T1: the broker image `docker/kafka-1.1.1/` with
 the four listeners plus two log directories and a delegation-token master key, the rename of the protocol document
