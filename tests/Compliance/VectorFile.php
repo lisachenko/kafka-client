@@ -79,7 +79,9 @@ final class VectorFile
      * Returns the whole content of one vector file
      *
      * The `apiKey` is null for the vectors that belong to no api of their own, i.e. the structures that travel
-     * inside a byte array field of another message.
+     * inside a byte array field of another message, and for a file that holds the vectors of **several** apis -
+     * `delegation-tokens.json` is one - where every request vector carries an `apiKey` of its own, which wins over
+     * the one of the file.
      *
      * @return array{api: string, apiKey: int|null, section: string, vectors: list<array<string, mixed>>}
      */
