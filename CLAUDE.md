@@ -2,10 +2,10 @@
 
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
-(Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `main`
-(Kafka 0.11.0.3, **complete**). The cascade ends at `main`: there is no line above it, so
-`docs/handoff/main.md` carries the **release notes** of the 0.11 line with the plan it was built from
-below them. See `docs/CASCADE.md` and, for a line, `docs/handoff/<branch>.md`.
+(Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
+(Kafka 0.11.0.3, **complete**) → `main` (Kafka 1.x, **next**). See `docs/CASCADE.md` and, for the
+current line, `docs/handoff/<branch>.md`: `docs/handoff/0.11.x.md` carries the release notes of the
+0.11 line with the plan it was built from below them, `docs/handoff/main.md` the plan of the 1.x line.
 
 ## Hard rules (owner's decisions)
 
@@ -26,10 +26,12 @@ below them. See `docs/CASCADE.md` and, for a line, `docs/handoff/<branch>.md`.
 6. Tests are spec tests: byte-exact hex vectors (also replayed by `tests/Compliance`) plus
    integration tests against the real broker, skipped when `KAFKA_BOOTSTRAP_SERVERS` is unset.
 
-The `main` of the rules 2, 3 and 4 is the **pre-schema `main`**, i.e. the branch as it stood before the
-cascade merge of `0.10.x` (`git show 94f896a:<path>`): its identifiers are the ones this package publishes,
-and its `$header = null` requests were the defect the schema engine replaced. Since the 0.11 line landed,
-`main` itself is the finished, schema-based implementation of Kafka 0.11.0.3.
+For the lines up to 0.11 the `main` of the rules 2, 3 and 4 was the **pre-schema `main`**, i.e. the branch as
+it stood before the cascade merge of `0.10.x` (`git show 94f896a:<path>`): its identifiers are the ones this
+package publishes, and its `$header = null` requests were the defect the schema engine replaced. Since the 0.11
+line landed, the finished, schema-based implementation of Kafka 0.11.0.3 lives on `0.11.x` and on `main`, and a
+line above 0.11 starts from **that** `main`: rule 4 then means "start from the 0.11 class and add what the new
+release adds", and rule 2 means "the names of the 0.11 classes, plus the names of the Java client for what is new".
 
 ## Toolchain and quality gate
 
@@ -64,9 +66,10 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 ### Kafka broker for integration tests
 
 - `docker compose up -d --wait` starts the broker of this branch's Kafka version
-  (`docker/kafka-<version>/`, ZooKeeper bundled, advertised as 127.0.0.1:9092). On `main` that is
+  (`docker/kafka-<version>/`, ZooKeeper bundled, advertised as 127.0.0.1:9092). On `0.11.x` that is
   **`docker/kafka-0.11.0.3`**, the container `kafka-0-11-0-3`, with the four listeners PLAINTEXT 9092,
-  SSL 9093, SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image this branch carries.
+  SSL 9093, SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch carries (`main`
+  keeps it until the first ticket of the 1.x line replaces it with the broker of that line).
 - In the remote sandbox the Docker daemon may not be running: `nohup dockerd >/tmp/dockerd.log 2>&1 &`
   and wait for `docker info` to answer. Old Docker Hub images with v1 manifests cannot be pulled;
   build the image from `docker/` (the Kafka tarball comes from archive.apache.org, which is reachable).
@@ -95,7 +98,8 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   by hand after merging).
 - Conventional commits. No force-pushes on shared branches.
 - Cascade: after a line is complete, merge it upwards on a `cascade/<from>-into-<to>` branch (rules in
-  `docs/CASCADE.md`); `.github/workflows/cascade.yml` opens the PR automatically on pushes.
+  `docs/CASCADE.md`); `.github/workflows/cascade.yml` opens the PR automatically on pushes to `0.8.x`,
+  `0.9.x`, `0.10.x` and `0.11.x`. `main` is the top of the cascade and the line in development.
 
 ## How the work is organised (multi-agent)
 

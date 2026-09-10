@@ -4,12 +4,13 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
-own: `main` implements the **Kafka 0.11.0.3 wire protocol** — the last release of the 0.11 line —
+own: `0.11.x` implements the **Kafka 0.11.0.3 wire protocol** — the last release of the 0.11 line —
 and nothing above it. The lines below it are `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1)
-and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards into the next one, so the sections
-below accumulate: what a line added stays true of every line above it.
+and `0.8.x` (Kafka 0.8.2.2), the line above it is `main` (Kafka 1.x, in development), and every
+line is merged upwards into the next one, so the sections below accumulate: what a line added
+stays true of every line above it.
 
-Unreleased — the main line (Kafka 0.11.0.3)
+Unreleased — the 0.11.x line (Kafka 0.11.0.3)
 -------------------------------------------
 
 The 0.11 line, built on top of the `0.10.x` line it was cascade-merged from. Everything below was

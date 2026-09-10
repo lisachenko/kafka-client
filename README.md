@@ -1,8 +1,8 @@
-PHP Native Apache Kafka Client — main (Kafka 0.11.0.3)
-=======================================================
+PHP Native Apache Kafka Client — 0.11.x (Kafka 0.11.0.3)
+=========================================================
 
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lisachenko/kafka-client/ci.yml?branch=main)
-[![Code Coverage](https://img.shields.io/codecov/c/github/lisachenko/kafka-client/main)](https://app.codecov.io/gh/lisachenko/kafka-client)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lisachenko/kafka-client/ci.yml?branch=0.11.x)
+[![Code Coverage](https://img.shields.io/codecov/c/github/lisachenko/kafka-client/0.11.x)](https://app.codecov.io/gh/lisachenko/kafka-client)
 [![Minimum PHP Version](http://img.shields.io/badge/php-%3E%3D%208.4-8892BF.svg)](https://www.php.net/supported-versions.php)
 [![License](https://img.shields.io/packagist/l/lisachenko/kafka-client.svg)](https://packagist.org/packages/lisachenko/kafka-client)
 
@@ -12,11 +12,11 @@ client, designed to stay close in spirit to the official Java client's API while
 natural in PHP.
 
 **This branch speaks the Apache Kafka 0.11.0.3 wire protocol** — the last release of the 0.11
-line, so it covers everything 0.11.0.0 added, and nothing later. It is the top of the cascade of
-this repository: the frozen protocol snapshots of the lines below live on `0.10.x` (Kafka
-0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every wire vector they
-captured is replayed against the classes of this branch, because a 0.11.0.3 broker still speaks
-all of it. What the 0.11 protocol cannot do is simply absent, and
+line, so it covers everything 0.11.0.0 added, and nothing later. It is the frozen protocol
+snapshot of the 0.11 line: the lines below live on `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka
+0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), the line above is `main` (Kafka 1.x, in development), and
+every wire vector the lower lines captured is replayed against the classes of this branch,
+because a 0.11.0.3 broker still speaks all of it. What the 0.11 protocol cannot do is simply absent, and
 [what that is](#supported-kafka-protocol-versions) is listed below. The grammar this branch
 implements is written down, byte for byte, in [docs/protocol/0.11.0.md](docs/protocol/0.11.0.md).
 
@@ -659,7 +659,7 @@ its broker speaks. The table below is the literal answer of the container, read 
 The "this branch" column lists the versions this client has a class for; the one in **bold** is the
 version it sends.
 
-| Api key | API                  | Versions in 0.11.0.3 | Client-facing | `0.9.x` | `0.10.x` | `main` (this branch)         |
+| Api key | API                  | Versions in 0.11.0.3 | Client-facing | `0.9.x` | `0.10.x` | `0.11.x` (this branch)       |
 |---------|----------------------|----------------------|---------------|---------|----------|------------------------------|
 | 0       | Produce              | v0 … v3              | yes           | v0, v1  | v0, v1, v2 | v0, v1, v2, **v3** (**v2** below `message.format.version = 0.11.0`) |
 | 1       | Fetch                | v0 … v5              | yes           | v0, v1  | v0 … v3  | v0 … v4, **v5**              |
@@ -707,7 +707,7 @@ they wait for a container that has an authorizer configured.
 
 What the four lines can do beyond the api versions themselves:
 
-| Feature                                               | Arrived in | `0.8.x` | `0.9.x` | `0.10.x` | `main` |
+| Feature                                               | Arrived in | `0.8.x` | `0.9.x` | `0.10.x` | `0.11.x` |
 |-------------------------------------------------------|------------|---------|---------|----------|--------|
 | Message format v0 (no timestamps)                     | 0.8        | yes     | yes     | yes      | yes    |
 | Message format v1 (timestamps, relative inner offsets) | 0.10.0     | –       | –       | yes      | yes    |
