@@ -67,9 +67,10 @@ written:
   `Collections.emptySet()` in 1.1.1, so the inherited "34 with the enabled mechanisms" is no longer true. A second
   `SaslAuthenticate` on an authenticated connection is also a 34 — and leaves the connection **usable**, because
   it is `KafkaApis` that answers it and not the authenticator.
-* **`throttle_time_ms` is the LAST field of every api added after KIP-124** — all four delegation-token answers,
-  SaslAuthenticate (36), DescribeLogDirs (35) and AlterReplicaLogDirs (34). Reading it as the first int32 of such
-  an answer decodes an error code as a throttle time.
+* **`throttle_time_ms` is the LAST field of the four delegation-token answers (38-41)**, where every other api
+  of KIP-124 carries it first — DescribeLogDirs (35), AlterReplicaLogDirs (34), CreatePartitions (37) and
+  DeleteGroups (42) included — and **SaslAuthenticate (36) has no throttle time at all** (it is answered before a
+  quota can apply). Reading a token answer's first int32 as a throttle time decodes its error code instead.
 
 **Produce, Fetch and the message format**
 
