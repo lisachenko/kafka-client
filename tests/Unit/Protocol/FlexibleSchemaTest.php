@@ -25,6 +25,7 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV8;
 use Protocol\Kafka\Protocol\TaggedField;
 use Protocol\Kafka\Tests\Fixture\BrokerRecord;
 use Protocol\Kafka\Tests\Fixture\FlexibleRecord;
@@ -308,9 +309,15 @@ final class FlexibleSchemaTest extends TestCase
      */
     public function testTheHeaderVersionFollowsTheFlexibilityOfTheMessage(): void
     {
-        self::assertFalse(MetadataRequest::isFlexible(), 'Metadata is flexible from v9, and this branch sends v5');
-        self::assertSame(AbstractRequest::HEADER_V1, MetadataRequest::getHeaderVersion());
-        self::assertArrayNotHasKey('headerTaggedFields', MetadataRequest::getScheme());
+        // Metadata is flexible from v9 (Kafka 2.4), which is the version this branch sends; the version 8 class
+        // is the same api in the plain encoding, with the request header v1
+        self::assertTrue(MetadataRequest::isFlexible());
+        self::assertSame(AbstractRequest::HEADER_V2, MetadataRequest::getHeaderVersion());
+        self::assertArrayHasKey('headerTaggedFields', MetadataRequest::getScheme());
+
+        self::assertFalse(MetadataRequestV8::isFlexible(), 'version 8 is the last plain one');
+        self::assertSame(AbstractRequest::HEADER_V1, MetadataRequestV8::getHeaderVersion());
+        self::assertArrayNotHasKey('headerTaggedFields', MetadataRequestV8::getScheme());
 
         self::assertTrue(ApiVersionsRequest::isFlexible());
         self::assertSame(AbstractRequest::HEADER_V2, ApiVersionsRequest::getHeaderVersion());

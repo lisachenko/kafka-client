@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Common;
  * shape of its partition entries, see {@see TopicMetadata::partitionClass()}. The versions 5 and 6 answer with
  * {@see PartitionMetadataV5}, which carries the `offline_replicas` of KIP-112/113 and no leader epoch.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v9)"
  */
 final class TopicMetadataV5 extends TopicMetadata
 {

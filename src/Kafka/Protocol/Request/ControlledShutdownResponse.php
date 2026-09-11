@@ -31,10 +31,25 @@ use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
  *
  * Both versions of the request share this response: `ControlledShutdownResponse` @ 0.10.2.2 has no version of its own.
  *
- * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v2)"
+ * **Kafka 2.4 added the version 3** (KIP-482), the same two fields in the flexible encoding: the topic name of
+ * every remaining partition is a compact string, the array is a compact array, and the body and each entry end in
+ * a tagged-field section. The frame was identical in the versions 0, 1 and 2, which is why this class needed no
+ * version constant until now; {@see ControlledShutdownResponseV2} is that frame.
+ *
+ * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 class ControlledShutdownResponse extends AbstractResponse
 {
+    /**
+     * @inheritdoc
+     */
+    public const int VERSION = 3;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 3;
+
     /**
      * Error code of the whole request
      */

@@ -70,64 +70,6 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
 - **KIP-283** — `tests/Integration/DownConversionTest.php` measures the down-conversion matrix of a
   2.8.2 broker and the topic option **`message.downconversion.enable=false`**, which refuses a fetch
   that would need a conversion with **35** `UNSUPPORTED_VERSION` (not 43) per partition.
-- **Flexible versions (KIP-482, Kafka 2.4) in the schema engine** — the compact types (`compact_string`,
-  `compact_bytes`, `compact_[foo]`: an unsigned varint `length + 1`, `0` for `null`), the **unsigned varints**
-  themselves (`Stream::readUnsignedVarint()`/`writeUnsignedVarint()`), the **tagged fields** of every structure
-  (`Protocol\TaggedField`, declared in the scheme, written in ascending order of the tag and left out at their
-  default), the **request header v2** and **response header v1** (`AbstractRequest::getHeaderVersion()` and
-  `AbstractResponse::getHeaderVersion()`, the `ApiKeys.requestHeaderVersion()`/`responseHeaderVersion()` of the Java
-  client), the `uuid` of KIP-516 (`TYPE_UUID`) and the one string that never becomes compact
-  (`TYPE_STRING_NEVER_COMPACT`, the `client_id` of the header v2). Flexibility is a property of the **message**
-  (`FlexibleSchemaInterface::isFlexible()`, `VERSION >= FLEXIBLE_VERSION`) that the engine hands down to every
-  nested structure, so a `Data` class needs no change to serve a flexible version - the same scheme is written
-  plainly in one version of an api and compactly in the next. Unknown tagged fields are kept
-  (`PreservesUnknownTaggedFields`) so that a frame of a later broker survives a decode and encode round trip. The
-  two exceptions of the protocol are two overrides: ControlledShutdown v0 has no client id in its header, and the
-  **ApiVersions answer keeps the response header v0** whatever its version is (KIP-511).
-- **`Protocol\InlineStruct`** in the schema engine — a scheme entry for a nested object the **specification does
-  not have**, whose fields belong to the structure around it (`'owner' => new InlineStruct(KafkaPrincipal::class)`).
-  It changes nothing in a plain version, where a group of fields and a nested structure are the same bytes, but in
-  a flexible one it keeps the group from being given a tagged-field section of its own. The marker belongs to the
-  **field**, not to the class: the same class is a real structure wherever the specification declares one. The first two places of Kafka 2.8.2 that need it are the **owner of a
-  delegation token** (two flat fields of the answer that this package reads into a `KafkaPrincipal`, while the very
-  same class *is* a structure in the request of that api) and the coordinator of a FindCoordinator v3 answer.
-- **ApiVersions v3** (Kafka 2.4, KIP-511 + KIP-482 + KIP-584) — the first flexible frame this client sends: the
-  request carries `client_software_name` = `lisachenko-kafka-client` and `client_software_version` = `2.8` as
-  compact strings (a broker refuses a name that does not match `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?` with
-  the error code **42**, measured), and the answer carries the api table as a compact array and the features of
-  KIP-584 as tagged fields (`supportedFeatures`, `finalizedFeaturesEpoch`, `finalizedFeatures` on
-  `ApiVersionsResponse`, with `ApiVersionsSupportedFeature` and `ApiVersionsFinalizedFeature`). A ZooKeeper-backed
-  2.8.2 broker answers exactly one of the three, the epoch `0`. `ApiVersionsRequestV2`/`ApiVersionsResponseV2` keep
-  the version 2, and three new wire vectors show the flexible frames byte by byte (`apiversions.request.v3`,
-  `apiversions.response.v3`, `apiversions.response.v3.invalid-software-name`).
-- **The two partition-reassignment apis of KIP-455 (Kafka 2.4)** — `AlterPartitionReassignments`
-  (key **45**, v0) and `ListPartitionReassignments` (key **46**, v0), the apis that took the
-  reassignment of a partition out of the `/admin/reassign_partitions` znode and gave it to the
-  controller. Both are **flexible from their version 0** and both must be sent to the **controller**,
-  which answers `NOT_CONTROLLER` (41) otherwise; `AdminClient::alterPartitionReassignments()` and
-  `AdminClient::listPartitionReassignments()` reload the cluster and retry once on it. A target
-  replica set is a `Admin\NewPartitionReassignment` (or a plain list of broker ids) and `null`
-  **cancels** the reassignment of that partition; the answer is one error per partition, so
-  `alterPartitionReassignments()` returns `topic => [partition => KafkaException|null]` and throws
-  only the top-level error. `Admin\PartitionReassignment` is what the list api answers, and it does
-  the arithmetic of the three replica lists the broker sends (`getTargetReplicas()`,
-  `getOriginalReplicas()`). Ten new wire vectors in the new
-  `docs/protocol/vectors/alter-partition-reassignments.json` and
-  `docs/protocol/vectors/list-partition-reassignments.json`, captured on the container together with
-  every error the two apis answer: **85** `NO_REASSIGNMENT_IN_PROGRESS` (the code Kafka 2.4 added,
-  and also what a cancellation of a partition that never existed answers, because the controller
-  consults the reassignments in flight before it asks whether the partition exists), **39**
-  `INVALID_REPLICA_ASSIGNMENT` for a replica set that names a broker that is not alive, and **3**
-  `UNKNOWN_TOPIC_OR_PARTITION` per partition — never at the top level — for a topic the cluster does
-  not have.
-- **InitProducerId v2 and CreateDelegationToken v2 (Kafka 2.4)** — the first two **flexible** versions
-  of apis this package already spoke: no field is added, the body of v1 is written compactly and the
-  frame carries the request header v2 and the response header v1. `InitProducerIdRequest`/`Response`
-  and `CreateDelegationTokenRequest`/`Response` are the v2 now (`TransactionManager` and
-  `AdminClient::createDelegationToken()` send them), and the new `InitProducerIdRequestV1`,
-  `InitProducerIdResponseV1`, `CreateDelegationTokenRequestV1` and `CreateDelegationTokenResponseV1`
-  keep the version Kafka 2.0 bumped. Six new wire vectors, the v2 pair of each api and the two error
-  answers of the token api.
 - **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
   **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
   **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not
@@ -371,6 +313,120 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
 
 ### Kafka 2.4
 
+- **Flexible versions (KIP-482, Kafka 2.4) in the schema engine** — the compact types (`compact_string`,
+  `compact_bytes`, `compact_[foo]`: an unsigned varint `length + 1`, `0` for `null`), the **unsigned varints**
+  themselves (`Stream::readUnsignedVarint()`/`writeUnsignedVarint()`), the **tagged fields** of every structure
+  (`Protocol\TaggedField`, declared in the scheme, written in ascending order of the tag and left out at their
+  default), the **request header v2** and **response header v1** (`AbstractRequest::getHeaderVersion()` and
+  `AbstractResponse::getHeaderVersion()`, the `ApiKeys.requestHeaderVersion()`/`responseHeaderVersion()` of the Java
+  client), the `uuid` of KIP-516 (`TYPE_UUID`) and the one string that never becomes compact
+  (`TYPE_STRING_NEVER_COMPACT`, the `client_id` of the header v2). Flexibility is a property of the **message**
+  (`FlexibleSchemaInterface::isFlexible()`, `VERSION >= FLEXIBLE_VERSION`) that the engine hands down to every
+  nested structure, so a `Data` class needs no change to serve a flexible version - the same scheme is written
+  plainly in one version of an api and compactly in the next. Unknown tagged fields are kept
+  (`PreservesUnknownTaggedFields`) so that a frame of a later broker survives a decode and encode round trip. The
+  two exceptions of the protocol are two overrides: ControlledShutdown v0 has no client id in its header, and the
+  **ApiVersions answer keeps the response header v0** whatever its version is (KIP-511).
+- **`Protocol\InlineStruct`** in the schema engine — a scheme entry for a nested object the **specification does
+  not have**, whose fields belong to the structure around it (`'owner' => new InlineStruct(KafkaPrincipal::class)`).
+  It changes nothing in a plain version, where a group of fields and a nested structure are the same bytes, but in
+  a flexible one it keeps the group from being given a tagged-field section of its own. The marker belongs to the
+  **field**, not to the class: the same class is a real structure wherever the specification declares one. The first two places of Kafka 2.8.2 that need it are the **owner of a
+  delegation token** (two flat fields of the answer that this package reads into a `KafkaPrincipal`, while the very
+  same class *is* a structure in the request of that api) and the coordinator of a FindCoordinator v3 answer.
+- **ApiVersions v3** (Kafka 2.4, KIP-511 + KIP-482 + KIP-584) — the first flexible frame this client sends: the
+  request carries `client_software_name` = `lisachenko-kafka-client` and `client_software_version` = `2.8` as
+  compact strings (a broker refuses a name that does not match `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?` with
+  the error code **42**, measured), and the answer carries the api table as a compact array and the features of
+  KIP-584 as tagged fields (`supportedFeatures`, `finalizedFeaturesEpoch`, `finalizedFeatures` on
+  `ApiVersionsResponse`, with `ApiVersionsSupportedFeature` and `ApiVersionsFinalizedFeature`). A ZooKeeper-backed
+  2.8.2 broker answers exactly one of the three, the epoch `0`. `ApiVersionsRequestV2`/`ApiVersionsResponseV2` keep
+  the version 2, and three new wire vectors show the flexible frames byte by byte (`apiversions.request.v3`,
+  `apiversions.response.v3`, `apiversions.response.v3.invalid-software-name`).
+- **The two partition-reassignment apis of KIP-455 (Kafka 2.4)** — `AlterPartitionReassignments`
+  (key **45**, v0) and `ListPartitionReassignments` (key **46**, v0), the apis that took the
+  reassignment of a partition out of the `/admin/reassign_partitions` znode and gave it to the
+  controller. Both are **flexible from their version 0** and both must be sent to the **controller**,
+  which answers `NOT_CONTROLLER` (41) otherwise; `AdminClient::alterPartitionReassignments()` and
+  `AdminClient::listPartitionReassignments()` reload the cluster and retry once on it. A target
+  replica set is a `Admin\NewPartitionReassignment` (or a plain list of broker ids) and `null`
+  **cancels** the reassignment of that partition; the answer is one error per partition, so
+  `alterPartitionReassignments()` returns `topic => [partition => KafkaException|null]` and throws
+  only the top-level error. `Admin\PartitionReassignment` is what the list api answers, and it does
+  the arithmetic of the three replica lists the broker sends (`getTargetReplicas()`,
+  `getOriginalReplicas()`). Ten new wire vectors in the new
+  `docs/protocol/vectors/alter-partition-reassignments.json` and
+  `docs/protocol/vectors/list-partition-reassignments.json`, captured on the container together with
+  every error the two apis answer: **85** `NO_REASSIGNMENT_IN_PROGRESS` (the code Kafka 2.4 added,
+  and also what a cancellation of a partition that never existed answers, because the controller
+  consults the reassignments in flight before it asks whether the partition exists), **39**
+  `INVALID_REPLICA_ASSIGNMENT` for a replica set that names a broker that is not alive, and **3**
+  `UNKNOWN_TOPIC_OR_PARTITION` per partition — never at the top level — for a topic the cluster does
+  not have.
+- **InitProducerId v2 and CreateDelegationToken v2 (Kafka 2.4)** — the first two **flexible** versions
+  of apis this package already spoke: no field is added, the body of v1 is written compactly and the
+  frame carries the request header v2 and the response header v1. `InitProducerIdRequest`/`Response`
+  and `CreateDelegationTokenRequest`/`Response` are the v2 now (`TransactionManager` and
+  `AdminClient::createDelegationToken()` send them), and the new `InitProducerIdRequestV1`,
+  `InitProducerIdResponseV1`, `CreateDelegationTokenRequestV1` and `CreateDelegationTokenResponseV1`
+  keep the version Kafka 2.0 bumped. Six new wire vectors, the v2 pair of each api and the two error
+  answers of the token api.
+- **OffsetDelete (key 47, v0, Kafka 2.4, KIP-496)** — the api that makes a coordinator forget the committed offsets
+  of **single partitions** of a group without touching the group itself, where `deleteConsumerGroups()` can only
+  throw the whole group away. It is the one thing Kafka 2.4 added **without** the flexible encoding — with
+  SaslHandshake (17) it is one of the two client apis of this line the compact types never reach — and its answer
+  opens with the **top-level error code before the throttle time**, which no other api of this protocol does.
+  `OffsetDeleteRequest`/`OffsetDeleteResponse` with `OffsetDeleteRequestTopic`, `OffsetDeleteRequestPartition`,
+  `OffsetDeleteResponseTopic` and `OffsetDeleteResponsePartition`, `Client::deleteGroupOffsets()` and
+  **`AdminClient::deleteConsumerGroupOffsets(string $groupId, iterable $partitions)`** (the Java name), which takes
+  `Common\TopicPartition`s, answers `topic => [partition => KafkaException|null]` and throws the group-level error,
+  because an answer that carries one names no partition at all. Five new wire vectors in the new
+  `docs/protocol/vectors/offset-delete.json`, and every state of a group measured on the container: an `Empty` group
+  hands over every partition, a live `consumer` group answers **86** `GROUP_SUBSCRIBED_TO_TOPIC` for the topics its
+  members are subscribed to and deletes the rest, a live group of any other protocol type is refused as a whole with
+  **68** `NON_EMPTY_GROUP`, a group the coordinator does not know with **69** `GROUP_ID_NOT_FOUND`, and a topic the
+  broker does not have is **3** per partition. Two quirks are pinned by tests: a partition that never had a
+  committed offset is answered with **0** like one that had, and deleting the **last** committed offset of an
+  `Empty` group transitions it to `Dead` and drops it, so the next request for it answers 69.
+- **CreateTopics v4 (KIP-464)** — the frame of the versions 1 to 3, with a third way of describing a topic:
+  `num_partitions` and `replication_factor` both -1 and an EMPTY assignment, which asks the broker for its own
+  `num.partitions` and `default.replication.factor` (`NewTopic::withBrokerDefaults()`). The version check is
+  **client-side**: a 2.8.2 broker resolves the -1 whatever version it was asked with, so
+  `CreateTopicsRequest::__construct()` refuses the shape below version 4 exactly as
+  `CreateTopicsRequest.Builder.build(version)` @ 2.8.2 does — a broker of Kafka 2.3 or below answers 37 or 38.
+  `CreateTopicsRequestV3`/`CreateTopicsResponseV3` keep the version Kafka 2.0 added.
+- **ElectLeaders v1 (KIP-460)** — an `election_type int8` in FRONT of the topic array of the request and a
+  top-level `error_code int16` between the throttle time and the results of the answer.
+  `Admin\ElectionType::UNCLEAN` is sendable now; the controller only acts on it for a partition whose leader is
+  gone, so a healthy partition answers the same 84 as a preferred election.
+  `ElectLeadersRequestV0`/`ElectLeadersResponseV0` keep the frames of Kafka 2.2.
+- **The flexible versions of the admin apis (KIP-482)** — **CreateTopics v5**, **DeleteTopics v4**,
+  **ElectLeaders v2**, **IncrementalAlterConfigs v1** and **ControlledShutdown v3** are the versions the client
+  sends now. Four of the five are one `FLEXIBLE_VERSION` constant next to the `VERSION` and nothing else: the
+  engine derives the compact strings and arrays, the tag buffer of every structure and the request header v2
+  from it, and no nested DTO of these apis needed a change. Every version below keeps its own class —
+  `CreateTopicsRequestV4`/`CreateTopicsResponseV4`, `DeleteTopicsRequestV3`/`DeleteTopicsResponseV3`,
+  `ElectLeadersRequestV1`/`ElectLeadersResponseV1`, `IncrementalAlterConfigsRequestV0`/`…ResponseV0`,
+  `ControlledShutdownRequestV2`/`ControlledShutdownResponseV2` and `CreateTopicsResponseTopicV1` — and
+  `ControlledShutdownResponse` has a `VERSION` of its own for the first time.
+- **The answer of CreateTopics v5 describes the topic it created (KIP-525)** — behind the error message it
+  carries `num_partitions`, `replication_factor` and the whole `configs` array of the new topic (name, value,
+  `read_only`, the config source of KIP-226 and `is_sensitive`), plus the tagged field 0
+  `topic_config_error_code`. `Protocol\Data\CreateTopicsResponseTopicConfig` is the new entry DTO,
+  `CreateTopicsResponseTopic` gained the four fields with `UNKNOWN = -1` for the versions below 5, and
+  `Protocol\Kafka\Admin\CreatedTopic` is the value object the caller gets from the new
+  `AdminClient::createTopicsWithResults()`; `AdminClient::createTopics()` keeps its contract (a
+  `KafkaException|null` per topic) by answering their `error`.
+- Measured on the container: a CreateTopics **v5** that asks for one partition with `retention.ms = 3600000` is
+  answered with `num_partitions = 1`, `replication_factor = 1` and **26** configuration entries — 1
+  `DYNAMIC_TOPIC_CONFIG` (the option the request set), 2 `STATIC_BROKER_CONFIG` (`segment.bytes` and
+  `message.format.version`, which this image sets) and 23 `DEFAULT_CONFIG` — in 909 bytes; the same request with
+  the -1/-1 of KIP-464 reports back the `num.partitions` of the image (3). A ControlledShutdown **v3** for the
+  unknown broker 4242 is answered 8 in **13 bytes**, the smallest frame of the document: an empty compact array
+  is one byte `01` and each tag buffer one byte `00`.
+- **Ten wire vectors** of the five versions (one request/answer pair each, topic `t4-24f-vectors`), with
+  annotated dumps in the flexible notation of the engine, and the five headings of `docs/protocol/2.8.md` moved
+  to their new ranges.
 - **LeaveGroup v3, the batch leave of KIP-345** — the request's single `member_id` is **replaced** by a list of
   member identities (`member_id` plus a nullable `group_instance_id` each), and the answer gains a matching
   member array behind its error code, one entry per member with an error code of its own. The top-level code is
@@ -424,6 +480,16 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   been rejected", and the very same request as a version 7 one comes back with the 87 and the offsets `-1`
   alone. Five wire vectors, the section "The record errors of a refused batch (v8, KIP-467)" of the protocol
   document, a broker quirk, unit tests and the new integration suite `RecordErrorsTest`.
+- **Metadata v9** (KIP-482) — the first **flexible** version of an api the client sends: the same fields as
+  version 8, written with compact strings and arrays, a tagged-field section at the end of every structure, the
+  request header **v2** and the response header **v1**. `MetadataRequest`/`MetadataResponse` declare
+  `FLEXIBLE_VERSION = 9` next to their `VERSION` and the engine of T1 does the rest;
+  `MetadataRequestV8`/`MetadataResponseV8` keep the plain encoding, and `Client`/`Cluster` send version 9.
+  One thing in this package had to change for it: the topics of the request were a plain array of **strings**
+  here, while the specification has always declared them as a `[]MetadataRequestTopic` **structure** — invisible
+  up to version 8, and one byte short per topic in a flexible frame, which the broker answers by closing the
+  connection (measured). `Protocol\Data\MetadataRequestTopic` is that structure and `getTopics()` still answers
+  the list of names. The vector pair `metadata.*.v9` is annotated down to every compact length and tag buffer.
 
 ### Kafka 2.5
 

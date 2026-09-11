@@ -41,14 +41,22 @@ use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsResponseResource;
  * | 42   | InvalidRequest             | An APPEND or a SUBTRACT of an option that is not a list, a null value outside a DELETE, the same option twice, or a broker option that is not dynamic |
  * | 44   | PolicyViolation            | An `alter.config.policy.class.name` on the broker refused the change       |
  *
- * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0)"
+ * **Kafka 2.4 added the version 1** (KIP-482), the same frame in the flexible encoding.
+ * {@see IncrementalAlterConfigsResponseV0} is the one of Kafka 2.3.
+ *
+ * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 class IncrementalAlterConfigsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 1;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation
