@@ -29,7 +29,7 @@ not committed yet, and the 21 frames of its transaction, admin and SASL half: th
 with its epoch bump, the TxnOffsetCommit v3 of KIP-447 with the consumer it names, CreatePartitions v2,
 SaslAuthenticate v2 and the token apis v2; and of **Kafka 2.6** the 4 frames of ListGroups v4 (KIP-518), the
 states filter of the request and the group state of every entry of the answer, and the 9 frames of its two
-client-quota apis (KIP-546, the two new files `describe-client-quotas.json` and `alter-client-quotas.json`) - and, and the 6 frames of its DescribeConfigs **v3** (KIP-569) and the 4 frames of its
+client-quota apis (KIP-546, the two new files `describe-client-quotas.json` and `alter-client-quotas.json`), and the 6 frames of its DescribeConfigs **v3** (KIP-569) and the 4 frames of its
 DescribeLogDirs **v2** - and of the other 318,
 **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
