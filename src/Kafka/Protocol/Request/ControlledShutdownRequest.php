@@ -114,7 +114,8 @@ class ControlledShutdownRequest extends AbstractRequest
 
     public static function getScheme(): array
     {
-        // The client id of the header is left out for version 0 by getHeaderVersion() above, not here
+        // The version 0 header has no client id, which is {@see self::getHeaderVersion()} and not an edit of the
+        // scheme since the flexible-version engine made the header version a property of the message
         $body = ['brokerId' => BinarySchema::TYPE_INT32];
         if (static::VERSION >= 2) {
             $body['brokerEpoch'] = BinarySchema::TYPE_INT64;

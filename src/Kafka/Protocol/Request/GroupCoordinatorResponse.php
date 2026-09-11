@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
+use Protocol\Kafka\Protocol\InlineStruct;
 
 /**
  * GroupCoordinator response, version 2 (key 10, FindCoordinator in the sources since 0.11)
@@ -101,7 +102,9 @@ class GroupCoordinatorResponse extends AbstractResponse
         if (static::VERSION >= 1) {
             $body['errorMessage'] = BinarySchema::TYPE_NULLABLE_STRING;
         }
-        $body['coordinator'] = GroupCoordinatorResponseMetadata::class;
+        // `node_id`, `host` and `port` are three fields of the answer in `FindCoordinatorResponse.json`
+        // @ 2.8.2, not a structure: the group of them must not get a tagged section of its own (KIP-482)
+        $body['coordinator'] = new InlineStruct(GroupCoordinatorResponseMetadata::class);
 
         return $header + $body;
     }

@@ -14,20 +14,38 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol;
 
 /**
- * Marks a DTO that groups fields of its parent instead of being a structure of the protocol
+ * Declares a nested object that the **specification does not have**: its fields are fields of the structure around
+ * it, and it exists only to give a PHP caller something better than two loose strings.
  *
- * The schemes of this client sometimes bundle fields that the Kafka specification writes **flat** into the parent
- * message: {@see \Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata} is the `node_id`, `host` and
- * `port` of a FindCoordinator answer, which `FindCoordinatorResponse.json` @ 2.8.2 lists as three ordinary fields
- * of the response and not as a nested structure. That grouping is a convenience of the object model and has no
- * shape of its own on the wire.
+ * The distinction does not matter in the plain encoding - a structure is not counted or delimited on the wire, so a
+ * group of fields and a nested structure are the same bytes - but it matters in a **flexible** one: every real
+ * structure of a flexible version ends in a tagged-field section, and a field group must not, or the frame carries a
+ * `00` the broker does not expect.
  *
- * The difference only becomes visible in a **flexible version** (KIP-482), where every real structure ends in a
- * tagged-field section: an inline group must not get one, because the broker does not write one for it. A class
- * that implements this interface therefore keeps the compact encoding of its parent for its fields and skips the
- * tagged section, in {@see BinarySchema::readObjectFromStream()}, {@see BinarySchema::writeObjectToStream()} and
- * {@see BinarySchema::getObjectTypeSize()} alike.
+ * The one place of Kafka 2.8.2 where this repository has such a group is the **owner of a delegation token**:
+ * `CreateDelegationTokenResponse.json` declares `PrincipalType` and `PrincipalName` as two ordinary fields of the
+ * answer, while this package reads them into a {@see \Protocol\Kafka\Common\Security\KafkaPrincipal}. The very same
+ * class is a *real* structure in the request of the same api, where the renewers are a `[]CreatableRenewers` - so
+ * the marker belongs to the **field**, not to the class:
  *
- * @see docs/protocol/2.8.md, section "Flexible versions in the engine (KIP-482)"
+ * <code>
+ * return $header + [
+ *     'errorCode'      => BinarySchema::TYPE_INT16,
+ *     'owner'          => new InlineStruct(KafkaPrincipal::class),   // two fields of the answer
+ *     'issueTimestamp' => BinarySchema::TYPE_INT64,
+ *     // …
+ * ];
+ * </code>
+ *
+ * A wave-2 ticket needs it whenever it wraps two or more flat fields of a specification in an object of its own;
+ * an entry of a `[]Something` array of the specification is never one.
+ *
+ * @see docs/protocol/2.8.md, section "Implementation model"
  */
-interface InlineStruct extends BinarySchemaInterface {}
+final class InlineStruct
+{
+    /**
+     * @param class-string<BinarySchemaInterface> $type Class whose scheme is inlined into the enclosing structure
+     */
+    public function __construct(public readonly string $type) {}
+}
