@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * AddOffsetsToTxn, version 0: enrols the offsets of a consumer group into the transaction (key 25, Kafka 0.11)
+ * AddOffsetsToTxn, version 1: enrols the offsets of a consumer group into the transaction (key 25, Kafka 0.11)
  *
  * <pre>
- *   AddOffsetsToTxn Request (Version: 0) => transactional_id producer_id producer_epoch consumer_group_id
+ *   AddOffsetsToTxn Request (Version: 0 and 1) => transactional_id producer_id producer_epoch consumer_group_id
  *     transactional_id  => STRING
  *     producer_id       => INT64
  *     producer_epoch    => INT16
@@ -40,7 +40,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * make them visible to an OffsetFetch until the transaction coordinator has written the COMMIT marker into that
  * very partition - which it only does because this request put it on the list.
  *
- * @see docs/protocol/2.8.md, section "AddOffsetsToTxn API (key 25, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `ADD_OFFSETS_TO_TXN_REQUEST_V1 =
+ * ADD_OFFSETS_TO_TXN_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see AddOffsetsToTxnRequestV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "AddOffsetsToTxn API (key 25, v0 and v1)"
  */
 class AddOffsetsToTxnRequest extends AbstractRequest
 {
@@ -52,7 +59,7 @@ class AddOffsetsToTxnRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @param string $transactionalId `transactional.id` of the producer that owns the transaction

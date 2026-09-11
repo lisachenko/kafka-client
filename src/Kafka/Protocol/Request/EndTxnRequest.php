@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * EndTxn, version 0: commits or aborts the open transaction (ApiKey 26, Kafka 0.11, KIP-98)
+ * EndTxn, version 1: commits or aborts the open transaction (ApiKey 26, Kafka 0.11, KIP-98)
  *
  * <pre>
- *   EndTxn Request (Version: 0) => transactional_id producer_id producer_epoch transaction_result
+ *   EndTxn Request (Version: 0 and 1) => transactional_id producer_id producer_epoch transaction_result
  *     transactional_id   => STRING
  *     producer_id        => INT64
  *     producer_epoch     => INT16
@@ -46,7 +46,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A commit that arrives while the previous transaction of the id is still being completed is **51**
  * (`ConcurrentTransactions`) and may be retried after a back-off.
  *
- * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `END_TXN_REQUEST_V1 =
+ * END_TXN_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see EndTxnRequestV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0 and v1)"
  */
 class EndTxnRequest extends AbstractRequest
 {
@@ -68,7 +75,7 @@ class EndTxnRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @param string $transactionalId   `transactional.id` of the producer that owns the transaction

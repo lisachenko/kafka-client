@@ -170,48 +170,65 @@ ticket verifies its rows against the tags and the container before writing them 
 * `nohup dockerd >/tmp/dockerd.log 2>&1 &` if `docker info` fails; find it with `ps -C dockerd -o pid=` (a grep for
   the name matches the shell that runs it) — the daemon died three times in the 1.x session.
 
-## Ticket plan (waves of up to four agents in isolated worktrees)
+## Ticket plan: one milestone per Kafka minor, chronologically
 
-The work is grouped by **client surface**, as the 1.x line was, and split at the **flexible-version boundary**: wave
-1 implements every non-flexible version the line adds (2.0 to 2.7 for most apis) while T1 builds the flexible
-engine, wave 2 adds the flexible versions and the new apis on top of it, wave 3 closes the line.
+**The owner's rule for this line: build it step by step, 2.0, 2.1, 2.2 … 2.8, so that every minor is a commit of
+the 2.x branch that can be tagged.** The integration branch is therefore a chronological sequence of nine
+milestones. Each minor is a wave: the four surface agents (T1 protocol/table, T2 producer/consumer apis, T3 group
+apis, T4 admin/transaction/SASL apis) each deliver **one PR per minor** limited to what that minor added on their
+surface (the same agent keeps its ticket and its context across the minors; the tickets #113-#116 stay open until
+2.8 is done), the coordinator merges the PRs of the minor with merge commits, runs the whole gate against the 2.8.2
+broker, and closes the minor with a **milestone commit** `chore(2.x): Kafka 2.N complete` that reconciles the
+CHANGELOG (`### Kafka 2.N` subsection), the "What 2.x adds" section of the document, the api-key table's "implemented"
+column and the tag table below. **That milestone commit is the commit to tag** (the tag names follow the last
+release of the minor, as every line of this repository speaks the last release of its version: `2.0.1`, `2.1.1`,
+`2.2.2`, `2.3.1`, `2.4.1`, `2.5.1`, `2.6.3`, `2.7.2`, `2.8.2`). The tags are created by the owner on `main` after
+the final PR is merged (with a merge commit, so that the milestone commits are in `main`'s history).
 
-**Wave 1**
+Two things are deliberately **not** chronological: the **foundation** (`443c067`) declares the api keys 43-64 and
+the error codes 72-104 of 2.8.2 up front, so that the constant ranges are frozen for every wave (a tag 2.0.1
+therefore carries the constants of the whole major and implements the wire of 2.0 — the document says so), and the
+**broker** is 2.8.2 at every milestone (it serves every version 2.0 to 2.7 added; the api-key table is its answer
+with an "implemented on this line" column that grows with the milestones).
 
-| Ticket | Scope | Owns |
-|---|---|---|
-| T1 | **Flexible versions (KIP-482)**: compact string/bytes/array, unsigned varints, tagged fields, request header v2, response header v1, the ApiVersions exception; **ApiVersions v2 and v3**; the api-key table as the literal answer (56 keys); the probe test for 56 keys and the versions above; the document sections "Protocol primitive types", "Requests", "Responses", "API keys", "ApiVersions"; the design contract every flexible version of wave 2 uses | `Protocol/BinarySchema*`, `Protocol/AbstractProtocolMessage`, `Protocol/Request/Abstract*`, `IO/Stream*`, `ApiVersions*`, `tests/Integration/ApiVersionProbeTest.php`, `tests/Unit/Protocol/BinarySchemaTest.php` |
-| T2 | **Produce v6-v8, Fetch v8-v11, ListOffsets v3-v5, Metadata v6-v8, OffsetForLeaderEpoch v1-v3** — the non-flexible versions of the four apis the producer and the consumer send; **KIP-219** (the client waits out `throttle_time_ms`, with an option; measured against a quota); **zstd** through `ext-zstd`; **KIP-283** (`message.downconversion.enable`, the 43); the wire of KIP-320 (fields with `-1` defaults, the epoch stored where the answer carries it); Produce v8 record errors (87); Fetch v11 rack id / preferred read replica; Metadata v8 authorized operations | `Protocol/Request/{Produce,Fetch,Offsets,Metadata,OffsetForLeaderEpoch}*`, their `Protocol/Data/*`, `Common/Record/*`, `Client::produce()/fetch*()/listOffsets()/metadata()`, `tests/Integration/{Produce,Fetch,Metadata,Offsets,Quota,Throttle,MessageFormat,RecordBatch}*` |
-| T3 | **The group apis, non-flexible**: OffsetCommit v4-v7, OffsetFetch v4-v5, FindCoordinator v2, JoinGroup v3-v5, Heartbeat v2-v3, LeaveGroup v2-v3, SyncGroup v2-v3, DescribeGroups v2-v4, ListGroups v2, DeleteGroups v1, **OffsetDelete (47)**; **static membership** (KIP-345, `group.instance.id`, 82), the **JoinGroup v4 rejoin** (KIP-394, 79), `group.max.size` (81), LeaveGroup v3 batches (`AdminClient::removeMembersFromConsumerGroup()`), `AdminClient::deleteConsumerGroupOffsets()` | the twelve request/response pairs and their `Data/*`, `Consumer/**`, `Client::*Group*()/commit*()/fetchOffsets()`, `Admin/AdminClient` group methods, `tests/Integration/{ConsumerGroup,GroupMembership,OffsetsCoordinator,AdminGroupApi,KafkaConsumer}*` |
-| T4 | **The admin and transaction apis, non-flexible**: CreateTopics v3-v4, DeleteTopics v2-v3, DeleteRecords v1, DescribeConfigs v2-v3, AlterConfigs v1, AlterReplicaLogDirs v1, DescribeLogDirs v1, CreatePartitions v1, the token apis v1, **ElectLeaders (43) v0-v1**, **IncrementalAlterConfigs (44) v0**, InitProducerId v1, AddPartitionsToTxn/AddOffsetsToTxn/EndTxn v1-v2 (90 vs 47), TxnOffsetCommit v1-v2, SaslAuthenticate v1 (KIP-368), ControlledShutdown v2; `AdminClient::electLeaders()`, `::incrementalAlterConfigs()` | the request/response pairs named and their `Data/*`, `Admin/**` (minus the group methods of T3), `Producer/**`, `Common/Security/*`, `tests/Integration/{Admin,TopicAdmin,Configs,LogDirs,DeleteRecords,DelegationToken,Transactional,Idempotent,Sasl}*` |
+| Milestone (tag) | T1 — protocol, table, engine | T2 — Produce, Fetch, ListOffsets, Metadata, OffsetForLeaderEpoch, records | T3 — the group apis, the consumer's membership | T4 — admin, transactions, SASL, control |
+|---|---|---|---|---|
+| **2.0** (`2.0.1`) | ApiVersions v2; the 56-key table and the probe; "What is not in 2.8.2"; the document preamble | Produce v6, Fetch v8, ListOffsets v3, Metadata v6 (KIP-219 bumps); OffsetForLeaderEpoch v1 (KIP-279); **the KIP-219 wait** in `Client`; **KIP-283** (43) and the re-measured down-conversion section | OffsetCommit v4, OffsetFetch v4, FindCoordinator v2, JoinGroup v3, Heartbeat v2, LeaveGroup v2, SyncGroup v2, DescribeGroups v2, ListGroups v2, DeleteGroups v1 | CreateTopics v3, DeleteTopics v2, DeleteRecords v1, DescribeConfigs v2, AlterConfigs v1, AlterReplicaLogDirs v1, DescribeLogDirs v1, CreatePartitions v1, the token apis v1, InitProducerId v1, AddPartitionsToTxn/AddOffsetsToTxn/EndTxn v1, TxnOffsetCommit v1 |
+| **2.1** (`2.1.1`) | – (builds the 2.4 engine in the background) | Fetch v9 (KIP-320 `current_leader_epoch`, 74/75) and v10 (zstd), ListOffsets v4, Metadata v7 (`leader_epoch`), OffsetForLeaderEpoch v2; **the zstd codec** (KIP-110, 76); **KIP-320 in the consumer** (epoch tracking, validation, truncation detection, `LogTruncationException`) | OffsetCommit v5 (retention time removed) and v6 (`committed_leader_epoch`), OffsetFetch v5 | DeleteTopics v3 (73), TxnOffsetCommit v2 (`committed_leader_epoch`) |
+| **2.2** (`2.2.2`) | – | ListOffsets v5 (KIP-207, 78) | JoinGroup v4 (KIP-394, the 79 rejoin in the consumer) | SaslAuthenticate v1 (KIP-368 session lifetime), ControlledShutdown v2 (KIP-380, 77), **ElectLeaders (43) v0** (KIP-183, 80), `group.max.size` 81 documented |
+| **2.3** (`2.3.1`) | – | Fetch v11 (KIP-392 rack id / preferred read replica), Metadata v8 (KIP-430 authorized operations), OffsetForLeaderEpoch v3 (replica id) | JoinGroup v5, SyncGroup v3, Heartbeat v3, OffsetCommit v7 (KIP-345 **static membership**, 82), DescribeGroups v3 (KIP-430) | **IncrementalAlterConfigs (44) v0** (KIP-339) |
+| **2.4** (`2.4.1`) — T1 first, then the others | **The flexible-version engine** (KIP-482: compact types, unsigned varints, tagged fields, header v2/v1, the contract) and ApiVersions v3 (KIP-511) | Produce v8 (KIP-467, 87), Metadata v9 (flexible) | OffsetCommit v8, OffsetFetch v6, FindCoordinator v3, JoinGroup v6, Heartbeat v4, LeaveGroup v3 (KIP-345 batch) and v4, SyncGroup v4, DescribeGroups v4 and v5, ListGroups v3, DeleteGroups v2 (flexible); **OffsetDelete (47)** (KIP-496, 86) with `deleteConsumerGroupOffsets()`, `removeMembersFromConsumerGroup()` | CreateTopics v4 (KIP-464) and v5 (flexible, KIP-525 configs), DeleteTopics v4, InitProducerId v2, ElectLeaders v1 (KIP-460, 83/84) and v2, IncrementalAlterConfigs v1, CreateDelegationToken v2, ControlledShutdown v3, **AlterPartitionReassignments (45)** and **ListPartitionReassignments (46)** (KIP-455, 85) |
+| **2.5** (`2.5.1`) | – | – | JoinGroup v7, SyncGroup v5 (KIP-559), OffsetFetch v7 (KIP-447 `require_stable`, 88; the consumer's `read_committed` fetch of offsets) | InitProducerId v3 (**KIP-360** epoch bump in the producer), TxnOffsetCommit v3 (**KIP-447** group metadata; `sendOffsetsToTransaction()` with `ConsumerGroupMetadata`), CreatePartitions v2, SaslAuthenticate v2, Renew/Expire/DescribeDelegationToken v2 |
+| **2.6** (`2.6.3`) | – | DeleteRecords v2 | ListGroups v4 (KIP-518 states filter) | DescribeConfigs v3 (KIP-569 type, documentation), DescribeLogDirs v2, **DescribeClientQuotas (48) v0** and **AlterClientQuotas (49) v0** (KIP-546; `TYPE_FLOAT64`) |
+| **2.7** (`2.7.2`) | – | Fetch v12 (flexible; `last_fetched_epoch`, the diverging-epoch tagged fields) | (takes the SCRAM credential apis from T4 if T4 is the long pole) | CreateTopics v6, DeleteTopics v5, CreatePartitions v3 (**KIP-599**, 89, the controller mutation quota), InitProducerId v4 and AddPartitionsToTxn/AddOffsetsToTxn/EndTxn v2 (KIP-588, **90 vs 47**), **DescribeUserScramCredentials (50)** and **AlterUserScramCredentials (51)** (KIP-554, 91-93), **UpdateFeatures (57)** (KIP-584, 95/96; `describeFeatures()` from ApiVersions v3), AlterIsr (56) probed |
+| **2.8** (`2.8.2`) | the final consistency pass of the table and the probe | Produce v9 (flexible), ListOffsets v6, Metadata v10 (KIP-516 **topic ids**) and v11, OffsetForLeaderEpoch v4 | (takes DescribeCluster/DescribeProducers from T4 if T4 is the long pole) | CreateTopics v7 (topic id), DeleteTopics v6 (by topic id, 100), DescribeConfigs v4, AlterConfigs v2, AlterReplicaLogDirs v2, AddPartitionsToTxn/AddOffsetsToTxn/EndTxn v3, WriteTxnMarkers v1, DescribeClientQuotas/AlterClientQuotas v1, **DescribeCluster (60)** (KIP-700), **DescribeProducers (61)** (KIP-664) |
+| **close** | T10 (docs, README matrix, CHANGELOG, examples, the release notes of the line, the handoff for 3.x) runs after 2.8; T11 (ACLs on an authorizer container) only if the owner asks | | | |
 
-**Frozen contracts of wave 1**: the public signatures of `Client`, `KafkaConsumer`, `KafkaProducer` and `AdminClient`
-(a ticket may *add* a method or an optional parameter, never change a shape); the ranges of `ApiKeys` and
-`KafkaException` (foundation); nobody but T1 touches the engine files, and T2-T4 add **no flexible version** — the
-main class of an api stays at the highest non-flexible version until wave 2. The section headings of the document
-that another ticket references are frozen; a heading that names versions (`## Fetch API (key 1, v0 to v8)`) is
-changed by its owner together with the `section` field of the vector file and every `@see` that quotes it.
+**Frozen across the line**: the public signatures of `Client`, `KafkaConsumer`, `KafkaProducer` and `AdminClient`
+(additions only), the ranges of `ApiKeys` and `KafkaException` (foundation), the engine files (T1 only; nobody adds a
+flexible version before T1's 2.4 engine is merged), the section headings another surface references (a heading that
+names versions changes with its owner's minor, together with the `section` field of the vector file and every `@see`).
 
-**Wave 2** (after T1 is merged; every ticket starts by reading T1's contract)
+**Tag points** (filled in as the milestones land; the commit is the `chore(2.x): Kafka 2.N complete` milestone on the
+integration branch, which is in `main`'s history after the final merge):
 
-| Ticket | Scope |
-|---|---|
-| T5 | **Produce v9, Fetch v12, ListOffsets v6, Metadata v9-v11 (KIP-516 topic ids), OffsetForLeaderEpoch v4, DeleteRecords v2** and **KIP-320 in the consumer**: the leader epoch tracked per partition in the metadata and the subscription state, sent as `current_leader_epoch`, 74/75 answered with a metadata refresh, log truncation detected with OffsetsForLeaderEpoch before the position is used |
-| T6 | **The group apis, flexible**: OffsetCommit v8, OffsetFetch v6-v7 (KIP-447 `require_stable`, 88), FindCoordinator v3, JoinGroup v6-v7 (KIP-559), Heartbeat v4, LeaveGroup v4, SyncGroup v4-v5 (KIP-559), DescribeGroups v5, ListGroups v3-v4 (KIP-518 states filter), DeleteGroups v2; the consumer side of KIP-447 and KIP-559 |
-| T7 | **The admin apis, flexible**: CreateTopics v5-v7 (KIP-525 configs in the answer, KIP-599 89, topic id), DeleteTopics v4-v6 (topic ids), DescribeConfigs v4, AlterConfigs v2, IncrementalAlterConfigs v1, CreatePartitions v2-v3, DescribeLogDirs v2, AlterReplicaLogDirs v2, the token apis v2, ElectLeaders v2, ControlledShutdown v3 |
-| T8 | **The new admin apis**: AlterPartitionReassignments (45) and ListPartitionReassignments (46), DescribeClientQuotas (48) and AlterClientQuotas (49) v0-v1, DescribeUserScramCredentials (50) and AlterUserScramCredentials (51), UpdateFeatures (57), DescribeCluster (60), DescribeProducers (61), with the `AdminClient` methods of the Java client (`alterPartitionReassignments()`, `listPartitionReassignments()`, `describeClientQuotas()`, `alterClientQuotas()`, `describeUserScramCredentials()`, `alterUserScramCredentials()`, `describeFeatures()`/`updateFeatures()`, `describeCluster()`, `describeProducers()`) |
-| T9 | **Transactions and SASL, flexible**: InitProducerId v2-v4 (KIP-360 epoch bump, KIP-588), AddPartitionsToTxn/AddOffsetsToTxn/EndTxn v3, TxnOffsetCommit v3 (KIP-447 group metadata), WriteTxnMarkers v1, SaslAuthenticate v2; the producer side of KIP-360 (bump the epoch on an abortable error instead of a new producer id) and of KIP-447 (`sendOffsetsToTransaction()` with the consumer group metadata) |
+| Tag | Kafka | Milestone commit | Merged PRs |
+|---|---|---|---|
+| `2.0.1` | 2.0 | _pending_ | |
+| `2.1.1` | 2.1 | _pending_ | |
+| `2.2.2` | 2.2 | _pending_ | |
+| `2.3.1` | 2.3 | _pending_ | |
+| `2.4.1` | 2.4 | _pending_ | |
+| `2.5.1` | 2.5 | _pending_ | |
+| `2.6.3` | 2.6 | _pending_ | |
+| `2.7.2` | 2.7 | _pending_ | |
+| `2.8.2` | 2.8 | _pending_ | |
 
-**Wave 3**
-
-| Ticket | Scope |
-|---|---|
-| T10 | Docs: the consistency pass over `docs/protocol/2.8.md`, the vectors README, the README matrix, the CHANGELOG, the examples, `docs/CASCADE.md`, `CLAUDE.md`, the release notes of this line (the top of this file) and the handoff of the 3.x line |
-| T11 | *Optional, the owner's call*: the **ACL apis 29-31 at v0-v2** (KIP-290 pattern types) on a second container with `authorizer.class.name=kafka.security.authorizer.AclAuthorizer` and `super.users=User:ANONYMOUS` — the codes 53, 65 and the `AclAuthorizer` observed at last |
-
-Every ticket: its own `t<n>-<slug>` branch off the integration branch, a PR against it, the report of
-`docs/handoff/AGENT_BRIEF.template.md`, its own doc sections, its `### <vector id>` blocks at the end of "Wire
-vectors", and the api-key table/README/CHANGELOG lines it wants written in its report (the coordinator merges them).
+Every PR: its own `t<n>-<slug>` branch off the integration branch (the same branch continues across the minors,
+merged with the integration branch before each push), a PR against it titled `[2.x] T<n> (Kafka 2.N): …` with
+`Part of #<ticket>`, commits `feat(2.N): …`, the report of `docs/handoff/AGENT_BRIEF.template.md`, its own doc
+sections with the headings at the minor's range, its `### <vector id>` blocks at the end of "Wire vectors", and the
+api-key table/README/CHANGELOG lines it wants written in its report (the coordinator writes them into the milestone).
 
 ## Pitfalls (the 1.x session's list, plus what the foundation found)
 

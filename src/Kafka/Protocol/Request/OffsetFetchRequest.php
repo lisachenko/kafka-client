@@ -19,13 +19,13 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
- * OffsetFetch, version 3: the offsets that a consumer group committed, read from `__consumer_offsets` (Kafka 0.11)
+ * OffsetFetch, version 4: the offsets that a consumer group committed, read from `__consumer_offsets`
  *
  * This API reads back the offsets that were committed for a consumer group with the OffsetCommit API, so it has to
  * be sent to the coordinator of that group.
  *
  * <pre>
- *   OffsetFetch Request (Version: 2 and 3) => group_id [topics]
+ *   OffsetFetch Request (Version: 2, 3 and 4) => group_id [topics]
  *     group_id => STRING
  *     topics   => topic [partitions]     -- NULLABLE since version 2
  *       topic      => STRING
@@ -44,13 +44,20 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * {@see OffsetFetchRequestV2} puts the same bytes on the wire and reads its answer with
  * {@see OffsetFetchResponseV2}.
  *
+ * Version 4 (KIP-219, Kafka 2.0) changed neither half of the api: `OffsetFetchRequest.json` @ 2.8.2 introduces
+ * nothing between the nullable topic array of version 2 and the `require_stable` of version 7, and the answer only
+ * gains the `committed_leader_epoch` of version 5 (KIP-320, Kafka 2.1). Sending version 4 promises that this client
+ * honours the `throttle_time_ms` of the answer itself, because a throttled 2.x broker answers **first** and mutes
+ * the channel afterwards. It is the highest version this line sends; {@see OffsetFetchRequestV3} is the same frame
+ * one api version lower.
+ *
  * Versions 0 and 1 have no nullable array ({@see OffsetFetchRequestV1}, {@see OffsetFetchRequestV0}) and are
  * identical to each other on the wire: they only differ in where the broker reads the offsets from - ZooKeeper for
  * version 0, the `__consumer_offsets` topic of the cluster for version 1 and above. Asking those versions for all
  * topics is refused here with an {@see UnsupportedVersionException}, exactly as `OffsetFetchRequest.Builder.build()`
  * @ 0.11.0.3 does; sending a `-1` topic array with version 1 makes the broker close the connection.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v4)"
  */
 class OffsetFetchRequest extends AbstractRequest
 {
@@ -62,7 +69,7 @@ class OffsetFetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * Partitions whose offsets are requested, indexed by the topic they belong to, or null for every topic

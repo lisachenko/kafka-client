@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * as {@see HeartbeatRequest}; only the answer differs, which is why the version has to be a class of its own
  * ({@see HeartbeatResponseV0}).
  *
- * @see docs/protocol/2.8.md, section "Heartbeat API (key 12, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "Heartbeat API (key 12, v0 to v2)"
  */
 final class HeartbeatRequestV0 extends HeartbeatRequest
 {

@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
 
 /**
- * DeleteTopics response object, version 1 (key 20)
+ * DeleteTopics response object, version 2 (key 20)
  *
  * <pre>
- *   DeleteTopics Response (Version: 1) => throttle_time_ms [topic_error_codes]
+ *   DeleteTopics Response (Version: 1 and 2) => throttle_time_ms [topic_error_codes]
  *     throttle_time_ms => INT32     -- since version 1
  *     topic_error_codes => topic error_code
  *       topic      => STRING
@@ -40,14 +40,21 @@ use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
  * | 29   | TopicAuthorizationFailed | The client may describe the topic but not delete it                        |
  * | 41   | NotController            | The broker that was asked is not the active controller                     |
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 and v1)"
+ * **Kafka 2.0 added version 2** and changed nothing about the bytes: `DELETE_TOPICS_RESPONSE_V2 =
+ * DELETE_TOPICS_RESPONSE_V1` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see DeleteTopicsResponseV1} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0, v1 and v2)"
  */
 class DeleteTopicsResponse extends AbstractResponse
 {
     /**
      * Version of the DeleteTopics API that this class decodes the answer of
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

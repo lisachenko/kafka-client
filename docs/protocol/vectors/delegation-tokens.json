@@ -8,7 +8,7 @@
             "id": "createdelegationtoken.request.v0",
             "kind": "request",
             "apiKey": 38,
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequestV0",
             "version": 0,
             "source": "broker",
             "description": "CreateDelegationToken request v0 that asks for a token with the renewer User:admin and a maximum lifetime of one hour.",
@@ -31,7 +31,7 @@
         {
             "id": "createdelegationtoken.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "CreateDelegationToken answer v0 of the broker: the token of User:kafkatest with its id, its hmac and the three timestamps of its life. The throttle time is the LAST field of the frame.",
@@ -57,7 +57,7 @@
         {
             "id": "createdelegationtoken.response.v0.invalid-principal-type",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "CreateDelegationToken answer v0 for a renewer whose principal type is not User: the error code 67, the principal of the connection as the owner and the \"no token\" values -1, \"\" and an empty hmac.",
@@ -83,7 +83,7 @@
         {
             "id": "createdelegationtoken.response.v0.not-allowed",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "CreateDelegationToken answer v0 on the PLAINTEXT listener: the error code 64, with User:ANONYMOUS as the owner - the principal of a channel that authenticated nobody.",
@@ -110,7 +110,7 @@
             "id": "renewdelegationtoken.request.v0",
             "kind": "request",
             "apiKey": 39,
-            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenRequestV0",
             "version": 0,
             "source": "broker",
             "description": "RenewDelegationToken request v0 that asks for ten more minutes of life for the token, naming it by the raw bytes of its hmac.",
@@ -130,7 +130,7 @@
         {
             "id": "renewdelegationtoken.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "RenewDelegationToken answer v0: the new expiry of the token, ten minutes after the clock of the broker.",
@@ -146,7 +146,7 @@
         {
             "id": "renewdelegationtoken.response.v0.owner-mismatch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "RenewDelegationToken answer v0 of a principal that is neither the owner of the token nor one of its renewers: the error code 63 and the timestamp -1.",
@@ -162,7 +162,7 @@
         {
             "id": "renewdelegationtoken.response.v0.expired",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "RenewDelegationToken answer v0 of a token that is past its maximum lifetime: the error code 66. A token that expired can no longer be renewed, and it can no longer be expired either.",
@@ -179,7 +179,7 @@
             "id": "expiredelegationtoken.request.v0",
             "kind": "request",
             "apiKey": 40,
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ExpireDelegationTokenRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ExpireDelegationTokenRequestV0",
             "version": 0,
             "source": "broker",
             "description": "ExpireDelegationToken request v0 with a negative period, which deletes the token at once instead of moving its expiry.",
@@ -199,7 +199,7 @@
         {
             "id": "expiredelegationtoken.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ExpireDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ExpireDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "ExpireDelegationToken answer v0 of a token that was deleted: the clock of the broker as the expiry timestamp.",
@@ -215,7 +215,7 @@
         {
             "id": "expiredelegationtoken.response.v0.not-found",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ExpireDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ExpireDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "ExpireDelegationToken answer v0 for a token that was already deleted: the error code 62, not the 66 of a token that is merely past its expiry.",
@@ -232,7 +232,7 @@
             "id": "describedelegationtoken.request.v0",
             "kind": "request",
             "apiKey": 41,
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeDelegationToken request v0 that asks for the tokens of one owner, User:kafkatest.",
@@ -254,7 +254,7 @@
         {
             "id": "describedelegationtoken.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeDelegationToken answer v0 with the one token of User:kafkatest: the entry repeats everything the create answer carried and adds the renewers the create request had named.",
@@ -290,7 +290,7 @@
         {
             "id": "describedelegationtoken.response.v0.not-allowed",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenResponseV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeDelegationToken answer v0 on the PLAINTEXT listener: the error code 64 with an empty token array.",
@@ -300,6 +300,193 @@
                 "correlationId": 415,
                 "errorCode": 64,
                 "tokenDetails": [],
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "createdelegationtoken.request.v1",
+            "kind": "request",
+            "apiKey": 38,
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "CreateDelegationToken request v1, the frame of version 0 with the api version Kafka 2.0 added: one renewer and a maximum lifetime of one hour, on the SASL_PLAINTEXT listener.",
+            "hex": "000000310026000100000202000a74342d766563746f72730000000100045573657200096b61666b6174657374000000000036ee80",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 38,
+                "apiVersion": 1,
+                "correlationId": 514,
+                "clientId": "t4-vectors",
+                "renewers": [
+                    {
+                        "principalType": "User",
+                        "name": "kafkatest"
+                    }
+                ],
+                "maxLifeTime": 3600000
+            }
+        },
+        {
+            "id": "createdelegationtoken.response.v1",
+            "kind": "response",
+            "apiKey": 38,
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "CreateDelegationToken response v1 for the principal of the connection: the token with its id and its hmac, and the `throttle_time_ms` that these four apis carry LAST.",
+            "hex": "0000008b000002020000000455736572000561646d696e000001a090c9b449000001a09100a2c9000001a09100a2c900166c625851664d6a695134756466524d546b35724261770000004040809e5edecd7325f5b989307fa170d33e1395dfeb80ae66779c2b37280218bb6d9f9bf5e96d3437eff18bac4e886289f7c8bd2033409dbcf1844d49902d227800000000",
+            "fields": {
+                "messageSize": 139,
+                "correlationId": 514,
+                "errorCode": 0,
+                "owner": {
+                    "principalType": "User",
+                    "name": "admin"
+                },
+                "issueTimestamp": 1789135533129,
+                "expiryTimestamp": 1789139133129,
+                "maxTimestamp": 1789139133129,
+                "tokenId": "lbXQfMjiQ4udfRMTk5rBaw",
+                "hmac": {
+                    "$bytes": "40809e5edecd7325f5b989307fa170d33e1395dfeb80ae66779c2b37280218bb6d9f9bf5e96d3437eff18bac4e886289f7c8bd2033409dbcf1844d49902d2278"
+                },
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "describedelegationtoken.request.v1",
+            "kind": "request",
+            "apiKey": 41,
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "DescribeDelegationToken request v1, the frame of version 0 with the api version Kafka 2.0 added: the tokens of one named owner.",
+            "hex": "000000250029000100000203000a74342d766563746f727300000001000455736572000561646d696e",
+            "fields": {
+                "messageSize": 37,
+                "apiKey": 41,
+                "apiVersion": 1,
+                "correlationId": 515,
+                "clientId": "t4-vectors",
+                "owners": [
+                    {
+                        "principalType": "User",
+                        "name": "admin"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describedelegationtoken.response.v1",
+            "kind": "response",
+            "apiKey": 41,
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "DescribeDelegationToken response v1: the token created above with its renewers, and the throttle time last.",
+            "hex": "000000a400000203000000000001000455736572000561646d696e000001a090c9b449000001a09100a2c9000001a09100a2c900166c625851664d6a695134756466524d546b35724261770000004040809e5edecd7325f5b989307fa170d33e1395dfeb80ae66779c2b37280218bb6d9f9bf5e96d3437eff18bac4e886289f7c8bd2033409dbcf1844d49902d22780000000100045573657200096b61666b617465737400000000",
+            "fields": {
+                "messageSize": 164,
+                "correlationId": 515,
+                "errorCode": 0,
+                "tokenDetails": {
+                    "lbXQfMjiQ4udfRMTk5rBaw": {
+                        "owner": {
+                            "principalType": "User",
+                            "name": "admin"
+                        },
+                        "issueTimestamp": 1789135533129,
+                        "expiryTimestamp": 1789139133129,
+                        "maxTimestamp": 1789139133129,
+                        "tokenId": "lbXQfMjiQ4udfRMTk5rBaw",
+                        "hmac": {
+                            "$bytes": "40809e5edecd7325f5b989307fa170d33e1395dfeb80ae66779c2b37280218bb6d9f9bf5e96d3437eff18bac4e886289f7c8bd2033409dbcf1844d49902d2278"
+                        },
+                        "renewers": [
+                            {
+                                "principalType": "User",
+                                "name": "kafkatest"
+                            }
+                        ]
+                    }
+                },
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "renewdelegationtoken.request.v1",
+            "kind": "request",
+            "apiKey": 39,
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "RenewDelegationToken request v1, the frame of version 0 with the api version Kafka 2.0 added: the hmac of the token and a renewal period of ten minutes.",
+            "hex": "000000600027000100000204000a74342d766563746f72730000004040809e5edecd7325f5b989307fa170d33e1395dfeb80ae66779c2b37280218bb6d9f9bf5e96d3437eff18bac4e886289f7c8bd2033409dbcf1844d49902d227800000000000927c0",
+            "fields": {
+                "messageSize": 96,
+                "apiKey": 39,
+                "apiVersion": 1,
+                "correlationId": 516,
+                "clientId": "t4-vectors",
+                "hmac": {
+                    "$bytes": "40809e5edecd7325f5b989307fa170d33e1395dfeb80ae66779c2b37280218bb6d9f9bf5e96d3437eff18bac4e886289f7c8bd2033409dbcf1844d49902d2278"
+                },
+                "renewTimePeriod": 600000
+            }
+        },
+        {
+            "id": "renewdelegationtoken.response.v1",
+            "kind": "response",
+            "apiKey": 39,
+            "class": "Protocol\\Kafka\\Protocol\\Request\\RenewDelegationTokenResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "RenewDelegationToken response v1: the new expiry timestamp of the token and the throttle time last.",
+            "hex": "00000012000002040000000001a090d2dc7800000000",
+            "fields": {
+                "messageSize": 18,
+                "correlationId": 516,
+                "errorCode": 0,
+                "expiryTimestamp": 1789136133240,
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "expiredelegationtoken.request.v1",
+            "kind": "request",
+            "apiKey": 40,
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ExpireDelegationTokenRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "ExpireDelegationToken request v1, the frame of version 0 with the api version Kafka 2.0 added: the hmac of the token and the period -1, which deletes it now.",
+            "hex": "000000600028000100000205000a74342d766563746f72730000004040809e5edecd7325f5b989307fa170d33e1395dfeb80ae66779c2b37280218bb6d9f9bf5e96d3437eff18bac4e886289f7c8bd2033409dbcf1844d49902d2278ffffffffffffffff",
+            "fields": {
+                "messageSize": 96,
+                "apiKey": 40,
+                "apiVersion": 1,
+                "correlationId": 517,
+                "clientId": "t4-vectors",
+                "hmac": {
+                    "$bytes": "40809e5edecd7325f5b989307fa170d33e1395dfeb80ae66779c2b37280218bb6d9f9bf5e96d3437eff18bac4e886289f7c8bd2033409dbcf1844d49902d2278"
+                },
+                "expiryTimePeriod": -1
+            }
+        },
+        {
+            "id": "expiredelegationtoken.response.v1",
+            "kind": "response",
+            "apiKey": 40,
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ExpireDelegationTokenResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "ExpireDelegationToken response v1: the clock of the broker as the expiry of the deleted token, and the throttle time last.",
+            "hex": "00000012000002050000000001a090c9b4f400000000",
+            "fields": {
+                "messageSize": 18,
+                "correlationId": 517,
+                "errorCode": 0,
+                "expiryTimestamp": 1789135533300,
                 "throttleTimeMs": 0
             }
         }

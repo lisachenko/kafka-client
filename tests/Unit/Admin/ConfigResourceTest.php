@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV0;
 /**
  * Tests the value objects of the admin apis Kafka 0.11 added.
  *
- * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0)" and "DescribeConfigs API (key 32, v0 and v1)"
+ * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 and v1)" and "DescribeConfigs API (key 32, v0, v1 and v2)"
  */
 #[CoversClass(ConfigResource::class)]
 #[CoversClass(ConfigEntry::class)]
@@ -139,7 +139,7 @@ final class ConfigResourceTest extends TestCase
     public function testTheNonDefaultValuesAreWhatAnAlterConfigsHasToSendBack(): void
     {
         // AlterConfigs replaces the whole configuration, so keeping a topic as it is means sending exactly the
-        // options that are not defaults - see the "AlterConfigs API (key 33, v0)" section
+        // options that are not defaults - see the "AlterConfigs API (key 33, v0 and v1)" section
         $response = DescribeConfigsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         $config = Config::fromResponseResource($response->resources[0]);

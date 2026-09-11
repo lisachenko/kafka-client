@@ -23,14 +23,17 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * {@see \Protocol\Kafka\Admin\AdminClient::listAllGroups()}.
  *
  * <pre>
- *   ListGroups Request (Version: 0 and 1) =>
+ *   ListGroups Request (Version: 0, 1 and 2) =>
  * </pre>
  *
  * `LIST_GROUPS_REQUEST_V1 = LIST_GROUPS_REQUEST_V0` in `Protocol.java` @ 0.11.0.3 - both versions are an empty
  * body - and version 1 (KIP-124, Kafka 0.11) added the `throttle_time_ms` to the ANSWER alone
  * ({@see ListGroupsResponse}), so {@see ListGroupsRequestV0} differs in the version field of the header only.
+ * Version 2 (KIP-219, Kafka 2.0) is the empty body once more, one api version higher, which is what
+ * {@see ListGroupsRequestV1} sends; the request carries a field for the first time at version 4 (KIP-518, Kafka
+ * 2.6), the `states_filter`.
  *
- * @see docs/protocol/2.8.md, section "ListGroups API (key 16, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ListGroups API (key 16, v0 to v2)"
  */
 class ListGroupsRequest extends AbstractRequest
 {
@@ -42,7 +45,7 @@ class ListGroupsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @param string $clientId      A user specified identifier for the client making the request

@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * A directory that is configured but **offline** is reported with the error code 56 (KafkaStorageError) and an
  * empty `replicaInfos`, so an empty map alone does not mean that the disk is healthy - the error does.
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 and v1)"
  */
 final class LogDirInfo
 {

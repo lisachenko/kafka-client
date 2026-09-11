@@ -1,8 +1,8 @@
 {
     "api": "group-coordinator",
     "apiKey": 10,
-    "section": "GroupCoordinator API (key 10, v0 and v1)",
-    "description": "Wire vectors of the GroupCoordinator API (key 10, v0 and v1), replayed by tests/Compliance.",
+    "section": "GroupCoordinator API (key 10, v0 to v2)",
+    "description": "Wire vectors of the GroupCoordinator API (key 10, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "groupcoordinator.request.v0",
@@ -43,7 +43,7 @@
         {
             "id": "groupcoordinator.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequestV1",
             "version": 1,
             "source": "broker",
             "description": "GroupCoordinator (FindCoordinator) request v1 for a consumer group, with the coordinator type 0.",
@@ -61,7 +61,7 @@
         {
             "id": "groupcoordinator.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer v1: the throttle time, the error code, a null error message and the coordinator of the group.",
@@ -82,7 +82,7 @@
         {
             "id": "groupcoordinator.request.v1.transaction",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequestV1",
             "version": 1,
             "source": "broker",
             "description": "GroupCoordinator request v1 for a transactional id, with the coordinator type 1 (KIP-98).",
@@ -100,7 +100,7 @@
         {
             "id": "groupcoordinator.response.v1.transaction",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer for the transactional id: the broker that owns its partition of `__transaction_state`.",
@@ -111,6 +111,45 @@
                 "throttleTimeMs": 0,
                 "errorCode": 0,
                 "errorMessage": null,
+                "coordinator": {
+                    "nodeId": 0,
+                    "host": "127.0.0.1",
+                    "port": 9092
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "GroupCoordinator (FindCoordinator) request v2 for a consumer group, byte for byte the frame of v1 with a higher version field.",
+            "hex": "00000032000a0002000000c800166b61666b612d636c69656e742d74332d6b6970323139000f74332d6b69703231392d67726f757000",
+            "fields": {
+                "messageSize": 50,
+                "apiKey": 10,
+                "apiVersion": 2,
+                "correlationId": 200,
+                "clientId": "kafka-client-t3-kip219",
+                "consumerGroup": "t3-kip219-group",
+                "coordinatorType": 0
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2 of a 2.8.2 broker: the throttle time, the error code, the coordinator - and the error message \"NONE\" where a 0.11 or 1.1 broker sent the null marker, because every answer of `KafkaApis.handleFindCoordinatorRequest` @ 2.8.2 is built with `Errors.message()`.",
+            "hex": "00000023000000c800000000000000044e4f4e450000000000093132372e302e302e3100002384",
+            "fields": {
+                "messageSize": 35,
+                "correlationId": 200,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "NONE",
                 "coordinator": {
                     "nodeId": 0,
                     "host": "127.0.0.1",

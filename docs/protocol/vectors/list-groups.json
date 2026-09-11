@@ -1,8 +1,8 @@
 {
     "api": "list-groups",
     "apiKey": 16,
-    "section": "ListGroups API (key 16, v0 and v1)",
-    "description": "Wire vectors of the ListGroups API (key 16, v0 and v1), replayed by tests/Compliance.",
+    "section": "ListGroups API (key 16, v0 to v2)",
+    "description": "Wire vectors of the ListGroups API (key 16, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "listgroups.request.v0",
@@ -43,7 +43,7 @@
         {
             "id": "listgroups.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "ListGroups request v1: the bare request header, exactly as v0.",
@@ -59,7 +59,7 @@
         {
             "id": "listgroups.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer v1: the throttle time, the error code and the groups this broker coordinates.",
@@ -77,6 +77,151 @@
                     "t3-throttle-offsets": {
                         "groupId": "t3-throttle-offsets",
                         "protocolType": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "ListGroups request v2: the bare request header, exactly as v0 and v1.",
+            "hex": "0000002000100002000000cf00166b61666b612d636c69656e742d74332d6b6970323139",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 16,
+                "apiVersion": 2,
+                "correlationId": 207,
+                "clientId": "kafka-client-t3-kip219"
+            }
+        },
+        {
+            "id": "listgroups.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2 of the container at the moment of the capture. There is no filter below version 4 (KIP-518): a broker answers with EVERY group it coordinates, which on a container shared by several test runs is every group of all of them - the 28 entries here are exactly what the api is for.",
+            "hex": "000002fa000000cf0000000000000000001c001574332d67726f75702d6364613836643562343463330008636f6e73756d6572001574372d67726f75702d6230653562633037393730360008636f6e73756d6572001574332d67726f75702d3939306635373261363332330008636f6e73756d6572001574362d67726f75702d6161353866376639333931300000001574362d67726f75702d6236343032613665383063390000001574392d67726f75702d3836653465613631346339350000001574362d67726f75702d3661633337366436313364310000000a743370726f62652d63310008636f6e73756d6572000a743370726f62652d61310008636f6e73756d6572000a743370726f62652d61320008636f6e73756d6572000a743370726f62652d61330008636f6e73756d6572000a743370726f62652d61340008636f6e73756d6572001c74342d61646d696e2d67726f7570732d3165346438343937383261350000001574362d67726f75702d64333132626538636138646100000011743370726f62652d636f6e736f6c652d310008636f6e73756d6572001574362d67726f75702d3636396635363666303638390000001574362d67726f75702d3237376236386132613736610000001e74332d7468726f74746c652d67726f75702d3462386563616336363035300000001574372d67726f75702d3164393039313663633637610008636f6e73756d6572001574362d67726f75702d3663656331633664613633310000001c74342d61646d696e2d67726f7570732d3434373138323266613564330000001574362d67726f75702d6433326663386339653731660000000a743370726f62652d64310008636f6e73756d6572000a743370726f62652d62310008636f6e73756d6572001574332d67726f75702d3237326166313933323537610008636f6e73756d6572001574392d67726f75702d6235636431333832623537330000001574392d67726f75702d6438343563666665623035640000000f74332d6b69703231392d67726f75700008636f6e73756d6572",
+            "fields": {
+                "messageSize": 762,
+                "correlationId": 207,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-group-cda86d5b44c3": {
+                        "groupId": "t3-group-cda86d5b44c3",
+                        "protocolType": "consumer"
+                    },
+                    "t7-group-b0e5bc079706": {
+                        "groupId": "t7-group-b0e5bc079706",
+                        "protocolType": "consumer"
+                    },
+                    "t3-group-990f572a6323": {
+                        "groupId": "t3-group-990f572a6323",
+                        "protocolType": "consumer"
+                    },
+                    "t6-group-aa58f7f93910": {
+                        "groupId": "t6-group-aa58f7f93910",
+                        "protocolType": ""
+                    },
+                    "t6-group-b6402a6e80c9": {
+                        "groupId": "t6-group-b6402a6e80c9",
+                        "protocolType": ""
+                    },
+                    "t9-group-86e4ea614c95": {
+                        "groupId": "t9-group-86e4ea614c95",
+                        "protocolType": ""
+                    },
+                    "t6-group-6ac376d613d1": {
+                        "groupId": "t6-group-6ac376d613d1",
+                        "protocolType": ""
+                    },
+                    "t3probe-c1": {
+                        "groupId": "t3probe-c1",
+                        "protocolType": "consumer"
+                    },
+                    "t3probe-a1": {
+                        "groupId": "t3probe-a1",
+                        "protocolType": "consumer"
+                    },
+                    "t3probe-a2": {
+                        "groupId": "t3probe-a2",
+                        "protocolType": "consumer"
+                    },
+                    "t3probe-a3": {
+                        "groupId": "t3probe-a3",
+                        "protocolType": "consumer"
+                    },
+                    "t3probe-a4": {
+                        "groupId": "t3probe-a4",
+                        "protocolType": "consumer"
+                    },
+                    "t4-admin-groups-1e4d849782a5": {
+                        "groupId": "t4-admin-groups-1e4d849782a5",
+                        "protocolType": ""
+                    },
+                    "t6-group-d312be8ca8da": {
+                        "groupId": "t6-group-d312be8ca8da",
+                        "protocolType": ""
+                    },
+                    "t3probe-console-1": {
+                        "groupId": "t3probe-console-1",
+                        "protocolType": "consumer"
+                    },
+                    "t6-group-669f566f0689": {
+                        "groupId": "t6-group-669f566f0689",
+                        "protocolType": ""
+                    },
+                    "t6-group-277b68a2a76a": {
+                        "groupId": "t6-group-277b68a2a76a",
+                        "protocolType": ""
+                    },
+                    "t3-throttle-group-4b8ecac66050": {
+                        "groupId": "t3-throttle-group-4b8ecac66050",
+                        "protocolType": ""
+                    },
+                    "t7-group-1d90916cc67a": {
+                        "groupId": "t7-group-1d90916cc67a",
+                        "protocolType": "consumer"
+                    },
+                    "t6-group-6cec1c6da631": {
+                        "groupId": "t6-group-6cec1c6da631",
+                        "protocolType": ""
+                    },
+                    "t4-admin-groups-4471822fa5d3": {
+                        "groupId": "t4-admin-groups-4471822fa5d3",
+                        "protocolType": ""
+                    },
+                    "t6-group-d32fc8c9e71f": {
+                        "groupId": "t6-group-d32fc8c9e71f",
+                        "protocolType": ""
+                    },
+                    "t3probe-d1": {
+                        "groupId": "t3probe-d1",
+                        "protocolType": "consumer"
+                    },
+                    "t3probe-b1": {
+                        "groupId": "t3probe-b1",
+                        "protocolType": "consumer"
+                    },
+                    "t3-group-272af193257a": {
+                        "groupId": "t3-group-272af193257a",
+                        "protocolType": "consumer"
+                    },
+                    "t9-group-b5cd1382b573": {
+                        "groupId": "t9-group-b5cd1382b573",
+                        "protocolType": ""
+                    },
+                    "t9-group-d845cffeb05d": {
+                        "groupId": "t9-group-d845cffeb05d",
+                        "protocolType": ""
+                    },
+                    "t3-kip219-group": {
+                        "groupId": "t3-kip219-group",
+                        "protocolType": "consumer"
                     }
                 }
             }

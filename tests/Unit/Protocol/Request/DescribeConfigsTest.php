@@ -28,22 +28,27 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResource;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResourceV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV0;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV0;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV1;
 
 /**
  * Byte-exact tests for the DescribeConfigs API (api key 32), version 0 of Kafka 0.11 and version 1 of Kafka 1.1.
  *
  * KIP-226 changed the config ENTRY of the answer and nothing else: the `is_default` boolean became a
  * `config_source` int8 in the same place and the entry gained its synonyms, while the request gained the trailing
- * `include_synonyms` boolean. Both versions are exercised here, and the derivation of the source from the boolean
- * of a version 0 answer with it.
+ * `include_synonyms` boolean. Kafka 2.0 raised the api to **version 2** without touching a byte
+ * (`DESCRIBE_CONFIGS_REQUEST_V2 = DESCRIBE_CONFIGS_REQUEST_V1` @ 2.0.1, KIP-219), which is the version the client
+ * sends. All three are exercised here, and the derivation of the source from the boolean of a version 0 answer.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0, v1 and v2)"
  */
 #[CoversClass(DescribeConfigsRequest::class)]
+#[CoversClass(DescribeConfigsRequestV1::class)]
 #[CoversClass(DescribeConfigsRequestV0::class)]
 #[CoversClass(DescribeConfigsResponse::class)]
+#[CoversClass(DescribeConfigsResponseV1::class)]
 #[CoversClass(DescribeConfigsResponseV0::class)]
 #[CoversClass(DescribeConfigsRequestResource::class)]
 #[CoversClass(DescribeConfigsResponseResource::class)]
@@ -191,10 +196,10 @@ final class DescribeConfigsTest extends TestCase
             DescribeConfigsRequestResource::fromConfigResource(ConfigResource::broker(0)),
         ];
 
-        $request = new DescribeConfigsRequest($resources, true, 'test', 7);
+        $request = new DescribeConfigsRequestV1($resources, true, 'test', 7);
 
         self::assertSame(self::REQUEST_V1_HEX, bin2hex((string) $request));
-        self::assertSame(1, $request->getApiVersion(), 'the client sends the version 1 of Kafka 1.1');
+        self::assertSame(1, $request->getApiVersion(), 'the version Kafka 1.1 added with KIP-226');
         self::assertSame(
             strlen((string) new DescribeConfigsRequestV0($resources, 'test', 7)) + 1,
             strlen((string) $request),
@@ -202,9 +207,33 @@ final class DescribeConfigsTest extends TestCase
         );
         self::assertStringEndsWith(
             '00',
-            bin2hex((string) new DescribeConfigsRequest($resources, false, 'test', 7)),
+            bin2hex((string) new DescribeConfigsRequestV1($resources, false, 'test', 7)),
             'and the flag is the last byte of the frame'
         );
+    }
+
+    public function testTheClientSendsTheVersionTwoOfKafkaTwoZero(): void
+    {
+        $resources = [
+            new DescribeConfigsRequestResource(ConfigResource::TYPE_TOPIC, 'topic', ['retention.ms']),
+            DescribeConfigsRequestResource::fromConfigResource(ConfigResource::broker(0)),
+        ];
+
+        $request = new DescribeConfigsRequest($resources, true, 'test', 7);
+
+        // `DESCRIBE_CONFIGS_REQUEST_V2 = DESCRIBE_CONFIGS_REQUEST_V1` @ 2.0.1: only the version field is different
+        self::assertSame(2, $request->getApiVersion());
+        self::assertSame(substr_replace(self::REQUEST_V1_HEX, '0002', 12, 4), bin2hex((string) $request));
+
+        $answer   = DescribeConfigsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $versionOne = DescribeConfigsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+
+        self::assertSame(
+            bin2hex((string) $versionOne),
+            bin2hex((string) $answer),
+            'the answer of version 2 has the layout of version 1'
+        );
+        self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $answer));
     }
 
     public function testANullConfigNameArrayIsTheCountMinusOne(): void

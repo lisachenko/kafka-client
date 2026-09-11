@@ -260,7 +260,13 @@ final class SaslTransportTest extends IntegrationTestCase
 
         self::assertSame(432, $answer->getCorrelationId());
         self::assertSame(0, $answer->errorCode, 'the credentials of the container are accepted');
-        self::assertNull($answer->errorMessage, 'a successful answer carries no message');
+        self::assertSame(
+            '',
+            $answer->errorMessage,
+            'a successful answer of a 2.8.2 broker carries the EMPTY message, not the null of a 1.1.1 one: the '
+            . 'generated `SaslAuthenticateResponseData` initialises `ErrorMessage` with "" and the authenticator '
+            . 'never sets it, where the hand-written response of 1.1.1 left the field null'
+        );
         self::assertSame('', $answer->saslAuthBytes, 'PLAIN completes with the empty token');
 
         // ... and the connection is an ordinary one from here on
@@ -334,8 +340,10 @@ final class SaslTransportTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::SASL_AUTHENTICATION_FAILED, $answer->errorCode);
         self::assertSame(
-            'Authentication failed due to invalid credentials with SASL mechanism PLAIN',
-            $answer->errorMessage
+            'Invalid SASL/PLAIN response: expected 3 tokens, got 1',
+            $answer->errorMessage,
+            'the message of `PlainSaslServer.evaluateResponse` @ 2.8.2, where a 1.1.1 broker hid it behind the '
+            . 'generic "Authentication failed due to invalid credentials with SASL mechanism PLAIN"'
         );
         self::assertSame('', $answer->saslAuthBytes);
     }

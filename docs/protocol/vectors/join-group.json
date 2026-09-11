@@ -1,8 +1,8 @@
 {
     "api": "join-group",
     "apiKey": 11,
-    "section": "JoinGroup API (key 11, v0, v1 and v2)",
-    "description": "Wire vectors of the JoinGroup API (key 11, v0, v1 and v2), replayed by tests/Compliance.",
+    "section": "JoinGroup API (key 11, v0 to v3)",
+    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "joingroup.request.v1",
@@ -163,7 +163,7 @@
         {
             "id": "joingroup.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV2",
             "version": 2,
             "source": "broker",
             "description": "JoinGroup request v2 of the first member of a group, the frame of v1 with a higher version field.",
@@ -192,7 +192,7 @@
         {
             "id": "joingroup.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2: the throttle time, and then the generation of a v1 answer with the member as its own leader.",
@@ -211,6 +211,62 @@
                         "memberId": "kafka-client-t3-vectors-cf8abe7f-9b1e-4373-9e99-60c00fa85108",
                         "metadata": {
                             "$bytes": "000000000001000b74332d7468726f74746c6500000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "JoinGroup request v3 of the first member of a group, the frame of v2 with a higher version field. The member metadata is a real `Subscription` of the `consumer` protocol: a 2.x coordinator parses it, see \"Broker quirks and observations\".",
+            "hex": "00000069000b0003000000c900166b61666b612d636c69656e742d74332d6b6970323139000f74332d6b69703231392d67726f7570000075300000ea6000000008636f6e73756d657200000001000572616e676500000015000000000001000974332d6b697032313900000000",
+            "fields": {
+                "messageSize": 105,
+                "apiKey": 11,
+                "apiVersion": 3,
+                "correlationId": 201,
+                "clientId": "kafka-client-t3-kip219",
+                "consumerGroup": "t3-kip219-group",
+                "sessionTimeout": 30000,
+                "rebalanceTimeout": 60000,
+                "memberId": "",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000974332d6b697032313900000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer v3 to that join: the throttle time, the generation 1, the protocol the coordinator picked and the member that is the leader of the generation, with its metadata in the members array.",
+            "hex": "000000e9000000c900000000000000000001000572616e6765003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d316634643563326139333365003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d31663464356332613933336500000001003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d31663464356332613933336500000015000000000001000974332d6b697032313900000000",
+            "fields": {
+                "messageSize": 233,
+                "correlationId": 201,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 1,
+                "groupProtocol": "range",
+                "leaderId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
+                "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
+                "members": {
+                    "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e": {
+                        "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
+                        "metadata": {
+                            "$bytes": "000000000001000974332d6b697032313900000000"
                         }
                     }
                 }

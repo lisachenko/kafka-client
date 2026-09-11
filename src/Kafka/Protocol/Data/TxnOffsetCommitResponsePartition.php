@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * | 30   | GroupAuthorizationFailed           | The client may not `Read` the group                               |
  * | 12   | OffsetMetadataTooLarge             | The metadata of the offset is above `offset.metadata.max.bytes`   |
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0)"
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 and v1)"
  */
 class TxnOffsetCommitResponsePartition implements BinarySchemaInterface
 {

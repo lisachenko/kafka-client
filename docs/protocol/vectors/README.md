@@ -2,18 +2,22 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **328** of them in **36** files, every one of which a **2.8.2** broker speaks: **314** were
-captured by the five lines below this one and are replayed against the classes of this line unchanged, and **14**
-were captured on the `kafka-2-8-2` container of this line. Two of the inherited vectors were **re-captured** rather
-than added by the 1.x line — `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the
-broker.
+hex dumps. There are **386** of them in **36** files: **68** were captured on the `kafka-2-8-2` container of the
+**2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
+(14 frames), to the admin, the transaction and the delegation-token apis (34 frames) and to the ten group apis
+(20 frames), nearly all of them KIP-219 bumps - and of the other 318, **229** were captured by the four lines below
+the 1.x one and are replayed against the classes of this line unchanged, while **85** were captured on the 1.1.1
+broker of the 1.x line. Two of the inherited vectors were **re-captured** rather than added -
+`apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker.
 
-What the 2.x line has captured so far
--------------------------------------
+What this line has captured so far is the KIP-219 version bump of the ten group apis of Kafka 2.0 — OffsetCommit
+v4, OffsetFetch v4, FindCoordinator v2, JoinGroup v3, Heartbeat v2, LeaveGroup v2, SyncGroup v2, DescribeGroups v2,
+ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from one life of the group
+`t3-kip219-group` — and the same bump of the four apis the producer and the consumer send:
 
 | File | Of it captured here | What was captured on the 2.8.2 broker |
 |---|---|---|
-| `produce.json` | 3 of 27 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the one that shows what KIP-219 changed: `ThrottleTime = 2381` in a frame that arrived after about a millisecond |
+| `produce.json` | 3 of 27 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond |
 | `fetch.json` | 5 of 38 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; and the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283) |
 | `offsets.json` | 2 of 16 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header |
 | `metadata.json` | 2 of 21 | **Metadata v6** (KIP-219), likewise |

@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * InitProducerId, version 0: asks for a producer id and its epoch (ApiKey 22, Kafka 0.11, KIP-98)
+ * InitProducerId, version 1: asks for a producer id and its epoch (ApiKey 22, Kafka 0.11, KIP-98)
  *
  * <pre>
- *   InitProducerId Request (Version: 0) => transactional_id transaction_timeout_ms
+ *   InitProducerId Request (Version: 0 and 1) => transactional_id transaction_timeout_ms
  *     transactional_id       => NULLABLE_STRING
  *     transaction_timeout_ms => INT32
  * </pre>
@@ -49,7 +49,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The empty string is not a transactional id: the broker answers it with the error code **42** (InvalidRequest),
  * deliberately, to keep its behaviour the same as the Java client, which refuses the empty id in its configuration.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `INIT_PRODUCER_ID_REQUEST_V1 =
+ * INIT_PRODUCER_ID_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see InitProducerIdRequestV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 and v1)"
  */
 class InitProducerIdRequest extends AbstractRequest
 {
@@ -61,7 +68,7 @@ class InitProducerIdRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Default of the `transaction.timeout.ms` option of the Java producer, one minute

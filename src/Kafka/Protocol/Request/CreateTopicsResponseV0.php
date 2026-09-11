@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see CreateTopicsResponse::topicClass()} follows. Reading a version 0 answer with the version 1 class would run
  * past the end of the frame while it looks for the `ErrorMessage`.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v3)"
  */
 final class CreateTopicsResponseV0 extends CreateTopicsResponse
 {

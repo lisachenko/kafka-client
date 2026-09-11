@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Admin;
  *   NewTopic::withReplicaAssignment('events', [0 => [0], 1 => [0]]);
  * </code>
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v3)"
  */
 final class NewTopic
 {
