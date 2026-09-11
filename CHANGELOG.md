@@ -88,7 +88,9 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   not have**, whose fields belong to the structure around it (`'owner' => new InlineStruct(KafkaPrincipal::class)`).
   It changes nothing in a plain version, where a group of fields and a nested structure are the same bytes, but in
   a flexible one it keeps the group from being given a tagged-field section of its own. The marker belongs to the
-  **field**, not to the class: the same class is a real structure wherever the specification declares one.
+  **field**, not to the class: the same class is a real structure wherever the specification declares one. The first two places of Kafka 2.8.2 that need it are the **owner of a
+  delegation token** (two flat fields of the answer that this package reads into a `KafkaPrincipal`, while the very
+  same class *is* a structure in the request of that api) and the coordinator of a FindCoordinator v3 answer.
 - **ApiVersions v3** (Kafka 2.4, KIP-511 + KIP-482 + KIP-584) — the first flexible frame this client sends: the
   request carries `client_software_name` = `lisachenko-kafka-client` and `client_software_version` = `2.8` as
   compact strings (a broker refuses a name that does not match `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?` with
@@ -126,13 +128,6 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   `InitProducerIdResponseV1`, `CreateDelegationTokenRequestV1` and `CreateDelegationTokenResponseV1`
   keep the version Kafka 2.0 bumped. Six new wire vectors, the v2 pair of each api and the two error
   answers of the token api.
-- **`Protocol\InlineStruct`** in the schema engine — a scheme entry that declares a nested object the
-  **specification does not have**, whose fields belong to the structure around it. It changes nothing
-  in a plain version, where a group of fields and a nested structure are the same bytes, but in a
-  flexible one it keeps the group from being given a tagged-field section of its own. The one place
-  of Kafka 2.8.2 that needs it is the **owner of a delegation token**, two flat fields of the answer
-  that this package reads into a `KafkaPrincipal` — the very same class that *is* a real structure in
-  the request of the same api.
 - **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
   **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
   **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not
