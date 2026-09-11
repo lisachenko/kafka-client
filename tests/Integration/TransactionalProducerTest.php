@@ -550,7 +550,11 @@ final class TransactionalProducerTest extends IntegrationTestCase
             $this->awaitCommittedOffset($coordinator, $group, $topic),
             'an epoch the partition never had is stored with the offset instead of being refused'
         );
-        self::assertSame(2, TxnOffsetCommitRequest::VERSION, 'and the client sends the version that carries it');
+        self::assertGreaterThanOrEqual(
+            2,
+            TxnOffsetCommitRequest::VERSION,
+            'and the client sends a version that carries it - the field arrived with the version 2 of Kafka 2.1'
+        );
     }
 
     public function testAnAbortedTransactionLeavesTheGroupWithTheOffsetsItHadBefore(): void
