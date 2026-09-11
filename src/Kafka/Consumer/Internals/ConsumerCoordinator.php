@@ -53,8 +53,8 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * (MemberIdRequired, KIP-394) for a rejoin with the id the coordinator just assigned, and 15/16
  * (GroupCoordinatorNotAvailable, NotCoordinatorForGroup) for another coordinator lookup.
  *
- * **The 79 is the first answer of every first join** since the client sends JoinGroup v4: a request with an empty
- * member id is refused with it and the id the coordinator assigned, and the very same request is sent again with
+ * **The 79 is the first answer of every dynamic first join** since the client sends JoinGroup v4 and above: such
+ * a request is refused with it and the id the coordinator assigned, and the very same request is sent again with
  * that id right away - no backoff, no rebalance in between, and the attempt is not counted against
  * {@see self::MAX_REBALANCE_ATTEMPTS}, exactly as `AbstractCoordinator.handleJoinResponse` @ 2.8.2 does it. A
  * **static** member never sees it: `requireKnownMemberId` is `version >= 4 && groupInstanceId.isEmpty` in
