@@ -26,7 +26,9 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0;
+use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV2;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
+use Protocol\Kafka\Protocol\Request\ControlledShutdownResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
@@ -194,47 +196,60 @@ final class AdminApiTest extends IntegrationTestCase
         // `RequestHeader` a schema of its own for that one frame (`CONTROLLED_SHUTDOWN_V0_SCHEMA`) and moved the api
         // to the Java schemas altogether, so a 1.1.1 broker announced **v0 and v1** again. A 2.8.2 broker serves
         // two versions more: the **v2** of KIP-380, which Kafka 2.2 added for the `broker_epoch`, and the flexible
-        // **v3** of Kafka 2.4, which this line does not send yet.
+        // **v3** of Kafka 2.4, which is the one this client sends now.
         $nodes       = $this->cluster->nodes();
         $apiVersions = $this->admin->getApiVersions(reset($nodes));
 
         self::assertSame(0, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->minVersion);
         self::assertSame(3, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->maxVersion);
         self::assertSame(
-            2,
+            3,
             ControlledShutdownRequest::VERSION,
-            'and the client sends the highest non-flexible one of them'
+            'and the client sends the highest of them, the flexible one of KIP-482'
         );
     }
 
-    public function testBothVersionsOfControlledShutdownAreStillServedByTheBroker(): void
+    public function testEveryVersionOfControlledShutdownIsStillServedByTheBroker(): void
     {
         // Both announced versions really are answered. Up to 0.11 this test proved something else: key 7 was the
         // last api a broker parsed with its Scala class, which never validated the version, so v0 was answered
         // although the table did not contain it - and so was any version above 1. On this line the api is an
         // ordinary Java-schema api and the first version above its table closes the connection like every other
         // unknown version (`ApiVersionProbeTest::testTheBrokerClosesTheConnectionForAVersionAboveTheTable`). The
-        // AdminClient sends v1; v0 is kept for the 0.8/0.9 lines and their vectors.
+        // AdminClient sends v3, the flexible one; v0 is kept for the 0.8/0.9 lines and their vectors.
         $stream = $this->connect();
 
         new ControlledShutdownRequestV0(self::UNKNOWN_BROKER_ID, 4200)->writeTo($stream);
-        $versionZero = ControlledShutdownResponse::unpack($stream);
+        $versionZero = ControlledShutdownResponseV2::unpack($stream);
 
-        new ControlledShutdownRequest(
+        new ControlledShutdownRequestV2(
             self::UNKNOWN_BROKER_ID,
             ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
             't10-admin',
             4201
         )->writeTo($stream);
-        $versionOne = ControlledShutdownResponse::unpack($stream);
+        $versionTwo = ControlledShutdownResponseV2::unpack($stream);
+
+        new ControlledShutdownRequest(
+            self::UNKNOWN_BROKER_ID,
+            ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
+            't10-admin',
+            4202
+        )->writeTo($stream);
+        $versionThree = ControlledShutdownResponse::unpack($stream);
 
         self::assertSame(4200, $versionZero->getCorrelationId());
         self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionZero->errorCode);
         self::assertSame([], $versionZero->remainingTopicPartitions);
 
-        self::assertSame(4201, $versionOne->getCorrelationId());
-        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionOne->errorCode);
-        self::assertSame([], $versionOne->remainingTopicPartitions);
+        self::assertSame(4201, $versionTwo->getCorrelationId());
+        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionTwo->errorCode);
+        self::assertSame([], $versionTwo->remainingTopicPartitions);
+
+        // The flexible version of KIP-482: the same two values, in the smallest frame of the whole protocol
+        self::assertSame(4202, $versionThree->getCorrelationId());
+        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionThree->errorCode);
+        self::assertSame([], $versionThree->remainingTopicPartitions);
     }
 
     /**

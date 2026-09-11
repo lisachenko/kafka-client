@@ -176,7 +176,7 @@ final class ElectLeadersApiTest extends IntegrationTestCase
             $result[$topic][0],
             'the partition still has a live leader, so neither election type has anything to do'
         );
-        self::assertSame(1, ElectLeadersRequest::VERSION, 'the version this line sends');
+        self::assertSame(2, ElectLeadersRequest::VERSION, 'the flexible version of KIP-482, which this line sends');
     }
 
     /**
