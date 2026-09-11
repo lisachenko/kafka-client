@@ -2,12 +2,13 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **398** of them in **36** files: **80** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **410** of them in **36** files: **92** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus the 6 frames of what Kafka
-**2.1** added to OffsetCommit and OffsetFetch and the 4 frames of the KIP-394 exchange of Kafka **2.2** - and of
-the other 318, **229** were
+**2.1** added to OffsetCommit and OffsetFetch, the 4 frames of the KIP-394 exchange of Kafka **2.2** and the 12
+frames of what Kafka **2.3** added to the group apis (static membership, KIP-345, and the authorized operations of
+KIP-430) - and of the other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
@@ -30,7 +31,10 @@ What Kafka 2.1 added to the two offset apis: OffsetCommit v5 (the frame without
 `retention_time`, KIP-211), OffsetCommit v6 and OffsetFetch v5 (the `committed_leader_epoch` of KIP-320). What
 Kafka 2.2 added to JoinGroup: the four frames of the KIP-394 exchange — a v4 join that carries an empty member id,
 the answer that refuses it with **79** `MEMBER_ID_REQUIRED` and the member id the coordinator assigned, and the
-join that follows with that id.
+join that follows with that id. What Kafka 2.3 added: the `group_instance_id` of a static member in JoinGroup v5,
+SyncGroup v3, Heartbeat v3 and OffsetCommit v7 (KIP-345), the heartbeat that is answered **82**
+`FENCED_INSTANCE_ID` once a second consumer has taken that instance id over, and the DescribeGroups v3 pair whose
+request asks for the authorized operations of the group and whose answer reports them (KIP-430).
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`

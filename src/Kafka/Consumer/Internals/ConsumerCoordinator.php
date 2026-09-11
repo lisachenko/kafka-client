@@ -45,6 +45,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  *      follower: SyncGroup with an empty assignment      -> its own share, once the leader has published one
  *   Heartbeat         -> every `heartbeat.interval.ms`, driven by KafkaConsumer::poll()
  *   LeaveGroup        -> on unsubscribe()/close(), so that the group rebalances right away
+ *                        (a STATIC member sends none, see below)
  * ```
  *
  * The error codes of the protocol are what drives it: 27 (RebalanceInProgress) and 22 (IllegalGeneration) ask for
@@ -55,7 +56,21 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * **The 79 is the first answer of every first join** since the client sends JoinGroup v4: a request with an empty
  * member id is refused with it and the id the coordinator assigned, and the very same request is sent again with
  * that id right away - no backoff, no rebalance in between, and the attempt is not counted against
- * {@see self::MAX_REBALANCE_ATTEMPTS}, exactly as `AbstractCoordinator.handleJoinResponse` @ 2.8.2 does it.
+ * {@see self::MAX_REBALANCE_ATTEMPTS}, exactly as `AbstractCoordinator.handleJoinResponse` @ 2.8.2 does it. A
+ * **static** member never sees it: `requireKnownMemberId` is `version >= 4 && groupInstanceId.isEmpty` in
+ * `KafkaApis.handleJoinGroupRequest` @ 2.8.2, so a join that names an instance id is answered right away.
+ *
+ * **Static membership (KIP-345, Kafka 2.3).** A consumer configured with
+ * {@see \Protocol\Kafka\Consumer\ConsumerConfig::GROUP_INSTANCE_ID} sends that id in every JoinGroup (v5),
+ * SyncGroup (v3), Heartbeat (v3) and OffsetCommit (v7) it sends, and it behaves differently in two places:
+ *
+ * * it does **not** send LeaveGroup ({@see self::leaveGroup()} is a no-op for it), so the coordinator keeps its
+ *   identity and its partitions while it restarts; a rejoin within `session.timeout.ms` gets the assignment back
+ *   **without a new generation**, at the price of a new member id, which is what `updateStaticMemberAndRebalance`
+ *   @ 2.8.2 does;
+ * * a second consumer that joins under the same instance id **takes it over**, and every request of the older one
+ *   is answered 82 from then on. {@see \Protocol\Kafka\Common\Errors\FencedInstanceIdException} is fatal: it is
+ *   neither retried nor swallowed here and reaches the caller of `poll()` or `commitSync()`.
  *
  * Every JoinGroup carries the `rebalance_timeout` of Kafka 0.10.1 - `max.poll.interval.ms` - which is how long the
  * coordinator waits for this member to rejoin a rebalance. Nothing else of KIP-62 applies to a client without
@@ -115,6 +130,8 @@ final class ConsumerCoordinator
      * @param int                        $retryBackoffMs      `retry.backoff.ms`, waited before a rebalance retry
      * @param int|null                   $rebalanceTimeoutMs  `max.poll.interval.ms`, the `rebalance_timeout` of the
      *        JoinGroup v1 request, null to let the client take it from its own configuration
+     * @param string|null                $groupInstanceId     `group.instance.id` of a static member (KIP-345),
+     *        null for a dynamic one
      */
     public function __construct(
         private readonly Client $client,
@@ -122,8 +139,25 @@ final class ConsumerCoordinator
         private readonly PartitionAssignorInterface $assignor,
         private readonly int $heartbeatIntervalMs,
         private readonly int $retryBackoffMs = 100,
-        private readonly ?int $rebalanceTimeoutMs = null
+        private readonly ?int $rebalanceTimeoutMs = null,
+        private readonly ?string $groupInstanceId = null
     ) {}
+
+    /**
+     * Returns the `group.instance.id` of this member, null for a dynamic one
+     */
+    public function getGroupInstanceId(): ?string
+    {
+        return $this->groupInstanceId;
+    }
+
+    /**
+     * Tells whether this consumer is a static member of its group (KIP-345)
+     */
+    public function isStaticMember(): bool
+    {
+        return $this->groupInstanceId !== null;
+    }
 
     /**
      * Returns the member id the coordinator assigned, an empty string for a consumer that is not a member
@@ -242,7 +276,13 @@ final class ConsumerCoordinator
         $this->lastHeartbeatMs = $nowMs;
 
         try {
-            $this->client->heartbeat($this->getNode(), $this->groupId, $this->memberId, $this->generationId);
+            $this->client->heartbeat(
+                $this->getNode(),
+                $this->groupId,
+                $this->memberId,
+                $this->generationId,
+                $this->groupInstanceId
+            );
         } catch (RebalanceInProgressException | IllegalGenerationException) {
             $this->rejoinNeeded = true;
         } catch (UnknownMemberIdException) {
@@ -261,10 +301,21 @@ final class ConsumerCoordinator
      * A member the coordinator does not know any more - it was dropped after a missed session timeout, or the
      * whole group is gone - answers 25 (UnknownMemberId), which is the state this method wants to reach anyway and
      * is therefore not reported.
+     *
+     * **A static member sends nothing** (KIP-345): keeping its identity in the group while it is away is the whole
+     * point of `group.instance.id`, so the request that would give its partitions to somebody else is not sent and
+     * the coordinator holds them for `session.timeout.ms`. The local membership is forgotten all the same, so that
+     * the next poll() joins again - under the same instance id, which is what gets the assignment back.
      */
     public function leaveGroup(): void
     {
         if (!$this->isMember()) {
+            return;
+        }
+
+        if ($this->isStaticMember()) {
+            $this->resetMembership();
+
             return;
         }
 
@@ -315,7 +366,8 @@ final class ConsumerCoordinator
             $this->groupId,
             $this->memberId,
             $this->generationId,
-            $groupAssignments
+            $groupAssignments,
+            $this->groupInstanceId
         );
 
         $this->rejoinNeeded    = false;
@@ -333,6 +385,9 @@ final class ConsumerCoordinator
      * cost nothing, no rebalance was started and no member was added - and only one retry is made, because a
      * coordinator that refuses a join it has just handed an id to has a problem this loop cannot solve.
      *
+     * A static member (KIP-345) never receives the 79 - a coordinator only requires a known member id of a join
+     * that carries no `group_instance_id` - so for it this is one plain request.
+     *
      * @param Node   $node     Coordinator of the group
      * @param string $metadata Packed subscription of this member
      */
@@ -347,7 +402,8 @@ final class ConsumerCoordinator
                 $this->memberId,
                 self::PROTOCOL_TYPE,
                 $protocols,
-                $this->rebalanceTimeoutMs
+                $this->rebalanceTimeoutMs,
+                $this->groupInstanceId
             );
         } catch (MemberIdRequiredException $exception) {
             $this->memberId = (string) ($exception->getContext()['assignedMemberId'] ?? '');
@@ -362,7 +418,8 @@ final class ConsumerCoordinator
             $this->memberId,
             self::PROTOCOL_TYPE,
             $protocols,
-            $this->rebalanceTimeoutMs
+            $this->rebalanceTimeoutMs,
+            $this->groupInstanceId
         );
     }
 

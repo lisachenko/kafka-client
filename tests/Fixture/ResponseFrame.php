@@ -444,11 +444,15 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a JoinGroup response (api key 11, v2 - the version this client sends)
+     * Builds a JoinGroup response (api key 11, v5 - the version this client sends)
      *
      * <pre>
      *   JoinGroupResponse => ThrottleTimeMs ErrorCode GenerationId GroupProtocol LeaderId MemberId [Member]
+     *     Member => MemberId GroupInstanceId MemberMetadata
      * </pre>
+     *
+     * Every member entry carries the nullable `group_instance_id` that version 5 added (KIP-345, Kafka 2.3); the
+     * `null` of a dynamic member is written, which is what every member of these fixtures is.
      *
      * @param array<string, string> $members Metadata of every member, by member id; filled for the leader only
      */
@@ -469,7 +473,7 @@ final class ResponseFrame
             . self::string($memberId)
             . pack('N', count($members));
         foreach ($members as $member => $metadata) {
-            $body .= self::string((string) $member) . self::bytes($metadata);
+            $body .= self::string((string) $member) . self::nullableString(null) . self::bytes($metadata);
         }
 
         return self::of($correlationId, $body);
@@ -573,6 +577,9 @@ final class ResponseFrame
                     . self::bytes($metadata)
                     . self::bytes($assignment);
             }
+            // `authorized_operations` of version 3 (KIP-430, Kafka 2.3): Integer.MIN_VALUE, the value of an answer
+            // whose request left `include_authorized_operations` at false
+            $body .= pack('N', 0x80000000);
         }
 
         return self::of($correlationId, $body);
@@ -584,6 +591,14 @@ final class ResponseFrame
     private static function string(string $value): string
     {
         return pack('n', strlen($value)) . $value;
+    }
+
+    /**
+     * Encodes a nullable string: the length -1 for null, otherwise the plain string
+     */
+    private static function nullableString(?string $value): string
+    {
+        return $value === null ? pack('n', 0xFFFF) : self::string($value);
     }
 
     /**

@@ -100,8 +100,10 @@ final class AdminClientTest extends TestCase
     /**
      * DescribeGroups answer v1 of a broker that is not the coordinator of `t4-vectors-group`: group error 16
      */
-    private const string NOT_COORDINATOR_RESPONSE = '0000002a' . '00000000' . '00000000' . '00000001'
-        . '0010' . '0010' . '74342d766563746f72732d67726f7570' . '0000' . '0000' . '0000' . '00000000';
+    private const string NOT_COORDINATOR_RESPONSE = '0000002e' . '00000000' . '00000000' . '00000001'
+        . '0010' . '0010' . '74342d766563746f72732d67726f7570' . '0000' . '0000' . '0000' . '00000000'
+        // `authorized_operations` of the version 3 entry (KIP-430): Integer.MIN_VALUE, not asked for
+        . '80000000';
 
     /**
      * DescribeGroups answer without an entry for the group that was asked about

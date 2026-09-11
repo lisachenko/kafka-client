@@ -294,7 +294,9 @@ class KafkaConsumer
      * A consumer that is a member of its group commits with the member id and the generation it holds, which the
      * coordinator refuses once that generation is over (22 IllegalGeneration) or the member was dropped (25
      * UnknownMemberId); a consumer that picked its partitions with {@see assign()} commits as a "simple consumer",
-     * with the empty member id and the generation -1 of a request that belongs to no generation.
+     * with the empty member id and the generation -1 of a request that belongs to no generation. A **static**
+     * member ({@see ConsumerConfig::GROUP_INSTANCE_ID}, KIP-345) also names its instance in the commit, and a
+     * commit of an instance another consumer has taken over is answered 82 (`FencedInstanceId`), which is fatal.
      * `offset.retention.ms` is passed on as the `retention_time` of the v2 request, with -1 asking the broker for
      * its own `offsets.retention.minutes`.
      *
@@ -318,7 +320,8 @@ class KafkaConsumer
             $groupCoordinator->getMemberId(),
             $groupCoordinator->getGenerationId(),
             $topicPartitionOffsets,
-            (int) $this->configuration[ConsumerConfig::OFFSET_RETENTION_MS]
+            (int) $this->configuration[ConsumerConfig::OFFSET_RETENTION_MS],
+            $groupCoordinator->getGroupInstanceId()
         );
     }
 
@@ -632,6 +635,10 @@ class KafkaConsumer
      * This is what an application calls when it is done consuming: with `enable.auto.commit` on, the positions of
      * the assignment are committed once more, and a member of a group leaves it, which starts the rebalance that
      * hands its partitions to the other members within milliseconds.
+     *
+     * **A static member ({@see ConsumerConfig::GROUP_INSTANCE_ID}, KIP-345) does not leave**: it commits and stops,
+     * and the coordinator keeps its partitions for `session.timeout.ms` so that the very same instance picks them
+     * up again when it comes back - a restart of such a consumer costs the group no rebalance at all.
      */
     public function close(): void
     {
@@ -1186,8 +1193,23 @@ class KafkaConsumer
             $this->assignor,
             (int) $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS],
             (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
-            $this->rebalanceTimeoutMs()
+            $this->rebalanceTimeoutMs(),
+            $this->groupInstanceId()
         );
+    }
+
+    /**
+     * Returns the `group.instance.id` of this consumer, null for a dynamic member (KIP-345, Kafka 2.3)
+     *
+     * An empty string is treated as "not configured": the broker refuses an empty instance id with 42
+     * (InvalidRequest), and a configuration file that carries the option without a value must not turn a dynamic
+     * consumer into a broken static one.
+     */
+    private function groupInstanceId(): ?string
+    {
+        $groupInstanceId = $this->configuration[ConsumerConfig::GROUP_INSTANCE_ID] ?? null;
+
+        return is_string($groupInstanceId) && $groupInstanceId !== '' ? $groupInstanceId : null;
     }
 
     /**

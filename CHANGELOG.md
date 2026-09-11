@@ -158,6 +158,32 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   asserted against the container: `group.max.size` defaults to 2147483647 and is not a dynamically updatable
   broker config in Kafka 2.8, so it cannot be lowered without a restart.
 
+### Kafka 2.3
+
+- **Static membership (KIP-345)** — a consumer configured with the new
+  **`ConsumerConfig::GROUP_INSTANCE_ID`** (`group.instance.id`) carries that name in the
+  `group_instance_id` of **JoinGroup v5, SyncGroup v3, Heartbeat v3 and OffsetCommit v7**, which are the
+  versions this client sends now. The coordinator then remembers the member behind the name: a consumer
+  that restarts joins under the same identity, **keeps its partitions and costs the group no rebalance**
+  (measured: the generation does not change and the SyncGroup hands the old assignment back), and a
+  static consumer **does not send LeaveGroup** when it is closed. A second consumer that joins under the
+  same instance id takes the identity over and every request of the first one is answered **82**
+  (`FencedInstanceId`): `FencedInstanceIdException` is fatal and reaches the application out of `poll()`
+  and `commitSync()`. A join that names an instance id is never refused with the 79 of KIP-394.
+- **The authorized operations of a group (KIP-430)** — `DescribeGroupsRequest` v3 carries the boolean
+  `include_authorized_operations` and every group entry of the answer the 32-bit `authorized_operations`
+  bit set, on `DescribeGroupResponseMetadata::$authorizedOperations`; `AdminClient::describeGroup()` and
+  `describeGroups()` take the flag as their last argument, defaulted to `false`. The bits are the codes of
+  `AclOperation`: a 2.8.2 broker without an authorizer answers **328** (READ, DELETE, DESCRIBE) and a
+  request that does not ask is answered `-2147483648`
+  (`DescribeGroupResponseMetadata::OPERATIONS_NOT_REQUESTED`), not the empty bit set.
+- The version below each of the five is kept as its own class — `JoinGroupRequestV4`/`JoinGroupResponseV4`,
+  `SyncGroupRequestV2`/`SyncGroupResponseV2`, `HeartbeatRequestV2`/`HeartbeatResponseV2`,
+  `OffsetCommitRequestV6`/`OffsetCommitResponseV6`, `DescribeGroupsRequestV2`/`DescribeGroupsResponseV2` —
+  together with the DTO versions `JoinGroupResponseMemberV0` and `DescribeGroupResponseMetadataV0`, and
+  twelve wire vectors of the new frames were captured from the container.
+- **LeaveGroup stays at v2**: the batch leave of KIP-345 is LeaveGroup v3, a Kafka 2.4 api.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 
