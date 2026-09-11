@@ -124,13 +124,16 @@ use Throwable;
  * Every api is sent with the highest version this line implements for it. **Kafka 2.0 raised every request-response
  * api by one** without changing a single byte of its frame (KIP-219): Produce goes out as **v6**, Fetch as **v8**,
  * Offsets (ListOffsets) as **v3** and Metadata as **v6**, where the 1.x line sent v5, v7, v2 and v5, and the group
- * apis one version up as well - GroupCoordinator **v2** and the membership apis; Kafka 2.1 then took OffsetCommit to
- * **v6** (its `retention_time` gone with v5, KIP-211, and the `committed_leader_epoch` of KIP-320 in v6) and
- * OffsetFetch to **v5** (the same epoch in the answer). What those versions promise is what {@see self::awaitThrottle()} does - see the runtime note below.
+ * apis one version up as well - GroupCoordinator **v2** and the membership apis. Kafka 2.1 and 2.2 then raised
+ * three of those: OffsetCommit goes out as **v6**, with the `committed_leader_epoch` of KIP-320 and without the
+ * `retention_time` that KIP-211 removed, OffsetFetch as **v5**, whose answer carries that epoch back, and JoinGroup
+ * as **v4**, whose first join is refused once with the member id the coordinator assigns (KIP-394); Heartbeat,
+ * SyncGroup, LeaveGroup, DescribeGroups, ListGroups and DeleteGroups stay at their KIP-219 versions. What those
+ * versions promise is what {@see self::awaitThrottle()} does - see the runtime note below.
  * Everything else is unchanged: Produce carries a record batch of the message format v2 and the transactional id of
  * its producer and its answer reports the `LogAppendTime` and the `LogStartOffset` of every partition, Fetch asks
  * for the log as it lies, bounds the whole answer with `fetch.max.bytes`, states the isolation level of the
- * consumer and can open an incremental fetch session, OffsetCommit v0 is used when the offsets are stored in
+ * consumer and can open an incremental fetch session, and OffsetCommit v0 is used when the offsets are stored in
  * ZooKeeper. The lower version classes of every api stay usable directly,
  * for a client that has to talk to an older broker - and `message.format.version` lowers the Produce request to v2
  * by itself, because a message set of the formats v0 and v1 has no place in a version 3 or higher request.
@@ -1239,11 +1242,17 @@ class Client
     /**
      * Joins the group with the specified protocol and member information (ApiKey 11, Kafka 0.9)
      *
-     * A client that has no member id yet passes {@see JoinGroupRequest::DEFAULT_MEMBER_ID} and receives the id the
-     * coordinator assigned to it; a member that rejoins has to pass the id of the previous generation. The answer
-     * names the generation, the protocol the coordinator picked out of `$groupProtocols` and the leader of the
-     * group - the member whose id equals the `leaderId` of the answer is the one that computes the assignment and
-     * publishes it with {@see self::syncGroup()}; only that member receives the `members` array.
+     * A client that has no member id yet passes {@see JoinGroupRequest::DEFAULT_MEMBER_ID}; a member that rejoins
+     * has to pass the id of the previous generation. The answer names the generation, the protocol the coordinator
+     * picked out of `$groupProtocols` and the leader of the group - the member whose id equals the `leaderId` of
+     * the answer is the one that computes the assignment and publishes it with {@see self::syncGroup()}; only that
+     * member receives the `members` array.
+     *
+     * **A first join is refused once** (KIP-394, Kafka 2.2): the version 4 request this client sends is answered
+     * with the error code 79 and the member id the coordinator assigned, which is reported as a
+     * {@see Common\Errors\MemberIdRequiredException} whose context carries that id under `assignedMemberId`. The
+     * caller sends the very same request again with it - {@see \Protocol\Kafka\Consumer\Internals\ConsumerCoordinator}
+     * does it immediately and without a backoff, as the Java `AbstractCoordinator.handleJoinResponse` does.
      *
      * **The coordinator holds this request until the rebalance is over**, i.e. until every known member of the
      * group has rejoined or has run out of time. How much time each of them gets is the `rebalance_timeout` of the
@@ -1299,10 +1308,15 @@ class Client
             JoinGroupResponse::class,
             static function (JoinGroupResponse $response) use ($groupId, $memberId, $protocolType): JoinGroupResponse {
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
-                    throw KafkaException::fromCode(
-                        $response->errorCode,
-                        ['groupId' => $groupId, 'memberId' => $memberId, 'protocolType' => $protocolType]
-                    );
+                    // The 79 of KIP-394 is the one error answer that carries something the caller needs: the
+                    // member id the coordinator assigned, which the next join has to send. It travels in the
+                    // context under `assignedMemberId`, next to the (empty) id this request was sent with.
+                    $context = ['groupId' => $groupId, 'memberId' => $memberId, 'protocolType' => $protocolType];
+                    if ($response->errorCode === KafkaException::MEMBER_ID_REQUIRED) {
+                        $context['assignedMemberId'] = $response->memberId;
+                    }
+
+                    throw KafkaException::fromCode($response->errorCode, $context);
                 }
 
                 return $response;
