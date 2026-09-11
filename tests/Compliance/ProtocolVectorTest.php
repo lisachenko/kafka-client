@@ -350,6 +350,14 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function offsetDeleteVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('apiVersionsVectors')]
@@ -799,6 +807,15 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('listPartitionReassignmentsVectors')]
     public function testListPartitionReassignmentsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('offsetDeleteVectors')]
+    public function testOffsetDeleteApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }
