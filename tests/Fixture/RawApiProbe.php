@@ -29,8 +29,10 @@ use RuntimeException;
  * the apis of a 2.8.2 broker are **flexible** at their maximum version: a compact string, byte array or array
  * announces its length as an unsigned varint of `length + 1` (`0` meaning `null`), every structure ends in a
  * tagged-field section, and the request header grows one as well ({@see self::HEADER_V2}). The helpers below build
- * those bytes; the schema engine of this package learns them in the flexible-versions ticket of the line, and this
- * fixture stays independent of it on purpose - it has to be able to send a frame the engine refuses.
+ * those bytes itself and stays independent of the schema engine on purpose: the probe has to be able to send a frame
+ * the engine refuses - a compact length that is one too large, a structure without its tagged-field section, a
+ * version above the table - which is exactly what the engine of {@see \Protocol\Kafka\Protocol\BinarySchema}
+ * cannot produce.
  *
  * A broker has three answers to such a frame, and the probe tells them apart:
  *
