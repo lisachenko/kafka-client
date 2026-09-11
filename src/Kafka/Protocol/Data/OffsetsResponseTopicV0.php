@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Only the partition entries differ from version 1, so this class exists solely to lower the version constant that
  * {@see OffsetsResponseTopic::partitionClass()} follows.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
  */
 final class OffsetsResponseTopicV0 extends OffsetsResponseTopic
 {

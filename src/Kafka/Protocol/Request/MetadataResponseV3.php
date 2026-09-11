@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * ({@see MetadataRequest}) - answers with the very same layout. This class therefore decodes the same bytes as
  * {@see MetadataResponse} and exists so that a version 3 request can be answered with a class of its own.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v6)"
  */
 final class MetadataResponseV3 extends MetadataResponse
 {

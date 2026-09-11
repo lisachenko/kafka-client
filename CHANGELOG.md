@@ -34,8 +34,35 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   the published name of the code 47.
 - **`tools/dev/gate.sh`** — the whole local gate (php -l, cs, phpstan, unit + compliance, integration
   on the four listeners) for any worktree path, JIT off.
+- **The four version bumps of Kafka 2.0 (KIP-219)** — **Produce v6**, **Fetch v8**, **ListOffsets v3**
+  and **Metadata v6**, each with a byte-identical schema and its own class, its own wire vector pair
+  captured from the 2.8.2 broker and its own version-equivalence test: `ProduceRequestV5`/`ProduceResponseV5`,
+  `FetchRequestV7`/`FetchResponseV7`, `OffsetsRequestV2`/`OffsetsResponseV2` and
+  `MetadataRequestV5`/`MetadataResponseV5` keep the versions the 1.x line sent.
+- **KIP-219 in `Client`** — a broker that throttles a request now answers **first** and mutes the
+  channel for the reported `throttle_time_ms`, so the client remembers the moment the throttle of each
+  broker ends and sleeps whatever is left of it before its next request to that broker, exactly as the
+  Java `NetworkClient` does. **`ClientConfig::THROTTLE_WAIT`** (`throttle.wait`, `true` by default)
+  switches the waiting off and leaves the stall on the broker side. Measured against a real client
+  quota in `tests/Integration/QuotaThrottleTest.php`.
+- **OffsetForLeaderEpoch v1 (KIP-279)** — the response partition gained the `leader_epoch` the answered
+  `end_offset` belongs to (`OffsetForLeaderEpochResponsePartition::$leaderEpoch`, `UNDEFINED_EPOCH` = -1);
+  `OffsetForLeaderEpochRequestV0`/`OffsetForLeaderEpochResponseV0` keep version 0, whose answer has no
+  such field.
+- **KIP-283** — `tests/Integration/DownConversionTest.php` measures the down-conversion matrix of a
+  2.8.2 broker and the topic option **`message.downconversion.enable=false`**, which refuses a fetch
+  that would need a conversion with **35** `UNSUPPORTED_VERSION` (not 43) per partition.
 
 ### Changed
+
+- **`Client` speaks the Kafka 2.0 versions**: Produce v6 for the message format v2 (v2 stays for the
+  legacy message sets), Fetch v8 (with and without a fetch session), ListOffsets v3 and Metadata v6.
+- **A 2.8.2 broker fills `last_stable_offset` for a `read_uncommitted` fetch too**, where a 1.1.1
+  broker answered -1; only the `aborted_transactions` array still distinguishes the isolation levels.
+- **A legacy message set in a Produce v3 or higher request is answered with 87 `INVALID_RECORD` per
+  partition** instead of costing the connection, as it did on a 1.1.1 broker.
+- **OffsetForLeaderEpoch answers the log end offset for the epoch the leader currently leads**, an
+  empty partition included, where a 1.1.1 broker answered -1 (KAFKA-7415).
 
 - **The protocol document is `docs/protocol/2.8.md`**, renamed from `docs/protocol/1.1.md` with every
   `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the

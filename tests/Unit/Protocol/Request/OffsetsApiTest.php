@@ -30,9 +30,11 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV1;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
 
 /**
  * Byte-exact tests for the Offsets (ListOffset) API, versions 0, 1 and 2.
@@ -46,7 +48,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
  *   ListOffsets Response (Version: 2) => throttle_time_ms [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]
@@ -69,7 +71,7 @@ final class OffsetsApiTest extends TestCase
      *
      *   Size            => 00 00 00 2e (46 bytes)
      *   ApiKey          => 00 02
-     *   ApiVersion      => 00 02
+     *   ApiVersion      => 00 03
      *   CorrelationId   => 00 00 00 07
      *   ClientId        => 00 04 "test"
      *   ReplicaId       => ff ff ff ff (-1, an ordinary consumer)
@@ -81,7 +83,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string LATEST_REQUEST_HEX = '0000002e'
         . '0002'
-        . '0002'
+        . '0003'
         . '00000007'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -96,7 +98,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string LATEST_COMMITTED_REQUEST_HEX = '0000002e'
         . '0002'
-        . '0002'
+        . '0003'
         . '00000007'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -125,7 +127,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string EARLIEST_REQUEST_HEX = '0000002e'
         . '0002'
-        . '0002'
+        . '0003'
         . '00000007'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -161,7 +163,29 @@ final class OffsetsApiTest extends TestCase
 
         self::assertSame(self::LATEST_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(46, $request->getMessageSize(), 'the isolation level of version 2 is one byte');
-        self::assertSame(2, $request->getApiVersion());
+        self::assertSame(3, $request->getApiVersion());
+    }
+
+    public function testTheVersionsTwoAndThreeSendOneAndTheSameFrame(): void
+    {
+        // `ListOffsetsRequest.json` @ 2.8.2 says "Version 3 is the same as version 2": what version 3 (Kafka 2.0,
+        // KIP-219) states is that the client waits out `throttle_time_ms` itself, because the broker answers a
+        // throttled request first and mutes the channel afterwards - only the api version of the header says so
+        $version2 = bin2hex((string) new OffsetsRequestV2(
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7
+        ));
+
+        self::assertSame(substr_replace(self::LATEST_REQUEST_HEX, '0002', 12, 4), $version2);
+        self::assertSame(OffsetsRequestV2::getScheme(), OffsetsRequest::getScheme());
+        self::assertSame(OffsetsResponseV2::getScheme(), OffsetsResponse::getScheme());
+        self::assertSame(3, OffsetsRequest::VERSION);
+        self::assertSame(3, OffsetsResponse::VERSION);
+        self::assertSame(2, OffsetsRequestV2::VERSION);
+        self::assertSame(2, OffsetsResponseV2::VERSION);
     }
 
     public function testEarliestOffsetRequestIsPackedAccordingToTheSpec(): void
@@ -270,7 +294,7 @@ final class OffsetsApiTest extends TestCase
 
         self::assertSame(
             '0000003a'
-            . '0002' . '0002' . '00000007' . '0004' . '74657374'
+            . '0002' . '0003' . '00000007' . '0004' . '74657374'
             . 'ffffffff'
             . '00'
             . '00000001'

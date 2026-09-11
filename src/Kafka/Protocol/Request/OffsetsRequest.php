@@ -20,14 +20,14 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
 
 /**
- * Offsets API (key 2, v2), a.k.a. ListOffset
+ * Offsets API (key 2, v3), a.k.a. ListOffset
  *
  * This API describes the valid offset range available for a set of topic-partitions. As with the produce and fetch
  * APIs requests must be directed to the broker that is currently the leader for the partitions in question. This can
  * be determined using the metadata API.
  *
  * <pre>
- *   ListOffsets Request (Version: 2) => replica_id isolation_level [topics]
+ *   ListOffsets Request (Version: 3) => replica_id isolation_level [topics]
  *     replica_id      => INT32
  *     isolation_level => INT8       -- since version 2
  *     topics          => topic [partitions]
@@ -52,12 +52,20 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
  * ask for its end offsets with the same isolation level it fetches with, or it waits for records it will never be
  * shown. {@see OffsetsRequestV1} and {@see OffsetsRequestV0} do not put the field on the wire at all.
  *
+ * **Version 3 (Kafka 2.0, KIP-219) is byte-identical to version 2** in both directions: `ListOffsetsRequest.json`
+ * @ 2.8.2 has no field of it and its comment is "Version 3 is the same as version 2". What it states is that the
+ * **client** honours the `throttle_time_ms` of the answer itself, because a throttled request is answered first
+ * and the channel is muted for the reported time afterwards instead of the answer being held back, see
+ * {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}. {@see OffsetsRequestV2} keeps version 2, which a
+ * 2.8.2 broker throttles in exactly the same way - the version is the promise of the client, not a switch of the
+ * broker.
+ *
  * The two special values keep their meaning in every version: {@see self::LATEST} (`-1`) asks for the end of the
  * log - the offset the next produced message will get, capped as the isolation level prescribes - and
  * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk. Neither of them reads a message, so
  * their answer carries the timestamp -1.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
  */
 class OffsetsRequest extends AbstractRequest
 {
@@ -69,7 +77,7 @@ class OffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Special value for the offset of the next coming message, `ListOffsetRequest.LATEST_TIMESTAMP` @ 0.10.2.2

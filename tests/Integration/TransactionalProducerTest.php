@@ -181,8 +181,12 @@ final class TransactionalProducerTest extends IntegrationTestCase
         self::assertSame([], $this->read($topic, FetchRequest::READ_COMMITTED), 'so the answer is cut at the LSO');
         self::assertSame(['not committed yet'], $this->read($topic, FetchRequest::READ_UNCOMMITTED));
 
+        // A 2.8.2 broker computes the last stable offset for a read_uncommitted fetch as well - a 1.1.1 broker
+        // answered -1 there - so the answer reports the very same LSO that a read_committed fetch is cut at, while
+        // it still hands out the records above it. The aborted-transactions array is what stayed isolation-bound.
         $uncommitted = $this->partitionOf($topic, FetchRequest::READ_UNCOMMITTED);
-        self::assertSame(-1, $uncommitted->lastStableOffset, 'a read_uncommitted answer carries no last stable offset');
+        self::assertSame(0, $uncommitted->lastStableOffset, 'the real LSO, reported to a read_uncommitted fetch too');
+        self::assertSame($open->lastStableOffset, $uncommitted->lastStableOffset);
         self::assertNull($uncommitted->abortedTransactions);
 
         $manager->commitTransaction();

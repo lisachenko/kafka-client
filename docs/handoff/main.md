@@ -189,7 +189,7 @@ engine, wave 2 adds the flexible versions and the new apis on top of it, wave 3 
 (a ticket may *add* a method or an optional parameter, never change a shape); the ranges of `ApiKeys` and
 `KafkaException` (foundation); nobody but T1 touches the engine files, and T2-T4 add **no flexible version** — the
 main class of an api stays at the highest non-flexible version until wave 2. The section headings of the document
-that another ticket references are frozen; a heading that names versions (`## Fetch API (key 1, v0 to v7)`) is
+that another ticket references are frozen; a heading that names versions (`## Fetch API (key 1, v0 to v8)`) is
 changed by its owner together with the `section` field of the vector file and every `@see` that quotes it.
 
 **Wave 2** (after T1 is merged; every ticket starts by reading T1's contract)

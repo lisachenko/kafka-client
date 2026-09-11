@@ -390,7 +390,7 @@ final class RecordBatchV2Test extends IntegrationTestCase
         );
     }
 
-    public function testTheLastStableOffsetIsOnlyAnsweredForReadCommitted(): void
+    public function testTheAbortedTransactionsAreOnlyAnsweredForReadCommitted(): void
     {
         $this->produce(
             RecordBatch::fromRecords([new Record('alpha', null, 0, null, self::now(), TimestampType::CREATE_TIME)])
@@ -401,8 +401,10 @@ final class RecordBatchV2Test extends IntegrationTestCase
 
         self::assertSame(0, $uncommitted['errorCode']);
         self::assertSame(1, $uncommitted['highWaterMarkOffset']);
-        self::assertSame(-1, $uncommitted['lastStableOffset'], 'read_uncommitted answers no last stable offset');
-        self::assertNull($uncommitted['abortedTransactions'], 'and a null aborted transaction array');
+        // A 0.11.0.3 and a 1.1.1 broker answered `last_stable_offset = -1` here; a 2.8.2 broker computes the LSO
+        // for both isolation levels, so the field is no longer what tells the two answers apart
+        self::assertSame(1, $uncommitted['lastStableOffset'], 'read_uncommitted answers the real LSO on 2.8.2');
+        self::assertNull($uncommitted['abortedTransactions'], 'but still a null aborted transaction array');
 
         self::assertSame(1, $committed['lastStableOffset']);
         self::assertSame([], $committed['abortedTransactions'], 'read_committed answers an array, empty or not');

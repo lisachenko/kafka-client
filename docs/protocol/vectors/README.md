@@ -1,11 +1,23 @@
-Wire vectors of the Kafka 1.1.1 protocol
+Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **314** of them in **36** files, every one of which a **1.1.1** broker speaks: **229** were
-captured by the four lines below this one and are replayed against the classes of this line unchanged, and **85**
+hex dumps. There are **328** of them in **36** files, every one of which a **2.8.2** broker speaks: **314** were
+captured by the five lines below this one and are replayed against the classes of this line unchanged, and **14**
 were captured on the `kafka-2-8-2` container of this line. Two of the inherited vectors were **re-captured** rather
-than added — `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker.
+than added by the 1.x line — `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the
+broker.
+
+What the 2.x line has captured so far
+-------------------------------------
+
+| File | Of it captured here | What was captured on the 2.8.2 broker |
+|---|---|---|
+| `produce.json` | 3 of 27 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the one that shows what KIP-219 changed: `ThrottleTime = 2381` in a frame that arrived after about a millisecond |
+| `fetch.json` | 5 of 38 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; and the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283) |
+| `offsets.json` | 2 of 16 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header |
+| `metadata.json` | 2 of 21 | **Metadata v6** (KIP-219), likewise |
+| `offset-for-leader-epoch.json` | 2 of 6 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset |
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
@@ -54,7 +66,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v5)",
+    "section": "Metadata API (key 3, v0 to v6)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

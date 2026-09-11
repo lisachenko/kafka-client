@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `broker.rack` of the broker configuration and is null for a broker that does not declare one - which is what the
  * broker of `docker-compose.yml` answers, like every broker of a cluster without rack awareness.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v6)"
  */
 class Node implements BinarySchemaInterface
 {
