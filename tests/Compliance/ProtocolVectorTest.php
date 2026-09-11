@@ -382,6 +382,30 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeUserScramCredentialsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function alterUserScramCredentialsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function updateFeaturesVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('apiVersionsVectors')]
@@ -867,6 +891,33 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('alterClientQuotasVectors')]
     public function testAlterClientQuotasApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeUserScramCredentialsVectors')]
+    public function testDescribeUserScramCredentialsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('alterUserScramCredentialsVectors')]
+    public function testAlterUserScramCredentialsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('updateFeaturesVectors')]
+    public function testUpdateFeaturesApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }
