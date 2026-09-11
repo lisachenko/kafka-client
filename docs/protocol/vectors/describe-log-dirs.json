@@ -237,6 +237,106 @@
                     }
                 }
             }
+        },
+        {
+            "id": "describelogdirs.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeLogDirs request v2, the first **flexible** version of the api (KIP-482, Kafka 2.6): the same two fields in the compact encoding, with the request header v2 and a tagged-field section at the end of the header, of the topic entry and of the body. One named partition of one topic.",
+            "hex": "0000002b00230002000003b7000a74342d766563746f727300020e74342d32362d6c6f676469727302000000000000",
+            "fields": {
+                "messageSize": 43,
+                "apiKey": 35,
+                "apiVersion": 2,
+                "correlationId": 951,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-26-logdirs": {
+                        "topic": "t4-26-logdirs",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 2,
+            "source": "constructed",
+            "description": "DescribeLogDirs answer v2 for one named partition: both log directories of the container, the one that holds the replica with its size and its offset lag and the other one with an empty topic array, every structure closed by its tagged-field section. Like its version 1 counterpart this is a **constructed** frame: a 2.8.2 broker groups every topic of a log directory into the answer, whatever the request asked for (11 493 bytes and 406 topics when it was captured), so the topics of the other suites were removed from it.",
+            "hex": "0000005b000003b70000000000030000102f746d702f6b61666b612d6c6f6773020e74342d32362d6c6f6764697273020000000000000000000000000000000000000000000000000000122f746d702f6b61666b612d6c6f67732d32010000",
+            "fields": {
+                "messageSize": 91,
+                "correlationId": 951,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": {
+                            "t4-26-logdirs": {
+                                "topic": "t4-26-logdirs",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "size": 0,
+                                        "offsetLag": 0,
+                                        "isFuture": false
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v2.no-partitions",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeLogDirs request v2 with an EMPTY topic array, which asks for no replica at all: the cheapest way to ask which directories a broker has. The empty compact array is the single byte `01`, where the version 1 wrote the four bytes `00 00 00 00`.",
+            "hex": "0000001700230002000003b8000a74342d766563746f7273000100",
+            "fields": {
+                "messageSize": 23,
+                "apiKey": 35,
+                "apiVersion": 2,
+                "correlationId": 952,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": []
+            }
+        },
+        {
+            "id": "describelogdirs.request.v2.all-partitions",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeLogDirs request v2 with a NULL topic array, which asks for every replica of every directory - the request the Java admin client always sends. The compact null is the single byte `00`, so the whole frame is 15 bytes; its answer names every topic of the container and is not a vector of this document.",
+            "hex": "0000001700230002000003b9000a74342d766563746f7273000000",
+            "fields": {
+                "messageSize": 23,
+                "apiKey": 35,
+                "apiVersion": 2,
+                "correlationId": 953,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": null
+            }
         }
     ]
 }
