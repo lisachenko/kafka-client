@@ -2,17 +2,20 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **472** of them in **37** files: **154** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **487** of them in **38** files: **169** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
 19 frames of the leader epochs and the zstd codec in the producer and consumer apis (KIP-320, KIP-110), the 6
-frames of OffsetCommit v5/v6 and OffsetFetch v5 and the 4 of DeleteTopics v3 and TxnOffsetCommit v2; the 8
-frames of **Kafka 2.2**: SaslAuthenticate v1, ControlledShutdown v2 and the new api ElectLeaders (key 43), whose
-`elect-leaders.json` is the one file this line added, and the 4 frames of the KIP-394 exchange (JoinGroup v4); the
-12 frames of what **Kafka 2.3** added to the group apis (static membership, KIP-345, and the authorized operations
-of KIP-430); and of **Kafka 2.4** the 3 flexible ApiVersions v3 frames of KIP-511/KIP-482 and the 6 frames of the
-batch LeaveGroup v3 and the 22 frames of the **flexible** versions of the ten group apis (KIP-482) - and of the
+frames of OffsetCommit v5/v6 and OffsetFetch v5 and the 4 of DeleteTopics v3 and TxnOffsetCommit v2; the 10
+frames of **Kafka 2.2**: the ListOffsets v5 pair (KIP-207), SaslAuthenticate v1, ControlledShutdown v2 and the new
+api ElectLeaders (key 43), whose `elect-leaders.json` is one of the two files this line added, and the 4 frames of
+the KIP-394 exchange (JoinGroup v4); of **Kafka 2.3** the 6 frames of the new api IncrementalAlterConfigs (key 44),
+in the new file `incremental-alter-configs.json`, the 12 frames of what it added to the group apis (static
+membership, KIP-345, and the authorized operations of KIP-430) and the 7 frames of what it added to the producer
+and consumer apis (Metadata v8 of KIP-430, Fetch v11 and OffsetForLeaderEpoch v3 of KIP-392); and of **Kafka 2.4**
+the 3 flexible ApiVersions v3 frames of KIP-511/KIP-482, the 6 frames of the batch LeaveGroup v3 and the 22 frames
+of the **flexible** versions of the ten group apis (KIP-482) - and of the
 other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
@@ -28,10 +31,10 @@ ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from on
 | File | Of it captured here | What was captured on the 2.8.2 broker |
 |---|---|---|
 | `produce.json` | 6 of 30 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond; **Produce v7** (KIP-110), request and answer, and the **76** a v6 is answered when its record set is compressed with zstd |
-| `fetch.json` | 14 of 47 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283); **Fetch v9** and **v10** (KIP-320, KIP-110) with the `current_leader_epoch` on the wire, the **75** of an epoch above the leader's, and the three frames of the zstd rule — the **76** of a v9 against a `compression.type=zstd` topic and the same partition served to a v10 |
-| `offsets.json` | 4 of 18 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header, and **v4** (KIP-320), which carries a `current_leader_epoch` in the request and a `leader_epoch` behind every answered offset |
-| `metadata.json` | 4 of 23 | **Metadata v6** (KIP-219), likewise, and **v7** (KIP-320), whose partition entries carry the `leader_epoch` of their leader |
-| `offset-for-leader-epoch.json` | 5 of 9 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset; and **v2** (KIP-320), the version a consumer sends, with a `current_leader_epoch` in the request, a `throttle_time_ms` at the head of the answer and the **75** of a fenced epoch |
+| `fetch.json` | 16 of 49 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283); **Fetch v9** and **v10** (KIP-320, KIP-110) with the `current_leader_epoch` on the wire, the **75** of an epoch above the leader's, and the three frames of the zstd rule — the **76** of a v9 against a `compression.type=zstd` topic and the same partition served to a v10 |
+| `offsets.json` | 6 of 20 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header; **v4** (KIP-320), which carries a `current_leader_epoch` in the request and a `leader_epoch` behind every answered offset; and **v5** (KIP-207), the version 4 frames again — what it adds is the error code **78**, which a one-broker container can not produce |
+| `metadata.json` | 7 of 26 | **Metadata v6** (KIP-219), likewise; **v7** (KIP-320), whose partition entries carry the `leader_epoch` of their leader; and **v8** (KIP-430), with the two booleans that ask for the authorized operations, the bitfields they are answered with and the `Integer.MIN_VALUE` of the same answer when they are off |
+| `offset-for-leader-epoch.json` | 7 of 11 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset; and **v2** (KIP-320), the version a consumer sends, with a `current_leader_epoch` in the request, a `throttle_time_ms` at the head of the answer and the **75** of a fenced epoch |
 
 What Kafka 2.1 added to the two offset apis: OffsetCommit v5 (the frame without
 `retention_time`, KIP-211), OffsetCommit v6 and OffsetFetch v5 (the `committed_leader_epoch` of KIP-320). What
@@ -52,6 +55,7 @@ and the topics `t4-21-vectors` and `t4-22-vectors`:
 | `sasl-authenticate.json` | 2 of 7 | **SaslAuthenticate v1** (Kafka 2.2, KIP-368): the PLAIN token and the answer that now ends in a `session_lifetime_ms` — **0** on a listener without `connections.max.reauth.ms` |
 | `controlled-shutdown.json` | 2 of 6 | **ControlledShutdown v2** (Kafka 2.2, KIP-380): the `broker_epoch` behind the broker id, asked with the **unknown** broker id 4242 and the epoch -1 — a shutdown of the real broker id would stop the shared container |
 | `elect-leaders.json` | 4 of 4, **new file** | **ElectLeaders v0** (Kafka 2.2, KIP-183, added as ElectPreferredLeaders): a named partition whose leader is already the preferred replica (**84** `ElectionNotNeeded`, a code of Kafka 2.4 that reaches a v0 client unchanged) and a partition of a topic the cluster does not have (**3**) |
+| `incremental-alter-configs.json` | 6 of 6, **new file** | **IncrementalAlterConfigs v0** (Kafka 2.3, KIP-339): the three operations a topic accepts in one resource (SET, APPEND and the DELETE whose value is the null string), an APPEND to an option that is not a list (**42**) and the cluster-wide default broker resource with a static option, asked with `validate_only` (**42**) |
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
@@ -100,7 +104,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v7)",
+    "section": "Metadata API (key 3, v0 to v8)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

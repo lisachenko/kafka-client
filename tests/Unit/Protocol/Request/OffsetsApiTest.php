@@ -15,6 +15,9 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\OffsetNotAvailableException;
+use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
@@ -34,11 +37,13 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV3;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
 
 /**
  * Byte-exact tests for the Offsets (ListOffset) API, versions 0, 1 and 2.
@@ -52,7 +57,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV3;
  *   ListOffsets Response (Version: 2) => throttle_time_ms [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v4), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]
@@ -75,7 +80,7 @@ final class OffsetsApiTest extends TestCase
      *
      *   Size            => 00 00 00 2e (46 bytes)
      *   ApiKey          => 00 02
-     *   ApiVersion      => 00 04
+     *   ApiVersion      => 00 05
      *   CorrelationId   => 00 00 00 07
      *   ClientId        => 00 04 "test"
      *   ReplicaId       => ff ff ff ff (-1, an ordinary consumer)
@@ -88,7 +93,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string LATEST_REQUEST_HEX = '00000032'
         . '0002'
-        . '0004'
+        . '0005'
         . '00000007'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -118,7 +123,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string LATEST_COMMITTED_REQUEST_HEX = '00000032'
         . '0002'
-        . '0004'
+        . '0005'
         . '00000007'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -147,7 +152,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string EARLIEST_REQUEST_HEX = '00000032'
         . '0002'
-        . '0004'
+        . '0005'
         . '00000007'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -183,7 +188,7 @@ final class OffsetsApiTest extends TestCase
 
         self::assertSame(self::LATEST_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(50, $request->getMessageSize(), 'the four epoch bytes of KIP-320 per partition');
-        self::assertSame(4, $request->getApiVersion());
+        self::assertSame(5, $request->getApiVersion(), 'the client sends the version Kafka 2.2 added');
     }
 
     public function testTheVersionsTwoAndThreeSendOneAndTheSameFrame(): void
@@ -250,8 +255,44 @@ final class OffsetsApiTest extends TestCase
         );
         self::assertSame(-1, OffsetsRequestPartition::UNKNOWN_LEADER_EPOCH);
         self::assertSame(-1, OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH);
-        self::assertSame(4, OffsetsRequest::VERSION);
-        self::assertSame(4, OffsetsResponse::VERSION);
+        self::assertSame(4, OffsetsRequestV4::VERSION);
+        self::assertSame(4, OffsetsResponseV4::VERSION);
+        self::assertSame(5, OffsetsRequest::VERSION);
+        self::assertSame(5, OffsetsResponse::VERSION);
+    }
+
+    public function testVersionFiveIsTheVersionFourFrameAndOneMoreErrorCode(): void
+    {
+        // `ListOffsetsRequest.json` @ 2.8.2 says "Version 5 is the same as version 4" and
+        // `ListOffsetsResponse.json` "Version 5 adds a new error code, OFFSET_NOT_AVAILABLE" (KIP-207, Kafka
+        // 2.2): the frames are the same bytes, and what the version buys is that a leader whose high watermark
+        // has not caught up with its own epoch answers 78 instead of the 5 `LEADER_NOT_AVAILABLE` of every lower
+        // version - the first says "ask me again", the second "go and find a leader"
+        $arguments = [
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7,
+        ];
+        $five = bin2hex((string) new OffsetsRequest(...$arguments));
+        $four = bin2hex((string) new OffsetsRequestV4(...$arguments));
+
+        self::assertSame(substr($four, 2 * 8), substr($five, 2 * 8), 'the bodies are the same bytes');
+        self::assertSame('0004', substr($four, 2 * 6, 4), 'only the api version of the header differs');
+        self::assertSame('0005', substr($five, 2 * 6, 4));
+        self::assertSame(OffsetsRequestV4::getScheme(), OffsetsRequest::getScheme());
+        self::assertSame(OffsetsResponseV4::getScheme(), OffsetsResponse::getScheme());
+        self::assertSame(78, KafkaException::OFFSET_NOT_AVAILABLE);
+        self::assertInstanceOf(
+            OffsetNotAvailableException::class,
+            KafkaException::fromCode(KafkaException::OFFSET_NOT_AVAILABLE, ['topic' => 'topic'])
+        );
+        self::assertInstanceOf(
+            RetriableException::class,
+            KafkaException::fromCode(KafkaException::OFFSET_NOT_AVAILABLE, ['topic' => 'topic']),
+            'the code is retriable, like the 5 it replaces'
+        );
     }
 
     public function testEarliestOffsetRequestIsPackedAccordingToTheSpec(): void
@@ -360,7 +401,7 @@ final class OffsetsApiTest extends TestCase
 
         self::assertSame(
             '00000042'
-            . '0002' . '0004' . '00000007' . '0004' . '74657374'
+            . '0002' . '0005' . '00000007' . '0004' . '74657374'
             . 'ffffffff'
             . '00'
             . '00000001'

@@ -580,9 +580,9 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 10, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // ApiKey 1, ApiVersion 11, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
         // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch
-        self::assertStringStartsWith('0001000a', $request, 'the Fetch api is spoken in version 10');
+        self::assertStringStartsWith('0001000b', $request, 'the Fetch api is spoken in version 11');
         self::assertStringContainsString(
             '00100000' . '00' . '00000000' . 'ffffffff',
             $request,
@@ -596,7 +596,8 @@ final class ClientTest extends TestCase
         self::assertStringEndsWith(
             '00000001' . 'ffffffff' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
             . '00000000' . 'ffffffff' . '0000000000000003' . 'ffffffffffffffff' . '00010000'
-            . '00000000',
+            . '00000000'
+            . '0000',
             $request
         );
     }
@@ -1205,7 +1206,8 @@ final class ClientTest extends TestCase
         self::assertStringEndsWith(
             '00000001' . '00066f7264657273' . '00000001'
             . '00000000' . 'ffffffff' . '0000000000000001' . 'ffffffffffffffff' . '00010000'
-            . '00000000',
+            . '00000000'
+            . '0000',
             $incremental,
             'only the partition whose fetch offset moved travels, and nothing is forgotten'
         );
@@ -1242,7 +1244,8 @@ final class ClientTest extends TestCase
         self::assertStringEndsWith(
             '00000000'                                     // topicPartitions: nothing moved
             . '00000001' . '00066f7264657273' . '00000001' // forgottenTopics: one topic ...
-            . '00000001',                                  // ... with the partition 1
+            . '00000001'                                   // ... with the partition 1
+            . '0000',                                      // rackId: the empty rack of KIP-392
             $incremental
         );
         self::assertSame([], $answer, 'an answer with no topic at all is a legal answer of a session');

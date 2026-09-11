@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * keeps its default {@see OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH}, because the scheme of version 0
  * does not read it.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
  */
 final class OffsetForLeaderEpochResponsePartitionV0 extends OffsetForLeaderEpochResponsePartition
 {

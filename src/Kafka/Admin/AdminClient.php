@@ -39,6 +39,7 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
@@ -71,6 +72,8 @@ use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
+use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsRequest;
+use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
@@ -1186,6 +1189,91 @@ class AdminClient
 
         $answered = [];
         foreach ($response->resources as $resourceResult) {
+            $key            = ConfigResource::fromWire($resourceResult->resourceType, $resourceResult->resourceName)
+                ->key();
+            $answered[$key] = self::configResourceError($key, $resourceResult->errorCode, $resourceResult->errorMessage);
+        }
+
+        $result = [];
+        foreach (array_keys($configs) as $resourceKey) {
+            // A resource that was altered is answered with `null`, so the map has to be probed with
+            // array_key_exists() and not with `??`, which would turn every success into an unknown error
+            $result[$resourceKey] = array_key_exists($resourceKey, $answered)
+                ? $answered[$resourceKey]
+                : new UnknownErrorException(
+                    ['resource' => $resourceKey, 'error' => 'The broker sent no result for this resource']
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Changes single options of a resource, leaving the ones it does not name alone (ApiKey 44, Kafka 2.3, KIP-339)
+     *
+     * The api that replaces {@see self::alterConfigs()} for everything but a broker too old to serve it. Every entry
+     * of `$configs` maps a resource key ({@see ConfigResource::key()}) to the changes that resource should get, as
+     * {@see AlterConfigOp} objects:
+     *
+     * <code>
+     *   $admin->incrementalAlterConfigs([
+     *       ConfigResource::topic('events')->key() => [
+     *           AlterConfigOp::set('retention.ms', '3600000'),
+     *           AlterConfigOp::append('cleanup.policy', 'compact'),
+     *           AlterConfigOp::delete('segment.bytes'),
+     *       ],
+     *   ]);
+     * </code>
+     *
+     * Where `alterConfigs()` needs a DescribeConfigs first and resets every option the caller forgot to send back,
+     * this one is a patch: an option that is not named keeps its value, whoever set it. The four operations are
+     * {@see AlterConfigOp::SET}, {@see AlterConfigOp::DELETE} - which resets the option to its default and is the
+     * only one whose value may be null - and {@see AlterConfigOp::APPEND} / {@see AlterConfigOp::SUBTRACT}, which
+     * work on a **list** option alone (`cleanup.policy`, `follower.replication.throttled.replicas` …) and are
+     * refused with the error code 42 for anything else.
+     *
+     * The changes of one resource are applied **together**: naming an option twice is 42 with `Error due to
+     * duplicate config keys : …`, and a resource whose changes do not validate is left untouched as a whole.
+     *
+     * The remarks of {@see self::alterConfigs()} about a broker resource hold here as well: `broker:<id>` is served
+     * by that broker alone and has to be altered through an {@see AdminClient} whose cluster answers it,
+     * `broker:` (the empty name) is the cluster-wide default of KIP-226, and only the options of
+     * `DynamicBrokerConfig.AllDynamicConfigs` can be changed at runtime.
+     *
+     * Every requested resource gets an entry in the result, keyed like the argument: `null` when its changes were
+     * applied (or validated, with `$validateOnly`), the exception of its error code otherwise. Nothing is thrown
+     * for a resource that was refused, exactly like {@see self::alterConfigs()}.
+     *
+     * @param array<string, list<AlterConfigOp>> $configs      Changes of every resource, as resource key => changes
+     * @param bool                               $validateOnly Validate the request without changing anything
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return array<string, KafkaException|null> Error of every requested resource, null when it was altered
+     */
+    public function incrementalAlterConfigs(array $configs, bool $validateOnly = false): array
+    {
+        $resources = [];
+        foreach ($configs as $resourceKey => $operations) {
+            $resources[] = IncrementalAlterConfigsRequestResource::fromConfigResource(
+                ConfigResource::fromKey((string) $resourceKey),
+                array_values($operations)
+            );
+        }
+
+        /** @var IncrementalAlterConfigsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): IncrementalAlterConfigsRequest => new IncrementalAlterConfigsRequest(
+                $resources,
+                $validateOnly,
+                $this->clientId(),
+                $correlationId
+            ),
+            IncrementalAlterConfigsResponse::class
+        );
+
+        $answered = [];
+        foreach ($response->responses as $resourceResult) {
             $key            = ConfigResource::fromWire($resourceResult->resourceType, $resourceResult->resourceName)
                 ->key();
             $answered[$key] = self::configResourceError($key, $resourceResult->errorCode, $resourceResult->errorMessage);

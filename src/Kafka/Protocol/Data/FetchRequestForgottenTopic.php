@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * in `FetchRequest.java`, a typo that never reached the wire because a Kafka request header carries no field names.
  *
  * @see \Protocol\Kafka\Protocol\Request\FetchMetadata
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Fetch sessions (v7, KIP-227)"
  */
 final class FetchRequestForgottenTopic implements BinarySchemaInterface
 {
