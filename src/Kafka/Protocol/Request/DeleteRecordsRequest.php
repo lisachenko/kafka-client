@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsRequestTopic;
 
 /**
- * DeleteRecords, version 0: deletes the records before an offset of a partition (ApiKey 21, Kafka 0.11, KIP-107)
+ * DeleteRecords, version 1: deletes the records before an offset of a partition (ApiKey 21, Kafka 0.11, KIP-107)
  *
  * <pre>
- *   DeleteRecords Request (Version: 0) => [topics] timeout
+ *   DeleteRecords Request (Version: 0 and 1) => [topics] timeout
  *     topics  => topic [partitions]
  *       topic      => STRING
  *       partitions => partition offset
@@ -44,7 +44,14 @@ use Protocol\Kafka\Protocol\Data\DeleteRecordsRequestTopic;
  * before it answers; nothing is rolled back when it expires, the partition is simply reported with the error code 7
  * (RequestTimedOut).
  *
- * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `DELETE_RECORDS_REQUEST_V1 =
+ * DELETE_RECORDS_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see DeleteRecordsRequestV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 and v1)"
  */
 class DeleteRecordsRequest extends AbstractRequest
 {
@@ -56,7 +63,7 @@ class DeleteRecordsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Deletes every record up to the high watermark of the partition, `DeleteRecordsRequest.HIGH_WATERMARK`

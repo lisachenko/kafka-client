@@ -19,10 +19,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
 
 /**
- * TxnOffsetCommit, version 0: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
+ * TxnOffsetCommit, version 1: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
  *
  * <pre>
- *   TxnOffsetCommit Request (Version: 0) => transactional_id consumer_group_id producer_id producer_epoch [topics]
+ *   TxnOffsetCommit Request (Version: 0 and 1) => transactional_id consumer_group_id producer_id producer_epoch [topics]
  *     transactional_id  => STRING
  *     consumer_group_id => STRING
  *     producer_id       => INT64
@@ -52,7 +52,14 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
  * commits the offsets is not a member of the group, and the fencing that a generation would give is done by the
  * producer epoch instead. It has no `retention_time` either.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TXN_OFFSET_COMMIT_REQUEST_V1 =
+ * TXN_OFFSET_COMMIT_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see TxnOffsetCommitRequestV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 and v1)"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {
@@ -64,7 +71,7 @@ class TxnOffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Offsets to commit, indexed by the topic name

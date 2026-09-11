@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * can therefore renew and expire it: on a cluster without an authorizer only the owner and the renewers of a token
  * see it at all, which is what `DelegationTokenManager.filterToken` guarantees.
  *
- * @see docs/protocol/2.8.md, section "DescribeDelegationToken API (key 41, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeDelegationToken API (key 41, v0 and v1)"
  */
 class DescribeDelegationTokenResponseToken implements BinarySchemaInterface
 {

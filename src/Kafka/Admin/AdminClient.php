@@ -931,11 +931,12 @@ class AdminClient
      * `$configNames` filters the options of every resource of the call; `null`, the default, asks for all of them.
      * The value of a **sensitive** option is never sent by the broker and arrives as `null`.
      *
-     * The request goes out as **version 1**, the version Kafka 1.1 added with KIP-226, so every entry of the answer
-     * carries the {@see ConfigSource} its value comes from instead of the bare `is_default` boolean of version 0,
-     * and `$includeSynonyms` asks the broker to list every place it looked for that value
-     * ({@see ConfigEntry::$synonyms}). Without the flag the synonym list of every entry is empty and nothing else
-     * changes. Two consequences of the version raise a caller of the 0.11 line should know about:
+     * The request goes out as **version 2**, the version Kafka 2.0 added (KIP-219); its frame is the version 1 of
+     * KIP-226 (Kafka 1.1) byte for byte, so every entry of the answer carries the {@see ConfigSource} its value
+     * comes from instead of the bare `is_default` boolean of version 0, and `$includeSynonyms` asks the broker to
+     * list every place it looked for that value ({@see ConfigEntry::$synonyms}). Without the flag the synonym list
+     * of every entry is empty and nothing else changes. Two consequences of the version raise a caller of the 0.11
+     * line should know about:
      *
      *  - `isDefault` now means "nobody configured it anywhere", not "the resource did not configure it": an option
      *    whose broker-level synonym stands in the `server.properties` is reported with the source
@@ -950,7 +951,9 @@ class AdminClient
      *
      * @throws KafkaException If the broker refused one of the resources - 42 (InvalidRequest) for an unknown
      *         resource type or a broker id that is not the one that answers, 17 (InvalidTopic) for an illegal topic
-     *         name; the message the broker sent is in the context of the exception
+     *         name, **3 (UnknownTopicOrPartition) for a topic a 2.8.2 broker does not know**, where a 1.1.1 broker
+     *         answered the log defaults of the broker with the error code 0; the message the broker sent is in the
+     *         context of the exception
      * @throws AllBrokersNotAvailableException If no broker of the cluster answered
      *
      * @return array<string, Config> Configuration of every requested resource, indexed by its resource key
@@ -1307,6 +1310,15 @@ class AdminClient
      *
      * A replica that this broker does not have is not an error and simply produces no entry, and a directory that
      * is offline is reported with the error 56 (KafkaStorageError) in {@see LogDirInfo::$error} and no replica.
+     *
+     * **A 2.8.2 broker names every topic of a directory in the answer, whatever the request asked for.**
+     * `ReplicaManager.describeLogDirs` @ 2.8.2 groups all logs of a directory by topic and applies the filter of
+     * the request to the *partitions* inside those groups alone, so the answer of a request for one partition
+     * carries one {@see LogDirInfo} per topic of the broker - the ones that were not asked for with an empty
+     * replica list. A 1.1.1 broker answered the requested topics alone. The map is handed on as the broker sent
+     * it: a caller reads the replicas it asked for out of it by name and may not assume that it holds nothing
+     * else. The request goes out as **version 1**, the version Kafka 2.0 added (KIP-219), whose frame is the
+     * version 0 of KIP-113.
      *
      * @param list<int>                                              $brokerIds       Brokers to ask, by node id
      * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Replicas to report, null for

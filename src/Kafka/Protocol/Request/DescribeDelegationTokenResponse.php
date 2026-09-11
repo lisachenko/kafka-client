@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
 
 /**
- * DescribeDelegationToken response object, version 0 (key 41)
+ * DescribeDelegationToken response object, version 1 (key 41)
  *
  * <pre>
- *   DescribeDelegationToken Response (Version: 0) => error_code [token_details] throttle_time_ms
+ *   DescribeDelegationToken Response (Version: 0 and 1) => error_code [token_details] throttle_time_ms
  *     error_code    => INT16
  *     token_details => owner issue_timestamp expiry_timestamp max_timestamp token_id hmac [renewers]
  *     throttle_time_ms => INT32
@@ -37,14 +37,21 @@ use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
  * see no token at all is not an error: the answer is the code 0 with an empty array, and the same is true for a
  * request whose `owners` array is empty.
  *
- * @see docs/protocol/2.8.md, section "DescribeDelegationToken API (key 41, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TOKEN_DESCRIBE_RESPONSE_V1 =
+ * TOKEN_DESCRIBE_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see DescribeDelegationTokenResponseV0} is the same frame with the version field of Kafka 1.1.
+ *
+ * @see docs/protocol/2.8.md, section "DescribeDelegationToken API (key 41, v0 and v1)"
  */
 class DescribeDelegationTokenResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Error code of the request, 0 when the tokens were listed

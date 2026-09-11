@@ -18,11 +18,11 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * CreateDelegationToken, version 0: issues a delegation token for the principal of the connection (ApiKey 38,
+ * CreateDelegationToken, version 1: issues a delegation token for the principal of the connection (ApiKey 38,
  * Kafka 1.1, KIP-48)
  *
  * <pre>
- *   CreateDelegationToken Request (Version: 0) => [renewers] max_life_time
+ *   CreateDelegationToken Request (Version: 0 and 1) => [renewers] max_life_time
  *     renewers => principal_type name
  *       principal_type => STRING
  *       name           => STRING
@@ -42,7 +42,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `delegation.token.max.lifetime.ms` (7 days by default) and a value of `-1`
  * ({@see self::DEFAULT_MAX_LIFE_TIME}, i.e. anything `<= 0`) asks for exactly that maximum.
  *
- * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TOKEN_CREATE_REQUEST_V1 =
+ * TOKEN_CREATE_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see CreateDelegationTokenRequestV0} is the same frame with the version field of Kafka 1.1.
+ *
+ * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 and v1)"
  */
 class CreateDelegationTokenRequest extends AbstractRequest
 {
@@ -54,7 +61,7 @@ class CreateDelegationTokenRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Asks for the `delegation.token.max.lifetime.ms` of the broker instead of a lifetime of its own
