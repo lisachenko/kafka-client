@@ -119,12 +119,12 @@ use Throwable;
  * Every api is sent with the highest version this line implements for it. **Kafka 2.0 raised every request-response
  * api by one** without changing a single byte of its frame (KIP-219): Produce goes out as **v6**, Fetch as **v8**,
  * Offsets (ListOffsets) as **v3** and Metadata as **v6**, where the 1.x line sent v5, v7, v2 and v5, and the group
- * apis one version up as well. Kafka 2.1 and 2.2 then raised three of those: OffsetCommit goes out as **v6**, with
- * the `committed_leader_epoch` of KIP-320 and without the `retention_time` that KIP-211 removed, OffsetFetch as
- * **v5**, whose answer carries that epoch back, and JoinGroup as **v4**, whose first join is refused once with the
- * member id the coordinator assigns (KIP-394); GroupCoordinator, Heartbeat, SyncGroup, LeaveGroup, DescribeGroups,
- * ListGroups and DeleteGroups stay at their KIP-219 versions. What those versions promise is what
- * {@see self::awaitThrottle()} does - see the runtime note below.
+ * apis one version up as well - GroupCoordinator **v2** and the membership apis. Kafka 2.1 and 2.2 then raised
+ * three of those: OffsetCommit goes out as **v6**, with the `committed_leader_epoch` of KIP-320 and without the
+ * `retention_time` that KIP-211 removed, OffsetFetch as **v5**, whose answer carries that epoch back, and JoinGroup
+ * as **v4**, whose first join is refused once with the member id the coordinator assigns (KIP-394); Heartbeat,
+ * SyncGroup, LeaveGroup, DescribeGroups, ListGroups and DeleteGroups stay at their KIP-219 versions. What those
+ * versions promise is what {@see self::awaitThrottle()} does - see the runtime note below.
  * Everything else is unchanged: Produce carries a record batch of the message format v2 and the transactional id of
  * its producer and its answer reports the `LogAppendTime` and the `LogStartOffset` of every partition, Fetch asks
  * for the log as it lies, bounds the whole answer with `fetch.max.bytes`, states the isolation level of the
