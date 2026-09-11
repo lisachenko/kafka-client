@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * A 0.11.0.3 broker answers a request of this version as if `read_uncommitted` had been asked for, i.e. with the log
  * end offset rather than with the last stable offset.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
  */
 final class OffsetsRequestV1 extends OffsetsRequest
 {

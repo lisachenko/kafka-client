@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API, version 5
+ * The produce API, version 6
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * time of the send the producer is free to fill in that field in any way it likes.
  *
  * <pre>
- *   ProduceRequest (Version: 5) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
+ *   ProduceRequest (Version: 6) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
  *                                                                                   RecordSet]]
  *     TransactionalId => nullable string
  *     RequiredAcks    => int16
@@ -62,15 +62,31 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * * **version 5** says that the client understands the `LogStartOffset` that the answer gained, see
  *   {@see \Protocol\Kafka\Protocol\Data\ProduceResponsePartition::$logStartOffset}.
  *
- * {@see ProduceRequestV4}, {@see ProduceRequestV3}, {@see ProduceRequestV2}, {@see ProduceRequestV1} and
- * {@see ProduceRequestV0} keep the lower versions - and with them the legacy message sets - available.
+ * **Version 6 (Kafka 2.0, KIP-219) sends the same body once more**: `PRODUCE_REQUEST_V6` is `PRODUCE_REQUEST_V5`
+ * is `PRODUCE_REQUEST_V3` - `ProduceRequest.json` @ 2.8.2 has no field above version 3 - so a version 6 request is
+ * a version 3 request with another number in its header. What the version states is a promise of the **client**:
+ * that it honours the `ThrottleTime` of the answer itself, because a throttled request is answered **before** the
+ * delay and the channel is muted for the reported time afterwards, instead of the answer being held back until the
+ * throttle has passed. {@see \Protocol\Kafka\Client} does that: it sleeps the remaining throttle time of a
+ * broker before its next request to it, unless {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}
+ * switches it off.
+ *
+ * **A 2.8.2 broker does not branch on the version here** - measured, and `KafkaApis.handleProduceRequest` @ 2.8.2
+ * says so itself ("Send the response immediately. In case of throttling, the channel has already been muted"): a
+ * version 5 request of the same burst is answered just as quickly and with the same `ThrottleTime`. The version is
+ * what the client promises, not what the broker decides, and a client that sends a lower version simply stalls on
+ * the muted channel instead.
+ *
+ * {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3}, {@see ProduceRequestV2},
+ * {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with them the legacy message
+ * sets - available.
  *
  * The broker does **not** check the message format against the api version: it stores whatever it is given in the
  * `message.format.version` of the topic and converts the batch on append. What a version really states is what the
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v6)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -82,7 +98,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all

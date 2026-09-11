@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
 
 /**
- * Fetch API (key 1), version 7
+ * Fetch API (key 1), version 8
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
  * handle this case.
  *
  * <pre>
- *   FetchRequest (Version: 7) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
+ *   FetchRequest (Version: 8) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
  *                                [TopicName [Partition FetchOffset LogStartOffset MaxBytes]]
  *                                [TopicName [Partition]]
  *     ReplicaId      => int32
@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
  *     LogStartOffset => int64
  * </pre>
  *
- * The seven versions of this api that a 1.1.1 broker serves next to this one differ as follows:
+ * The eight versions of this api that a 2.8.2 broker serves below this one differ as follows:
  *
  * * **v1** (Kafka 0.9) left the request untouched and only prefixed the answer with `ThrottleTimeMs`, see
  *   {@see FetchResponse};
@@ -73,17 +73,26 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
  * * **v7** (Kafka 1.1, KIP-227) adds the **incremental fetch sessions**: the `SessionId` and the `Epoch` of
  *   {@see FetchMetadata} in front of the topics array, and the trailing `forgotten_topics_data` behind it
  *   ({@see \Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic}); the answer gains a top-level error code
- *   and the session id, see {@see FetchResponse}.
+ *   and the session id, see {@see FetchResponse};
+ * * **v8** (Kafka 2.0, KIP-219) is byte-identical to v7 in both directions - `FetchRequest.json` @ 2.8.2 has no
+ *   field of it and its only comment is "Version 8 is the same as version 7" - and states that the **client**
+ *   honours `throttle_time_ms` itself: a throttled fetch is answered *before* the delay, with an empty topics
+ *   array, and the channel is muted for the reported time afterwards. This class is that version, and
+ *   {@see \Protocol\Kafka\Client} sleeps the remaining throttle time before its next request to that broker
+ *   unless {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT} switches it off. A 2.8.2 broker throttles
+ *   a version 7 fetch ({@see FetchRequestV7}) in exactly the same way - the version is the promise of the client,
+ *   not a switch of the broker.
  *
- * A version 7 request **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
+ * A version 7 or 8 request **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
  * which is what this class sends when it is given no metadata - is served exactly like a version 6 request: the
  * whole requested set comes back and the answer reports `session_id = 0`. That is what
  * {@see \Protocol\Kafka\Client::fetchPartitions()} sends today.
  *
- * {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4}, {@see FetchRequestV3},
- * {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower versions available.
+ * {@see FetchRequestV7}, {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4},
+ * {@see FetchRequestV3}, {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower
+ * versions available.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v8)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -95,7 +104,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * Default bound of a whole answer, the 50 MiB of the `fetch.max.bytes` option of the Java consumer

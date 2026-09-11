@@ -26,10 +26,10 @@ use Protocol\Kafka\Common\TopicMetadataV1;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Metadata response object, version 5 (key 3)
+ * Metadata response object, version 6 (key 3)
  *
  * <pre>
- *   Metadata Response (Version: 5) => throttle_time_ms [brokers] cluster_id controller_id [topic_metadata]
+ *   Metadata Response (Version: 6) => throttle_time_ms [brokers] cluster_id controller_id [topic_metadata]
  *     throttle_time_ms => INT32     -- since version 3
  *     brokers => node_id host port rack
  *       node_id => INT32
@@ -58,7 +58,11 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * partition that are not available because their broker is down or the log directory that holds them failed, see
  * {@see \Protocol\Kafka\Common\PartitionMetadata::$offlineReplicas}. {@see MetadataResponseV4},
  * {@see MetadataResponseV3}, {@see MetadataResponseV2}, {@see MetadataResponseV1} and {@see MetadataResponseV0}
- * lower the version constant this scheme follows.
+ * lower the version constant this scheme follows. **Version 6 (Kafka 2.0, KIP-219) changed the frame no more than
+ * version 4 did** - `MetadataResponse.json` @ 2.8.2 carries no field of it, its comment is "Starting in version 6,
+ * on quota violation, brokers send out responses before throttling" - and {@see MetadataResponseV5} decodes the
+ * same bytes; what version 6 states is that the client understands when a throttled answer arrives, and waits the
+ * reported time out itself.
  *
  * `ControllerId` is the broker id of the active controller, or `-1` (`MetadataResponse.NO_CONTROLLER_ID` @
  * 1.1.1) while the cluster is electing one; it is what {@see \Protocol\Kafka\Admin\AdminClient::findController()}
@@ -69,7 +73,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v5)" and "Cluster readiness"
+ * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v6)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
@@ -78,7 +82,7 @@ class MetadataResponse extends AbstractResponse
     /**
      * Version of the Metadata API that this class unpacks
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * Broker id that the answer reports while the cluster has no active controller
