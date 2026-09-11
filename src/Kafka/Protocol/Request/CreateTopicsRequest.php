@@ -14,12 +14,13 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Admin\NewTopic;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
 
 /**
- * CreateTopics, version 3: asks the controller to create one or more topics (ApiKey 19, Kafka 0.11)
+ * CreateTopics, version 4: asks the controller to create one or more topics (ApiKey 19, Kafka 0.11)
  *
  * Before this api a topic was created by writing to ZooKeeper - with `kafka-topics.sh`, or implicitly by asking a
  * broker with `auto.create.topics.enable` for the metadata of a topic that does not exist yet. Only the ACTIVE
@@ -61,7 +62,18 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see CreateTopicsRequestV2} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v3)"
+ * **Kafka 2.4 added version 4** (KIP-464) and did not touch a byte either - the layout of
+ * `CreateTopicsRequest.json` @ 2.8.2 is the same for the versions 1 to 4. What the version buys is a THIRD way of
+ * describing a topic: `num_partitions` and `replication_factor` may both be **-1** *without* an explicit replica
+ * assignment, which asks the broker for its own `num.partitions` and `default.replication.factor`
+ * ({@see NewTopic::withBrokerDefaults()}, the `Optional.empty()` of the Java `NewTopic`). Up to version 3 that
+ * shape is refused **by this class**, exactly as `CreateTopicsRequest.Builder.build(version)` @ 2.8.2 refuses it:
+ * a 2.8.2 broker would accept the bytes of a version 3 request and resolve the -1 all the same, but a broker of
+ * Kafka 2.3 or below has no such fallback and answers the topic with 37 (InvalidPartitions) or 38
+ * (InvalidReplicationFactor), so the version is what a client has to check.
+ * {@see CreateTopicsRequestV3} is the same frame with the version field of Kafka 2.0.
+ *
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v4)"
  */
 class CreateTopicsRequest extends AbstractRequest
 {
@@ -73,7 +85,7 @@ class CreateTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * Topics to create, indexed by their name
@@ -105,12 +117,33 @@ class CreateTopicsRequest extends AbstractRequest
         int $correlationId = 0
     ) {
         $packedTopics = [];
+        $withDefaults = [];
         foreach ($topics as $topic) {
             $entry                       = $topic instanceof NewTopic
                 ? CreateTopicsRequestTopic::fromNewTopic($topic)
                 : $topic;
             $packedTopics[$entry->topic] = $entry;
+
+            $usesDefaults = $entry->replicaAssignment === []
+                && ($entry->numPartitions === NewTopic::NO_NUM_PARTITIONS
+                    || $entry->replicationFactor === NewTopic::NO_REPLICATION_FACTOR);
+            if ($usesDefaults) {
+                $withDefaults[] = $entry->topic;
+            }
         }
+
+        // The guard of `CreateTopicsRequest.Builder.build(version)` @ 2.8.2, word for word: KIP-464 made the -1
+        // without an assignment legal with the VERSION 4, and a broker below Kafka 2.4 answers such a topic with
+        // the error code 37 or 38 instead of falling back to its own defaults
+        if ($withDefaults !== [] && static::VERSION < 4) {
+            throw new UnsupportedVersionException([
+                'topics' => implode(', ', $withDefaults),
+                'error'  => 'Creating topics with default partitions/replication factor are only supported in '
+                    . 'CreateTopicRequest version 4+. The following topics need values for partitions and '
+                    . 'replicas: [' . implode(', ', $withDefaults) . ']',
+            ]);
+        }
+
         $this->topics = $packedTopics;
 
         parent::__construct(self::API_KEY, $clientId, $correlationId);
