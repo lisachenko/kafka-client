@@ -28,6 +28,7 @@ use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsRequest;
 use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsRequest;
 use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsResponse;
+use Throwable;
 
 /**
  * Exercises the two partition-reassignment apis of KIP-455 - AlterPartitionReassignments (45) and
@@ -78,6 +79,30 @@ final class PartitionReassignmentApiTest extends IntegrationTestCase
 
         $configuration = $this->configuration();
         $this->admin   = new AdminClient(Cluster::bootstrap($configuration), $configuration);
+    }
+
+    /**
+     * Removes the topic of this class from the shared container, which several suites work on at once
+     */
+    public static function tearDownAfterClass(): void
+    {
+        $topic       = self::$topic;
+        self::$topic = null;
+
+        if ($topic === null || self::bootstrapServers() === []) {
+            return;
+        }
+
+        try {
+            $configuration = [
+                ClientConfig::BOOTSTRAP_SERVERS  => ['tcp://' . self::firstBootstrapServer()],
+                ClientConfig::CLIENT_ID          => 'kafka-client-t1-reassign',
+                ClientConfig::REQUEST_TIMEOUT_MS => 20000,
+            ];
+            new AdminClient(Cluster::bootstrap($configuration), $configuration)->deleteTopics([$topic]);
+        } catch (Throwable) {
+            // A broker that is gone or busy is not a failure of these tests - the topic is named uniquely
+        }
     }
 
     /**
