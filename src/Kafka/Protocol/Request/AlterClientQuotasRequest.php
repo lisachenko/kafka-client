@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\AlterClientQuotasRequestEntry;
 
 /**
- * AlterClientQuotas, version 1: sets and removes client quotas (ApiKey 49, Kafka 2.6, KIP-546)
+ * AlterClientQuotas, version 0: sets and removes client quotas (ApiKey 49, Kafka 2.6, KIP-546)
  *
  * <pre>
- *   AlterClientQuotas Request (Version: 0 and 1) => [entries] validate_only
+ *   AlterClientQuotas Request (Version: 0) => [entries] validate_only
  *     entries => entity [ops]
  *       entity => entity_type entity_name
  *       ops    => key value remove
@@ -35,10 +35,9 @@ use Protocol\Kafka\Protocol\Data\AlterClientQuotasRequestEntry;
  * `$validateOnly` asks the broker to check the request and change nothing - the answer has the same shape, so a
  * caller can tell a refusal from an acceptance without writing anything.
  *
- * **Version 1 (Kafka 2.8) is the flexible one** and adds no field; {@see AlterClientQuotasRequestV0} sends the
- * plain frame of Kafka 2.6.
+ * **The version 0 is a plain frame**, like the one of its describing half: the flexible version 1 is Kafka 2.8.
  *
- * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0)"
  */
 class AlterClientQuotasRequest extends AbstractRequest
 {
@@ -50,12 +49,7 @@ class AlterClientQuotasRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
-
-    /**
-     * @inheritdoc
-     */
-    public const int FLEXIBLE_VERSION = 1;
+    public const int VERSION = 0;
 
     /**
      * Entries of this request, in the order they were given

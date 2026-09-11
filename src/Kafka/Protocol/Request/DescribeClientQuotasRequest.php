@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ClientQuotaComponentData;
 
 /**
- * DescribeClientQuotas, version 1: reads the client quotas of the cluster (ApiKey 48, Kafka 2.6, KIP-546)
+ * DescribeClientQuotas, version 0: reads the client quotas of the cluster (ApiKey 48, Kafka 2.6, KIP-546)
  *
  * <pre>
- *   DescribeClientQuotas Request (Version: 0 and 1) => [components] strict
+ *   DescribeClientQuotas Request (Version: 0) => [components] strict
  *     components => entity_type match_type match
  *       entity_type => STRING
  *       match_type  => INT8
@@ -40,10 +40,11 @@ use Protocol\Kafka\Protocol\Data\ClientQuotaComponentData;
  * attached to a `user` **and** a `client-id` together, while `true` answers only entities whose types are exactly
  * the ones the filter named.
  *
- * **Version 1 (Kafka 2.8) is the flexible one** and adds no field; {@see DescribeClientQuotasRequestV0} sends the
- * plain frame that a 2.6 or 2.7 broker serves.
+ * **The version 0 is a plain frame.** Kafka 2.6 added this api *after* KIP-482 and still without the compact
+ * encoding - `DescribeClientQuotasRequest.json` @ 2.6.3 and @ 2.7.2 both say `"flexibleVersions": "none"` - and
+ * only Kafka **2.8** adds the flexible version 1, which is the same frame written compactly.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0)"
  */
 class DescribeClientQuotasRequest extends AbstractRequest
 {
@@ -55,12 +56,7 @@ class DescribeClientQuotasRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
-
-    /**
-     * @inheritdoc
-     */
-    public const int FLEXIBLE_VERSION = 1;
+    public const int VERSION = 0;
 
     /**
      * Components of the filter, in the order they were given

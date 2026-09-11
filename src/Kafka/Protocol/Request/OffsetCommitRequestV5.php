@@ -31,7 +31,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * constructor is therefore simply not written by this version, and the broker stores the offset with the
  * `__consumer_offsets` value schema v3, which has no expiry field at all.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v7)"
  */
 final class OffsetCommitRequestV5 extends OffsetCommitRequest
 {

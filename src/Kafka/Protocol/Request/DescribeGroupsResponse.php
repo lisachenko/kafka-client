@@ -15,14 +15,16 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadataV0;
 
 /**
- * DescribeGroups response, version 2 (key 15)
+ * DescribeGroups response, version 3 (key 15)
  *
  * <pre>
- *   DescribeGroups Response (Version: 1 and 2) => throttle_time_ms [groups]
+ *   DescribeGroups Response (Version: 1 to 3) => throttle_time_ms [groups]
  *     throttle_time_ms => INT32     -- since version 1
- *     groups           => error_code group_id state protocol_type protocol [members]
+ *     groups           => error_code group_id state protocol_type protocol [members] authorized_operations
+ *       authorized_operations => INT32   -- since version 3
  * </pre>
  *
  * There is no error code for the request as a whole: every group carries its own, and the order of the array is the
@@ -31,17 +33,20 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
  * Version 1 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of the array and left the entries alone -
  * `DESCRIBE_GROUPS_RESPONSE_V1` reuses `DESCRIBE_GROUPS_RESPONSE_GROUP_METADATA_V0` in `Protocol.java` @ 0.11.0.3;
  * {@see DescribeGroupsResponseV0} is the answer without it. Version 2 (KIP-219, Kafka 2.0) repeats the version 1
- * answer, which {@see DescribeGroupsResponseV1} decodes; the group entry grows again at version 3 (KIP-430, Kafka
- * 2.3, the `authorized_operations`) and version 4 (KIP-345, Kafka 2.4, a `group_instance_id` per member).
+ * answer, which {@see DescribeGroupsResponseV1} decodes. **Version 3 (KIP-430, Kafka 2.3) appended an
+ * `authorized_operations` bit set to every group entry**, which is what
+ * {@see \Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata::$authorizedOperations} carries;
+ * {@see DescribeGroupsResponseV2} is the answer whose entries end with the member array. The entry grows once
+ * more at version 4 (KIP-345, Kafka 2.4), which gives every member a `group_instance_id`.
  *
- * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v2)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v3)" and "Quotas and throttle time"
  */
 class DescribeGroupsResponse extends AbstractResponse
 {
     /**
      * Version of the DescribeGroups API that this class decodes the answer of
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
@@ -67,8 +72,18 @@ class DescribeGroupsResponse extends AbstractResponse
         if (static::VERSION >= 1) {
             $body['throttleTimeMs'] = BinarySchema::TYPE_INT32;
         }
-        $body['groups'] = ['groupId' => DescribeGroupResponseMetadata::class];
+        $body['groups'] = ['groupId' => static::groupClass()];
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the class of a group entry for the version of the API that this class decodes
+     *
+     * @return class-string<DescribeGroupResponseMetadata>
+     */
+    protected static function groupClass(): string
+    {
+        return static::VERSION >= 3 ? DescribeGroupResponseMetadata::class : DescribeGroupResponseMetadataV0::class;
     }
 }

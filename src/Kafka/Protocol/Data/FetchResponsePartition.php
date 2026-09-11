@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * (KIP-107) added `LogStartOffset` between the two, which is what {@see FetchResponsePartitionV4} and
  * {@see FetchResponsePartitionV0} lower the version constant for.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)", "MessageSet and Message" and
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 class FetchResponsePartition implements BinarySchemaInterface
@@ -50,7 +50,7 @@ class FetchResponsePartition implements BinarySchemaInterface
     /**
      * Version of the Fetch API that this DTO is unpacked from
      */
-    public const int VERSION = 5;
+    public const int VERSION = 11;
 
     /**
      * Value of `LastStableOffset` in an answer that does not carry the field, and of a `read_uncommitted` fetch
@@ -61,6 +61,11 @@ class FetchResponsePartition implements BinarySchemaInterface
      * Value of `LogStartOffset` in an answer of a version below 5, which does not carry the field at all
      */
     public const int INVALID_LOG_START_OFFSET = -1;
+
+    /**
+     * Value of {@see self::$preferredReadReplica} that names no replica at all: "read from the leader" (KIP-392)
+     */
+    public const int NO_PREFERRED_READ_REPLICA = -1;
 
     /**
      * The id of the partition this response is for.
@@ -121,6 +126,25 @@ class FetchResponsePartition implements BinarySchemaInterface
     public ?array $abortedTransactions = null;
 
     /**
+     * Replica the consumer should read this partition from next, `-1` when that is the leader itself.
+     *
+     * **KIP-392** (Kafka 2.3) lets a consumer read from a **follower** instead of the leader, to keep the traffic
+     * of a rack-aware cluster inside its rack. The consumer names its own rack in the `rack_id` of the request
+     * ({@see \Protocol\Kafka\Protocol\Request\FetchRequest::$rackId},
+     * {@see \Protocol\Kafka\Consumer\ConsumerConfig::CLIENT_RACK}), and the **leader** decides: its
+     * `replica.selector.class` picks a replica for that rack and answers its node id here. The consumer then
+     * fetches the partition from that broker until the answer names another one - the field travels in every
+     * answer, so a leader can take the reader back at any time.
+     *
+     * {@see self::NO_PREFERRED_READ_REPLICA} (`-1`) is "read from me", which is what a broker without a selector
+     * (the default `replica.selector.class` is unset, and so is the container's) answers to every fetch, and what
+     * an answer below version 11 leaves here.
+     *
+     * @since Version 11 of protocol
+     */
+    public int $preferredReadReplica = self::NO_PREFERRED_READ_REPLICA;
+
+    /**
      * Raw bytes of the returned record set, exactly as they lie in the log.
      *
      * The broker is allowed to cut the last batch of the set short, therefore these bytes are not necessarily a
@@ -159,6 +183,9 @@ class FetchResponsePartition implements BinarySchemaInterface
                 FetchResponseAbortedTransaction::class,
                 BinarySchema::FLAG_NULLABLE => true,
             ];
+        }
+        if (static::VERSION >= 11) {
+            $scheme['preferredReadReplica'] = BinarySchema::TYPE_INT32;
         }
         $scheme['messageSet'] = BinarySchema::TYPE_BYTEARRAY;
 

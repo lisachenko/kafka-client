@@ -66,8 +66,8 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  * Every request goes out with the version this line sends, which Kafka 2.0 raised by one for all four apis without
  * changing a field (KIP-219): JoinGroup v3, SyncGroup v2, Heartbeat v2 and LeaveGroup v2.
  *
- * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 to v4)",
- *      "SyncGroup API (key 14, v0 to v2)", "Heartbeat API (key 12, v0 to v2)" and "LeaveGroup API (key 13, v0 to v2)"
+ * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 to v5)",
+ *      "SyncGroup API (key 14, v0 to v3)", "Heartbeat API (key 12, v0 to v3)" and "LeaveGroup API (key 13, v0 to v3)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(JoinGroupRequest::class)]
@@ -466,10 +466,14 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         self::assertSame(1, $zero->generationId);
 
         new LeaveGroupRequest($immediate, $zero->memberId, $this->clientId(), 312)->writeTo($stream);
+        $left = LeaveGroupResponse::unpack($stream);
 
+        // From version 3 (KIP-345) the error of a member travels in its entry of the batch answer, and the
+        // top-level code is about the request alone
+        self::assertSame(KafkaException::NO_ERROR, $left->errorCode);
         self::assertSame(
             KafkaException::UNKNOWN_MEMBER_ID,
-            LeaveGroupResponse::unpack($stream)->errorCode,
+            $left->members[0]->errorCode,
             'the pending-sync expiration of the rebalance timeout 0 removed the member before it could sync'
         );
     }
@@ -588,7 +592,17 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         self::assertSame(KafkaException::UNKNOWN_MEMBER_ID, $heartbeat->errorCode);
         self::assertSame(KafkaException::UNKNOWN_MEMBER_ID, $sync->errorCode);
         self::assertSame('', $sync->memberAssignment, 'an error answer carries an empty assignment');
-        self::assertSame(KafkaException::UNKNOWN_MEMBER_ID, $leave->errorCode);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $leave->errorCode,
+            'the batch of version 3 (KIP-345) answers 0 at the top whatever became of its members'
+        );
+        self::assertSame(
+            KafkaException::UNKNOWN_MEMBER_ID,
+            $leave->members[0]->errorCode,
+            'and the member id the group does not have is refused in its own entry'
+        );
+        self::assertSame('t3-not-a-member', $leave->members[0]->memberId, 'the entry echoes what was sent');
 
         // A member that names a group the coordinator has never seen is refused the same way
         new HeartbeatRequest(self::uniqueGroupName(), 1, 't3-not-a-member', $this->clientId(), 404)
@@ -926,10 +940,12 @@ final class GroupMembershipApiTest extends IntegrationTestCase
     private function leave(Stream $stream, string $groupId, string $memberId): void
     {
         new LeaveGroupRequest($groupId, $memberId, $this->clientId(), 104)->writeTo($stream);
+        $left = LeaveGroupResponse::unpack($stream);
 
+        self::assertSame(KafkaException::NO_ERROR, $left->errorCode, 'The broker refused the request');
         self::assertSame(
             KafkaException::NO_ERROR,
-            LeaveGroupResponse::unpack($stream)->errorCode,
+            $left->members[0]->errorCode,
             'The broker refused to remove the member'
         );
     }

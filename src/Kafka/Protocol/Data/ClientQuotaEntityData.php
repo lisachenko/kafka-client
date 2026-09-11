@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * type - the quota that applies to everybody who has no quota of their own - which is why the field is nullable
  * although `kafka-configs.sh` prints it as the literal string `<default>`.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0)"
  */
 class ClientQuotaEntityData implements BinarySchemaInterface
 {

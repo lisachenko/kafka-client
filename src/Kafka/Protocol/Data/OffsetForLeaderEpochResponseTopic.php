@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * a version 0 answer carries no `leader_epoch` ({@see OffsetForLeaderEpochResponseTopicV0}), a version 1 answer
  * does, see {@see self::partitionClass()}.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
  */
 class OffsetForLeaderEpochResponseTopic implements BinarySchemaInterface
 {
