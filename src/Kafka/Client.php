@@ -946,7 +946,8 @@ class Client
                     $response->throttleTimeMs,
                     $responsePartition->lastStableOffset,
                     $responsePartition->logStartOffset,
-                    $responsePartition->abortedTransactions
+                    $responsePartition->abortedTransactions,
+                    $responsePartition->preferredReadReplica
                 );
             }
         }

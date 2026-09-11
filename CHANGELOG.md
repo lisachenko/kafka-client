@@ -272,6 +272,40 @@ the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLe
   twelve wire vectors of the new frames were captured from the container.
 - **LeaveGroup stays at v2**: the batch leave of KIP-345 is LeaveGroup v3, a Kafka 2.4 api.
 
+### Kafka 2.3
+
+- **Fetch v11** (KIP-392, reading from a follower) — a `rack_id` as the **last** field of the request, behind the
+  forgotten topics, and a `preferred_read_replica` in every partition entry of the answer, **between** the
+  aborted transactions and the record set. The consumer names its rack
+  (`ConsumerConfig::CLIENT_RACK`, `client.rack`, the empty string by default) and the **leader** answers which
+  replica to read that partition from; `FetchedPartition::$preferredReadReplica` carries it, `-1` being "read
+  from me". `FetchRequest`/`FetchResponse` are the v11 now, `FetchRequestV10`/`FetchResponseV10` keep the Kafka
+  2.1 pair and `FetchResponsePartitionV5`/`FetchResponseTopicV5` the partition entry of the versions 5 to 10.
+  Measured on the container: without a `replica.selector.class` the answer is always `-1`, whatever rack the
+  request names.
+- **Metadata v8** (KIP-430, authorized operations) — two booleans in the request
+  (`include_cluster_authorized_operations`, then `include_topic_authorized_operations`, behind the
+  `allow_auto_topic_creation` of version 4) and two `int32` bitfields in the answer: one at the end of every
+  topic entry, one at the end of the frame. The new **`Common\AclOperation`** is both halves of the bitfield —
+  the thirteen operation codes of `AclOperation` @ 2.8.2, `fromBitField()`, `toBitField()`, `isAuthorized()` and
+  `describe()` — and `TopicMetadata::$authorizedOperations` and
+  `MetadataResponse::$clusterAuthorizedOperations` carry the two fields. `AclOperation::NOT_REQUESTED`
+  (`Integer.MIN_VALUE`) is "you did not ask", which is **not** the empty set; `Client`'s metadata asks for
+  neither. The same bitfield is what DescribeGroups v3 gained in the same release.
+  `MetadataRequestV7`/`MetadataResponseV7` and `TopicMetadataV7` keep the Kafka 2.1 frames.
+- **OffsetForLeaderEpoch v3** (KIP-392) — a `replica_id` at the **head** of the request, in front of the topics
+  array: a follower sends its own broker id, a consumer `-1`
+  (`OffsetForLeaderEpochRequest::CONSUMER_REPLICA_ID`) and the default of the field is `-2`, the debug client
+  that may see offsets beyond the high watermark. The answer is unchanged — "Version 3 is the same as version 2"
+  — and `OffsetForLeaderEpochRequestV2`/`OffsetForLeaderEpochResponseV2` keep it.
+- **7 wire vectors** captured on `kafka-2-8-2` against the topic `t2-23-vectors`: the Metadata v8 pair with both
+  booleans on, the same answer with them off, the Fetch v11 pair and the OffsetForLeaderEpoch v3 pair, each with
+  its annotated dump.
+- **New sections of [docs/protocol/2.8.md](docs/protocol/2.8.md)**: "Reading from a follower (v11, KIP-392)" and
+  "The authorized operations (v8, KIP-430)" — with the measured bitfields of an unsecured broker, **8096** for
+  the cluster and **3576** for a topic, which are the *supported* operations of the resource type — plus the
+  version paragraphs of the three apis and two more broker quirks.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

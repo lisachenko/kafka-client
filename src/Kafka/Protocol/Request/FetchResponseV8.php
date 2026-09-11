@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see FetchResponse}. An answer has to be read with the class of the version its request was sent with, which is
  * the only reason this class exists.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "The leader epoch (KIP-320)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "The leader epoch (KIP-320)"
  */
 final class FetchResponseV8 extends FetchResponse
 {

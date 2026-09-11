@@ -104,7 +104,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
  * {@see FetchRequestV5}, {@see FetchRequestV4}, {@see FetchRequestV3}, {@see FetchRequestV2},
  * {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower versions available.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -116,7 +116,12 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 10;
+    public const int VERSION = 11;
+
+    /**
+     * Value of the `rack_id` of version 11 that names no rack: the empty string (KIP-392)
+     */
+    public const string NO_RACK = '';
 
     /**
      * Default bound of a whole answer, the 50 MiB of the `fetch.max.bytes` option of the Java consumer
@@ -242,7 +247,19 @@ class FetchRequest extends AbstractRequest
          */
         protected readonly int $isolationLevel = self::READ_UNCOMMITTED,
         ?FetchMetadata $metadata = null,
-        array $forgottenTopicPartitions = []
+        array $forgottenTopicPartitions = [],
+        /**
+         * Rack of the consumer that sends this request, since version 11 (Kafka 2.3, KIP-392).
+         *
+         * The leader of a partition reads it to pick the replica the consumer should read from - its
+         * `replica.selector.class` maps a rack to a replica - and answers that node id in the
+         * `preferred_read_replica` of every partition entry, see
+         * {@see \Protocol\Kafka\Protocol\Data\FetchResponsePartition::$preferredReadReplica}. The empty string
+         * is "no rack", the default of the field and of
+         * {@see \Protocol\Kafka\Consumer\ConsumerConfig::CLIENT_RACK}; a broker without a selector ignores the
+         * field altogether.
+         */
+        protected readonly string $rackId = self::NO_RACK
     ) {
         $metadata ??= FetchMetadata::legacy();
         $this->sessionId = $metadata->sessionId;
@@ -365,6 +382,9 @@ class FetchRequest extends AbstractRequest
         $body['topicPartitions'] = ['topic' => static::topicClass()];
         if (static::VERSION >= 7) {
             $body['forgottenTopics'] = [FetchRequestForgottenTopic::class];
+        }
+        if (static::VERSION >= 11) {
+            $body['rackId'] = BinarySchema::TYPE_STRING;
         }
 
         return $header + $body;
