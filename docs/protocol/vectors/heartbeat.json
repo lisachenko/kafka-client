@@ -1,8 +1,8 @@
 {
     "api": "heartbeat",
     "apiKey": 12,
-    "section": "Heartbeat API (key 12, v0 to v2)",
-    "description": "Wire vectors of the Heartbeat API (key 12, v0 to v2), replayed by tests/Compliance.",
+    "section": "Heartbeat API (key 12, v0 to v3)",
+    "description": "Wire vectors of the Heartbeat API (key 12, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "heartbeat.request.v0",
@@ -140,7 +140,7 @@
         {
             "id": "heartbeat.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequestV2",
             "version": 2,
             "source": "broker",
             "description": "Heartbeat request v2 of the member of the stable group, the frame of v1 with a higher version field.",
@@ -159,7 +159,7 @@
         {
             "id": "heartbeat.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2: the throttle time and the error code, the ten bytes of a v1 answer.",
@@ -169,6 +169,76 @@
                 "correlationId": 203,
                 "throttleTimeMs": 0,
                 "errorCode": 0
+            }
+        },
+        {
+            "id": "heartbeat.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "Heartbeat request v3 of the static member: the `group_instance_id` closes the frame, which is the only field version 3 added.",
+            "hex": "00000074000c00030000019300136b61666b612d636c69656e742d74332d333435001474332d3334352d766563746f72732d67726f757000000001002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d643762633631313163636364000a74332d3334352d6f6e65",
+            "fields": {
+                "messageSize": 116,
+                "apiKey": 12,
+                "apiVersion": 3,
+                "correlationId": 403,
+                "clientId": "kafka-client-t3-345",
+                "consumerGroup": "t3-345-vectors-group",
+                "generationId": 1,
+                "memberId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                "groupInstanceId": "t3-345-one"
+            }
+        },
+        {
+            "id": "heartbeat.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer of a heartbeat that the coordinator accepted - the throttle time and the error code 0, the same ten bytes every version from 1 on sends.",
+            "hex": "0000000a00000193000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 403,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "heartbeat.request.v3.fenced-instance-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The same heartbeat once **another consumer has joined under the same `group.instance.id`**: the member id is the one the coordinator gave this consumer, and the instance id now belongs to somebody else.",
+            "hex": "00000074000c00030000019700136b61666b612d636c69656e742d74332d333435001474332d3334352d766563746f72732d67726f757000000001002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d643762633631313163636364000a74332d3334352d6f6e65",
+            "fields": {
+                "messageSize": 116,
+                "apiKey": 12,
+                "apiVersion": 3,
+                "correlationId": 407,
+                "clientId": "kafka-client-t3-345",
+                "consumerGroup": "t3-345-vectors-group",
+                "generationId": 1,
+                "memberId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                "groupInstanceId": "t3-345-one"
+            }
+        },
+        {
+            "id": "heartbeat.response.v3.fenced-instance-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer: the error code **82** (`FencedInstanceId`). The older consumer is fenced for good - its heartbeats, its commits and its syncs are answered 82 from here on, and only a new `group.instance.id` or the other consumer leaving frees the identity again.",
+            "hex": "0000000a00000197000000000052",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 407,
+                "throttleTimeMs": 0,
+                "errorCode": 82
             }
         }
     ]

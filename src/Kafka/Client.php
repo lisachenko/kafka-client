@@ -57,6 +57,7 @@ use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartition;
@@ -124,12 +125,14 @@ use Throwable;
  * Every api is sent with the highest version this line implements for it. **Kafka 2.0 raised every request-response
  * api by one** without changing a single byte of its frame (KIP-219): Produce goes out as **v6**, Fetch as **v8**,
  * Offsets (ListOffsets) as **v3** and Metadata as **v6**, where the 1.x line sent v5, v7, v2 and v5, and the group
- * apis one version up as well - GroupCoordinator **v2** and the membership apis. Kafka 2.1 and 2.2 then raised
- * three of those: OffsetCommit goes out as **v6**, with the `committed_leader_epoch` of KIP-320 and without the
- * `retention_time` that KIP-211 removed, OffsetFetch as **v5**, whose answer carries that epoch back, and JoinGroup
- * as **v4**, whose first join is refused once with the member id the coordinator assigns (KIP-394); Heartbeat,
- * SyncGroup, LeaveGroup, DescribeGroups, ListGroups and DeleteGroups stay at their KIP-219 versions. What those
- * versions promise is what {@see self::awaitThrottle()} does - see the runtime note below.
+ * apis one version up as well - GroupCoordinator **v2** and the membership apis. Kafka 2.1 to 2.3 then raised six
+ * of those: OffsetCommit goes out as **v7**, with the `group_instance_id` of KIP-345, the `committed_leader_epoch`
+ * of KIP-320 and without the `retention_time` that KIP-211 removed, OffsetFetch as **v5**, whose answer carries
+ * that epoch back, JoinGroup as **v5**, whose first join is refused once with the member id the coordinator
+ * assigns (KIP-394) unless it names a `group.instance.id` (KIP-345), SyncGroup and Heartbeat as **v3**, which
+ * carry that instance id as well, and DescribeGroups as **v3**, which can ask for the operations the client may
+ * perform on a group (KIP-430); GroupCoordinator, LeaveGroup, ListGroups and DeleteGroups stay at their KIP-219
+ * versions. What those versions promise is what {@see self::awaitThrottle()} does - see the runtime note below.
  * Everything else is unchanged: Produce carries a record batch of the message format v2 and the transactional id of
  * its producer and its answer reports the `LogAppendTime` and the `LogStartOffset` of every partition, Fetch asks
  * for the log as it lies, bounds the whole answer with `fetch.max.bytes`, states the isolation level of the
@@ -1133,6 +1136,8 @@ class Client
      * @param int                                              $generationId          Generation of the group
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
      * @param int                                              $retentionTimeMs       How long the broker keeps them
+     * @param string|null                                      $groupInstanceId       `group.instance.id` of a
+     *        static member (KIP-345, version 7), null for a dynamic one
      *
      * @throws Common\Errors\OffsetMetadataTooLargeException
      * @throws Common\Errors\GroupLoadInProgressException
@@ -1145,7 +1150,8 @@ class Client
         string $memberId,
         int $generationId,
         array $topicPartitionOffsets,
-        int $retentionTimeMs
+        int $retentionTimeMs,
+        ?string $groupInstanceId = null
     ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
@@ -1159,7 +1165,8 @@ class Client
                     $retentionTimeMs,
                     $topicPartitionOffsets,
                     $clientId,
-                    $correlationId
+                    $correlationId,
+                    $groupInstanceId
                 )
                 : new OffsetCommitRequestV0($groupId, $topicPartitionOffsets, $clientId, $correlationId),
             // The version 3 answer opens with the throttle time of KIP-124, which a version 0 one does not have
@@ -1273,6 +1280,8 @@ class Client
      *        bytes to this api - a `consumer` member sends its `Subscription` here
      * @param int|null              $rebalanceTimeoutMs How long the coordinator may wait for this member to rejoin a
      *        rebalance, null for the configured `max.poll.interval.ms`
+     * @param string|null           $groupInstanceId   `group.instance.id` of a static member (KIP-345, version 5),
+     *        null for a dynamic one
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -1289,7 +1298,8 @@ class Client
         string $memberId,
         string $protocolType,
         array $groupProtocols,
-        ?int $rebalanceTimeoutMs = null
+        ?int $rebalanceTimeoutMs = null,
+        ?string $groupInstanceId = null
     ): JoinGroupResponse {
         $clientId         = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
         $sessionTimeout   = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
@@ -1307,7 +1317,8 @@ class Client
                 $protocolType,
                 $groupProtocols,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $groupInstanceId
             ),
             JoinGroupResponse::class,
             static function (JoinGroupResponse $response) use ($groupId, $memberId, $protocolType): JoinGroupResponse {
@@ -1341,6 +1352,8 @@ class Client
      * @param int                   $generationId     Current generation of the group
      * @param array<string, string> $groupAssignments Assignment of every member, by member id, sent by the leader
      *        only; opaque bytes to this api - a `consumer` leader sends a `MemberAssignment` per member
+     * @param string|null           $groupInstanceId  `group.instance.id` of a static member (KIP-345, version 3),
+     *        null for a dynamic one
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -1355,7 +1368,8 @@ class Client
         string $groupId,
         string $memberId,
         int $generationId,
-        array $groupAssignments = []
+        array $groupAssignments = [],
+        ?string $groupInstanceId = null
     ): SyncGroupResponse {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
@@ -1367,7 +1381,8 @@ class Client
                 $memberId,
                 $groupAssignments,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $groupInstanceId
             ),
             SyncGroupResponse::class,
             static function (SyncGroupResponse $response) use ($groupId, $memberId, $generationId): SyncGroupResponse {
@@ -1395,16 +1410,25 @@ class Client
      * @param string $groupId         Name of the group
      * @param string $memberId        Name of the group member
      * @param int    $generationId    Current generation of the group
+     * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345, version 3), null for a
+     *        dynamic one; a heartbeat that names an instance id another consumer has taken over is answered 82
+     *        ({@see Common\Errors\FencedInstanceIdException}), which is fatal for this member
      *
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\IllegalGenerationException
      * @throws Common\Errors\UnknownMemberIdException
      * @throws Common\Errors\RebalanceInProgressException
+     * @throws Common\Errors\FencedInstanceIdException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function heartbeat(Node $coordinatorNode, string $groupId, string $memberId, int $generationId): void
-    {
+    public function heartbeat(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $generationId,
+        ?string $groupInstanceId = null
+    ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         $this->groupRequest(
@@ -1414,7 +1438,8 @@ class Client
                 $generationId,
                 $memberId,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $groupInstanceId
             ),
             HeartbeatResponse::class,
             static function (HeartbeatResponse $response) use ($groupId, $memberId, $generationId): void {
@@ -1434,35 +1459,52 @@ class Client
      * The group rebalances right away instead of waiting for the session timeout of the member to expire, so this
      * is what a consumer sends when it shuts down in an orderly way.
      *
-     * @param Node   $coordinatorNode Current group coordinator for $groupId
-     * @param string $groupId         Name of the group
-     * @param string $memberId        Name of the group member
+     * **Version 3 (Kafka 2.4, KIP-345) turned the request into a batch**, and a member that removes itself is that
+     * batch with exactly one entry. The error of that member then travels in the member array of the answer while
+     * the top-level error code stays 0, so both are checked here and the member error is reported the way it
+     * always was - 25 (`UnknownMemberId`) for a member the group does not have, 82 (`FencedInstanceId`) for a
+     * static member whose instance id another consumer has taken over. Several members at once are what
+     * {@see \Protocol\Kafka\Admin\AdminClient::removeMembersFromConsumerGroup()} sends.
+     *
+     * @param Node        $coordinatorNode Current group coordinator for $groupId
+     * @param string      $groupId         Name of the group
+     * @param string      $memberId        Name of the group member
+     * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345, version 3), null for a
+     *        dynamic one; naming both makes the coordinator check that the member id belongs to that instance
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\UnknownMemberIdException
+     * @throws Common\Errors\FencedInstanceIdException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function leaveGroup(Node $coordinatorNode, string $groupId, string $memberId): void
-    {
+    public function leaveGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        ?string $groupInstanceId = null
+    ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         $this->groupRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => new LeaveGroupRequest(
                 $groupId,
-                $memberId,
+                [new LeaveGroupRequestMember($memberId, $groupInstanceId)],
                 $clientId,
                 $correlationId
             ),
             LeaveGroupResponse::class,
             static function (LeaveGroupResponse $response) use ($groupId, $memberId): void {
+                $context = ['groupId' => $groupId, 'memberId' => $memberId];
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
-                    throw KafkaException::fromCode(
-                        $response->errorCode,
-                        ['groupId' => $groupId, 'memberId' => $memberId]
-                    );
+                    throw KafkaException::fromCode($response->errorCode, $context);
+                }
+                foreach ($response->members as $member) {
+                    if ($member->errorCode !== KafkaException::NO_ERROR) {
+                        throw KafkaException::fromCode($member->errorCode, $context);
+                    }
                 }
             }
         );

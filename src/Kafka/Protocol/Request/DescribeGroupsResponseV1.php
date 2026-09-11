@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   DescribeGroups Response (Version: 1 and 2) => throttle_time_ms [groups]
  * </pre>
  *
- * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v2)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v3)" and "Quotas and throttle time"
  */
 final class DescribeGroupsResponseV1 extends DescribeGroupsResponse
 {

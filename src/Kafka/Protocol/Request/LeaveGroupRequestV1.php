@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka 2.4), where the single `member_id` becomes a batch of member identities. The answer of version 1 is the
  * answer of version 2 and is read with {@see LeaveGroupResponseV1}.
  *
- * @see docs/protocol/2.8.md, sections "LeaveGroup API (key 13, v0 to v2)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "LeaveGroup API (key 13, v0 to v3)" and "Quotas and throttle time"
  */
 final class LeaveGroupRequestV1 extends LeaveGroupRequest
 {
