@@ -692,14 +692,15 @@ them. What the release added lives in the group and transaction apis.)*
   mechanism twice, **93** `UNACCEPTABLE_CREDENTIAL` for an iteration count below the minimum — and the fact that
   the changes of one user are applied **all-or-nothing**, so one impossible change discards the possible ones of
   the same user.
-- **UpdateFeatures (key 57, v0, Kafka 2.7, KIP-584)** — `AdminClient::updateFeatures(array $updates)`, sent to the
-  **controller** and repeated once when it moved, with `Admin\FeatureUpdate` (whose `delete()` is the version level
-  below 1 plus the downgrade flag the broker insists on). Its read half is not an api at all but the **tagged
-  fields of the ApiVersions v3 answer**, which `AdminClient::describeFeatures()` reads into `Admin\FeatureMetadata`,
-  `SupportedVersionRange` and `FinalizedVersionRange`. A ZooKeeper-backed 2.8.2 cluster finalizes nothing: it
-  supports no feature, the finalized set is empty, the epoch is `0`, and every update is answered per feature with
-  **42** `INVALID_REQUEST`. An empty update list is not refused at all — the controller iterates an empty
-  collection and answers the top-level 0 with no result. Two new wire vectors in `update-features.json`.
+- **UpdateFeatures (key 57, v0, Kafka 2.7, KIP-584)** — `AdminClient::updateFeatures(array $updates, int $timeoutMs =
+  60000)`, sent to the **controller** and repeated once when it moved, with `Admin\FeatureUpdate` (whose `delete()` is
+  the version level below 1 plus the downgrade flag the broker insists on). Its read half is not an api at all but the
+  **tagged fields of the ApiVersions v3 answer**, which `AdminClient::describeFeatures()` reads into
+  `Admin\FeatureMetadata`, `SupportedVersionRange` and `FinalizedVersionRange`. A ZooKeeper-backed 2.8.2 cluster
+  finalizes nothing: it supports no feature, the finalized set is empty, the epoch is `0`, and every update is
+  answered per feature with **42** `INVALID_REQUEST`. An empty update list is not refused at all — the controller
+  iterates an empty collection and answers the top-level 0 with no result. Two new wire vectors in
+  `update-features.json`.
 
 
 1.x — the 1.x line (Kafka 1.1.1)
