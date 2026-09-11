@@ -45,6 +45,11 @@ final class ResponseFrame
     public const string CLUSTER_ID = 'kafka-client-test-clst';
 
     /**
+     * Value of an `authorized_operations` bitfield the request did not ask for: `Integer.MIN_VALUE` (KIP-430)
+     */
+    public const int NOT_REQUESTED = -2147483648;
+
+    /**
      * Builds a Metadata response (api key 3, v5 - the version this client sends)
      *
      * <pre>
@@ -91,7 +96,9 @@ final class ResponseFrame
         array $internalTopics = [],
         ?int $controllerId = null,
         array $offlineReplicas = [],
-        array $leaderEpochs = []
+        array $leaderEpochs = [],
+        array $topicAuthorizedOperations = [],
+        int $clusterAuthorizedOperations = self::NOT_REQUESTED
     ): string {
         // The throttle time of version 3 opens the body, in front of the brokers
         $body = pack('N', 0) . pack('N', count($brokers));
@@ -119,7 +126,14 @@ final class ResponseFrame
                     . self::int32Array($replicas)
                     . self::int32Array($offlineReplicas[$topic][$partitionId] ?? []);
             }
+
+            // The `topic_authorized_operations` bitfield of version 8 (Kafka 2.3, KIP-430), behind the
+            // partitions; Integer.MIN_VALUE is what a broker writes when the request did not ask for it
+            $body .= pack('N', $topicAuthorizedOperations[$topic] ?? self::NOT_REQUESTED);
         }
+
+        // And the `cluster_authorized_operations` of the same version, at the very end of the frame
+        $body .= pack('N', $clusterAuthorizedOperations);
 
         return self::of($correlationId, $body);
     }
@@ -293,7 +307,8 @@ final class ResponseFrame
         int $throttleTimeMs = 0,
         array $transactionState = [],
         int $sessionErrorCode = 0,
-        int $sessionId = 0
+        int $sessionId = 0,
+        array $preferredReadReplicas = []
     ): string {
         // The throttle time of v1 opens the response, before the topics array; the session error code and the
         // session id of v7 sit between the two
@@ -313,6 +328,10 @@ final class ResponseFrame
                     . pack('J', $lastStableOffset)
                     . pack('J', $logStartOffset)
                     . self::abortedTransactions($aborted)
+                    // The preferred read replica of version 11 (Kafka 2.3, KIP-392), between the aborted
+                    // transactions and the records; -1 is "read from the leader", which is what a broker
+                    // without a `replica.selector.class` answers
+                    . pack('N', $preferredReadReplicas[$topic][$partitionId] ?? 0xFFFFFFFF)
                     . pack('N', strlen($messageSet))
                     . $messageSet;
             }
@@ -454,11 +473,15 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a JoinGroup response (api key 11, v2 - the version this client sends)
+     * Builds a JoinGroup response (api key 11, v5 - the version this client sends)
      *
      * <pre>
      *   JoinGroupResponse => ThrottleTimeMs ErrorCode GenerationId GroupProtocol LeaderId MemberId [Member]
+     *     Member => MemberId GroupInstanceId MemberMetadata
      * </pre>
+     *
+     * Every member entry carries the nullable `group_instance_id` that version 5 added (KIP-345, Kafka 2.3); the
+     * `null` of a dynamic member is written, which is what every member of these fixtures is.
      *
      * @param array<string, string> $members Metadata of every member, by member id; filled for the leader only
      */
@@ -479,7 +502,7 @@ final class ResponseFrame
             . self::string($memberId)
             . pack('N', count($members));
         foreach ($members as $member => $metadata) {
-            $body .= self::string((string) $member) . self::bytes($metadata);
+            $body .= self::string((string) $member) . self::nullableString(null) . self::bytes($metadata);
         }
 
         return self::of($correlationId, $body);
@@ -583,6 +606,9 @@ final class ResponseFrame
                     . self::bytes($metadata)
                     . self::bytes($assignment);
             }
+            // `authorized_operations` of version 3 (KIP-430, Kafka 2.3): Integer.MIN_VALUE, the value of an answer
+            // whose request left `include_authorized_operations` at false
+            $body .= pack('N', 0x80000000);
         }
 
         return self::of($correlationId, $body);
@@ -594,6 +620,14 @@ final class ResponseFrame
     private static function string(string $value): string
     {
         return pack('n', strlen($value)) . $value;
+    }
+
+    /**
+     * Encodes a nullable string: the length -1 for null, otherwise the plain string
+     */
+    private static function nullableString(?string $value): string
+    {
+        return $value === null ? pack('n', 0xFFFF) : self::string($value);
     }
 
     /**

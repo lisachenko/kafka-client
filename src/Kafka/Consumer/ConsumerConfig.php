@@ -48,6 +48,7 @@ final class ConsumerConfig extends GeneralConfig
     private static array $consumerConfiguration = [
         /* Used configs */
         ConsumerConfig::GROUP_ID                      => '',
+        ConsumerConfig::GROUP_INSTANCE_ID             => null,
         ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => 'range',
         // Larger than both timeouts below, as in the Java consumer of 0.10.1 and above: the coordinator answers a
         // JoinGroup only once the whole rebalance is over, which can take a full rebalance timeout
@@ -65,6 +66,7 @@ final class ConsumerConfig extends GeneralConfig
         ConsumerConfig::OFFSET_RETENTION_MS           => -1, // Use the broker retention time for offsets
         ConsumerConfig::CHECK_CRCS                    => true,
         ConsumerConfig::ISOLATION_LEVEL               => ConsumerConfig::ISOLATION_LEVEL_READ_UNCOMMITTED,
+        ConsumerConfig::CLIENT_RACK                   => FetchRequest::NO_RACK,
         ConsumerConfig::KEY_DESERIALIZER              => null,
         ConsumerConfig::VALUE_DESERIALIZER            => null,
     ];
@@ -76,6 +78,24 @@ final class ConsumerConfig extends GeneralConfig
      * subscribe(topic) or the Kafka-based offset management strategy.
      */
     public const string GROUP_ID = 'group.id';
+
+    /**
+     * A unique identifier of the consumer instance provided by the end user (`group.instance.id`, KIP-345)
+     *
+     * A consumer that carries one is a **static** member of its group: the coordinator remembers the member id
+     * behind the instance id, so a consumer that restarts within its session timeout joins the group under the
+     * very same identity and keeps the partitions it had, without a rebalance and without a new generation. A
+     * consumer that leaves it unset (null) is a dynamic member, which is what every consumer of the lines below
+     * Kafka 2.3 is.
+     *
+     * Two live consumers must never share one instance id: the second one to join takes the identity over and
+     * every request of the first is answered 82 (`FencedInstanceId`) from then on, which this client reports as
+     * {@see \Protocol\Kafka\Common\Errors\FencedInstanceIdException} and does not recover from.
+     *
+     * The value travels in the `group_instance_id` of JoinGroup v5, SyncGroup v3, Heartbeat v3 and
+     * OffsetCommit v7 (Kafka 2.3), which are the versions this client sends.
+     */
+    public const string GROUP_INSTANCE_ID = 'group.instance.id';
 
     /**
      * The partition assignment strategy that the client will use to distribute partition ownership amongst consumer
@@ -261,6 +281,24 @@ final class ConsumerConfig extends GeneralConfig
      * @see docs/protocol/2.8.md, section "Transactions"
      */
     public const string ISOLATION_LEVEL = 'isolation.level';
+
+    /**
+     * Rack of this consumer, the `rack_id` of a Fetch v11 request (KIP-392, Kafka 2.3).
+     *
+     * A rack-aware cluster puts the replicas of a partition into different racks (`broker.rack` of a broker), and
+     * a consumer that reads across racks pays for the traffic twice - once inside the cluster, once out of it.
+     * KIP-392 lets the consumer name its own rack in every fetch; the **leader** of the partition then picks a
+     * replica for that rack with its `replica.selector.class` and answers the node id in the
+     * `preferred_read_replica` of the partition entry, and the consumer reads from that broker until an answer
+     * names another one, see {@see \Protocol\Kafka\Common\FetchedPartition::$preferredReadReplica}.
+     *
+     * The default is the empty string, "I am in no rack", which is also what every version below 11 says by
+     * having no field at all. A broker without a `replica.selector.class` - the default, and the configuration of
+     * the container of this line - answers `-1` to every fetch whatever the rack, i.e. "read from me".
+     *
+     * @see docs/protocol/2.8.md, section "Reading from a follower (v11, KIP-392)"
+     */
+    public const string CLIENT_RACK = 'client.rack';
 
     /**
      * `isolation.level` of a consumer that sees every record of the log, the default

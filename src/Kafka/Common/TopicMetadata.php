@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * entries, which is what {@see self::partitionClass()} picks: version 5 of the api (Kafka 1.0, KIP-112/113)
  * appended `OfflineReplicas` to them, the versions 1 to 4 ({@see TopicMetadataV1}) do not carry it.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v8)"
  */
 class TopicMetadata implements BinarySchemaInterface
 {
@@ -48,7 +48,7 @@ class TopicMetadata implements BinarySchemaInterface
     /**
      * Version of the Metadata API that this entry is unpacked from
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * The error code for the given topic.
@@ -78,6 +78,18 @@ class TopicMetadata implements BinarySchemaInterface
     public array $partitions = [];
 
     /**
+     * Operations the principal of this connection is authorized for on this topic, as the bitfield of KIP-430.
+     *
+     * {@see AclOperation} is both halves of the field: the codes and the two helpers that pack and unpack the
+     * bitfield. {@see AclOperation::NOT_REQUESTED} (`Integer.MIN_VALUE`) is what a broker writes when the request
+     * did not set `include_topic_authorized_operations`, and what every answer below version 8 leaves here - "you
+     * did not ask", which is not the same as the bitfield 0, "you may do nothing".
+     *
+     * @since Version 8 of protocol (Kafka 2.3, KIP-430)
+     */
+    public int $authorizedOperations = AclOperation::NOT_REQUESTED;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -92,6 +104,9 @@ class TopicMetadata implements BinarySchemaInterface
         // A broker does not promise any ordering for the partitions, so they are indexed by their id: the
         // cluster looks a partition up by number, see Cluster::partition() and Cluster::leaderFor()
         $scheme['partitions'] = ['partitionId' => static::partitionClass()];
+        if (static::VERSION >= 8) {
+            $scheme['authorizedOperations'] = BinarySchema::TYPE_INT32;
+        }
 
         return $scheme;
     }

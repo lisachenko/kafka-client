@@ -82,6 +82,14 @@ final class ZstdCodecTest extends IntegrationTestCase
         $probe->awaitTopicWithLeaders($this->plainTopic);
     }
 
+    protected function tearDown(): void
+    {
+        self::deleteTopic($this->zstdTopic);
+        self::deleteTopic($this->plainTopic);
+
+        parent::tearDown();
+    }
+
     public function testAZstdTopicIsRefusedToAFetchBelowVersionTenWithSeventySix(): void
     {
         // The records are produced uncompressed; the topic configuration is what turns them into a zstd batch,
@@ -255,6 +263,30 @@ final class ZstdCodecTest extends IntegrationTestCase
         )->writeTo($stream);
 
         return $responseClass::unpack($stream)->topics[$topic]->partitions[0];
+    }
+
+
+    /**
+     * Deletes a topic of this test through the `kafka-topics.sh` of the container, so that the shared broker does
+     * not accumulate the topics of every run
+     */
+    private static function deleteTopic(string $topic): void
+    {
+        $container = getenv('KAFKA_CONTAINER');
+        $container = $container === false || trim($container) === '' ? 'kafka-2-8-2' : trim($container);
+
+        $output   = [];
+        $exitCode = 0;
+        exec(
+            sprintf(
+                'docker exec %s /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --delete'
+                . ' --topic %s 2>&1',
+                escapeshellarg($container),
+                escapeshellarg($topic)
+            ),
+            $output,
+            $exitCode
+        );
     }
 
     /**

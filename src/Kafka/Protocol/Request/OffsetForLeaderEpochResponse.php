@@ -58,7 +58,7 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponseTopicV0;
  * answer for an epoch the leader cannot place: `Log.endOffsetForEpoch` @ 0.11.0.3 has no cache entry above the
  * requested epoch, which is what a partition that has only ever been led by the current leader answers.
  *
- * @see docs/protocol/2.8.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v2)" and
+ * @see docs/protocol/2.8.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v3)" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetForLeaderEpochResponse extends AbstractResponse
@@ -66,7 +66,7 @@ class OffsetForLeaderEpochResponse extends AbstractResponse
     /**
      * Version of the OffsetForLeaderEpoch API that this class decodes the answer of
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas

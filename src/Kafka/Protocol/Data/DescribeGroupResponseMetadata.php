@@ -21,12 +21,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * <pre>
  *   DescribeGroupResponseMetadata => ErrorCode GroupId State ProtocolType Protocol [Members]
- *     ErrorCode    => int16
- *     GroupId      => string
- *     State        => string
- *     ProtocolType => string
- *     Protocol     => string
- *     Members      => MemberId ClientId ClientHost MemberMetadata MemberAssignment
+ *                                      AuthorizedOperations
+ *     ErrorCode            => int16
+ *     GroupId              => string
+ *     State                => string
+ *     ProtocolType         => string
+ *     Protocol             => string
+ *     Members              => MemberId ClientId ClientHost MemberMetadata MemberAssignment
+ *     AuthorizedOperations => int32   -- since version 3
  * </pre>
  *
  * The state is one of the constants below; `kafka/coordinator/group/GroupMetadata.scala` @ 1.1.1 defines exactly
@@ -42,10 +44,25 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * called {@see self::STATE_COMPLETING_REBALANCE} since then, where 0.9 to 0.11 called it
  * {@see self::STATE_AWAITING_SYNC}. Only the name on the wire changed, the state itself did not.
  *
- * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v3)"
  */
 class DescribeGroupResponseMetadata implements BinarySchemaInterface
 {
+    /**
+     * Version of the DescribeGroups API that this DTO decodes an entry of
+     */
+    public const int VERSION = 3;
+
+    /**
+     * `authorized_operations` of an entry whose operations were not asked for, `Integer.MIN_VALUE`
+     *
+     * The broker fills the field only when the request set `include_authorized_operations` (KIP-430) and the group
+     * itself was described without an error; otherwise the default of `DescribeGroupsResponse.json` @ 2.8.2 stays
+     * on the wire, which is this value and not the empty bit set 0.
+     *
+     * @since Version 3 of protocol
+     */
+    public const int OPERATIONS_NOT_REQUESTED = -2147483648;
     /**
      * The coordinator is collecting the members of the group and waits for their JoinGroup requests
      */
@@ -121,11 +138,28 @@ class DescribeGroupResponseMetadata implements BinarySchemaInterface
     public array $members = [];
 
     /**
+     * Operations the client that asked may perform on this group, a bit set of `AclOperation` codes (KIP-430)
+     *
+     * Bit *n* of the field stands for the operation whose code is *n* in
+     * `org.apache.kafka.common.acl.AclOperation` @ 2.8.2: 2 `ALL`, 3 `READ`, 6 `DELETE`, 8 `DESCRIBE` are the four
+     * that can appear for a group - `AclEntry.supportedOperations(GROUP)` @ 2.8.2 is `{READ, DESCRIBE, DELETE}`,
+     * and `ALL` is only ever reported by an authorizer that grants it. A broker **without** an authorizer answers
+     * every supported operation, which is the bit set `0b1_0100_1000` = **328** of a 2.8.2 container.
+     *
+     * The field is {@see self::OPERATIONS_NOT_REQUESTED} when the request did not ask for it, which is every
+     * request below version 3 and every version 3 request that left
+     * {@see \Protocol\Kafka\Protocol\Request\DescribeGroupsRequest::includesAuthorizedOperations()} at false.
+     *
+     * @since Version 3 of protocol
+     */
+    public int $authorizedOperations = self::OPERATIONS_NOT_REQUESTED;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'errorCode'    => BinarySchema::TYPE_INT16,
             'groupId'      => BinarySchema::TYPE_STRING,
             'state'        => BinarySchema::TYPE_STRING,
@@ -133,5 +167,10 @@ class DescribeGroupResponseMetadata implements BinarySchemaInterface
             'protocol'     => BinarySchema::TYPE_STRING,
             'members'      => ['memberId' => DescribeGroupResponseMember::class],
         ];
+        if (static::VERSION >= 3) {
+            $scheme['authorizedOperations'] = BinarySchema::TYPE_INT32;
+        }
+
+        return $scheme;
     }
 }

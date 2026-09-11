@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * **Version 9 (Kafka 2.1, KIP-320) inserted `current_leader_epoch`** between the partition index and the fetch
  * offset, see {@see self::$currentLeaderEpoch}.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "The leader epoch (KIP-320)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "The leader epoch (KIP-320)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface
 {

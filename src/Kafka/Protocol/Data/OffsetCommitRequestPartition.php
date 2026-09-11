@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see self::UNKNOWN_LEADER_EPOCH}, which is what `OffsetCommitRequestPartitionV2` - the layout of the versions
  * 2 to 5 - carries implicitly, because it has no such field at all.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v7)"
  */
 class OffsetCommitRequestPartition implements BinarySchemaInterface
 {

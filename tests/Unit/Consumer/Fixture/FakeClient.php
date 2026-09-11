@@ -526,7 +526,8 @@ final class FakeClient extends Client
         string $memberId,
         int $generationId,
         array $topicPartitionOffsets,
-        int $retentionTimeMs
+        int $retentionTimeMs,
+        ?string $groupInstanceId = null
     ): void {
         $failure = array_shift($this->commitFailures);
         if ($failure !== null) {
@@ -539,6 +540,7 @@ final class FakeClient extends Client
             'generationId'  => $generationId,
             'offsets'       => $topicPartitionOffsets,
             'retentionTime' => $retentionTimeMs,
+            'instanceId'    => $groupInstanceId,
         ];
 
         foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
@@ -559,7 +561,8 @@ final class FakeClient extends Client
         string $memberId,
         string $protocolType,
         array $groupProtocols,
-        ?int $rebalanceTimeoutMs = null
+        ?int $rebalanceTimeoutMs = null,
+        ?string $groupInstanceId = null
     ): JoinGroupResponse {
         $this->joins[] = [
             'groupId'          => $groupId,
@@ -567,6 +570,7 @@ final class FakeClient extends Client
             'protocolType'     => $protocolType,
             'protocols'        => $groupProtocols,
             'rebalanceTimeout' => $rebalanceTimeoutMs,
+            'instanceId'       => $groupInstanceId,
         ];
 
         $failure = array_shift($this->joinFailures);
@@ -610,13 +614,15 @@ final class FakeClient extends Client
         string $groupId,
         string $memberId,
         int $generationId,
-        array $groupAssignments = []
+        array $groupAssignments = [],
+        ?string $groupInstanceId = null
     ): SyncGroupResponse {
         $this->syncs[] = [
             'groupId'      => $groupId,
             'memberId'     => $memberId,
             'generationId' => $generationId,
             'assignments'  => $groupAssignments,
+            'instanceId'   => $groupInstanceId,
         ];
 
         $failure = array_shift($this->syncFailures);
@@ -638,12 +644,18 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function heartbeat(Node $coordinatorNode, string $groupId, string $memberId, int $generationId): void
-    {
+    public function heartbeat(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $generationId,
+        ?string $groupInstanceId = null
+    ): void {
         $this->heartbeats[] = [
             'groupId'      => $groupId,
             'memberId'     => $memberId,
             'generationId' => $generationId,
+            'instanceId'   => $groupInstanceId,
         ];
 
         $failure = array_shift($this->heartbeatFailures);
