@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The array itself is **nullable**: `ZkAdminManager.createTopics` @ 2.8.2 leaves it null when it could not read
  * the configuration back, and puts the reason into the tagged `topic_config_error_code` of the topic result.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
  */
 class CreateTopicsResponseTopicConfig implements BinarySchemaInterface
 {

@@ -71,7 +71,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * error that used to make it unusable. The -1/-1 of {@see self::NO_PRODUCER_ID} is the old behaviour, "give me an
  * id"; {@see InitProducerIdRequestV2} is the frame without the two fields.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v4)"
  */
 class InitProducerIdRequest extends AbstractRequest
 {
@@ -83,7 +83,7 @@ class InitProducerIdRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * @inheritdoc

@@ -32,7 +32,7 @@ use InvalidArgumentException;
  * therefore one entry per ADDED partition (`totalCount` minus the current count), each of them as many broker ids as
  * the replication factor of the topic; a mismatch is the error code 39.
  *
- * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v3)"
  */
 final class NewPartitions
 {

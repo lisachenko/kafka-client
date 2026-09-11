@@ -25,6 +25,7 @@ use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
+use Protocol\Kafka\Common\Errors\ThrottlingQuotaExceededException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\Node;
@@ -34,6 +35,7 @@ use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
+use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
@@ -1073,12 +1075,60 @@ class AdminClient
             $error = $entry instanceof CreatedTopic ? $entry->error : $entry;
             if ($error instanceof NotControllerException) {
                 $this->cluster->reload();
-
-                return $request($this->findController());
+                $result = $request($this->findController());
+                break;
             }
         }
 
+        return $this->retryWhileThrottled($result, $request);
+    }
+
+    /**
+     * Sends the request again while the controller refuses topics with the 89 of KIP-599 (Kafka 2.7)
+     *
+     * Until Kafka 2.7 a broker whose `controller_mutation_rate` quota a client exceeded **held the request back**
+     * for the throttle time and answered it afterwards, which looks to the client like a slow controller. KIP-599
+     * gave the three topic apis a version that says "answer me instead": a client that sends CreateTopics **v6**,
+     * DeleteTopics **v5** or CreatePartitions **v3** is answered at once with the error code **89**
+     * `ThrottlingQuotaExceeded` for the topics the quota refused, plus the `throttle_time_ms` it has to wait, and
+     * it is the client that repeats the request - which is what the Java admin client does until its `retries` or
+     * its timeout are spent (`KafkaAdminClient.maybeRetryThrottled…`).
+     *
+     * The waiting itself is not done here: {@see \Protocol\Kafka\Client::awaitThrottle()} remembers the moment the
+     * throttle of the broker ends and sleeps whatever is left of it before the next request goes to that broker,
+     * which is the promise of KIP-219 this client made in Kafka 2.0.
+     *
+     * @param array<string, CreatedTopic|KafkaException|null> $result  Answer of the first attempt
+     * @param Closure(Node): array<string, CreatedTopic|KafkaException|null> $request The request to repeat
+     *
+     * @return array<string, CreatedTopic|KafkaException|null>
+     */
+    private function retryWhileThrottled(array $result, Closure $request): array
+    {
+        $attemptsLeft = RetryPolicy::fromConfiguration($this->configuration)->getRetries();
+
+        while ($attemptsLeft-- > 0 && self::isThrottled($result)) {
+            $result = $request($this->findController());
+        }
+
         return $result;
+    }
+
+    /**
+     * Tells whether any topic of an answer was refused by the controller mutation quota of KIP-599
+     *
+     * @param array<string, CreatedTopic|KafkaException|null> $result Answer of one attempt
+     */
+    private static function isThrottled(array $result): bool
+    {
+        foreach ($result as $entry) {
+            $error = $entry instanceof CreatedTopic ? $entry->error : $entry;
+            if ($error instanceof ThrottlingQuotaExceededException) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -76,7 +76,7 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
  * **Kafka 2.4 added the version 5** (KIP-482), the same fields in the flexible encoding - the request did not gain
  * anything with KIP-525, only the answer did. {@see CreateTopicsRequestV4} is the same body written the old way.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
  */
 class CreateTopicsRequest extends AbstractRequest
 {
@@ -88,7 +88,7 @@ class CreateTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * @inheritdoc

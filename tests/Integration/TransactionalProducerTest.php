@@ -24,6 +24,7 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\TransactionalProducerFencedException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
@@ -252,8 +253,10 @@ final class TransactionalProducerTest extends IntegrationTestCase
         try {
             $first->commitTransaction();
             self::fail('the fenced producer must not be able to commit');
-        } catch (ProducerFencedException) {
-            // 47 InvalidProducerEpoch, the fencing of KIP-98
+        } catch (TransactionalProducerFencedException) {
+            // The **90** `ProducerFenced` that KIP-588 (Kafka 2.7) gave the version 2 of EndTxn. Every version
+            // below it is answered the 47 `InvalidProducerEpoch` for the very same producer, which is
+            // `ProducerFencedException` here - the published name of the 47.
         }
 
         self::assertSame(TransactionState::FATAL_ERROR, $first->currentState(), 'and it never recovers');
@@ -330,7 +333,8 @@ final class TransactionalProducerTest extends IntegrationTestCase
         // A second incarnation bumps the epoch; the stale one is answered 47 per partition, not at the top level
         $this->manager($transactionalId)->initTransactions();
 
-        $this->expectException(ProducerFencedException::class);
+        // AddPartitionsToTxn v2 (KIP-588) answers a fenced producer the 90, where its version 1 answered the 47
+        $this->expectException(TransactionalProducerFencedException::class);
 
         $this->client->addPartitionsToTxn(
             $this->client->getTransactionCoordinator($transactionalId),
@@ -608,8 +612,8 @@ final class TransactionalProducerTest extends IntegrationTestCase
         try {
             $manager->commitTransaction();
             self::fail('the producer of an expired transaction must not be able to commit it');
-        } catch (ProducerFencedException) {
-            // 47 InvalidProducerEpoch
+        } catch (TransactionalProducerFencedException) {
+            // The 90 `ProducerFenced` of the EndTxn v2 that KIP-588 added; a version 1 request is answered 47
         }
     }
 

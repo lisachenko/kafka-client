@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `rack_id` of KIP-392, which version 11 (Kafka 2.3) appended behind the forgotten topics, see
  * {@see FetchRequest::$rackId}: a consumer that sends this version is always served by the leader itself.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Version 10 and the zstd codec (KIP-110)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Version 10 and the zstd codec (KIP-110)"
  */
 final class FetchRequestV10 extends FetchRequest
 {

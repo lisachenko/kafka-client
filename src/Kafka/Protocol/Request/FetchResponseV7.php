@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * and the session id of the fetch session, then the topics. The two versions differ only in what the client
  * promises about the throttle time of KIP-219, see {@see FetchResponse}.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
  */
 final class FetchResponseV7 extends FetchResponse
 {

@@ -993,7 +993,8 @@ class Client
                     $responsePartition->lastStableOffset,
                     $responsePartition->logStartOffset,
                     $responsePartition->abortedTransactions,
-                    $responsePartition->preferredReadReplica
+                    $responsePartition->preferredReadReplica,
+                    $responsePartition->divergingEpoch
                 );
             }
         }
@@ -2482,7 +2483,13 @@ class Client
             static function (DeleteTopicsResponse $response) use ($topicNames): array {
                 $result = [];
                 foreach ($topicNames as $topic) {
-                    $result[$topic] = self::topicError($topic, $response->topics[$topic]->errorCode ?? null);
+                    $topicResult    = $response->topics[$topic] ?? null;
+                    // The `error_message` of a refused topic is what Kafka 2.7 added with the version 5
+                    $result[$topic] = self::topicError(
+                        $topic,
+                        $topicResult?->errorCode,
+                        $topicResult?->errorMessage
+                    );
                 }
 
                 return $result;

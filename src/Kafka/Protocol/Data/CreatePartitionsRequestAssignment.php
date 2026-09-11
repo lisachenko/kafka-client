@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see CreateTopicsRequestReplicaAssignment}, which always was a structure here because it carries the partition
  * id next to the replicas.
  *
- * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v3)"
  */
 class CreatePartitionsRequestAssignment implements BinarySchemaInterface
 {

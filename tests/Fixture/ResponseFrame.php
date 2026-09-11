@@ -415,14 +415,15 @@ final class ResponseFrame
         int $sessionId = 0,
         array $preferredReadReplicas = []
     ): string {
-        // The throttle time of v1 opens the response, before the topics array; the session error code and the
-        // session id of v7 sit between the two
+        // Version 12 (Kafka 2.7) is the first FLEXIBLE version of this api (KIP-482): compact strings, compact
+        // arrays, a COMPACT record set and a tagged-field section at the end of every structure - which is also
+        // where the three fields of version 12 would travel, none of which a ZooKeeper-backed broker sends
         $body = pack('N', $throttleTimeMs)
             . pack('n', $sessionErrorCode)
             . pack('N', $sessionId)
-            . pack('N', count($topics));
+            . self::compactCount(count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= self::string((string) $topic) . pack('N', count($partitions));
+            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $highWaterMark, $messageSet]) {
                 [$lastStableOffset, $logStartOffset, $aborted] =
                     $transactionState[$topic][$partitionId] ?? [$highWaterMark, 0, null];
@@ -432,17 +433,37 @@ final class ResponseFrame
                     . pack('J', $highWaterMark)
                     . pack('J', $lastStableOffset)
                     . pack('J', $logStartOffset)
-                    . self::abortedTransactions($aborted)
+                    . self::compactAbortedTransactions($aborted)
                     // The preferred read replica of version 11 (Kafka 2.3, KIP-392), between the aborted
                     // transactions and the records; -1 is "read from the leader", which is what a broker
                     // without a `replica.selector.class` answers
                     . pack('N', $preferredReadReplicas[$topic][$partitionId] ?? 0xFFFFFFFF)
-                    . pack('N', strlen($messageSet))
-                    . $messageSet;
+                    . self::compactBytes($messageSet)
+                    . self::tagBuffer();
             }
+            $body .= self::tagBuffer();
+        }
+        // The `forgotten_topics_data` of a request has no counterpart here; what closes the body is its section
+        return self::flexible($correlationId, $body);
+    }
+
+    /**
+     * Encodes the nullable `aborted_transactions` array of a FLEXIBLE Fetch answer: a compact count, `0` is null
+     *
+     * @param list<array{0: int, 1: int}>|null $abortedTransactions Producer id and first offset of every entry
+     */
+    private static function compactAbortedTransactions(?array $abortedTransactions): string
+    {
+        if ($abortedTransactions === null) {
+            return self::unsignedVarint(0);
         }
 
-        return self::of($correlationId, $body);
+        $bytes = self::compactCount(count($abortedTransactions));
+        foreach ($abortedTransactions as [$producerId, $firstOffset]) {
+            $bytes .= pack('J', $producerId) . pack('J', $firstOffset) . self::tagBuffer();
+        }
+
+        return $bytes;
     }
 
     /**

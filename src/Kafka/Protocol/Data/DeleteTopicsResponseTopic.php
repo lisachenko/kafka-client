@@ -32,10 +32,15 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * only marked for deletion because the request carried a timeout of 0 with 7 (RequestTimedOut), and every topic of
  * the request with 41 (NotController) when the broker is not the active controller.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v4)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
  */
 class DeleteTopicsResponseTopic implements BinarySchemaInterface
 {
+    /**
+     * Version of the entry this class stands for, the one Kafka 2.7 gave an error message
+     */
+    public const int VERSION = 5;
+
     /**
      * Name of the topic that was requested
      */
@@ -47,13 +52,25 @@ class DeleteTopicsResponseTopic implements BinarySchemaInterface
     public int $errorCode;
 
     /**
+     * Message of the broker for a topic it refused, `null` for one it deleted
+     *
+     * @since Version 5 of protocol
+     */
+    public ?string $errorMessage = null;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'topic'     => BinarySchema::TYPE_STRING,
             'errorCode' => BinarySchema::TYPE_INT16,
         ];
+        if (static::VERSION >= 5) {
+            $scheme['errorMessage'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+
+        return $scheme;
     }
 }

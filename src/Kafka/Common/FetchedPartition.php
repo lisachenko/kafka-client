@@ -17,6 +17,7 @@ use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Protocol\Data\FetchResponseAbortedTransaction;
+use Protocol\Kafka\Protocol\Data\FetchResponseDivergingEpoch;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 
 /**
@@ -45,7 +46,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
  * {@see FetchedPartition::$logStartOffset}.
  *
  * @see \Protocol\Kafka\Client::fetchPartitions()
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Quotas and throttle time"
  */
 final class FetchedPartition
 {
@@ -95,6 +96,22 @@ final class FetchedPartition
          * `replica.selector.class` - and every answer below version 11 - reports.
          */
         public readonly int $preferredReadReplica = FetchResponsePartition::NO_PREFERRED_READ_REPLICA,
+        /**
+         * Where the log of this client and the log of the leader diverge, `null` when they do not (KIP-595).
+         *
+         * The tagged field 0 of a Fetch **v12** partition entry, and the answer to a fetch that stated the
+         * `last_fetched_epoch` of the record it stopped at - the triple
+         * `[offset, currentLeaderEpoch, lastFetchedEpoch]` of
+         * {@see \Protocol\Kafka\Client::fetchPartitions()}. It names the largest epoch from which the two logs
+         * are known to differ and the offset it ends at: a caller that gets it has to **truncate to that offset**
+         * and fetch from there, and the answer itself carries no record at all. A fetch that states no epoch -
+         * which is what this client and the Java consumer @ 2.8.2 send - is never answered with one.
+         *
+         * The other two tagged fields of the same version, `current_leader` and `snapshot_id`, belong to the
+         * raft replication of a KRaft quorum; a ZooKeeper-backed broker never fills them in, and they are read
+         * from {@see FetchResponsePartition::$currentLeader} and {@see FetchResponsePartition::$snapshotId}.
+         */
+        public readonly ?FetchResponseDivergingEpoch $divergingEpoch = null,
     ) {}
 
     /**

@@ -33,16 +33,22 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponsePartition;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseTopic;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequestV0;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequestV1;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV0;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV1;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV0;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV1;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV0;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV1;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV0;
+use Protocol\Kafka\Protocol\Request\EndTxnRequestV1;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV0;
+use Protocol\Kafka\Protocol\Request\EndTxnResponseV1;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV1;
@@ -57,22 +63,28 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 /**
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
- * @see docs/protocol/2.8.md, sections "AddPartitionsToTxn API (key 24, v0 and v1)", "AddOffsetsToTxn API (key 25, v0 and v1)",
- *      "EndTxn API (key 26, v0 and v1)", "WriteTxnMarkers API (key 27, v0)" and "TxnOffsetCommit API (key 28, v0 to v3)"
+ * @see docs/protocol/2.8.md, sections "AddPartitionsToTxn API (key 24, v0 to v2)", "AddOffsetsToTxn API (key 25, v0 to v2)",
+ *      "EndTxn API (key 26, v0 to v2)", "WriteTxnMarkers API (key 27, v0)" and "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
+#[CoversClass(AddPartitionsToTxnRequestV1::class)]
 #[CoversClass(AddPartitionsToTxnRequestV0::class)]
 #[CoversClass(AddPartitionsToTxnResponse::class)]
+#[CoversClass(AddPartitionsToTxnResponseV1::class)]
 #[CoversClass(AddPartitionsToTxnResponseV0::class)]
 #[CoversClass(AddPartitionsToTxnResponseTopic::class)]
 #[CoversClass(AddPartitionsToTxnResponsePartition::class)]
 #[CoversClass(AddOffsetsToTxnRequest::class)]
+#[CoversClass(AddOffsetsToTxnRequestV1::class)]
 #[CoversClass(AddOffsetsToTxnRequestV0::class)]
 #[CoversClass(AddOffsetsToTxnResponse::class)]
+#[CoversClass(AddOffsetsToTxnResponseV1::class)]
 #[CoversClass(AddOffsetsToTxnResponseV0::class)]
 #[CoversClass(EndTxnRequest::class)]
+#[CoversClass(EndTxnRequestV1::class)]
 #[CoversClass(EndTxnRequestV0::class)]
 #[CoversClass(EndTxnResponse::class)]
+#[CoversClass(EndTxnResponseV1::class)]
 #[CoversClass(EndTxnResponseV0::class)]
 #[CoversClass(WriteTxnMarkersRequest::class)]
 #[CoversClass(WriteTxnMarkersResponse::class)]
@@ -269,7 +281,7 @@ final class TransactionApiTest extends TestCase
 
     public function testAddPartitionsToTxnRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new AddPartitionsToTxnRequest('tx-1', 42, 3, ['topic' => [0, 1]], 'test', 7);
+        $request = new AddPartitionsToTxnRequestV1('tx-1', 42, 3, ['topic' => [0, 1]], 'test', 7);
 
         self::assertSame(self::ADD_PARTITIONS_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::ADD_PARTITIONS_TO_TXN, $request->getApiKey());
@@ -278,7 +290,7 @@ final class TransactionApiTest extends TestCase
 
     public function testAnAlreadyBuiltTopicOfAddPartitionsToTxnIsTakenAsItIs(): void
     {
-        $request = new AddPartitionsToTxnRequest(
+        $request = new AddPartitionsToTxnRequestV1(
             'tx-1',
             42,
             3,
@@ -310,7 +322,7 @@ final class TransactionApiTest extends TestCase
 
     public function testAddOffsetsToTxnRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new AddOffsetsToTxnRequest('tx-1', 42, 3, 'my-group', 'test', 8);
+        $request = new AddOffsetsToTxnRequestV1('tx-1', 42, 3, 'my-group', 'test', 8);
 
         self::assertSame(self::ADD_OFFSETS_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::ADD_OFFSETS_TO_TXN, $request->getApiKey());
@@ -329,8 +341,8 @@ final class TransactionApiTest extends TestCase
 
     public function testTheTransactionResultIsTheOnlyDifferenceBetweenACommitAndAnAbort(): void
     {
-        $commit = new EndTxnRequest('tx-1', 42, 3, EndTxnRequest::COMMIT, 'test', 9);
-        $abort  = new EndTxnRequest('tx-1', 42, 3, EndTxnRequest::ABORT, 'test', 9);
+        $commit = new EndTxnRequestV1('tx-1', 42, 3, EndTxnRequest::COMMIT, 'test', 9);
+        $abort  = new EndTxnRequestV1('tx-1', 42, 3, EndTxnRequest::ABORT, 'test', 9);
 
         self::assertSame(self::END_TXN_COMMIT_HEX, bin2hex((string) $commit));
         self::assertSame(self::END_TXN_ABORT_HEX, bin2hex((string) $abort));
