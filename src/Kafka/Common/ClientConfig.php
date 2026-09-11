@@ -62,6 +62,7 @@ class ClientConfig
         ClientConfig::RETRY_BACKOFF_MS          => 100,
         ClientConfig::RETRIES                   => 2,
         ClientConfig::OFFSETS_STORAGE           => 'kafka',
+        ClientConfig::THROTTLE_WAIT             => true,
     ];
 
     /**
@@ -185,6 +186,40 @@ class ClientConfig
      * @see \Protocol\Kafka\Network\RetryPolicy
      */
     public const RETRIES = 'retries';
+
+    /**
+     * Whether the client waits out the `throttle_time_ms` a broker reported before it talks to that broker again.
+     *
+     * **This option has no counterpart in the Java client** - a Java `NetworkClient` always waits - and it exists
+     * here because the behaviour it switches is the one runtime change of the Kafka 2.0 protocol.
+     *
+     * Until Kafka 2.0 a broker that throttled a request *held the answer back* for the whole
+     * `throttle_time_ms` and the client had nothing to do: the delay was already spent when the answer arrived.
+     * **KIP-219** turned that around: the broker answers **first**, reports the delay it is about to impose, and
+     * then **mutes the channel** for that long. Kafka 2.0 bumped every request-response api by one version -
+     * Produce v6, Fetch v8, ListOffsets v3, Metadata v6 and the group, transaction and admin apis of the same
+     * release - so that a client can *state* that it understands this; a **2.8.2 broker does it for every version
+     * either way** (measured: a Produce v5 burst is answered just as quickly and with the same `ThrottleTime` as a
+     * v6 one), so the version is a promise of the client and not a switch of the broker.
+     *
+     * A client that ignores the throttle and keeps writing does not get its request served any earlier - it writes
+     * into a muted channel, waits out the mute anyway, and makes the *next* throttle longer, because the bytes it
+     * then adds push the rate further over the bound. Measured on the container: a batch written straight after a
+     * `throttle_time_ms = 2376` answer was answered after 2377 ms with a throttle time of 6125 ms.
+     *
+     * With this option `true` - the default, and what the Java `NetworkClient` does - {@see \Protocol\Kafka\Client}
+     * remembers, per broker, the moment the throttle of the last answer ends, and sleeps whatever is left of it
+     * before it writes the next request to that broker. It is the **deadline** that is remembered, not the value,
+     * so a caller that did something else in between does not wait the time twice.
+     *
+     * With `false` the throttle time is still read and reported - every answer carries it and
+     * {@see \Protocol\Kafka\Protocol\Data\ProduceResponsePartition::$throttleTimeMs} still holds it - but the
+     * client sends the next request right away and the stall happens on the broker side instead, which is what
+     * every line of this package below 2.0 did.
+     *
+     * @see docs/protocol/2.8.md, section "Quotas and throttle time"
+     */
+    public const THROTTLE_WAIT = 'throttle.wait';
 
     /**
      * Protocol used to communicate with brokers. Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.

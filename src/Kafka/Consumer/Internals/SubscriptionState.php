@@ -231,13 +231,102 @@ final class SubscriptionState
      * @param int    $partition Id of the partition
      * @param int    $offset    New offset value
      */
-    public function seek(string $topic, int $partition, int $offset): void
+    public function seek(string $topic, int $partition, int $offset, ?int $offsetEpoch = null): void
     {
         if (!$this->isAssigned($topic, $partition)) {
             throw new UnknownTopicOrPartitionException(['topic' => $topic, 'partition' => $partition]);
         }
 
-        $this->assignment[$topic][$partition]['position'] = $offset;
+        $this->assignment[$topic][$partition]['position']      = $offset;
+        $this->assignment[$topic][$partition]['positionEpoch']  = $offsetEpoch;
+        // A position that was just set is trusted; only a leader change marks it for validation again
+        $this->assignment[$topic][$partition]['needsValidation'] = false;
+    }
+
+    /**
+     * Returns the leader epoch the position of a partition belongs to, `null` while none is known (KIP-320)
+     *
+     * This is the `offsetEpoch` of the Java `FetchPosition`: the epoch that was leading when the record at the
+     * position was written, taken from the batch the consumer last read, from the `leader_epoch` of a ListOffsets
+     * v4 answer, or from the committed offset of an OffsetFetch v5 answer. It is what an OffsetForLeaderEpoch
+     * request asks the new leader about after a leader change, see
+     * {@see \Protocol\Kafka\Consumer\KafkaConsumer::validatePositionsIfNeeded()}.
+     */
+    public function positionEpoch(string $topic, int $partition): ?int
+    {
+        return $this->assignment[$topic][$partition]['positionEpoch'] ?? null;
+    }
+
+    /**
+     * Returns the leader epoch the consumer believes this partition is being led with, `null` when unknown
+     *
+     * This is the `currentLeader` of the Java `FetchPosition`, and it is what travels as the
+     * `current_leader_epoch` of a Fetch v9, a ListOffsets v4 and an OffsetForLeaderEpoch v2 request: the broker
+     * refuses the request with 74 or 75 when the belief is stale in either direction.
+     */
+    public function currentLeaderEpoch(string $topic, int $partition): ?int
+    {
+        return $this->assignment[$topic][$partition]['currentLeaderEpoch'] ?? null;
+    }
+
+    /**
+     * Records the leader epoch the metadata reports for a partition and marks the position for validation
+     *
+     * A **new** epoch means that the partition has been led by someone else in the meantime, which is exactly the
+     * moment at which the position may point into a part of the log that the new leader never had
+     * (KIP-320). The position is therefore marked as "needs validation" and
+     * {@see \Protocol\Kafka\Consumer\KafkaConsumer::validatePositionsIfNeeded()} asks the new leader with an
+     * OffsetForLeaderEpoch v2 before the next fetch. A partition whose position carries no epoch of its own - a
+     * consumer that has never read a record batch of it - has nothing to validate and is only re-stamped.
+     */
+    public function setCurrentLeaderEpoch(string $topic, int $partition, ?int $epoch): void
+    {
+        if (!$this->isAssigned($topic, $partition)) {
+            return;
+        }
+
+        $previous = $this->assignment[$topic][$partition]['currentLeaderEpoch'] ?? null;
+        $this->assignment[$topic][$partition]['currentLeaderEpoch'] = $epoch;
+
+        if ($epoch === null || $previous === null || $epoch <= $previous) {
+            return;
+        }
+        if ($this->assignment[$topic][$partition]['positionEpoch'] === null) {
+            return;
+        }
+
+        $this->assignment[$topic][$partition]['needsValidation'] = true;
+    }
+
+    /**
+     * Tells whether the position of a partition has to be validated before it is fetched from again
+     */
+    public function needsValidation(string $topic, int $partition): bool
+    {
+        return (bool) ($this->assignment[$topic][$partition]['needsValidation'] ?? false);
+    }
+
+    /**
+     * Marks the position of a partition as validated against the leader it is about to be fetched from
+     */
+    public function completeValidation(string $topic, int $partition): void
+    {
+        if ($this->isAssigned($topic, $partition)) {
+            $this->assignment[$topic][$partition]['needsValidation'] = false;
+        }
+    }
+
+    /**
+     * Records the leader epoch of the last record batch that was read from a partition
+     *
+     * The Java consumer takes the `partitionLeaderEpoch` of the batch the last consumed record came from and
+     * keeps it next to the position, so that the epoch and the offset always describe the same point of the log.
+     */
+    public function setPositionEpoch(string $topic, int $partition, ?int $offsetEpoch): void
+    {
+        if ($offsetEpoch !== null && $this->isAssigned($topic, $partition)) {
+            $this->assignment[$topic][$partition]['positionEpoch'] = $offsetEpoch;
+        }
     }
 
     /**
@@ -318,7 +407,15 @@ final class SubscriptionState
         foreach ($assignment as $topic => $topicPartitions) {
             foreach ($topicPartitions->partitions as $partitionId) {
                 $targetAssignment[$topic][$partitionId] = $this->assignment[$topic][$partitionId]
-                    ?? ['position' => null, 'isPaused' => false];
+                    ?? [
+                        'position'           => null,
+                        'isPaused'           => false,
+                        // KIP-320: the epoch the position belongs to, the epoch the partition is believed to be
+                        // led with, and whether the position still has to be validated against a new leader
+                        'positionEpoch'      => null,
+                        'currentLeaderEpoch' => null,
+                        'needsValidation'    => false,
+                    ];
             }
         }
 

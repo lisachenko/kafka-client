@@ -37,14 +37,19 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * log. A request for {@see OffsetsRequest::LATEST} or {@see OffsetsRequest::EARLIEST} succeeds with a real offset
  * and the timestamp -1, because the broker does not read the message the offset points at.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v4), a.k.a. ListOffset"
  */
 class OffsetsResponsePartition implements BinarySchemaInterface
 {
     /**
      * Version of the Offsets API that this DTO is unpacked from
      */
-    public const int VERSION = 1;
+    public const int VERSION = 4;
+
+    /**
+     * Epoch of an answer that names none, `ListOffsetsResponse` default of `leader_epoch` @ 2.8.2
+     */
+    public const int UNKNOWN_LEADER_EPOCH = -1;
 
     /**
      * The timestamp of an answer that carries none, `ListOffsetResponse.UNKNOWN_TIMESTAMP` @ 0.10.2.2
@@ -90,6 +95,18 @@ class OffsetsResponsePartition implements BinarySchemaInterface
      *
      * @var list<int>
      */
+    /**
+     * Epoch the leader was on when it read the answered offset, the field version 4 added (Kafka 2.1, KIP-320)
+     *
+     * A consumer that seeks to the answered `offset` stores this epoch next to it and sends it back as the
+     * `current_leader_epoch` of its next fetch, so that a leader change between the lookup and the fetch is
+     * noticed instead of read past. It is {@see self::UNKNOWN_LEADER_EPOCH} in every answer below version 4,
+     * which does not carry the field at all, and for a lookup that found nothing.
+     *
+     * @since Version 4 of protocol
+     */
+    public int $leaderEpoch = self::UNKNOWN_LEADER_EPOCH;
+
     public array $offsets = [];
 
     /**
@@ -106,6 +123,9 @@ class OffsetsResponsePartition implements BinarySchemaInterface
             $scheme['offset']    = BinarySchema::TYPE_INT64;
         } else {
             $scheme['offsets'] = [BinarySchema::TYPE_INT64];
+        }
+        if (static::VERSION >= 4) {
+            $scheme['leaderEpoch'] = BinarySchema::TYPE_INT32;
         }
 
         return $scheme;

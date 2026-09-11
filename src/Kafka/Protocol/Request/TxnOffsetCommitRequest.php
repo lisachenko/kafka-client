@@ -17,12 +17,13 @@ use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
+use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
 
 /**
- * TxnOffsetCommit, version 1: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
+ * TxnOffsetCommit, version 2: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
  *
  * <pre>
- *   TxnOffsetCommit Request (Version: 0 and 1) => transactional_id consumer_group_id producer_id producer_epoch [topics]
+ *   TxnOffsetCommit Request (Version: 2) => transactional_id consumer_group_id producer_id producer_epoch [topics]
  *     transactional_id  => STRING
  *     consumer_group_id => STRING
  *     producer_id       => INT64
@@ -59,7 +60,13 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see TxnOffsetCommitRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 and v1)"
+ * **Kafka 2.1 added version 2** (KIP-320), the first version of this api whose frame really changed: every
+ * partition of it carries a `committed_leader_epoch` between the offset and the metadata
+ * ({@see \Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestPartition}), so that the coordinator stores the
+ * epoch of the leader the offset was read from next to the offset itself. It is the version this client sends;
+ * {@see TxnOffsetCommitRequestV1} is the frame without that field, with the version of Kafka 2.0.
+ *
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v2)"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {
@@ -71,7 +78,7 @@ class TxnOffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Offsets to commit, indexed by the topic name
@@ -111,11 +118,12 @@ class TxnOffsetCommitRequest extends AbstractRequest
         string $clientId = '',
         int $correlationId = 0
     ) {
+        $topicClass   = static::topicClass();
         $packedTopics = [];
         foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
             $packedTopics[$topic] = $partitionOffsets instanceof TxnOffsetCommitRequestTopic
                 ? $partitionOffsets
-                : new TxnOffsetCommitRequestTopic((string) $topic, $partitionOffsets);
+                : new $topicClass((string) $topic, $partitionOffsets);
         }
         $this->topics = $packedTopics;
 
@@ -134,7 +142,17 @@ class TxnOffsetCommitRequest extends AbstractRequest
             'groupId'         => BinarySchema::TYPE_STRING,
             'producerId'      => BinarySchema::TYPE_INT64,
             'producerEpoch'   => BinarySchema::TYPE_INT16,
-            'topics'          => ['topic' => TxnOffsetCommitRequestTopic::class],
+            'topics'          => ['topic' => static::topicClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this request belongs to
+     *
+     * @return class-string<TxnOffsetCommitRequestTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return static::VERSION >= 2 ? TxnOffsetCommitRequestTopic::class : TxnOffsetCommitRequestTopicV0::class;
     }
 }

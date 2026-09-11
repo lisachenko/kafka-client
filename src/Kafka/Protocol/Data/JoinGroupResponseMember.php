@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * receives an empty array (`GroupCoordinator.doJoinGroup` @ 0.10.2.2). The metadata is the one the member sent for
  * the protocol the coordinator selected, and it is opaque here.
  *
- * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v4)"
  */
 class JoinGroupResponseMember implements BinarySchemaInterface
 {

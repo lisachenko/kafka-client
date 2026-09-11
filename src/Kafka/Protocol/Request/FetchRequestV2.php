@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `toMessageFormat(MAGIC_VALUE_V0)`), i.e. the answer keeps its timestamps and the relative inner offsets of a
  * compressed set.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v7)" and "MessageSet and Message"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "MessageSet and Message"
  */
 final class FetchRequestV2 extends FetchRequest
 {

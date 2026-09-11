@@ -24,10 +24,10 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV2;
 
 /**
- * Produce response object, version 5
+ * Produce response object, version 7
  *
  * <pre>
- *   ProduceResponse (Version: 5) => [TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset]]
+ *   ProduceResponse (Version: 7) => [TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset]]
  *                                   ThrottleTime
  *     LogAppendTime  => int64
  *     LogStartOffset => int64
@@ -53,16 +53,27 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV2;
  * which arrives as the error code 59 `UNKNOWN_PRODUCER_ID` - from a real one. {@see ProduceResponseV1} and
  * {@see ProduceResponseV0} carry the two lower frames that really differ.
  *
+ * **Version 6 (Kafka 2.0, KIP-219) changed the answer no more than 3 and 4 did**: `ProduceResponse.json` @ 2.8.2
+ * carries no field of it, and {@see ProduceResponseV5} decodes the very same bytes. What version 6 states is that
+ * the client understands **when** a throttled answer arrives: the broker sends it first, with the delay it is
+ * about to impose in `ThrottleTime`, and mutes the channel for that long afterwards, so the client has to wait the
+ * value out itself, see {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}. A 2.8.2 broker answers every
+ * version that way, the promise of the version notwithstanding.
+ *
+ * **Version 7 (Kafka 2.1, KIP-110) changes it no more**: `ProduceResponse.json` @ 2.8.2 has no field of version
+ * 7 either, and {@see ProduceResponseV6} decodes the same bytes. What version 7 states lives entirely in the
+ * request - that its record sets may be compressed with zstd, see {@see ProduceRequest}.
+ *
  * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
      * Version of the Produce API that this class decodes the answer of
      */
-    public const int VERSION = 5;
+    public const int VERSION = 7;
 
     /**
      * Result for each topic of the request, indexed by the topic name

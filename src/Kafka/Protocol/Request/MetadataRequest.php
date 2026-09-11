@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * and the list of replicas that are currently in-sync.
  *
  * <pre>
- *   Metadata Request (Version: 5) => [topics] allow_auto_topic_creation
+ *   Metadata Request (Version: 7) => [topics] allow_auto_topic_creation
  *     topics                    => NULLABLE_ARRAY of STRING
  *     allow_auto_topic_creation => BOOLEAN     -- since version 4
  * </pre>
@@ -69,13 +69,24 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `offline_replicas` array that the ANSWER gained ({@see MetadataResponse}), which is what
  * {@see MetadataRequestV4} lowers the version constant for.
  *
+ * **Version 6 (Kafka 2.0, KIP-219) sends that frame once more** - `MetadataRequest.json` @ 2.8.2 has no field
+ * between version 4 and version 8 - and states that the **client** waits out the `throttle_time_ms` of the answer
+ * itself, because a throttled request is answered first and the channel is muted afterwards, see
+ * {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}. {@see MetadataRequestV5} keeps version 5, which a
+ * 2.8.2 broker throttles in exactly the same way - the version is the promise of the client, not a switch of the
+ * broker.
+ *
+ * **Version 7 (Kafka 2.1, KIP-320) sends that frame once more** and states that the client understands the
+ * `leader_epoch` the ANSWER gained, see {@see MetadataResponse}; {@see MetadataRequestV6} lowers the version
+ * constant for the answer that carries none.
+ *
  * The flag is `true` by default here, which is the behaviour of every version below 4 and of
  * {@see \Protocol\Kafka\Common\Cluster}, whose consumers and producers expect a named topic to spring into
  * existence. The administrative side asks with `false`: {@see \Protocol\Kafka\Admin\AdminClient::describeTopics()}
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v7)"
  */
 class MetadataRequest extends AbstractRequest
 {
@@ -87,7 +98,7 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 7;
 
     /**
      * @param list<string>|null $topics                    Topics to fetch the metadata for, null asks for every topic

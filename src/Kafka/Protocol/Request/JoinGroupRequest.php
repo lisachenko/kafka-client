@@ -18,15 +18,22 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 
 /**
- * JoinGroup, version 3: the request with which a client becomes a member of a group
+ * JoinGroup, version 4: the request with which a client becomes a member of a group
  *
  * When new members join an existing group, all previous members are required to rejoin by sending a new join group
- * request. When a member first joins the group, the member id will be empty ({@see self::DEFAULT_MEMBER_ID}), and
- * the coordinator answers with the id it assigned to it; a rejoining member has to use the member id of the
- * previous generation, otherwise it is answered with the error code 25 (UnknownMemberId).
+ * request. When a member first joins the group, the member id will be empty ({@see self::DEFAULT_MEMBER_ID}); a
+ * rejoining member has to use the member id of the previous generation, otherwise it is answered with the error
+ * code 25 (UnknownMemberId).
+ *
+ * **What an empty member id costs changed with version 4** (Kafka 2.2, KIP-394): the coordinator no longer adds a
+ * member it cannot identify to a rebalance. It answers the join with the error code **79**
+ * (`MemberIdRequired`) and the id it assigned, and the client has to send the very same request again with that
+ * id - which is what {@see \Protocol\Kafka\Consumer\Internals\ConsumerCoordinator} does, immediately and
+ * without a backoff, exactly as `AbstractCoordinator.handleJoinResponse` @ 2.8.2 does. A version 3 request with an
+ * empty member id ({@see JoinGroupRequestV3}) is still added to the group at once.
  *
  * <pre>
- *   JoinGroup Request (Version: 1, 2 and 3) => group_id session_timeout rebalance_timeout member_id protocol_type
+ *   JoinGroup Request (Version: 1 to 4) => group_id session_timeout rebalance_timeout member_id protocol_type
  *                                           [group_protocols]
  *     group_id          => STRING
  *     session_timeout   => INT32
@@ -78,7 +85,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * and the rebalance timeout, exactly as in the Java client, whose `request.timeout.ms` defaults to 305000 against a
  * `max.poll.interval.ms` of 300000.
  *
- * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v4)"
  */
 class JoinGroupRequest extends AbstractRequest
 {
@@ -97,7 +104,7 @@ class JoinGroupRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * List of protocols that the member supports, indexed by the protocol name

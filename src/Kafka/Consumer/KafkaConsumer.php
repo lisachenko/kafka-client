@@ -16,23 +16,28 @@ namespace Protocol\Kafka\Consumer;
 use InvalidArgumentException;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\FencedLeaderEpochException;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\LogTruncationException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownLeaderEpochException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Serialization\Deserializer;
 use Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter;
 use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
+use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestPartition;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -483,6 +488,14 @@ class KafkaConsumer
             return [];
         }
 
+        // KIP-320: stamp every position with the leader epoch the metadata reports and, when that epoch is NEW,
+        // ask the new leader where the epoch of the position ended before a single record is read
+        $this->refreshLeaderEpochs($activeTopicPartitionOffsets);
+        $activeTopicPartitionOffsets = $this->validatePositionsIfNeeded($activeTopicPartitionOffsets);
+        if ($activeTopicPartitionOffsets === []) {
+            return [];
+        }
+
         $fetchedPartitions = $this->fetchMessages($activeTopicPartitionOffsets, $timeout);
         $result            = $this->collectRecords($fetchedPartitions);
 
@@ -707,6 +720,29 @@ class KafkaConsumer
     }
 
     /**
+     * Returns the newest leader epoch the metadata has reported for a partition, `null` while there is none
+     *
+     * The epoch comes from the `leader_epoch` of a Metadata v7 answer, which {@see Cluster} keeps per partition
+     * and only ever moves forward (KIP-320); this method is the seam a test replaces to script a leader change.
+     */
+    protected function leaderEpochOf(string $topic, int $partition): ?int
+    {
+        return $this->getCluster()->lastSeenLeaderEpoch($topic, $partition);
+    }
+
+    /**
+     * Reloads the cluster metadata, which is what the two leader-epoch errors of KIP-320 are cured with
+     *
+     * 74 `FENCED_LEADER_EPOCH` and 75 `UNKNOWN_LEADER_EPOCH` say that this client's picture of the leadership of a
+     * partition is stale in one direction or the other; the answer is always a fresh Metadata, never a move of a
+     * position. The seam exists so that a test can observe the refresh without a cluster.
+     */
+    protected function refreshMetadata(): void
+    {
+        $this->getCluster()->reload();
+    }
+
+    /**
      * Lazy-loading for the low-level kafka client
      */
     protected function getClient(): Client
@@ -815,10 +851,217 @@ class KafkaConsumer
             foreach ($partitions as $partitionId => $fetchedPartition) {
                 $nextOffset = $fetchedPartition->getNextOffset();
                 if ($nextOffset > $fetchedPartition->fetchOffset) {
-                    $this->subscriptionState->seek((string) $topic, (int) $partitionId, $nextOffset);
+                    // KIP-320: the position and the epoch it belongs to move together. The epoch is the
+                    // `partition_leader_epoch` of the LAST batch that was read, which is what the Java consumer
+                    // keeps in `FetchPosition.offsetEpoch`; a legacy message set carries none and leaves it as it
+                    // was, which is the "I have never seen an epoch of this partition" of a magic 0/1 topic.
+                    $this->subscriptionState->seek(
+                        (string) $topic,
+                        (int) $partitionId,
+                        $nextOffset,
+                        $this->subscriptionState->positionEpoch((string) $topic, (int) $partitionId)
+                    );
+                    $this->subscriptionState->setPositionEpoch(
+                        (string) $topic,
+                        (int) $partitionId,
+                        self::lastBatchLeaderEpochOf($fetchedPartition)
+                    );
                 }
             }
         }
+    }
+
+    /**
+     * Returns the `partition_leader_epoch` of the last record batch of an answer, `null` when there is none
+     *
+     * A batch of the message format v2 carries the epoch its leader was on when it was appended (KIP-101); a
+     * legacy message set has no such field, and a batch a client wrote carries -1 until the broker stamps it.
+     */
+    private static function lastBatchLeaderEpochOf(FetchedPartition $fetchedPartition): ?int
+    {
+        $epoch = null;
+        foreach ($fetchedPartition->getMemoryRecords()->getBatches() as $batch) {
+            if (!$batch instanceof RecordBatch) {
+                continue;
+            }
+            if ($batch->partitionLeaderEpoch !== RecordBatch::NO_PARTITION_LEADER_EPOCH) {
+                $epoch = $batch->partitionLeaderEpoch;
+            }
+        }
+
+        return $epoch;
+    }
+
+    /**
+     * Stamps every fetchable position with the leader epoch the metadata reports for its partition (KIP-320)
+     *
+     * The epoch comes from the `leader_epoch` of a **Metadata v7** answer, which {@see Cluster} keeps per
+     * partition and only ever moves forward - an answer of a broker that has not caught up with the controller is
+     * ignored, see {@see Cluster::updateLastSeenEpochIfNewer()}. A *new* epoch means that the partition has been
+     * led by someone else since the position was taken, which is what marks the position for validation.
+     *
+     * @param array<string, array<int, int>> $activeTopicPartitionOffsets Positions of this poll
+     */
+    private function refreshLeaderEpochs(array $activeTopicPartitionOffsets): void
+    {
+        foreach ($activeTopicPartitionOffsets as $topic => $partitionOffsets) {
+            foreach (array_keys($partitionOffsets) as $partitionId) {
+                $this->subscriptionState->setCurrentLeaderEpoch(
+                    (string) $topic,
+                    (int) $partitionId,
+                    $this->leaderEpochOf((string) $topic, (int) $partitionId)
+                );
+            }
+        }
+    }
+
+    /**
+     * Asks the new leader of every partition whose epoch changed where the epoch of the position ended (KIP-320)
+     *
+     * This is `Fetcher.validateOffsetsIfNeeded` of the Java consumer, and it is the whole point of the leader
+     * epochs. A partition is validated exactly once per leader change, with an **OffsetForLeaderEpoch v2** that
+     * names the epoch of the position (`leader_epoch`) and the epoch the consumer believes the partition is led
+     * with (`current_leader_epoch`). Three answers are possible:
+     *
+     * * `end_offset` **at or above** the position - the position is inside a part of the log the new leader has,
+     *   and the partition is fetched from as it was;
+     * * `end_offset` **below** the position - the log diverged there: the records the consumer was about to read
+     *   never made it into this leadership. With `auto.offset.reset = earliest` or `latest` the position is reset
+     *   to the bound of the log, and with **`none`** a {@see LogTruncationException} reaches the caller;
+     * * an error - **74** `FENCED_LEADER_EPOCH` or **75** `UNKNOWN_LEADER_EPOCH` say that the belief about the
+     *   leadership is stale in one direction or the other, which is cured by a metadata refresh and never by
+     *   moving the position; the partition simply stays unvalidated and is left out of this poll.
+     *
+     * @param array<string, array<int, int>> $activeTopicPartitionOffsets Positions of this poll
+     *
+     * @return array<string, array<int, int>> The positions to fetch from, without the ones that stay unvalidated
+     *
+     * @throws LogTruncationException When the log was truncated and `auto.offset.reset` is `none`
+     */
+    private function validatePositionsIfNeeded(array $activeTopicPartitionOffsets): array
+    {
+        $toValidate = [];
+        foreach ($activeTopicPartitionOffsets as $topic => $partitionOffsets) {
+            foreach (array_keys($partitionOffsets) as $partitionId) {
+                if (!$this->subscriptionState->needsValidation((string) $topic, (int) $partitionId)) {
+                    continue;
+                }
+                $positionEpoch = $this->subscriptionState->positionEpoch((string) $topic, (int) $partitionId);
+                $currentEpoch  = $this->subscriptionState->currentLeaderEpoch((string) $topic, (int) $partitionId);
+                if ($positionEpoch === null) {
+                    // Nothing to validate: the consumer has never read a record batch of this partition
+                    $this->subscriptionState->completeValidation((string) $topic, (int) $partitionId);
+                    continue;
+                }
+                $toValidate[$topic][$partitionId] = [
+                    $positionEpoch,
+                    $currentEpoch ?? OffsetForLeaderEpochRequestPartition::UNKNOWN_LEADER_EPOCH,
+                ];
+            }
+        }
+
+        if ($toValidate === []) {
+            return $activeTopicPartitionOffsets;
+        }
+
+        try {
+            $answers = $this->getClient()->offsetsForLeaderEpochs($toValidate);
+        } catch (TopicPartitionRequestException $exception) {
+            // 74 and 75 are metadata problems, not position problems: refresh and leave the partition for the
+            // next poll. Everything else is reported to the caller.
+            if (!self::isLeaderEpochError($exception)) {
+                throw $exception;
+            }
+            $this->refreshMetadata();
+            $answers = $exception->getPartialResult();
+        }
+
+        $truncated = [];
+        foreach ($answers as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $answer) {
+                $position = $activeTopicPartitionOffsets[$topic][$partitionId] ?? null;
+                $this->subscriptionState->completeValidation((string) $topic, (int) $partitionId);
+                if ($position === null || $answer->endOffset < 0 || $answer->endOffset >= $position) {
+                    continue;
+                }
+                $truncated[$topic][$partitionId] = $answer->endOffset;
+            }
+        }
+
+        foreach ($truncated as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $endOffset) {
+                $this->onLogTruncation((string) $topic, (int) $partitionId, $endOffset);
+            }
+        }
+
+        // Only the partitions that are validated - or that never needed it - are fetched from in this poll
+        $fetchable = [];
+        foreach ($activeTopicPartitionOffsets as $topic => $partitionOffsets) {
+            foreach ($partitionOffsets as $partitionId => $offset) {
+                if ($this->subscriptionState->needsValidation((string) $topic, (int) $partitionId)) {
+                    continue;
+                }
+                $fetchable[$topic][$partitionId] = $this->subscriptionState->position((string) $topic, (int) $partitionId);
+            }
+        }
+
+        return $fetchable;
+    }
+
+    /**
+     * Reacts to a position that the new leader of a partition does not have any more
+     *
+     * `auto.offset.reset` decides: `earliest` and `latest` move the position to the bound of the log, `none`
+     * reports the divergence to the caller, exactly as the Java consumer does.
+     *
+     * @throws LogTruncationException With `auto.offset.reset = none`
+     */
+    private function onLogTruncation(string $topic, int $partition, int $truncationOffset): void
+    {
+        $position = $this->subscriptionState->position($topic, $partition);
+        $strategy = $this->configuration[ConsumerConfig::AUTO_OFFSET_RESET] ?? OffsetResetStrategy::LATEST;
+
+        if ($strategy !== OffsetResetStrategy::EARLIEST && $strategy !== OffsetResetStrategy::LATEST) {
+            throw new LogTruncationException([
+                'error'            => 'The log of the partition was truncated below the position of this consumer',
+                'topic'            => $topic,
+                'partition'        => $partition,
+                'offset'           => $position,
+                'truncationOffset' => $truncationOffset,
+            ]);
+        }
+
+        $timestamp = $strategy === OffsetResetStrategy::EARLIEST ? OffsetsRequest::EARLIEST : OffsetsRequest::LATEST;
+        $reset     = $this->listOffsets([$topic => [$partition]], $timestamp);
+        foreach ($reset as $resetTopic => $partitionOffsets) {
+            foreach ($partitionOffsets as $resetPartition => $offset) {
+                $this->subscriptionState->seek((string) $resetTopic, (int) $resetPartition, (int) $offset);
+            }
+        }
+    }
+
+    /**
+     * Tells whether every failed partition of a request failed with one of the two leader-epoch codes of KIP-320
+     */
+    private static function isLeaderEpochError(TopicPartitionRequestException $exception): bool
+    {
+        $errors = [];
+        foreach ($exception->getExceptions() as $partitionExceptions) {
+            foreach ($partitionExceptions as $partitionException) {
+                $errors[] = $partitionException;
+            }
+        }
+        if ($errors === []) {
+            return false;
+        }
+
+        foreach ($errors as $error) {
+            if (!$error instanceof FencedLeaderEpochException && !$error instanceof UnknownLeaderEpochException) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

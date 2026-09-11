@@ -32,7 +32,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * that is currently down, while version 1 and above simply leave that broker out of the replica list
  * (`errorUnavailableEndpoints = requestVersion == 0` in `KafkaApis` @ 0.10.2.2).
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v7)"
  */
 final class MetadataRequestV0 extends MetadataRequest
 {

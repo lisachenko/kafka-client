@@ -1,8 +1,8 @@
 {
     "api": "fetch",
     "apiKey": 1,
-    "section": "Fetch API (key 1, v0 to v7)",
-    "description": "Wire vectors of the Fetch API (key 1, v0 to v7), replayed by tests/Compliance.",
+    "section": "Fetch API (key 1, v0 to v10)",
+    "description": "Wire vectors of the Fetch API (key 1, v0 to v10), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "fetch.request.v4",
@@ -686,7 +686,7 @@
         {
             "id": "fetch.request.v7",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV7",
             "version": 7,
             "source": "broker",
             "description": "Fetch v7 with the epoch 0 and the session id 0, i.e. a full fetch that asks the broker to open an incremental fetch session (KIP-227). The two int32 sit between the isolation level and the topics; the empty array behind the topics is the forgotten_topics_data.",
@@ -729,7 +729,7 @@
         {
             "id": "fetch.response.v7",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer of that request. The top-level error code 0 and the session id the broker handed out stand between the throttle time and the topics; a full fetch is answered with every partition it asked for.",
@@ -774,7 +774,7 @@
         {
             "id": "fetch.request.v7.incremental",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV7",
             "version": 7,
             "source": "broker",
             "description": "The incremental fetch that follows: the same session id with the next epoch and an EMPTY topics array, which says \"the partitions of the session, with the fetch parameters you already know\".",
@@ -799,7 +799,7 @@
         {
             "id": "fetch.response.v7.incremental",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer of that incremental fetch: only the partition whose log grew since the previous answer. The other partition of the session is silently left out.",
@@ -833,7 +833,7 @@
         {
             "id": "fetch.request.v7.forgotten-topics",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV7",
             "version": 7,
             "source": "broker",
             "description": "An incremental fetch that drops a partition from its session: the partition travels in the forgotten_topics_data array behind the topics, and the broker stops answering for it.",
@@ -865,7 +865,7 @@
         {
             "id": "fetch.response.v7.forgotten-topics",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer of that request: the partition had a record appended to it right before the fetch, and it is still left out - it is gone from the session, and therefore from every answer of it.",
@@ -882,7 +882,7 @@
         {
             "id": "fetch.response.v7.invalid-fetch-session-epoch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer to an incremental fetch whose epoch is not the one the broker expects: the error code 71 INVALID_FETCH_SESSION_EPOCH, the session id 0 and an EMPTY topics array. The session itself survives.",
@@ -899,7 +899,7 @@
         {
             "id": "fetch.response.v7.session-id-not-found",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer to an incremental fetch whose session id the broker does not know: the error code 70 FETCH_SESSION_ID_NOT_FOUND, the session id 0 and an EMPTY topics array.",
@@ -916,7 +916,7 @@
         {
             "id": "fetch.request.v7.incremental-forgotten",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV7",
             "version": 7,
             "source": "broker",
             "description": "The incremental fetch of a consumer whose assignment changed: the topics array carries the positions that moved since the last request - and only those - while the partition that left the assignment travels in forgotten_topics_data. This is what FetchSessionHandler builds after a rebalance.",
@@ -966,7 +966,7 @@
         {
             "id": "fetch.response.v7.incremental-forgotten",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer of that request: the forgotten partition is gone from the session, and of the two that are left only the one whose log grew is answered.",
@@ -1000,7 +1000,7 @@
         {
             "id": "fetch.request.v7.close-existing",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV7",
             "version": 7,
             "source": "broker",
             "description": "The way back from the error codes 70 and 71: the session id the client holds with the epoch 0, which is a full fetch - it removes the session the broker may still have and asks for a new one in the same request, FetchMetadata::nextCloseExisting().",
@@ -1043,7 +1043,7 @@
         {
             "id": "fetch.response.v7.close-existing",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer of that full fetch: a NEW session id - the broker never reuses the old one - and every partition the request asked for.",
@@ -1078,6 +1078,477 @@
                                 "abortedTransactions": null,
                                 "messageSet": {
                                     "$bytes": ""
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v8",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV8",
+            "version": 8,
+            "source": "broker",
+            "description": "Fetch request v8 of one partition from the offset 0, session-less (session id 0, epoch -1) and with an empty forgotten_topics_data array. The body is the body of version 7, byte for byte - FetchRequest.json @ 2.8.2 says \"Version 8 is the same as version 7\" - and what version 8 (Kafka 2.0, KIP-219) states is that the client waits out the throttle time of the answer itself.",
+            "hex": "00000055000100080000001600027432ffffffff000001f400000001032000000000000000ffffffff00000001000a74322d766563746f727300000001000000000000000000000000ffffffffffffffff0010000000000000",
+            "fields": {
+                "messageSize": 85,
+                "apiKey": 1,
+                "apiVersion": 8,
+                "correlationId": 22,
+                "clientId": "t2",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                },
+                "forgottenTopics": []
+            }
+        },
+        {
+            "id": "fetch.response.v8",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV8",
+            "version": 8,
+            "source": "broker",
+            "description": "Fetch response v8 of the partition the request above produced to: the throttle time, the top-level error code and the session id 0 of a session-less fetch, then the partition with its high water mark, its last stable offset, its log start offset, the null aborted-transactions array of a read_uncommitted fetch and the record batch of the message format v2 as it lies in the log.",
+            "hex": "000000bd000000160000000000000000000000000001000a74322d766563746f727300000001000000000000000000000000000200000000000000020000000000000000ffffffff000000750000000000000000000000690000000002cfbaed65000000000001000001a090ca9642000001a090ca964cffffffffffffffffffffffffffff000000024400000002311c766563746f722d76616c75652d31021074726163652d69640661626328001402011c766563746f722d76616c75652d3200",
+            "fields": {
+                "messageSize": 189,
+                "correlationId": 22,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": 2,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000690000000002cfbaed65000000000001000001a090ca9642000001a090ca964cffffffffffffffffffffffffffff000000024400000002311c766563746f722d76616c75652d31021074726163652d69640661626328001402011c766563746f722d76616c75652d3200"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v8.throttled",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV8",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer of a Fetch v8 request that a consumer_byte_rate quota of 1024 bytes per second throttled: the throttle_time_ms of 70 ms at the head of the frame, the top-level error code 0, the session id 0 of a session-less fetch and an EMPTY topics array - a throttled fetch is answered with no partition at all, so there is nothing for the consumer to read and nothing but the throttle time to act on. The answer arrived about 1 ms after the request was written.",
+            "hex": "000000120000003c0000004600000000000000000000",
+            "fields": {
+                "messageSize": 18,
+                "correlationId": 60,
+                "throttleTimeMs": 70,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": []
+            }
+        },
+        {
+            "id": "fetch.request.v3.downconversion-disabled",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV3",
+            "version": 3,
+            "source": "broker",
+            "description": "Fetch request v3 of a partition whose topic is configured with message.downconversion.enable = false. A version 3 request can only read the message formats v0 and v1, so the broker would have to convert the record batch v2 of the log down for it.",
+            "hex": "0000004a000100030000001f00027432ffffffff000001f4000000010320000000000001001474322d6e6f2d646f776e636f6e76657273696f6e0000000100000000000000000000000000100000",
+            "fields": {
+                "messageSize": 74,
+                "apiKey": 1,
+                "apiVersion": 3,
+                "correlationId": 31,
+                "clientId": "t2",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "topicPartitions": {
+                    "t2-no-downconversion": {
+                        "topic": "t2-no-downconversion",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "fetchOffset": 0,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v3.downconversion-disabled",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV3",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer of a 2.8.2 broker to the request above: the error code 43 UNSUPPORTED_VERSION for the partition, with an empty record set, instead of the converted batch a broker below KIP-283 (Kafka 2.0) would have built. The high water mark travels as -1 next to the error.",
+            "hex": "000000380000001f0000000000000001001474322d6e6f2d646f776e636f6e76657273696f6e00000001000000000023ffffffffffffffff00000000",
+            "fields": {
+                "messageSize": 56,
+                "correlationId": 31,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-no-downconversion": {
+                        "topic": "t2-no-downconversion",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 35,
+                                "highWaterMarkOffset": -1,
+                                "messageSet": {
+                                    "$bytes": ""
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v9",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV9",
+            "version": 9,
+            "source": "broker",
+            "description": "Fetch request v9 of one partition from the offset 0 with the current_leader_epoch 0, the epoch of a partition that has been led by the same broker since it was created. The field sits between the partition index and the fetch offset - the field order of FetchRequest.json @ 2.8.2, which is the wire order.",
+            "hex": "0000005c000100090000004700027432ffffffff000001f400000001032000000000000000ffffffff00000001000d74322d32312d766563746f72730000000100000000000000000000000000000000ffffffffffffffff0010000000000000",
+            "fields": {
+                "messageSize": 92,
+                "apiKey": 1,
+                "apiVersion": 9,
+                "correlationId": 71,
+                "clientId": "t2",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 0,
+                                "fetchOffset": 0,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                },
+                "forgottenTopics": []
+            }
+        },
+        {
+            "id": "fetch.response.v9",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV9",
+            "version": 9,
+            "source": "broker",
+            "description": "The answer of that request: the frame of version 7, byte for byte - FetchResponse.json @ 2.8.2 has no field between version 7 and version 11 - with the records of the partition.",
+            "hex": "000000be000000470000000000000000000000000001000d74322d32312d766563746f727300000001000000000000000000000000000200000000000000020000000000000000ffffffff000000730000000000000000000000670000000002b44b83fc000000000001000001a091281b7d000001a091281b87ffffffffffffffffffffffffffff000000024200000002311a65706f63682d76616c75652d31021074726163652d69640661626326001402011a65706f63682d76616c75652d3200",
+            "fields": {
+                "messageSize": 190,
+                "correlationId": 71,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": 2,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000670000000002b44b83fc000000000001000001a091281b7d000001a091281b87ffffffffffffffffffffffffffff000000024200000002311a65706f63682d76616c75652d31021074726163652d69640661626326001402011a65706f63682d76616c75652d3200"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v9.unknown-leader-epoch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV9",
+            "version": 9,
+            "source": "broker",
+            "description": "The same Fetch v9 with the current_leader_epoch 1, one above the epoch the partition is really led with: a belief from the future, which the leader refuses.",
+            "hex": "0000005c000100090000004800027432ffffffff000001f400000001032000000000000000ffffffff00000001000d74322d32312d766563746f72730000000100000000000000010000000000000000ffffffffffffffff0010000000000000",
+            "fields": {
+                "messageSize": 92,
+                "apiKey": 1,
+                "apiVersion": 9,
+                "correlationId": 72,
+                "clientId": "t2",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 1,
+                                "fetchOffset": 0,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                },
+                "forgottenTopics": []
+            }
+        },
+        {
+            "id": "fetch.response.v9.unknown-leader-epoch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV9",
+            "version": 9,
+            "source": "broker",
+            "description": "The answer of the request above: the error code 75 UNKNOWN_LEADER_EPOCH for the partition, with the high water mark -1 and an empty record set. 74 FENCED_LEADER_EPOCH is the other direction - an epoch BELOW the current one - and a one-broker container never re-elects a leader, so it can not be produced here.",
+            "hex": "0000004b000000480000000000000000000000000001000d74322d32312d766563746f72730000000100000000004bffffffffffffffffffffffffffffffffffffffffffffffffffffffff00000000",
+            "fields": {
+                "messageSize": 75,
+                "correlationId": 72,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 75,
+                                "highWaterMarkOffset": -1,
+                                "lastStableOffset": -1,
+                                "logStartOffset": -1,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": ""
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v10",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 10,
+            "source": "broker",
+            "description": "Fetch request v10 of one partition from the offset 0 with the current_leader_epoch 0. The body is the body of version 9, byte for byte - FetchRequest.json @ 2.8.2 has no field of version 10 - and what version 10 (Kafka 2.1, KIP-110) states is that the client understands a zstd-compressed record batch. This is the version this client sends.",
+            "hex": "0000005c0001000a0000004e00027432ffffffff000001f400000001032000000000000000ffffffff00000001000d74322d32312d766563746f72730000000100000000000000000000000000000000ffffffffffffffff0010000000000000",
+            "fields": {
+                "messageSize": 92,
+                "apiKey": 1,
+                "apiVersion": 10,
+                "correlationId": 78,
+                "clientId": "t2",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 0,
+                                "fetchOffset": 0,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                },
+                "forgottenTopics": []
+            }
+        },
+        {
+            "id": "fetch.response.v10",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The answer of that request: the frame of version 7, byte for byte, with the records of the partition.",
+            "hex": "000000be0000004e0000000000000000000000000001000d74322d32312d766563746f727300000001000000000000000000000000000200000000000000020000000000000000ffffffff000000730000000000000000000000670000000002b44b83fc000000000001000001a091281b7d000001a091281b87ffffffffffffffffffffffffffff000000024200000002311a65706f63682d76616c75652d31021074726163652d69640661626326001402011a65706f63682d76616c75652d3200",
+            "fields": {
+                "messageSize": 190,
+                "correlationId": 78,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": 2,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000670000000002b44b83fc000000000001000001a091281b7d000001a091281b87ffffffffffffffffffffffffffff000000024200000002311a65706f63682d76616c75652d31021074726163652d69640661626326001402011a65706f63682d76616c75652d3200"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v9.zstd-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV9",
+            "version": 9,
+            "source": "broker",
+            "description": "A Fetch v9 of a topic configured with compression.type=zstd. Version 9 is the last one that does not promise to understand the codec of KIP-110.",
+            "hex": "0000005f000100090000006300027432ffffffff000001f400000001032000000000000000ffffffff00000001001074322d32312d7a7374642d746f7069630000000100000000ffffffff0000000000000000ffffffffffffffff0010000000000000",
+            "fields": {
+                "messageSize": 95,
+                "apiKey": 1,
+                "apiVersion": 9,
+                "correlationId": 99,
+                "clientId": "t2",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": {
+                    "t2-21-zstd-topic": {
+                        "topic": "t2-21-zstd-topic",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 0,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                },
+                "forgottenTopics": []
+            }
+        },
+        {
+            "id": "fetch.response.v9.zstd-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV9",
+            "version": 9,
+            "source": "broker",
+            "description": "The answer of a 2.8.2 broker: the error code 76 UNSUPPORTED_COMPRESSION_TYPE for the partition, with the high water mark -1 and an empty record set. KafkaApis.handleFetchRequest @ 2.8.2 refuses every fetch below version 10 of a partition whose TOPIC is configured with compression.type = zstd, whatever the records really are.",
+            "hex": "0000004e000000630000000000000000000000000001001074322d32312d7a7374642d746f7069630000000100000000004cffffffffffffffffffffffffffffffffffffffffffffffffffffffff00000000",
+            "fields": {
+                "messageSize": 78,
+                "correlationId": 99,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": {
+                    "t2-21-zstd-topic": {
+                        "topic": "t2-21-zstd-topic",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 76,
+                                "highWaterMarkOffset": -1,
+                                "lastStableOffset": -1,
+                                "logStartOffset": -1,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": ""
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v10.zstd",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 10,
+            "source": "broker",
+            "description": "The same partition fetched with version 10, which promises the codec: the broker answers the record batch as it lies, with the compression type 4 in its attributes. Reading the records out of it needs ext-zstd; without the extension this client throws an UnsupportedCompressionTypeException, the client-side half of the code 76.",
+            "hex": "000000af0000005a0000000000000000000000000001000a74322d32312d7a73746400000001000000000000000000000000000200000000000000020000000000000000ffffffff0000006700000000000000000000005b0000000002121d8234000400000001000001a091287332000001a09128734cffffffffffffffffffffffffffff0000000228b52ffd0058f000001c00000001107a7374642d6f6e65001c00340201107a7374642d74776f00010000",
+            "fields": {
+                "messageSize": 175,
+                "correlationId": 90,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": {
+                    "t2-21-zstd": {
+                        "topic": "t2-21-zstd",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": 2,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000005b0000000002121d8234000400000001000001a091287332000001a09128734cffffffffffffffffffffffffffff0000000228b52ffd0058f000001c00000001107a7374642d6f6e65001c00340201107a7374642d74776f00010000"
                                 }
                             }
                         ]

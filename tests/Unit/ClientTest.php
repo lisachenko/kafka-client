@@ -64,6 +64,7 @@ use Protocol\Kafka\Tests\Compliance\MessageFields;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
 use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
+use Protocol\Kafka\Tests\Unit\Fixture\ThrottleAwareTestClient;
 use Protocol\Kafka\Tests\Unit\Fixture\TransactionalTestClient;
 
 /**
@@ -218,10 +219,13 @@ final class ClientTest extends TestCase
 
     public function testARetriableErrorIsSentAgainToTheLeaderOfTheRefreshedMetadata(): void
     {
+        // A leader change always raises the leader epoch of the partition, and a Metadata v7 answer that does not
+        // raise it is ignored as stale (KIP-320), so the moved leader arrives with the epoch 1
         $movedLeader = ResponseFrame::metadata(
             0,
             [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
-            [self::TOPIC => [0 => 1, 1 => 1]]
+            [self::TOPIC => [0 => 1, 1 => 1]],
+            leaderEpochs: [self::TOPIC => [0 => 1, 1 => 1]]
         );
         $staleLeader = new BrokerConnection(
             ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::NOT_LEADER_FOR_PARTITION, -1]]])
@@ -576,9 +580,9 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 7, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // ApiKey 1, ApiVersion 10, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
         // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch
-        self::assertStringStartsWith('00010007', $request, 'the Fetch api is spoken in version 7');
+        self::assertStringStartsWith('0001000a', $request, 'the Fetch api is spoken in version 10');
         self::assertStringContainsString(
             '00100000' . '00' . '00000000' . 'ffffffff',
             $request,
@@ -587,9 +591,11 @@ final class ClientTest extends TestCase
         // The partitions travel in the order they were given, which is the order the broker fills the answer in;
         // the -1 in front of every MaxBytes is the LogStartOffset of v5, which only a follower fills in, and the
         // trailing empty array is the `forgotten_topics_data` of version 7
+        // The -1 in front of every fetch offset is the `current_leader_epoch` of Fetch v9 (KIP-320): this client
+        // sends "I do not know the epoch" unless the caller passed one
         self::assertStringEndsWith(
-            '00000001' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
-            . '00000000' . '0000000000000003' . 'ffffffffffffffff' . '00010000'
+            '00000001' . 'ffffffff' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
+            . '00000000' . 'ffffffff' . '0000000000000003' . 'ffffffffffffffff' . '00010000'
             . '00000000',
             $request
         );
@@ -654,7 +660,7 @@ final class ClientTest extends TestCase
         yield 'read_committed'   => ['read_committed', '01'];
     }
 
-    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionFiveRecordBatch(): void
+    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionSevenRecordBatch(): void
     {
         $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
         $this->brokers
@@ -666,8 +672,8 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 5, correlation id, client id, then the null transactional id of a plain producer
-        self::assertStringStartsWith('00000005', $frame, 'the Produce api is spoken in version 5');
+        // ApiKey 0, ApiVersion 7, correlation id, client id, then the null transactional id of a plain producer
+        self::assertStringStartsWith('00000007', $frame, 'the Produce api is spoken in version 7');
         self::assertStringContainsString('74372d636c69656e74' . 'ffff', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
@@ -865,10 +871,13 @@ final class ClientTest extends TestCase
 
     public function testTheRetryOfABatchIsTheVerySameFrameAgain(): void
     {
+        // A leader change always raises the leader epoch of the partition, and a Metadata v7 answer that does not
+        // raise it is ignored as stale (KIP-320), so the moved leader arrives with the epoch 1
         $movedLeader = ResponseFrame::metadata(
             0,
             [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
-            [self::TOPIC => [0 => 1, 1 => 1]]
+            [self::TOPIC => [0 => 1, 1 => 1]],
+            leaderEpochs: [self::TOPIC => [0 => 1, 1 => 1]]
         );
         $staleLeader = new BrokerConnection(
             ResponseFrame::initProducerId(0, 0, 2000, 0),
@@ -1191,7 +1200,7 @@ final class ClientTest extends TestCase
         self::assertStringContainsString('00001267' . '00000001', $incremental, 'the session id and the epoch 1');
         self::assertStringEndsWith(
             '00000001' . '00066f7264657273' . '00000001'
-            . '00000000' . '0000000000000001' . 'ffffffffffffffff' . '00010000'
+            . '00000000' . 'ffffffff' . '0000000000000001' . 'ffffffffffffffff' . '00010000'
             . '00000000',
             $incremental,
             'only the partition whose fetch offset moved travels, and nothing is forgotten'
@@ -1317,7 +1326,7 @@ final class ClientTest extends TestCase
         self::assertSame(FetchMetadata::INITIAL_EPOCH, $metadata->epoch);
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionFour(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionSix(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -1350,9 +1359,9 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(4, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 4');
+        self::assertSame(6, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 6');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(4, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 4');
+        self::assertSame(5, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 5');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -1408,7 +1417,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(4, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
+        self::assertSame(5, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
         self::assertStringEndsWith('ffffffff', bin2hex($frame), 'the topic array of the request is the null one');
     }
 
@@ -1479,7 +1488,7 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(3, $this->apiVersionOf($frame), 'JoinGroup v3 is the KIP-219 bump of the v1 frame');
+        self::assertSame(4, $this->apiVersionOf($frame), 'JoinGroup v4 is the KIP-394 version of the v1 frame');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(
@@ -1781,6 +1790,164 @@ final class ClientTest extends TestCase
         $header = unpack('Joffset/NmessageSize', $buffer);
 
         return Message::fromBuffer(substr($buffer, MessageSet::ENTRY_OVERHEAD, $header['messageSize']));
+    }
+
+    public function testAThrottledAnswerDelaysTheNextRequestToTheSameBroker(): void
+    {
+        // The first answer reports a throttle of 400 ms, the second one none: KIP-219 means that the broker has
+        // muted the channel for those 400 ms, so the second request must not be written before they are over
+        $leader = new BrokerConnection(
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 17]]], 400),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 18]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client = $this->throttleAwareClient();
+        $first  = $client->produce([self::TOPIC => [0 => [new Record('first')]]]);
+        self::assertSame([], $client->getSleeps(), 'the throttled answer itself is never waited for');
+        self::assertSame(400, $first[self::TOPIC][0]->throttleTimeMs, 'the field is reported to the caller');
+
+        $client->produce([self::TOPIC => [0 => [new Record('second')]]]);
+
+        self::assertSame([400000], $client->getSleeps(), 'the next request waits the reported 400 ms out');
+        self::assertSame(2, $leader->getRequestCount());
+    }
+
+    public function testTheClientWaitsTheThrottleDeadlineOutAndNotTheValueTwice(): void
+    {
+        // A caller that spent 300 of the 400 ms elsewhere only owes the remaining 100, and a caller that spent
+        // more than the whole throttle owes nothing at all: what is remembered is the deadline, not the value
+        $leader = new BrokerConnection(
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 17]]], 400),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 18]]], 400),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 19]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client = $this->throttleAwareClient();
+        $client->produce([self::TOPIC => [0 => [new Record('first')]]]);
+        $client->advanceBy(0.3);
+        $client->produce([self::TOPIC => [0 => [new Record('second')]]]);
+        $client->advanceBy(1.0);
+        $client->produce([self::TOPIC => [0 => [new Record('third')]]]);
+
+        self::assertSame(
+            [100000],
+            $client->getSleeps(),
+            'the second request owes 100 ms of the first throttle, the third one nothing of the second'
+        );
+    }
+
+    public function testASecondRequestAfterAThrottleThatWasWaitedOutDoesNotWaitAgain(): void
+    {
+        $leader = new BrokerConnection(
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 17]]], 250),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 18]]]),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 19]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client = $this->throttleAwareClient();
+        $client->produce([self::TOPIC => [0 => [new Record('first')]]]);
+        $client->produce([self::TOPIC => [0 => [new Record('second')]]]);
+        $client->produce([self::TOPIC => [0 => [new Record('third')]]]);
+
+        self::assertSame([250000], $client->getSleeps(), 'a throttle is spent by the request that waited it out');
+    }
+
+    public function testTheThrottleOfOneBrokerDoesNotDelayARequestToAnother(): void
+    {
+        // The two partitions have different leaders, so the second round sends one request to each: only the
+        // broker that muted its channel is waited for
+        $first  = new BrokerConnection(
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 17]]], 500),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 18]]])
+        );
+        $second = new BrokerConnection(
+            ResponseFrame::produce(0, [self::TOPIC => [1 => [0, 42]]]),
+            ResponseFrame::produce(0, [self::TOPIC => [1 => [0, 43]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $first)
+            ->on(self::SECOND_LEADER, $second)
+            ->install();
+
+        $client = $this->throttleAwareClient();
+        $client->produce([
+            self::TOPIC => [0 => [new Record('to the first')], 1 => [new Record('to the second')]],
+        ]);
+        $client->produce([
+            self::TOPIC => [0 => [new Record('again')], 1 => [new Record('again')]],
+        ]);
+
+        self::assertSame([500000], $client->getSleeps(), 'only the throttled broker is waited for');
+        self::assertSame(2, $first->getRequestCount());
+        self::assertSame(2, $second->getRequestCount());
+    }
+
+    public function testTheThrottleWaitCanBeSwitchedOffAndTheFieldIsStillReported(): void
+    {
+        $leader = new BrokerConnection(
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 17]]], 400),
+            ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 18]]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $leader)
+            ->install();
+
+        $client = $this->throttleAwareClient([ClientConfig::THROTTLE_WAIT => false]);
+        $result = $client->produce([self::TOPIC => [0 => [new Record('first')]]]);
+        $client->produce([self::TOPIC => [0 => [new Record('second')]]]);
+
+        self::assertSame([], $client->getSleeps(), 'with the option off the stall happens on the broker side');
+        self::assertSame(
+            400,
+            $result[self::TOPIC][0]->throttleTimeMs,
+            'the throttle time is read and reported either way, only the waiting is switched off'
+        );
+        self::assertTrue(ClientConfig::getDefaultConfiguration()[ClientConfig::THROTTLE_WAIT]);
+    }
+
+    public function testAFetchAnswerReportsItsThrottleTimeFromTheHeadOfTheFrame(): void
+    {
+        // The Fetch api carries `throttle_time_ms` in front of its topics array, the Produce api behind them:
+        // both are read, because the client looks the field up by name on the answer it just decoded
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(
+                ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 1, '']]], 750),
+                ResponseFrame::fetch(0, [self::TOPIC => [0 => [0, 1, '']]])
+            ))
+            ->install();
+
+        $client = $this->throttleAwareClient();
+        $client->fetchPartitions([self::TOPIC => [0 => 0]], 200);
+        $client->fetchPartitions([self::TOPIC => [0 => 0]], 200);
+
+        self::assertSame([750000], $client->getSleeps());
+    }
+
+    /**
+     * Builds a client whose clock and whose sleep the test controls, on the same scripted brokers
+     *
+     * @param array<string, mixed> $overrides
+     */
+    private function throttleAwareClient(array $overrides = []): ThrottleAwareTestClient
+    {
+        $configuration = self::configuration($overrides);
+
+        return new ThrottleAwareTestClient(Cluster::bootstrap($configuration), $configuration);
     }
 
     /**
