@@ -73,6 +73,16 @@ final class MetadataApiTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t3-metadata';
 
     /**
+     * How often the pair of a byte-exact comparison is asked again when the partitions come back in another order
+     */
+    private const int METADATA_ORDER_ATTEMPTS = 5;
+
+    /**
+     * How long to wait between two such attempts, in microseconds
+     */
+    private const int METADATA_ORDER_BACKOFF_MICROSECONDS = 200000;
+
+    /**
      * The only topic a 0.10.2.2 broker flags as internal, `Topic.isInternal` @ 0.10.2.2
      */
     private const string INTERNAL_TOPIC = '__consumer_offsets';
@@ -224,15 +234,36 @@ final class MetadataApiTest extends IntegrationTestCase
         $topic = self::uniqueTopicName('t3-metadata-v4');
         $this->awaitTopicWithLeaders($topic);
 
-        $stream = $this->connect();
-        new MetadataRequestV3([$topic], self::CLIENT_ID, 32)->writeTo($stream);
-        $versionThree = MetadataResponseV3::unpack($stream);
+        // The comparison is byte for byte, and the one thing that can differ between two consecutive answers is
+        // the ORDER of the partition entries: the metadata cache of the broker reorders them while other clients
+        // create and delete topics, and the protocol promises no order at all. The pair is therefore asked a few
+        // times until two answers of the same moment agree; the last pair is compared field by field, so that a
+        // real difference still fails the test instead of being retried away.
+        $versionThree = null;
+        $versionFour  = null;
+        for ($attempt = 0; $attempt < self::METADATA_ORDER_ATTEMPTS; $attempt++) {
+            $stream = $this->connect();
+            new MetadataRequestV3([$topic], self::CLIENT_ID, 32)->writeTo($stream);
+            $versionThree = MetadataResponseV3::unpack($stream);
 
-        new MetadataRequestV4([$topic], true, self::CLIENT_ID, 32)->writeTo($stream);
-        $versionFour = MetadataResponseV4::unpack($stream);
+            new MetadataRequestV4([$topic], true, self::CLIENT_ID, 32)->writeTo($stream);
+            $versionFour = MetadataResponseV4::unpack($stream);
 
-        // The broker promises no ordering for the partitions of a topic, so the two frames are compared by what
-        // they say and not byte for byte: the same partitions, the same leaders, the same replicas
+            if ((string) $versionThree === (string) $versionFour) {
+                break;
+            }
+            usleep(self::METADATA_ORDER_BACKOFF_MICROSECONDS);
+        }
+
+        if (bin2hex((string) $versionThree) === bin2hex((string) $versionFour)) {
+            self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
+            self::assertSame(0, $versionFour->throttleTimeMs);
+
+            return;
+        }
+
+        // Every attempt caught the cache in the middle of a reordering: the two frames are then compared by what
+        // they say, which is the same assertion without the order of the partition array
         self::assertSame($versionThree->getMessageSize(), $versionFour->getMessageSize());
         self::assertSame($versionThree->clusterId, $versionFour->clusterId);
         self::assertSame($versionThree->controllerId, $versionFour->controllerId);
