@@ -492,6 +492,46 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   connection (measured). `Protocol\Data\MetadataRequestTopic` is that structure and `getTopics()` still answers
   the list of names. The vector pair `metadata.*.v9` is annotated down to every compact length and tag buffer.
 
+### Kafka 2.5
+
+- **InitProducerId v3 and the epoch bump of KIP-360** — the request gains a `producer_id` and a `producer_epoch`,
+  and the two meanings of that pair are the whole KIP: the **-1/-1** every version below sent asks for a new id,
+  while the pair a producer already holds asks the coordinator for **the same id one epoch higher**. A
+  transactional producer that hit an abortable error therefore no longer has to be thrown away: `abortTransaction()`
+  rolls the transaction back and then sends that bump, and the sequence numbers of every partition start at zero
+  again (`TransactionManager::transitionToAbortableError()` sets the flag, the abort acts on it — the model is
+  `TransactionManager.bumpIdempotentEpochAndResetIdIfNeeded()` @ 2.8.2). An **idempotent** producer has no
+  coordinator that remembers it and keeps asking for a new id with the -1/-1, as it always did.
+  `InitProducerIdRequest`/`Response` are the version 3 with `InitProducerIdRequestV2`/`ResponseV2` for the
+  flexible frame without the pair; `Client::initProducerId()` takes the two values as optional arguments.
+- **TxnOffsetCommit v3 and the consumer group metadata of KIP-447** — the request gains a `generation_id`, a
+  `member_id` and a `group_instance_id` (and is the first flexible version of the api), so that the group
+  coordinator can refuse the commit of a consumer that has been rebalanced away instead of letting it write
+  offsets for partitions another member owns by now. The new `Consumer\ConsumerGroupMetadata` carries the four
+  values, `Consumer\KafkaConsumer::groupMetadata()` answers it — the `KafkaConsumer.groupMetadata()` of the Java
+  client — and `KafkaProducer::sendOffsetsToTransaction()` takes it in place of the bare group id, which still
+  works and means `ConsumerGroupMetadata::forGroup()`: the generation -1 with the empty member id, the "not a
+  member" commit of every version below 3. `TxnOffsetCommitRequestV2`/`ResponseV2` keep the frame of version 2.
+- **The flexible versions of five more apis (KIP-482)** — **CreatePartitions v2**, **SaslAuthenticate v2**,
+  **RenewDelegationToken v2**, **ExpireDelegationToken v2** and **DescribeDelegationToken v2** are the versions
+  the client sends now, each a `FLEXIBLE_VERSION` next to the `VERSION`, with a `…V1` class for the frame below
+  it. The `throttle_time_ms` of the three token apis stays **last** — the flexible encoding moves no field — the
+  SaslHandshake in front of a SaslAuthenticate stays the non-flexible **v1** (key 17 never became flexible), and
+  the `owner` of a described token is the one `Protocol\InlineStruct` of these apis: two flat fields of the
+  specification in one `KafkaPrincipal`, so no tag buffer follows it, while every renewer entry has one.
+- Measured on the container (topic `t4-25-vectors`, group `t4-25-vectors-group`, transactional id
+  `t4-25-vectors-tx`): a bump answers the same producer id with `epoch + 1`; a pair whose epoch the coordinator
+  has left behind is **47** `InvalidProducerEpoch` with the id -1 and the epoch -1 (the 90 `ProducerFenced` of the
+  Java client belongs to the version 4 of Kafka 2.7); a **null** transactional id with a real pair is answered 0
+  with a brand-new id and the epoch 0, because `handleInitProducerId` returns on the null branch before it looks
+  at the pair. A transactional commit of the current generation is **0**, of the generation before it **22**
+  `IllegalGeneration` per partition, of a member id the group does not have **25** `UnknownMemberId`, and of the
+  generation -1 with the empty member id **0**. SaslAuthenticate v2 was measured over SASL_PLAINTEXT and SASL_SSL
+  and answers the session lifetime 0 in 22 bytes.
+- **Nineteen wire vectors** of the seven versions, with their annotated dumps, and two new subsections of
+  [docs/protocol/2.8.md](docs/protocol/2.8.md): "Bumping the epoch (KIP-360)" and "The consumer group metadata of
+  a transactional commit (KIP-447)".
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 
