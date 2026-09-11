@@ -644,7 +644,36 @@ them. What the release added lives in the group and transaction apis.)*
   order (`pack('E')`, `Type.FLOAT64` of the Java client), and the three double formats in the size table of
   `IO\AbstractStream`. The quota values of the keys 48 and 49 are the only fields of Kafka 2.8.2 that use it; like
   every fixed-width type it is untouched by the compact encoding.
-
+- **DescribeConfigs v3 - the config type and the documentation of KIP-569** - the request gains an
+  `include_documentation` boolean behind `include_synonyms`, and every entry of the answer gains a
+  `config_type int8` and a nullable `documentation` string behind its synonyms. The type is the `ConfigDef.Type`
+  of the option - `Admin\ConfigType` carries the ten values, with `CLASS` spelled `ConfigType::CLASS_NAME`
+  because `class` is a reserved word in PHP and `nameOf()` answering the Java name - and the documentation is the
+  prose of `ConfigDef.define(...)`. `ConfigEntry::$type` and `ConfigEntry::$documentation` hold them,
+  `AdminClient::describeConfigs(..., bool $includeDocumentation = false)` asks for the second.
+  `DescribeConfigsRequestV2`/`ResponseV2` (and `DescribeConfigsResponseConfigEntryV1`/`ResourceV1` below them)
+  keep the frames of the versions 0 to 2.
+- Measured on the container: the **type is filled whatever the flag says** -
+  `ConfigHelper.createTopicConfigEntry` @ 2.8.2 ends in
+  `.setDocumentation(configDocumentation).setConfigType(dataType.id)`, where only the documentation is behind
+  `if (includeDocumentation)` - and an unrestricted request with the flag is **enormous**: every option of a topic
+  is 26 entries and 9 284 bytes, every option of the **broker** 233 entries and 58 272 bytes, against 74 bytes for
+  the one option the vectors of this document ask for. A client that wants a type or a help text should name its
+  `configuration_keys`.
+- **DescribeLogDirs v2 - the flexible version of KIP-482** - no field was added: the same request and answer in
+  the compact encoding, with the request header v2 and a tagged-field section at the end of every structure. The
+  nullable topic array of the request is the compact nullable one, so the `ff ff ff ff` that asks for every
+  replica of every directory becomes a single `00` and the whole request is 15 bytes.
+  `DescribeLogDirsRequestV1`/`ResponseV1` keep the frame of the versions 0 and 1.
+- Measured on the container: a **2.8.2 broker ignores the selection of the request altogether** and groups every
+  log of a directory into the answer, so a request that names one partition, one with an empty topic array and one
+  with the null array are answered with the same frame - 16 391 bytes and 581 replicas when the version 2 pair was
+  captured, where a 1.1.1 broker answered an empty array with 64 bytes. The empty array is therefore no longer the
+  cheap "which disks does this broker have" of the 1.x line, and `describelogdirs.response.v2` is a **constructed**
+  vector for the same reason as its version 1 counterpart.
+- **Ten wire vectors**: the six DescribeConfigs v3 frames (the topics `t4-26-vectors` and `t4-26-own`) and the four
+  DescribeLogDirs v2 frames (the topic `t4-26-logdirs`), each with its annotated dump, and the two headings moved
+  to their new ranges.
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------

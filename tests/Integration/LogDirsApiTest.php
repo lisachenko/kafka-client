@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
  * this suite possible at all: a broker with one directory can only ever answer "the replica is already there".
  * Every test moves replicas of a topic it created itself, because the broker is shared with the other suites.
  *
- * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0 and v1)" and
+ * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0 to v2)" and
  *      "AlterReplicaLogDirs API (key 34, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]

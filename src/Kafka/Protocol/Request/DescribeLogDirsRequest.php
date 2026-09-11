@@ -52,7 +52,13 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DescribeLogDirsRequestV0} is the same frame with the version field of Kafka 1.0.
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 and v1)"
+ * **Kafka 2.6 added version 2**, the first **flexible** version of the api (`"flexibleVersions": "2+"` of
+ * `DescribeLogDirsRequest.json` @ 2.8.2): the same two fields in the compact encoding, the request header v2, and
+ * a tagged-field section at the end of the header, of every topic entry and of the body. The nullable `topics`
+ * array is the compact nullable one, so the `ff ff ff ff` of a request that asks for every replica of every
+ * directory is the single byte `00`. {@see DescribeLogDirsRequestV1} keeps the frame of the versions 0 and 1.
+ *
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
  */
 class DescribeLogDirsRequest extends AbstractRequest
 {
@@ -64,7 +70,12 @@ class DescribeLogDirsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * The version 2 of Kafka 2.6 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Topics to describe indexed by the topic name, or null for every replica of every directory

@@ -1170,7 +1170,8 @@ class AdminClient
     public function describeConfigs(
         array $resources,
         ?array $configNames = null,
-        bool $includeSynonyms = false
+        bool $includeSynonyms = false,
+        bool $includeDocumentation = false
     ): array {
         $result = [];
         foreach ($this->groupByConfigNode($resources) as [$nodeId, $nodeResources]) {
@@ -1182,6 +1183,7 @@ class AdminClient
             $createRequest = fn(int $correlationId): DescribeConfigsRequest => new DescribeConfigsRequest(
                 $entries,
                 $includeSynonyms,
+                $includeDocumentation,
                 $this->clientId(),
                 $correlationId
             );
