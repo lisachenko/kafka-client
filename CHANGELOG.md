@@ -40,6 +40,29 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   v2 now and `Client::apiVersions()`/`AdminClient::getApiVersions()` send it; the new
   `ApiVersionsRequestV1`/`ApiVersionsResponseV1` keep the version Kafka 0.11 added, next to the
   existing `…V0`. Two new wire vectors (`apiversions.request.v2`, `apiversions.response.v2`).
+- **Flexible versions (KIP-482, Kafka 2.4) in the schema engine** — the compact types (`compact_string`,
+  `compact_bytes`, `compact_[foo]`: an unsigned varint `length + 1`, `0` for `null`), the **unsigned varints**
+  themselves (`Stream::readUnsignedVarint()`/`writeUnsignedVarint()`), the **tagged fields** of every structure
+  (`Protocol\TaggedField`, declared in the scheme, written in ascending order of the tag and left out at their
+  default), the **request header v2** and **response header v1** (`AbstractRequest::getHeaderVersion()` and
+  `AbstractResponse::getHeaderVersion()`, the `ApiKeys.requestHeaderVersion()`/`responseHeaderVersion()` of the Java
+  client), the `uuid` of KIP-516 (`TYPE_UUID`) and the one string that never becomes compact
+  (`TYPE_STRING_NEVER_COMPACT`, the `client_id` of the header v2). Flexibility is a property of the **message**
+  (`FlexibleSchemaInterface::isFlexible()`, `VERSION >= FLEXIBLE_VERSION`) that the engine hands down to every
+  nested structure, so a `Data` class needs no change to serve a flexible version - the same scheme is written
+  plainly in one version of an api and compactly in the next. Unknown tagged fields are kept
+  (`PreservesUnknownTaggedFields`) so that a frame of a later broker survives a decode and encode round trip. The
+  two exceptions of the protocol are two overrides: ControlledShutdown v0 has no client id in its header, and the
+  **ApiVersions answer keeps the response header v0** whatever its version is (KIP-511).
+- **ApiVersions v3** (Kafka 2.4, KIP-511 + KIP-482 + KIP-584) — the first flexible frame this client sends: the
+  request carries `client_software_name` = `lisachenko-kafka-client` and `client_software_version` = `2.8` as
+  compact strings (a broker refuses a name that does not match `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?` with
+  the error code **42**, measured), and the answer carries the api table as a compact array and the features of
+  KIP-584 as tagged fields (`supportedFeatures`, `finalizedFeaturesEpoch`, `finalizedFeatures` on
+  `ApiVersionsResponse`, with `ApiVersionsSupportedFeature` and `ApiVersionsFinalizedFeature`). A ZooKeeper-backed
+  2.8.2 broker answers exactly one of the three, the epoch `0`. `ApiVersionsRequestV2`/`ApiVersionsResponseV2` keep
+  the version 2, and three new wire vectors show the flexible frames byte by byte (`apiversions.request.v3`,
+  `apiversions.response.v3`, `apiversions.response.v3.invalid-software-name`).
 - **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
   **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
   **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not
