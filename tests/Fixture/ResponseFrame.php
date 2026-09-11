@@ -496,10 +496,10 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an InitProducerId response (api key 22, v0)
+     * Builds an InitProducerId response (api key 22, **v2** - the version this client sends)
      *
      * <pre>
-     *   InitProducerIdResponse => ThrottleTimeMs ErrorCode ProducerId ProducerEpoch
+     *   InitProducerIdResponse => TAG_BUFFER ThrottleTimeMs ErrorCode ProducerId ProducerEpoch TAG_BUFFER
      * </pre>
      *
      * An answer that carries an error carries -1 as the producer id and as the epoch, which is the default here.
@@ -511,10 +511,14 @@ final class ResponseFrame
         int $producerEpoch = -1,
         int $throttleTimeMs = 0
     ): string {
-        $body = pack('N', $throttleTimeMs)
+        // Version 2 (Kafka 2.4) is flexible: the response header v1 ends in a tag buffer and so does the body,
+        // while the four fields between them are the ones of every version of this api
+        $body = "\x00"
+            . pack('N', $throttleTimeMs)
             . pack('n', $errorCode)
             . pack('J', $producerId)
-            . pack('n', $producerEpoch);
+            . pack('n', $producerEpoch)
+            . "\x00";
 
         return self::of($correlationId, $body);
     }
