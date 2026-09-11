@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * CreateDelegationToken, version 1: issues a delegation token for the principal of the connection (ApiKey 38,
+ * CreateDelegationToken, version 2: issues a delegation token for the principal of the connection (ApiKey 38,
  * Kafka 1.1, KIP-48)
  *
  * <pre>
@@ -47,9 +47,15 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
  * FIRST and muting the channel afterwards, instead of holding the answer back
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
- * {@see CreateDelegationTokenRequestV0} is the same frame with the version field of Kafka 1.1.
  *
- * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 and v1)"
+ * **Kafka 2.4 added version 2**, the first **flexible** version of the api (`"flexibleVersions": "2+"` in
+ * `CreateDelegationTokenRequest.json` @ 2.8.2): the request header v2, a compact array of renewers whose two
+ * strings are compact as well, and a tagged-field section at the end of every structure. No field is added, and
+ * `throttle_time_ms` stays the **last** field of the answer, where KIP-124 put it for the four token apis.
+ * {@see CreateDelegationTokenRequestV1} and {@see CreateDelegationTokenRequestV0} are the same frame in the plain
+ * encoding.
+ *
+ * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 to v2)"
  */
 class CreateDelegationTokenRequest extends AbstractRequest
 {
@@ -61,7 +67,12 @@ class CreateDelegationTokenRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Asks for the `delegation.token.max.lifetime.ms` of the broker instead of a lifetime of its own

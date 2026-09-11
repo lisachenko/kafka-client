@@ -767,9 +767,10 @@ final class ClientTest extends TestCase
         $frame = $anyBroker->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frame));
-        self::assertSame(1, $this->apiVersionOf($frame), 'Kafka 2.0 raised the api to version 1 (KIP-219)');
-        // NullableString -1 followed by the default transaction timeout of one minute
-        self::assertStringEndsWith('ffff' . '0000ea60', bin2hex($frame));
+        self::assertSame(2, $this->apiVersionOf($frame), 'Kafka 2.4 raised the api to the flexible version 2');
+        // The compact null of the transactional id, the default transaction timeout of one minute and the tag
+        // buffer that closes the body of every flexible frame
+        self::assertStringEndsWith('00' . '0000ea60' . '00', bin2hex($frame));
     }
 
     public function testAProducerIdOfATransactionalIdIsAskedOfItsTransactionCoordinator(): void
@@ -797,7 +798,8 @@ final class ClientTest extends TestCase
         $initFrame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($initFrame));
-        self::assertStringEndsWith('0004' . '74782d31' . '00007530', bin2hex($initFrame));
+        // The compact "tx-1" of the flexible v2, the timeout and the tag buffer of the body
+        self::assertStringEndsWith('05' . '74782d31' . '00007530' . '00', bin2hex($initFrame));
     }
 
     public function testAnErrorOfTheProducerIdRequestIsReportedAsItsException(): void

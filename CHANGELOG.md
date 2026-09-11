@@ -88,7 +88,9 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   not have**, whose fields belong to the structure around it (`'owner' => new InlineStruct(KafkaPrincipal::class)`).
   It changes nothing in a plain version, where a group of fields and a nested structure are the same bytes, but in
   a flexible one it keeps the group from being given a tagged-field section of its own. The marker belongs to the
-  **field**, not to the class: the same class is a real structure wherever the specification declares one.
+  **field**, not to the class: the same class is a real structure wherever the specification declares one. The first two places of Kafka 2.8.2 that need it are the **owner of a
+  delegation token** (two flat fields of the answer that this package reads into a `KafkaPrincipal`, while the very
+  same class *is* a structure in the request of that api) and the coordinator of a FindCoordinator v3 answer.
 - **ApiVersions v3** (Kafka 2.4, KIP-511 + KIP-482 + KIP-584) — the first flexible frame this client sends: the
   request carries `client_software_name` = `lisachenko-kafka-client` and `client_software_version` = `2.8` as
   compact strings (a broker refuses a name that does not match `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?` with
@@ -98,6 +100,34 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   2.8.2 broker answers exactly one of the three, the epoch `0`. `ApiVersionsRequestV2`/`ApiVersionsResponseV2` keep
   the version 2, and three new wire vectors show the flexible frames byte by byte (`apiversions.request.v3`,
   `apiversions.response.v3`, `apiversions.response.v3.invalid-software-name`).
+- **The two partition-reassignment apis of KIP-455 (Kafka 2.4)** — `AlterPartitionReassignments`
+  (key **45**, v0) and `ListPartitionReassignments` (key **46**, v0), the apis that took the
+  reassignment of a partition out of the `/admin/reassign_partitions` znode and gave it to the
+  controller. Both are **flexible from their version 0** and both must be sent to the **controller**,
+  which answers `NOT_CONTROLLER` (41) otherwise; `AdminClient::alterPartitionReassignments()` and
+  `AdminClient::listPartitionReassignments()` reload the cluster and retry once on it. A target
+  replica set is a `Admin\NewPartitionReassignment` (or a plain list of broker ids) and `null`
+  **cancels** the reassignment of that partition; the answer is one error per partition, so
+  `alterPartitionReassignments()` returns `topic => [partition => KafkaException|null]` and throws
+  only the top-level error. `Admin\PartitionReassignment` is what the list api answers, and it does
+  the arithmetic of the three replica lists the broker sends (`getTargetReplicas()`,
+  `getOriginalReplicas()`). Ten new wire vectors in the new
+  `docs/protocol/vectors/alter-partition-reassignments.json` and
+  `docs/protocol/vectors/list-partition-reassignments.json`, captured on the container together with
+  every error the two apis answer: **85** `NO_REASSIGNMENT_IN_PROGRESS` (the code Kafka 2.4 added,
+  and also what a cancellation of a partition that never existed answers, because the controller
+  consults the reassignments in flight before it asks whether the partition exists), **39**
+  `INVALID_REPLICA_ASSIGNMENT` for a replica set that names a broker that is not alive, and **3**
+  `UNKNOWN_TOPIC_OR_PARTITION` per partition — never at the top level — for a topic the cluster does
+  not have.
+- **InitProducerId v2 and CreateDelegationToken v2 (Kafka 2.4)** — the first two **flexible** versions
+  of apis this package already spoke: no field is added, the body of v1 is written compactly and the
+  frame carries the request header v2 and the response header v1. `InitProducerIdRequest`/`Response`
+  and `CreateDelegationTokenRequest`/`Response` are the v2 now (`TransactionManager` and
+  `AdminClient::createDelegationToken()` send them), and the new `InitProducerIdRequestV1`,
+  `InitProducerIdResponseV1`, `CreateDelegationTokenRequestV1` and `CreateDelegationTokenResponseV1`
+  keep the version Kafka 2.0 bumped. Six new wire vectors, the v2 pair of each api and the two error
+  answers of the token api.
 - **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
   **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
   **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not

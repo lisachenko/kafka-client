@@ -64,9 +64,15 @@ final class DelegationTokenAdminTest extends TestCase
     private const string BROKER_ADDRESS = 'tcp://127.0.0.1:9092';
 
     /**
-     * Token id of the vectors, i.e. the token that `User:kafkatest` created with the renewer `User:admin`
+     * Token id of the version 0 vectors, i.e. the token that `User:kafkatest` created with the renewer `User:admin`
      */
     private const string TOKEN_ID = 'MopLsgz-Q1uJqTR8T9s4aQ';
+
+    /**
+     * Token id of the **version 2** answer, which is the frame the client reads today: a capture of its own, made
+     * on the 2.8.2 container when the api was raised to the flexible v2 of Kafka 2.4
+     */
+    private const string TOKEN_ID_V2 = '72e565j9SJiE6_eIDUUeRA';
 
     private ScriptedConnections $brokers;
 
@@ -82,17 +88,17 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testCreateDelegationTokenReturnsTheTokenOfTheAnswerWithTheRenewersOfTheRequest(): void
     {
-        $broker = $this->scriptBroker(self::vector('createdelegationtoken.response.v0'));
+        $broker = $this->scriptBroker(self::vector('createdelegationtoken.response.v2'));
 
         $token = $this->adminClient()->createDelegationToken([KafkaPrincipal::user('admin')], 3600000);
 
-        self::assertSame(self::TOKEN_ID, $token->tokenId());
+        self::assertSame(self::TOKEN_ID_V2, $token->tokenId());
         self::assertSame('User:kafkatest', $token->tokenInformation->ownerAsString());
         self::assertSame(64, strlen($token->hmac), 'the HmacSHA512 of the token id is 64 bytes');
         self::assertStringEndsWith('==', $token->hmacAsBase64String());
-        self::assertSame(1789059673170, $token->tokenInformation->issueTimestamp);
-        self::assertSame(1789063273170, $token->tokenInformation->expiryTimestamp);
-        self::assertSame(1789063273170, $token->tokenInformation->maxTimestamp);
+        self::assertSame(1789141554021, $token->tokenInformation->issueTimestamp);
+        self::assertSame(1789145154021, $token->tokenInformation->expiryTimestamp);
+        self::assertSame(1789145154021, $token->tokenInformation->maxTimestamp);
         self::assertSame(
             ['User:admin'],
             $token->tokenInformation->renewersAsString(),
@@ -115,7 +121,7 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testACreateAnswerWithAnErrorCodeBecomesTheExceptionOfThatCode(): void
     {
-        $this->scriptBroker(self::vector('createdelegationtoken.response.v0.invalid-principal-type'));
+        $this->scriptBroker(self::vector('createdelegationtoken.response.v2.invalid-principal-type'));
 
         $this->expectException(InvalidPrincipalTypeException::class);
 
@@ -124,7 +130,7 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testACreateOnAnUnauthenticatedChannelBecomesTheUnsupportedByAuthenticationException(): void
     {
-        $this->scriptBroker(self::vector('createdelegationtoken.response.v0.not-allowed'));
+        $this->scriptBroker(self::vector('createdelegationtoken.response.v2.not-allowed'));
 
         $this->expectException(UnsupportedByAuthenticationException::class);
 

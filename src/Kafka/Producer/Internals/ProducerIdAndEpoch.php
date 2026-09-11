@@ -26,7 +26,7 @@ use Stringable;
  * plain producer writes into its batches.
  *
  * @see \Protocol\Kafka\Producer\Internals\TransactionManager
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v2)"
  */
 final class ProducerIdAndEpoch implements Stringable
 {

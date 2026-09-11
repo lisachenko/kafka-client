@@ -17,11 +17,11 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * InitProducerId, version 1: asks for a producer id and its epoch (ApiKey 22, Kafka 0.11, KIP-98)
+ * InitProducerId, version 2: asks for a producer id and its epoch (ApiKey 22, Kafka 0.11, KIP-98)
  *
  * <pre>
- *   InitProducerId Request (Version: 0 and 1) => transactional_id transaction_timeout_ms
- *     transactional_id       => NULLABLE_STRING
+ *   InitProducerId Request (Version: 0 to 2) => transactional_id transaction_timeout_ms
+ *     transactional_id       => NULLABLE_STRING   (COMPACT_NULLABLE_STRING from v2)
  *     transaction_timeout_ms => INT32
  * </pre>
  *
@@ -54,9 +54,17 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
  * FIRST and muting the channel afterwards, instead of holding the answer back
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
- * {@see InitProducerIdRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 and v1)"
+ * **Kafka 2.4 added version 2**, which changes nothing either: it is the first **flexible** version of the api
+ * (`"flexibleVersions": "2+"` in `InitProducerIdRequest.json` @ 2.8.2), so the frame carries the request header v2,
+ * the transactional id is a compact string and both the header and the body end in a tagged-field section - the
+ * same two fields, three bytes shorter for a null id. This is the version the client sends;
+ * {@see InitProducerIdRequestV1} and {@see InitProducerIdRequestV0} are the same frame in the plain encoding.
+ *
+ * The versions 3 (Kafka 2.5, KIP-360: the producer id and epoch of the caller) and 4 (Kafka 2.7, KIP-588) belong to
+ * a later ticket of this line.
+ *
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v2)"
  */
 class InitProducerIdRequest extends AbstractRequest
 {
@@ -68,7 +76,12 @@ class InitProducerIdRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Default of the `transaction.timeout.ms` option of the Java producer, one minute
