@@ -145,26 +145,6 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   broker does not have is **3** per partition. Two quirks are pinned by tests: a partition that never had a
   committed offset is answered with **0** like one that had, and deleting the **last** committed offset of an
   `Empty` group transitions it to `Dead` and drops it, so the next request for it answers 69.
-- **The two client-quota apis of KIP-546 (Kafka 2.6)** — `DescribeClientQuotas` (key **48**) and
-  `AlterClientQuotas` (key **49**), in **both** encodings: the plain **v0** that Kafka 2.6 added and the flexible
-  **v1** of Kafka 2.8, which is the same frame with compact types (`…RequestV0`/`…ResponseV0` keep the v0). Until
-  2.6 a client quota could only be read and written through **ZooKeeper**, which is why the quota fixture of the
-  lines below shells `kafka-configs.sh` into the container; these two requests replace it.
-  `AdminClient::describeClientQuotas(ClientQuotaFilter)` answers `entity => [quota => value]` and
-  `AdminClient::alterClientQuotas(array $alterations, bool $validateOnly = false)` reports one result per entity and
-  throws nothing, because the alter api has **no top-level error code**. The value objects are the Java ones:
-  `Admin\ClientQuotaEntity` (a map of entity type to name, `null` being the `<default>` entity),
-  `ClientQuotaFilter`/`ClientQuotaFilterComponent` with the three match types, and
-  `ClientQuotaAlteration`/`ClientQuotaAlterationOp` whose `remove()` is the api's `remove` flag. Eleven new wire
-  vectors in the new `docs/protocol/vectors/describe-client-quotas.json` and `alter-client-quotas.json`, and three
-  broker behaviours measured: an unknown entity type is **35** (not 42) with `Custom entity type 'x' not supported`,
-  an unknown quota key is **42** per entity, and an unknown **match type** escapes
-  `DescribeClientQuotasRequest.filter()` as a plain `IllegalArgumentException` and comes back as the error code
-  **-1** with a null message — a validation gap of the broker.
-- **`float64` in the schema engine** — `BinarySchema::TYPE_FLOAT64`, eight bytes of an IEEE 754 double in network
-  order (`pack('E')`, `Type.FLOAT64` of the Java client), and the three double formats in the size table of
-  `IO\AbstractStream`. The quota values of the keys 48 and 49 are the only fields of Kafka 2.8.2 that use it; like
-  every fixed-width type it is untouched by the compact encoding.
 - **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
   **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
   **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not
@@ -445,6 +425,32 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   been rejected", and the very same request as a version 7 one comes back with the 87 and the offsets `-1`
   alone. Five wire vectors, the section "The record errors of a refused batch (v8, KIP-467)" of the protocol
   document, a broker quirk, unit tests and the new integration suite `RecordErrorsTest`.
+
+### Kafka 2.6
+
+- **The two client-quota apis of KIP-546** — `DescribeClientQuotas` (key **48**, v0) and `AlterClientQuotas`
+  (key **49**, v0). Until Kafka 2.6 a client quota could only be read and written through **ZooKeeper**, which is
+  why the quota fixture of the lines below shells `kafka-configs.sh` into the container; these two requests replace
+  it. Both are **plain** frames although the release is well past KIP-482 —
+  `DescribeClientQuotasRequest.json` @ 2.6.3 and @ 2.7.2 declare `"flexibleVersions": "none"` — and their flexible
+  v1 is Kafka 2.8. `AdminClient::describeClientQuotas(ClientQuotaFilter)` answers `entity => [quota => value]` and
+  `AdminClient::alterClientQuotas(array $alterations, bool $validateOnly = false)` reports one result per entity
+  and throws nothing, because the alter api has **no top-level error code**. The value objects carry the Java
+  names: `Admin\ClientQuotaEntity` (a map of entity type to name, `null` being the `<default>` entity),
+  `ClientQuotaFilter`/`ClientQuotaFilterComponent` with the three match types, and
+  `ClientQuotaAlteration`/`ClientQuotaAlterationOp` whose `remove()` is the api's `remove` flag. Nine new wire
+  vectors in the new `docs/protocol/vectors/describe-client-quotas.json` and `alter-client-quotas.json`, and three
+  broker behaviours measured: an unknown entity type is **35** (not 42) with `Custom entity type 'x' not
+  supported` and a **null** entry array where a filter that matched nothing answers an empty one, an unknown quota
+  key is **42** per entity, and an unknown **match type** escapes `DescribeClientQuotasRequest.filter()` as a plain
+  `IllegalArgumentException` and comes back as the error code **-1** with a null message — a validation gap of the
+  broker. `strict` was measured too: it excludes an entity that also carries a `user` part, and the non-strict
+  filter keeps it.
+- **`float64` in the schema engine** — `BinarySchema::TYPE_FLOAT64`, eight bytes of an IEEE 754 double in network
+  order (`pack('E')`, `Type.FLOAT64` of the Java client), and the three double formats in the size table of
+  `IO\AbstractStream`. The quota values of the keys 48 and 49 are the only fields of Kafka 2.8.2 that use it; like
+  every fixed-width type it is untouched by the compact encoding.
+
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------

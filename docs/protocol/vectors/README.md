@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **497** of them in **41** files: **179** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **506** of them in **43** files: **188** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -18,8 +18,9 @@ of its non-flexible admin half - CreateTopics v4 (KIP-464) and ElectLeaders v1 (
 LeaveGroup v3 of Kafka **2.4** and the 16 frames of its **partition reassignments and first flexible admin bumps**
 (KIP-455, in the two new files `alter-partition-reassignments.json` and `list-partition-reassignments.json`, plus
 InitProducerId v2 and CreateDelegationToken v2), the 5 frames of its Produce v8 (KIP-467, the record errors of
-a refused batch) and the 5 frames of **OffsetDelete** (KIP-496, the new file `offset-delete.json`) - and of the
-other 318, **229** were
+a refused batch) and the 5 frames of **OffsetDelete** (KIP-496, the new file `offset-delete.json`), and the 9
+frames of the two client-quota apis of **Kafka 2.6** (KIP-546, the two new files `describe-client-quotas.json` and
+`alter-client-quotas.json`) - and of the other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
@@ -68,6 +69,8 @@ What **Kafka 2.4** added to the admin and transaction surface, captured with the
 | `alter-partition-reassignments.json` | 8 of 8, **new file** | **AlterPartitionReassignments v0** (KIP-455), the first *flexible* admin frames this package sends: a reassignment to the replica set a partition already has (the only successful one a one-broker cluster can be asked for), a cancellation with nothing in flight (**85** `NoReassignmentInProgress`, the code Kafka 2.4 added for it), a replica set naming a broker that is not alive (**39**), a topic the cluster does not have (**3**, per partition and never at the top level) and a request whose three partitions carry three different codes. The topic is `t1-reassign-vectors`; no vector ever names a **null** topic array, which would move the partitions of every other suite of the shared container |
 | `list-partition-reassignments.json` | 2 of 2, **new file** | **ListPartitionReassignments v0** (KIP-455): the request for one named partition and the 14-byte answer of a cluster with nothing in flight. A one-broker cluster completes a reassignment before it answers the request that submitted it, so the empty list is the only answer it can produce; the shape of a partition in flight is documented from the sources |
 | `offset-delete.json` | 5 of 5, **new file** | **OffsetDelete v0** (Kafka 2.4, KIP-496), the one api of that release that is **not** flexible: the request and the answer whose top-level error code stands *before* the throttle time, and the three refusals - **86** `GroupSubscribedToTopic` for a topic a live `consumer` group consumes, **68** `NonEmptyGroup` for a live group of another protocol type and **69** `GroupIdNotFound` for a group the coordinator does not know, the last two in 18 bytes that name no partition at all |
+| `describe-client-quotas.json` | 4 of 4, **new file** | **DescribeClientQuotas v0** (Kafka 2.6, KIP-546): the filter for one named `client-id` and the answer that carries its two quotas as **`float64`s** - the only place in this protocol where that type appears - plus the two refusals, **35** for an entity type the broker does not know (with a **null** entry array, where a filter that matched nothing answers an empty one) and **-1** for a match type it does not know. The frames are plain: Kafka 2.6 added the api after KIP-482 and still without the compact encoding, and the flexible v1 is Kafka 2.8 |
+| `alter-client-quotas.json` | 5 of 5, **new file** | **AlterClientQuotas v0** (Kafka 2.6, KIP-546): two quotas set on the `client-id` entity `t1-quota-vectors` and the answer that reports the entity on its own - this api has no top-level error code - a removal asked with `validate_only` (whose op still carries the eight bytes of double the broker discards) and the **42** of a quota name the broker does not know |
 | `init-producer-id.json` | 2 new of 10 | **InitProducerId v2** (KIP-482): the v1 body in the compact encoding - the request header v2, a compact transactional id and a tag buffer at the end of the header and of the body - for the transactional id `t1-24-vectors-tx` |
 | `delegation-tokens.json` | 4 new of 26 | **CreateDelegationToken v2** (KIP-482): the flexible pair for `User:kafkatest` on the SASL_PLAINTEXT listener, the **57** of a renewer whose principal type is not `User` and the **64** of the PLAINTEXT listener, all four with compact strings and bytes. The `owner` of the answer is two *flat* fields of the specification, so it carries no tag buffer of its own - the `InlineStruct` case of the engine |
 

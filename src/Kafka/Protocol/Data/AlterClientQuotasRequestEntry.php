@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Every entry of a request is applied on its own and is answered on its own, so one refused entity does not stop
  * the others.
  *
- * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0)"
  */
 class AlterClientQuotasRequestEntry implements BinarySchemaInterface
 {

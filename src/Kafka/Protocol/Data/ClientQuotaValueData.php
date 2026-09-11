@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * percentage of one request-handler thread and `controller_mutation_rate` mutations per second, none of which is
  * a whole number by nature.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0)"
  */
 class ClientQuotaValueData implements BinarySchemaInterface
 {
