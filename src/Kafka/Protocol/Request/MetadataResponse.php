@@ -83,7 +83,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v8)" and "Cluster readiness"
+ * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v9)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
@@ -92,7 +92,17 @@ class MetadataResponse extends AbstractResponse
     /**
      * Version of the Metadata API that this class unpacks
      */
-    public const int VERSION = 8;
+    public const int VERSION = 9;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `MetadataResponse.json` @ 2.8.2 declares `"flexibleVersions": "9+"`: a version 9 answer carries the
+     * response header **v1** - a tag buffer behind the correlation id - compact strings and arrays, and a
+     * tagged-field section at the end of the body, of every broker entry, of every topic entry and of every
+     * partition entry. The fields themselves are the ones of version 8.
+     */
+    public const int FLEXIBLE_VERSION = 9;
 
     /**
      * Broker id that the answer reports while the cluster has no active controller

@@ -30,12 +30,14 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV4;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV4;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV5;
 
 /**
  * Byte-exact tests for the OffsetFetch API (key 9), versions 0 to 5.
@@ -46,7 +48,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV4;
  * the ANSWER again: every partition entry of it carries a `committed_leader_epoch` behind the committed offset.
  * The request of v5 is still the body of v2, and v5 is the version this client sends.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
  */
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]
@@ -54,12 +56,14 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV4;
 #[CoversClass(OffsetFetchRequestV2::class)]
 #[CoversClass(OffsetFetchRequestV3::class)]
 #[CoversClass(OffsetFetchRequestV4::class)]
+#[CoversClass(OffsetFetchRequestV5::class)]
 #[CoversClass(OffsetFetchResponse::class)]
 #[CoversClass(OffsetFetchResponseV0::class)]
 #[CoversClass(OffsetFetchResponseV1::class)]
 #[CoversClass(OffsetFetchResponseV2::class)]
 #[CoversClass(OffsetFetchResponseV3::class)]
 #[CoversClass(OffsetFetchResponseV4::class)]
+#[CoversClass(OffsetFetchResponseV5::class)]
 #[CoversClass(OffsetFetchResponseTopic::class)]
 #[CoversClass(OffsetFetchResponsePartition::class)]
 #[CoversClass(OffsetFetchResponsePartitionV0::class)]
@@ -201,11 +205,54 @@ final class OffsetFetchTest extends TestCase
 
     public function testVersion5RequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1);
+        $request = new OffsetFetchRequestV5('my-group', ['topic' => [0, 1]], 'test', 1);
 
         self::assertSame(self::REQUEST_V5_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::OFFSET_FETCH, $request->getApiKey());
         self::assertSame(5, $request->getApiVersion(), 'the highest non-flexible version of the api');
+        self::assertFalse(OffsetFetchRequestV5::isFlexible());
+    }
+
+    /**
+     * Version 6 (Kafka 2.4, KIP-482) is the same request in the flexible encoding, and it is what this client sends
+     */
+    public function testVersion6IsTheFlexibleEncodingOfTheSameRequest(): void
+    {
+        $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1);
+
+        self::assertSame(
+            '0000002a' . '0009' . '0006' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '09' . '6d792d67726f7570'
+            . '02'
+            . '06' . '746f706963'
+            . '03' . '00000000' . '00000001'
+            . '00'
+            . '00',
+            bin2hex((string) $request)
+        );
+        self::assertSame(6, $request->getApiVersion(), 'KIP-482 makes the version this client sends 6');
+        self::assertTrue(OffsetFetchRequest::isFlexible());
+    }
+
+    /**
+     * The nullable topic array of version 2 stays nullable in the flexible encoding: `00` instead of a count
+     */
+    public function testTheNullTopicArrayOfTheFlexibleVersionIsTheUnsignedVarintZero(): void
+    {
+        $request = OffsetFetchRequest::forAllTopics('my-group', 'test', 1);
+
+        self::assertSame(
+            '0000001a' . '0009' . '0006' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '09' . '6d792d67726f7570'
+            . '00'
+            . '00',
+            bin2hex((string) $request),
+            'a null compact array is the unsigned varint 0, where an empty one is 1'
+        );
     }
 
     public function testVersion4RequestOnlyDiffersInTheVersionFieldOfTheHeader(): void
@@ -215,7 +262,7 @@ final class OffsetFetchTest extends TestCase
         self::assertSame(self::REQUEST_V4_HEX, bin2hex((string) $request));
         self::assertSame(4, $request->getApiVersion());
         self::assertSame(
-            OffsetFetchRequest::getScheme(),
+            OffsetFetchRequestV5::getScheme(),
             OffsetFetchRequestV4::getScheme(),
             'KIP-320 changed the answer of version 5, not its request'
         );
@@ -228,7 +275,7 @@ final class OffsetFetchTest extends TestCase
         self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $request));
         self::assertSame(3, $request->getApiVersion());
         self::assertSame(
-            OffsetFetchRequest::getScheme(),
+            OffsetFetchRequestV5::getScheme(),
             OffsetFetchRequestV3::getScheme(),
             'KIP-219 raised the api version of the request without adding a field'
         );
@@ -241,7 +288,7 @@ final class OffsetFetchTest extends TestCase
         self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
         self::assertSame(2, $request->getApiVersion());
         self::assertSame(
-            OffsetFetchRequest::getScheme(),
+            OffsetFetchRequestV5::getScheme(),
             OffsetFetchRequestV2::getScheme(),
             'OFFSET_FETCH_REQUEST_V3 = OFFSET_FETCH_REQUEST_V2'
         );
@@ -287,21 +334,21 @@ final class OffsetFetchTest extends TestCase
 
     public function testNullTopicsAreWrittenAsTheNullArrayOfVersionTwo(): void
     {
-        $request = new OffsetFetchRequest('my-group', null, 'test', 1);
+        $request = new OffsetFetchRequestV5('my-group', null, 'test', 1);
 
         self::assertSame(self::REQUEST_V5_ALL_TOPICS_HEX, bin2hex((string) $request));
     }
 
     public function testForAllTopicsBuildsTheNullTopicArrayRequest(): void
     {
-        $request = OffsetFetchRequest::forAllTopics('my-group', 'test', 1);
+        $request = OffsetFetchRequestV5::forAllTopics('my-group', 'test', 1);
 
         self::assertSame(self::REQUEST_V5_ALL_TOPICS_HEX, bin2hex((string) $request));
     }
 
     public function testAnEmptyTopicArrayIsADifferentRequestFromTheNullOne(): void
     {
-        $request = new OffsetFetchRequest('my-group', [], 'test', 1);
+        $request = new OffsetFetchRequestV5('my-group', [], 'test', 1);
 
         self::assertSame(self::REQUEST_V5_NO_TOPICS_HEX, bin2hex((string) $request));
         self::assertNotSame(self::REQUEST_V5_ALL_TOPICS_HEX, bin2hex((string) $request));
@@ -323,7 +370,7 @@ final class OffsetFetchTest extends TestCase
 
     public function testAlreadyBuiltTopicPartitionsArePackedAsTheyAre(): void
     {
-        $request = new OffsetFetchRequest(
+        $request = new OffsetFetchRequestV5(
             'my-group',
             ['topic' => new PartitionsForTopic('topic', [0, 1])],
             'test',
@@ -335,7 +382,7 @@ final class OffsetFetchTest extends TestCase
 
     public function testSeveralTopicsAreRequestedInOneMessage(): void
     {
-        $request = new OffsetFetchRequest('my-group', ['first' => [0], 'second' => [1, 2]], '', 0);
+        $request = new OffsetFetchRequestV5('my-group', ['first' => [0], 'second' => [1, 2]], '', 0);
         $hex     = bin2hex((string) $request);
 
         self::assertStringContainsString('00000002' . '0005' . bin2hex('first') . '00000001' . '00000000', $hex);
@@ -408,7 +455,7 @@ final class OffsetFetchTest extends TestCase
             . '0000'
             . '0000';
 
-        $response = OffsetFetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = OffsetFetchResponseV5::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(42, $response->topics['topic']->partitions[0]->offset);
         self::assertSame(7, $response->topics['topic']->partitions[0]->leaderEpoch);
@@ -438,7 +485,7 @@ final class OffsetFetchTest extends TestCase
             . '0000'
             . '0000';
 
-        $response = OffsetFetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = OffsetFetchResponseV5::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(-1, $response->topics['topic']->partitions[0]->leaderEpoch);
         self::assertNull(

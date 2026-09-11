@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * everything per partition - the 31 `ClusterAuthorizationFailed` of a refused client included, which arrives on
  * every partition the request named instead of once.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 final class ElectLeadersResponseV0 extends ElectLeadersResponse
 {

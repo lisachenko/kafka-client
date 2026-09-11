@@ -43,14 +43,20 @@ use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroup;
  *
  * Version 1 (KIP-219, Kafka 2.0) answers the same bytes, which {@see DeleteGroupsResponseV0} decodes as well.
  *
- * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 to v2)"
  */
 class DeleteGroupsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas

@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * take the four bytes of the node id for a throttle time. {@see GroupCoordinatorResponse::$throttleTimeMs} stays 0
  * and {@see GroupCoordinatorResponse::$errorMessage} stays null for an instance of this class.
  *
- * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 to v3)"
  */
 final class GroupCoordinatorResponseV0 extends GroupCoordinatorResponse
 {

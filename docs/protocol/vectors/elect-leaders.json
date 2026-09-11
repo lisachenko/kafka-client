@@ -1,8 +1,8 @@
 {
     "api": "elect-leaders",
     "apiKey": 43,
-    "section": "ElectLeaders API (key 43, v0 and v1)",
-    "description": "Wire vectors of the ElectLeaders API (key 43, v0 and v1), replayed by tests/Compliance.",
+    "section": "ElectLeaders API (key 43, v0 to v2)",
+    "description": "Wire vectors of the ElectLeaders API (key 43, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "electleaders.request.v0",
@@ -109,7 +109,7 @@
         {
             "id": "electleaders.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersRequestV1",
             "version": 1,
             "source": "broker",
             "description": "ElectLeaders request v1, the frame KIP-460 gave a LEADING `election_type` byte in Kafka 2.4: 0 asks for the preferred replica, which is what the whole api could do before.",
@@ -135,7 +135,7 @@
         {
             "id": "electleaders.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersResponseV1",
             "version": 1,
             "source": "broker",
             "description": "ElectLeaders answer v1: the `error_code` of the whole request behind the throttle time - 0, because the request reached the controller - and the per-partition 84 of a partition that is already led by its preferred replica.",
@@ -162,7 +162,7 @@
         {
             "id": "electleaders.request.v1.unclean",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersRequestV1",
             "version": 1,
             "source": "broker",
             "description": "ElectLeaders request v1 for the UNCLEAN election of KIP-460: the election type 1, which makes the first LIVE replica the leader even when none of them is in sync.",
@@ -188,7 +188,7 @@
         {
             "id": "electleaders.response.v1.unclean",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer for it: the top-level error code 0 - the request reached the controller - and the same 84 per partition. `KafkaController.processReplicaLeaderElection` @ 2.8.2 only elects unclean for a partition whose leader is GONE (`currentLeader == LeaderAndIsr.NoLeader || !liveBrokerIds.contains(currentLeader)`), so a partition that still has a live leader needs no election of either kind.",
@@ -201,6 +201,61 @@
                 "replicaElectionResults": {
                     "t4-24-vectors": {
                         "topic": "t4-24-vectors",
+                        "partitionResult": [
+                            {
+                                "partitionId": 0,
+                                "errorCode": 84,
+                                "errorMessage": "Leader election not needed for topic partition."
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "electleaders.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "ElectLeaders request v2, the flexible version of KIP-482: the election type of KIP-460 and the partitions, written compactly.",
+            "hex": "00000031002b00020000057b000a74342d766563746f72730000020f74342d3234662d766563746f72730200000000000000753000",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 43,
+                "apiVersion": 2,
+                "correlationId": 1403,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "electionType": 0,
+                "topicPartitions": {
+                    "t4-24f-vectors": {
+                        "topic": "t4-24f-vectors",
+                        "partitionId": [
+                            0
+                        ]
+                    }
+                },
+                "timeoutMs": 30000
+            }
+        },
+        {
+            "id": "electleaders.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer for it: the top-level error code 0 and the per-partition 84 of a partition that is already led by its preferred replica, in the flexible encoding.",
+            "hex": "000000550000057b00000000000000020f74342d3234662d766563746f727302000000000054304c656164657220656c656374696f6e206e6f74206e656564656420666f7220746f70696320706172746974696f6e2e000000",
+            "fields": {
+                "messageSize": 85,
+                "correlationId": 1403,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "replicaElectionResults": {
+                    "t4-24f-vectors": {
+                        "topic": "t4-24f-vectors",
                         "partitionResult": [
                             {
                                 "partitionId": 0,

@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * client can ask for a retention of its own with; {@see OffsetCommitRequestV5} is the same request without the
  * field, and {@see OffsetCommitRequest} is version 6, which adds the leader epoch to every partition.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
  */
 final class OffsetCommitRequestV4 extends OffsetCommitRequest
 {

@@ -44,7 +44,10 @@ use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
  * except for a `broker:<id>` resource, which is the live configuration of that one broker and is only altered by
  * it, exactly as for the api below.
  *
- * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0)"
+ * **Kafka 2.4 added the version 1** (KIP-482), the same fields in the flexible encoding.
+ * {@see IncrementalAlterConfigsRequestV0} is the frame Kafka 2.3 introduced.
+ *
+ * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 class IncrementalAlterConfigsRequest extends AbstractRequest
 {
@@ -56,7 +59,12 @@ class IncrementalAlterConfigsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 1;
 
     /**
      * Resources to alter, in the order of the request

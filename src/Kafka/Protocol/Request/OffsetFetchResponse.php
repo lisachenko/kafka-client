@@ -53,14 +53,20 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
  * {@see KafkaException::NO_ERROR} here, because the whole answer of those versions is made of per-partition
  * results.
  *
- * @see docs/protocol/2.8.md, sections "OffsetFetch API (key 9, v0 to v5)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "OffsetFetch API (key 9, v0 to v6)" and "Quotas and throttle time"
  */
 class OffsetFetchResponse extends AbstractResponse
 {
     /**
      * Version of the OffsetFetch API that this class decodes the answer of
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 6;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

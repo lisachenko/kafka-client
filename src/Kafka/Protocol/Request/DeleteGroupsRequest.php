@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The Java admin client calls the call `deleteConsumerGroups()`, which is the name
  * {@see \Protocol\Kafka\Admin\AdminClient::deleteConsumerGroups()} carries.
  *
- * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 to v2)"
  */
 class DeleteGroupsRequest extends AbstractRequest
 {
@@ -54,7 +54,13 @@ class DeleteGroupsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * @param list<string> $groups        Groups to delete, an empty list is answered with an empty result

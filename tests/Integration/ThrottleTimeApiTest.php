@@ -36,6 +36,7 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV2;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
@@ -69,7 +70,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * garbage or runs off the end of the frame, so a green round trip through the version classes is the proof that the
  * field sits where the specification says it does.
  *
- * @see docs/protocol/2.8.md, sections "Quotas and throttle time" and "GroupCoordinator API (key 10, v0 to v2)"
+ * @see docs/protocol/2.8.md, sections "Quotas and throttle time" and "GroupCoordinator API (key 10, v0 to v3)"
  * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
  */
 #[CoversClass(Client::class)]
@@ -307,7 +308,9 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
         self::assertSame(RawApiProbe::ANSWERED, $answer['status'], 'the connection stays open on a 2.x broker');
         self::assertSame(501, $answer['correlationId']);
 
-        $coordinator = GroupCoordinatorResponse::unpack(
+        // The frame was sent as a version 2 request, so it is read with the class of that version: the main one
+        // speaks the flexible v3 of KIP-482 now
+        $coordinator = GroupCoordinatorResponseV2::unpack(
             new StringStream(pack('N', 4 + strlen($answer['body'])) . pack('N', 501) . $answer['body'])
         );
 

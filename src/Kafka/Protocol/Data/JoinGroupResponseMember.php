@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * static member, `null` for a dynamic one, which is what every member of a group of an older client is.
  * {@see JoinGroupResponseMemberV0} is the entry of the versions 0 to 4, which have no such field.
  *
- * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v6)"
  */
 class JoinGroupResponseMember implements BinarySchemaInterface
 {

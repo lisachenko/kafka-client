@@ -35,14 +35,20 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * alone - the `group_instance_id` of a static member - so {@see SyncGroupResponseV2} and this class decode the
  * very same bytes as well.
  *
- * @see docs/protocol/2.8.md, sections "SyncGroup API (key 14, v0 to v3)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "SyncGroup API (key 14, v0 to v4)" and "Quotas and throttle time"
  */
 class SyncGroupResponse extends AbstractResponse
 {
     /**
      * Version of the SyncGroup API that this class decodes the answer of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

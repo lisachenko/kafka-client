@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   FindCoordinator Response (Version: 1 and 2) => throttle_time_ms error_code error_message coordinator
  * </pre>
  *
- * @see docs/protocol/2.8.md, sections "GroupCoordinator API (key 10, v0 to v2)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "GroupCoordinator API (key 10, v0 to v3)" and "Quotas and throttle time"
  */
 final class GroupCoordinatorResponseV1 extends GroupCoordinatorResponse
 {

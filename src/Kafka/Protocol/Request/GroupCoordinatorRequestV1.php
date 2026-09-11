@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version 3 - so this class only lowers the version field of the header. The answer is unchanged as well and is
  * read with {@see GroupCoordinatorResponseV1}.
  *
- * @see docs/protocol/2.8.md, sections "GroupCoordinator API (key 10, v0 to v2)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "GroupCoordinator API (key 10, v0 to v3)" and "Quotas and throttle time"
  */
 final class GroupCoordinatorRequestV1 extends GroupCoordinatorRequest
 {

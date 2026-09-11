@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * serves and the version the 1.x line of this client sent; a 2.8.2 broker still serves it, and throttles it
  * exactly as it throttles version 6, see {@see MetadataRequest}.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v9)"
  */
 final class MetadataRequestV5 extends MetadataRequest
 {
