@@ -389,9 +389,6 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   member id the group does not have is **25** per entry (and so is every entry of a request against a group that
   does not exist, with the top-level code 0), a **pending** member of KIP-394 removes itself with **0**, and an
   empty batch is answered with 0 and an empty member array. Six wire vectors of the exchange were captured.
-
-### Kafka 2.4
-
 - **Produce v8** (KIP-467) — the version that says **which** records of a refused batch were refused. Every
   partition entry of the answer gains a `record_errors` array of `[batch_index, batch_index_error_message]`
   pairs and an `error_message`, both behind the `log_start_offset`; the request body is unchanged.
