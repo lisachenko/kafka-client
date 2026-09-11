@@ -507,7 +507,26 @@ final class TransactionApiTest extends TestCase
             bin2hex((string) $request),
             'the epoch stands between the offset and the metadata'
         );
-        self::assertSame(-1, OffsetAndMetadata::NO_LEADER_EPOCH);
+        $withoutEpoch = new TxnOffsetCommitRequest(
+            'tx-1',
+            'my-group',
+            42,
+            3,
+            ['topic' => [0 => new OffsetAndMetadata(17, 'state')]],
+            'test',
+            11
+        );
+
+        self::assertNull(
+            new OffsetAndMetadata(17)->leaderEpoch,
+            'an offset whose epoch the client does not know carries null'
+        );
+        self::assertStringEndsWith(
+            '0000000000000011' . 'ffffffff' . '0005' . '7374617465',
+            bin2hex((string) $withoutEpoch),
+            'and the request writes the -1 of the protocol for it'
+        );
+        self::assertSame(-1, OffsetAndMetadata::UNKNOWN_LEADER_EPOCH);
     }
 
     /**

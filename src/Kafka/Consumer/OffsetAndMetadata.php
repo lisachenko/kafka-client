@@ -22,30 +22,31 @@ namespace Protocol\Kafka\Consumer;
  *
  * Kafka 2.1 added the **leader epoch** of the record the offset points behind (KIP-320): the epoch travels with a
  * commit from `TxnOffsetCommit` **v2** and from `OffsetCommit` v6 on, and a broker uses it to refuse a commit that
- * a fenced leader produced. {@see self::NO_LEADER_EPOCH} - the -1 both apis default to - means "the client does
- * not know it", which is what every offset of this client carries until the consumer tracks epochs (KIP-320 in the
- * consumer is a later minor of this line).
+ * a fenced leader produced. A `null` epoch means "the client does not know it" and is written as the -1 both apis
+ * default to ({@see self::UNKNOWN_LEADER_EPOCH}), which is what every offset of this client carries until the
+ * consumer tracks epochs (KIP-320 in the consumer is a later minor of this line).
  */
 final class OffsetAndMetadata implements \Stringable
 {
     /**
-     * The leader epoch of an offset whose epoch the client does not know, the default of every api that carries one
+     * The wire value of an offset whose leader epoch the client does not know, the default of every api that carries one
      *
      * `RecordBatch.NO_PARTITION_LEADER_EPOCH` of the Java client, and the `default: -1` of `committed_leader_epoch`
-     * in `TxnOffsetCommitRequest.json` and `OffsetCommitRequest.json` @ 2.8.2.
+     * in `TxnOffsetCommitRequest.json` and `OffsetCommitRequest.json` @ 2.8.2. The property itself is `null` for
+     * that case, and this constant is what a request writes for it.
      */
-    public const int NO_LEADER_EPOCH = -1;
+    public const int UNKNOWN_LEADER_EPOCH = -1;
 
     /**
      * @param int         $offset      The offset to commit for a topic-partition
      * @param string|null $metadata    Any associated metadata the client wants the broker to keep, or null for none
-     * @param int         $leaderEpoch Leader epoch of the record the offset points behind (KIP-320), or
-     *                                 {@see self::NO_LEADER_EPOCH} when the client does not know it
+     * @param int|null    $leaderEpoch Leader epoch of the record the offset points behind (KIP-320), or `null` when
+     *                                 the client does not know it - written as {@see self::UNKNOWN_LEADER_EPOCH}
      */
     public function __construct(
         public readonly int $offset,
         public readonly ?string $metadata = null,
-        public readonly int $leaderEpoch = self::NO_LEADER_EPOCH
+        public readonly ?int $leaderEpoch = null
     ) {}
 
     public function __toString(): string
