@@ -708,6 +708,31 @@ them. What the release added lives in the group and transaction apis.)*
   (`fetch.request.v12`, `fetch.response.v12` and the `last-fetched-epoch`/`diverging-epoch` pair), the section
   "Epoch validation in the fetch itself (v12, KIP-595)" of the protocol document and the two version 12 grammar
   blocks.
+- **The two SCRAM credential apis of KIP-554 (Kafka 2.7)** — `DescribeUserScramCredentials` (key **50**) and
+  `AlterUserScramCredentials` (key **51**), both flexible from their v0, which end the practice of writing SCRAM
+  users into ZooKeeper by hand. The interesting half happens in the **client**: `Admin\UserScramCredentialUpsertion`
+  takes a *password*, derives `Hi(password, salt, iterations)` of RFC 5802 with
+  `hash_pbkdf2()` and sends only that, so the broker never sees a password and no answer can ever hand one out.
+  `Admin\ScramMechanism` (an enum of the two mechanisms with their hash, key length and the 4096-iteration
+  minimum), `ScramCredentialInfo`, `UserScramCredentialsDescription`, `UserScramCredentialDeletion` and the
+  `UserScramCredentialAlteration` interface carry the Java names;
+  `AdminClient::describeUserScramCredentials(?array $users = null)` and `::alterUserScramCredentials(array)` are
+  the two calls. Eight new wire vectors in `describe-user-scram-credentials.json` and
+  `alter-user-scram-credentials.json`, and the answers measured: **91** `RESOURCE_NOT_FOUND` for a user without a
+  credential and for the deletion of one that is not there, **92** `DUPLICATE_RESOURCE` for the same user and
+  mechanism twice, **93** `UNACCEPTABLE_CREDENTIAL` for an iteration count below the minimum — and the fact that
+  the changes of one user are applied **all-or-nothing**, so one impossible change discards the possible ones of
+  the same user.
+- **UpdateFeatures (key 57, v0, Kafka 2.7, KIP-584)** — `AdminClient::updateFeatures(array $updates, int $timeoutMs =
+  60000)`, sent to the **controller** and repeated once when it moved, with `Admin\FeatureUpdate` (whose `delete()` is
+  the version level below 1 plus the downgrade flag the broker insists on). Its read half is not an api at all but the
+  **tagged fields of the ApiVersions v3 answer**, which `AdminClient::describeFeatures()` reads into
+  `Admin\FeatureMetadata`, `SupportedVersionRange` and `FinalizedVersionRange`. A ZooKeeper-backed 2.8.2 cluster
+  finalizes nothing: it supports no feature, the finalized set is empty, the epoch is `0`, and every update is
+  answered per feature with **42** `INVALID_REQUEST`. An empty update list is not refused at all — the controller
+  iterates an empty collection and answers the top-level 0 with no result. Two new wire vectors in
+  `update-features.json`.
+
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------

@@ -53,6 +53,8 @@ use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsRequest;
+use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
@@ -71,6 +73,8 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
@@ -92,6 +96,8 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
+use Protocol\Kafka\Protocol\Request\UpdateFeaturesRequest;
+use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
 
 /**
  * Kafka low-level administrative client
@@ -1874,6 +1880,221 @@ class AdminClient
                 : KafkaException::fromCode(
                     $entry->errorCode,
                     ['entity' => $entity] + ($entry->errorMessage !== null ? ['error' => $entry->errorMessage] : [])
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Which SCRAM credentials the given users have (ApiKey 50, Kafka 2.7, KIP-554)
+     *
+     * KIP-554 gave the SCRAM users of `kafka-configs.sh --entity-type users` a protocol of their own; before Kafka
+     * 2.7 they could only be written into ZooKeeper by hand. **No answer ever carries a password**: a credential is
+     * a salted password, so what can be described is the mechanism and the iteration count.
+     *
+     * `$users` of **null** - and, as the specification says in as many words, the **empty** array as well - asks
+     * for every user of the cluster that has a credential. A user that has none is not silently absent: the broker
+     * answers an entry for them with the user-level code 91 (`ResourceNotFound`), which this method turns into an
+     * absent key of the result, so that a caller can simply look the user up.
+     *
+     * @param list<string>|null $users Users to describe, null or [] for every user that has a credential
+     *
+     * @throws KafkaException If the request as a whole was refused
+     *
+     * @return array<string, UserScramCredentialsDescription> Description per user, only for users that have one
+     */
+    public function describeUserScramCredentials(?array $users = null): array
+    {
+        /** @var DescribeUserScramCredentialsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeUserScramCredentialsRequest => new DescribeUserScramCredentialsRequest(
+                $users,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeUserScramCredentialsResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The broker refused the request']
+            );
+        }
+
+        $result = [];
+        foreach ($response->results as $user => $userResult) {
+            if ($userResult->errorCode !== KafkaException::NO_ERROR) {
+                // 91 ResourceNotFound is what a user without a single credential is answered with
+                continue;
+            }
+
+            $credentials = [];
+            foreach ($userResult->credentialInfos as $info) {
+                $mechanism                       = ScramMechanism::fromType($info->mechanism);
+                $credentials[$mechanism->value] = new ScramCredentialInfo($mechanism, $info->iterations);
+            }
+            $result[(string) $user] = new UserScramCredentialsDescription((string) $user, $credentials);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Writes and removes SCRAM credentials (ApiKey 51, Kafka 2.7, KIP-554)
+     *
+     * The other half of KIP-554. A {@see UserScramCredentialUpsertion} carries the **password**, derives
+     * `Hi(password, salt, iterations)` of RFC 5802 out of it and sends only that, so the broker never sees the
+     * password itself; a {@see UserScramCredentialDeletion} names a user and a mechanism.
+     *
+     * The request carries the two kinds in two arrays and applies the **deletions first**, which is what makes
+     * "replace the credential of this user" a single request. The answer has **no top-level error code** and one
+     * entry per affected *user*, not per change, so this method throws nothing and reports every user of the call.
+     *
+     * @param list<UserScramCredentialAlteration> $alterations Credentials to write and to remove
+     *
+     * @return array<string, KafkaException|null> Error of every affected user, null when their changes were applied
+     */
+    public function alterUserScramCredentials(array $alterations): array
+    {
+        $deletions  = [];
+        $upsertions = [];
+        foreach ($alterations as $alteration) {
+            if ($alteration instanceof UserScramCredentialDeletion) {
+                $deletions[] = $alteration->toData();
+            } elseif ($alteration instanceof UserScramCredentialUpsertion) {
+                $upsertions[] = $alteration->toData();
+            }
+        }
+
+        /** @var AlterUserScramCredentialsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): AlterUserScramCredentialsRequest => new AlterUserScramCredentialsRequest(
+                $deletions,
+                $upsertions,
+                $this->clientId(),
+                $correlationId
+            ),
+            AlterUserScramCredentialsResponse::class
+        );
+
+        $result = [];
+        foreach ($response->results as $user => $userResult) {
+            $result[(string) $user] = $userResult->errorCode === KafkaException::NO_ERROR
+                ? null
+                : KafkaException::fromCode(
+                    $userResult->errorCode,
+                    ['user' => (string) $user]
+                        + ($userResult->errorMessage !== null ? ['error' => $userResult->errorMessage] : [])
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * What the cluster knows about its features (KIP-584, Kafka 2.7)
+     *
+     * **This is not an api of its own.** A feature is a named version range the *cluster* has agreed on, above the
+     * api versions a single broker supports, and it travels in the **tagged fields of an ApiVersions v3 answer** -
+     * so a client that speaks the flexible version already has it. `Admin.describeFeatures()` of the Java client
+     * does the same thing with the same request.
+     *
+     * A ZooKeeper-backed Kafka 2.8.2 cluster finalizes nothing: `supportedFeatures` names what the broker could
+     * agree to, `finalizedFeatures` is empty and the epoch is `0`.
+     *
+     * @return FeatureMetadata The features of the broker that answered
+     */
+    public function describeFeatures(): FeatureMetadata
+    {
+        /** @var ApiVersionsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest($this->clientId(), $correlationId),
+            ApiVersionsResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['error' => 'The broker refused an ApiVersions v3']);
+        }
+
+        $supported = [];
+        foreach ($response->supportedFeatures as $name => $feature) {
+            $supported[(string) $name] = new SupportedVersionRange($feature->minVersion, $feature->maxVersion);
+        }
+
+        $finalized = [];
+        foreach ($response->finalizedFeatures as $name => $feature) {
+            $finalized[(string) $name] = new FinalizedVersionRange(
+                $feature->minVersionLevel,
+                $feature->maxVersionLevel
+            );
+        }
+
+        return new FeatureMetadata($supported, $finalized, $response->finalizedFeaturesEpoch);
+    }
+
+    /**
+     * Raises or deletes the finalized version level of features of the cluster (ApiKey 57, Kafka 2.7, KIP-584)
+     *
+     * The write half of KIP-584, whose read half is {@see self::describeFeatures()}. It is **controller-only**: a
+     * broker that is not the active controller answers the top-level 41 (`NotController`), so the controller is
+     * looked up and the request repeated once when it moved.
+     *
+     * A `maxVersionLevel` below 1 is not a version but the request to **delete** the finalized feature, and every
+     * lowering - a deletion included - needs `allowDowngrade` ({@see FeatureUpdate::delete()} sets both).
+     *
+     * **On a ZooKeeper-backed 2.8.2 cluster there is nothing to update**: the controller finalizes no feature, so
+     * every update is answered with the per-feature code 96 (`FeatureUpdateFailed`).
+     *
+     * @param list<FeatureUpdate> $updates Changes to ask the controller for; the list may not be empty
+     *
+     * @throws KafkaException If the request as a whole was refused, e.g. with 41 (NotController) or 42 for an
+     *         empty or duplicated update list
+     *
+     * @return array<string, KafkaException|null> Error of every feature of the call, null when it was changed
+     */
+    public function updateFeatures(array $updates, int $timeoutMs = UpdateFeaturesRequest::DEFAULT_TIMEOUT_MS): array
+    {
+        $featureUpdates = [];
+        foreach ($updates as $update) {
+            $featureUpdates[$update->feature] = $update->toData();
+        }
+
+        $send = fn(): AbstractResponse => $this->sendTo(
+            $this->findController()->getConnection($this->configuration),
+            fn(int $correlationId): UpdateFeaturesRequest => new UpdateFeaturesRequest(
+                $featureUpdates,
+                $timeoutMs,
+                $this->clientId(),
+                $correlationId
+            ),
+            UpdateFeaturesResponse::class
+        );
+
+        /** @var UpdateFeaturesResponse $response */
+        $response = $send();
+        if ($response->errorCode === KafkaException::NOT_CONTROLLER) {
+            $this->cluster->reload();
+            /** @var UpdateFeaturesResponse $response */
+            $response = $send();
+        }
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The controller refused the whole request']
+            );
+        }
+
+        $result = [];
+        foreach ($response->results as $feature => $featureResult) {
+            $result[(string) $feature] = $featureResult->errorCode === KafkaException::NO_ERROR
+                ? null
+                : KafkaException::fromCode(
+                    $featureResult->errorCode,
+                    ['feature' => (string) $feature]
+                        + ($featureResult->errorMessage !== null ? ['error' => $featureResult->errorMessage] : [])
                 );
         }
 
