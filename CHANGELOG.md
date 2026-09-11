@@ -203,6 +203,9 @@ consumer, the zstd codec of KIP-110, KIP-211 and the version bumps that carry th
 
 ### Kafka 2.2
 
+The third milestone of the line (PRs #123, #124, #130): the second join of KIP-394, the error code 78 of KIP-207,
+the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLeaders api.
+
 - **JoinGroup v4 (KIP-394)** — the version that refuses a **first join**. A request with an empty member id is
   answered immediately with the error code **79** (`MemberIdRequired`) and the member id the coordinator
   generated, and the client sends the same request again with that id; the coordinator no longer adds a member it
@@ -216,9 +219,6 @@ consumer, the zstd codec of KIP-110, KIP-211 and the version bumps that carry th
 - **The error code 81 `GroupMaxSizeReached`** of the same KIP is documented from the broker sources and is not
   asserted against the container: `group.max.size` defaults to 2147483647 and is not a dynamically updatable
   broker config in Kafka 2.8, so it cannot be lowered without a restart.
-
-### Kafka 2.2
-
 - **ListOffsets v5** (KIP-207) — the version 4 frames in both directions (`ListOffsetsRequest.json` @ 2.8.2:
   "Version 5 is the same as version 4") and **one more error code in the answer**: **78**
   `OFFSET_NOT_AVAILABLE`. A leader whose high watermark has not caught up with the start offset of the epoch it
@@ -233,6 +233,18 @@ consumer, the zstd codec of KIP-110, KIP-211 and the version bumps that carry th
   v5), a.k.a. ListOffset" of the protocol document and a broker quirk for the substitution — the one rule of this
   line that is read from the broker sources rather than measured, because a one-broker container never re-elects
   a leader.
+- **SaslAuthenticate v1 (KIP-368)** — a `session_lifetime_ms int64` at the end of the **answer**: the time after
+  which the broker stops serving a connection that has not re-authenticated. The SASL path of `SocketStream`
+  sends the v1 and keeps the value on `SaslAuthenticateResponse::$sessionLifetimeMs` and
+  `SocketStream::getSaslSessionLifetimeMs()`; the re-authentication itself is documented from the sources and
+  belongs to the SaslAuthenticate v2 of Kafka 2.5. `SaslAuthenticateRequestV0`/`…ResponseV0` keep Kafka 1.0's frame.
+- **ControlledShutdown v2 (KIP-380)** — a `broker_epoch int64` behind the broker id.
+  `AdminClient::controlledShutdown()` takes it and defaults it to `UNKNOWN_BROKER_EPOCH` (-1), the only epoch
+  the controller does not compare; `ControlledShutdownRequestV1` keeps the version Kafka 0.9 added.
+- **ElectLeaders (key 43) v0 (KIP-183)** — the api that replaced the ZooKeeper node
+  `/admin/preferred_replica_election`, added as `ElectPreferredLeaders`. `AdminClient::electLeaders()` looks the
+  controller up, repeats a 41 once and answers a `KafkaException|null` per partition; `Admin\ElectionType` carries
+  `PREFERRED` and `UNCLEAN`, and the unclean election is refused until the v1 of KIP-460 exists.
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
