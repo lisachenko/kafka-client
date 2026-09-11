@@ -66,6 +66,7 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Data\ProduceResponseRecordError;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
@@ -609,13 +610,28 @@ class Client
                             // what a producer does about a 59 (UnknownProducerId): the field is the only way to
                             // tell the head of the log being deleted under a producer from a real out-of-order
                             // sequence, see TransactionManager::canRetryBatch()
+                            $context = [
+                                'topic'          => $topic,
+                                'partitionId'    => $partitionId,
+                                'logStartOffset' => $partitionInfo->logStartOffset,
+                            ];
+                            // The record errors of KIP-467 (Produce v8): which records of the sent batch the
+                            // broker refused, and why. They travel into the exception, because "the batch was
+                            // refused" without them is what every version below 8 already said
+                            if ($partitionInfo->errorMessage !== null) {
+                                $context['errorMessage'] = $partitionInfo->errorMessage;
+                            }
+                            if ($partitionInfo->recordErrors !== []) {
+                                $context['recordErrors'] = array_map(
+                                    static fn(ProduceResponseRecordError $recordError): ?string
+                                        => $recordError->batchIndexErrorMessage,
+                                    $partitionInfo->recordErrors
+                                );
+                            }
+
                             $errors[$topic][$partitionId] = KafkaException::fromCode(
                                 $partitionInfo->errorCode,
-                                [
-                                    'topic'          => $topic,
-                                    'partitionId'    => $partitionId,
-                                    'logStartOffset' => $partitionInfo->logStartOffset,
-                                ]
+                                $context
                             );
                             continue;
                         }

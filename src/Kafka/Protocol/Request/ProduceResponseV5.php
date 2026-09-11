@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * request they belong to. What version 6 adds is the client's promise to honour the `ThrottleTime` itself, see
  * {@see ProduceResponse}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
  */
 final class ProduceResponseV5 extends ProduceResponse
 {

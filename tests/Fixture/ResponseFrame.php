@@ -160,10 +160,12 @@ final class ResponseFrame
         array $topics,
         int $throttleTime = 0,
         int $logAppendTime = -1,
-        array $logStartOffsets = []
+        array $logStartOffsets = [],
+        array $recordErrors = []
     ): string {
         // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it
-        $body = self::produceTopics($topics, $logAppendTime, $logStartOffsets) . pack('N', $throttleTime);
+        $body = self::produceTopics($topics, $logAppendTime, $logStartOffsets, $recordErrors)
+            . pack('N', $throttleTime);
 
         return self::of($correlationId, $body);
     }
@@ -203,8 +205,12 @@ final class ResponseFrame
      * @param array<string, array<int, int>>|null         $logStartOffsets Log start offset of every partition
      *        entry, or null for the versions below 5, which do not carry that field at all
      */
-    private static function produceTopics(array $topics, ?int $logAppendTime, ?array $logStartOffsets): string
-    {
+    private static function produceTopics(
+        array $topics,
+        ?int $logAppendTime,
+        ?array $logStartOffsets,
+        ?array $recordErrors = null
+    ): string {
         $body = pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
@@ -216,6 +222,18 @@ final class ResponseFrame
                 if ($logStartOffsets !== null) {
                     $body .= pack('J', $logStartOffsets[$topic][$partitionId] ?? 0);
                 }
+                if ($logStartOffsets === null || $recordErrors === null) {
+                    continue;
+                }
+
+                // The record errors and the error message of version 8 (Kafka 2.4, KIP-467), behind the log
+                // start offset: the records of the sent batch that the broker refused, by their position in it
+                [$errors, $message] = $recordErrors[$topic][$partitionId] ?? [[], null];
+                $body .= pack('N', count($errors));
+                foreach ($errors as $batchIndex => $batchMessage) {
+                    $body .= pack('N', $batchIndex) . self::nullableString($batchMessage);
+                }
+                $body .= self::nullableString($message);
             }
         }
 
