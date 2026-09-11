@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 
 /**
- * DescribeGroups response, version 1 (key 15)
+ * DescribeGroups response, version 2 (key 15)
  *
  * <pre>
- *   DescribeGroups Response (Version: 1) => throttle_time_ms [groups]
+ *   DescribeGroups Response (Version: 1 and 2) => throttle_time_ms [groups]
  *     throttle_time_ms => INT32     -- since version 1
  *     groups           => error_code group_id state protocol_type protocol [members]
  * </pre>
@@ -30,16 +30,18 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
  *
  * Version 1 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of the array and left the entries alone -
  * `DESCRIBE_GROUPS_RESPONSE_V1` reuses `DESCRIBE_GROUPS_RESPONSE_GROUP_METADATA_V0` in `Protocol.java` @ 0.11.0.3;
- * {@see DescribeGroupsResponseV0} is the answer without it.
+ * {@see DescribeGroupsResponseV0} is the answer without it. Version 2 (KIP-219, Kafka 2.0) repeats the version 1
+ * answer, which {@see DescribeGroupsResponseV1} decodes; the group entry grows again at version 3 (KIP-430, Kafka
+ * 2.3, the `authorized_operations`) and version 4 (KIP-345, Kafka 2.4, a `group_instance_id` per member).
  *
- * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 and v1)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v2)" and "Quotas and throttle time"
  */
 class DescribeGroupsResponse extends AbstractResponse
 {
     /**
      * Version of the DescribeGroups API that this class decodes the answer of
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

@@ -1,8 +1,8 @@
 {
     "api": "describe-configs",
     "apiKey": 32,
-    "section": "DescribeConfigs API (key 32, v0 and v1)",
-    "description": "Wire vectors of the DescribeConfigs API (key 32, v0 and v1), replayed by tests/Compliance.",
+    "section": "DescribeConfigs API (key 32, v0, v1 and v2)",
+    "description": "Wire vectors of the DescribeConfigs API (key 32, v0, v1 and v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describeconfigs.request.v0.topic",
@@ -181,7 +181,7 @@
         {
             "id": "describeconfigs.request.v1.topic",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "DescribeConfigs request v1 for two named options of a topic resource, with the `include_synonyms` flag of KIP-226 set (the trailing 01 that version 1 added).",
@@ -208,7 +208,7 @@
         {
             "id": "describeconfigs.response.v1.topic",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "DescribeConfigs response v1 of a topic that was created with `segment.bytes` of its own: the entry carries the config source 1 (TOPIC_CONFIG) and three synonyms - its own value, the `log.segment.bytes` of the server.properties (source 4) and the built-in default of the same name (source 5) - while `retention.ms` is the source 5 (DEFAULT_CONFIG) with an EMPTY synonym array, because none of the synonyms of that option is named `log.retention.ms`, see the quirk in the section.",
@@ -264,7 +264,7 @@
         {
             "id": "describeconfigs.request.v1.without-synonyms",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "The same request with `include_synonyms = 00`, which is what a client sends that only wants the values.",
@@ -290,7 +290,7 @@
         {
             "id": "describeconfigs.response.v1.without-synonyms",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer to it: the same entry with the same config source, and an EMPTY synonym array - the flag only decides whether the broker sends the list it built anyway, the source is always there.",
@@ -322,7 +322,7 @@
         {
             "id": "describeconfigs.request.v1.broker",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "DescribeConfigs request v1 for two named options of the broker resource (resource_type 4), whose name is the broker id as text, with the synonyms.",
@@ -349,7 +349,7 @@
         {
             "id": "describeconfigs.response.v1.broker",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer right after the AlterConfigs above: `log.cleaner.backoff.ms` carries the source 2 (DYNAMIC_BROKER_CONFIG) with the value that was set, and the built-in default behind it as a synonym of the source 5. Neither entry is read_only, because both are in `DynamicBrokerConfig.AllDynamicConfigs`, and the value of the sensitive `ssl.key.password` is null on the wire - in the entry and in its synonym.",
@@ -406,7 +406,7 @@
         {
             "id": "describeconfigs.request.v1.broker-default",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "DescribeConfigs request v1 for the default broker resource, i.e. the resource type 4 with an empty name.",
@@ -432,7 +432,7 @@
         {
             "id": "describeconfigs.response.v1.broker-default",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer of the default broker resource: it holds the dynamic DEFAULT configuration alone - one entry with the source 3 (DYNAMIC_DEFAULT_BROKER_CONFIG) - and not the ~190 options of a broker.",
@@ -459,6 +459,70 @@
                                         "configName": "log.cleaner.backoff.ms",
                                         "configValue": "17000",
                                         "configSource": 3
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeconfigs.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeConfigs request v2, the frame of version 1 with the api version Kafka 2.0 added: one named option of a topic resource, with the synonyms of KIP-226.",
+            "hex": "0000003b00200002000001f7000a74342d766563746f72730000000102000d74342d32302d766563746f727300000001000c726574656e74696f6e2e6d7301",
+            "fields": {
+                "messageSize": 59,
+                "apiKey": 32,
+                "apiVersion": 2,
+                "correlationId": 503,
+                "clientId": "t4-vectors",
+                "resources": [
+                    {
+                        "resourceType": 2,
+                        "resourceName": "t4-20-vectors",
+                        "configNames": [
+                            "retention.ms"
+                        ]
+                    }
+                ],
+                "includeSynonyms": true
+            }
+        },
+        {
+            "id": "describeconfigs.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeConfigs response v2 for that option: the source 1 (DYNAMIC_TOPIC_CONFIG) of a value the topic itself carries, with the broker-level synonym behind it.",
+            "hex": "0000005a000001f700000000000000010000000002000d74342d32302d766563746f727300000001000c726574656e74696f6e2e6d7300073336303030303000010000000001000c726574656e74696f6e2e6d7300073336303030303001",
+            "fields": {
+                "messageSize": 90,
+                "correlationId": 503,
+                "throttleTimeMs": 0,
+                "resources": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": "",
+                        "resourceType": 2,
+                        "resourceName": "t4-20-vectors",
+                        "configEntries": {
+                            "retention.ms": {
+                                "configName": "retention.ms",
+                                "configValue": "3600000",
+                                "readOnly": false,
+                                "configSource": 1,
+                                "isSensitive": false,
+                                "configSynonyms": [
+                                    {
+                                        "configName": "retention.ms",
+                                        "configValue": "3600000",
+                                        "configSource": 1
                                     }
                                 ]
                             }

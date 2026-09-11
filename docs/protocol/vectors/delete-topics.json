@@ -1,8 +1,8 @@
 {
     "api": "delete-topics",
     "apiKey": 20,
-    "section": "DeleteTopics API (key 20, v0 and v1)",
-    "description": "Wire vectors of the DeleteTopics API (key 20, v0 and v1), replayed by tests/Compliance.",
+    "section": "DeleteTopics API (key 20, v0, v1 and v2)",
+    "description": "Wire vectors of the DeleteTopics API (key 20, v0, v1 and v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "deletetopics.request.v0",
@@ -65,7 +65,7 @@
         {
             "id": "deletetopics.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "DeleteTopics request v1, the frame of v0 with a higher version field.",
@@ -85,7 +85,7 @@
         {
             "id": "deletetopics.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer v1: the throttle time in front of the topic error codes of a v0 answer.",
@@ -97,6 +97,46 @@
                 "topics": {
                     "t3-throttle-created": {
                         "topic": "t3-throttle-created",
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletetopics.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DeleteTopics request v2, the frame of version 1 with the api version Kafka 2.0 added: the topic of the vectors above, with the 30 second timeout of the controller.",
+            "hex": "0000002b0014000200000201000a74342d766563746f727300000001000d74342d32302d766563746f727300007530",
+            "fields": {
+                "messageSize": 43,
+                "apiKey": 20,
+                "apiVersion": 2,
+                "correlationId": 513,
+                "clientId": "t4-vectors",
+                "topics": [
+                    "t4-20-vectors"
+                ],
+                "timeout": 30000
+            }
+        },
+        {
+            "id": "deletetopics.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "DeleteTopics response v2: the throttle time of version 1 and the error code 0 of the deleted topic.",
+            "hex": "0000001d000002010000000000000001000d74342d32302d766563746f72730000",
+            "fields": {
+                "messageSize": 29,
+                "correlationId": 513,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-20-vectors": {
+                        "topic": "t4-20-vectors",
                         "errorCode": 0
                     }
                 }

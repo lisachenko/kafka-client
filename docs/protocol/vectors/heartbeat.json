@@ -1,8 +1,8 @@
 {
     "api": "heartbeat",
     "apiKey": 12,
-    "section": "Heartbeat API (key 12, v0 and v1)",
-    "description": "Wire vectors of the Heartbeat API (key 12, v0 and v1), replayed by tests/Compliance.",
+    "section": "Heartbeat API (key 12, v0 to v2)",
+    "description": "Wire vectors of the Heartbeat API (key 12, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "heartbeat.request.v0",
@@ -106,7 +106,7 @@
         {
             "id": "heartbeat.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequestV1",
             "version": 1,
             "source": "broker",
             "description": "Heartbeat request v1, the frame of v0 with a higher version field.",
@@ -125,7 +125,7 @@
         {
             "id": "heartbeat.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer v1: a throttle time and an error code, where v0 is the error code alone.",
@@ -133,6 +133,40 @@
             "fields": {
                 "messageSize": 10,
                 "correlationId": 100,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "heartbeat.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "Heartbeat request v2 of the member of the stable group, the frame of v1 with a higher version field.",
+            "hex": "00000072000c0002000000cb00166b61666b612d636c69656e742d74332d6b6970323139000f74332d6b69703231392d67726f757000000001003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d316634643563326139333365",
+            "fields": {
+                "messageSize": 114,
+                "apiKey": 12,
+                "apiVersion": 2,
+                "correlationId": 203,
+                "clientId": "kafka-client-t3-kip219",
+                "consumerGroup": "t3-kip219-group",
+                "generationId": 1,
+                "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e"
+            }
+        },
+        {
+            "id": "heartbeat.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\HeartbeatResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2: the throttle time and the error code, the ten bytes of a v1 answer.",
+            "hex": "0000000a000000cb000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 203,
                 "throttleTimeMs": 0,
                 "errorCode": 0
             }

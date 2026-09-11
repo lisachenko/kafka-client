@@ -58,8 +58,8 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * are exercised here, because version 0 and version 2 are reachable through the `offsets.storage` option of the
  * client and version 1 is the version a 0.8 broker expects.
  *
- * @see docs/protocol/2.8.md, sections "GroupCoordinator API (key 10, v0 and v1)",
- *      "OffsetCommit API (key 8, v0 to v3)" and "OffsetFetch API (key 9, v0 to v3)"
+ * @see docs/protocol/2.8.md, sections "GroupCoordinator API (key 10, v0 to v2)",
+ *      "OffsetCommit API (key 8, v0 to v4)" and "OffsetFetch API (key 9, v0 to v4)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]
@@ -88,11 +88,6 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
      * `offset.metadata.max.bytes` of a 0.9.0.1 broker; a longer metadata string is answered with the error code 12
      */
     private const int OFFSET_METADATA_MAX_BYTES = 4096;
-
-    /**
-     * `offsets.retention.minutes` of the broker, in milliseconds: what a `retention_time` of -1 asks for
-     */
-    private const int DEFAULT_OFFSET_RETENTION_MS = 24 * 60 * 60 * 1000;
 
     /**
      * `offsets.topic.num.partitions` of the test broker: the partition of a group is one of these
@@ -180,8 +175,16 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         $allTopics = $this->fetchInKafka($stream, $groupId, null);
 
+        $partitions = array_keys($allTopics[$topic]->partitions);
+        sort($partitions);
+
         self::assertSame([$topic], array_keys($allTopics), 'the answer names the topics the group committed');
-        self::assertSame([0, 2], array_keys($allTopics[$topic]->partitions), 'and only the committed partitions');
+        self::assertSame(
+            [0, 2],
+            $partitions,
+            'and only the committed partitions - in the order of the internal map of the coordinator, which a '
+            . '2.8.2 broker no longer walks in partition order'
+        );
         self::assertSame(11, $allTopics[$topic]->partitions[0]->offset);
         self::assertSame(33, $allTopics[$topic]->partitions[2]->offset);
     }
@@ -455,14 +458,25 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         self::assertSame('by version 1', $offsets[$topic]->partitions[0]->metadata);
     }
 
-    public function testRetentionTimeOfVersion2ReplacesTheRetentionOfTheBroker(): void
+    /**
+     * What the `retention_time` of a v2 to v4 commit still does on a 2.8.2 broker, and what KIP-211 changed
+     *
+     * The field is on the wire up to version 4 and gone from version 5 on, and it is what decides the **value
+     * schema** the coordinator writes the offset with: `GroupMetadataManager.offsetCommitValue` @ 2.8.2 picks the
+     * schema **v1** - the only one that has an `expire_timestamp` - as soon as the request brought a retention of
+     * its own, and the schema **v3** otherwise, because `inter.broker.protocol.version` of the container is above
+     * `2.1-IV1`. A commit that leaves the field at -1 therefore carries no expiry at all any more: KIP-211 expires
+     * the offsets of a group `offsets.retention.minutes` after the group itself became empty, not a fixed time
+     * after the commit, which is what a 0.11 or 1.1 broker stored here.
+     */
+    public function testRetentionTimeOfVersion2DecidesTheValueSchemaOfTheStoredOffset(): void
     {
         $groupId       = self::uniqueGroupName();
         $topic         = $this->createTopic();
         $stream        = $this->coordinatorStream($groupId);
         $retentionTime = 60000;
 
-        // Partition 0 asks for the retention of the broker, partition 1 brings its own
+        // The first commit asks for the retention of the broker, the second one brings its own
         $this->commitInKafka($stream, $groupId, [$topic => [0 => 5]]);
         $this->commitInKafka($stream, $groupId, [$topic => [0 => 6]], true, $retentionTime);
 
@@ -470,34 +484,37 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         self::assertNotSame([], $stored, 'the commits have to be readable back out of __consumer_offsets');
 
-        [$offsetOfDefault, , $commitOfDefault, $expiryOfDefault] = $stored[0];
-        [$offsetOfExplicit, , $commitOfExplicit, $expiryOfExplicit] = $stored[1];
+        [$offsetOfDefault, , $commitOfDefault, $expiryOfDefault, $schemaOfDefault, $epochOfDefault] = $stored[0];
+        [$offsetOfExplicit, , $commitOfExplicit, $expiryOfExplicit, $schemaOfExplicit] = $stored[1];
 
         self::assertSame(5, $offsetOfDefault);
         self::assertSame(6, $offsetOfExplicit);
+        self::assertSame(3, $schemaOfDefault, 'retention_time = -1 is written with the value schema v3 (KIP-211)');
+        self::assertNull($expiryOfDefault, 'the value schema v3 has no expire_timestamp at all');
+        self::assertSame(-1, $epochOfDefault, 'and its committed leader epoch is the -1 of a v4 request');
         self::assertSame(
-            self::DEFAULT_OFFSET_RETENTION_MS,
-            $expiryOfDefault - $commitOfDefault,
-            'retention_time = -1 asks for offsets.retention.minutes of the broker'
+            1,
+            $schemaOfExplicit,
+            'an explicit retention_time falls back to the value schema v1, the only one with an expire_timestamp'
         );
         self::assertSame(
             $retentionTime,
             $expiryOfExplicit - $commitOfExplicit,
-            'an explicit retention_time replaces it for this commit alone'
+            'and it is still honoured: the expiry is the receive time of the commit plus the retention'
         );
     }
 
-    public function testVersion4OfTheOffsetCommitApiClosesTheConnection(): void
+    public function testVersionNineOfTheOffsetCommitApiClosesTheConnection(): void
     {
-        // OffsetCommit stops at v3 in Kafka 0.11.0.3 - v3 is the v2 request with a throttle time in its answer, and
-        // v4 is Kafka 2.0 - so `AbstractRequest.getRequest()` throws for v4. A 0.10 or 0.11 broker does not drop
-        // such a frame the way a 0.9.0.1 broker did: `SocketServer.processCompletedReceives` catches the
-        // `InvalidRequestException` and CLOSES the connection, see "An api the broker does not serve closes the
-        // connection" in the protocol document. The client has no class for the version, so the frame is built by
-        // hand here; its body is the v2/v3 one, which the broker never gets far enough to read.
+        // A 2.8.2 broker serves the versions 0 to 8 of this api - v4 is the KIP-219 bump this client sends and v8
+        // is the flexible one - and closes the connection on anything above, exactly as a 0.11 or 1.1 broker did
+        // for v4: `SocketServer.processCompletedReceives` catches the `InvalidRequestException` of the parser and
+        // CLOSES the channel, see "An api the broker does not serve closes the connection" in the protocol
+        // document. The client has no class for the version 9, so the frame is built by hand here; its body is the
+        // v2/v3/v4 one, which the broker never gets far enough to read.
         $groupId = self::uniqueGroupName();
         $topic   = $this->createTopic();
-        $body    = pack('n', 8) . pack('n', 4) . pack('N', 91) . pack('n', 0)
+        $body    = pack('n', 8) . pack('n', 9) . pack('N', 91) . pack('n', 0)
             . pack('n', strlen($groupId)) . $groupId
             . pack('N', -1) . pack('n', 0) . pack('J', -1) . pack('N', 0);
         $stream  = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => 1000]);
@@ -506,7 +523,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
 
         try {
             OffsetCommitResponse::unpack($stream);
-            self::fail('The broker cannot parse an OffsetCommit v4 and must not answer it');
+            self::fail('The broker cannot parse an OffsetCommit v9 and must not answer it');
         } catch (NetworkException $exception) {
             self::assertStringContainsString('stream', strtolower($exception->getMessage()));
         }
@@ -696,13 +713,18 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
     /**
      * Decodes one message of `__consumer_offsets` into the group, topic and partition it belongs to and its value.
      *
-     * Key (version 0 and 1)   => version int16 group string topic string partition int32
-     * Value (version 0 and 1) => version int16 offset int64 metadata string commitTimestamp int64
-     *                            [expireTimestamp int64, version 1 only]
+     * Key (version 0 and 1) => version int16 group string topic string partition int32
+     * Value                 => version int16 offset int64 [leaderEpoch int32, version 3 only] metadata string
+     *                          commitTimestamp int64 [expireTimestamp int64, version 1 only]
+     *
+     * `OffsetCommitValue.json` @ 2.8.2 has the four versions 0 to 3: version 1 is the only one with an
+     * `expire_timestamp` and version 3 the only one with a `leaderEpoch`, and which of them the coordinator writes
+     * follows `inter.broker.protocol.version` and the `retention_time` of the request, see
+     * {@see self::testRetentionTimeOfVersion2DecidesTheValueSchemaOfTheStoredOffset}.
      *
      * Everything else - the group metadata messages of the membership protocol, whose key version is 2 - is skipped.
      *
-     * @return array{string, string, int, array{int, ?string, int, ?int}}|null
+     * @return array{string, string, int, array{int, ?string, int, ?int, int, ?int}}|null
      */
     private static function decodeOffsetEntry(string $key, ?string $value): ?array
     {
@@ -724,16 +746,21 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $offsetInValue  = 2;
         $offset         = unpack('Joffset', substr($value, $offsetInValue, 8))['offset'];
         $offsetInValue += 8;
+        $leaderEpoch    = null;
+        if ($valueVersion >= 3) {
+            $leaderEpoch    = unpack('lepoch', strrev(substr($value, $offsetInValue, 4)))['epoch'];
+            $offsetInValue += 4;
+        }
         $metadataLength = unpack('nlength', substr($value, $offsetInValue, 2))['length'];
         $metadata       = $metadataLength === 0xFFFF ? null : substr($value, $offsetInValue + 2, $metadataLength);
         $offsetInValue += 2 + ($metadataLength === 0xFFFF ? 0 : $metadataLength);
         $commit         = unpack('Jtimestamp', substr($value, $offsetInValue, 8))['timestamp'];
         $offsetInValue += 8;
-        $expiry         = $valueVersion >= 1
+        $expiry         = $valueVersion === 1
             ? unpack('Jtimestamp', substr($value, $offsetInValue, 8))['timestamp']
             : null;
 
-        return [$group, $topic, $partition, [$offset, $metadata, $commit, $expiry]];
+        return [$group, $topic, $partition, [$offset, $metadata, $commit, $expiry, $valueVersion, $leaderEpoch]];
     }
 
     /**

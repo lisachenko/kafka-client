@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 
 /**
- * OffsetFetch response object, version 3 (Kafka 0.11)
+ * OffsetFetch response object, version 4
  *
  * <pre>
- *   OffsetFetch Response (Version: 3) => throttle_time_ms [responses] error_code
+ *   OffsetFetch Response (Version: 3 and 4) => throttle_time_ms [responses] error_code
  *     throttle_time_ms => INT32     -- since version 3
  *     responses => topic [partition_responses]
  *       topic               => STRING
@@ -40,21 +40,23 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
  * which had nowhere else to put a group error. The per-partition codes stay what they were.
  *
  * Version 3 (KIP-124, Kafka 0.11) added the leading `throttle_time_ms` and changed nothing else, so this answer
- * carries an error code at each of its two ends: the throttle time, the topics, and then the group error.
+ * carries an error code at each of its two ends: the throttle time, the topics, and then the group error. Version 4
+ * (KIP-219, Kafka 2.0) is the same answer one api version higher; the next change of the partition entry is the
+ * `committed_leader_epoch` of version 5 (KIP-320, Kafka 2.1), which this line does not send yet.
  *
  * The lower versions each have a class of their own: {@see OffsetFetchResponseV2} still reads the group error code,
  * {@see OffsetFetchResponseV1} and {@see OffsetFetchResponseV0} do not have it and report
  * {@see KafkaException::NO_ERROR} here, because the whole answer of those versions is made of per-partition
  * results.
  *
- * @see docs/protocol/2.8.md, sections "OffsetFetch API (key 9, v0 to v3)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "OffsetFetch API (key 9, v0 to v4)" and "Quotas and throttle time"
  */
 class OffsetFetchResponse extends AbstractResponse
 {
     /**
      * Version of the OffsetFetch API that this class decodes the answer of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

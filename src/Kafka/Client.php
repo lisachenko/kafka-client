@@ -118,9 +118,9 @@ use Throwable;
  * Every api is sent with the highest version a 0.11.0.3 broker serves: Produce v3, which carries a record batch of
  * the message format v2 and the transactional id of its producer and whose answer reports the `LogAppendTime` and
  * the `LogStartOffset` of every partition, Fetch v5, which asks for the log as it lies, bounds the whole answer
- * with `fetch.max.bytes` and states the isolation level of the consumer, OffsetCommit v3 with its `retention_time`,
+ * with `fetch.max.bytes` and states the isolation level of the consumer, OffsetCommit v4 with its `retention_time`,
  * and OffsetCommit v0 when the offsets are stored in ZooKeeper. The apis that KIP-124 raised go out with the
- * version whose answer carries a `throttle_time_ms` - Metadata v4, Offsets v2, OffsetFetch v3, GroupCoordinator v1
+ * version whose answer carries a `throttle_time_ms` - Metadata v4, Offsets v2, OffsetFetch v4, GroupCoordinator v2
  * and the group membership apis one version up. The lower version classes of those apis stay usable directly, for a
  * client that has to talk to an older broker - and `message.format.version` lowers the Produce request to v2 by
  * itself, because a message set of the formats v0 and v1 has no place in a version 3 request.
@@ -994,15 +994,17 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option: version 3 stores the offsets in the
+     * The version of the request follows the `offsets.storage` option: version 4 stores the offsets in the
      * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group, version 0 stores
      * them in ZooKeeper and is answered by any broker. An offset may be given as a plain integer or as an
      * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch.
      *
-     * `$retentionTimeMs` is the `retention_time` field of the v2 request, which v3 sends unchanged: with
+     * `$retentionTimeMs` is the `retention_time` field of the v2 request, which v3 and v4 send unchanged: with
      * {@see OffsetCommitRequest::DEFAULT_RETENTION_TIME} the broker keeps the offsets for `offsets.retention.minutes`
-     * counted from its receive time, any other value replaces that retention for this commit. The ZooKeeper version
-     * has no such field and ignores it. A client that is not a member of a group commits with
+     * counted from its receive time, any other value replaces that retention for this commit - a 2.8.2 broker then
+     * writes the offset with the `__consumer_offsets` value schema v1, the only one that has an `expire_timestamp`.
+     * KIP-211 (Kafka 2.1) removes the field from version 5 of the request, so this is the last version of the api
+     * that can ask for a retention of its own. The ZooKeeper version has no such field and ignores it. A client that is not a member of a group commits with
      * {@see OffsetCommitRequest::DEFAULT_GENERATION_ID} and {@see OffsetCommitRequest::DEFAULT_MEMBER_NAME}; a member
      * of a group has to pass the generation and the member id the coordinator assigned to it, otherwise the
      * coordinator answers with 22 (IllegalGeneration) or 25 (UnknownMemberId).
@@ -1065,7 +1067,7 @@ class Client
      * Fetches the offsets for topic partition for the concrete consumer group
      *
      * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}
-     * - `kafka` reads them out of `__consumer_offsets` with the version 2 of the api, `zookeeper` with the version 0.
+     * - `kafka` reads them out of `__consumer_offsets` with the version 4 of the api, `zookeeper` with the version 0.
      * A topic-partition that has never been committed comes back with the offset -1: as the error code 0 from the
      * `__consumer_offsets` topic (v1 and v2), and as the error code 3 from ZooKeeper (v0).
      *
@@ -1529,7 +1531,7 @@ class Client
     }
 
     /**
-     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v3) instead of ZooKeeper (v0)
+     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v4) instead of ZooKeeper (v0)
      */
     private function isOffsetStorageKafka(): bool
     {

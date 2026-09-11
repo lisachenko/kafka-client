@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsRequestLogDir;
 
 /**
- * AlterReplicaLogDirs, version 0: moves a replica to another disk of the same broker (ApiKey 34, Kafka 1.0, KIP-113)
+ * AlterReplicaLogDirs, version 1: moves a replica to another disk of the same broker (ApiKey 34, Kafka 1.0, KIP-113)
  *
  * <pre>
- *   AlterReplicaLogDirs Request (Version: 0) => [log_dirs]
+ *   AlterReplicaLogDirs Request (Version: 0 and 1) => [log_dirs]
  *     log_dirs => log_dir [topics]
  *       log_dir => STRING
  *       topics  => topic [partitions]
@@ -45,7 +45,14 @@ use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsRequestLogDir;
  * is a DescribeLogDirs question: the entry with `is_future = true` disappears and the replica is reported in the
  * destination alone.
  *
- * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `ALTER_REPLICA_LOG_DIRS_REQUEST_V1 =
+ * ALTER_REPLICA_LOG_DIRS_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see AlterReplicaLogDirsRequestV0} is the same frame with the version field of Kafka 1.0.
+ *
+ * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 and v1)"
  */
 class AlterReplicaLogDirsRequest extends AbstractRequest
 {
@@ -57,7 +64,7 @@ class AlterReplicaLogDirsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Destination directories of this request, indexed by their absolute path

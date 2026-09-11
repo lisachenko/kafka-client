@@ -760,7 +760,7 @@ final class ClientTest extends TestCase
         $frame = $anyBroker->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frame));
-        self::assertSame(0, $this->apiVersionOf($frame));
+        self::assertSame(1, $this->apiVersionOf($frame), 'Kafka 2.0 raised the api to version 1 (KIP-219)');
         // NullableString -1 followed by the default transaction timeout of one minute
         self::assertStringEndsWith('ffff' . '0000ea60', bin2hex($frame));
     }
@@ -783,7 +783,7 @@ final class ClientTest extends TestCase
         $lookupFrame = $lookupNode->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::GROUP_COORDINATOR, $this->apiKeyOf($lookupFrame));
-        self::assertSame(1, $this->apiVersionOf($lookupFrame), 'Only version 1 carries a coordinator type');
+        self::assertSame(2, $this->apiVersionOf($lookupFrame), 'the highest non-flexible FindCoordinator');
         // The key "tx-1" and the CoordinatorType 1 of a transactional id
         self::assertStringEndsWith('0004' . '74782d31' . '01', bin2hex($lookupFrame));
 
@@ -1317,7 +1317,7 @@ final class ClientTest extends TestCase
         self::assertSame(FetchMetadata::INITIAL_EPOCH, $metadata->epoch);
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionThree(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionFour(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -1350,9 +1350,9 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(3, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 3');
+        self::assertSame(4, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 4');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(3, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 3');
+        self::assertSame(4, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 4');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -1408,7 +1408,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(3, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
+        self::assertSame(4, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
         self::assertStringEndsWith('ffffffff', bin2hex($frame), 'the topic array of the request is the null one');
     }
 
@@ -1479,7 +1479,7 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(2, $this->apiVersionOf($frame), 'JoinGroup v2 is v1 plus the throttle time of KIP-124');
+        self::assertSame(3, $this->apiVersionOf($frame), 'JoinGroup v3 is the KIP-219 bump of the v1 frame');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(
@@ -1557,7 +1557,7 @@ final class ClientTest extends TestCase
 
         self::assertSame('my-share', $response->memberAssignment);
         self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($coordinator->getReceivedFrames()[0]));
-        self::assertSame(1, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
+        self::assertSame(2, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
     }
 
     public function testAHeartbeatAndALeaveAreSentToTheCoordinatorAndReportNothingWhenTheySucceed(): void

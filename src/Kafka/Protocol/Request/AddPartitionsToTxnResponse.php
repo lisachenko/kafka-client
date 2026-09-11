@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponseTopic;
 
 /**
- * AddPartitionsToTxn response object, version 0 (key 24)
+ * AddPartitionsToTxn response object, version 1 (key 24)
  *
  * <pre>
- *   AddPartitionsToTxn Response (Version: 0) => throttle_time_ms [errors]
+ *   AddPartitionsToTxn Response (Version: 0 and 1) => throttle_time_ms [errors]
  *     throttle_time_ms => INT32
  *     errors           => topic [partition_errors]
  *       topic            => STRING
@@ -39,14 +39,21 @@ use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponseTopic;
  * has to look at the partitions to learn what happened to the transaction, which is what
  * {@see \Protocol\Kafka\Client::addPartitionsToTxn()} does.
  *
- * @see docs/protocol/2.8.md, section "AddPartitionsToTxn API (key 24, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `ADD_PARTITIONS_TO_TXN_RESPONSE_V1 =
+ * ADD_PARTITIONS_TO_TXN_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see AddPartitionsToTxnResponseV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "AddPartitionsToTxn API (key 24, v0 and v1)"
  */
 class AddPartitionsToTxnResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation

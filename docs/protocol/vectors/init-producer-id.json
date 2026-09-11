@@ -1,13 +1,13 @@
 {
     "api": "init-producer-id",
     "apiKey": 22,
-    "section": "InitProducerId API (key 22, v0)",
-    "description": "Wire vectors of the InitProducerId API (key 22, v0), replayed by tests/Compliance.",
+    "section": "InitProducerId API (key 22, v0 and v1)",
+    "description": "Wire vectors of the InitProducerId API (key 22, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "initproducerid.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequestV0",
             "version": 0,
             "source": "broker",
             "description": "InitProducerId request v0 of an idempotent producer: the transactional id is null, so any broker of the cluster answers it with a producer id of its own block, and the transaction timeout is the `transaction.timeout.ms` default of 60000 ms that the broker ignores for a null id.",
@@ -25,7 +25,7 @@
         {
             "id": "initproducerid.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponseV0",
             "version": 0,
             "source": "broker",
             "description": "InitProducerId answer of a broker for a null transactional id: the next producer id of the block it reserved in ZooKeeper, always with the epoch 0. Every request answers a new id, so this producer id is the one of this session only.",
@@ -42,7 +42,7 @@
         {
             "id": "initproducerid.request.v0.transactional",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequestV0",
             "version": 0,
             "source": "broker",
             "description": "InitProducerId request v0 of a transactional producer: the transactional id makes the request one that only the transaction coordinator of that id may answer, and the transaction timeout is the one the coordinator holds against `transaction.max.timeout.ms`.",
@@ -60,7 +60,7 @@
         {
             "id": "initproducerid.response.v0.transactional",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponseV0",
             "version": 0,
             "source": "broker",
             "description": "InitProducerId answer of the transaction coordinator: the producer id that `__transaction_state` holds for the transactional id, with the epoch 0 of its very first producer; every later request for the same id answers the same producer id with an epoch one higher, which fences the producer before it.",
@@ -77,7 +77,7 @@
         {
             "id": "initproducerid.request.v0.invalid-timeout",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequestV0",
             "version": 0,
             "source": "broker",
             "description": "InitProducerId request v0 with a transaction timeout of 999999999 ms, above the `transaction.max.timeout.ms` of the broker (900000 by default).",
@@ -95,7 +95,7 @@
         {
             "id": "initproducerid.response.v0.invalid-timeout",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer to a transaction timeout the broker will not accept: the error code 50 (InvalidTransactionTimeout), and -1 as the producer id and as the epoch, which is the \"no producer state\" of every answer that carries an error.",
@@ -107,6 +107,41 @@
                 "errorCode": 50,
                 "producerId": -1,
                 "producerEpoch": -1
+            }
+        },
+        {
+            "id": "initproducerid.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "InitProducerId request v1, the frame of version 0 with the api version Kafka 2.0 added: the transactional id of a transactional producer and the default transaction timeout of one minute.",
+            "hex": "0000002a00160001000001fc000a74342d766563746f7273001074342d32302d766563746f72732d74780000ea60",
+            "fields": {
+                "messageSize": 42,
+                "apiKey": 22,
+                "apiVersion": 1,
+                "correlationId": 508,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-20-vectors-tx",
+                "transactionTimeoutMs": 60000
+            }
+        },
+        {
+            "id": "initproducerid.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "InitProducerId response v1 of the transaction coordinator: the producer id of the transactional id and the epoch it was bumped to.",
+            "hex": "00000014000001fc00000000000000000000000000290000",
+            "fields": {
+                "messageSize": 20,
+                "correlationId": 508,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "producerId": 41,
+                "producerEpoch": 0
             }
         }
     ]

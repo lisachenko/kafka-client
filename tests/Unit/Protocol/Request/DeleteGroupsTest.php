@@ -20,16 +20,20 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroup;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsRequestV0;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteGroupsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 
 /**
  * Byte-exact tests for the DeleteGroups API of Kafka 1.1 (api key 42, v0, KIP-229).
  *
- * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 and v1)"
  */
 #[CoversClass(DeleteGroupsRequest::class)]
+#[CoversClass(DeleteGroupsRequestV0::class)]
 #[CoversClass(DeleteGroupsResponse::class)]
+#[CoversClass(DeleteGroupsResponseV0::class)]
 #[CoversClass(DeleteGroupsResponseGroup::class)]
 final class DeleteGroupsTest extends TestCase
 {
@@ -38,12 +42,22 @@ final class DeleteGroupsTest extends TestCase
      *
      *   Size          => 00 00 00 24 (36 bytes)
      *   ApiKey        => 00 2a (42)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 09
      *   ClientId      => 00 04 "test"
      *   Groups        => 00 00 00 02, 00 07 "group-a", 00 07 "group-b"
      */
     private const string REQUEST_HEX = '00000024'
+        . '002a'
+        . '0001'
+        . '00000009'
+        . '0004' . '74657374'
+        . '00000002' . '0007' . '67726f75702d61' . '0007' . '67726f75702d62';
+
+    /**
+     * The very same body as a version 0 frame, which is the only version a 1.1.1 broker serves.
+     */
+    private const string REQUEST_V0_HEX = '00000024'
         . '002a'
         . '0000'
         . '00000009'
@@ -75,8 +89,21 @@ final class DeleteGroupsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DELETE_GROUPS, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'a 1.1.1 broker only serves version 0');
+        self::assertSame(1, $request->getApiVersion(), 'KIP-219 makes the version this client sends 1');
         self::assertSame(['group-a', 'group-b'], $request->getGroups());
+    }
+
+    public function testTheVersionZeroRequestIsTheSameBody(): void
+    {
+        $request = new DeleteGroupsRequestV0(['group-a', 'group-b'], 'test', 9);
+
+        self::assertSame(self::REQUEST_V0_HEX, bin2hex((string) $request));
+        self::assertSame(0, $request->getApiVersion(), 'the only version a 1.1.1 broker serves');
+        self::assertSame(
+            substr(self::REQUEST_HEX, 16),
+            substr(self::REQUEST_V0_HEX, 16),
+            'KIP-219 raised the api version of DeleteGroups without adding a field'
+        );
     }
 
     public function testTheFrameIsTheOneOfDescribeGroups(): void
@@ -119,6 +146,15 @@ final class DeleteGroupsTest extends TestCase
             $response->groups['group-c']->errorCode,
             'and one the coordinator never heard of says so with a code of its own'
         );
+    }
+
+    public function testTheVersionZeroAnswerIsTheVersionOneAnswer(): void
+    {
+        $response = DeleteGroupsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+
+        self::assertSame(12, $response->throttleTimeMs);
+        self::assertSame(['group-a', 'group-b', 'group-c'], array_keys($response->groups));
+        self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
     }
 
     public function testResponseSurvivesARoundTrip(): void

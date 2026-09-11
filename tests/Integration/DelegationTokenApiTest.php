@@ -51,9 +51,9 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
  * lifetime is a single millisecond: a token that is past its expiry can no longer be expired through the protocol
  * at all (the broker answers 66 for that too), and only the broker's own sweeper removes it.
  *
- * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0)",
- *      "RenewDelegationToken API (key 39, v0)", "ExpireDelegationToken API (key 40, v0)" and
- *      "DescribeDelegationToken API (key 41, v0)"
+ * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 and v1)",
+ *      "RenewDelegationToken API (key 39, v0 and v1)", "ExpireDelegationToken API (key 40, v0 and v1)" and
+ *      "DescribeDelegationToken API (key 41, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DelegationToken::class)]

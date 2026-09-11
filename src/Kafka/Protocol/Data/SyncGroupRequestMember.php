@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * assignment for a member the leader did not mention (`GroupCoordinator.doSyncGroup` @ 0.10.2.2) - it never parses
  * them, which is why the assignment is an opaque byte array here as well.
  *
- * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v2)"
  */
 class SyncGroupRequestMember implements BinarySchemaInterface
 {

@@ -23,15 +23,19 @@ use Protocol\Kafka\Protocol\Data\DeleteRecordsRequestTopic;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponseTopic;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsRequestV0;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsResponseV0;
 
 /**
  * Byte-exact tests for the DeleteRecords API of Kafka 0.11 (api key 21, v0).
  *
- * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 and v1)"
  */
 #[CoversClass(DeleteRecordsRequest::class)]
+#[CoversClass(DeleteRecordsRequestV0::class)]
 #[CoversClass(DeleteRecordsResponse::class)]
+#[CoversClass(DeleteRecordsResponseV0::class)]
 #[CoversClass(DeleteRecordsRequestTopic::class)]
 #[CoversClass(DeleteRecordsRequestPartition::class)]
 #[CoversClass(DeleteRecordsResponseTopic::class)]
@@ -43,7 +47,7 @@ final class DeleteRecordsTest extends TestCase
      *
      *   Size          => 00 00 00 39 (57 bytes)
      *   ApiKey        => 00 15 (21)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 05
      *   ClientId      => 00 04 "test"
      *   Topics        => 00 00 00 01
@@ -55,7 +59,7 @@ final class DeleteRecordsTest extends TestCase
      */
     private const string REQUEST_HEX = '00000039'
         . '0015'
-        . '0000'
+        . '0001'
         . '00000005'
         . '0004' . '74657374'
         . '00000001'
@@ -66,7 +70,7 @@ final class DeleteRecordsTest extends TestCase
         . '00007530';
 
     /**
-     * DeleteRecords response v0: one partition deleted, one that the broker does not lead.
+     * DeleteRecords response v1: one partition deleted, one that the broker does not lead.
      *
      *   Size           => 00 00 00 33 (51 bytes)
      *   CorrelationId  => 00 00 00 05
@@ -109,7 +113,7 @@ final class DeleteRecordsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DELETE_RECORDS, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'a 0.11.0.3 broker only serves version 0');
+        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.0 raised the api to version 1 (KIP-219)');
         self::assertSame(57, $request->getMessageSize());
     }
 
@@ -169,4 +173,23 @@ final class DeleteRecordsTest extends TestCase
 
         self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
     }
+
+    public function testTheVersionZeroFrameIsTheSameBodyWithALowerVersionField(): void
+    {
+        $request = new DeleteRecordsRequestV0(
+            ['topic' => [0 => 2, 1 => DeleteRecordsRequest::HIGH_WATERMARK]],
+            30000,
+            'test',
+            5
+        );
+
+        // `DELETE_RECORDS_REQUEST_V1 = DELETE_RECORDS_REQUEST_V0` @ 2.0.1
+        self::assertSame(substr_replace(self::REQUEST_HEX, '0000', 12, 4), bin2hex((string) $request));
+        self::assertSame(0, $request->getApiVersion());
+
+        $response = DeleteRecordsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+
+        self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
+    }
+
 }

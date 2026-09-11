@@ -42,8 +42,8 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0)", "DescribeConfigs API (key 32, v0 and v1)" and
- *      "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 and v1)", "DescribeConfigs API (key 32, v0, v1 and v2)" and
+ *      "AlterConfigs API (key 33, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Client::class)]
@@ -103,7 +103,7 @@ final class ConfigAdminApiTest extends TestCase
         );
     }
 
-    public function testTheRequestIsTheVersionOneOfKip226(): void
+    public function testTheRequestIsTheVersionTwoOfKafkaTwoZeroWithTheSynonymFlagOfKip226(): void
     {
         $broker = new BrokerConnection(self::vector('describe-configs', 'describeconfigs.response.v1.topic'));
         $this->brokers
@@ -116,7 +116,11 @@ final class ConfigAdminApiTest extends TestCase
         // The received frame is the request without its Size, so the api key and the version open it
         $frame = $broker->getReceivedFrames()[0];
         self::assertSame(ApiKeys::DESCRIBE_CONFIGS, unpack('n', substr($frame, 0, 2))[1]);
-        self::assertSame(1, unpack('n', substr($frame, 2, 2))[1], 'the api version of the header is 1');
+        self::assertSame(
+            2,
+            unpack('n', substr($frame, 2, 2))[1],
+            'the api version of the header is the 2 that Kafka 2.0 added (KIP-219)'
+        );
         self::assertSame("\x01", substr($frame, -1), 'and include_synonyms is the last byte of the frame');
     }
 

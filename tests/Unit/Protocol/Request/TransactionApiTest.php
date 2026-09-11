@@ -31,30 +31,44 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponsePartition;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseTopic;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
+use Protocol\Kafka\Protocol\Request\EndTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
+use Protocol\Kafka\Protocol\Request\EndTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequest;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 
 /**
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
- * @see docs/protocol/2.8.md, sections "AddPartitionsToTxn API (key 24, v0)", "AddOffsetsToTxn API (key 25, v0)",
- *      "EndTxn API (key 26, v0)", "WriteTxnMarkers API (key 27, v0)" and "TxnOffsetCommit API (key 28, v0)"
+ * @see docs/protocol/2.8.md, sections "AddPartitionsToTxn API (key 24, v0 and v1)", "AddOffsetsToTxn API (key 25, v0 and v1)",
+ *      "EndTxn API (key 26, v0 and v1)", "WriteTxnMarkers API (key 27, v0)" and "TxnOffsetCommit API (key 28, v0 and v1)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
+#[CoversClass(AddPartitionsToTxnRequestV0::class)]
 #[CoversClass(AddPartitionsToTxnResponse::class)]
+#[CoversClass(AddPartitionsToTxnResponseV0::class)]
 #[CoversClass(AddPartitionsToTxnResponseTopic::class)]
 #[CoversClass(AddPartitionsToTxnResponsePartition::class)]
 #[CoversClass(AddOffsetsToTxnRequest::class)]
+#[CoversClass(AddOffsetsToTxnRequestV0::class)]
 #[CoversClass(AddOffsetsToTxnResponse::class)]
+#[CoversClass(AddOffsetsToTxnResponseV0::class)]
 #[CoversClass(EndTxnRequest::class)]
+#[CoversClass(EndTxnRequestV0::class)]
 #[CoversClass(EndTxnResponse::class)]
+#[CoversClass(EndTxnResponseV0::class)]
 #[CoversClass(WriteTxnMarkersRequest::class)]
 #[CoversClass(WriteTxnMarkersResponse::class)]
 #[CoversClass(WriteTxnMarkersRequestMarker::class)]
@@ -62,7 +76,9 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 #[CoversClass(WriteTxnMarkersResponseTopic::class)]
 #[CoversClass(WriteTxnMarkersResponsePartition::class)]
 #[CoversClass(TxnOffsetCommitRequest::class)]
+#[CoversClass(TxnOffsetCommitRequestV0::class)]
 #[CoversClass(TxnOffsetCommitResponse::class)]
+#[CoversClass(TxnOffsetCommitResponseV0::class)]
 #[CoversClass(TxnOffsetCommitRequestTopic::class)]
 #[CoversClass(TxnOffsetCommitRequestPartition::class)]
 #[CoversClass(TxnOffsetCommitResponseTopic::class)]
@@ -70,11 +86,11 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 final class TransactionApiTest extends TestCase
 {
     /**
-     * AddPartitionsToTxn request v0 for two partitions of one topic.
+     * AddPartitionsToTxn request v1 for two partitions of one topic.
      *
      *   Size            => 00 00 00 35 (53 bytes)
      *   ApiKey          => 00 18 (24)
-     *   ApiVersion      => 00 00
+     *   ApiVersion      => 00 01
      *   CorrelationId   => 00 00 00 07
      *   ClientId        => 00 04 "test"
      *   TransactionalId => 00 04 "tx-1"
@@ -86,7 +102,7 @@ final class TransactionApiTest extends TestCase
      */
     private const string ADD_PARTITIONS_REQUEST_HEX = '00000035'
         . '0018'
-        . '0000'
+        . '0001'
         . '00000007'
         . '0004' . '74657374'
         . '0004' . '74782d31'
@@ -116,7 +132,7 @@ final class TransactionApiTest extends TestCase
      */
     private const string ADD_OFFSETS_REQUEST_HEX = '00000028'
         . '0019'
-        . '0000'
+        . '0001'
         . '00000008'
         . '0004' . '74657374'
         . '0004' . '74782d31'
@@ -134,7 +150,7 @@ final class TransactionApiTest extends TestCase
      */
     private const string END_TXN_COMMIT_HEX = '0000001f'
         . '001a'
-        . '0000'
+        . '0001'
         . '00000009'
         . '0004' . '74657374'
         . '0004' . '74782d31'
@@ -147,7 +163,7 @@ final class TransactionApiTest extends TestCase
      */
     private const string END_TXN_ABORT_HEX = '0000001f'
         . '001a'
-        . '0000'
+        . '0001'
         . '00000009'
         . '0004' . '74657374'
         . '0004' . '74782d31'
@@ -200,7 +216,7 @@ final class TransactionApiTest extends TestCase
      */
     private const string TXN_OFFSET_COMMIT_REQUEST_HEX = '0000004a'
         . '001c'
-        . '0000'
+        . '0001'
         . '0000000b'
         . '0004' . '74657374'
         . '0004' . '74782d31'
@@ -229,7 +245,7 @@ final class TransactionApiTest extends TestCase
 
         self::assertSame(self::ADD_PARTITIONS_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::ADD_PARTITIONS_TO_TXN, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'a 0.11.0.3 broker only serves version 0');
+        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.0 raised the three apis to version 1');
     }
 
     public function testAnAlreadyBuiltTopicOfAddPartitionsToTxnIsTakenAsItIs(): void
@@ -378,4 +394,61 @@ final class TransactionApiTest extends TestCase
         );
         self::assertSame(self::TXN_OFFSET_COMMIT_RESPONSE_HEX, bin2hex((string) $response));
     }
+
+    /**
+     * The version 0 frames of Kafka 0.11, which Kafka 2.0 raised to version 1 without changing a byte
+     * (`ADD_PARTITIONS_TO_TXN_REQUEST_V1 = ADD_PARTITIONS_TO_TXN_REQUEST_V0` and its siblings @ 2.0.1)
+     */
+    public function testTheVersionZeroFramesAreTheSameBodiesWithALowerVersionField(): void
+    {
+        $addPartitions = new AddPartitionsToTxnRequestV0('tx-1', 42, 3, ['topic' => [0, 1]], 'test', 7);
+        $addOffsets    = new AddOffsetsToTxnRequestV0('tx-1', 42, 3, 'my-group', 'test', 8);
+        $endTxn        = new EndTxnRequestV0('tx-1', 42, 3, EndTxnRequest::COMMIT, 'test', 9);
+        $txnOffsets    = new TxnOffsetCommitRequestV0(
+            'tx-1',
+            'my-group',
+            42,
+            3,
+            ['topic' => [0 => new OffsetAndMetadata(17, 'state')]],
+            'test',
+            11
+        );
+
+        self::assertSame(
+            substr_replace(self::ADD_PARTITIONS_REQUEST_HEX, '0000', 12, 4),
+            bin2hex((string) $addPartitions)
+        );
+        self::assertSame(substr_replace(self::ADD_OFFSETS_REQUEST_HEX, '0000', 12, 4), bin2hex((string) $addOffsets));
+        self::assertSame(substr_replace(self::END_TXN_COMMIT_HEX, '0000', 12, 4), bin2hex((string) $endTxn));
+        self::assertSame(
+            substr_replace(self::TXN_OFFSET_COMMIT_REQUEST_HEX, '0000', 12, 4),
+            bin2hex((string) $txnOffsets)
+        );
+        self::assertSame([0, 0, 0, 0], [
+            $addPartitions->getApiVersion(),
+            $addOffsets->getApiVersion(),
+            $endTxn->getApiVersion(),
+            $txnOffsets->getApiVersion(),
+        ]);
+    }
+
+    /**
+     * The answers of version 0 are read by the classes of their own version, which have the same layout
+     */
+    public function testTheVersionZeroAnswersAreReadByTheClassesOfTheirOwnVersion(): void
+    {
+        $answers = [
+            AddPartitionsToTxnResponseV0::class => self::ADD_PARTITIONS_RESPONSE_HEX,
+            AddOffsetsToTxnResponseV0::class    => self::ADD_OFFSETS_RESPONSE_HEX,
+            EndTxnResponseV0::class             => self::END_TXN_RESPONSE_HEX,
+            TxnOffsetCommitResponseV0::class    => self::TXN_OFFSET_COMMIT_RESPONSE_HEX,
+        ];
+
+        foreach ($answers as $class => $hex) {
+            $response = $class::unpack(new StringStream((string) hex2bin($hex)));
+
+            self::assertSame($hex, bin2hex((string) $response), "{$class} does not survive a round trip");
+        }
+    }
+
 }

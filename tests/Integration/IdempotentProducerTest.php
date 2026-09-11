@@ -38,20 +38,21 @@ use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises the idempotent producer of KIP-98 against a real Kafka 1.1.1 broker.
+ * Exercises the idempotent producer of KIP-98 against a real Kafka 2.8.2 broker.
  *
- * Three things are verified here and nowhere else: that `InitProducerId` (key 22) really hands out what the
- * protocol document says it does - a fresh id with the epoch 0 for a null transactional id, the same id with a
- * bumped epoch for a real one - that the **broker** deduplicates what this client stamps onto its batches, and
- * what a **1.x** broker does that a 0.11 one did not: it remembers the last **five** batches of a producer and
- * partition instead of the last one, and it has an error of its own for "I have no state of this producer",
- * **59** `UnknownProducerId`, which this client answers by numbering the partition from the sequence 0 again when
- * the `logStartOffset` of the answer shows that the records were deleted under it.
+ * Three things are verified here and nowhere else: that `InitProducerId` (key 22, **version 1** since Kafka 2.0)
+ * really hands out what the protocol document says it does - a fresh id with the epoch 0 for a null transactional
+ * id, the same id with a bumped epoch for a real one - that the **broker** deduplicates what this client stamps
+ * onto its batches, and how a **2.x** broker differs from the 1.1.1 one of the line below: it still remembers the
+ * last **five** batches of a producer and partition, but the error code **59** `UnknownProducerId` of Kafka 1.0 is
+ * gone from its produce path. `ProducerAppendInfo.checkSequence` @ 2.8.2 accepts any sequence of a producer it
+ * holds no state of, so a batch whose records were deleted under it is simply appended and the repair path of this
+ * client - which a 1.1.1 broker still needs - is never entered here.
  *
  * The deduplication is the whole point of the guarantee, and it can only be seen against a log: a batch that is
  * sent twice has to come back with the offset of the first append and must not appear twice in the partition.
  *
- * @see docs/protocol/2.8.md, sections "InitProducerId API (key 22, v0)" and "The idempotent producer"
+ * @see docs/protocol/2.8.md, sections "InitProducerId API (key 22, v0 and v1)" and "The idempotent producer"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(TransactionManager::class)]
@@ -325,16 +326,20 @@ final class IdempotentProducerTest extends IntegrationTestCase
     }
 
     /**
-     * Every record of a producer being deleted is the **59** of Kafka 1.0, and this client repairs it
+     * A 2.8.2 broker accepts the next batch of a producer whose records were all deleted, sequence and all
      *
-     * `ProducerStateManager.truncateHead()` @ 1.1.1 drops the entry of every producer whose last record fell below
-     * the new log start offset, so the next batch of that producer meets a broker that has no state of it. A first
-     * sequence other than 0 is then answered with **59** `UnknownProducerId` (`ProducerAppendInfo.checkSequence`),
-     * and the `logStartOffset` that Produce v5 added to the answer is what lets the producer tell that case from a
-     * real out-of-order sequence: its records are below the start of the log, so the partition is numbered from 0
-     * again and the batch is sent once more - under the very same producer id.
+     * On a 1.1.1 broker this was the **59** `UnknownProducerId` of Kafka 1.0: `ProducerStateManager.truncateHead()`
+     * dropped the entry of every producer whose last record fell below the new log start offset, so the next batch
+     * met a broker without any state of that producer, and a first sequence other than 0 was refused - which this
+     * client repaired by numbering the partition from 0 again.
+     *
+     * `ProducerAppendInfo.checkSequence()` @ 2.8.2 does not throw that exception any more (the class does not even
+     * mention it): "If there is no current producer epoch (possibly because all producer records have been deleted
+     * due to retention or the DeleteRecords API) accept writes with any sequence number". The batch is therefore
+     * appended as it was sent, the producer keeps counting where it stood, and the repair path of this client -
+     * which is still needed for a broker of the lines below - is never entered on a 2.8.2 broker.
      */
-    public function testAProducerWhoseRecordsWereAllDeletedNumbersThePartitionFromZeroAgain(): void
+    public function testAProducerWhoseRecordsWereAllDeletedKeepsCountingOnATwoEightBroker(): void
     {
         $topic     = $this->topic('deleted-records');
         $manager   = new TransactionManager($this->client);
@@ -353,29 +358,38 @@ final class IdempotentProducerTest extends IntegrationTestCase
 
         $second = $this->produce($topic, $manager, ['after the deletion']);
 
-        self::assertSame(2, $second[$topic][0]->baseOffset, 'the batch that was sent again was appended');
-        self::assertSame(2, $second[$topic][0]->logStartOffset, 'and the answer reports the new start of the log');
+        self::assertSame(2, $second[$topic][0]->baseOffset, 'the batch was appended at the new start of the log');
+        self::assertSame(2, $second[$topic][0]->logStartOffset, 'and the answer reports that new start');
         self::assertSame(
             $producerId,
             $manager->getProducerIdAndEpoch()->producerId,
-            'the producer id survives - only the numbering of that one partition starts over'
+            'the producer id survives, and so does the numbering of the partition'
         );
-        self::assertSame(1, $manager->sequenceNumber($partition), 'at the sequence 0, so the next batch is 1');
+        self::assertSame(
+            3,
+            $manager->sequenceNumber($partition),
+            'the batch carried the sequence 2 and was accepted, where a 1.1.1 broker answered 59 and this client '
+            . 'started the partition over at 0'
+        );
         self::assertSame(2, $manager->lastAckedOffset($partition));
         self::assertSame(3, $this->latestOffset($topic));
     }
 
     /**
-     * A 1.1.1 broker answers a first batch of an unknown producer id with 59, where 0.11.0.3 answered 45
+     * A first batch of an unknown producer id that does not start at 0 is **accepted** by a 2.8.2 broker
      *
-     * `ProducerAppendInfo.checkSequence` @ 1.1.1 throws `UnknownProducerIdException` when the log holds no entry
-     * of the producer id at all (`NO_PRODUCER_EPOCH`) and the batch does not start at the sequence 0; 0.11.0.3,
-     * which had no such
-     * error code, answered every one of those with `OutOfOrderSequenceException`. This client only repairs it when
-     * the `logStartOffset` of the answer says that its records were deleted, which is why the producer of this
-     * test claims an acknowledged offset that is not below the start of the log.
+     * `ProducerAppendInfo.checkSequence` @ 1.1.1 threw `UnknownProducerIdException` - the error code **59** - when
+     * the log held no entry of the producer id at all (`NO_PRODUCER_EPOCH`) and the batch did not start at the
+     * sequence 0; 0.11.0.3, which had no such error code, answered those with `OutOfOrderSequenceException` (45).
+     *
+     * A 2.8.2 broker answers neither: the very same branch now reads "If there is no current producer epoch
+     * (possibly because all producer records have been deleted due to retention or the DeleteRecords API) accept
+     * writes with any sequence number", so the batch is appended with the sequence it carries and the producer
+     * simply carries on from there. The error code 59 is gone from the produce path of this release - what is left
+     * of the idempotent guarantee is the 45 of a producer whose state the broker DOES hold (see the test above)
+     * and the 47 of a fenced epoch.
      */
-    public function testAFirstBatchOfAnUnknownProducerIdThatDoesNotStartAtZeroIsAnUnknownProducerId(): void
+    public function testAFirstBatchOfAnUnknownProducerIdThatDoesNotStartAtZeroIsAccepted(): void
     {
         $topic     = $this->topic('unknown-id');
         $manager   = new TransactionManager($this->client);
@@ -387,24 +401,14 @@ final class IdempotentProducerTest extends IntegrationTestCase
         $manager->incrementSequenceNumber($partition, 5);
         $manager->updateLastAckedOffset($partition, 0, 1);
 
-        try {
-            $this->produce($topic, $manager, ['not the first sequence']);
-            self::fail('a first batch that does not start at 0 has to be reported');
-        } catch (TopicPartitionRequestException $exception) {
-            $error = $exception->getExceptions()[$topic][0];
+        $appended = $this->produce($topic, $manager, ['not the first sequence']);
 
-            self::assertInstanceOf(UnknownProducerIdException::class, $error);
-            self::assertInstanceOf(
-                OutOfOrderSequenceException::class,
-                $error,
-                'the 59 of the Java client is a special case of the 45 it replaces'
-            );
-            self::assertSame(0, $error->getContext()['logStartOffset'], 'nothing of this log was deleted');
-        }
-
-        self::assertFalse($manager->hasProducerId(), 'a 59 a retry can not fix throws the producer id away');
+        self::assertSame(0, $appended[$topic][0]->baseOffset, 'the batch is the first record of the partition');
+        self::assertSame(0, $appended[$topic][0]->logStartOffset);
+        self::assertSame(6, $manager->sequenceNumber($partition), 'and the producer counts on from the 5 it claimed');
+        self::assertTrue($manager->hasProducerId(), 'nothing was refused, so the producer id stays');
         self::assertFalse($manager->hasFatalError());
-        self::assertSame(0, $this->latestOffset($topic), 'and the refused batch was not appended');
+        self::assertSame(1, $this->latestOffset($topic));
     }
 
     public function testAnOldEpochIsFencedAndFinishesTheProducerForGood(): void

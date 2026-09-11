@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * became of each replica, so the destination is not repeated. Every replica of the request gets an entry, including
  * the ones that are not on this broker at all.
  *
- * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0)"
+ * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 and v1)"
  */
 class AlterReplicaLogDirsResponseTopic implements BinarySchemaInterface
 {

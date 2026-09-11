@@ -1,13 +1,13 @@
 {
     "api": "add-offsets-to-txn",
     "apiKey": 25,
-    "section": "AddOffsetsToTxn API (key 25, v0)",
-    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0), replayed by tests/Compliance.",
+    "section": "AddOffsetsToTxn API (key 25, v0 and v1)",
+    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "addoffsetstotxn.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequestV0",
             "version": 0,
             "source": "broker",
             "description": "AddOffsetsToTxn request v0: it enrols the `__consumer_offsets` partition of the group `t8-vectors-group` into the transaction of `t8-vectors-txn`, so that the commit marker reaches it as well. The offsets themselves are not in this request - they travel in the TxnOffsetCommit that follows it, to the group coordinator.",
@@ -27,7 +27,7 @@
         {
             "id": "addoffsetstotxn.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of the transaction coordinator: one error code for the whole request, because this api enrols exactly one partition.",
@@ -35,6 +35,41 @@
             "fields": {
                 "messageSize": 10,
                 "correlationId": 186,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "addoffsetstotxn.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "AddOffsetsToTxn request v1, the frame of version 0 with the api version Kafka 2.0 added: the partition of `__consumer_offsets` that holds the group is enrolled into the transaction.",
+            "hex": "0000004500190001000001fe000a74342d766563746f7273001074342d32302d766563746f72732d747800000000000000290000001374342d32302d766563746f72732d67726f7570",
+            "fields": {
+                "messageSize": 69,
+                "apiKey": 25,
+                "apiVersion": 1,
+                "correlationId": 510,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-20-vectors-tx",
+                "producerId": 41,
+                "producerEpoch": 0,
+                "groupId": "t4-20-vectors-group"
+            }
+        },
+        {
+            "id": "addoffsetstotxn.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "AddOffsetsToTxn response v1: one error code for the whole request, 0 here.",
+            "hex": "0000000a000001fe000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 510,
                 "throttleTimeMs": 0,
                 "errorCode": 0
             }
