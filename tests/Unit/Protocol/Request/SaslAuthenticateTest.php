@@ -23,8 +23,10 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Request\SaslAuthenticateRequest;
 use Protocol\Kafka\Protocol\Request\SaslAuthenticateRequestV0;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateRequestV1;
 use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponse;
 use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponseV0;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponseV1;
 
 /**
  * Byte-exact tests for the SaslAuthenticate API (key 36, v0, Kafka 1.0 / KIP-152).
@@ -36,22 +38,45 @@ use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponseV0;
  */
 #[CoversClass(SaslAuthenticateRequest::class)]
 #[CoversClass(SaslAuthenticateRequestV0::class)]
+#[CoversClass(SaslAuthenticateRequestV1::class)]
 #[CoversClass(SaslAuthenticateResponse::class)]
 #[CoversClass(SaslAuthenticateResponseV0::class)]
+#[CoversClass(SaslAuthenticateResponseV1::class)]
 #[CoversClass(SaslToken::class)]
 final class SaslAuthenticateTest extends TestCase
 {
     /**
-     * SaslAuthenticate request v1 carrying the PLAIN token of `kafkatest`, correlation id 2, client id "test".
+     * SaslAuthenticate request v2 carrying the PLAIN token of `kafkatest`, correlation id 2, client id "test".
+     *
+     * The first flexible version of the api (Kafka 2.5, KIP-482): the request header v2 with its tagged-field
+     * section, the token as a compact `bytes` field and the tag buffer that closes the body.
+     *
+     *   Size          => 00 00 00 2c (44 bytes)
+     *   ApiKey        => 00 24 (36)
+     *   ApiVersion    => 00 02
+     *   CorrelationId => 00 00 00 02
+     *   ClientId      => 00 04 "test"   (an int16 string even in a flexible frame)
+     *   TAG_BUFFER    => 00
+     *   SaslAuthBytes => 1c (27 + 1), "\0kafkatest\0kafkatest-secret"
+     *   TAG_BUFFER    => 00
+     */
+    private const string REQUEST_HEX = '0000002c'
+        . '0024'
+        . '0002'
+        . '00000002'
+        . '0004' . '74657374'
+        . '00'
+        . '1c' . '006b61666b6174657374006b61666b61746573742d736563726574'
+        . '00';
+
+    /**
+     * The same token in the non-flexible frame of the versions 0 and 1.
      *
      *   Size          => 00 00 00 2d (45 bytes)
-     *   ApiKey        => 00 24 (36)
      *   ApiVersion    => 00 01
-     *   CorrelationId => 00 00 00 02
-     *   ClientId      => 00 04 "test"
      *   SaslAuthBytes => 00 00 00 1b, "\0kafkatest\0kafkatest-secret"
      */
-    private const string REQUEST_HEX = '0000002d'
+    private const string REQUEST_V1_HEX = '0000002d'
         . '0024'
         . '0001'
         . '00000002'
@@ -95,9 +120,15 @@ final class SaslAuthenticateTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::SASL_AUTHENTICATE, $request->getApiKey());
-        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.2 raised the api to version 1 (KIP-368)');
+        self::assertSame(2, $request->getApiVersion(), 'Kafka 2.5 raised the api to the flexible version 2');
+        self::assertTrue(SaslAuthenticateRequest::isFlexible(), 'and the version 2 is the first flexible one');
         self::assertSame(
-            substr_replace(self::REQUEST_HEX, '0000', 12, 4),
+            self::REQUEST_V1_HEX,
+            bin2hex((string) new SaslAuthenticateRequestV1($token->token, 'test', 2)),
+            'the version 1 keeps the frame of KIP-368'
+        );
+        self::assertSame(
+            substr_replace(self::REQUEST_V1_HEX, '0000', 12, 4),
             bin2hex((string) new SaslAuthenticateRequestV0($token->token, 'test', 2)),
             'SASL_AUTHENTICATE_REQUEST_V1 = SASL_AUTHENTICATE_REQUEST_V0 @ 2.2.2: only the version field differs'
         );
@@ -110,9 +141,15 @@ final class SaslAuthenticateTest extends TestCase
     public function testTheRequestCarriesExactlyTheBytesOfTheRawToken(): void
     {
         $token = SaslToken::ofPlainCredentials('kafkatest', 'kafkatest-secret');
-        $frame = bin2hex((string) new SaslAuthenticateRequest($token->token, 'test', 2));
+        $frame = bin2hex((string) new SaslAuthenticateRequestV1($token->token, 'test', 2));
 
         self::assertStringEndsWith(bin2hex($token->pack()), $frame);
+
+        // The flexible version carries the very same bytes behind a compact length instead of the int32 one
+        self::assertStringEndsWith(
+            '1c' . bin2hex($token->token) . '00',
+            bin2hex((string) new SaslAuthenticateRequest($token->token, 'test', 2))
+        );
     }
 
     /**
@@ -124,7 +161,7 @@ final class SaslAuthenticateTest extends TestCase
         // 2.8.2 broker sends instead of a null one, and the lifetime 0 of a listener without
         // `connections.max.reauth.ms`
         $hex      = '00000014' . '00000322' . '0000' . '0000' . '00000000' . '0000000000000000';
-        $response = SaslAuthenticateResponse::unpack(new StringStream((string) hex2bin($hex)));
+        $response = SaslAuthenticateResponseV1::unpack(new StringStream((string) hex2bin($hex)));
 
         self::assertSame(802, $response->getCorrelationId());
         self::assertSame(0, $response->errorCode);
@@ -137,6 +174,25 @@ final class SaslAuthenticateTest extends TestCase
             array_keys(SaslAuthenticateResponseV0::getScheme()),
             'and the answer of version 0 has no such field'
         );
+    }
+
+    /**
+     * The answer of version 2 is the answer of version 1 in the compact encoding, with two tagged-field sections
+     */
+    public function testTheAnswerOfVersionTwoIsTheFlexibleFrameOfKip482(): void
+    {
+        // Captured on the container over the SASL_PLAINTEXT listener: the response header v1 with its tag buffer,
+        // the empty compact error message, the empty compact token, the lifetime 0 and the tag buffer of the body
+        $hex      = '00000012' . '00000394' . '00' . '0000' . '01' . '01' . '0000000000000000' . '00';
+        $response = SaslAuthenticateResponse::unpack(new StringStream((string) hex2bin($hex)));
+
+        self::assertSame(916, $response->getCorrelationId());
+        self::assertSame(0, $response->errorCode);
+        self::assertSame('', $response->errorMessage);
+        self::assertSame('', $response->saslAuthBytes);
+        self::assertSame(0, $response->sessionLifetimeMs);
+        self::assertSame($hex, bin2hex((string) $response));
+        self::assertTrue(SaslAuthenticateResponse::isFlexible());
     }
 
     public function testResponseOfACompletedExchangeIsUnpackedAccordingToTheSpec(): void

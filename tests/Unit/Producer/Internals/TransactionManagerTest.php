@@ -26,6 +26,7 @@ use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\ClusterFixture;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
 
@@ -64,7 +65,12 @@ final class TransactionManagerTest extends TestCase
         self::assertSame($first, $second, 'The producer id is only asked for once');
         self::assertCount(1, $client->initProducerIdCalls);
         self::assertSame(
-            ['transactionalId' => null, 'transactionTimeoutMs' => 60000],
+            [
+                'transactionalId'      => null,
+                'transactionTimeoutMs' => 60000,
+                'producerId'           => InitProducerIdRequest::NO_PRODUCER_ID,
+                'producerEpoch'        => InitProducerIdRequest::NO_PRODUCER_EPOCH,
+            ],
             $client->initProducerIdCalls[0]
         );
         self::assertTrue($manager->hasProducerId());
@@ -82,7 +88,12 @@ final class TransactionManagerTest extends TestCase
         $manager->maybeInitProducerId();
 
         self::assertSame(
-            ['transactionalId' => 'tx-1', 'transactionTimeoutMs' => 30000],
+            [
+                'transactionalId'      => 'tx-1',
+                'transactionTimeoutMs' => 30000,
+                'producerId'           => InitProducerIdRequest::NO_PRODUCER_ID,
+                'producerEpoch'        => InitProducerIdRequest::NO_PRODUCER_EPOCH,
+            ],
             $client->initProducerIdCalls[0]
         );
     }

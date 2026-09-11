@@ -167,6 +167,15 @@ class TransactionManager
     private ?Throwable $lastError = null;
 
     /**
+     * Whether the next abort has to bump the epoch of this producer, i.e. whether an abortable error was seen
+     *
+     * `TransactionManager.epochBumpRequired` @ 2.8.2, the flag KIP-360 added: the coordinator still holds the
+     * sequence state of the batches this producer lost, so the transaction after the abort has to run under a
+     * **new epoch** or the broker answers 45 / 47 to the first batch of it.
+     */
+    private bool $epochBumpRequired = false;
+
+    /**
      * Where in its transaction this producer is, `UNINITIALIZED` until `initTransactions()` was called
      */
     private TransactionState $currentState = TransactionState::UNINITIALIZED;
@@ -592,6 +601,9 @@ class TransactionManager
             return;
         }
 
+        // KIP-360: the abort that follows has to bump the epoch, see `bumpEpochIfNeeded()`
+        $this->epochBumpRequired = true;
+
         $this->transitionTo(TransactionState::ABORTABLE_ERROR, $exception);
     }
 
@@ -927,6 +939,8 @@ class TransactionManager
         $this->newPartitionsInTransaction = [];
 
         $this->endTransaction(EndTxnRequest::ABORT);
+
+        $this->bumpEpochIfNeeded();
     }
 
     /**
@@ -976,6 +990,62 @@ class TransactionManager
         ));
 
         $this->completeTransaction();
+    }
+
+    /**
+     * Asks the coordinator for a new epoch after an abort that an abortable error caused (KIP-360, Kafka 2.5).
+     *
+     * Until the version 3 of `InitProducerId` an abortable error was the end of a transactional producer: it could
+     * roll the transaction back, but the sequence numbers the coordinator held for its producer id were no longer
+     * the ones the producer had, so the first batch of the next transaction was answered **45**
+     * (`OutOfOrderSequenceNumber`) or **47** (`InvalidProducerEpoch`) and nothing but a new `transactional.id`
+     * helped. KIP-360 lets the producer ask for `epoch + 1` of the **same** id, which fences everything that was
+     * still in flight and starts the sequences at zero again.
+     *
+     * `TransactionManager.bumpIdempotentEpochAndResetIdIfNeeded()` @ 2.8.2 is the model, and it does two different
+     * things:
+     *
+     * * a **transactional** producer sends `InitProducerId` with its own id and epoch, and the coordinator answers
+     *   the same id one epoch higher;
+     * * an **idempotent** producer has no coordinator that remembers it, so it throws its id away and takes a new
+     *   one with the -1/-1 - which is what {@see TransactionManager::resetProducerId()} has always done.
+     *
+     * The five-batch window and the 59 `UnknownProducerId` of the 1.x line are untouched by this: they are the
+     * cure for a partition whose records were deleted, not for a producer that lost its sequence state.
+     *
+     * @throws KafkaException If the coordinator refuses the bump
+     */
+    private function bumpEpochIfNeeded(): void
+    {
+        if (!$this->epochBumpRequired) {
+            return;
+        }
+
+        $this->epochBumpRequired = false;
+
+        if (!$this->isTransactional() || !$this->producerIdAndEpoch->isValid()) {
+            return;
+        }
+
+        $transactionalId = $this->requireTransactionalId();
+        $current         = $this->producerIdAndEpoch;
+
+        $this->retrying(
+            function (): void {
+                $this->transactionCoordinator = null;
+            },
+            function () use ($transactionalId, $current): void {
+                $this->producerIdAndEpoch = $this->client->initProducerId(
+                    $transactionalId,
+                    $this->transactionTimeoutMs,
+                    $current->producerId,
+                    $current->epoch
+                );
+            }
+        );
+
+        $this->sequenceNumbers  = [];
+        $this->lastAckedOffsets = [];
     }
 
     /**

@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
@@ -30,8 +31,6 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarker;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponsePartition;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseTopic;
-use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV2;
-use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV2;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
@@ -47,9 +46,11 @@ use Protocol\Kafka\Protocol\Request\EndTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV1;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV2;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV1;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV2;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequest;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 
@@ -531,6 +532,78 @@ final class TransactionApiTest extends TestCase
             'and the request writes the -1 of the protocol for it'
         );
         self::assertSame(-1, OffsetAndMetadata::UNKNOWN_LEADER_EPOCH);
+    }
+
+    /**
+     * KIP-447, Kafka 2.5: the version 3 names the consumer of the group, and it is the first flexible one
+     */
+    public function testTheVersionThreeOfTxnOffsetCommitCarriesTheConsumerGroupMetadata(): void
+    {
+        $request = new TxnOffsetCommitRequest(
+            'tx-1',
+            'my-group',
+            42,
+            3,
+            ['topic' => [0 => new OffsetAndMetadata(17, 'state')]],
+            new ConsumerGroupMetadata('my-group', 7, 'member-1', 'instance-1'),
+            'test',
+            11
+        );
+
+        self::assertSame(3, $request->getApiVersion(), 'Kafka 2.5 raised the api to the version 3 of KIP-447');
+        self::assertTrue(TxnOffsetCommitRequest::isFlexible(), 'which is the first flexible one as well');
+
+        $hex = bin2hex((string) $request);
+
+        // The three fields the version added, behind the producer epoch: the generation, the compact member id
+        // and the compact nullable instance id of a static member
+        self::assertStringContainsString(
+            '0000002a' . '0003' . '00000007' . '09' . bin2hex('member-1') . '0b' . bin2hex('instance-1'),
+            $hex
+        );
+        self::assertSame($hex, bin2hex((string) TxnOffsetCommitRequest::unpack(new StringStream((string) $request))));
+    }
+
+    /**
+     * A producer that is not a member of the group sends the generation -1 with the empty member id
+     */
+    public function testAProducerThatIsNoMemberSendsTheGenerationMinusOneAndAnEmptyMemberId(): void
+    {
+        $request = new TxnOffsetCommitRequest(
+            'tx-1',
+            'my-group',
+            42,
+            3,
+            ['topic' => [0 => new OffsetAndMetadata(17)]],
+            null,
+            'test',
+            11
+        );
+
+        self::assertStringContainsString(
+            '0000002a' . '0003' . 'ffffffff' . '01' . '00',
+            bin2hex((string) $request),
+            'the generation -1, the empty compact member id and the compact null of the instance id'
+        );
+    }
+
+    /**
+     * The three codes of KIP-447, as the coordinator answered them on the container
+     */
+    public function testTheVersionThreeAnswersTheGenerationAndMemberChecksPerPartition(): void
+    {
+        $answers = [
+            KafkaException::NO_ERROR          => '000000220000038e0000000000020e74342d32352d766563746f727302000000000000000000',
+            KafkaException::ILLEGAL_GENERATION => '000000220000038f0000000000020e74342d32352d766563746f727302000000000016000000',
+            KafkaException::UNKNOWN_MEMBER_ID => '00000022000003900000000000020e74342d32352d766563746f727302000000000019000000',
+        ];
+
+        foreach ($answers as $errorCode => $hex) {
+            $response = TxnOffsetCommitResponse::unpack(new StringStream((string) hex2bin($hex)));
+
+            self::assertSame($errorCode, $response->topics['t4-25-vectors']->partitions[0]->errorCode);
+            self::assertSame($hex, bin2hex((string) $response), 'and it survives a round trip');
+        }
     }
 
     /**

@@ -309,6 +309,37 @@ class KafkaConsumer
      *                                                                                     null for the positions
      *                                                                                     of this consumer
      */
+    /**
+     * Returns who this consumer is inside its group, for a transactional producer that commits its offsets.
+     *
+     * KIP-447, Kafka 2.5: the version 3 of `TxnOffsetCommit` names the consumer whose offsets a transaction
+     * commits - its generation, its member id and its `group.instance.id` - so that the group coordinator can
+     * refuse the commit of a consumer that has been rebalanced away (22 `IllegalGeneration`, 25 `UnknownMemberId`,
+     * 82 `FencedInstanceId`). This is the `KafkaConsumer.groupMetadata()` of the Java client and the argument of
+     * {@see \Protocol\Kafka\Producer\KafkaProducer::sendOffsetsToTransaction()}.
+     *
+     * A consumer that never joined a group - one that picked its partitions with {@see assign()}, or one whose
+     * first poll() is still ahead - answers the generation -1 with the empty member id, which is the "not a member"
+     * commit every version below 3 sent.
+     *
+     * @throws InvalidConfigurationException For a consumer without a `group.id`, which has no metadata at all
+     */
+    public function groupMetadata(): ConsumerGroupMetadata
+    {
+        $groupId = $this->requireGroupId();
+
+        if ($this->groupCoordinator === null) {
+            return new ConsumerGroupMetadata($groupId, groupInstanceId: $this->groupInstanceId());
+        }
+
+        return new ConsumerGroupMetadata(
+            $groupId,
+            $this->groupCoordinator->getGenerationId(),
+            $this->groupCoordinator->getMemberId(),
+            $this->groupInstanceId()
+        );
+    }
+
     public function commitSync(?array $topicPartitionOffsets = null): void
     {
         $topicPartitionOffsets ??= $this->subscriptionState->allConsumed();

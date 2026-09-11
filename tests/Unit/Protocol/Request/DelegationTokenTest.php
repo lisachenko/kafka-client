@@ -20,12 +20,6 @@ use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
-use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponseV1;
-use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV1;
-use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponseV1;
-use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequestV1;
-use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV1;
-use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV0;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV1;
@@ -34,16 +28,22 @@ use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponseV0;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponseV1;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV0;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponseV0;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponseV1;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequestV0;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponseV0;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponseV1;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequestV0;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV0;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV1;
 
 /**
  * Byte-exact tests for the four delegation token APIs of KIP-48 (api keys 38 to 41), at the version 1 that

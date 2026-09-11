@@ -406,13 +406,22 @@ class KafkaProducer
      * $producer->beginTransaction();
      * foreach ($consumer->poll(1000) as $topic => $partitions) { ... $producer->send(...); }
      * $producer->flush();
-     * $producer->sendOffsetsToTransaction(['input' => [0 => $nextOffset]], 'my-group');
+     * $producer->sendOffsetsToTransaction(['input' => [0 => $nextOffset]], $consumer->groupMetadata());
      * $producer->commitTransaction();
      * ```
      *
+     * **KIP-447, Kafka 2.5**: the second argument is the {@see ConsumerGroupMetadata} of the consumer - its group,
+     * its generation, its member id and its `group.instance.id`, which
+     * {@see \Protocol\Kafka\Consumer\KafkaConsumer::groupMetadata()} answers - and the group coordinator refuses
+     * the commit of a consumer that has been rebalanced away (22 `IllegalGeneration`, 25 `UnknownMemberId`, 82
+     * `FencedInstanceId`) instead of letting it write offsets for partitions another member owns by now. A bare
+     * group id still works, as in the 1.x line, and means {@see ConsumerGroupMetadata::forGroup()}: the generation
+     * -1 with the empty member id, the "not a member" commit every version below 3 of the api sent.
+     *
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offset the group continues at,
      *        as topic => partition => offset; the offset of the **next** record to read, as everywhere in Kafka
-     * @param string $consumerGroupId Consumer group the offsets belong to
+     * @param string|ConsumerGroupMetadata $consumerGroupMetadata Consumer whose offsets are committed, or the bare
+     *        id of its group
      *
      * @throws InvalidConfigurationException For a producer without a `transactional.id`
      * @throws \LogicException               For a producer that has no open transaction

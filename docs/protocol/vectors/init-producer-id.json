@@ -180,6 +180,102 @@
                 "producerId": 1033,
                 "producerEpoch": 1
             }
+        },
+        {
+            "id": "initproducerid.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "InitProducerId request v3 (KIP-360): the `producer_id` and the `producer_epoch` the version added, both -1 - the pair of a producer that asks for a **new** id, which is what every version below the third did.",
+            "hex": "000000350016000300000386000a74342d766563746f7273001174342d32352d766563746f72732d74780000ea60ffffffffffffffffffff00",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 22,
+                "apiVersion": 3,
+                "correlationId": 902,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-25-vectors-tx",
+                "transactionTimeoutMs": 60000,
+                "producerId": -1,
+                "producerEpoch": -1
+            }
+        },
+        {
+            "id": "initproducerid.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "InitProducerId answer v3: the producer id of the transactional id with the epoch one above the last incarnation of it.",
+            "hex": "0000001600000386000000000000000000000000000169000a00",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 902,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "producerId": 361,
+                "producerEpoch": 10
+            }
+        },
+        {
+            "id": "initproducerid.request.v3.bump",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "InitProducerId request v3 with the pair the producer holds: this is the bump of KIP-360, the request a transactional producer sends after it aborted the transaction an abortable error left behind.",
+            "hex": "000000350016000300000387000a74342d766563746f7273001174342d32352d766563746f72732d74780000ea600000000000000169000a00",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 22,
+                "apiVersion": 3,
+                "correlationId": 903,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-25-vectors-tx",
+                "transactionTimeoutMs": 60000,
+                "producerId": 361,
+                "producerEpoch": 10
+            }
+        },
+        {
+            "id": "initproducerid.response.v3.bump",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "InitProducerId answer v3 of a bump: the **same** producer id with the epoch one higher, which fences everything that still writes under the old one.",
+            "hex": "0000001600000387000000000000000000000000000169000b00",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 903,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "producerId": 361,
+                "producerEpoch": 11
+            }
+        },
+        {
+            "id": "initproducerid.response.v3.fenced",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "InitProducerId answer v3 to a producer that asks for a bump with an epoch the coordinator has left behind: the error code 47 (InvalidProducerEpoch) with the id and the epoch -1. The code 90 (ProducerFenced) that the Java client expects here belongs to the version 4 of Kafka 2.7.",
+            "hex": "00000016000003880000000000002fffffffffffffffffffff00",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 904,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 47,
+                "producerId": -1,
+                "producerEpoch": -1
+            }
         }
     ]
 }

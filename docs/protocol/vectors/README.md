@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **531** of them in **41** files: **213** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **550** of them in **41** files: **232** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -22,7 +22,10 @@ a refused batch), the 22 frames of the **flexible** versions of the ten group ap
 pair of the same release, the first flexible version of an api the consumer sends, and the 5 frames of
 **OffsetDelete** (KIP-496, the new file `offset-delete.json`), and the 10 frames of the **flexible** admin versions
 of the same release: CreateTopics v5 - whose answer is the KIP-525 one, with the configuration of the new topic in
-it - DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1 and ControlledShutdown v3 - and of the other 318,
+it - DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1 and ControlledShutdown v3, and the 19 frames of
+**Kafka 2.5**: the InitProducerId v3 of KIP-360 with its epoch bump, the TxnOffsetCommit v3 of KIP-447 with the
+22 and the 25 of a consumer the group does not have, and the flexible CreatePartitions v2, SaslAuthenticate v2 and
+token apis v2 - and of the other 318,
 **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**

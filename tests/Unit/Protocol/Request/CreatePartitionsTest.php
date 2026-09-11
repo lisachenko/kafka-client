@@ -22,12 +22,12 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\CreatePartitionsRequestTopic;
 use Protocol\Kafka\Protocol\Data\CreatePartitionsResponseTopic;
-use Protocol\Kafka\Protocol\Request\CreatePartitionsRequestV1;
-use Protocol\Kafka\Protocol\Request\CreatePartitionsResponseV1;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequestV0;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsRequestV1;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsResponse;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsResponseV0;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsResponseV1;
 
 /**
  * Byte-exact tests for the CreatePartitions API of Kafka 1.0 (api key 37, v0, KIP-195).

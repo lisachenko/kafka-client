@@ -240,6 +240,54 @@
                     }
                 }
             }
+        },
+        {
+            "id": "createpartitions.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "CreatePartitions request v2, the first **flexible** version of the api (KIP-482): the same fields as version 1 in the compact encoding, with the tag buffer of the header, of every topic, of the assignment array and of the body. The topic grows from one partition to two, without a replica assignment of its own.",
+            "hex": "000000300025000200000385000a74342d766563746f727300020e74342d32352d766563746f7273000000020000000027100000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 37,
+                "apiVersion": 2,
+                "correlationId": 901,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-25-vectors": {
+                        "topic": "t4-25-vectors",
+                        "count": 2,
+                        "assignment": null
+                    }
+                },
+                "timeout": 10000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createpartitions.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "CreatePartitions answer v2: the error code 0 and a null error message for the one topic, and the tag buffers of the flexible encoding.",
+            "hex": "0000001d000003850000000000020e74342d32352d766563746f72730000000000",
+            "fields": {
+                "messageSize": 29,
+                "correlationId": 901,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-25-vectors": {
+                        "topic": "t4-25-vectors",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
         }
     ]
 }

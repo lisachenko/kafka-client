@@ -133,6 +133,46 @@
                 },
                 "sessionLifetimeMs": 0
             }
+        },
+        {
+            "id": "saslauthenticate.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "SaslAuthenticate request v2, the first flexible version of the api (KIP-482): the PLAIN token of the connection in a compact `bytes` field, with the **request header v2** - the SaslHandshake that opened the exchange is the non-flexible v1, because the handshake api never became flexible.",
+            "hex": "0000002a0024000200000394000a74342d766563746f727300140061646d696e0061646d696e2d73656372657400",
+            "fields": {
+                "messageSize": 42,
+                "apiKey": 36,
+                "apiVersion": 2,
+                "correlationId": 916,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "saslAuthBytes": {
+                    "$bytes": "0061646d696e0061646d696e2d736563726574"
+                }
+            }
+        },
+        {
+            "id": "saslauthenticate.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "SaslAuthenticate answer v2: the empty token of a finished PLAIN exchange, the `session_lifetime_ms` of KIP-368 and the tag buffers of the flexible encoding.",
+            "hex": "00000012000003940000000101000000000000000000",
+            "fields": {
+                "messageSize": 18,
+                "correlationId": 916,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "errorMessage": "",
+                "saslAuthBytes": {
+                    "$bytes": ""
+                },
+                "sessionLifetimeMs": 0
+            }
         }
     ]
 }
