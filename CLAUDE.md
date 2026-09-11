@@ -102,7 +102,11 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 - A 0.8/0.9 broker answers Metadata with **zero brokers** until a topic exists; use the readiness probe
   in `tests/Integration/IntegrationTestCase.php`. Fresh topics transiently answer 5/6 — helpers must retry.
 - Several agents share one broker: unique topic/group/transactional-id names per test class; never restart it from
-  a subagent.
+  a subagent. **Every test deletes the topics it creates** (tearDown / tearDownAfterClass): the container inherits
+  the daemon's file-descriptor limit (20000 in the sandbox, and `ulimits: nofile` in `docker-compose.yml` is refused
+  there), and ~20000 leftover partitions took a log directory offline with "Too many open files" in the 2.x session,
+  leaving `__consumer_offsets` and `__transaction_state` partitions without a leader. The coordinator recreates the
+  container between milestones (`docker compose down -v`, then `up -d --wait`).
 - **0.11 specifics.** The Apache repository has **no `0.11.0.3` tag** — `0.11.0.3-rc0` is the commit the release was
   built from and is what "@ 0.11.0.3" means in this repository. The `server.properties` shipped with 0.11 ends
   **without a trailing newline**, so `start.sh` appends one before it writes the settings of this repository into
