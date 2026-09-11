@@ -581,6 +581,29 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   [docs/protocol/2.8.md](docs/protocol/2.8.md): "Bumping the epoch (KIP-360)" and "The consumer group metadata of
   a transactional commit (KIP-447)".
 
+### Kafka 2.6
+
+- **ListGroups v4 (KIP-518)** — the api that had no request body at all for four versions got one: the
+  `states_filter`, an array of group state names that bounds the answer to the groups in one of them, and every
+  entry of the answer gained the `group_state` of that group. `ListGroupsRequest` is the v4 now and takes the
+  states as its last argument, `ListGroupResponseProtocol::$groupState` carries the state (null for every version
+  below 4, which does not report it), and `ListGroupsRequestV3`/`ListGroupsResponseV3` and
+  `Protocol\Data\ListGroupResponseProtocolV0` keep the flexible version of Kafka 2.4.
+- **`AdminClient::listGroups()` and `listAllGroups()` take the states**, and the new
+  **`AdminClient::listConsumerGroups()`** - the name of the Java admin client - lists the groups of the whole
+  cluster whose protocol type is `consumer` (`AdminClient::CONSUMER_PROTOCOL_TYPE`), with the same filter. Finding
+  the empty groups of a cluster no longer costs one DescribeGroups per group.
+- Measured on the container: an **empty** filter is every group the coordinator holds - 176 of them on the shared
+  container, each with its state - `["Stable"]` answered exactly the one group of the capture,
+  `["Empty", "PreparingRebalance"]` the other 175, and `["stable"]` in lower case answered the error code **0**
+  with an **empty** array: `GroupCoordinator.handleListGroups` @ 2.8.2 compares the names with
+  `states.contains(g.summary.state)`, so the filter is case sensitive and a name that is not a state at all is no
+  match rather than an error. A null filter is the empty one (`KafkaApis`: "Handle a null array the same as
+  empty"); this client sends the empty array.
+- 4 wire vectors of the new frames were captured from the container, the document gained the section "The group
+  states of KIP-518 (Kafka 2.6)", and the new integration suite `GroupStatesApiTest` measures the filter and the
+  state of a group through its life.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

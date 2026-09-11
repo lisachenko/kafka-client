@@ -11,21 +11,21 @@
 
 declare(strict_types=1);
 
-namespace Protocol\Kafka\Protocol\Request;
+namespace Protocol\Kafka\Protocol\Data;
 
 /**
- * ListGroups request of version 0 (Kafka 0.9), an empty body just like version 1
+ * One group of a ListGroups answer of the versions 0 to 3
  *
  * <pre>
- *   ListGroups Request (Version: 0) =>
+ *   ListGroupResponseProtocol => GroupId ProtocolType
  * </pre>
  *
- * `LIST_GROUPS_REQUEST_V1 = LIST_GROUPS_REQUEST_V0` in `Protocol.java` @ 0.11.0.3 - both versions are the bare
- * request header - so only the answer of version 1 is different ({@see ListGroupsResponseV0}).
+ * Version 4 (Kafka 2.6, KIP-518) appended the `group_state` of the group, see {@see ListGroupResponseProtocol};
+ * this is the entry without it, whose {@see ListGroupResponseProtocol::$groupState} stays null.
  *
  * @see docs/protocol/2.8.md, section "ListGroups API (key 16, v0 to v4)"
  */
-final class ListGroupsRequestV0 extends ListGroupsRequest
+final class ListGroupResponseProtocolV0 extends ListGroupResponseProtocol
 {
     /**
      * @inheritdoc

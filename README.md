@@ -766,7 +766,7 @@ The `1.x` column is where the line started.
 | 13 | LeaveGroup | v0 … v4 | yes | v0, **v1** | v0 … v3, **v4** |
 | 14 | SyncGroup | v0 … v5 | yes | v0, **v1** | v0 … v4, **v5** |
 | 15 | DescribeGroups | v0 … v5 | yes | v0, **v1** | v0 … v4, **v5** |
-| 16 | ListGroups | v0 … v4 | yes | v0, **v1** | v0 … v2, **v3**; v4 not yet |
+| 16 | ListGroups | v0 … v4 | yes | v0, **v1** | v0 … v3, **v4** |
 | 17 | SaslHandshake | v0, v1 | yes | v0, **v1** | v0, **v1** |
 | 18 | ApiVersions | v0 … v3 | yes | v0, **v1** | v0 … v2, **v3** |
 | 19 | CreateTopics | v0 … v7 | controller | v0, v1, **v2** | v0 … v4, **v5**; v6-v7 not yet |

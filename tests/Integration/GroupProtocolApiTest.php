@@ -79,6 +79,11 @@ final class GroupProtocolApiTest extends IntegrationTestCase
      */
     private const string PROTOCOL_NAME = 'range';
 
+    /**
+     * How often the KIP-394 pair is started over when the coordinator drops the pending member in between
+     */
+    private const int JOIN_ATTEMPTS = 3;
+
     private const int SESSION_TIMEOUT_MS = 10000;
 
     private const int REBALANCE_TIMEOUT_MS = 15000;
@@ -273,14 +278,25 @@ final class GroupProtocolApiTest extends IntegrationTestCase
 
     /**
      * Sends a JoinGroup v7 and answers the 79 of KIP-394 with the member id it carries
+     *
+     * **The pair is started over when the rejoin is answered 25.** The member id of a 79 lives in
+     * `group.pendingMembers` for one session timeout only, and the coordinator of the shared container has been
+     * seen dropping it between the two requests under the load of the other suites; the rejoin is then a join
+     * with an id the group no longer has, which says nothing about the version under test.
      */
     private function joinWithAssignedMemberId(Stream $stream, string $groupId, int $correlationId): JoinGroupResponse
     {
-        $refused = $this->join($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, $correlationId);
+        for ($attempt = 1; ; ++$attempt) {
+            $refused = $this->join($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, $correlationId);
 
-        self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
+            self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
 
-        $joined = $this->join($stream, $groupId, $refused->memberId, $correlationId + 1000);
+            $joined = $this->join($stream, $groupId, $refused->memberId, $correlationId + 1000);
+
+            if ($joined->errorCode !== KafkaException::UNKNOWN_MEMBER_ID || $attempt === self::JOIN_ATTEMPTS) {
+                break;
+            }
+        }
 
         self::assertSame(KafkaException::NO_ERROR, $joined->errorCode);
         self::assertSame($joined->memberId, $joined->leaderId, 'the only member of the group is its leader');
