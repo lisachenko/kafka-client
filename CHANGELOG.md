@@ -389,6 +389,25 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   member id the group does not have is **25** per entry (and so is every entry of a request against a group that
   does not exist, with the top-level code 0), a **pending** member of KIP-394 removes itself with **0**, and an
   empty batch is answered with 0 and an empty member array. Six wire vectors of the exchange were captured.
+- **The flexible versions of the ten group apis (KIP-482)** — OffsetCommit **v8**, OffsetFetch **v6**,
+  FindCoordinator **v3**, JoinGroup **v6**, Heartbeat **v4**, LeaveGroup **v4**, SyncGroup **v4**, DescribeGroups
+  **v5**, ListGroups **v3** and DeleteGroups **v2**, every one of them "flexible, otherwise identical": the same
+  fields with compact strings, byte arrays and arrays, a tagged-field section per structure, the request header v2
+  and the response header v1. They are the versions this client sends now, and the version below each is kept as
+  its own class (`OffsetCommitRequestV7`, `OffsetFetchRequestV5`, `GroupCoordinatorRequestV2`, `JoinGroupRequestV5`,
+  `HeartbeatRequestV3`, `LeaveGroupRequestV3`, `SyncGroupRequestV3`, `DescribeGroupsRequestV3`/`V4`,
+  `ListGroupsRequestV2`, `DeleteGroupsRequestV1` and their answers).
+- **DescribeGroups v4 (KIP-345)** is the one version of the ten that changed a field: every member entry of the
+  answer carries the nullable `group_instance_id` of its static member
+  (`Protocol\Data\DescribeGroupResponseMember::$groupInstanceId`, with `DescribeGroupResponseMemberV0` for the
+  versions below it). That is what lets `kafka-consumer-groups.sh --describe` - and `AdminClient::describeGroup()` -
+  show which member id belongs to which instance.
+- **The FindCoordinator answer is an `InlineStruct`** — `GroupCoordinatorResponseMetadata` groups the `node_id`,
+  `host` and `port` that the specification writes flat into the answer, so the field declares the engine's
+  `new InlineStruct(GroupCoordinatorResponseMetadata::class)` and the flexible version writes no tagged-field
+  section of its own for the group.
+- 22 wire vectors of the new versions were captured from the container, and the document gained the section
+  "The flexible versions of the group apis (Kafka 2.4)".
 
 ### Kafka 2.4
 

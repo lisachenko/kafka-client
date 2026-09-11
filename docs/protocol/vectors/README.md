@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **492** of them in **40** files: **174** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **514** of them in **40** files: **196** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -18,7 +18,8 @@ of its non-flexible admin half - CreateTopics v4 (KIP-464) and ElectLeaders v1 (
 LeaveGroup v3 of Kafka **2.4** and the 16 frames of its **partition reassignments and first flexible admin bumps**
 (KIP-455, in the two new files `alter-partition-reassignments.json` and `list-partition-reassignments.json`, plus
 InitProducerId v2 and CreateDelegationToken v2) and the 5 frames of its Produce v8 (KIP-467, the record errors of
-a refused batch) - and of the other 318, **229** were
+a refused batch) and the 22 frames of the **flexible** versions of the ten group apis (KIP-482) - and of the other
+318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
@@ -45,7 +46,11 @@ the answer that refuses it with **79** `MEMBER_ID_REQUIRED` and the member id th
 join that follows with that id. What Kafka 2.3 added: the `group_instance_id` of a static member in JoinGroup v5,
 SyncGroup v3, Heartbeat v3 and OffsetCommit v7 (KIP-345), the heartbeat that is answered **82**
 `FENCED_INSTANCE_ID` once a second consumer has taken that instance id over, and the DescribeGroups v3 pair whose
-request asks for the authorized operations of the group and whose answer reports them (KIP-430).
+request asks for the authorized operations of the group and whose answer reports them (KIP-430). What Kafka 2.4
+added: the batch LeaveGroup **v3** of KIP-345 and the **flexible** version of every one of the ten apis (KIP-482) -
+one request/response pair per api, with the compact strings and arrays, the tagged-field section of every
+structure, the request header v2 and the response header v1, plus the plain DescribeGroups v4 whose members carry
+their `group_instance_id`.
 
 What **Kafka 2.1 and 2.2** added to the admin, transaction and SASL apis, captured with the client id `t4-vectors`
 and the topics `t4-21-vectors` and `t4-22-vectors`:

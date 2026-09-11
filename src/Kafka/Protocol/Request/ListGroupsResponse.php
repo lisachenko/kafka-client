@@ -36,14 +36,20 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
  * {@see ListGroupsResponseV0} is the answer without it and {@see ListGroupsResponseV1} the one of version 1, which
  * version 2 (KIP-219, Kafka 2.0) repeats byte for byte.
  *
- * @see docs/protocol/2.8.md, sections "ListGroups API (key 16, v0 to v2)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "ListGroups API (key 16, v0 to v3)" and "Quotas and throttle time"
  */
 class ListGroupsResponse extends AbstractResponse
 {
     /**
      * Version of the ListGroups API that this class decodes the answer of
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

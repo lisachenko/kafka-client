@@ -60,14 +60,20 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMemberV0;
  * empty leader id and an empty member array - and {@see self::$memberId} holding the id the coordinator assigned
  * to the client, which is the whole point of it.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v5)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v6)" and "Quotas and throttle time"
  */
 class JoinGroupResponse extends AbstractResponse
 {
     /**
      * Version of the JoinGroup API that this class decodes the answer of
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 6;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

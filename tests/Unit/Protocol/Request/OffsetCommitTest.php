@@ -37,6 +37,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV6;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV7;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
@@ -44,6 +45,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV7;
 
 /**
  * Byte-exact tests for the OffsetCommit API (key 8), versions 0 to 6.
@@ -55,7 +57,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
  * field alone. Kafka 2.1 changed the frame twice more: version 5 **removes** `retention_time` (KIP-211) and
  * version 6 gives every partition a `committed_leader_epoch` (KIP-320), which is the version this client sends.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]
@@ -64,6 +66,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
 #[CoversClass(OffsetCommitRequestV3::class)]
 #[CoversClass(OffsetCommitRequestV5::class)]
 #[CoversClass(OffsetCommitRequestV6::class)]
+#[CoversClass(OffsetCommitRequestV7::class)]
 #[CoversClass(OffsetCommitRequestV4::class)]
 #[CoversClass(OffsetCommitResponse::class)]
 #[CoversClass(OffsetCommitResponseV0::class)]
@@ -71,6 +74,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
 #[CoversClass(OffsetCommitResponseV2::class)]
 #[CoversClass(OffsetCommitResponseV3::class)]
 #[CoversClass(OffsetCommitResponseV5::class)]
+#[CoversClass(OffsetCommitResponseV7::class)]
 #[CoversClass(OffsetCommitResponseV4::class)]
 #[CoversClass(OffsetCommitRequestTopic::class)]
 #[CoversClass(OffsetCommitRequestTopicV0::class)]
@@ -346,7 +350,7 @@ final class OffsetCommitTest extends TestCase
 
     public function testVersion6RequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new OffsetCommitRequest(
+        $request = new OffsetCommitRequestV7(
             'my-group',
             OffsetCommitRequest::DEFAULT_GENERATION_ID,
             OffsetCommitRequest::DEFAULT_MEMBER_NAME,
@@ -358,12 +362,12 @@ final class OffsetCommitTest extends TestCase
 
         self::assertSame(self::REQUEST_V7_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::OFFSET_COMMIT, $request->getApiKey());
-        self::assertSame(7, $request->getApiVersion(), 'KIP-345 makes the version this client sends 7');
+        self::assertSame(7, $request->getApiVersion(), 'KIP-345 made this the last plain version');
     }
 
     public function testACommitOfAStaticMemberCarriesItsInstanceIdBehindTheMemberId(): void
     {
-        $request = new OffsetCommitRequest(
+        $request = new OffsetCommitRequestV7(
             'my-group',
             OffsetCommitRequest::DEFAULT_GENERATION_ID,
             OffsetCommitRequest::DEFAULT_MEMBER_NAME,
@@ -421,7 +425,7 @@ final class OffsetCommitTest extends TestCase
 
     public function testTheLeaderEpochOfAnOffsetIsPackedByVersion6Only(): void
     {
-        $withEpoch = new OffsetCommitRequest(
+        $withEpoch = new OffsetCommitRequestV7(
             'my-group',
             OffsetCommitRequest::DEFAULT_GENERATION_ID,
             OffsetCommitRequest::DEFAULT_MEMBER_NAME,
@@ -560,7 +564,7 @@ final class OffsetCommitTest extends TestCase
 
     public function testEmptyMetadataIsNotTheSameAsNoMetadata(): void
     {
-        $withEmptyString = new OffsetCommitRequest(
+        $withEmptyString = new OffsetCommitRequestV7(
             'my-group',
             -1,
             '',
@@ -577,7 +581,7 @@ final class OffsetCommitTest extends TestCase
 
     public function testConsumerIdOfAGroupMemberIsPackedAsAString(): void
     {
-        $request = new OffsetCommitRequest('my-group', 7, 'consumer-1', -1, ['topic' => [0 => 42]], 'test', 1);
+        $request = new OffsetCommitRequestV7('my-group', 7, 'consumer-1', -1, ['topic' => [0 => 42]], 'test', 1);
 
         self::assertStringContainsString(
             '00000007' . '000a' . bin2hex('consumer-1'),
@@ -594,7 +598,7 @@ final class OffsetCommitTest extends TestCase
         self::assertStringEndsWith('00000151fa7bdc00' . 'ffff', bin2hex((string) $request));
 
         // Version 6 has no field for it: the very same timestamp simply does not reach the wire
-        $v6 = new OffsetCommitRequest(
+        $v6 = new OffsetCommitRequestV7(
             'my-group',
             -1,
             '',
@@ -621,8 +625,13 @@ final class OffsetCommitTest extends TestCase
         $header = ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId'];
 
         self::assertSame(
-            [...$header, 'consumerGroup', 'generationId', 'memberName', 'groupInstanceId', 'topicPartitions'],
+            [...$header, 'headerTaggedFields', 'consumerGroup', 'generationId', 'memberName', 'groupInstanceId', 'topicPartitions'],
             array_keys(OffsetCommitRequest::getScheme()),
+            'the flexible version 8 (KIP-482) adds the tagged section of the request header v2 and nothing else'
+        );
+        self::assertSame(
+            [...$header, 'consumerGroup', 'generationId', 'memberName', 'groupInstanceId', 'topicPartitions'],
+            array_keys(OffsetCommitRequestV7::getScheme()),
             'KIP-211 took the retention time out of the frame at version 5, KIP-345 added the instance id at 7'
         );
         self::assertSame(
@@ -690,7 +699,7 @@ final class OffsetCommitTest extends TestCase
 
     public function testSeveralTopicsAndPartitionsAreCommittedInOneRequest(): void
     {
-        $request = new OffsetCommitRequest(
+        $request = new OffsetCommitRequestV7(
             'my-group',
             -1,
             '',
@@ -742,7 +751,7 @@ final class OffsetCommitTest extends TestCase
             . '00000000'
             . '0000';
 
-        foreach ([OffsetCommitResponseV3::class, OffsetCommitResponse::class] as $class) {
+        foreach ([OffsetCommitResponseV3::class, OffsetCommitResponseV7::class] as $class) {
             $response = $class::unpack(new StringStream((string) hex2bin($frame)));
 
             self::assertSame(0, $response->throttleTimeMs);

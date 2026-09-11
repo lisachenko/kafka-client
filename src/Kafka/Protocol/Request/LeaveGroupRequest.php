@@ -63,7 +63,13 @@ class LeaveGroupRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Members to remove from the group, one entry for the versions below 3

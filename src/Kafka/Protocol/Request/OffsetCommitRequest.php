@@ -87,7 +87,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
  * of a member whose instance id has been taken over by another consumer with 82 (`FencedInstanceId`). A dynamic
  * member sends `null` here, which is the frame of {@see OffsetCommitRequestV6} with one more field.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {
@@ -119,7 +119,13 @@ class OffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 8;
 
     /**
      * Offsets to commit, indexed by the topic they belong to.

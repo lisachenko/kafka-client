@@ -55,7 +55,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * the error code 15 (GroupCoordinatorNotAvailable) and the lookup has to be retried, see
  * {@see \Protocol\Kafka\Common\CoordinatorLookup}.
  *
- * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 to v3)"
  */
 class GroupCoordinatorRequest extends AbstractRequest
 {
@@ -67,7 +67,13 @@ class GroupCoordinatorRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 3;
 
     /**
      * Look the key up as a consumer group id, `CoordinatorType.GROUP` @ 0.11.0.3.
