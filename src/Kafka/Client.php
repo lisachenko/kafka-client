@@ -19,6 +19,7 @@ namespace Protocol\Kafka;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Admin\ElectionType;
 use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Admin\RecordsToDelete;
@@ -57,6 +58,7 @@ use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartition;
@@ -1475,35 +1477,52 @@ class Client
      * The group rebalances right away instead of waiting for the session timeout of the member to expire, so this
      * is what a consumer sends when it shuts down in an orderly way.
      *
-     * @param Node   $coordinatorNode Current group coordinator for $groupId
-     * @param string $groupId         Name of the group
-     * @param string $memberId        Name of the group member
+     * **Version 3 (Kafka 2.4, KIP-345) turned the request into a batch**, and a member that removes itself is that
+     * batch with exactly one entry. The error of that member then travels in the member array of the answer while
+     * the top-level error code stays 0, so both are checked here and the member error is reported the way it
+     * always was - 25 (`UnknownMemberId`) for a member the group does not have, 82 (`FencedInstanceId`) for a
+     * static member whose instance id another consumer has taken over. Several members at once are what
+     * {@see \Protocol\Kafka\Admin\AdminClient::removeMembersFromConsumerGroup()} sends.
+     *
+     * @param Node        $coordinatorNode Current group coordinator for $groupId
+     * @param string      $groupId         Name of the group
+     * @param string      $memberId        Name of the group member
+     * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345, version 3), null for a
+     *        dynamic one; naming both makes the coordinator check that the member id belongs to that instance
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\UnknownMemberIdException
+     * @throws Common\Errors\FencedInstanceIdException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function leaveGroup(Node $coordinatorNode, string $groupId, string $memberId): void
-    {
+    public function leaveGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        ?string $groupInstanceId = null
+    ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         $this->groupRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => new LeaveGroupRequest(
                 $groupId,
-                $memberId,
+                [new LeaveGroupRequestMember($memberId, $groupInstanceId)],
                 $clientId,
                 $correlationId
             ),
             LeaveGroupResponse::class,
             static function (LeaveGroupResponse $response) use ($groupId, $memberId): void {
+                $context = ['groupId' => $groupId, 'memberId' => $memberId];
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
-                    throw KafkaException::fromCode(
-                        $response->errorCode,
-                        ['groupId' => $groupId, 'memberId' => $memberId]
-                    );
+                    throw KafkaException::fromCode($response->errorCode, $context);
+                }
+                foreach ($response->members as $member) {
+                    if ($member->errorCode !== KafkaException::NO_ERROR) {
+                        throw KafkaException::fromCode($member->errorCode, $context);
+                    }
                 }
             }
         );
@@ -2390,28 +2409,35 @@ class Client
     }
 
     /**
-     * Asks the controller to elect the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183)
+     * Asks the controller to elect the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183/KIP-460)
      *
-     * The version 0 of the api can only ask for the **preferred** replica - the `election_type` of KIP-460 is a
-     * field of the version 1 - so this method has no election type at all; {@see Admin\AdminClient::electLeaders()}
-     * is what refuses anything else. `$topicPartitions` is a `topic => list of partition ids` map, or **null** for
-     * every partition of the cluster, and the answer is read into a `topic => partition => error` map with `null`
-     * for every partition that really got a new leader.
+     * `$electionType` is the `election_type` byte Kafka 2.4 added with the **version 1** of the api (KIP-460):
+     * {@see Admin\ElectionType::PREFERRED} moves the leadership back to the first replica of the assignment, and
+     * {@see Admin\ElectionType::UNCLEAN} makes the first LIVE replica the leader even when none of them is in
+     * sync. `$topicPartitions` is a `topic => list of partition ids` map, or **null** for every partition of the
+     * cluster, and the answer is read into a `topic => partition => error` map with `null` for every partition
+     * that really got a new leader.
      *
      * A partition that the controller left out of its answer - which happens for a **null** request, where every
      * partition that needed no election is dropped - is not in the result either: the caller asked for "whatever
-     * needs electing", and nothing else is reported.
+     * needs electing", and nothing else is reported. The **top-level** error code of the version 1 answer is the
+     * one case this method throws for: it is the 31 of a client the authorizer refused, which names no partition
+     * at all.
      *
      * @param Node                          $controller      Active controller of the cluster
      * @param array<string, list<int>>|null $topicPartitions Partitions to elect a leader for, null for all of them
      * @param int                           $timeoutMs       How long the controller waits for the elections
+     * @param int                           $electionType    Kind of election, an {@see Admin\ElectionType} constant
+     *
+     * @throws KafkaException If the answer carries a top-level error code (version 1 and above)
      *
      * @return array<string, array<int, KafkaException|null>> Error of every answered partition
      */
     public function electLeaders(
         Node $controller,
         ?array $topicPartitions,
-        int $timeoutMs = ElectLeadersRequest::DEFAULT_TIMEOUT_MS
+        int $timeoutMs = ElectLeadersRequest::DEFAULT_TIMEOUT_MS,
+        int $electionType = ElectionType::PREFERRED
     ): array {
         $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
 
@@ -2420,11 +2446,19 @@ class Client
             fn(int $correlationId): AbstractRequest => new ElectLeadersRequest(
                 $topicPartitions,
                 $timeoutMs,
+                $electionType,
                 $clientId,
                 $correlationId
             ),
             ElectLeadersResponse::class,
             static function (ElectLeadersResponse $response): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['error' => 'The request as a whole was refused by the broker']
+                    );
+                }
+
                 $result = [];
                 foreach ($response->replicaElectionResults as $topic => $election) {
                     foreach ($election->partitionResult as $partition) {

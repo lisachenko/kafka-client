@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **466** of them in **38** files: **148** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **478** of them in **38** files: **160** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -13,10 +13,11 @@ api ElectLeaders (key 43), whose `elect-leaders.json` is the one file this line 
 KIP-394 exchange (JoinGroup v4), the 6 frames of the new api IncrementalAlterConfigs (key 44) of **Kafka 2.3**,
 in the new file `incremental-alter-configs.json`, the 12 frames of what Kafka **2.3** added to the group apis
 (static membership, KIP-345, and the authorized operations of KIP-430) and the 7 frames of what it added to the
-producer and consumer apis (Metadata v8 of KIP-430, Fetch v11 and OffsetForLeaderEpoch v3 of KIP-392), and the 5
-frames of the Produce v8 of **Kafka 2.4** (KIP-467, the record errors of a refused batch) and the Metadata v9
-pair of the same release, the first flexible version of an api the consumer sends (KIP-482) - and of
-the other 318, **229** were
+producer and consumer apis (Metadata v8 of KIP-430, Fetch v11 and OffsetForLeaderEpoch v3 of KIP-392), the 3 flexible ApiVersions v3 frames of **Kafka 2.4**, the 6 frames
+of its non-flexible admin half - CreateTopics v4 (KIP-464) and ElectLeaders v1 (KIP-460), the 6 frames of the batch
+LeaveGroup v3 of Kafka **2.4**, the 5 frames of its Produce v8 (KIP-467, the record errors of a refused batch)
+and the Metadata v9 pair of the same release, the first flexible version of an api the consumer sends
+(KIP-482) - and of the other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
@@ -30,7 +31,7 @@ ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from on
 
 | File | Of it captured here | What was captured on the 2.8.2 broker |
 |---|---|---|
-| `produce.json` | 11 of 35 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond; **Produce v7** (KIP-110), request and answer, and the **76** a v6 is answered when its record set is compressed with zstd |
+| `produce.json` | 11 of 35 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond; **Produce v7** (KIP-110), request and answer, and the **76** a v6 is answered when its record set is compressed with zstd; **Produce v8** (KIP-467), the accepted pair, the batch a `cleanup.policy=compact` topic refuses with the record errors that name its key-less records, and the same refusal answered to a version 7 request |
 | `fetch.json` | 16 of 49 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283); **Fetch v9** and **v10** (KIP-320, KIP-110) with the `current_leader_epoch` on the wire, the **75** of an epoch above the leader's, and the three frames of the zstd rule — the **76** of a v9 against a `compression.type=zstd` topic and the same partition served to a v10 |
 | `offsets.json` | 6 of 20 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header; **v4** (KIP-320), which carries a `current_leader_epoch` in the request and a `leader_epoch` behind every answered offset; and **v5** (KIP-207), the version 4 frames again — what it adds is the error code **78**, which a one-broker container can not produce |
 | `metadata.json` | 9 of 28 | **Metadata v6** (KIP-219), likewise; **v7** (KIP-320), whose partition entries carry the `leader_epoch` of their leader; and **v8** (KIP-430), with the two booleans that ask for the authorized operations, the bitfields they are answered with and the `Integer.MIN_VALUE` of the same answer when they are off |
@@ -54,7 +55,8 @@ and the topics `t4-21-vectors` and `t4-22-vectors`:
 | `txn-offset-commit.json` | 2 of 6 | **TxnOffsetCommit v2** (Kafka 2.1, KIP-320): the `committed_leader_epoch` between the offset and the metadata, and the answer of the coordinator that stores it without looking at it |
 | `sasl-authenticate.json` | 2 of 7 | **SaslAuthenticate v1** (Kafka 2.2, KIP-368): the PLAIN token and the answer that now ends in a `session_lifetime_ms` — **0** on a listener without `connections.max.reauth.ms` |
 | `controlled-shutdown.json` | 2 of 6 | **ControlledShutdown v2** (Kafka 2.2, KIP-380): the `broker_epoch` behind the broker id, asked with the **unknown** broker id 4242 and the epoch -1 — a shutdown of the real broker id would stop the shared container |
-| `elect-leaders.json` | 4 of 4, **new file** | **ElectLeaders v0** (Kafka 2.2, KIP-183, added as ElectPreferredLeaders): a named partition whose leader is already the preferred replica (**84** `ElectionNotNeeded`, a code of Kafka 2.4 that reaches a v0 client unchanged) and a partition of a topic the cluster does not have (**3**) |
+| `elect-leaders.json` | 8 of 8, **new file** | **ElectLeaders v0** (Kafka 2.2, KIP-183, added as ElectPreferredLeaders): a named partition whose leader is already the preferred replica (**84** `ElectionNotNeeded`, a code of Kafka 2.4 that reaches a v0 client unchanged) and a partition of a topic the cluster does not have (**3**); plus the **v1** frames of KIP-460 (Kafka 2.4), whose request opens with an `election_type` byte and whose answer carries a top-level error code - a preferred and an **unclean** election of the same healthy partition, both answered 84 |
+| `create-topics.json` | 4 of 11 | **CreateTopics v3** (Kafka 2.0, KIP-219) and **v4** (Kafka 2.4, KIP-464): the v4 pair asks for the broker's own `num.partitions` and `default.replication.factor` with -1/-1 and an empty assignment, and the container answers 0 and creates three partitions with one replica each |
 | `incremental-alter-configs.json` | 6 of 6, **new file** | **IncrementalAlterConfigs v0** (Kafka 2.3, KIP-339): the three operations a topic accepts in one resource (SET, APPEND and the DELETE whose value is the null string), an APPEND to an option that is not a list (**42**) and the cluster-wide default broker resource with a static option, asked with `validate_only` (**42**) |
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the

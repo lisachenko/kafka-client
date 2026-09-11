@@ -17,11 +17,12 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ElectLeadersResponseReplicaElectionResult;
 
 /**
- * ElectLeaders response object, version 0 (key 43, Kafka 2.2)
+ * ElectLeaders response object, version 1 (key 43, Kafka 2.2)
  *
  * <pre>
- *   ElectLeaders Response (Version: 0) => throttle_time_ms [replica_election_results]
+ *   ElectLeaders Response (Version: 0 and 1) => throttle_time_ms error_code [replica_election_results]
  *     throttle_time_ms         => INT32
+ *     error_code               => INT16      -- since version 1
  *     replica_election_results => topic [partition_result]
  *       topic            => STRING
  *       partition_result => partition_id error_code error_message
@@ -30,8 +31,12 @@ use Protocol\Kafka\Protocol\Data\ElectLeadersResponseReplicaElectionResult;
  * Version 0 has **no top-level error code**: `ElectLeadersResponse(throttleTimeMs, errorCode, results, version)`
  * @ 2.8.2 writes the code into the answer only `if (version >= 1)`, so an error of the whole request - the **31**
  * `ClusterAuthorizationFailed` of a client that may not `Alter` the cluster - reaches a version 0 client as that
- * code on every partition it named instead. Kafka 2.4 added the top-level field with version 1 (KIP-460), which is
- * also the version that carries an `election_type`.
+ * code on every partition it named instead. **Kafka 2.4 added the field with version 1** (KIP-460), the version
+ * that also carries the `election_type`; {@see ElectLeadersResponseV0} is the frame without it.
+ *
+ * The top-level code is `ApiError.NONE` for everything `handleElectReplicaLeader` @ 2.8.2 reaches the controller
+ * with - the **0** of every answer of this document - and the 31 of a client the authorizer refused, which is the
+ * one case in which the handler never asks the controller at all.
  *
  * Everything else is reported per partition
  * ({@see \Protocol\Kafka\Protocol\Data\ElectLeadersResponsePartitionResult}), and the entries are grouped by topic
@@ -39,19 +44,26 @@ use Protocol\Kafka\Protocol\Data\ElectLeadersResponseReplicaElectionResult;
  * gets the partitions that were really elected or really failed alone: the handler drops every
  * `ELECTION_NOT_NEEDED` from such an answer.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
  */
 class ElectLeadersResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation
      */
     public int $throttleTimeMs = 0;
+
+    /**
+     * Error code of the whole request, 0 for everything that reached the controller
+     *
+     * @since Version 1 of protocol
+     */
+    public int $errorCode = 0;
 
     /**
      * Election result of every topic of the answer, indexed by the topic name
@@ -66,10 +78,12 @@ class ElectLeadersResponse extends AbstractResponse
     public static function getScheme(): array
     {
         $header = parent::getScheme();
+        $body   = ['throttleTimeMs' => BinarySchema::TYPE_INT32];
+        if (static::VERSION >= 1) {
+            $body['errorCode'] = BinarySchema::TYPE_INT16;
+        }
+        $body['replicaElectionResults'] = ['topic' => ElectLeadersResponseReplicaElectionResult::class];
 
-        return $header + [
-            'throttleTimeMs'         => BinarySchema::TYPE_INT32,
-            'replicaElectionResults' => ['topic' => ElectLeadersResponseReplicaElectionResult::class],
-        ];
+        return $header + $body;
     }
 }

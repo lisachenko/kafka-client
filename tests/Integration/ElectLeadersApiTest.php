@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Request\ElectLeadersResponse;
  * election with a **null** topic array would elect for every partition of every other suite, and no test of this
  * repository ever sends one (the document describes what it answers, measured once).
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Client::class)]
@@ -157,25 +157,49 @@ final class ElectLeadersApiTest extends IntegrationTestCase
     }
 
     /**
-     * The unclean election of KIP-460 needs the version 1 of the api, and this line sends the version 0
+     * The **unclean** election of KIP-460 is sendable from the version 1 - and answers the same 84 here
+     *
+     * `KafkaController.processReplicaLeaderElection` @ 2.8.2 only elects unclean for a partition whose leader is
+     * gone (`currentLeader == LeaderAndIsr.NoLeader || !liveBrokerIds.contains(currentLeader)`), and the one
+     * broker of the container is the leader of everything it hosts, so the partitions of this suite are never
+     * electable in that sense. What the test proves is that the type byte travels and that the controller does
+     * NOT elect where nothing has failed.
      */
-    public function testAnUncleanElectionIsRefusedByTheClientAndNeverSent(): void
+    public function testAnUncleanElectionOfAHealthyPartitionIsElectionNotNeededAsWell(): void
     {
         $topic = $this->topic('unclean');
 
-        try {
-            $this->admin->electLeaders(ElectionType::UNCLEAN, [$topic => [0]]);
-            self::fail('an unclean election has to be refused by a client that sends the version 0');
-        } catch (UnsupportedVersionException $exception) {
-            self::assertSame('UNCLEAN', $exception->getContext()['electionType']);
-            self::assertSame(
-                'API Version 0 only supports PREFERRED election type',
-                $exception->getContext()['error'],
-                'the message of `ElectLeadersRequest.Builder.toRequestData` @ 2.8.2'
-            );
-        }
+        $result = $this->admin->electLeaders(ElectionType::UNCLEAN, [$topic => [0]]);
 
-        self::assertSame(0, ElectLeadersRequest::VERSION, 'the version this line sends');
+        self::assertInstanceOf(
+            ElectionNotNeededException::class,
+            $result[$topic][0],
+            'the partition still has a live leader, so neither election type has anything to do'
+        );
+        self::assertSame(1, ElectLeadersRequest::VERSION, 'the version this line sends');
+    }
+
+    /**
+     * An unclean election of a topic the cluster does not have is the same 3 as a preferred one
+     */
+    public function testAnUncleanElectionOfAnUnknownTopicIsUnknownTopicOrPartition(): void
+    {
+        $absent = self::uniqueTopicName('t4-elect-unclean-never-created');
+
+        $result = $this->admin->electLeaders(ElectionType::UNCLEAN, [$absent => [0]]);
+
+        self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result[$absent][0]);
+        self::assertSame('The partition does not exist.', $result[$absent][0]->getContext()['error']);
+    }
+
+    /**
+     * An election type that is neither of the two of KIP-460 never reaches the broker
+     */
+    public function testAnUnknownElectionTypeIsRefusedByTheClient(): void
+    {
+        $this->expectException(UnsupportedVersionException::class);
+
+        $this->admin->electLeaders(7, ['no-such-topic' => [0]]);
     }
 
     /**

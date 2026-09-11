@@ -1,8 +1,8 @@
 {
     "api": "leave-group",
     "apiKey": 13,
-    "section": "LeaveGroup API (key 13, v0 to v2)",
-    "description": "Wire vectors of the LeaveGroup API (key 13, v0 to v2), replayed by tests/Compliance.",
+    "section": "LeaveGroup API (key 13, v0 to v3)",
+    "description": "Wire vectors of the LeaveGroup API (key 13, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "leavegroup.request.v0",
@@ -104,7 +104,7 @@
         {
             "id": "leavegroup.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequestV2",
             "version": 2,
             "source": "broker",
             "description": "LeaveGroup request v2 of the member that shuts down, the frame of v1 with a higher version field; version 3 is the one that replaces the member id with a batch (KIP-345).",
@@ -122,7 +122,7 @@
         {
             "id": "leavegroup.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2: the throttle time and the error code of a coordinator that removed the member.",
@@ -132,6 +132,148 @@
                 "correlationId": 208,
                 "throttleTimeMs": 0,
                 "errorCode": 0
+            }
+        },
+        {
+            "id": "leavegroup.request.v3.batch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "LeaveGroup request v3 (Kafka 2.4, KIP-345): the single `member_id` of the versions below is gone and a **batch** of member identities stands in its place. The three entries name a member in the two ways the coordinator understands - the first two by a `group_instance_id` with an empty member id (a static member and an instance the group does not have), the third by a member id with a null instance id (a dynamic member).",
+            "hex": "00000092000d00030000032900136b61666b612d636c69656e742d74332d323461001474332d3234612d766563746f72732d67726f7570000000030000000a74332d3234612d6f6e650000000d74332d3234612d6e6f626f647900386b61666b612d636c69656e742d74332d3234612d36323331323562312d313530632d343763372d393266322d313830626639396664333362ffff",
+            "fields": {
+                "messageSize": 146,
+                "apiKey": 13,
+                "apiVersion": 3,
+                "correlationId": 809,
+                "clientId": "kafka-client-t3-24a",
+                "consumerGroup": "t3-24a-vectors-group",
+                "members": [
+                    {
+                        "memberId": "",
+                        "groupInstanceId": "t3-24a-one"
+                    },
+                    {
+                        "memberId": "",
+                        "groupInstanceId": "t3-24a-nobody"
+                    },
+                    {
+                        "memberId": "kafka-client-t3-24a-623125b1-150c-47c7-92f2-180bf99fd33b",
+                        "groupInstanceId": null
+                    }
+                ]
+            }
+        },
+        {
+            "id": "leavegroup.response.v3.batch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer: the **top-level error code stays 0** and every member of the batch has an entry of its own, in the order of the request and echoing the identity that was sent - `0` for the static member, which is gone from the group at once, **25** (`UnknownMemberId`) for the instance id nobody holds, and `0` for the dynamic member.",
+            "hex": "0000006f00000329000000000000000000030000000a74332d3234612d6f6e6500000000000d74332d3234612d6e6f626f6479001900386b61666b612d636c69656e742d74332d3234612d36323331323562312d313530632d343763372d393266322d313830626639396664333362ffff0000",
+            "fields": {
+                "messageSize": 111,
+                "correlationId": 809,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "members": [
+                    {
+                        "memberId": "",
+                        "groupInstanceId": "t3-24a-one",
+                        "errorCode": 0
+                    },
+                    {
+                        "memberId": "",
+                        "groupInstanceId": "t3-24a-nobody",
+                        "errorCode": 25
+                    },
+                    {
+                        "memberId": "kafka-client-t3-24a-623125b1-150c-47c7-92f2-180bf99fd33b",
+                        "groupInstanceId": null,
+                        "errorCode": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "leavegroup.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The frame a member sends to remove **itself**, which is what `Client::leaveGroup()` writes: a batch of exactly one entry that names both its member id and its `group.instance.id`, so that the coordinator refuses it with 82 if another consumer has taken that instance over.",
+            "hex": "00000074000d00030000032d00136b61666b612d636c69656e742d74332d323461001474332d3234612d766563746f72732d67726f757000000001002f74332d3234612d74776f2d61663136313237652d346430632d346431372d383138362d656538326331613133663430000a74332d3234612d74776f",
+            "fields": {
+                "messageSize": 116,
+                "apiKey": 13,
+                "apiVersion": 3,
+                "correlationId": 813,
+                "clientId": "kafka-client-t3-24a",
+                "consumerGroup": "t3-24a-vectors-group",
+                "members": [
+                    {
+                        "memberId": "t3-24a-two-af16127e-4d0c-4d17-8186-ee82c1a13f40",
+                        "groupInstanceId": "t3-24a-two"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "leavegroup.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer to it: one entry with the error code 0. A second request with the same identity is answered **25** in that entry, because the member is no longer in the group.",
+            "hex": "0000004d0000032d00000000000000000001002f74332d3234612d74776f2d61663136313237652d346430632d346431372d383138362d656538326331613133663430000a74332d3234612d74776f0000",
+            "fields": {
+                "messageSize": 77,
+                "correlationId": 813,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "members": [
+                    {
+                        "memberId": "t3-24a-two-af16127e-4d0c-4d17-8186-ee82c1a13f40",
+                        "groupInstanceId": "t3-24a-two",
+                        "errorCode": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "leavegroup.request.v3.empty-batch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "An **empty** batch, which is a legal request: the member array is `00 00 00 00` and the frame is the group id alone.",
+            "hex": "00000037000d00030000032b00136b61666b612d636c69656e742d74332d323461001474332d3234612d766563746f72732d67726f757000000000",
+            "fields": {
+                "messageSize": 55,
+                "apiKey": 13,
+                "apiVersion": 3,
+                "correlationId": 811,
+                "clientId": "kafka-client-t3-24a",
+                "consumerGroup": "t3-24a-vectors-group",
+                "members": []
+            }
+        },
+        {
+            "id": "leavegroup.response.v3.empty-batch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "It is answered with the error code 0 and an empty member array - the same answer for a group that exists and for one the coordinator has never heard of.",
+            "hex": "0000000e0000032b00000000000000000000",
+            "fields": {
+                "messageSize": 14,
+                "correlationId": 811,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "members": []
             }
         }
     ]
