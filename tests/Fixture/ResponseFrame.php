@@ -554,15 +554,18 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a JoinGroup response (api key 11, v5 - the version this client sends)
+     * Builds a JoinGroup response (api key 11, v7 - the version this client sends)
      *
      * <pre>
-     *   JoinGroupResponse => ThrottleTimeMs ErrorCode GenerationId GroupProtocol LeaderId MemberId [Member]
+     *   JoinGroupResponse => ThrottleTimeMs ErrorCode GenerationId ProtocolType GroupProtocol LeaderId MemberId
+     *                          [Member]
      *     Member => MemberId GroupInstanceId MemberMetadata
      * </pre>
      *
      * Every member entry carries the nullable `group_instance_id` that version 5 added (KIP-345, Kafka 2.3); the
-     * `null` of a dynamic member is written, which is what every member of these fixtures is.
+     * `null` of a dynamic member is written, which is what every member of these fixtures is. Version 7 (KIP-559,
+     * Kafka 2.5) put the nullable `protocol_type` in front of the protocol name and made the name nullable as
+     * well: an answer that reports an error carries `null` in both.
      *
      * @param array<string, string> $members Metadata of every member, by member id; filled for the leader only
      */
@@ -570,14 +573,16 @@ final class ResponseFrame
         int $correlationId,
         int $errorCode,
         int $generationId = 1,
-        string $groupProtocol = 'range',
+        ?string $groupProtocol = 'range',
         string $leaderId = '',
         string $memberId = '',
-        array $members = []
+        array $members = [],
+        ?string $protocolType = 'consumer'
     ): string {
         $body = pack('N', 0)
             . pack('n', $errorCode)
             . pack('N', $generationId)
+            . self::compactString($protocolType)
             . self::compactString($groupProtocol)
             . self::compactString($leaderId)
             . self::compactString($memberId)
@@ -593,11 +598,25 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a SyncGroup response (api key 14, v1), whose throttle time arrived with Kafka 0.11 (KIP-124)
+     * Builds a SyncGroup response (api key 14, v5 - the version this client sends)
+     *
+     * Version 5 (KIP-559, Kafka 2.5) put the nullable `protocol_type` and `protocol_name` of the generation
+     * between the error code and the assignment; an answer that reports an error carries `null` in both.
      */
-    public static function syncGroup(int $correlationId, int $errorCode, string $assignment = ''): string
-    {
-        return self::flexible($correlationId, pack('N', 0) . pack('n', $errorCode) . self::compactBytes($assignment));
+    public static function syncGroup(
+        int $correlationId,
+        int $errorCode,
+        string $assignment = '',
+        ?string $protocolType = 'consumer',
+        ?string $protocolName = 'range'
+    ): string {
+        $body = pack('N', 0)
+            . pack('n', $errorCode)
+            . self::compactString($protocolType)
+            . self::compactString($protocolName)
+            . self::compactBytes($assignment);
+
+        return self::flexible($correlationId, $body);
     }
 
     /**

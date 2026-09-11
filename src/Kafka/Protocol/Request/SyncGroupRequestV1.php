@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka 2.3) - so this class sends the very same bytes as {@see SyncGroupRequest} and reads its answer with
  * {@see SyncGroupResponseV1}.
  *
- * @see docs/protocol/2.8.md, sections "SyncGroup API (key 14, v0 to v4)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "SyncGroup API (key 14, v0 to v5)" and "Quotas and throttle time"
  */
 final class SyncGroupRequestV1 extends SyncGroupRequest
 {

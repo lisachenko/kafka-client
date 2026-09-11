@@ -15,8 +15,10 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMemberV0;
@@ -40,6 +42,7 @@ use Protocol\Kafka\Protocol\Request\JoinGroupRequestV2;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV3;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV5;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequestV6;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV1;
@@ -47,6 +50,7 @@ use Protocol\Kafka\Protocol\Request\JoinGroupResponseV2;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV3;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV5;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponseV6;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV1;
@@ -62,11 +66,14 @@ use Protocol\Kafka\Protocol\Request\SyncGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV1;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV2;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV3;
+use Protocol\Kafka\Protocol\Request\SyncGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV1;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV2;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV3;
+use Protocol\Kafka\Protocol\Request\SyncGroupResponseV4;
+use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 
 /**
  * Byte-exact tests for the four apis of the group membership protocol (keys 11 to 14).
@@ -84,7 +91,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponseV3;
  * byte, and only checks that they survive the round trip untouched. A real `consumer` group is a different matter:
  * a 2.x coordinator does parse the metadata of such a group, see the integration suite.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v6)", "SyncGroup API (key 14, v0 to v4)",
+ * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v7)", "SyncGroup API (key 14, v0 to v5)",
  *      "Heartbeat API (key 12, v0 to v4)" and "LeaveGroup API (key 13, v0 to v4)"
  */
 #[CoversClass(JoinGroupRequest::class)]
@@ -645,7 +652,7 @@ final class GroupMembershipTest extends TestCase
      */
     public function testJoinGroupRequestOfVersionSixIsTheFlexibleEncodingOfTheSameFields(): void
     {
-        $request = new JoinGroupRequest(
+        $request = new JoinGroupRequestV6(
             'my-group',
             30000,
             300000,
@@ -656,13 +663,32 @@ final class GroupMembershipTest extends TestCase
             1
         );
         self::assertSame(self::JOIN_REQUEST_V6_HEX, bin2hex((string) $request));
-        self::assertSame(6, $request->getApiVersion(), 'KIP-482 makes the version this client sends 6');
-        self::assertTrue(JoinGroupRequest::isFlexible());
+        self::assertSame(6, $request->getApiVersion(), 'KIP-482 made the version 6 the first flexible one');
+        self::assertTrue(JoinGroupRequestV6::isFlexible());
         self::assertSame(
             $request->getMessageSize(),
             strlen((string) $request) - 4,
             'the size field counts everything behind it, compact lengths and tag buffers included'
         );
+    }
+
+    /**
+     * KIP-559 (Kafka 2.5) raised the api to version 7 without touching the request: only the answer gained a field
+     */
+    public function testJoinGroupRequestOfVersionSevenIsTheVersionSixFrameWithAnotherVersionField(): void
+    {
+        $arguments = ['my-group', 30000, 300000, JoinGroupRequest::DEFAULT_MEMBER_ID, 'consumer', ['range' => self::METADATA], 'test', 1];
+
+        $request = new JoinGroupRequest(...$arguments);
+        $below   = new JoinGroupRequestV6(...$arguments);
+
+        self::assertSame(7, $request->getApiVersion(), 'KIP-559 makes the version this client sends 7');
+        self::assertSame(
+            str_replace('000b' . '0006', '000b' . '0007', self::JOIN_REQUEST_V6_HEX),
+            bin2hex((string) $request),
+            'the two frames differ in the api version of the header and in nothing else'
+        );
+        self::assertSame(strlen((string) $below), strlen((string) $request));
     }
 
     public function testAStaticMemberWritesItsInstanceIdWhereTheNullOfADynamicOneStands(): void
@@ -896,6 +922,102 @@ final class GroupMembershipTest extends TestCase
         );
     }
 
+    /**
+     * KIP-559 (Kafka 2.5): the answer of a version 7 names the protocol TYPE of the group as well as its name
+     */
+    public function testTheVersionSevenAnswerNamesTheProtocolTypeOfTheGroup(): void
+    {
+        $frame = ResponseFrame::joinGroup(1, 0, 2, 'range', 'one-1', 'one-1', ['one-1' => 'metadata']);
+
+        $response = JoinGroupResponse::unpack(new StringStream($frame));
+
+        self::assertSame(0, $response->errorCode);
+        self::assertSame('consumer', $response->protocolType);
+        self::assertSame('range', $response->groupProtocol);
+        self::assertSame(bin2hex($frame), bin2hex((string) $response), 'the answer survives a round trip');
+    }
+
+    /**
+     * And an error answer of that version carries a null in both, where a version 6 carries the empty string
+     */
+    public function testAnErrorAnswerOfVersionSevenCarriesANullProtocolTypeAndName(): void
+    {
+        $frame = ResponseFrame::joinGroup(
+            1,
+            KafkaException::MEMBER_ID_REQUIRED,
+            -1,
+            null,
+            '',
+            'test-4e2b',
+            [],
+            null
+        );
+
+        $response = JoinGroupResponse::unpack(new StringStream($frame));
+
+        self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $response->errorCode);
+        self::assertNull($response->protocolType);
+        self::assertNull($response->groupProtocol, 'the protocol name became nullable with version 7');
+        self::assertSame('test-4e2b', $response->memberId, 'the assigned member id, the point of the 79');
+        self::assertSame(bin2hex($frame), bin2hex((string) $response));
+    }
+
+    /**
+     * The version below has neither field: its scheme writes the protocol name as a plain string
+     */
+    public function testTheVersionSixAnswerHasNoProtocolTypeAtAll(): void
+    {
+        self::assertArrayNotHasKey('protocolType', JoinGroupResponseV6::getScheme());
+        self::assertArrayHasKey('protocolType', JoinGroupResponse::getScheme());
+        self::assertSame(
+            BinarySchema::TYPE_STRING,
+            JoinGroupResponseV6::getScheme()['groupProtocol'],
+            'the name of a version below 7 is a plain string, which an error answer fills with ""'
+        );
+        self::assertSame(
+            BinarySchema::TYPE_NULLABLE_STRING,
+            JoinGroupResponse::getScheme()['groupProtocol']
+        );
+    }
+
+    /**
+     * SyncGroup v5 (KIP-559) reports the same pair between the error code and the assignment
+     */
+    public function testTheVersionFiveSyncAnswerNamesTheProtocolOfTheGeneration(): void
+    {
+        $frame = ResponseFrame::syncGroup(2, 0, 'my-share');
+
+        $response = SyncGroupResponse::unpack(new StringStream($frame));
+
+        self::assertSame('consumer', $response->protocolType);
+        self::assertSame('range', $response->protocolName);
+        self::assertSame('my-share', $response->memberAssignment);
+        self::assertSame(bin2hex($frame), bin2hex((string) $response));
+    }
+
+    /**
+     * The 23 a coordinator answers a sync that names no protocol carries a null in both fields and no assignment
+     */
+    public function testTheTwentyThreeOfASyncWithoutAProtocolCarriesNulls(): void
+    {
+        $frame = ResponseFrame::syncGroup(2, KafkaException::INCONSISTENT_GROUP_PROTOCOL, '', null, null);
+
+        $response = SyncGroupResponse::unpack(new StringStream($frame));
+
+        self::assertSame(KafkaException::INCONSISTENT_GROUP_PROTOCOL, $response->errorCode);
+        self::assertNull($response->protocolType);
+        self::assertNull($response->protocolName);
+        self::assertSame('', $response->memberAssignment);
+        self::assertSame(bin2hex($frame), bin2hex((string) $response));
+    }
+
+    public function testTheVersionFourSyncAnswerHasNeitherField(): void
+    {
+        self::assertArrayNotHasKey('protocolType', SyncGroupResponseV4::getScheme());
+        self::assertArrayNotHasKey('protocolName', SyncGroupResponseV4::getScheme());
+        self::assertArrayHasKey('protocolName', SyncGroupResponse::getScheme());
+    }
+
     public function testTheMemberEntryOfVersionFourHasNoInstanceIdAtAll(): void
     {
         $response = JoinGroupResponseV4::unpack(new StringStream((string) hex2bin(self::JOIN_RESPONSE_V2_HEX)));
@@ -964,7 +1086,7 @@ final class GroupMembershipTest extends TestCase
      */
     public function testSyncGroupRequestOfVersionFourIsFlexible(): void
     {
-        $request = new SyncGroupRequest('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2);
+        $request = new SyncGroupRequestV4('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2);
 
         self::assertSame(
             '00000030' . '000e' . '0004' . '00000002'
@@ -979,12 +1101,61 @@ final class GroupMembershipTest extends TestCase
             . '00',
             bin2hex((string) $request)
         );
-        self::assertSame(4, $request->getApiVersion(), 'KIP-482 makes the version this client sends 4');
-        self::assertTrue(SyncGroupRequest::isFlexible());
+        self::assertSame(4, $request->getApiVersion(), 'KIP-482 made the version 4 the first flexible one');
+        self::assertTrue(SyncGroupRequestV4::isFlexible());
         self::assertLessThan(
             strlen((string) new SyncGroupRequestV3('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2)),
             strlen((string) $request),
             'the compact lengths more than pay for the three tagged sections of the flexible frame'
+        );
+    }
+
+    /**
+     * KIP-559 (Kafka 2.5): the protocol type and the protocol name of the generation stand behind the instance id
+     */
+    public function testSyncGroupRequestOfVersionFiveCarriesTheProtocolTypeAndName(): void
+    {
+        $request = new SyncGroupRequest(
+            'my-group',
+            2,
+            'one-1',
+            ['one-1' => self::ASSIGNMENT],
+            'test',
+            2,
+            null,
+            'consumer',
+            'range'
+        );
+
+        self::assertSame(
+            '0000003f' . '000e' . '0005' . '00000002'
+            . '0004' . '74657374'
+            . '00'
+            . '09' . '6d792d67726f7570'
+            . '00000002'
+            . '06' . '6f6e652d31'
+            . '00'
+            . '09' . '636f6e73756d6572'
+            . '06' . '72616e6765'
+            . '02'
+            . '06' . '6f6e652d31' . '04' . '010002' . '00'
+            . '00',
+            bin2hex((string) $request)
+        );
+        self::assertSame(5, $request->getApiVersion(), 'KIP-559 makes the version this client sends 5');
+    }
+
+    /**
+     * Both fields are nullable on the wire - and a broker refuses the frame with 23, which is not this test's half
+     */
+    public function testASyncGroupOfVersionFiveWithoutAProtocolWritesTwoNulls(): void
+    {
+        $request = new SyncGroupRequest('my-group', 2, 'one-1', [], 'test', 2);
+
+        self::assertStringContainsString(
+            '06' . '6f6e652d31' . '00' . '00' . '00' . '01' . '00',
+            bin2hex((string) $request),
+            'the member id, the null instance id, the null protocol type, the null protocol name and an empty array'
         );
     }
 

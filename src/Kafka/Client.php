@@ -1228,6 +1228,9 @@ class Client
      * @param string                              $groupId         Name of the group
      * @param array<string, array<int, int>>|null $topicPartitions List of topic => partitions for fetching
      *        information, or null for every topic of the group
+     * @param bool                                $requireStable   Whether the coordinator has to hold back an
+     *        offset whose transaction has not been committed yet and answer that partition with the retriable 88
+     *        instead (KIP-447, version 7); false answers the offset of the last commit, pending or not
      *
      * @return array<string, array<int, int>> Committed offsets in the form [topic => [partition => offset]]
      *
@@ -1238,14 +1241,18 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, ?array $topicPartitions): array
-    {
+    public function fetchGroupOffsets(
+        Node $coordinatorNode,
+        string $groupId,
+        ?array $topicPartitions,
+        bool $requireStable = false
+    ): array {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         return $this->coordinatorRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
-                ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId)
+                ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId, $requireStable)
                 : new OffsetFetchRequestV0($groupId, $topicPartitions, $clientId, $correlationId),
             $this->isOffsetStorageKafka() ? OffsetFetchResponse::class : OffsetFetchResponseV0::class,
             static function (OffsetFetchResponse $response) use ($groupId): array {
@@ -1378,6 +1385,10 @@ class Client
      *        only; opaque bytes to this api - a `consumer` leader sends a `MemberAssignment` per member
      * @param string|null           $groupInstanceId  `group.instance.id` of a static member (KIP-345, version 3),
      *        null for a dynamic one
+     * @param string|null           $protocolType     The `protocol_type` the member joined with, `consumer` for a
+     *        consumer group (KIP-559, version 5); a version 5 that leaves it null is answered 23
+     * @param string|null           $protocolName     The protocol of the generation, as the JoinGroup answer
+     *        reported it (KIP-559, version 5); a version 5 that leaves it null is answered 23
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -1385,6 +1396,7 @@ class Client
      * @throws Common\Errors\IllegalGenerationException
      * @throws Common\Errors\UnknownMemberIdException
      * @throws Common\Errors\RebalanceInProgressException
+     * @throws Common\Errors\InconsistentGroupProtocolException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
     public function syncGroup(
@@ -1393,7 +1405,9 @@ class Client
         string $memberId,
         int $generationId,
         array $groupAssignments = [],
-        ?string $groupInstanceId = null
+        ?string $groupInstanceId = null,
+        ?string $protocolType = null,
+        ?string $protocolName = null
     ): SyncGroupResponse {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
@@ -1406,7 +1420,9 @@ class Client
                 $groupAssignments,
                 $clientId,
                 $correlationId,
-                $groupInstanceId
+                $groupInstanceId,
+                $protocolType,
+                $protocolName
             ),
             SyncGroupResponse::class,
             static function (SyncGroupResponse $response) use ($groupId, $memberId, $generationId): SyncGroupResponse {

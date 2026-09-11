@@ -361,13 +361,18 @@ final class ConsumerCoordinator
             $groupAssignments = $this->assignPartitions($joinResponse->members, $partitionsResolver);
         }
 
+        // KIP-559 (SyncGroup v5): the member echoes the protocol type it joined with and the protocol the
+        // coordinator selected for this generation, which the JoinGroup answer reported. A version 5 that leaves
+        // either of them null, or names one the group did not settle on, is refused with 23
         $syncResponse = $this->client->syncGroup(
             $node,
             $this->groupId,
             $this->memberId,
             $this->generationId,
             $groupAssignments,
-            $this->groupInstanceId
+            $this->groupInstanceId,
+            self::PROTOCOL_TYPE,
+            $joinResponse->groupProtocol
         );
 
         $this->rejoinNeeded    = false;

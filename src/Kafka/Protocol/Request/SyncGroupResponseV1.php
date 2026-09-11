@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   SyncGroup Response (Version: 1 and 2) => throttle_time_ms error_code member_assignment
  * </pre>
  *
- * @see docs/protocol/2.8.md, sections "SyncGroup API (key 14, v0 to v4)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "SyncGroup API (key 14, v0 to v5)" and "Quotas and throttle time"
  */
 final class SyncGroupResponseV1 extends SyncGroupResponse
 {

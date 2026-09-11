@@ -28,6 +28,7 @@ use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownLeaderEpochException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnstableOffsetCommitException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
@@ -136,6 +137,15 @@ use Throwable;
  */
 class KafkaConsumer
 {
+    /**
+     * How long an unstable committed offset is waited out before the 88 of KIP-447 is reported to the caller, in ms
+     *
+     * A partition the coordinator holds back is held back for as long as the transaction that wrote its offset
+     * runs, so the bound is that of a transaction and not of a request: the Java producer's `transaction.timeout.ms`
+     * defaults to 60000 and its broker-side maximum, `transaction.max.timeout.ms`, to 900000.
+     */
+    private const int UNSTABLE_OFFSET_TIMEOUT_MS = 60000;
+
     /**
      * The consumer configs
      *
@@ -350,11 +360,7 @@ class KafkaConsumer
             return [];
         }
 
-        return $this->getClient()->fetchGroupOffsets(
-            $this->getCoordinator(),
-            $this->requireGroupId(),
-            self::normalizeAssignment($topicPartitions)
-        );
+        return $this->fetchCommittedOffsets($this->requireGroupId(), self::normalizeAssignment($topicPartitions));
     }
 
     /**
@@ -1357,11 +1363,7 @@ class KafkaConsumer
                 $committedOffsets[$topic] = array_fill_keys($partitions->partitions, -1);
             }
         } else {
-            $committedOffsets = $this->getClient()->fetchGroupOffsets(
-                $this->getCoordinator(),
-                $this->groupId(),
-                $topicPartitions
-            );
+            $committedOffsets = $this->fetchCommittedOffsets($this->groupId(), $topicPartitions);
         }
 
         foreach ($this->autoResetOffsets($committedOffsets) as $topic => $partitionOffsets) {
@@ -1422,6 +1424,46 @@ class KafkaConsumer
             $this->commitSync();
         } catch (IllegalGenerationException | UnknownMemberIdException | RebalanceInProgressException) {
             // The generation is over, the offsets of it can not be committed any more
+        }
+    }
+
+    /**
+     * Reads the committed offsets of the group, asking for **stable** ones when this consumer reads committed data
+     *
+     * KIP-447 (Kafka 2.5) gave OffsetFetch v7 the `require_stable` flag, and this consumer sets it exactly when
+     * `isolation.level` is `read_committed`: a read-committed consumer must not start from an offset that a
+     * transaction may still roll back, while a read-uncommitted one is happy with the last commit whatever its
+     * transaction is doing. The coordinator answers a partition it has to hold back with the **retriable** error
+     * code 88 (`UnstableOffsetCommit`), which is waited out here with `retry.backoff.ms` - as the Java consumer
+     * does, where the same code is a retriable failure of the coordinator's offset-fetch future.
+     *
+     * The Java consumer of 2.8 asks for stable offsets on **every** fetch of committed offsets and lets an
+     * internal option decide what an old broker costs; this client asks only where an unstable offset could be
+     * read back as a position, which is the guarantee KIP-447 was written for.
+     *
+     * @param array<string, PartitionsForTopic> $topicPartitions Partitions whose committed offsets are read
+     *
+     * @return array<string, array<int, int>> [topic][partition] => committed offset, or -1
+     */
+    private function fetchCommittedOffsets(string $groupId, array $topicPartitions): array
+    {
+        $requireStable = $this->isReadCommitted();
+        if (!$requireStable) {
+            return $this->getClient()->fetchGroupOffsets($this->getCoordinator(), $groupId, $topicPartitions);
+        }
+
+        $backoffMs = (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100);
+        $deadline  = microtime(true) + self::UNSTABLE_OFFSET_TIMEOUT_MS / 1e3;
+
+        while (true) {
+            try {
+                return $this->getClient()->fetchGroupOffsets($this->getCoordinator(), $groupId, $topicPartitions, true);
+            } catch (UnstableOffsetCommitException $exception) {
+                if (microtime(true) >= $deadline) {
+                    throw $exception;
+                }
+                usleep($backoffMs * 1000);
+            }
         }
     }
 
