@@ -32,6 +32,8 @@ use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\TopicMetadata;
+use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopic;
+use Protocol\Kafka\Protocol\Data\DeleteTopicsRequestTopic;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV0;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV3;
@@ -366,6 +368,108 @@ final class TopicAdminApiTest extends IntegrationTestCase
             'a timeout of 0 answers before the controller is done, with the code 7'
         );
         $this->awaitTopic($topic);
+    }
+
+    /**
+     * The topic id of KIP-516, which Kafka 2.8 put into the answer of the version 7
+     */
+    public function testTheAnswerOfVersionSevenCarriesTheIdTheControllerGaveTheTopic(): void
+    {
+        $topic = $this->topicName('kip516');
+
+        $created = $this->admin->createTopicsWithResults([new NewTopic($topic, 1, 1)])[$topic];
+
+        self::assertNull($created->error, 'the topic was created');
+        self::assertSame(16, strlen($created->topicId), 'a topic id is 16 raw bytes, not a string of them');
+        self::assertNotSame(
+            CreateTopicsResponseTopic::NO_TOPIC_ID,
+            $created->topicId,
+            'and the controller filled it with the id of the new topic'
+        );
+
+        $refused = $this->admin->createTopicsWithResults([new NewTopic($topic, 1, 1)])[$topic];
+
+        self::assertInstanceOf(TopicExistsException::class, $refused->error);
+        self::assertSame(
+            CreateTopicsResponseTopic::NO_TOPIC_ID,
+            $refused->topicId,
+            'a topic the controller refused has the zero id - nothing was created to have one'
+        );
+        self::assertGreaterThanOrEqual(
+            7,
+            CreateTopicsRequest::VERSION,
+            'the id arrived with the version 7 and every version above it carries it'
+        );
+    }
+
+    /**
+     * The other half of KIP-516: a DeleteTopics v6 request names its topic by that id instead of by its name
+     */
+    public function testATopicIsDeletedByTheIdItsCreationAnswered(): void
+    {
+        $topic = $this->topicName('kip516-delete');
+        $id    = $this->admin->createTopicsWithResults([new NewTopic($topic, 1, 1)])[$topic]->topicId;
+        $this->awaitTopic($topic);
+
+        $stream = $this->connect();
+        new DeleteTopicsRequest([new DeleteTopicsRequestTopic(null, $id)], 30000, 't7-topics', 7102)
+            ->writeTo($stream);
+        $response = DeleteTopicsResponse::unpack($stream);
+        $this->createdTopics = [];
+
+        $result = $response->topics[$topic] ?? null;
+        self::assertNotNull($result, 'the controller resolved the id to the name of the topic it deleted');
+        self::assertSame(0, $result->errorCode);
+        self::assertSame($id, $result->topicId, 'and echoed the id the request carried');
+        $this->awaitTopicIsGone($topic);
+    }
+
+    public function testAnIdNoTopicOfTheClusterCarriesIsAnsweredWithUnknownTopicId(): void
+    {
+        $unknownId = (string) hex2bin('0123456789abcdef0123456789abcdef');
+
+        $stream = $this->connect();
+        new DeleteTopicsRequest([new DeleteTopicsRequestTopic(null, $unknownId)], 30000, 't7-topics', 7103)
+            ->writeTo($stream);
+        $response = DeleteTopicsResponse::unpack($stream);
+
+        // The name of the entry is null, so the answer is not keyed by a topic name at all
+        $result = $response->topics[0];
+        self::assertNull($result->topic, 'the controller could not resolve the id to a name');
+        self::assertSame($unknownId, $result->topicId);
+        self::assertSame(
+            KafkaException::UNKNOWN_TOPIC_ID,
+            $result->errorCode,
+            'the error code 100 Kafka 2.8 added for an id, where a name it does not know is still the 3'
+        );
+    }
+
+    public function testATopicThatIsNamedByItsNameAndItsIdAtOnceFailsTheWholeRequest(): void
+    {
+        $topic = $this->topicName('kip516-both');
+        self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
+        $this->awaitTopic($topic);
+
+        $stream = $this->connect();
+        new DeleteTopicsRequest(
+            [
+                new DeleteTopicsRequestTopic('t7-topics-never-created', (string) hex2bin(str_repeat('ab', 16))),
+                new DeleteTopicsRequestTopic($topic),
+            ],
+            30000,
+            't7-topics',
+            7104
+        )->writeTo($stream);
+        $response = DeleteTopicsResponse::unpack($stream);
+
+        foreach ($response->topics as $result) {
+            self::assertSame(
+                KafkaException::INVALID_REQUEST,
+                $result->errorCode,
+                'the exception of the malformed entry fails every topic of the request'
+            );
+        }
+        self::assertContains($topic, $this->admin->listTopics(), 'so the topic that was named properly is still there');
     }
 
     public function testADeletedTopicDisappearsFromTheMetadataOfTheCluster(): void

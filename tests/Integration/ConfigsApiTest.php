@@ -786,7 +786,11 @@ final class ConfigsApiTest extends IntegrationTestCase
 
         self::assertSame(ConfigType::LIST, $plain->get('cleanup.policy')->type, 'the type is unconditional');
         self::assertNull($plain->get('cleanup.policy')->documentation, 'the documentation is not');
-        self::assertSame(3, DescribeConfigsRequest::VERSION, 'the version this line sends');
+        self::assertGreaterThanOrEqual(
+            3,
+            DescribeConfigsRequest::VERSION,
+            'the documentation arrived with the version 3 and every version above it carries it'
+        );
     }
 
     /**
