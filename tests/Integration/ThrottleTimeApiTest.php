@@ -169,6 +169,9 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
         $groupId = self::uniqueGroupName();
         $stream  = $this->coordinatorStream($groupId);
 
+        // Version 4 of the api (KIP-394) refuses a join that carries no member id, and the refusal is a normal
+        // answer of the api: it carries the throttle time of version 4 in front of the error code just as the
+        // successful one does, and the member id the coordinator assigned behind it.
         new JoinGroupRequest(
             $groupId,
             self::SESSION_TIMEOUT_MS,
@@ -179,10 +182,27 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
             self::CLIENT_ID,
             201
         )->writeTo($stream);
+        $refused = JoinGroupResponse::unpack($stream);
+
+        self::assertSame(0, $refused->throttleTimeMs);
+        self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
+        self::assertNotSame(JoinGroupRequest::DEFAULT_MEMBER_ID, $refused->memberId);
+
+        new JoinGroupRequest(
+            $groupId,
+            self::SESSION_TIMEOUT_MS,
+            self::SESSION_TIMEOUT_MS,
+            $refused->memberId,
+            'consumer',
+            ['range' => new Subscription([$topic])->pack()],
+            self::CLIENT_ID,
+            202
+        )->writeTo($stream);
         $join = JoinGroupResponse::unpack($stream);
 
         self::assertSame(0, $join->throttleTimeMs);
         self::assertSame(KafkaException::NO_ERROR, $join->errorCode);
+        self::assertSame($refused->memberId, $join->memberId, 'the assigned id is the id of the member');
         self::assertSame($join->memberId, $join->leaderId, 'the first member of a group is its leader');
         self::assertSame([$join->memberId], array_keys($join->members));
 
@@ -192,7 +212,7 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
             $join->memberId,
             [$join->memberId => new MemberAssignment([$topic => [0, 1, 2]])->pack()],
             self::CLIENT_ID,
-            202
+            203
         )->writeTo($stream);
         $sync = SyncGroupResponse::unpack($stream);
 
@@ -204,13 +224,13 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
             'the assignment survives the round trip behind the new field'
         );
 
-        new HeartbeatRequest($groupId, $join->generationId, $join->memberId, self::CLIENT_ID, 203)->writeTo($stream);
+        new HeartbeatRequest($groupId, $join->generationId, $join->memberId, self::CLIENT_ID, 204)->writeTo($stream);
         $heartbeat = HeartbeatResponse::unpack($stream);
 
         self::assertSame(0, $heartbeat->throttleTimeMs);
         self::assertSame(KafkaException::NO_ERROR, $heartbeat->errorCode);
 
-        new LeaveGroupRequest($groupId, $join->memberId, self::CLIENT_ID, 204)->writeTo($stream);
+        new LeaveGroupRequest($groupId, $join->memberId, self::CLIENT_ID, 205)->writeTo($stream);
         $leave = LeaveGroupResponse::unpack($stream);
 
         self::assertSame(0, $leave->throttleTimeMs);
