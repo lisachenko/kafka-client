@@ -19,7 +19,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
 
 /**
- * CreateTopics, version 2: asks the controller to create one or more topics (ApiKey 19, Kafka 0.11)
+ * CreateTopics, version 3: asks the controller to create one or more topics (ApiKey 19, Kafka 0.11)
  *
  * Before this api a topic was created by writing to ZooKeeper - with `kafka-topics.sh`, or implicitly by asking a
  * broker with `auto.create.topics.enable` for the metadata of a topic that does not exist yet. Only the ACTIVE
@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
  * see `KafkaApis.handleCreateTopicsRequest` @ 0.11.0.3 and {@see \Protocol\Kafka\Admin\AdminClient::findController()}.
  *
  * <pre>
- *   CreateTopics Request (Version: 1 and 2) => [create_topic_requests] timeout validate_only
+ *   CreateTopics Request (Version: 1, 2 and 3) => [create_topic_requests] timeout validate_only
  *     create_topic_requests => topic num_partitions replication_factor [replica_assignment] [configs]
  *       topic              => STRING
  *       num_partitions     => INT32
@@ -54,7 +54,14 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsRequestTopic;
  * accepted, while the creation carries on in the background: the request "will trigger topic creation and return
  * immediately", see `AdminManager.createTopics` @ 0.11.0.3.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0, v1 and v2)"
+ * **Kafka 2.0 added version 3** and changed nothing about the bytes: `CREATE_TOPICS_REQUEST_V3 =
+ * CREATE_TOPICS_REQUEST_V2` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see CreateTopicsRequestV2} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v3)"
  */
 class CreateTopicsRequest extends AbstractRequest
 {
@@ -66,7 +73,7 @@ class CreateTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Topics to create, indexed by their name

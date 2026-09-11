@@ -43,7 +43,7 @@ use function strlen;
  * An unauthenticated channel has the principal `User:ANONYMOUS` ({@see self::anonymous()}), which is what the
  * PLAINTEXT listener of the container reports - and the reason why the token apis refuse it with the code 64.
  *
- * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0)"
+ * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 and v1)"
  */
 class KafkaPrincipal implements BinarySchemaInterface
 {

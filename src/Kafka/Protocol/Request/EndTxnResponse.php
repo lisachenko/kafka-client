@@ -16,10 +16,10 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * EndTxn response object, version 0 (key 26)
+ * EndTxn response object, version 1 (key 26)
  *
  * <pre>
- *   EndTxn Response (Version: 0) => throttle_time_ms error_code
+ *   EndTxn Response (Version: 0 and 1) => throttle_time_ms error_code
  *     throttle_time_ms => INT32
  *     error_code       => INT16
  * </pre>
@@ -40,14 +40,21 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * | 51   | ConcurrentTransactions             | The previous transaction of the id is still being completed       |
  * | 53   | TransactionalIdAuthorizationFailed | The client may not `Write` the transactional id                   |
  *
- * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `END_TXN_RESPONSE_V1 =
+ * END_TXN_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see EndTxnResponseV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0 and v1)"
  */
 class EndTxnResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation

@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * DescribeDelegationToken, version 0: lists the tokens the caller may see (ApiKey 41, Kafka 1.1, KIP-48)
+ * DescribeDelegationToken, version 1: lists the tokens the caller may see (ApiKey 41, Kafka 1.1, KIP-48)
  *
  * <pre>
- *   DescribeDelegationToken Request (Version: 0) => [owners]
+ *   DescribeDelegationToken Request (Version: 0 and 1) => [owners]
  *     owners => principal_type name     (nullable array)
  *       principal_type => STRING
  *       name           => STRING
@@ -41,7 +41,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * rather than about a token: a broker without a `delegation.token.master.key` answers 61
  * (`DelegationTokenAuthDisabled`) here, and every listener that authenticated nobody the 64.
  *
- * @see docs/protocol/2.8.md, section "DescribeDelegationToken API (key 41, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TOKEN_DESCRIBE_REQUEST_V1 =
+ * TOKEN_DESCRIBE_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see DescribeDelegationTokenRequestV0} is the same frame with the version field of Kafka 1.1.
+ *
+ * @see docs/protocol/2.8.md, section "DescribeDelegationToken API (key 41, v0 and v1)"
  */
 class DescribeDelegationTokenRequest extends AbstractRequest
 {
@@ -53,7 +60,7 @@ class DescribeDelegationTokenRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Asks for every token the caller may see, i.e. the null array on the wire

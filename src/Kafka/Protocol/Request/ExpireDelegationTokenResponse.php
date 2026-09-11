@@ -16,10 +16,10 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * ExpireDelegationToken response object, version 0 (key 40)
+ * ExpireDelegationToken response object, version 1 (key 40)
  *
  * <pre>
- *   ExpireDelegationToken Response (Version: 0) => error_code expiry_timestamp throttle_time_ms
+ *   ExpireDelegationToken Response (Version: 0 and 1) => error_code expiry_timestamp throttle_time_ms
  *     error_code       => INT16
  *     expiry_timestamp => INT64
  *     throttle_time_ms => INT32
@@ -34,14 +34,21 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * Expiring a token that has already been deleted is the **62** (`DelegationTokenNotFound`), not the 66 - the token
  * is not "expired" for the broker, it is simply gone from ZooKeeper and from the token cache.
  *
- * @see docs/protocol/2.8.md, section "ExpireDelegationToken API (key 40, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TOKEN_EXPIRE_RESPONSE_V1 =
+ * TOKEN_EXPIRE_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see ExpireDelegationTokenResponseV0} is the same frame with the version field of Kafka 1.1.
+ *
+ * @see docs/protocol/2.8.md, section "ExpireDelegationToken API (key 40, v0 and v1)"
  */
 class ExpireDelegationTokenResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Error code of the request, 0 when the token was expired or deleted

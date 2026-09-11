@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * ExpireDelegationToken, version 0: shortens the life of a token, or ends it now (ApiKey 40, Kafka 1.1, KIP-48)
+ * ExpireDelegationToken, version 1: shortens the life of a token, or ends it now (ApiKey 40, Kafka 1.1, KIP-48)
  *
  * <pre>
- *   ExpireDelegationToken Request (Version: 0) => hmac expiry_time_period
+ *   ExpireDelegationToken Request (Version: 0 and 1) => hmac expiry_time_period
  *     hmac               => BYTES
  *     expiry_time_period => INT64
  * </pre>
@@ -37,7 +37,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *    expiry in either direction as long as it stays below the maximum lifetime - a period of 0 therefore expires
  *    the token now without deleting it.
  *
- * @see docs/protocol/2.8.md, section "ExpireDelegationToken API (key 40, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TOKEN_EXPIRE_REQUEST_V1 =
+ * TOKEN_EXPIRE_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see ExpireDelegationTokenRequestV0} is the same frame with the version field of Kafka 1.1.
+ *
+ * @see docs/protocol/2.8.md, section "ExpireDelegationToken API (key 40, v0 and v1)"
  */
 class ExpireDelegationTokenRequest extends AbstractRequest
 {
@@ -49,7 +56,7 @@ class ExpireDelegationTokenRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Deletes the token instead of moving its expiry, i.e. any negative period

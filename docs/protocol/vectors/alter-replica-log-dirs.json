@@ -1,13 +1,13 @@
 {
     "api": "alter-replica-log-dirs",
     "apiKey": 34,
-    "section": "AlterReplicaLogDirs API (key 34, v0)",
-    "description": "Wire vectors of the AlterReplicaLogDirs API (key 34, v0), replayed by tests/Compliance.",
+    "section": "AlterReplicaLogDirs API (key 34, v0 and v1)",
+    "description": "Wire vectors of the AlterReplicaLogDirs API (key 34, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "alterreplicalogdirs.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "AlterReplicaLogDirs request v0 that moves one partition into the other log directory of the same broker.",
@@ -36,7 +36,7 @@
         {
             "id": "alterreplicalogdirs.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "AlterReplicaLogDirs response v0: the error code 0, which says that the move was accepted and started, not that it is finished.",
@@ -61,7 +61,7 @@
         {
             "id": "alterreplicalogdirs.request.v0.unknown-log-dir",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "AlterReplicaLogDirs request v0 that names an absolute path which is not one of the directories of `log.dirs`.",
@@ -90,7 +90,7 @@
         {
             "id": "alterreplicalogdirs.response.v0.unknown-log-dir",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "AlterReplicaLogDirs response v0 for a directory the broker does not have: the error code 57 (LogDirNotFound), reported per replica because the api has no top-level error code.",
@@ -115,7 +115,7 @@
         {
             "id": "alterreplicalogdirs.request.v0.unknown-replica",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "AlterReplicaLogDirs request v0 for a topic that the cluster does not have.",
@@ -144,7 +144,7 @@
         {
             "id": "alterreplicalogdirs.response.v0.unknown-replica",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "AlterReplicaLogDirs response v0 for a replica the broker does not host: the error code 9 (ReplicaNotAvailable), which is what `ReplicaManager.getReplicaOrException` throws - not the 3 that the topic apis answer - and the topic is not created.",
@@ -160,6 +160,60 @@
                             {
                                 "partition": 0,
                                 "errorCode": 9
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterreplicalogdirs.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs request v1, the frame of version 0 with the api version Kafka 2.0 added: one replica moved to the other log directory of the broker.",
+            "hex": "0000004400220001000001fb000a74342d766563746f727300000001000f2f746d702f6b61666b612d6c6f677300000001000d74342d32302d766563746f72730000000100000000",
+            "fields": {
+                "messageSize": 68,
+                "apiKey": 34,
+                "apiVersion": 1,
+                "correlationId": 507,
+                "clientId": "t4-vectors",
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": {
+                            "t4-20-vectors": {
+                                "topic": "t4-20-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterreplicalogdirs.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs response v1: the error code 0 of the accepted move, which the broker then carries out in the background.",
+            "hex": "00000025000001fb0000000000000001000d74342d32302d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 507,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-20-vectors": {
+                        "topic": "t4-20-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
                             }
                         ]
                     }

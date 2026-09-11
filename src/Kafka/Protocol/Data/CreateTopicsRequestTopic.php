@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *  - `numPartitions` and `replicationFactor` are both {@see NewTopic::NO_NUM_PARTITIONS} / -1 and the assignment
  *    array names the replicas of every partition.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v3)"
  */
 class CreateTopicsRequestTopic implements BinarySchemaInterface
 {

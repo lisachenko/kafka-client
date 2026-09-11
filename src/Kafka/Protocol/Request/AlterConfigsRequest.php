@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 
 /**
- * AlterConfigs, version 0: replaces the configuration of a topic (ApiKey 33, Kafka 0.11, KIP-133)
+ * AlterConfigs, version 1: replaces the configuration of a topic (ApiKey 33, Kafka 0.11, KIP-133)
  *
  * <pre>
- *   AlterConfigs Request (Version: 0) => [resources] validate_only
+ *   AlterConfigs Request (Version: 0 and 1) => [resources] validate_only
  *     resources => resource_type resource_name [config_entries]
  *       resource_type  => INT8
  *       resource_name  => STRING
@@ -47,7 +47,14 @@ use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
  * Any broker of the cluster serves the request - `KafkaApis.handleAlterConfigsRequest` has no controller check, and
  * the change travels through ZooKeeper - and `validateOnly` runs the validation without writing anything.
  *
- * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `ALTER_CONFIGS_REQUEST_V1 =
+ * ALTER_CONFIGS_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see AlterConfigsRequestV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0 and v1)"
  */
 class AlterConfigsRequest extends AbstractRequest
 {
@@ -59,7 +66,7 @@ class AlterConfigsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Resources to alter, in the order of the request

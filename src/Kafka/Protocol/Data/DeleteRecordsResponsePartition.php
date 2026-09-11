@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `DeleteRecordsRequest.getErrorResponse` and every error branch of `ReplicaManager.deleteRecords` build the entry
  * with that constant.
  *
- * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 and v1)"
  */
 class DeleteRecordsResponsePartition implements BinarySchemaInterface
 {

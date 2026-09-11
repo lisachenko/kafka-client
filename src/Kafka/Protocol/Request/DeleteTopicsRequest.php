@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * DeleteTopics, version 1: asks the controller to delete one or more topics (ApiKey 20, Kafka 0.11)
+ * DeleteTopics, version 2: asks the controller to delete one or more topics (ApiKey 20, Kafka 0.11)
  *
  * <pre>
- *   DeleteTopics Request (Version: 0 and 1) => [topics] timeout
+ *   DeleteTopics Request (Version: 0, 1 and 2) => [topics] timeout
  *     topics  => STRING
  *     timeout => INT32
  * </pre>
@@ -45,7 +45,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * not know at all is answered with 3 (UnknownTopicOrPartition), and a broker that runs with
  * `delete.topic.enable=false` - the default of Kafka 0.10 - never carries the deletion out at all.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 and v1)"
+ * **Kafka 2.0 added version 2** and changed nothing about the bytes: `DELETE_TOPICS_REQUEST_V2 =
+ * DELETE_TOPICS_REQUEST_V1` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see DeleteTopicsRequestV1} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0, v1 and v2)"
  */
 class DeleteTopicsRequest extends AbstractRequest
 {
@@ -57,7 +64,7 @@ class DeleteTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @param list<string> $topics        Names of the topics to delete
