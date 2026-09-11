@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **615** of them in **48** files: **297** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **616** of them in **48** files: **298** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -32,7 +32,7 @@ states filter of the request and the group state of every entry of the answer, a
 client-quota apis (KIP-546, the two new files `describe-client-quotas.json` and `alter-client-quotas.json`), and the 6 frames of its DescribeConfigs **v3** (KIP-569) and the 4 frames of its
 DescribeLogDirs **v2**, and the 10 frames of the three apis **Kafka 2.7** added - the two SCRAM credential apis of
 KIP-554 and UpdateFeatures of KIP-584, in the three new files `describe-user-scram-credentials.json`,
-`alter-user-scram-credentials.json` and `update-features.json` - and the 14 frames of **Kafka 2.8**: the two new
+`alter-user-scram-credentials.json` and `update-features.json` - and the 15 frames of **Kafka 2.8**: the two new
 apis DescribeCluster (KIP-700) and DescribeProducers (KIP-664) in the new files `describe-cluster.json` and
 `describe-producers.json`, and the flexible **v1** of the two client-quota apis, which is where those two finally
 become compact - and of the other 318,
@@ -101,7 +101,7 @@ What **Kafka 2.4** added to the admin and transaction surface, captured with the
 | `alter-user-scram-credentials.json` | 5 of 5, **new file** | **AlterUserScramCredentials v0** (Kafka 2.7, KIP-554): the upsertion of a SCRAM-SHA-256 credential with 8192 iterations, whose 32-byte salted password the **client** derived with `hash_pbkdf2()` so that the password never reaches the wire, the answer that reports one result per affected *user*, and the three refusals **93** (too few iterations), **92** (the same user and mechanism twice) and **91** (deleting a credential that is not there) |
 | `update-features.json` | 2 of 2, **new file** | **UpdateFeatures v0** (Kafka 2.7, KIP-584): a request to finalize a feature at the version level 1 and the answer of a ZooKeeper-backed cluster, which finalizes nothing at all - the top-level 0 with the per-feature **42**, *"Could not apply finalized feature update because the provided feature is not supported."* |
 | `describe-cluster.json` | 4 of 4, **new file** | **DescribeCluster v0** (Kafka 2.8, KIP-700): the smallest request of this protocol - one boolean - with and without the acl flag, and the two answers. Without the flag `cluster_authorized_operations` is `Integer.MIN_VALUE`, the default of the specification; with it, **8096** = `CREATE \| ALTER \| DESCRIBE \| CLUSTER_ACTION \| DESCRIBE_CONFIGS \| ALTER_CONFIGS \| IDEMPOTENT_WRITE`, the whole set a broker without an authorizer allows on a CLUSTER resource |
-| `describe-producers.json` | 3 of 3, **new file** | **DescribeProducers v0** (Kafka 2.8, KIP-664): the producer state of a partition an idempotent producer wrote to - the producer id, the epoch, the last sequence number and timestamp, and the `current_txn_start_offset` of **-1** that says no transaction of it is open here - next to an answer for two empty partitions and one the broker does not have (**3** per partition, this api has no top-level error code) |
+| `describe-producers.json` | 4 of 4, **new file** | **DescribeProducers v0** (Kafka 2.8, KIP-664): the producer state of a partition an idempotent producer wrote to - the producer id, the epoch, the last sequence number and timestamp, and the `current_txn_start_offset` of **-1** that says no transaction of it is open here - the same partition while a transaction of that producer IS open, whose `coordinator_epoch` is still -1 because the marker and not the batch writes it, and an answer for two empty partitions and one the broker does not have (**3** per partition, this api has no top-level error code) |
 | `init-producer-id.json` | 2 new of 10 | **InitProducerId v2** (KIP-482): the v1 body in the compact encoding - the request header v2, a compact transactional id and a tag buffer at the end of the header and of the body - for the transactional id `t1-24-vectors-tx` |
 | `delegation-tokens.json` | 4 new of 26 | **CreateDelegationToken v2** (KIP-482): the flexible pair for `User:kafkatest` on the SASL_PLAINTEXT listener, the **57** of a renewer whose principal type is not `User` and the **64** of the PLAINTEXT listener, all four with compact strings and bytes. The `owner` of the answer is two *flat* fields of the specification, so it carries no tag buffer of its own - the `InlineStruct` case of the engine |
 

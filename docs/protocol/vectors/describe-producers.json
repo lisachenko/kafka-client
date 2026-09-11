@@ -105,6 +105,43 @@
                     }
                 }
             }
+        },
+        {
+            "id": "describeproducers.response.v0.open-transaction",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeProducersResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The same partition while a **transaction** of its producer is open: `current_txn_start_offset` is `00 00 00 00 00 00 00 00`, the base offset of the first batch of that transaction in this partition - the offset a read-committed consumer stops at - where the frame above carries the -1 of a producer without one. The `coordinator_epoch` next to it is still **-1**: `ProducerStateEntry` learns the coordinator from the transaction **marker**, not from the batch, so it is written when the transaction ends and not when it begins.",
+            "hex": "00000057000017d60000000000021c74312d70726f6475636572732d766563746f72732d63663361383202000000000000000200000000000000d40000000000000000000001a09291f706ffffffff000000000000000000000000",
+            "fields": {
+                "messageSize": 87,
+                "correlationId": 6102,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-producers-vectors-cf3a82": {
+                        "name": "t1-producers-vectors-cf3a82",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "activeProducers": {
+                                    "212": {
+                                        "producerId": 212,
+                                        "producerEpoch": 0,
+                                        "lastSequence": 0,
+                                        "lastTimestamp": 1789165434630,
+                                        "coordinatorEpoch": -1,
+                                        "currentTxnStartOffset": 0
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
         }
     ]
 }

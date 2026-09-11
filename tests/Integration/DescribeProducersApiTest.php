@@ -158,6 +158,11 @@ final class DescribeProducersApiTest extends IntegrationTestCase
      * `ProducerStateEntry.currentTxnFirstOffset` is set by the first batch of a transaction in the partition and
      * cleared by its marker, so the field is readable exactly between the produce and the commit - and the offset
      * it holds is the base offset of that first batch, the offset a read-committed consumer stops at.
+     *
+     * The **coordinator epoch** next to it moves the other way round, which is the surprise of this api: it is
+     * written by the **marker**, not by the batch, so a producer whose very first transaction is still open is
+     * reported with the -1 of a producer that has none, and only after the commit does the partition know which
+     * coordinator owned it. Measured on the container, both ways round.
      */
     public function testAnOpenTransactionIsReportedWithItsFirstOffsetAndClearedByItsMarker(): void
     {
@@ -178,10 +183,10 @@ final class DescribeProducersApiTest extends IntegrationTestCase
             $open->currentTransactionStartOffset,
             'the first offset of the transaction in this partition, not the offset of the last batch'
         );
-        self::assertGreaterThanOrEqual(
-            0,
+        self::assertSame(
+            -1,
             $open->coordinatorEpoch,
-            'a transaction has a coordinator, and its epoch is written into the partition with the first batch'
+            'no marker has been written yet, so the partition does not know the coordinator of this transaction'
         );
         self::assertSame(
             $manager->getProducerIdAndEpoch()->producerId,
@@ -195,11 +200,60 @@ final class DescribeProducersApiTest extends IntegrationTestCase
         $closed = $this->onlyStateOf($topic);
 
         self::assertFalse($closed->hasOpenTransaction(), 'the commit marker cleared the first offset');
+        self::assertNull($closed->currentTransactionStartOffset);
         self::assertSame($open->producerId, $closed->producerId, 'and the producer itself is still remembered');
-        self::assertSame(
-            $open->coordinatorEpoch,
+        self::assertGreaterThanOrEqual(
+            0,
             $closed->coordinatorEpoch,
-            'the coordinator epoch outlives the transaction it belongs to'
+            'and the marker wrote the epoch of the coordinator that owned it'
+        );
+    }
+
+    /**
+     * The second transaction of the same producer keeps the coordinator epoch of the marker before it
+     *
+     * The distinction matters to a caller who reads the pair: a coordinator epoch of 0 or more next to an open
+     * transaction says nothing about *that* transaction, it is what the previous marker of this producer left
+     * behind. An abort clears the first offset exactly as a commit does.
+     */
+    public function testTheCoordinatorEpochOfTheMarkerOutlivesItsTransaction(): void
+    {
+        $topic           = $this->topic('second-transaction');
+        $transactionalId = self::uniqueTopicName('t1-producers-second-txn');
+        $manager         = new TransactionManager($this->client, $transactionalId, 60000, $this->configuration());
+
+        $manager->initTransactions();
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$topic => [0 => []]]);
+        $this->client->produce([$topic => [0 => $this->records(['committed'])]], $manager);
+        $manager->commitTransaction();
+        $this->awaitClosedTransaction($topic);
+
+        $afterCommit = $this->onlyStateOf($topic);
+
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$topic => [0 => []]]);
+        $appended = $this->client->produce([$topic => [0 => $this->records(['aborted'])]], $manager);
+        $open     = $this->onlyStateOf($topic);
+
+        self::assertTrue($open->hasOpenTransaction());
+        self::assertSame(
+            $appended[$topic][0]->baseOffset,
+            $open->currentTransactionStartOffset,
+            'the second transaction starts after the commit marker of the first one'
+        );
+        self::assertSame(
+            $afterCommit->coordinatorEpoch,
+            $open->coordinatorEpoch,
+            'which is the epoch the marker of the FIRST transaction wrote, not one of this transaction'
+        );
+
+        $manager->abortTransaction();
+        $this->awaitClosedTransaction($topic);
+
+        self::assertFalse(
+            $this->onlyStateOf($topic)->hasOpenTransaction(),
+            'an abort marker clears the first offset exactly as a commit marker does'
         );
     }
 
