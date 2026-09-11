@@ -22,35 +22,42 @@ use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequestV0;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequestV1;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsRequestV2;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV0;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV1;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV2;
 
 /**
  * Byte-exact tests for the DeleteTopics API of Kafka 0.10.1 (api key 20), raised to version 1 by KIP-124 and
  * to version 2 by Kafka 2.0.
  *
- * The request of the three versions is one and the same body - `DELETE_TOPICS_REQUEST_V1 =
- * DELETE_TOPICS_REQUEST_V0` and `DELETE_TOPICS_REQUEST_V2 = DELETE_TOPICS_REQUEST_V1` - and so is the
- * answer of version 1 and 2; only the answer of version 0 has no `ThrottleTimeMs` in front of the array.
+ * The request of the four versions is one and the same body - `DELETE_TOPICS_REQUEST_V1 =
+ * DELETE_TOPICS_REQUEST_V0`, `DELETE_TOPICS_REQUEST_V2 = DELETE_TOPICS_REQUEST_V1` and
+ * `DELETE_TOPICS_REQUEST_V3 = DELETE_TOPICS_REQUEST_V2` - and so is the answer of the versions 1 to 3; only the
+ * answer of version 0 has no `ThrottleTimeMs` in front of the array. What the versions buy is an error code: the
+ * throttling promise of KIP-219 at version 2, and the **73** `TOPIC_DELETION_DISABLED` of a cluster with
+ * `delete.topic.enable=false` at version 3, which a version 2 client is answered with 42 for.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v3)"
  */
 #[CoversClass(DeleteTopicsRequest::class)]
 #[CoversClass(DeleteTopicsRequestV1::class)]
+#[CoversClass(DeleteTopicsRequestV2::class)]
 #[CoversClass(DeleteTopicsRequestV0::class)]
 #[CoversClass(DeleteTopicsResponse::class)]
 #[CoversClass(DeleteTopicsResponseV1::class)]
+#[CoversClass(DeleteTopicsResponseV2::class)]
 #[CoversClass(DeleteTopicsResponseV0::class)]
 #[CoversClass(DeleteTopicsResponseTopic::class)]
 final class DeleteTopicsTest extends TestCase
 {
     /**
-     * DeleteTopics request v2 for two topics.
+     * DeleteTopics request v3 for two topics.
      *
      *   Size          => 00 00 00 24 (36 bytes)
      *   ApiKey        => 00 14 (20)
-     *   ApiVersion    => 00 02
+     *   ApiVersion    => 00 03
      *   CorrelationId => 00 00 00 03
      *   ClientId      => 00 04 "test"
      *   Topics        => 00 00 00 02
@@ -60,7 +67,7 @@ final class DeleteTopicsTest extends TestCase
      */
     private const string REQUEST_HEX = '00000024'
         . '0014'
-        . '0002'
+        . '0003'
         . '00000003'
         . '0004' . '74657374'
         . '00000002'
@@ -73,7 +80,7 @@ final class DeleteTopicsTest extends TestCase
      *
      *   Size          => 00 00 00 37 (55 bytes)
      *   ApiKey        => 00 14 (20)
-     *   ApiVersion    => 00 02
+     *   ApiVersion    => 00 03
      *   CorrelationId => 00 00 00 04
      *   ClientId      => 00 04 "test"
      *   Topics        => 00 00 00 01
@@ -82,7 +89,7 @@ final class DeleteTopicsTest extends TestCase
      */
     private const string PROBE_REQUEST_HEX = '00000037'
         . '0014'
-        . '0002'
+        . '0003'
         . '00000004'
         . '0004' . '74657374'
         . '00000001'
@@ -139,7 +146,7 @@ final class DeleteTopicsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DELETE_TOPICS, $request->getApiKey());
-        self::assertSame(2, $request->getApiVersion(), 'Kafka 2.0 raised the api to version 2 (KIP-219)');
+        self::assertSame(3, $request->getApiVersion(), 'Kafka 2.1 raised the api to version 3 (the 73 of KIP-412)');
         self::assertSame(36, $request->getMessageSize());
     }
 
@@ -147,9 +154,16 @@ final class DeleteTopicsTest extends TestCase
     {
         $versionZero = new DeleteTopicsRequestV0(['topic', 'other'], 30000, 'test', 3);
         $versionOne  = new DeleteTopicsRequestV1(['topic', 'other'], 30000, 'test', 3);
+        $versionTwo  = new DeleteTopicsRequestV2(['topic', 'other'], 30000, 'test', 3);
 
         self::assertSame(0, $versionZero->getApiVersion());
         self::assertSame(1, $versionOne->getApiVersion());
+        self::assertSame(2, $versionTwo->getApiVersion());
+        self::assertSame(
+            substr_replace(self::REQUEST_HEX, '0002', 12, 4),
+            bin2hex((string) $versionTwo),
+            'DELETE_TOPICS_REQUEST_V3 = DELETE_TOPICS_REQUEST_V2'
+        );
         self::assertSame(
             substr_replace(self::REQUEST_HEX, '0000', 12, 4),
             bin2hex((string) $versionZero),
@@ -165,12 +179,14 @@ final class DeleteTopicsTest extends TestCase
     public function testTheAnswerOfVersionOneIsReadByTheClassOfItsOwnVersion(): void
     {
         $response = DeleteTopicsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $twoAgain = DeleteTopicsResponseV2::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
 
         self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $response));
+        self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $twoAgain));
         self::assertSame(
             array_keys(DeleteTopicsResponse::getScheme()),
             array_keys(DeleteTopicsResponseV1::getScheme()),
-            'the answer of version 2 has the layout of version 1'
+            'the answers of the versions 1, 2 and 3 have one and the same layout'
         );
     }
 

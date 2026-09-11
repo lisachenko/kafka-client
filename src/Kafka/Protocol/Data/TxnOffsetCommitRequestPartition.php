@@ -21,10 +21,11 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * One partition of a TxnOffsetCommit request, i.e. one entry of the `partitions` array of a topic
  *
  * <pre>
- *   TxnOffsetCommitRequestPartition => partition offset metadata
- *     partition => INT32
- *     offset    => INT64
- *     metadata  => NULLABLE_STRING
+ *   TxnOffsetCommitRequestPartition (Version: 2) => partition offset committed_leader_epoch metadata
+ *     partition             => INT32
+ *     offset                => INT64
+ *     committed_leader_epoch => INT32     -- since version 2
+ *     metadata              => NULLABLE_STRING
  * </pre>
  *
  * `TXN_OFFSET_COMMIT_PARTITION_OFFSET_METADATA_REQUEST_V0` in `Protocol.java` @ 0.11.0.3. It is the entry of an
@@ -33,10 +34,23 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * retention of the commit is the one the group coordinator applies by itself, there is no `retention_time` in this
  * api.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 and v1)"
+ * **Kafka 2.1 added the `committed_leader_epoch` of version 2** (KIP-320), between the offset and the metadata -
+ * `{ "name": "CommittedLeaderEpoch", "type": "int32", "versions": "2+", "default": "-1" }` in
+ * `TxnOffsetCommitRequest.json` @ 2.8.2. It is the epoch of the leader that produced the record the offset points
+ * behind, and the coordinator stores it with the offset so that a later fetch can tell a truncated log from a
+ * current one. A client that does not track epochs sends {@see OffsetAndMetadata::UNKNOWN_LEADER_EPOCH} (-1), which is
+ * what this client does until the consumer of a later minor learns them; {@see TxnOffsetCommitRequestPartitionV0}
+ * is the entry of the versions 0 and 1, which have no such field.
+ *
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v2)"
  */
 class TxnOffsetCommitRequestPartition implements BinarySchemaInterface
 {
+    /**
+     * Version of the TxnOffsetCommit API that this DTO belongs to
+     */
+    public const int VERSION = 2;
+
     /**
      * Id of the partition whose offset is committed
      */
@@ -48,15 +62,28 @@ class TxnOffsetCommitRequestPartition implements BinarySchemaInterface
     public int $offset;
 
     /**
+     * Leader epoch of the record the offset points behind, -1 when the client does not know it
+     *
+     * @since Version 2 of protocol
+     */
+    public int $committedLeaderEpoch = OffsetAndMetadata::UNKNOWN_LEADER_EPOCH;
+
+    /**
      * Free-form metadata the consumer keeps next to the offset, `null` for none
      */
     public ?string $metadata;
 
-    public function __construct(int $partition, int|OffsetAndMetadata $offset, ?string $metadata = null)
-    {
-        $this->partition = $partition;
-        $this->offset    = $offset instanceof OffsetAndMetadata ? $offset->offset : $offset;
-        $this->metadata  = $offset instanceof OffsetAndMetadata ? $offset->metadata : $metadata;
+    public function __construct(
+        int $partition,
+        int|OffsetAndMetadata $offset,
+        ?string $metadata = null,
+        ?int $leaderEpoch = null
+    ) {
+        $this->partition            = $partition;
+        $this->offset               = $offset instanceof OffsetAndMetadata ? $offset->offset : $offset;
+        $this->metadata             = $offset instanceof OffsetAndMetadata ? $offset->metadata : $metadata;
+        $epoch                      = $offset instanceof OffsetAndMetadata ? $offset->leaderEpoch : $leaderEpoch;
+        $this->committedLeaderEpoch = $epoch ?? OffsetAndMetadata::UNKNOWN_LEADER_EPOCH;
     }
 
     /**
@@ -64,10 +91,15 @@ class TxnOffsetCommitRequestPartition implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        return [
+        $scheme = [
             'partition' => BinarySchema::TYPE_INT32,
             'offset'    => BinarySchema::TYPE_INT64,
-            'metadata'  => BinarySchema::TYPE_NULLABLE_STRING,
         ];
+        if (static::VERSION >= 2) {
+            $scheme['committedLeaderEpoch'] = BinarySchema::TYPE_INT32;
+        }
+        $scheme['metadata'] = BinarySchema::TYPE_NULLABLE_STRING;
+
+        return $scheme;
     }
 }
