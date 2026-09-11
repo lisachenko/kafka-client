@@ -23,6 +23,7 @@ use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
 use Protocol\Kafka\Common\Errors\GroupSubscribedToTopicException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\MemberIdRequiredException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\TopicPartition;
@@ -354,7 +355,22 @@ final class OffsetDeleteApiTest extends IntegrationTestCase
     private function joinGroup(string $groupId, string $protocolType, string $metadata): array
     {
         $coordinator = $this->coordinator($groupId);
-        $join        = $this->client->joinGroup($coordinator, $groupId, '', $protocolType, ['range' => $metadata]);
+        $protocols   = ['range' => $metadata];
+
+        try {
+            $join = $this->client->joinGroup($coordinator, $groupId, '', $protocolType, $protocols);
+        } catch (MemberIdRequiredException $exception) {
+            // KIP-394, Kafka 2.2: the version 4 of JoinGroup refuses the first join of a member that has no id
+            // yet with the code 79 and hands out the id it assigned, and the member joins again with that id
+            $join = $this->client->joinGroup(
+                $coordinator,
+                $groupId,
+                (string) $exception->getContext()['assignedMemberId'],
+                $protocolType,
+                $protocols
+            );
+        }
+
         $this->client->syncGroup(
             $coordinator,
             $groupId,
