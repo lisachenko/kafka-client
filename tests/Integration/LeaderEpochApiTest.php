@@ -37,19 +37,25 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV10;
 use Protocol\Kafka\Protocol\Request\FetchResponseV8;
 use Protocol\Kafka\Protocol\Request\FetchResponseV9;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV10;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV6;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV10;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV6;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV2;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV2;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV4;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -245,18 +251,19 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         $four = OffsetsResponseV4::unpack($stream);
 
         $stream = $this->connect();
-        new OffsetsRequest(
+        new OffsetsRequestV5(
             [$this->topic => [0 => [OffsetsRequest::LATEST, $epoch]]],
             OffsetsRequest::CONSUMER_REPLICA_ID,
             FetchRequest::READ_UNCOMMITTED,
             self::CLIENT_ID,
             971
         )->writeTo($stream);
-        $five = OffsetsResponse::unpack($stream);
+        $five = OffsetsResponseV5::unpack($stream);
 
         self::assertSame($four->getMessageSize(), $five->getMessageSize());
         self::assertSame(4, OffsetsRequestV4::VERSION, 'the version Kafka 2.1 added');
-        self::assertSame(5, OffsetsRequest::VERSION, 'and the client sends the version Kafka 2.2 added');
+        self::assertSame(5, OffsetsRequestV5::VERSION, 'the version Kafka 2.2 added');
+        self::assertSame(6, OffsetsRequest::VERSION, 'and the client sends the flexible version Kafka 2.8 added');
 
         $partitionFour = $four->topics[$this->topic]->partitions[0];
         $partitionFive = $five->topics[$this->topic]->partitions[0];
@@ -319,7 +326,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
 
         // A version 2 frame differs from a version 1 one in the four bytes of the `current_leader_epoch` of the
         // partition entry, and a version 3 one in the four bytes of the `replica_id` on top of that
-        $three = (string) new OffsetForLeaderEpochRequest([$this->topic => [0 => [$epoch, $epoch]]], self::CLIENT_ID, 1);
+        $three = (string) new OffsetForLeaderEpochRequestV3([$this->topic => [0 => [$epoch, $epoch]]], self::CLIENT_ID, 1);
         $two   = (string) new OffsetForLeaderEpochRequestV2([$this->topic => [0 => [$epoch, $epoch]]], self::CLIENT_ID, 1);
         $one   = (string) new OffsetForLeaderEpochRequestV1([$this->topic => [0 => $epoch]], self::CLIENT_ID, 1);
 
@@ -379,9 +386,11 @@ final class LeaderEpochApiTest extends IntegrationTestCase
 
     public function testMetadataVersionEightAnswersTheAuthorizedOperationsOfTheCallerWhenAsked(): void
     {
+        // The cluster-wide half of KIP-430 lives in the versions 8 to 10 only - KIP-700 gave the question to the
+        // DescribeCluster api in version 11 - so this is measured with a version 10 request
         $stream = $this->connect();
-        new MetadataRequest([$this->topic], false, self::CLIENT_ID, 990, true, true)->writeTo($stream);
-        $asked = MetadataResponse::unpack($stream);
+        new MetadataRequestV10([$this->topic], false, self::CLIENT_ID, 990, true, true)->writeTo($stream);
+        $asked = MetadataResponseV10::unpack($stream);
 
         // The container has no `authorizer.class.name`, so it answers the operations the resource type supports
         self::assertTrue(AclOperation::wasRequested($asked->clusterAuthorizedOperations));
@@ -398,8 +407,8 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         // With the booleans off - what this client sends - the two fields are still on the wire and carry
         // Integer.MIN_VALUE, "you did not ask", which is not the empty set
         $stream = $this->connect();
-        new MetadataRequest([$this->topic], false, self::CLIENT_ID, 991)->writeTo($stream);
-        $silent = MetadataResponse::unpack($stream);
+        new MetadataRequestV10([$this->topic], false, self::CLIENT_ID, 991)->writeTo($stream);
+        $silent = MetadataResponseV10::unpack($stream);
 
         self::assertSame(AclOperation::NOT_REQUESTED, $silent->clusterAuthorizedOperations);
         self::assertSame(AclOperation::NOT_REQUESTED, $silent->topics[$this->topic]->authorizedOperations);
@@ -408,6 +417,18 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             $asked->getMessageSize(),
             $silent->getMessageSize(),
             'the bitfields are fields of the version, not of the question'
+        );
+
+        // And the version 11 this client sends carries no cluster-wide bitfield at all: the property keeps its
+        // default whatever the request asked for, because KIP-700 took the field off the wire
+        $stream = $this->connect();
+        new MetadataRequest([$this->topic], false, self::CLIENT_ID, 992, true, true)->writeTo($stream);
+        $eleven = MetadataResponse::unpack($stream);
+
+        self::assertSame(AclOperation::NOT_REQUESTED, $eleven->clusterAuthorizedOperations);
+        self::assertTrue(
+            AclOperation::wasRequested($eleven->topics[$this->topic]->authorizedOperations),
+            'the per-topic bitfield is untouched by KIP-700'
         );
     }
 
@@ -435,9 +456,9 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         // The default of the field is -2, the debug client that may see beyond the high watermark, and a version
         // 2 request has no such field at all - both are answered the same thing by this broker
         $stream = $this->connect();
-        new OffsetForLeaderEpochRequest([$this->topic => [0 => [$epoch, $epoch]]], self::CLIENT_ID, 996)
+        new OffsetForLeaderEpochRequestV3([$this->topic => [0 => [$epoch, $epoch]]], self::CLIENT_ID, 996)
             ->writeTo($stream);
-        $debug = OffsetForLeaderEpochResponse::unpack($stream);
+        $debug = OffsetForLeaderEpochResponseV3::unpack($stream);
 
         $stream = $this->connect();
         new OffsetForLeaderEpochRequestV2([$this->topic => [0 => [$epoch, $epoch]]], self::CLIENT_ID, 997)
@@ -453,7 +474,8 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             $withoutTheField->topics[$this->topic]->partitions[0]->endOffset
         );
         self::assertSame($debug->getMessageSize(), $withoutTheField->getMessageSize(), 'the answers are identical');
-        self::assertSame(3, OffsetForLeaderEpochRequest::VERSION);
+        self::assertSame(4, OffsetForLeaderEpochRequest::VERSION, 'the flexible version Kafka 2.8 added');
+        self::assertSame(3, OffsetForLeaderEpochRequestV3::VERSION, 'the version Kafka 2.3 added');
     }
 
     /**

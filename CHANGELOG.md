@@ -570,7 +570,9 @@ them. What the release added lives in the group and transaction apis.)*
   topic) and leaves `clusterAuthorizedOperations` at `NOT_REQUESTED` because the field is not on the wire at all,
   while the same question as a v10 with both booleans on answers the 8096 of the cluster and the 3576 of the
   topic. Ten wire vectors, the section "Topic ids (v10, KIP-516)" of the protocol document, the version 9/10/11
-  grammar blocks of the four apis and the api-table rows 0, 2, 3 and 23.
+  grammar blocks of the four apis, the api-table rows 0, 2, 3 and 23, and the new integration suite
+  `TopicIdsApiTest` - which also pins the point of KIP-516: a topic that is deleted and created again under the
+  same name comes back with **another** id.
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------

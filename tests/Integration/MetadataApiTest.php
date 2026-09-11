@@ -344,7 +344,7 @@ final class MetadataApiTest extends IntegrationTestCase
         $versionSix = MetadataResponseV6::unpack($stream);
 
         self::assertSame(6, MetadataRequestV6::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(9, MetadataRequest::VERSION, 'and the client sends the flexible version Kafka 2.4 added');
+        self::assertSame(11, MetadataRequest::VERSION, 'and the client sends the version Kafka 2.8 added');
         self::assertSame($versionFive->getMessageSize(), $versionSix->getMessageSize());
         self::assertSame($versionFive->clusterId, $versionSix->clusterId);
         self::assertSame($versionFive->controllerId, $versionSix->controllerId);

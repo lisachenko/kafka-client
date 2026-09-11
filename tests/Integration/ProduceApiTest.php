@@ -52,6 +52,7 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV5;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV6;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
@@ -59,6 +60,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV5;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV6;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -538,7 +540,7 @@ final class ProduceApiTest extends IntegrationTestCase
             3 => [ProduceRequestV3::class, ProduceResponseV3::class],
             4 => [ProduceRequestV4::class, ProduceResponseV4::class],
             5 => [ProduceRequestV5::class, ProduceResponseV5::class],
-            6 => [ProduceRequest::class, ProduceResponse::class],
+            6 => [ProduceRequestV6::class, ProduceResponseV6::class],
         ];
         foreach ($versions as $version => [$requestClass, $responseClass]) {
             $request = new $requestClass(
