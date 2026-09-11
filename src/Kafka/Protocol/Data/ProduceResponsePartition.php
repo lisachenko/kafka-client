@@ -41,14 +41,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * **Version 5 (Kafka 1.0) appended `LogStartOffset`**, which is what this class adds, see
  * {@see self::$logStartOffset}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {
     /**
      * Version of the Produce API that this DTO is unpacked from
      */
-    public const int VERSION = 5;
+    public const int VERSION = 8;
 
     /**
      * Value of `LogStartOffset` for an answer of a version below 5, which does not carry the field
@@ -124,6 +124,31 @@ class ProduceResponsePartition implements BinarySchemaInterface
     public int $throttleTimeMs = 0;
 
     /**
+     * Records of the sent batch that the broker refused, indexed by their position in the batch (KIP-467).
+     *
+     * Empty for a partition that was appended, and empty as well for every answer below version **8**, which
+     * does not carry the field at all: a batch that fails validation is then a bare error code - **87**
+     * `INVALID_RECORD` most of the time - and the producer cannot tell which of its records caused it. The array
+     * is what version 8 (Kafka 2.4) added, see {@see ProduceResponseRecordError}.
+     *
+     * @var array<int, ProduceResponseRecordError>
+     *
+     * @since Version 8 of protocol
+     */
+    public array $recordErrors = [];
+
+    /**
+     * The broker's own summary of why the batch was refused, `null` when it sent none.
+     *
+     * The common root cause of the records of {@see self::$recordErrors}: a batch that was dropped for one
+     * reason carries the reason here once, and the entries of the array name the records it applies to. Every
+     * answer below version 8 leaves it `null`.
+     *
+     * @since Version 8 of protocol
+     */
+    public ?string $errorMessage = null;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -138,6 +163,10 @@ class ProduceResponsePartition implements BinarySchemaInterface
         }
         if (static::VERSION >= 5) {
             $scheme['logStartOffset'] = BinarySchema::TYPE_INT64;
+        }
+        if (static::VERSION >= 8) {
+            $scheme['recordErrors']  = ['batchIndex' => ProduceResponseRecordError::class];
+            $scheme['errorMessage']  = BinarySchema::TYPE_NULLABLE_STRING;
         }
 
         return $scheme;

@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\AclOperation;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\NodeV0;
 use Protocol\Kafka\Common\PartitionMetadata;
@@ -24,6 +25,7 @@ use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicMetadataV0;
 use Protocol\Kafka\Common\TopicMetadataV1;
 use Protocol\Kafka\Common\TopicMetadataV5;
+use Protocol\Kafka\Common\TopicMetadataV7;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -34,6 +36,7 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV4;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV5;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV6;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV7;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
@@ -42,6 +45,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV4;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV5;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV6;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV7;
 
 /**
  * Byte-exact tests of the Metadata API, versions 0 to 5.
@@ -60,7 +64,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponseV6;
  *                          [OfflineReplicas [int32]]      # since version 5
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v8)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -167,11 +171,12 @@ final class MetadataApiTest extends TestCase
 
     public function testRequestWithoutTopicsAsksForEveryTopic(): void
     {
-        //   Size => 19, ApiKey 3, ApiVersion 7, CorrelationId 1, ClientId "test", [TopicName] => null, allow => 01
+        //   Size => 21, ApiKey 3, ApiVersion 8, CorrelationId 1, ClientId "test", [TopicName] => null,
+        //   allow => 01, and the two booleans of KIP-430, both off
         $request = new MetadataRequest(null, true, 'test', 1);
 
         self::assertSame(
-            '00000013' . '0003' . '0007' . '00000001' . '0004' . '74657374' . 'ffffffff' . '01',
+            '00000015' . '0003' . '0008' . '00000001' . '0004' . '74657374' . 'ffffffff' . '01' . '00' . '00',
             bin2hex((string) $request)
         );
         self::assertNull($request->getTopics(), 'a null topic array is the "every topic" of version 1 and above');
@@ -183,7 +188,7 @@ final class MetadataApiTest extends TestCase
         $request = new MetadataRequest([], true, 'test', 1);
 
         self::assertSame(
-            '00000013' . '0003' . '0007' . '00000001' . '0004' . '74657374' . '00000000' . '01',
+            '00000015' . '0003' . '0008' . '00000001' . '0004' . '74657374' . '00000000' . '01' . '00' . '00',
             bin2hex((string) $request)
         );
         self::assertSame([], $request->getTopics());
@@ -191,12 +196,12 @@ final class MetadataApiTest extends TestCase
 
     public function testRequestPacksEveryRequestedTopicAsAString(): void
     {
-        //   Size => 42, ClientId "php-kafka", [TopicName] => "orders", "payments"
+        //   Size => 44, ClientId "php-kafka", [TopicName] => "orders", "payments"
         $request = new MetadataRequest(['orders', 'payments'], true, 'php-kafka', 7);
 
         self::assertSame(
-            '0000002a' . '0003' . '0007' . '00000007' . '0009' . '7068702d6b61666b61'
-            . '00000002' . '0006' . '6f7264657273' . '0008' . '7061796d656e7473' . '01',
+            '0000002c' . '0003' . '0008' . '00000007' . '0009' . '7068702d6b61666b61'
+            . '00000002' . '0006' . '6f7264657273' . '0008' . '7061796d656e7473' . '01' . '00' . '00',
             bin2hex((string) $request)
         );
         self::assertSame(['orders', 'payments'], $request->getTopics());
@@ -204,11 +209,14 @@ final class MetadataApiTest extends TestCase
 
     public function testTheAutoCreationFlagIsTheLastByteOfAVersionFourAndFiveFrame(): void
     {
-        $allowed = bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3));
-        $refused = bin2hex((string) new MetadataRequest(['orders'], false, 'test', 3));
+        // The flag is the last byte up to version 7; version 8 (KIP-430) put the two authorized-operation
+        // booleans behind it, so it is the third byte from the end of the frame this client sends
+        $allowed = bin2hex((string) new MetadataRequestV7(['orders'], true, 'test', 3));
+        $refused = bin2hex((string) new MetadataRequestV7(['orders'], false, 'test', 3));
 
         self::assertStringEndsWith('01', $allowed);
         self::assertStringEndsWith('00', $refused);
+        self::assertStringEndsWith('010000', bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3)));
         self::assertSame(substr($allowed, 0, -2), substr($refused, 0, -2), 'the flag is the only difference');
         self::assertTrue(new MetadataRequest()->isAutoTopicCreationAllowed(), 'true is the behaviour of every older version');
     }
@@ -228,7 +236,8 @@ final class MetadataApiTest extends TestCase
         self::assertSame(4, new MetadataRequestV4()->getApiVersion());
         self::assertSame(5, new MetadataRequestV5()->getApiVersion());
         self::assertSame(6, new MetadataRequestV6()->getApiVersion());
-        self::assertSame(7, new MetadataRequest()->getApiVersion());
+        self::assertSame(7, new MetadataRequestV7()->getApiVersion());
+        self::assertSame(8, new MetadataRequest()->getApiVersion());
         self::assertArrayNotHasKey('allowAutoTopicCreation', MetadataRequestV3::getScheme());
         self::assertArrayHasKey('allowAutoTopicCreation', MetadataRequest::getScheme());
     }
@@ -241,7 +250,7 @@ final class MetadataApiTest extends TestCase
         $version4 = bin2hex((string) new MetadataRequestV4(['orders'], true, 'test', 3));
         $version5 = bin2hex((string) new MetadataRequestV5(['orders'], true, 'test', 3));
         $version6 = bin2hex((string) new MetadataRequestV6(['orders'], true, 'test', 3));
-        $version7 = bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3));
+        $version7 = bin2hex((string) new MetadataRequestV7(['orders'], true, 'test', 3));
 
         self::assertSame('0004', substr($version4, 12, 4), 'the api version sits behind Size and ApiKey');
         self::assertSame('0005', substr($version5, 12, 4));
@@ -250,10 +259,45 @@ final class MetadataApiTest extends TestCase
         self::assertSame(substr_replace($version4, '0005', 12, 4), $version5);
         self::assertSame(substr_replace($version4, '0006', 12, 4), $version6);
         self::assertSame(substr_replace($version4, '0007', 12, 4), $version7);
-        self::assertSame(MetadataRequestV4::getScheme(), MetadataRequest::getScheme());
+        self::assertSame(MetadataRequestV4::getScheme(), MetadataRequestV7::getScheme());
         self::assertSame(MetadataResponseV5::getScheme(), MetadataResponseV6::getScheme());
-        self::assertSame(7, MetadataRequest::VERSION);
-        self::assertSame(7, MetadataResponse::VERSION);
+        self::assertSame(7, MetadataRequestV7::VERSION);
+        self::assertSame(7, MetadataResponseV7::VERSION);
+        self::assertSame(8, MetadataRequest::VERSION);
+        self::assertSame(8, MetadataResponse::VERSION);
+    }
+
+    public function testVersionEightAsksForTheAuthorizedOperationsAndIsAnsweredTwoBitfields(): void
+    {
+        // KIP-430 (Kafka 2.3): two booleans behind `allow_auto_topic_creation`, in the order of
+        // `MetadataRequest.json` @ 2.8.2 - the cluster one first, the topic one second - and two int32 bitfields
+        // in the answer: one at the end of every topic entry, one at the end of the frame
+        $asking = bin2hex((string) new MetadataRequest(['orders'], false, 'test', 3, true, true));
+        $silent = bin2hex((string) new MetadataRequest(['orders'], false, 'test', 3));
+
+        self::assertStringEndsWith('00' . '01' . '01', $asking, 'no auto creation, both bitfields asked for');
+        self::assertStringEndsWith('00' . '00' . '00', $silent, 'and neither of them by default');
+        self::assertSame(substr($asking, 0, -4), substr($silent, 0, -4));
+        self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'topics', 'allowAutoTopicCreation',
+                'includeClusterAuthorizedOperations', 'includeTopicAuthorizedOperations'],
+            array_keys(MetadataRequest::getScheme())
+        );
+        self::assertArrayNotHasKey('includeTopicAuthorizedOperations', MetadataRequestV7::getScheme());
+
+        // The topic entry ends with its own bitfield, behind the partitions
+        self::assertSame(
+            ['topicErrorCode', 'topic', 'isInternal', 'partitions', 'authorizedOperations'],
+            array_keys(TopicMetadata::getScheme())
+        );
+        self::assertSame(
+            ['topicErrorCode', 'topic', 'isInternal', 'partitions'],
+            array_keys(TopicMetadataV7::getScheme()),
+            'the bitfield of KIP-430 arrived with version 8'
+        );
+        self::assertSame(AclOperation::NOT_REQUESTED, new TopicMetadata()->authorizedOperations);
+        self::assertSame(AclOperation::NOT_REQUESTED, new MetadataResponse()->clusterAuthorizedOperations);
+        self::assertSame(-2147483648, AclOperation::NOT_REQUESTED);
     }
 
     public function testVersionSevenInsertsTheLeaderEpochBehindTheLeaderOfEveryPartition(): void
@@ -352,11 +396,17 @@ final class MetadataApiTest extends TestCase
         );
         self::assertSame(
             ['messageSize', 'correlationId', 'throttleTimeMs', 'brokers', 'clusterId', 'controllerId', 'topics'],
-            array_keys(MetadataResponse::getScheme()),
+            array_keys(MetadataResponseV7::getScheme()),
             'version 3 puts the throttle time in front of everything, and version 4 answers the same frame'
         );
         self::assertSame(
+            ['messageSize', 'correlationId', 'throttleTimeMs', 'brokers', 'clusterId', 'controllerId', 'topics',
+                'clusterAuthorizedOperations'],
             array_keys(MetadataResponse::getScheme()),
+            'version 8 (KIP-430) appends the cluster-wide bitfield to the end of the frame'
+        );
+        self::assertSame(
+            array_keys(MetadataResponseV7::getScheme()),
             array_keys(MetadataResponseV3::getScheme()),
             'METADATA_RESPONSE_V4 = METADATA_RESPONSE_V3'
         );

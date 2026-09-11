@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * **answer** of version 0, which carries no `leader_epoch` per partition, can be asked for and decoded, see
  * {@see OffsetForLeaderEpochResponseV0}.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
  */
 final class OffsetForLeaderEpochRequestV0 extends OffsetForLeaderEpochRequest
 {

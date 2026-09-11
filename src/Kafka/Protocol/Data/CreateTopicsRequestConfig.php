@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * unknown key or an unparsable value is answered with the error code 40 (`InvalidConfig`) for that topic, with the
  * message `Unknown topic config name: <key>` from version 1 of the answer on.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v4)"
  */
 class CreateTopicsRequestConfig implements BinarySchemaInterface
 {

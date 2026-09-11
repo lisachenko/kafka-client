@@ -1,8 +1,8 @@
 {
     "api": "offsets",
     "apiKey": 2,
-    "section": "Offsets API (key 2, v0 to v4), a.k.a. ListOffset",
-    "description": "Wire vectors of the Offsets API (key 2, v0 to v4), a.k.a. ListOffset, replayed by tests/Compliance.",
+    "section": "Offsets API (key 2, v0 to v5), a.k.a. ListOffset",
+    "description": "Wire vectors of the Offsets API (key 2, v0 to v5), a.k.a. ListOffset, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsets.request.v0.latest",
@@ -445,7 +445,7 @@
         {
             "id": "offsets.request.v4.latest",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV4",
             "version": 4,
             "source": "broker",
             "description": "ListOffsets request v4 for the log end offset of one partition, with the current_leader_epoch 0 between the partition index and the target timestamp.",
@@ -475,7 +475,7 @@
         {
             "id": "offsets.response.v4.latest",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The answer of that request: the leader_epoch that version 4 (KIP-320) appended to every partition entry, behind the offset - the epoch the leader was on when it read the offset, which the consumer keeps next to its position and sends back as the current_leader_epoch of its next fetch.",
@@ -493,6 +493,64 @@
                                 "errorCode": 0,
                                 "timestamp": -1,
                                 "offset": 2,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v5.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "ListOffsets request v5 (Kafka 2.2, KIP-207) for the log end offset of one partition: the frame of version 4, byte for byte - ListOffsetsRequest.json @ 2.8.2 says \"Version 5 is the same as version 4\" - with the current_leader_epoch 0 of KIP-320 between the partition index and the target timestamp. What version 5 states is that the client understands the error code 78 OFFSET_NOT_AVAILABLE in the answer.",
+            "hex": "00000038000200050000013b00027432ffffffff0000000001000d74322d32322d766563746f7273000000010000000000000000ffffffffffffffff",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 2,
+                "apiVersion": 5,
+                "correlationId": 315,
+                "clientId": "t2",
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-22-vectors": {
+                        "topic": "t2-22-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 0,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v5.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer v5: the frame of version 4, field for field - the throttle time, the error code, the timestamp -1 of a lookup that read no message, the log end offset and the leader_epoch the offset was resolved in. The code 78 that version 5 adds needs a leader whose high watermark lags behind the start offset of its own epoch, which a one-broker container never produces; a version below 5 is answered 5 LEADER_NOT_AVAILABLE in that state.",
+            "hex": "000000390000013b0000000000000001000d74322d32322d766563746f727300000001000000000000ffffffffffffffff000000000000000100000000",
+            "fields": {
+                "messageSize": 57,
+                "correlationId": 315,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-22-vectors": {
+                        "topic": "t2-22-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 1,
                                 "leaderEpoch": 0
                             }
                         ]
