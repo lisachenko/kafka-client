@@ -249,10 +249,13 @@ final class MetadataApiTest extends IntegrationTestCase
         new MetadataRequestV5([$topic], true, self::CLIENT_ID, 41)->writeTo($stream);
         $versionFive = MetadataResponseV5::unpack($stream);
 
-        self::assertSame(
-            array_keys($versionFour->topics[$topic]->partitions),
-            array_keys($versionFive->topics[$topic]->partitions)
-        );
+        // The broker promises no ordering for the partitions of a topic - two answers of the same request can
+        // list them in a different order - so only the SET of partition ids is compared here
+        $versionFourIds = array_keys($versionFour->topics[$topic]->partitions);
+        $versionFiveIds = array_keys($versionFive->topics[$topic]->partitions);
+        sort($versionFourIds);
+        sort($versionFiveIds);
+        self::assertSame($versionFourIds, $versionFiveIds);
         self::assertSame(
             $versionFive->getMessageSize(),
             $versionFour->getMessageSize() + 4 * count($versionFive->topics[$topic]->partitions),
@@ -296,10 +299,12 @@ final class MetadataApiTest extends IntegrationTestCase
         self::assertSame($versionFive->clusterId, $versionSix->clusterId);
         self::assertSame($versionFive->controllerId, $versionSix->controllerId);
         self::assertSame(0, $versionSix->throttleTimeMs, 'no quota is set for this client id');
-        self::assertSame(
-            array_keys($versionFive->topics[$topic]->partitions),
-            array_keys($versionSix->topics[$topic]->partitions)
-        );
+        // The broker promises no ordering for the partitions of a topic, so only the set of ids is compared
+        $versionFiveIds = array_keys($versionFive->topics[$topic]->partitions);
+        $versionSixIds  = array_keys($versionSix->topics[$topic]->partitions);
+        sort($versionFiveIds);
+        sort($versionSixIds);
+        self::assertSame($versionFiveIds, $versionSixIds);
         foreach ($versionSix->topics[$topic]->partitions as $partitionId => $partition) {
             $sameOfVersionFive = $versionFive->topics[$topic]->partitions[$partitionId];
             self::assertSame($sameOfVersionFive->leader, $partition->leader);
