@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `DELETE_TOPICS_REQUEST_V1 = DELETE_TOPICS_REQUEST_V0` in `Protocol.java` @ 0.11.0.3: only the answer of version 1
  * is different ({@see DeleteTopicsResponseV0}).
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v3)"
  */
 final class DeleteTopicsRequestV0 extends DeleteTopicsRequest
 {

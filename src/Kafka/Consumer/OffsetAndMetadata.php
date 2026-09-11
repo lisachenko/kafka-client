@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Consumer;
  * rejects a commit whose metadata is longer than `offset.metadata.max.bytes` (4096 by default) with the error code
  * 12, OffsetMetadataTooLarge.
  *
- * **The leader epoch arrived with Kafka 2.1** (KIP-320): version 6 of the OffsetCommit api carries a
+ * **The leader epoch arrived with Kafka 2.1** (KIP-320): version 6 of the OffsetCommit api and version 2 of the TxnOffsetCommit api carry a
  * `committed_leader_epoch` per partition and version 5 of the OffsetFetch api hands it back, so that a consumer
  * that resumes from a committed offset can tell the broker which leader that offset was read from. A partition
  * whose epoch is unknown - a client that never fetched it, an offset committed by a client of an older release, or
