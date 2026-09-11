@@ -486,8 +486,9 @@ byte arrays. A group with no members left is `Empty`, not `Dead`; asking about a
 not exist is still not an error, the coordinator answers the state `Dead` with the error code 0.
 
 **Creating a topic** no longer means writing to ZooKeeper: CreateTopics (key 19) and DeleteTopics
-(key 20) arrived with Kafka 0.10.1, and `AdminClient::createTopics()` sends version 2 of the first
-one, with `validate_only` and the per-topic `error_message`. The implicit creation by a Metadata
+(key 20) arrived with Kafka 0.10.1, and `AdminClient::createTopics()` sends the version 7 of the first
+one, with `validate_only`, the per-topic `error_message`, the shape and configuration of the new topic in the
+answer (KIP-525) and the topic id of KIP-516 next to them. The implicit creation by a Metadata
 request of an unknown topic still works when the broker runs with `auto.create.topics.enable=true`,
 and still answers the topic error code 5 (`LeaderNotAvailable`) with an empty partition list until
 the controller has elected the leaders — but the admin client no longer triggers it: Metadata v4
@@ -903,11 +904,12 @@ current milestone):
 | **KIP-518: the states of `listConsumerGroups()`** (ListGroups v4) | 2.6 | – | – | – | – | – | **yes** |
 | **KIP-569: the type and documentation of a configuration entry** (DescribeConfigs v3, `ConfigType`) | 2.6 | – | – | – | – | – | **yes** |
 | **KIP-599: throttled topic creation** (the 89 `THROTTLING_QUOTA_EXCEEDED` of CreateTopics v6, DeleteTopics v5 and CreatePartitions v3, retried after the throttle) | 2.7 | – | – | – | – | – | **yes** |
-| **KIP-588: a fenced producer is 90** (InitProducerId v4, `TransactionalProducerFencedException`) and the flexible transaction apis | 2.7 | – | – | – | – | – | **yes** |
+| **KIP-588: a fenced producer is 90** (InitProducerId v4, `TransactionalProducerFencedException`) | 2.7 | – | – | – | – | – | **yes** |
 | **KIP-595: epoch validation in the fetch itself** (Fetch v12, `last_fetched_epoch` and the `diverging_epoch` of the answer) | 2.7 | – | – | – | – | – | **yes** |
 | **KIP-554: SCRAM credentials over the wire** (`describeUserScramCredentials()`, `alterUserScramCredentials()`) | 2.7 | – | – | – | – | – | **yes** — the credentials can be managed, the SCRAM login itself is still not spoken |
 | **KIP-584: feature versions** (`describeFeatures()`, `updateFeatures()`) | 2.7 | – | – | – | – | – | **yes** |
-| **KIP-516: topic ids** (`Common\Uuid`, Metadata v10 and v11, `TopicMetadata::$topicId`) | 2.8 | – | – | – | – | – | **yes** — a deleted and re-created topic of the same name gets a new id |
+| **KIP-516: topic ids** (`Common\Uuid`, Metadata v10 and v11, `TopicMetadata::$topicId`, CreateTopics v7 and DeleteTopics v6 with `CreatedTopic::$topicId` and the 100 `UnknownTopicId`) | 2.8 | – | – | – | – | – | **yes** — a deleted and re-created topic of the same name gets a new id |
+| **KIP-482 on the last plain apis** (the flexible v3 of AddPartitionsToTxn, AddOffsetsToTxn and EndTxn, DescribeConfigs v4, AlterConfigs v2, AlterReplicaLogDirs v2, WriteTxnMarkers v1) | 2.8 | – | – | – | – | – | **yes** |
 | **KIP-700 / KIP-664: `describeCluster()` and `describeProducers()`** | 2.8 | – | – | – | – | – | **yes** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) |
 
