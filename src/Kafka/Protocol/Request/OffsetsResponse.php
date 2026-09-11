@@ -20,10 +20,10 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
 
 /**
- * Offsets (ListOffset) response object (key 2, v4)
+ * Offsets (ListOffset) response object (key 2, v5)
  *
  * <pre>
- *   ListOffsets Response (Version: 4) => throttle_time_ms [responses]
+ *   ListOffsets Response (Version: 5) => throttle_time_ms [responses]
  *     throttle_time_ms => INT32     -- since version 2
  *     responses => topic [partition_responses]
  *       topic               => STRING
@@ -58,12 +58,20 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
  * {@see \Protocol\Kafka\Protocol\Data\OffsetsResponsePartition::$leaderEpoch}; {@see OffsetsResponseV3} keeps
  * the frame that ends with the offset.
  *
+ * **Version 5 (Kafka 2.2, KIP-207) adds no field and one error code.** `ListOffsetsResponse.json` @ 2.8.2 says
+ * "Version 5 adds a new error code, OFFSET_NOT_AVAILABLE", so {@see OffsetsResponseV4} decodes the very same
+ * bytes; what changes is what a partition entry may carry. **78** `OffsetNotAvailableException` is the answer of
+ * a leader whose high watermark has not caught up with the start offset of the epoch it was elected in - it
+ * cannot tell where the end of its log is yet - and it replaces the **5** `LEADER_NOT_AVAILABLE` that every
+ * version below 5 is answered in that state, see {@see OffsetsRequest}. Both are retriable; 78 is the one that
+ * says the leader exists, so a client simply asks again instead of refreshing its metadata first.
+ *
  * A target timestamp that no message matches - one above the timestamp of every message of the log, and any
  * timestamp on an empty log - is **not** an error: the broker answers the code 0 with
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
  * and -1 (`KafkaApis.fetchOffsetForTimestamp` @ 0.11.0.3).
  *
- * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v4), a.k.a. ListOffset",
+ * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v5), a.k.a. ListOffset",
  *      "Quotas and throttle time" and "The leader epoch (KIP-320)"
  */
 class OffsetsResponse extends AbstractResponse
@@ -71,7 +79,7 @@ class OffsetsResponse extends AbstractResponse
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

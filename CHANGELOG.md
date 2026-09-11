@@ -189,6 +189,23 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   from the container, and the broker stores whatever epoch it is given — 74 and 75 are answered by
   the fetch path, not by the coordinator.
 
+### Kafka 2.2
+
+- **ListOffsets v5** (KIP-207) — the version 4 frames in both directions (`ListOffsetsRequest.json` @ 2.8.2:
+  "Version 5 is the same as version 4") and **one more error code in the answer**: **78**
+  `OFFSET_NOT_AVAILABLE`. A leader whose high watermark has not caught up with the start offset of the epoch it
+  was just elected in can not say where the end of its log is; `Partition.fetchOffsetForTimestamp` @ 2.8.2 raises
+  the error for a **client** request (a follower is exempt) that asks for the latest offset or for a timestamp
+  beyond the last fetchable one, and `KafkaApis.handleListOffsetRequest` sends it only to a version 5 or higher
+  request — every lower one is answered **5** `LEADER_NOT_AVAILABLE` for the same state. Both codes are
+  retriable, but 78 says the leader is there and will know in a moment, so a client retries the same broker
+  instead of walking the cluster for a leader that was never missing. `OffsetsRequest`/`OffsetsResponse` are the
+  v5 now and `Client::listOffsets()` sends it; `OffsetsRequestV4`/`OffsetsResponseV4` keep the Kafka 2.1 pair.
+  Two wire vectors (`offsets.*.v5.latest`) with their annotated dumps, the section "Offsets API (key 2, v0 to
+  v5), a.k.a. ListOffset" of the protocol document and a broker quirk for the substitution — the one rule of this
+  line that is read from the broker sources rather than measured, because a one-broker container never re-elects
+  a leader.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 
