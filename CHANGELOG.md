@@ -622,6 +622,29 @@ them. What the release added lives in the group and transaction apis.)*
   and `__transaction_state` without a leader. The cleanup is best effort: a topic that was never created, or that
   a test deleted itself, is answered with the error code 3 and ignored, and a broker that is gone never turns a
   green suite red.
+- **The two client-quota apis of KIP-546** — `DescribeClientQuotas` (key **48**, v0) and `AlterClientQuotas`
+  (key **49**, v0). Until Kafka 2.6 a client quota could only be read and written through **ZooKeeper**, which is
+  why the quota fixture of the lines below shells `kafka-configs.sh` into the container; these two requests replace
+  it. Both are **plain** frames although the release is well past KIP-482 —
+  `DescribeClientQuotasRequest.json` @ 2.6.3 and @ 2.7.2 declare `"flexibleVersions": "none"` — and their flexible
+  v1 is Kafka 2.8. `AdminClient::describeClientQuotas(ClientQuotaFilter)` answers `entity => [quota => value]` and
+  `AdminClient::alterClientQuotas(array $alterations, bool $validateOnly = false)` reports one result per entity
+  and throws nothing, because the alter api has **no top-level error code**. The value objects carry the Java
+  names: `Admin\ClientQuotaEntity` (a map of entity type to name, `null` being the `<default>` entity),
+  `ClientQuotaFilter`/`ClientQuotaFilterComponent` with the three match types, and
+  `ClientQuotaAlteration`/`ClientQuotaAlterationOp` whose `remove()` is the api's `remove` flag. Nine new wire
+  vectors in the new `docs/protocol/vectors/describe-client-quotas.json` and `alter-client-quotas.json`, and three
+  broker behaviours measured: an unknown entity type is **35** (not 42) with `Custom entity type 'x' not
+  supported` and a **null** entry array where a filter that matched nothing answers an empty one, an unknown quota
+  key is **42** per entity, and an unknown **match type** escapes `DescribeClientQuotasRequest.filter()` as a plain
+  `IllegalArgumentException` and comes back as the error code **-1** with a null message — a validation gap of the
+  broker. `strict` was measured too: it excludes an entity that also carries a `user` part, and the non-strict
+  filter keeps it.
+- **`float64` in the schema engine** — `BinarySchema::TYPE_FLOAT64`, eight bytes of an IEEE 754 double in network
+  order (`pack('E')`, `Type.FLOAT64` of the Java client), and the three double formats in the size table of
+  `IO\AbstractStream`. The quota values of the keys 48 and 49 are the only fields of Kafka 2.8.2 that use it; like
+  every fixed-width type it is untouched by the compact encoding.
+
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
