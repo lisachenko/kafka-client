@@ -175,24 +175,26 @@ class Client
      * Asks one broker which api keys and versions it serves (ApiKey 18, Kafka 0.10.0 and later)
      *
      * This is the answer to "what does the broker on the other side speak": the 0.8 and 0.9 lines of this client had
-     * to probe it by sending a request of every key and version, because the api did not exist yet. A 0.11.0.3
-     * broker reports the 34 keys 0 to 33 with the version ranges of the api-key table of the protocol document, and
-     * answers before any authentication has happened on a SASL listener.
+     * to probe it by sending a request of every key and version, because the api did not exist yet. A 2.8.2 broker
+     * reports the **56** keys 0 to 51, 56, 57, 60 and 61 with the version ranges of the api-key table of the
+     * protocol document, and answers before any authentication has happened on a SASL listener.
      *
-     * The request goes out as **version 1**, the version Kafka 0.11 added: its frame is the one of version 0 - the
-     * header and nothing else - and the answer gains a trailing `throttleTimeMs`, which is 0 without a
-     * `request_percentage` quota.
+     * The request goes out as **version 2**, the KIP-219 bump of Kafka 2.0: its frame is the one of the versions 0
+     * and 1 - the header and nothing else - the answer carries the trailing `throttleTimeMs` that version 1 added,
+     * which is 0 without a `request_percentage` quota, and the version says that this client honours a throttle
+     * time itself, because a broker answers a throttled v2 request **before** it mutes the channel.
      *
      * The client itself does **not** negotiate with the answer - like the `0.9.x` line it sends the fixed versions
      * that a broker of its own Kafka release serves - so this is an api for callers that want to know what they are
      * talking to, and the material a later line can build a negotiation on.
      *
      * The request is the one frame of the protocol whose *unsupported version* is answered instead of costing the
-     * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion) with an
-     * empty api array. That answer always arrives in the **version 0** layout, without the throttle time, so a peer
-     * older than Kafka 0.11 has to be asked with a {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0} and
-     * read with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0}; this line speaks to a 0.11.0.3
-     * broker, which serves both versions.
+     * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion), since
+     * Kafka 2.4 with the single api row of ApiVersions itself (KIP-511) and before it with an empty array. That
+     * answer always arrives in the **version 0** layout, without the throttle time, so a peer older than Kafka 2.0
+     * has to be asked with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1} or
+     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0} and read with the response class of the same
+     * version; this line speaks to a 2.8.2 broker, which serves v0 to v3.
      *
      * @param Node $node Broker to ask; every broker of a cluster answers for itself
      *

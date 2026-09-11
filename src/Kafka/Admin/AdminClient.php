@@ -129,19 +129,20 @@ class AdminClient
      * The method carries the name it has on the `main` branch. Every broker answers for itself, so a rolling upgrade
      * is visible here as brokers that report different ranges; ask each of them with {@see self::findAllBrokers()}.
      *
-     * A 0.11.0.3 broker reports the keys 0 to 33 - the table of the "API keys" section of the protocol document -
-     * and its answer is authoritative for two things the wire format does not show: ControlledShutdown (key 7) is
-     * reported with `minVersion = 1`, because version 0 uses a header without a client id, and every key above 33
-     * is simply absent instead of being reported with an empty range.
+     * A 2.8.2 broker reports the **56** keys 0 to 51, 56, 57, 60 and 61 - the table of the "API keys" section of
+     * the protocol document, which is the `zkBroker` listener set of the JSON message specifications. Its answer is
+     * authoritative for what the wire format does not show: a key the broker does not serve is simply absent
+     * instead of being reported with an empty range, and the KRaft apis of the controller listener (52-55, 58, 59,
+     * 62-64) never appear on a ZooKeeper-backed broker at all.
      *
-     * The request goes out as version 1 ({@see ApiVersionsRequest}), so the answer carries the trailing
-     * `throttleTimeMs` of KIP-124; only the whole {@see Client::apiVersions()} response exposes it, this method
-     * returns the api table alone.
+     * The request goes out as version 2 ({@see ApiVersionsRequest}), the KIP-219 bump of Kafka 2.0, so the answer
+     * carries the trailing `throttleTimeMs` of KIP-124; only the whole {@see Client::apiVersions()} response
+     * exposes it, this method returns the api table alone.
      *
      * @param Node $node Broker to ask
      *
      * @throws KafkaException If the broker answered the error code 35 (UnsupportedVersion), i.e. it is older than
-     *                        Kafka 0.11.0 and does not serve version 1 of this api
+     *                        Kafka 2.0 and does not serve version 2 of this api
      *
      * @return array<int, ApiVersionsResponseMetadata> Version range of each api, indexed by the api key
      */
