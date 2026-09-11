@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (Kafka 2.3, KIP-392) added lives in the request. The two classes decode the same bytes and differ only in the
  * version of the request they belong to, see {@see OffsetForLeaderEpochResponse}.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 final class OffsetForLeaderEpochResponseV2 extends OffsetForLeaderEpochResponse
 {

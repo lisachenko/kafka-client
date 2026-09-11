@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopicV0;
  * instead: "you were the leader of epoch `e` - which offset does that epoch end at?" and truncates to the answer.
  *
  * <pre>
- *   OffsetForLeaderEpoch Request (Version: 2) => [topics]
+ *   OffsetForLeaderEpoch Request (Version: 4) => replica_id [topics]
  *     topics => topic [partitions]
  *       topic      => STRING
  *       partitions => partition_id current_leader_epoch leader_epoch
@@ -49,6 +49,12 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopicV0;
  * from 2.1 on an ordinary **consumer** sends it to validate its position after a leader change.
  * {@see OffsetForLeaderEpochRequestV1} keeps version 1.
  *
+ * **Version 3 (Kafka 2.3, KIP-392) prefixed the body with a `replica_id`**, see {@see self::$replicaId}, and
+ * **version 4 (Kafka 2.8) is the flexible version of KIP-482**, see {@see self::FLEXIBLE_VERSION}: the same
+ * fields with the request header **v2**, a compact topic name, compact arrays and a tagged-field section at the
+ * end of the body, of every topic entry and of every partition entry. {@see OffsetForLeaderEpochRequestV3} keeps
+ * the plain frame.
+ *
  * **This is a broker-to-broker api and this client sends it nowhere.** The classes exist because the api is part
  * of the protocol of the release and this repository documents every api of it with a wire vector of a real
  * broker; a 2.8.2 broker answers an ordinary client just as it answers a follower, because
@@ -58,7 +64,7 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopicV0;
  * The epoch a client asks with is the `partition_leader_epoch` that the record batches of the partition carry
  * ({@see \Protocol\Kafka\Common\Record\RecordBatch::$partitionLeaderEpoch}), which is the other half of KIP-101.
  *
- * @see docs/protocol/2.8.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v3)" and
+ * @see docs/protocol/2.8.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v4)" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetForLeaderEpochRequest extends AbstractRequest
@@ -71,7 +77,15 @@ class OffsetForLeaderEpochRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `OffsetForLeaderEpochRequest.json` @ 2.8.2 declares `"flexibleVersions": "4+"` and comments "Version 4
+     * enables flexible versions": not a field was added, the encoding changed.
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * `replica_id` of an ordinary consumer, which reads up to the high watermark (KIP-392)

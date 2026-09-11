@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * log append time and the log start offset, and nothing else. Version 8 (Kafka 2.4, KIP-467) appended the
  * `record_errors` array and the `error_message` to every one of them, see {@see ProduceResponse}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
  */
 final class ProduceResponseV7 extends ProduceResponse
 {

@@ -250,11 +250,13 @@ final class ResponseFrame
         array $logStartOffsets = [],
         array $recordErrors = []
     ): string {
-        // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it
-        $body = self::produceTopics($topics, $logAppendTime, $logStartOffsets, $recordErrors)
-            . pack('N', $throttleTime);
+        // The throttle time of v1 closes the response, the opposite end from where the Fetch API puts it, and
+        // version 9 (Kafka 2.8, KIP-482) writes the whole frame with the compact types and the tagged-field
+        // sections of a flexible version, behind a response header v1
+        $body = self::produceTopics($topics, $logAppendTime, $logStartOffsets, $recordErrors, true)
+            . pack('N', $throttleTime) . self::tagBuffer();
 
-        return self::of($correlationId, $body);
+        return self::flexible($correlationId, $body);
     }
 
     /**
@@ -296,11 +298,14 @@ final class ResponseFrame
         array $topics,
         ?int $logAppendTime,
         ?array $logStartOffsets,
-        ?array $recordErrors = null
+        ?array $recordErrors = null,
+        bool $flexible = false
     ): string {
-        $body = pack('N', count($topics));
+        $body = $flexible ? self::compactCount(count($topics)) : pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= self::string((string) $topic) . pack('N', count($partitions));
+            $body .= $flexible
+                ? self::compactString((string) $topic) . self::compactCount(count($partitions))
+                : self::string((string) $topic) . pack('N', count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $baseOffset]) {
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $baseOffset);
                 if ($logAppendTime !== null) {
@@ -316,11 +321,18 @@ final class ResponseFrame
                 // The record errors and the error message of version 8 (Kafka 2.4, KIP-467), behind the log
                 // start offset: the records of the sent batch that the broker refused, by their position in it
                 [$errors, $message] = $recordErrors[$topic][$partitionId] ?? [[], null];
-                $body .= pack('N', count($errors));
+                $body .= $flexible ? self::compactCount(count($errors)) : pack('N', count($errors));
                 foreach ($errors as $batchIndex => $batchMessage) {
-                    $body .= pack('N', $batchIndex) . self::nullableString($batchMessage);
+                    $body .= pack('N', $batchIndex) . ($flexible
+                        ? self::compactString($batchMessage) . self::tagBuffer()
+                        : self::nullableString($batchMessage));
                 }
-                $body .= self::nullableString($message);
+                $body .= $flexible
+                    ? self::compactString($message) . self::tagBuffer()
+                    : self::nullableString($message);
+            }
+            if ($flexible) {
+                $body .= self::tagBuffer();
             }
         }
 
@@ -343,17 +355,21 @@ final class ResponseFrame
      */
     public static function offsets(int $correlationId, array $topics, array $leaderEpochs = []): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        // Version 6 (Kafka 2.8, KIP-482) is the flexible version of the api: the response header v1, a compact
+        // topic name, compact arrays and a tagged-field section behind every structure
+        $body = pack('N', 0) . self::compactCount(count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= self::string((string) $topic) . pack('N', count($partitions));
+            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $timestamp, $offset]) {
                 $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $timestamp) . pack('J', $offset)
                     // The leader epoch of version 4 (Kafka 2.1, KIP-320), behind the offset
-                    . pack('N', $leaderEpochs[$topic][$partitionId] ?? 0xFFFFFFFF);
+                    . pack('N', $leaderEpochs[$topic][$partitionId] ?? 0xFFFFFFFF)
+                    . self::tagBuffer();
             }
+            $body .= self::tagBuffer();
         }
 
-        return self::of($correlationId, $body);
+        return self::flexible($correlationId, $body . self::tagBuffer());
     }
 
     /**

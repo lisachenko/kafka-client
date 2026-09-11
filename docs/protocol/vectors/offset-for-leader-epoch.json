@@ -1,8 +1,8 @@
 {
     "api": "offset-for-leader-epoch",
     "apiKey": 23,
-    "section": "OffsetForLeaderEpoch API (key 23, v0 to v3)",
-    "description": "Wire vectors of the OffsetForLeaderEpoch API (key 23, v0 to v3), replayed by tests/Compliance.",
+    "section": "OffsetForLeaderEpoch API (key 23, v0 to v4)",
+    "description": "Wire vectors of the OffsetForLeaderEpoch API (key 23, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsetforleaderepoch.request.v0",
@@ -246,7 +246,7 @@
         {
             "id": "offsetforleaderepoch.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochRequestV3",
             "version": 3,
             "source": "broker",
             "description": "OffsetForLeaderEpoch request v3 (Kafka 2.3, KIP-392): a replica_id at the HEAD of the frame, in front of the topics array. -1 is the ordinary consumer of this capture, -2 the default of the field - a debug client that may see offsets beyond the high watermark - and a follower sends its own broker id. Every version below 3 has no such field and is served as a follower would be.",
@@ -275,7 +275,7 @@
         {
             "id": "offsetforleaderepoch.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer v3: the frame of version 2, field for field - OffsetForLeaderEpochResponse.json @ 2.8.2 says \"Version 3 is the same as version 2\" - with the throttle time, the leader_epoch and the end offset of the epoch that was asked about.",

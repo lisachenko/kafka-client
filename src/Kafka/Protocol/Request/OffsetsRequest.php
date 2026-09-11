@@ -21,14 +21,14 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
 
 /**
- * Offsets API (key 2, v5), a.k.a. ListOffset
+ * Offsets API (key 2, v6), a.k.a. ListOffset
  *
  * This API describes the valid offset range available for a set of topic-partitions. As with the produce and fetch
  * APIs requests must be directed to the broker that is currently the leader for the partitions in question. This can
  * be determined using the metadata API.
  *
  * <pre>
- *   ListOffsets Request (Version: 5) => replica_id isolation_level [topics]
+ *   ListOffsets Request (Version: 6) => replica_id isolation_level [topics]
  *     replica_id      => INT32
  *     isolation_level => INT8       -- since version 2
  *     topics          => topic [partitions]
@@ -83,12 +83,17 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * codes are retriable, but 78 says "the leader is there and will know in a moment", so a client retries without
  * refreshing its metadata first. The frame is the version 4 frame with another number in its header.
  *
+ * **Version 6 (Kafka 2.8) is the flexible version of KIP-482** and adds no field either, see
+ * {@see self::FLEXIBLE_VERSION}: the same question with the request header **v2**, a compact topic name, compact
+ * arrays and a tagged-field section at the end of the body, of every topic entry and of every partition entry.
+ * {@see OffsetsRequestV5} keeps the plain frame.
+ *
  * The two special values keep their meaning in every version: {@see self::LATEST} (`-1`) asks for the end of the
  * log - the offset the next produced message will get, capped as the isolation level prescribes - and
  * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk. Neither of them reads a message, so
  * their answer carries the timestamp -1.
  *
- * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v5), a.k.a. ListOffset" and
+ * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v6), a.k.a. ListOffset" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest
@@ -101,7 +106,15 @@ class OffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `ListOffsetsRequest.json` @ 2.8.2 declares `"flexibleVersions": "6+"` and its only comment on the version
+     * is "Version 6 enables flexible versions": not a field was added, the encoding changed.
+     */
+    public const int FLEXIBLE_VERSION = 6;
 
     /**
      * Special value for the offset of the next coming message, `ListOffsetRequest.LATEST_TIMESTAMP` @ 0.10.2.2

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * nothing on the wire at all. **Version 4 (Kafka 2.1, KIP-320)** is what added a leader epoch to both sides, see
  * {@see OffsetsResponseTopic}.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 final class OffsetsResponseTopicV1 extends OffsetsResponseTopic
 {

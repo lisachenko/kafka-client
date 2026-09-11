@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * **Kafka 1.1.1** broker serves and the version the 1.x line of this client sent; a 2.8.2 broker still serves it,
  * and throttles it exactly as it throttles version 3, see {@see OffsetsRequest}.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 final class OffsetsRequestV2 extends OffsetsRequest
 {

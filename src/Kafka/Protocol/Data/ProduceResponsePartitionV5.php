@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * `error_message` behind it, see {@see ProduceResponsePartition::$recordErrors}; this class is the entry without
  * them, i.e. what a broker answers a version 5, 6 or 7 request with.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
  */
 final class ProduceResponsePartitionV5 extends ProduceResponsePartition
 {

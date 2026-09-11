@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version of the request they belong to - and in the **set of error codes** a partition of them may carry, see
  * {@see OffsetsResponse}.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 final class OffsetsResponseV4 extends OffsetsResponse
 {

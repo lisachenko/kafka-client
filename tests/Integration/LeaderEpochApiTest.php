@@ -63,7 +63,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * version of each api does not have.
  *
  * @see docs/protocol/2.8.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v9)" and
- *      "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
+ *      "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]

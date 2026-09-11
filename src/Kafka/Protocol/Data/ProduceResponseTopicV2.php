@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * constant that {@see ProduceResponseTopic::partitionClass()} follows: the versions 2, 3 and 4 answer with the
  * `LogAppendTime` of version 2 and without the `LogStartOffset` of version 5.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
  */
 final class ProduceResponseTopicV2 extends ProduceResponseTopic
 {

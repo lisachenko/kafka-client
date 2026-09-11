@@ -37,6 +37,7 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV5;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV6;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV7;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV8;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
@@ -46,6 +47,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV5;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV6;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV7;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV8;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 
 /**
@@ -73,7 +75,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
  * The message sets are built by {@see SpecMessageSet} directly from the specification and the record batch is a
  * captured one, so that the request classes are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/2.8.md, sections "Produce API (key 0, v0 to v8)", "MessageSet and Message" and
+ * @see docs/protocol/2.8.md, sections "Produce API (key 0, v0 to v9)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 #[CoversClass(ProduceRequest::class)]
@@ -325,7 +327,7 @@ final class ProduceApiTest extends TestCase
             5 => ProduceRequestV5::class,
             6 => ProduceRequestV6::class,
             7 => ProduceRequestV7::class,
-            8 => ProduceRequest::class,
+            8 => ProduceRequestV8::class,
         ];
         $frames   = [];
         foreach ($versions as $version => $requestClass) {
@@ -350,8 +352,9 @@ final class ProduceApiTest extends TestCase
         self::assertSame(self::REQUEST_HEADER_V6_HEX . $body, $frames[6]);
         self::assertSame(self::REQUEST_HEADER_V7_HEX . $body, $frames[7]);
         self::assertSame(self::REQUEST_HEADER_V8_HEX . $body, $frames[8]);
-        self::assertSame(ProduceRequestV3::getScheme(), ProduceRequest::getScheme());
-        self::assertSame(8, ProduceRequest::VERSION, 'the client sends version 8, the one of the record errors');
+        self::assertSame(ProduceRequestV3::getScheme(), ProduceRequestV8::getScheme());
+        self::assertSame(9, ProduceRequest::VERSION, 'the client sends version 9, the flexible one of KIP-482');
+        self::assertSame(8, ProduceRequestV8::VERSION, 'version 8 is the one of the record errors');
         self::assertSame(7, ProduceRequestV7::VERSION, 'version 7 is the one a zstd batch needs');
         self::assertSame(6, ProduceRequestV6::VERSION);
         self::assertSame(5, ProduceRequestV5::VERSION);
@@ -371,10 +374,11 @@ final class ProduceApiTest extends TestCase
         );
         self::assertNotSame(
             ProduceResponseV7::getScheme()['topics'],
-            ProduceResponse::getScheme()['topics'],
+            ProduceResponseV8::getScheme()['topics'],
             'and the one of version 8 carries the record errors of KIP-467'
         );
-        self::assertSame(8, ProduceResponse::VERSION);
+        self::assertSame(9, ProduceResponse::VERSION);
+        self::assertSame(8, ProduceResponseV8::VERSION);
         self::assertSame(7, ProduceResponseV7::VERSION);
         self::assertSame(6, ProduceResponseV6::VERSION);
         self::assertSame(5, ProduceResponseV5::VERSION);
@@ -617,7 +621,7 @@ final class ProduceApiTest extends TestCase
             . '00000000';
         $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
 
-        $response  = ProduceResponse::unpack(new StringStream($frame));
+        $response  = ProduceResponseV8::unpack(new StringStream($frame));
         $partition = $response->topics['orders']->partitions[0];
 
         self::assertSame(87, $partition->errorCode);
@@ -635,7 +639,7 @@ final class ProduceApiTest extends TestCase
             . '00000000' . '0000' . '000000000000002a' . 'ffffffffffffffff' . '0000000000000000'
             . '00000000' . 'ffff'
             . '00000000';
-        $accepted = ProduceResponse::unpack(new StringStream(
+        $accepted = ProduceResponseV8::unpack(new StringStream(
             (string) hex2bin(sprintf('%08x', intdiv(strlen($acceptedBody), 2)) . $acceptedBody)
         ));
 

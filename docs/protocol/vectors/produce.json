@@ -1,8 +1,8 @@
 {
     "api": "produce",
     "apiKey": 0,
-    "section": "Produce API (key 0, v0 to v8)",
-    "description": "Wire vectors of the Produce API (key 0, v0 to v8), replayed by tests/Compliance.",
+    "section": "Produce API (key 0, v0 to v9)",
+    "description": "Wire vectors of the Produce API (key 0, v0 to v9), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "produce.request.v3",
@@ -882,7 +882,7 @@
         {
             "id": "produce.request.v8",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV8",
             "version": 8,
             "source": "broker",
             "description": "Produce request v8 (Kafka 2.4, KIP-467) of one record batch: the frame of version 3, byte for byte - ProduceRequest.json @ 2.8.2 has no field above version 3 - with another number in its header. What version 8 states is that the client understands the record_errors and the error_message that a refused batch is answered with.",
@@ -914,7 +914,7 @@
         {
             "id": "produce.response.v8",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV8",
             "version": 8,
             "source": "broker",
             "description": "The answer v8 of an accepted batch: the frame of version 5 with two more fields per partition - an EMPTY record_errors array (00 00 00 00) and a null error_message (ff ff) behind the log start offset. Nothing was refused, so there is nothing to name.",
@@ -944,7 +944,7 @@
         {
             "id": "produce.request.v8.invalid-record",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV8",
             "version": 8,
             "source": "broker",
             "description": "Produce request v8 of a batch of three records, the second and the third of them WITHOUT a key, to a topic that is configured cleanup.policy=compact. A compacted log is keyed by definition, so the broker refuses the whole batch - and version 8 is the first version that can say which of the records it refused it for.",
@@ -976,7 +976,7 @@
         {
             "id": "produce.response.v8.invalid-record",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV8",
             "version": 8,
             "source": "broker",
             "description": "The answer: the error code 87 INVALID_RECORD for the partition, the offsets -1 of a batch that was never appended, and the record_errors array of KIP-467 - one entry per refused record, with its BATCH INDEX (the position inside the sent batch, counted from 0, not an offset) - followed by the error_message that summarizes the common cause. This is the whole point of version 8: every version below it answers the same 87 and nothing else.",

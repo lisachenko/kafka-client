@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * constant that {@see OffsetForLeaderEpochResponseTopic::partitionClass()} follows: a version 0 answer carries no
  * `leader_epoch` per partition.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 final class OffsetForLeaderEpochResponseTopicV0 extends OffsetForLeaderEpochResponseTopic
 {
