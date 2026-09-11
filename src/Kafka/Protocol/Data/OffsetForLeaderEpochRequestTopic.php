@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partitions => OffsetForLeaderEpochRequestPartition
  * </pre>
  *
- * @see docs/protocol/1.1.md, section "OffsetForLeaderEpoch API (key 23, v0)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0)"
  */
 class OffsetForLeaderEpochRequestTopic implements BinarySchemaInterface
 {

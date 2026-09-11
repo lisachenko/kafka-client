@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * Only the **owner** of the token and the principals its `renewers` name may renew it; anybody else is answered
  * with the error code 63 (`DelegationTokenOwnerMismatch`), see `DelegationTokenManager.allowedToRenew`.
  *
- * @see docs/protocol/1.1.md, section "RenewDelegationToken API (key 39, v0)"
+ * @see docs/protocol/2.8.md, section "RenewDelegationToken API (key 39, v0)"
  */
 class RenewDelegationTokenRequest extends AbstractRequest
 {

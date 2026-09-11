@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `NullPointerException` on a null value - the resource is then answered with the error code -1 (Unknown) and the
  * message `null`. An option is reset to its default by LEAVING IT OUT of the request, not by sending a null.
  *
- * @see docs/protocol/1.1.md, section "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0)"
  */
 class AlterConfigsRequestConfigEntry implements BinarySchemaInterface
 {

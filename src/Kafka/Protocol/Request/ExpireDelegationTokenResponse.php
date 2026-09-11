@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * Expiring a token that has already been deleted is the **62** (`DelegationTokenNotFound`), not the 66 - the token
  * is not "expired" for the broker, it is simply gone from ZooKeeper and from the token cache.
  *
- * @see docs/protocol/1.1.md, section "ExpireDelegationToken API (key 40, v0)"
+ * @see docs/protocol/2.8.md, section "ExpireDelegationToken API (key 40, v0)"
  */
 class ExpireDelegationTokenResponse extends AbstractResponse
 {

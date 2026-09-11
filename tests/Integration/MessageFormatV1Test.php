@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * that fetches with a request below version 2. Everything this suite asserts was read out of a log that a 0.10.2.2
  * broker wrote.
  *
- * @see docs/protocol/1.1.md, section "MessageSet and Message"
+ * @see docs/protocol/2.8.md, section "MessageSet and Message"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]
@@ -388,7 +388,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
         $command   = [
-            'docker', 'exec', $container === false || $container === '' ? 'kafka-1-1-1' : $container,
+            'docker', 'exec', $container === false || $container === '' ? 'kafka-2-8-2' : $container,
             '/opt/kafka/bin/kafka-topics.sh', '--zookeeper', 'localhost:2181',
             '--create', '--topic', $topic, '--partitions', '1', '--replication-factor', '1',
         ];
@@ -423,7 +423,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
         $topic ??= $this->topic;
         $stream = $this->connect();
         // A message set of the formats v0 and v1 may only travel in a request below version 3, see
-        // docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
+        // docs/protocol/2.8.md, section "Produce API (key 0, v0 to v5)"
         new ProduceRequestV2(
             [$topic => [self::PARTITION => $messageSet]],
             1,

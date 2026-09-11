@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   broker writes it with `ApiVersionsResponse.unsupportedVersionSend()`, which hard-codes the version `0` - the
  *   error code 35 and an empty api array - so that a client that guessed too high can still read it.
  *
- * @see docs/protocol/1.1.md, section "ApiVersions API (key 18, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 and v1)"
  */
 final class ApiVersionsResponseV0 extends ApiVersionsResponse
 {

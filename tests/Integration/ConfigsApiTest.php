@@ -55,7 +55,7 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV0;
  * touch `log.cleaner.backoff.ms` alone - a log-cleaner back-off nothing here depends on - and put the documented
  * default back in a `finally`, explicitly and not by removing the entry, see the quirk in the AlterConfigs section.
  *
- * @see docs/protocol/1.1.md, sections "DescribeConfigs API (key 32, v0 and v1)" and "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/2.8.md, sections "DescribeConfigs API (key 32, v0 and v1)" and "AlterConfigs API (key 33, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Config::class)]

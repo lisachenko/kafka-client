@@ -23,8 +23,8 @@ use RuntimeException;
  * These can be translated by the client into exceptions or whatever the appropriate error handling mechanism in the
  * client language.
  *
- * The constant names are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 1.1.1,
- * which ends at 71: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
+ * The constant names are those of clients/src/main/java/org/apache/kafka/common/protocol/Errors.java @ 2.8.2,
+ * which ends at 104: the 0.10 line added 32-35 (INVALID_TIMESTAMP, the two SASL codes and UNSUPPORTED_VERSION) with
  * 0.10.0, 36-42 (the CreateTopics codes, NOT_CONTROLLER and INVALID_REQUEST) with 0.10.1 and 43-44
  * (UNSUPPORTED_FOR_MESSAGE_FORMAT, POLICY_VIOLATION) with 0.10.2; Kafka 0.11 added 45-55, the codes of the
  * idempotent and transactional producer (KIP-98), of the ACL apis (SECURITY_DISABLED, OPERATION_NOT_ATTEMPTED) and
@@ -35,7 +35,15 @@ use RuntimeException;
  * The class names are those of the Java client (`UnsupportedByAuthenticationException` for 64, `GroupNotEmptyException`
  * for 68), except 58, whose Java name `SaslAuthenticationException` is the client-side exception of this package.
  * Code 13 was StaleLeaderEpochCode in the 0.8 line and is NETWORK_EXCEPTION here; NO_ERROR is not part of the
- * mapping. Codes above 71 (72 LISTENER_NOT_FOUND is Kafka 2.0) are answered with
+ * mapping. The 2.x line added 72-104: 72 LISTENER_NOT_FOUND with Kafka 2.0; 73-76 (TOPIC_DELETION_DISABLED, the two
+ * leader epoch codes of KIP-320, UNSUPPORTED_COMPRESSION_TYPE of the zstd codec) with 2.1; 77-81 (STALE_BROKER_EPOCH,
+ * OFFSET_NOT_AVAILABLE, MEMBER_ID_REQUIRED, PREFERRED_LEADER_NOT_AVAILABLE, GROUP_MAX_SIZE_REACHED) with 2.2; 82
+ * FENCED_INSTANCE_ID of the static membership with 2.3; 83-87 (the two ElectLeaders codes, NO_REASSIGNMENT_IN_PROGRESS,
+ * GROUP_SUBSCRIBED_TO_TOPIC, INVALID_RECORD) with 2.4; 88 UNSTABLE_OFFSET_COMMIT with 2.5; 89-96
+ * (THROTTLING_QUOTA_EXCEEDED, PRODUCER_FENCED, the three SCRAM credential codes, INCONSISTENT_VOTER_SET and the two
+ * UpdateFeatures codes) with 2.7 and 97-104 (the forwarding, snapshot, topic id and broker registration codes of the
+ * KRaft work) with 2.8. Of them 72, 74, 80, 83, 84, 100 and 103 extend InvalidMetadataException and 75, 78, 88 and 89
+ * RetriableException in the Java client, as here. Codes above 104 (105 is Kafka 3.0) are answered with
  * {@see \Protocol\Kafka\Common\Errors\UnknownErrorException} by {@see self::fromCode()}.
  */
 abstract class KafkaException extends RuntimeException
@@ -115,6 +123,39 @@ abstract class KafkaException extends RuntimeException
     public const GROUP_ID_NOT_FOUND                      = 69;
     public const FETCH_SESSION_ID_NOT_FOUND              = 70;
     public const INVALID_FETCH_SESSION_EPOCH             = 71;
+    public const LISTENER_NOT_FOUND                    = 72;
+    public const TOPIC_DELETION_DISABLED               = 73;
+    public const FENCED_LEADER_EPOCH                   = 74;
+    public const UNKNOWN_LEADER_EPOCH                  = 75;
+    public const UNSUPPORTED_COMPRESSION_TYPE          = 76;
+    public const STALE_BROKER_EPOCH                    = 77;
+    public const OFFSET_NOT_AVAILABLE                  = 78;
+    public const MEMBER_ID_REQUIRED                    = 79;
+    public const PREFERRED_LEADER_NOT_AVAILABLE        = 80;
+    public const GROUP_MAX_SIZE_REACHED                = 81;
+    public const FENCED_INSTANCE_ID                    = 82;
+    public const ELIGIBLE_LEADERS_NOT_AVAILABLE        = 83;
+    public const ELECTION_NOT_NEEDED                   = 84;
+    public const NO_REASSIGNMENT_IN_PROGRESS           = 85;
+    public const GROUP_SUBSCRIBED_TO_TOPIC             = 86;
+    public const INVALID_RECORD                        = 87;
+    public const UNSTABLE_OFFSET_COMMIT                = 88;
+    public const THROTTLING_QUOTA_EXCEEDED             = 89;
+    public const PRODUCER_FENCED                       = 90;
+    public const RESOURCE_NOT_FOUND                    = 91;
+    public const DUPLICATE_RESOURCE                    = 92;
+    public const UNACCEPTABLE_CREDENTIAL               = 93;
+    public const INCONSISTENT_VOTER_SET                = 94;
+    public const INVALID_UPDATE_VERSION                = 95;
+    public const FEATURE_UPDATE_FAILED                 = 96;
+    public const PRINCIPAL_DESERIALIZATION_FAILURE     = 97;
+    public const SNAPSHOT_NOT_FOUND                    = 98;
+    public const POSITION_OUT_OF_RANGE                 = 99;
+    public const UNKNOWN_TOPIC_ID                      = 100;
+    public const DUPLICATE_BROKER_REGISTRATION         = 101;
+    public const BROKER_ID_NOT_REGISTERED              = 102;
+    public const INCONSISTENT_TOPIC_ID                 = 103;
+    public const INCONSISTENT_CLUSTER_ID               = 104;
 
     /**
      * Mapping from the codes to class names
@@ -194,6 +235,39 @@ abstract class KafkaException extends RuntimeException
         self::GROUP_ID_NOT_FOUND                      => GroupIdNotFoundException::class,
         self::FETCH_SESSION_ID_NOT_FOUND              => FetchSessionIdNotFoundException::class,
         self::INVALID_FETCH_SESSION_EPOCH             => InvalidFetchSessionEpochException::class,
+        self::LISTENER_NOT_FOUND                    => ListenerNotFoundException::class,
+        self::TOPIC_DELETION_DISABLED               => TopicDeletionDisabledException::class,
+        self::FENCED_LEADER_EPOCH                   => FencedLeaderEpochException::class,
+        self::UNKNOWN_LEADER_EPOCH                  => UnknownLeaderEpochException::class,
+        self::UNSUPPORTED_COMPRESSION_TYPE          => UnsupportedCompressionTypeException::class,
+        self::STALE_BROKER_EPOCH                    => StaleBrokerEpochException::class,
+        self::OFFSET_NOT_AVAILABLE                  => OffsetNotAvailableException::class,
+        self::MEMBER_ID_REQUIRED                    => MemberIdRequiredException::class,
+        self::PREFERRED_LEADER_NOT_AVAILABLE        => PreferredLeaderNotAvailableException::class,
+        self::GROUP_MAX_SIZE_REACHED                => GroupMaxSizeReachedException::class,
+        self::FENCED_INSTANCE_ID                    => FencedInstanceIdException::class,
+        self::ELIGIBLE_LEADERS_NOT_AVAILABLE        => EligibleLeadersNotAvailableException::class,
+        self::ELECTION_NOT_NEEDED                   => ElectionNotNeededException::class,
+        self::NO_REASSIGNMENT_IN_PROGRESS           => NoReassignmentInProgressException::class,
+        self::GROUP_SUBSCRIBED_TO_TOPIC             => GroupSubscribedToTopicException::class,
+        self::INVALID_RECORD                        => InvalidRecordException::class,
+        self::UNSTABLE_OFFSET_COMMIT                => UnstableOffsetCommitException::class,
+        self::THROTTLING_QUOTA_EXCEEDED             => ThrottlingQuotaExceededException::class,
+        self::PRODUCER_FENCED                       => TransactionalProducerFencedException::class,
+        self::RESOURCE_NOT_FOUND                    => ResourceNotFoundException::class,
+        self::DUPLICATE_RESOURCE                    => DuplicateResourceException::class,
+        self::UNACCEPTABLE_CREDENTIAL               => UnacceptableCredentialException::class,
+        self::INCONSISTENT_VOTER_SET                => InconsistentVoterSetException::class,
+        self::INVALID_UPDATE_VERSION                => InvalidUpdateVersionException::class,
+        self::FEATURE_UPDATE_FAILED                 => FeatureUpdateFailedException::class,
+        self::PRINCIPAL_DESERIALIZATION_FAILURE     => PrincipalDeserializationException::class,
+        self::SNAPSHOT_NOT_FOUND                    => SnapshotNotFoundException::class,
+        self::POSITION_OUT_OF_RANGE                 => PositionOutOfRangeException::class,
+        self::UNKNOWN_TOPIC_ID                      => UnknownTopicIdException::class,
+        self::DUPLICATE_BROKER_REGISTRATION         => DuplicateBrokerRegistrationException::class,
+        self::BROKER_ID_NOT_REGISTERED              => BrokerIdNotRegisteredException::class,
+        self::INCONSISTENT_TOPIC_ID                 => InconsistentTopicIdException::class,
+        self::INCONSISTENT_CLUSTER_ID               => InconsistentClusterIdException::class,
     ];
 
     /**

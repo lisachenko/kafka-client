@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * * It is answered on a SASL listener before the authentication has happened, so a client can learn the surface of
  *   the broker before it knows whether it may talk to it at all.
  *
- * @see docs/protocol/1.1.md, section "ApiVersions API (key 18, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 and v1)"
  */
 class ApiVersionsRequest extends AbstractRequest
 {

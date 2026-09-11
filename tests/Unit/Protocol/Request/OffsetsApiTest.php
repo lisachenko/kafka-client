@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
  *   ListOffsets Response (Version: 2) => throttle_time_ms [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/1.1.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]

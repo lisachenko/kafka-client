@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *    expiry in either direction as long as it stays below the maximum lifetime - a period of 0 therefore expires
  *    the token now without deleting it.
  *
- * @see docs/protocol/1.1.md, section "ExpireDelegationToken API (key 40, v0)"
+ * @see docs/protocol/2.8.md, section "ExpireDelegationToken API (key 40, v0)"
  */
 class ExpireDelegationTokenRequest extends AbstractRequest
 {

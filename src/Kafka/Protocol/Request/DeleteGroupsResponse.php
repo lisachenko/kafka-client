@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroup;
  * | 68   | NonEmptyGroup               | The group still has members, so nothing was deleted                      |
  * | 69   | GroupIdNotFound             | The coordinator has never heard of that group                            |
  *
- * @see docs/protocol/1.1.md, section "DeleteGroups API (key 42, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0)"
  */
 class DeleteGroupsResponse extends AbstractResponse
 {

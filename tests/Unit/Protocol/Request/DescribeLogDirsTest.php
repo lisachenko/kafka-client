@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 /**
  * Byte-exact tests for the DescribeLogDirs API of Kafka 1.0 (api key 35, v0, KIP-113).
  *
- * @see docs/protocol/1.1.md, section "DescribeLogDirs API (key 35, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0)"
  */
 #[CoversClass(DescribeLogDirsRequest::class)]
 #[CoversClass(DescribeLogDirsResponse::class)]

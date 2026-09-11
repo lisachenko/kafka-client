@@ -43,7 +43,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * broker really stored is checked, not what the client believes it sent: the partition a key was placed in, the
  * offsets that the promises were resolved with, and the compression of a batch.
  *
- * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v5)"
  */
 #[CoversClass(KafkaProducer::class)]
 #[CoversClass(DefaultPartitioner::class)]

@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
  * conversation - the frames the client puts on the wire and what it makes of every answer a broker can give -
  * while {@see \Protocol\Kafka\Tests\Integration\SaslTransportTest} runs it against a real 1.1.1 broker.
  *
- * @see docs/protocol/1.1.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/2.8.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  */
 #[CoversClass(SocketStream::class)]
 #[CoversClass(AbstractStream::class)]

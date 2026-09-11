@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsRequestLogDir;
  * is a DescribeLogDirs question: the entry with `is_future = true` disappears and the replica is reported in the
  * destination alone.
  *
- * @see docs/protocol/1.1.md, section "AlterReplicaLogDirs API (key 34, v0)"
+ * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0)"
  */
 class AlterReplicaLogDirsRequest extends AbstractRequest
 {

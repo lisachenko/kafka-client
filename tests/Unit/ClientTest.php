@@ -70,7 +70,7 @@ use Protocol\Kafka\Tests\Unit\Fixture\TransactionalTestClient;
  * Tests the low-level client against scripted brokers: the fan-out to the partition leaders, the correlation of the
  * answers, the retries after a metadata refresh and the reporting of a partially failed request.
  *
- * @see docs/protocol/1.1.md
+ * @see docs/protocol/2.8.md
  */
 #[CoversClass(Client::class)]
 #[CoversClass(RetryPolicy::class)]

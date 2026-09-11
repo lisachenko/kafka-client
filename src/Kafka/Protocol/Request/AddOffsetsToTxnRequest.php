@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * make them visible to an OffsetFetch until the transaction coordinator has written the COMMIT marker into that
  * very partition - which it only does because this request put it on the list.
  *
- * @see docs/protocol/1.1.md, section "AddOffsetsToTxn API (key 25, v0)"
+ * @see docs/protocol/2.8.md, section "AddOffsetsToTxn API (key 25, v0)"
  */
 class AddOffsetsToTxnRequest extends AbstractRequest
 {

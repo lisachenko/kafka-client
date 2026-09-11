@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * entries, which is what {@see self::partitionClass()} picks: version 5 of the api (Kafka 1.0, KIP-112/113)
  * appended `OfflineReplicas` to them, the versions 1 to 4 ({@see TopicMetadataV1}) do not carry it.
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v5)"
  */
 class TopicMetadata implements BinarySchemaInterface
 {

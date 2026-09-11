@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
  * watermark (`log_start_offset`) of the partition; {@see DeleteRecordsRequest::HIGH_WATERMARK} (-1) asks for
  * everything up to the high watermark, i.e. for every record that is fully replicated.
  *
- * @see docs/protocol/1.1.md, section "DeleteRecords API (key 21, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0)"
  */
 class DeleteRecordsRequestPartition implements BinarySchemaInterface
 {

@@ -40,7 +40,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/1.1.md, sections "DescribeLogDirs API (key 35, v0)" and
+ * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0)" and
  *      "AlterReplicaLogDirs API (key 34, v0)"
  */
 #[CoversClass(AdminClient::class)]

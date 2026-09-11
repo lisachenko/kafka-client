@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * Kafka 0.11) added the `throttle_time_ms` to the ANSWER alone ({@see DescribeGroupsResponse}), so
  * {@see DescribeGroupsRequestV0} puts the same bytes on the wire.
  *
- * @see docs/protocol/1.1.md, section "DescribeGroups API (key 15, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 and v1)"
  */
 class DescribeGroupsRequest extends AbstractRequest
 {

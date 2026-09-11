@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * rather than about a token: a broker without a `delegation.token.master.key` answers 61
  * (`DelegationTokenAuthDisabled`) here, and every listener that authenticated nobody the 64.
  *
- * @see docs/protocol/1.1.md, section "DescribeDelegationToken API (key 41, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeDelegationToken API (key 41, v0)"
  */
 class DescribeDelegationTokenRequest extends AbstractRequest
 {

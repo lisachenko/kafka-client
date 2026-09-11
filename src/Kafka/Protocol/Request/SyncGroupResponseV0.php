@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * answer with the version 1 class would take the error code and the first two bytes of the assignment size for a
  * throttle time.
  *
- * @see docs/protocol/1.1.md, section "SyncGroup API (key 14, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 and v1)"
  */
 final class SyncGroupResponseV0 extends SyncGroupResponse
 {

@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * without the configuration. The error is per resource and carries the message of the exception the broker caught,
  * which is where the reason of a refused value is: the code alone is 42 for everything the `AdminManager` rejects.
  *
- * @see docs/protocol/1.1.md, section "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0)"
  */
 class AlterConfigsResponseResource implements BinarySchemaInterface
 {

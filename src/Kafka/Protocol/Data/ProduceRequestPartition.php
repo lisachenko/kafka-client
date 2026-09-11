@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see \Protocol\Kafka\Common\Record\MemoryRecords} wraps either of them. The property keeps the name
  * `messageSet` of the lower protocol lines, whose vectors are replayed against this class.
  *
- * @see docs/protocol/1.1.md, sections "Produce API (key 0, v0 to v5)", "MessageSet and Message" and
+ * @see docs/protocol/2.8.md, sections "Produce API (key 0, v0 to v5)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 class ProduceRequestPartition implements BinarySchemaInterface

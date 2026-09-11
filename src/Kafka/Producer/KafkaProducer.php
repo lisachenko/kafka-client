@@ -150,7 +150,7 @@ use React\Promise\Promise;
  *
  * @see examples/producer.php for a runnable example
  * @see examples/transactional-producer.php for the consume-transform-produce loop
- * @see docs/protocol/1.1.md, sections "Quotas and throttle time" and "Transactions"
+ * @see docs/protocol/2.8.md, sections "Quotas and throttle time" and "Transactions"
  */
 class KafkaProducer
 {

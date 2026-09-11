@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
  * controller, so the error code 41 (NotController) can not be produced here - it is exercised with a scripted
  * two-broker cluster in `tests/Unit/Admin/AdminClientTest.php`.
  *
- * @see docs/protocol/1.1.md, sections "CreateTopics API (key 19, v0, v1 and v2)", "DeleteTopics API (key 20, v0 and v1)"
+ * @see docs/protocol/2.8.md, sections "CreateTopics API (key 19, v0, v1 and v2)", "DeleteTopics API (key 20, v0 and v1)"
  *      and "CreatePartitions API (key 37, v0)"
  */
 #[CoversClass(AdminClient::class)]

@@ -37,7 +37,7 @@ declare(strict_types=1);
  *   php examples/admin-configs.php my-topic
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/admin-configs.php
  *
- * @see docs/protocol/1.1.md, sections "DescribeConfigs API (key 32, v0 and v1)", "AlterConfigs API (key 33, v0)" and
+ * @see docs/protocol/2.8.md, sections "DescribeConfigs API (key 32, v0 and v1)", "AlterConfigs API (key 33, v0)" and
  *      "DeleteRecords API (key 21, v0)"
  */
 

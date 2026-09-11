@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsResponseV0;
  * The request did not change - `DESCRIBE_GROUPS_REQUEST_V1 = DESCRIBE_GROUPS_REQUEST_V0` - and neither did a group
  * entry of the answer; version 1 only put the `ThrottleTimeMs` in front of the array.
  *
- * @see docs/protocol/1.1.md, section "DescribeGroups API (key 15, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 and v1)"
  */
 #[CoversClass(DescribeGroupsRequest::class)]
 #[CoversClass(DescribeGroupsRequestV0::class)]

@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponseV4;
  *                          [OfflineReplicas [int32]]      # since version 5
  * </pre>
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v5)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]

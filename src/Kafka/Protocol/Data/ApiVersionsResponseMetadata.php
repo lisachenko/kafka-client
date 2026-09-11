@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The entry itself has no version of its own: `API_VERSIONS_RESPONSE_V1` reuses the `API_VERSIONS_V0` schema of the
  * version 0 answer, so the same class reads both versions of the api.
  *
- * @see docs/protocol/1.1.md, section "ApiVersions API (key 18, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 and v1)"
  */
 class ApiVersionsResponseMetadata implements BinarySchemaInterface
 {

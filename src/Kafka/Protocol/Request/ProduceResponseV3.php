@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * id that version 3 added lives in the REQUEST alone ({@see ProduceRequestV3}) - so this class decodes the very
  * same bytes as {@see ProduceResponseV2} and only states which request it was read back for.
  *
- * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v5)"
  */
 final class ProduceResponseV3 extends ProduceResponse
 {

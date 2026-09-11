@@ -66,7 +66,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * and the rebalance timeout, exactly as in the Java client, whose `request.timeout.ms` defaults to 305000 against a
  * `max.poll.interval.ms` of 300000.
  *
- * @see docs/protocol/1.1.md, section "JoinGroup API (key 11, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0, v1 and v2)"
  */
 class JoinGroupRequest extends AbstractRequest
 {

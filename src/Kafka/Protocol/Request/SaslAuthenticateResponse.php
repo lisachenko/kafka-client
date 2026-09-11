@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The api is Kafka 1.0 (KIP-152) and carries **no `throttle_time_ms`**: it is one of the four apis KIP-124 left
  * out, because it is answered before the connection is authenticated and therefore before a quota can be applied.
  *
- * Error codes a 1.1.1 broker reports here, all of them measured against `docker/kafka-1.1.1`:
+ * Error codes a 1.1.1 broker reports here, all of them measured against `docker/kafka-2.8.2`:
  *
  * | Code | Name                     | Meaning                                                                    |
  * |------|--------------------------|----------------------------------------------------------------------------|
@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *
  * An answer that carries an error code carries the **empty** `saslAuthBytes`, never a token.
  *
- * @see docs/protocol/1.1.md, section "SaslAuthenticate API (key 36, v0)"
+ * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0)"
  * @see \Protocol\Kafka\Common\Errors\SaslAuthenticationFailedException for the error code 58
  */
 class SaslAuthenticateResponse extends AbstractResponse

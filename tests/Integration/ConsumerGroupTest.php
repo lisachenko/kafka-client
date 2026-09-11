@@ -51,7 +51,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * first one until a session timeout expires. The second member therefore runs in a child process, see
  * {@see ConsumerGroupMemberProcess}.
  *
- * @see docs/protocol/1.1.md, sections "Group membership protocol (keys 11 to 14)", "Consumer group protocol
+ * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)", "Consumer group protocol
  *      (protocol_type = consumer)" and "DescribeGroups API (key 15, v0 and v1)"
  */
 #[CoversClass(KafkaConsumer::class)]

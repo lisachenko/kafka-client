@@ -30,7 +30,7 @@ use Protocol\Kafka\Common\Errors\ServerExceptionInterface;
  * the Java client), while {@see SaslAuthenticationException} is what this package raises to the application and
  * has raised since the 0.10 line - it carries the code as its cause when there is one.
  *
- * @see docs/protocol/1.1.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
+ * @see docs/protocol/2.8.md, section "Transport security (SSL)", subsection "SASL/PLAIN"
  */
 #[CoversClass(SaslAuthenticationException::class)]
 #[CoversClass(SaslAuthenticationFailedException::class)]

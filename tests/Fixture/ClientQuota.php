@@ -41,7 +41,7 @@ use function sprintf;
  * {@see self::isSupported()} tells whether the tool can be reached at all, so that a suite which runs against a
  * broker outside of Docker skips those tests instead of failing them.
  *
- * @see docs/protocol/1.1.md, section "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, section "Quotas and throttle time"
  */
 final class ClientQuota
 {
@@ -53,7 +53,7 @@ final class ClientQuota
     /**
      * Container of `docker-compose.yml`, used when the environment variable is not set
      */
-    private const string DEFAULT_CONTAINER = 'kafka-1-1-1';
+    private const string DEFAULT_CONTAINER = 'kafka-2-8-2';
 
     /**
      * Path of the configuration tool inside the container

@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Data\DeleteRecordsRequestTopic;
  * before it answers; nothing is rolled back when it expires, the partition is simply reported with the error code 7
  * (RequestTimedOut).
  *
- * @see docs/protocol/1.1.md, section "DeleteRecords API (key 21, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0)"
  */
 class DeleteRecordsRequest extends AbstractRequest
 {

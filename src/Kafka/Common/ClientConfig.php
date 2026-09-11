@@ -30,7 +30,7 @@ use Protocol\Kafka\Common\Security\SslProtocol;
  * and the `sasl.*` options configure the authentication exchange that Kafka 0.10.0 made part of the protocol
  * (`SaslHandshake`, api key 17).
  *
- * @see docs/protocol/1.1.md, section "Transport security (SSL)"
+ * @see docs/protocol/2.8.md, section "Transport security (SSL)"
  */
 class ClientConfig
 {

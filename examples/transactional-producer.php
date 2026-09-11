@@ -25,7 +25,7 @@ declare(strict_types=1);
  * the loop once. Read the output back with a `read_committed` console consumer to see what a transaction makes
  * visible:
  *
- *   docker exec kafka-1-1-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+ *   docker exec kafka-2-8-2 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
  *       --topic kafka-client-example-output --from-beginning --isolation-level read_committed
  *
  * Three rules the transactional API imposes, and the reason for each:
@@ -186,6 +186,6 @@ try {
 $consumer->close();
 
 echo "Read the output back with a read_committed consumer:\n";
-echo "  docker exec kafka-1-1-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
+echo "  docker exec kafka-2-8-2 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
     . " --topic {$outputTopic} --from-beginning --isolation-level read_committed --max-messages "
     . count($records) . "\n";

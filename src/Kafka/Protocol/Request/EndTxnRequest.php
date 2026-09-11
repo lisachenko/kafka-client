@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A commit that arrives while the previous transaction of the id is still being completed is **51**
  * (`ConcurrentTransactions`) and may be retried after a back-off.
  *
- * @see docs/protocol/1.1.md, section "EndTxn API (key 26, v0)"
+ * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0)"
  */
 class EndTxnRequest extends AbstractRequest
 {

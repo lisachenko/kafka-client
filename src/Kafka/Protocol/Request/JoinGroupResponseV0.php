@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version 2 is not in this layout, so this class only lowers the version constant that
  * {@see JoinGroupResponse::getScheme()} follows. It decodes the same bytes as {@see JoinGroupResponseV1}.
  *
- * @see docs/protocol/1.1.md, section "JoinGroup API (key 11, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0, v1 and v2)"
  */
 final class JoinGroupResponseV0 extends JoinGroupResponse
 {

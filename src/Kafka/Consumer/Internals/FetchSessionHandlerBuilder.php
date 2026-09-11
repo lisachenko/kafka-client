@@ -27,7 +27,7 @@ use Protocol\Kafka\Common\TopicPartition;
  * Building moves the state of the session on, so a builder is good for exactly one request: a second
  * {@see self::build()} throws, where the Java builder would fail with a `NullPointerException` on its emptied map.
  *
- * @see docs/protocol/1.1.md, section "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, section "Fetch sessions (v7, KIP-227)"
  */
 final class FetchSessionHandlerBuilder
 {

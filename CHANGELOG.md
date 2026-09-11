@@ -4,21 +4,53 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
-own: `main` implements the **Kafka 1.1.1 wire protocol** — the last release of the 1.x line — and
-nothing above it. The lines below it are `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2),
-`0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards into the next
-one, so the sections below accumulate: what a line added stays true of every line above it.
+own: `main` is the **2.x line** and implements the **Kafka 2.8.2 wire protocol** — the last release
+of the 2.x major, so everything Kafka 2.0 to 2.8 added — and nothing above it. The lines below it are
+`1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1)
+and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards into the next one, so the sections
+below accumulate: what a line added stays true of every line above it.
 
-Unreleased — the 1.x line (Kafka 1.1.1)
+Unreleased — the 2.x line (Kafka 2.8.2)
 ---------------------------------------
+
+The 2.x line, built on `main` on top of the finished 1.x line (branched off as `1.x`). Everything
+below is verified against a real Apache **2.8.2** broker (`docker/kafka-2.8.2/`, four listeners)
+and documented in [docs/protocol/2.8.md](docs/protocol/2.8.md). The plan of the line, and its
+release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.md).
+
+### Added
+
+- **The Kafka 2.8.2 broker of the line** — `docker/kafka-2.8.2/` (`eclipse-temurin:11-jre`,
+  `kafka_2.13-2.8.2`) with the four listeners, the two log directories, the delegation-token key
+  (`delegation.token.secret.key`, the 2.x name of `delegation.token.master.key`) and the
+  `transaction.state.log.*=1` settings of the 1.1.1 image; `inter.broker.protocol.version` and
+  `log.message.format.version` are `2.8-IV1`; `docker-compose.yml` builds it as the container
+  `kafka-2-8-2`. The 1.1.1 image is gone from this branch (it lives on `1.x`).
+- **The api keys 43–64** of `ApiKeys.java` @ 2.8.2 in `Protocol\ApiKeys`, and **the error codes
+  72–104** of `Errors.java` @ 2.8.2 in `KafkaException`, one exception class each (`ListenerNotFoundException`
+  … `InconsistentClusterIdException`); 72, 74, 80, 83, 84, 100 and 103 are `InvalidMetadataException`s
+  and 75, 78, 88 and 89 plain `RetriableException`s in the Java client, and here. The code 90
+  `PRODUCER_FENCED` is `TransactionalProducerFencedException`, because `ProducerFencedException` is
+  the published name of the code 47.
+- **`tools/dev/gate.sh`** — the whole local gate (php -l, cs, phpstan, unit + compliance, integration
+  on the four listeners) for any worktree path, JIT off.
+
+### Changed
+
+- **The protocol document is `docs/protocol/2.8.md`**, renamed from `docs/protocol/1.1.md` with every
+  `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the
+  plan of the 2.x line (`docs/handoff/2.0.x.md`) took its place as `docs/handoff/main.md`.
+
+1.x — the 1.x line (Kafka 1.1.1)
+--------------------------------
 
 The 1.x line, built on top of the `0.11.x` line it was cascade-merged from. Everything below is
 verified against a real Apache **1.1.1** broker (`docker/kafka-1.1.1/`, four listeners) and
-documented in [docs/protocol/1.1.md](docs/protocol/1.1.md), whose **314** wire vectors
+documented in [docs/protocol/2.8.md](docs/protocol/2.8.md), whose **314** wire vectors
 [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 85 frames this
 line captured and the 229 of the four lines below, which a 1.1.1 broker still speaks. What the line
 delivered, how it was verified and what the line above it starts from is in
-[docs/handoff/main.md](docs/handoff/main.md).
+[docs/handoff/1.x.md](docs/handoff/1.x.md).
 
 ### Added
 
@@ -254,15 +286,15 @@ delivered, how it was verified and what the line above it starts from is in
   container: created with a renewer and a maximum lifetime, described, renewed (which lands on the
   maximum lifetime rather than on the period that was asked for) and removed, with the **62** of
   expiring it a second time.
-- **The release record of the line** — [docs/handoff/main.md](docs/handoff/main.md) is the release
+- **The release record of the line** — [docs/handoff/1.x.md](docs/handoff/1.x.md) is the release
   notes of the 1.x line (what was built, how it was verified, the deviations the broker forced, the
   known limitations) with the plan it was built from kept below them, and
-  [docs/handoff/2.0.x.md](docs/handoff/2.0.x.md) is the handoff of the next line: what Kafka 2.0.1
+  [docs/handoff/main.md](docs/handoff/main.md) is the handoff of the next line: what Kafka 2.0.1
   adds over 1.1.1 api by api, the error codes, a ticket plan and the pitfalls of this session.
 
 ### Changed
 
-- **The protocol document is `docs/protocol/1.1.md`** (renamed from `docs/protocol/0.11.0.md`, as
+- **The protocol document is `docs/protocol/2.8.md`** (renamed from `docs/protocol/0.11.0.md`, as
   every line renames it), and its front matter, api-key table, "What is not in Kafka 1.1.1", error
   codes, group-state tables and "Broker quirks and observations" now describe Kafka 1.1.1. The
   section "The last Scala api does not check its version" became **"Every api of the table
@@ -301,7 +333,7 @@ delivered, how it was verified and what the line above it starts from is in
   at version 0 and every observation of the 0.11 line was re-measured on the 1.1.1 coordinator with
   the same result, down to the defaults `transactional.id.expiration.ms = 604800000` and
   `transaction.abort.timed.out.transaction.cleanup.interval.ms = 60000`.
-- **The consistency pass over the documentation of the line** — `docs/protocol/1.1.md` no longer
+- **The consistency pass over the documentation of the line** — `docs/protocol/2.8.md` no longer
   names a ticket anywhere except at the consumer half of the fetch sessions, "Broker quirks and
   observations" is grouped by api (with new groups for the KIP-226 configuration, CreatePartitions
   and DeleteGroups, and for the delegation tokens), the "Wire vectors" preamble states the counts of
@@ -342,7 +374,7 @@ Unreleased — the 0.11.x line (Kafka 0.11.0.3)
 
 The 0.11 line, built on top of the `0.10.x` line it was cascade-merged from. Everything below was
 verified against a real Apache **0.11.0.3** broker (`docker/kafka-0.11.0.3/`, four listeners) and
-is documented byte for byte in [docs/protocol/1.1.md](docs/protocol/1.1.md), whose 229 wire
+is documented byte for byte in [docs/protocol/2.8.md](docs/protocol/2.8.md), whose 229 wire
 vectors [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 109 frames
 this line captured and the 120 of the three lines below, which a 0.11.0.3 broker still speaks.
 
@@ -530,7 +562,7 @@ this line captured and the 120 of the three lines below, which a 0.11.0.3 broker
 
 ### Changed
 
-- **`docs/protocol/1.1.md` is the grammar of Kafka 0.11.0.3.** The api-key table is the literal
+- **`docs/protocol/2.8.md` is the grammar of Kafka 0.11.0.3.** The api-key table is the literal
   ApiVersions answer of the container (34 keys), the error-code table runs to 55, the sources are
   the ones at `0.11.0.3-rc0` — the Apache repository has no `0.11.0.3` tag — and the "Broker quirks
   and observations" section records what 0.11 changed against 0.10.2.2.
@@ -602,7 +634,7 @@ Previous line — 0.10.x (Kafka 0.10.2.2)
 
 Everything a Kafka 0.10.2.2 broker speaks, built on top of the `0.9.x` line it was merged from.
 Every wire format below was verified against a real 0.10.2.2 broker and is documented byte for
-byte in [docs/protocol/1.1.md](docs/protocol/1.1.md), with 120 wire vectors in
+byte in [docs/protocol/2.8.md](docs/protocol/2.8.md), with 120 wire vectors in
 [docs/protocol/vectors](docs/protocol/vectors) that `tests/Compliance` replays through the
 protocol classes.
 
@@ -694,7 +726,7 @@ protocol classes.
   `metadata.json`, `produce.json`, `fetch.json`, `offsets.json`, `offset-fetch.json` and
   `join-group.json`, all captured from the container and replayed by
   `tests/Compliance/ProtocolVectorTest`; `DocumentationSyncTest` additionally checks that every
-  `@see docs/protocol/1.1.md, section "…"` of the sources names a heading that exists.
+  `@see docs/protocol/2.8.md, section "…"` of the sources names a heading that exists.
 - **Examples** — [`examples/create-topic.php`](examples/create-topic.php),
   [`examples/offsets-for-times.php`](examples/offsets-for-times.php) and
   [`examples/sasl.php`](examples/sasl.php).
@@ -720,7 +752,7 @@ protocol classes.
 - **Breaking: `Client::joinGroup()` takes a `?int $rebalanceTimeoutMs = null`** as its last
   argument (`null` = the configured `max.poll.interval.ms`), and `Client` sends Produce v2, Fetch
   v3, Offsets v1, Metadata v2, OffsetFetch v2 and JoinGroup v1 instead of the 0.9 versions.
-- **The protocol document is `docs/protocol/1.1.md`** and describes Kafka 0.10.2.2: the api-key
+- **The protocol document is `docs/protocol/2.8.md`** and describes Kafka 0.10.2.2: the api-key
   table is the literal ApiVersions answer of the broker, one section per api of the line, the error
   table runs to 44, and "Broker quirks and observations" collects every behaviour the integration
   suite established. `docs/protocol/0.9.0.md` stays on the `0.9.x` branch.

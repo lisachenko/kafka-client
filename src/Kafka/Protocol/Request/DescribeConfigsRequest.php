@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
  * {@see DescribeConfigsRequestV0} sends the version 0 frame of a 0.11 broker, whose answer has no synonyms and no
  * config source at all.
  *
- * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 and v1)"
  */
 class DescribeConfigsRequest extends AbstractRequest
 {

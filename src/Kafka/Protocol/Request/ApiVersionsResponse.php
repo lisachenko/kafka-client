@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
  * `minRequiredInterBrokerMagic` is above the message format the broker runs with, so a 1.1 broker configured with
  * `inter.broker.protocol.version=0.10.2` reports fewer keys than the container of this repository does.
  *
- * @see docs/protocol/1.1.md, section "ApiVersions API (key 18, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 and v1)"
  */
 class ApiVersionsResponse extends AbstractResponse
 {

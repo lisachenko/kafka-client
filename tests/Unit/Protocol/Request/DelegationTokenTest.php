@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
  * wire - the owner of a token, the renewers of a request, the owners of a describe request - is the two-string
  * struct {@see KafkaPrincipal}.
  *
- * @see docs/protocol/1.1.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0)",
+ * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0)",
  *      "RenewDelegationToken API (key 39, v0)", "ExpireDelegationToken API (key 40, v0)" and
  *      "DescribeDelegationToken API (key 41, v0)"
  */

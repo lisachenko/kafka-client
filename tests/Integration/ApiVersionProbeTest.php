@@ -33,7 +33,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  *
  * Kafka 0.10.0 added the api that answers that question - **ApiVersions**, key 18 - so this class no longer has to
  * guess it the way the `0.8.x` and `0.9.x` lines did. The first half of the suite asks the broker with
- * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/1.1.md`.
+ * {@see Client::apiVersions()} and pins its answer, which is the api-key table of `docs/protocol/2.8.md`.
  *
  * The second half is still a raw probe ({@see RawApiProbe}), because the *edges* of that table are not in it: what
  * the broker does with a key or a version it does not serve is behaviour, not data. Kafka 0.10 changed that
@@ -44,7 +44,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * * A 1.1.1 broker **closes the connection** ({@see RawApiProbe::CLOSED}). `SocketServer.processCompletedReceives`
  *   @ 1.1.1 catches the `InvalidRequestException` that `RequestChannel.Request` throws for an api key or version
  *   `AbstractRequest.parseRequest()` does not know, and the `SchemaException` of a body that does not match the
- *   schema, and calls `close()` on the channel; `docker logs kafka-1-1-1` shows
+ *   schema, and calls `close()` on the channel; `docker logs kafka-2-8-2` shows
  *   `ERROR Closing socket for ... because of error` with the reason.
  *
  * **Exactly one api is an exception to that rule on this line**: ApiVersions itself, which answers an unknown
@@ -60,7 +60,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * things to change - CreateTopics, DeleteTopics, DeleteRecords, WriteTxnMarkers, AlterConfigs - is sent with an
  * empty array.
  *
- * @see docs/protocol/1.1.md, section "API keys"
+ * @see docs/protocol/2.8.md, section "API keys"
  */
 #[CoversClass(ApiKeys::class)]
 #[CoversClass(ApiVersionsRequest::class)]

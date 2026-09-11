@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
  * An empty request is answered with an empty array, which is what the api probe of this branch sends to check that
  * the key is served at all.
  *
- * @see docs/protocol/1.1.md, section "WriteTxnMarkers API (key 27, v0)"
+ * @see docs/protocol/2.8.md, section "WriteTxnMarkers API (key 27, v0)"
  */
 class WriteTxnMarkersResponse extends AbstractResponse
 {

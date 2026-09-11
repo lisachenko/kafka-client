@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`if (version >= 1) this.enableKafkaSaslAuthenticateHeaders(true)`), so the two halves must match: a raw token
  * after a v1 handshake, or a framed request after a v0 one, is read as garbage and the connection is closed.
  *
- * @see docs/protocol/1.1.md, section "SaslHandshake API (key 17, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "SaslHandshake API (key 17, v0 and v1)"
  * @see \Protocol\Kafka\IO\SocketStream::authenticate() for the exchange this request opens
  */
 class SaslHandshakeRequest extends AbstractRequest

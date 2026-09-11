@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Only the topics that really have a replica in this directory are listed: the broker builds the entry from the
  * logs it holds, not from the topics the request named.
  *
- * @see docs/protocol/1.1.md, section "DescribeLogDirs API (key 35, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0)"
  */
 class DescribeLogDirsResponseTopic implements BinarySchemaInterface
 {

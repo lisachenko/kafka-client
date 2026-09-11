@@ -1,10 +1,10 @@
 Wire vectors of the Kafka 1.1.1 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
-machine-readable half of [`../1.1.md`](../1.1.md), whose "Wire vectors" section shows the same bytes as annotated
+machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
 hex dumps. There are **314** of them in **36** files, every one of which a **1.1.1** broker speaks: **229** were
 captured by the four lines below this one and are replayed against the classes of this line unchanged, and **85**
-were captured on the `kafka-1-1-1` container of this line. Two of the inherited vectors were **re-captured** rather
+were captured on the `kafka-2-8-2` container of this line. Two of the inherited vectors were **re-captured** rather
 than added — `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker.
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
@@ -16,7 +16,7 @@ broker, and everything Kafka 0.11 added - the record batch v2, the throttle time
 Produce v3, Fetch v4/v5, DeleteRecords, DescribeConfigs/AlterConfigs v0, OffsetForLeaderEpoch and the six apis of
 the transaction protocol - on the 0.11.0.3 container of the `0.11.x` line.
 
-What the 1.x line captured on the `kafka-1-1-1` container of `docker-compose.yml`
+What the 1.x line captured on the `kafka-2-8-2` container of `docker-compose.yml`
 --------------------------------------------------------------------------------
 
 The container runs Apache Kafka **1.1.1** with four listeners (PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094,

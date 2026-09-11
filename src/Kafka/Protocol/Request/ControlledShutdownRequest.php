@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * -1 (Unknown), because that release mapped `e.getCause`, which is null for a directly thrown exception. Verified
  * against the broker of this branch.
  *
- * @see docs/protocol/1.1.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 and v1)"
  */
 class ControlledShutdownRequest extends AbstractRequest
 {

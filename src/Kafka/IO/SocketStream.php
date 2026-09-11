@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
  * asks for, and as bare size-prefixed frames after a v0 one ({@see SocketStream::authenticate()}). Only the PLAIN
  * mechanism is implemented, see {@see SaslMechanism}.
  *
- * @see docs/protocol/1.1.md, section "Transport security (SSL)"
+ * @see docs/protocol/2.8.md, section "Transport security (SSL)"
  */
 class SocketStream extends AbstractStream
 {

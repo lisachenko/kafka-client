@@ -48,7 +48,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  * member and its assignment - are opaque byte arrays to these apis, so arbitrary bytes are used for them here; the
  * `consumer` structures that really go in there belong to another ticket.
  *
- * @see docs/protocol/1.1.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0, v1 and v2)",
+ * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0, v1 and v2)",
  *      "SyncGroup API (key 14, v0 and v1)", "Heartbeat API (key 12, v0 and v1)" and "LeaveGroup API (key 13, v0 and v1)"
  */
 #[CoversClass(Client::class)]

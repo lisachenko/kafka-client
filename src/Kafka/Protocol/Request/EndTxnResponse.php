@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * | 51   | ConcurrentTransactions             | The previous transaction of the id is still being completed       |
  * | 53   | TransactionalIdAuthorizationFailed | The client may not `Write` the transactional id                   |
  *
- * @see docs/protocol/1.1.md, section "EndTxn API (key 26, v0)"
+ * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0)"
  */
 class EndTxnResponse extends AbstractResponse
 {

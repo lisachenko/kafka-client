@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * does not know is {@see ControlRecordType::UNKNOWN} and is ignored rather than refused, which is what lets a later
  * broker add markers.
  *
- * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/2.8.md, section "RecordBatch (message format v2)"
  * @see org/apache/kafka/common/record/ControlRecordType.java @ 0.11.0.3
  */
 final class ControlRecordType

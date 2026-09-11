@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * | 64   | DelegationTokenRequestNotAllowed| The connection authenticated nobody, or authenticated with a token |
  * | 66   | DelegationTokenExpired          | The token is past its expiry or its maximum lifetime             |
  *
- * @see docs/protocol/1.1.md, section "RenewDelegationToken API (key 39, v0)"
+ * @see docs/protocol/2.8.md, section "RenewDelegationToken API (key 39, v0)"
  */
 class RenewDelegationTokenResponse extends AbstractResponse
 {

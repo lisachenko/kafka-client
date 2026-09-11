@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\Data\CreatePartitionsResponseTopic;
  * | 42   | InvalidRequest           | The topic appears twice in the request, or a partition reassignment is running |
  * | 44   | PolicyViolation          | A `create.topic.policy.class.name` on the broker refused the new count       |
  *
- * @see docs/protocol/1.1.md, section "CreatePartitions API (key 37, v0)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0)"
  */
 class CreatePartitionsResponse extends AbstractResponse
 {

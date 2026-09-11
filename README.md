@@ -1,4 +1,4 @@
-PHP Native Apache Kafka Client — 1.x (Kafka 1.1.1)
+PHP Native Apache Kafka Client — 2.x (Kafka 2.8.2)
 ==================================================
 
 ![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lisachenko/kafka-client/ci.yml?branch=main)
@@ -18,9 +18,9 @@ cascade: the frozen protocol snapshots below it live on `0.11.x` (Kafka 0.11.0.3
 lines captured is replayed against the classes of this branch, because a 1.1.1 broker still speaks
 all of it. What the 1.1 protocol cannot do is simply absent, and
 [what that is](#supported-kafka-protocol-versions) is listed below. The grammar this branch
-implements is written down, byte for byte, in [docs/protocol/1.1.md](docs/protocol/1.1.md); what
+implements is written down, byte for byte, in [docs/protocol/2.8.md](docs/protocol/2.8.md); what
 the 1.x line delivered, how it was verified and what the line above it starts from is in
-[docs/handoff/main.md](docs/handoff/main.md).
+[docs/handoff/1.x.md](docs/handoff/1.x.md).
 
 Installation
 ------------
@@ -168,7 +168,7 @@ wrote there was deleted by `deleteRecords()` or by a retention run. That one the
 records fell below the start of the log, so the partition is numbered from the sequence 0 again
 and the batch is sent once more, under the same producer id and without touching any other
 partition. All three are documented, with what a real 1.1.1 broker answers, in
-[docs/protocol/1.1.md](docs/protocol/1.1.md), section "The idempotent producer".
+[docs/protocol/2.8.md](docs/protocol/2.8.md), section "The idempotent producer".
 
 ### Transactions
 
@@ -241,7 +241,7 @@ $producer->commitTransaction();
 The consumer of that loop runs with `enable.auto.commit = false` and `read_committed`. A runnable
 version is [examples/transactional-producer.php](examples/transactional-producer.php); the wire
 protocol behind it — the five apis 24 to 28, the control batches and the last stable offset — is in
-[docs/protocol/1.1.md](docs/protocol/1.1.md), section "Transactions".
+[docs/protocol/2.8.md](docs/protocol/2.8.md), section "Transactions".
 
 Consumer API
 ------------
@@ -685,7 +685,7 @@ ones, one that authenticates learns the SASL ones. They never mix, and there is 
 listener about another.
 
 [examples/ssl.php](examples/ssl.php) produces and consumes over the SSL listener of `docker-compose.yml`, whose
-self-signed certificate is checked in as `docker/kafka-1.1.1/ssl/broker.crt`.
+self-signed certificate is checked in as `docker/kafka-2.8.2/ssl/broker.crt`.
 
 **SASL/PLAIN works on this branch.** Kafka 0.9 did have SASL, but only GSSAPI (Kerberos) and
 negotiated *outside* the Kafka protocol; Kafka 0.10.0 (KIP-43) added the `SaslHandshake` request
@@ -937,16 +937,16 @@ is skipped when it is unset:
 | Variable | Default | What it runs |
 |---|---|---|
 | `KAFKA_BOOTSTRAP_SERVERS` | – | the whole integration suite, over the PLAINTEXT listener |
-| `KAFKA_SSL_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | `SslTransportTest`, against the certificate the container was built with (`docker/kafka-1.1.1/ssl/broker.crt`) |
+| `KAFKA_SSL_BOOTSTRAP_SERVERS` | `127.0.0.1:9093` | `SslTransportTest`, against the certificate the container was built with (`docker/kafka-2.8.2/ssl/broker.crt`) |
 | `KAFKA_SASL_BOOTSTRAP_SERVERS` | – | the SASL/PLAIN tests over `SASL_PLAINTEXT` (`127.0.0.1:9094`) |
 | `KAFKA_SASL_SSL_BOOTSTRAP_SERVERS` | – | the same exchange inside TLS (`127.0.0.1:9095`) |
-| `KAFKA_CONTAINER` | `kafka-1-1-1` | the container the quota tests and the log dumps run their scripts in |
+| `KAFKA_CONTAINER` | `kafka-2-8-2` | the container the quota tests and the log dumps run their scripts in |
 
 The compliance suite replays every wire vector of
 [docs/protocol/vectors](docs/protocol/vectors) — frames that a real Kafka broker sent or
 accepted — through the request and response classes and checks that the annotated dumps of
-[docs/protocol/1.1.md](docs/protocol/1.1.md) still hold the same bytes, and that every
-`@see docs/protocol/1.1.md, section "…"` of the sources names a heading that exists, so the
+[docs/protocol/2.8.md](docs/protocol/2.8.md) still hold the same bytes, and that every
+`@see docs/protocol/2.8.md, section "…"` of the sources names a heading that exists, so the
 document and the code cannot drift apart.
 
 Examples

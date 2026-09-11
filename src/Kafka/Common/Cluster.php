@@ -128,7 +128,7 @@ final class Cluster
      *
      * @throws AllBrokersNotAvailableException If the cluster did not advertise a single broker in time
      *
-     * @see docs/protocol/1.1.md, section "Cluster readiness"
+     * @see docs/protocol/2.8.md, section "Cluster readiness"
      */
     public static function bootstrap(array $configuration, ?string $topic = null): Cluster
     {

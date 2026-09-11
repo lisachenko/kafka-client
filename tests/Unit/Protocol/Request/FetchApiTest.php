@@ -71,7 +71,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV6;
  *   FetchResponse v7        => ThrottleTimeMs ErrorCode SessionId [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)", "Fetch sessions (v7, KIP-227)" and
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v7)", "Fetch sessions (v7, KIP-227)" and
  *      "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]

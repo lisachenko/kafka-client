@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * Version 1 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of it, as it did for every other api of the
  * group membership protocol; {@see HeartbeatResponseV0} is the six-byte answer without it.
  *
- * @see docs/protocol/1.1.md, sections "Heartbeat API (key 12, v0 and v1)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "Heartbeat API (key 12, v0 and v1)" and "Quotas and throttle time"
  */
 class HeartbeatResponse extends AbstractResponse
 {

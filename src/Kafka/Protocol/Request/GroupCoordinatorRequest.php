@@ -48,7 +48,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * the error code 15 (GroupCoordinatorNotAvailable) and the lookup has to be retried, see
  * {@see \Protocol\Kafka\Common\CoordinatorLookup}.
  *
- * @see docs/protocol/1.1.md, section "GroupCoordinator API (key 10, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 and v1)"
  */
 class GroupCoordinatorRequest extends AbstractRequest
 {

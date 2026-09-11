@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
  * Any broker of the cluster serves the request - `KafkaApis.handleAlterConfigsRequest` has no controller check, and
  * the change travels through ZooKeeper - and `validateOnly` runs the validation without writing anything.
  *
- * @see docs/protocol/1.1.md, section "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0)"
  */
 class AlterConfigsRequest extends AbstractRequest
 {

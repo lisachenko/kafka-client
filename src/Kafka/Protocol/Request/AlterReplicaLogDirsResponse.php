@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponseTopic;
  * 1.1.1 broker reports here are listed on
  * {@see \Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponsePartition}.
  *
- * @see docs/protocol/1.1.md, section "AlterReplicaLogDirs API (key 34, v0)"
+ * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0)"
  */
 class AlterReplicaLogDirsResponse extends AbstractResponse
 {

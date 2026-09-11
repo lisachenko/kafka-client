@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * the nullable topic array of Metadata v1 asks for ({@see \Protocol\Kafka\Common\Cluster::topics()}), so the day it
  * is implemented `exclude.internal.topics` is what decides whether a pattern may match `__consumer_offsets`.
  *
- * @see docs/protocol/1.1.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/2.8.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 final class SubscriptionState
 {

@@ -132,7 +132,7 @@ use Throwable;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/1.1.md
+ * @see docs/protocol/2.8.md
  */
 class Client
 {
@@ -503,7 +503,7 @@ class Client
             );
         }
 
-        // The wire format carries one opaque record set per topic-partition, see docs/protocol/1.1.md
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/2.8.md
         $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {

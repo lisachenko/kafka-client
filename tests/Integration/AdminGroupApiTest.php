@@ -46,7 +46,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The broker is shared with the other suites and coordinates their groups too, so every assertion here is about the
  * groups of this class and never about the whole answer.
  *
- * @see docs/protocol/1.1.md, sections "DescribeGroups API (key 15, v0 and v1)", "ListGroups API (key 16, v0 and v1)"
+ * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 and v1)", "ListGroups API (key 16, v0 and v1)"
  *      and "DeleteGroups API (key 42, v0)"
  */
 #[CoversClass(AdminClient::class)]

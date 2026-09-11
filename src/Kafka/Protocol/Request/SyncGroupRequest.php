@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
  * added the `throttle_time_ms` to the ANSWER alone ({@see SyncGroupResponse}), so {@see SyncGroupRequestV0} puts
  * the same bytes on the wire and differs in the version field of the header only.
  *
- * @see docs/protocol/1.1.md, section "SyncGroup API (key 14, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 and v1)"
  */
 class SyncGroupRequest extends AbstractRequest
 {

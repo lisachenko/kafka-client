@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * ({@see RecordBatch::NO_PRODUCER_ID}, {@see RecordBatch::NO_PRODUCER_EPOCH}), which is exactly the "no producer
  * state" that a record batch writes.
  *
- * @see docs/protocol/1.1.md, section "InitProducerId API (key 22, v0)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0)"
  */
 class InitProducerIdResponse extends AbstractResponse
 {

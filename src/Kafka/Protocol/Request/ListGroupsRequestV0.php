@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `LIST_GROUPS_REQUEST_V1 = LIST_GROUPS_REQUEST_V0` in `Protocol.java` @ 0.11.0.3 - both versions are the bare
  * request header - so only the answer of version 1 is different ({@see ListGroupsResponseV0}).
  *
- * @see docs/protocol/1.1.md, section "ListGroups API (key 16, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ListGroups API (key 16, v0 and v1)"
  */
 final class ListGroupsRequestV0 extends ListGroupsRequest
 {

@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     error_code => INT16
  * </pre>
  *
- * @see docs/protocol/1.1.md, section "OffsetCommit API (key 8, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v3)"
  */
 class OffsetCommitResponsePartition implements BinarySchemaInterface
 {

@@ -1,22 +1,21 @@
-# Apache Kafka 1.1.1 (Scala 2.11) with the bundled ZooKeeper, for wire-protocol testing.
+# Apache Kafka 2.8.2 (Scala 2.13) with the bundled ZooKeeper, for wire-protocol testing.
 #
 # The broker listens on PLAINTEXT (9092), SSL (9093), SASL_PLAINTEXT (9094) and SASL_SSL (9095).
 # SASL offers the PLAIN mechanism only (users in jaas.conf: kafkatest/kafkatest-secret, admin/admin-secret). The SSL listener uses the self-signed test
 # certificate from ssl/ (CN=localhost, SAN=localhost,127.0.0.1, valid for 100 years); the same broker.crt
 # is the CA file that the SSL integration tests hand to the client. Do not use these keys anywhere else.
-FROM eclipse-temurin:8-jre
+FROM eclipse-temurin:11-jre
 
-ARG KAFKA_VERSION=1.1.1
-ARG SCALA_VERSION=2.11
-ARG KAFKA_DIST=kafka_2.11-1.1.1
+ARG KAFKA_VERSION=2.8.2
+ARG SCALA_VERSION=2.13
+ARG KAFKA_DIST=kafka_2.13-2.8.2
 
 # Extra CA certificates of a sandbox proxy, see ca/README.md (the directory is normally empty)
 COPY ca/ /usr/local/share/ca-certificates/extra/
 
+# The temurin image ships curl, openssl and ca-certificates already (the 1.1.1 recipe installed them with apt-get,
+# which a sandbox proxy that throttles the package lists can stall for good), so only the trust store is refreshed
 RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends curl ca-certificates openssl; \
-    rm -rf /var/lib/apt/lists/*; \
     update-ca-certificates; \
     curl -fsSL "https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/${KAFKA_DIST}.tgz" -o /tmp/kafka.tgz; \
     tar -xzf /tmp/kafka.tgz -C /opt; \

@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponse;
  * The request carries the token that a v0 exchange would write on the socket raw, and the answer is the one thing
  * the raw exchange never had: an error code with a message.
  *
- * @see docs/protocol/1.1.md, section "SaslAuthenticate API (key 36, v0)"
+ * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0)"
  */
 #[CoversClass(SaslAuthenticateRequest::class)]
 #[CoversClass(SaslAuthenticateResponse::class)]

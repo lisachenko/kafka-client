@@ -62,7 +62,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * | 64   | DelegationTokenRequestNotAllowed| The connection authenticated nobody, or authenticated with a token |
  * | 67   | InvalidPrincipalType            | A renewer of the request is not of the type `User`               |
  *
- * @see docs/protocol/1.1.md, section "CreateDelegationToken API (key 38, v0)"
+ * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0)"
  */
 class CreateDelegationTokenResponse extends AbstractResponse
 {

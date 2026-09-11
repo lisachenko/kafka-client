@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
  * {@see JoinGroupResponseV0} decode the same bytes. Version 2 (KIP-124, Kafka 0.11) is the first one that changed
  * the answer, and only by the leading `throttle_time_ms`.
  *
- * @see docs/protocol/1.1.md, sections "JoinGroup API (key 11, v0, v1 and v2)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0, v1 and v2)" and "Quotas and throttle time"
  */
 class JoinGroupResponse extends AbstractResponse
 {

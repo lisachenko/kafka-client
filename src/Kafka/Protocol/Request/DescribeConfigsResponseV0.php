@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * answer of this version is not the answer a 0.11.0.3 broker gave: an option whose broker synonym stands in the
  * `server.properties` of the container is reported as NOT default here, where 0.11 reported it as one.
  *
- * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 and v1)"
  */
 final class DescribeConfigsResponseV0 extends DescribeConfigsResponse
 {

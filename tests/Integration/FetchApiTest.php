@@ -59,7 +59,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * ({@see FetchSessionApiTest}) - this one only checks that a version 7 request **without** a session is served
  * like a version 6 one, which is what {@see \Protocol\Kafka\Client::fetchPartitions()} sends.
  *
- * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV6::class)]
@@ -494,7 +494,7 @@ final class FetchApiTest extends IntegrationTestCase
     private function produce(int $partition, array $records): void
     {
         $stream = $this->connect();
-        // A message set may only travel in a request below version 3, see docs/protocol/1.1.md
+        // A message set may only travel in a request below version 3, see docs/protocol/2.8.md
         new ProduceRequestV2(
             [$this->topic => [$partition => MessageSet::fromRecords($records)]],
             1,

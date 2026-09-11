@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * transaction result** - the producer id is enough to match an entry to the one of the request - and one entry per
  * requested partition, each with the error code of appending its control batch.
  *
- * @see docs/protocol/1.1.md, section "WriteTxnMarkers API (key 27, v0)"
+ * @see docs/protocol/2.8.md, section "WriteTxnMarkers API (key 27, v0)"
  */
 class WriteTxnMarkersResponseMarker implements BinarySchemaInterface
 {

@@ -30,7 +30,7 @@ use Protocol\Kafka\IO\StringStream;
  *     Size => int32
  * </pre>
  *
- * @see docs/protocol/1.1.md, section "Common request and response structure"
+ * @see docs/protocol/2.8.md, section "Common request and response structure"
  */
 abstract class AbstractProtocolMessage implements BinarySchemaInterface
 {

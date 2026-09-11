@@ -75,7 +75,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v5)"
  */
 class MetadataRequest extends AbstractRequest
 {

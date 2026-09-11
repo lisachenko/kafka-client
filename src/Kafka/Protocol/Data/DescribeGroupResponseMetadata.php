@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * called {@see self::STATE_COMPLETING_REBALANCE} since then, where 0.9 to 0.11 called it
  * {@see self::STATE_AWAITING_SYNC}. Only the name on the wire changed, the state itself did not.
  *
- * @see docs/protocol/1.1.md, section "DescribeGroups API (key 15, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 and v1)"
  */
 class DescribeGroupResponseMetadata implements BinarySchemaInterface
 {

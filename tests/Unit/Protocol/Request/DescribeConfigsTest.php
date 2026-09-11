@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV0;
  * `include_synonyms` boolean. Both versions are exercised here, and the derivation of the source from the boolean
  * of a version 0 answer with it.
  *
- * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 and v1)"
  */
 #[CoversClass(DescribeConfigsRequest::class)]
 #[CoversClass(DescribeConfigsRequestV0::class)]

@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Request\CreatePartitionsResponse;
 /**
  * Byte-exact tests for the CreatePartitions API of Kafka 1.0 (api key 37, v0, KIP-195).
  *
- * @see docs/protocol/1.1.md, section "CreatePartitions API (key 37, v0)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0)"
  */
 #[CoversClass(CreatePartitionsRequest::class)]
 #[CoversClass(CreatePartitionsResponse::class)]

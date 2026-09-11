@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV2;
 /**
  * Byte-exact tests for the OffsetFetch API (key 9), versions 0, 1 and 2.
  *
- * @see docs/protocol/1.1.md, section "OffsetFetch API (key 9, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v3)"
  */
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]

@@ -35,7 +35,7 @@ declare(strict_types=1);
  *   php examples/delegation-tokens.php
  *   KAFKA_SASL_SSL_BOOTSTRAP_SERVERS=127.0.0.1:9095 php examples/delegation-tokens.php   # inside TLS
  *
- * @see docs/protocol/1.1.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0)",
+ * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0)",
  *      "RenewDelegationToken API (key 39, v0)", "ExpireDelegationToken API (key 40, v0)" and
  *      "DescribeDelegationToken API (key 41, v0)"
  */
@@ -58,7 +58,7 @@ $bootstrapServer        = $saslSslBootstrapServer !== ''
 $securityProtocol       = $saslSslBootstrapServer !== ''
     ? SecurityProtocol::SASL_SSL
     : SecurityProtocol::SASL_PLAINTEXT;
-$certificate            = dirname(__DIR__) . '/docker/kafka-1.1.1/ssl/broker.crt';
+$certificate            = dirname(__DIR__) . '/docker/kafka-2.8.2/ssl/broker.crt';
 
 $configuration = [
     ClientConfig::BOOTSTRAP_SERVERS   => ['tcp://' . trim(explode(',', $bootstrapServer)[0])],

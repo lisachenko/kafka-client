@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Starts the bundled ZooKeeper and a single Kafka 1.1.1 broker in one container.
+# Starts the bundled ZooKeeper and a single Kafka 2.8.2 broker in one container.
 #
 set -e
 
@@ -32,9 +32,8 @@ sed -i "s/^broker.id=.*/broker.id=${BROKER_ID}/" config/server.properties
 sed -i "s/^num.partitions=.*/num.partitions=${NUM_PARTITIONS}/" config/server.properties
 sed -i "s/^#\?listeners=.*//; s/^#\?port=.*//" config/server.properties
 
-# The server.properties shipped with Kafka ends without a trailing newline - 1.1.1 as well as 0.11
-# (its last byte is the `0` of `group.initial.rebalance.delay.ms=0`); appending one is harmless
-# when the file already has it
+# The server.properties shipped with 0.11 and 1.1 ended without a trailing newline; the one of 2.8.2 has it
+# (its last line is `group.initial.rebalance.delay.ms=0`), and appending one more is harmless either way
 echo >> config/server.properties
 
 # Two log directories (KIP-113): AlterReplicaLogDirs (34) can move a replica between them and
@@ -50,6 +49,10 @@ sed -i "s#^log.dirs=.*#log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2#" config/serve
     echo "security.inter.broker.protocol=PLAINTEXT"
     # SASL/PLAIN on the SASL listeners; the users live in config/kafka_server_jaas.conf
     echo "sasl.enabled.mechanisms=PLAIN"
+    # 2.x: the inter-broker protocol and the on-disk format of a 2.8.2 broker; both default to 2.8-IV1, written
+    # down so that the version the suite measures is explicit
+    echo "inter.broker.protocol.version=2.8-IV1"
+    echo "log.message.format.version=2.8-IV1"
     echo "ssl.keystore.location=/opt/kafka/ssl/broker.keystore.jks"
     echo "ssl.keystore.password=kafkatest"
     echo "ssl.key.password=kafkatest"
@@ -65,8 +68,9 @@ sed -i "s#^log.dirs=.*#log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2#" config/serve
     # settings a one-broker cluster answers every transactional request with 15 (COORDINATOR_NOT_AVAILABLE)
     echo "transaction.state.log.replication.factor=1"
     echo "transaction.state.log.min.isr=1"
-    # 1.1 (KIP-48): the delegation token apis 38-41 are disabled (error code 61) without a master key. Test value only.
-    echo "delegation.token.master.key=kafkatest-delegation-token-master-key"
+    # 1.1 (KIP-48): the delegation token apis 38-41 are disabled (error code 61) without a secret key. Test value only.
+    # `delegation.token.master.key` of the 1.1 image is a deprecated alias of this option on a 2.8 broker.
+    echo "delegation.token.secret.key=kafkatest-delegation-token-master-key"
     # Group membership: let integration tests use short session timeouts
     echo "group.min.session.timeout.ms=1000"
     echo "group.max.session.timeout.ms=60000"

@@ -43,7 +43,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * A directory that is offline is therefore still reported, with the code 56 and no replica - which is how a client
  * tells "this disk holds nothing of yours" from "this disk is broken".
  *
- * @see docs/protocol/1.1.md, section "DescribeLogDirs API (key 35, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0)"
  */
 class DescribeLogDirsResponseLogDir implements BinarySchemaInterface
 {

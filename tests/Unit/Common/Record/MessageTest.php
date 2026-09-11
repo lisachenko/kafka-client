@@ -38,7 +38,7 @@ use Protocol\Kafka\Common\Record\TimestampType;
  * built straight from the grammar; the message format v1 of a real broker is in
  * `docs/protocol/vectors/message-format.json`, replayed by tests/Compliance.
  *
- * @see docs/protocol/1.1.md, section "MessageSet and Message"
+ * @see docs/protocol/2.8.md, section "MessageSet and Message"
  */
 #[CoversClass(Message::class)]
 #[CoversClass(MessageV0::class)]

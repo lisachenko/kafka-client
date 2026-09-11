@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\Data\CreatePartitionsRequestTopic;
  * in the answer; a topic that appears TWICE in one request is answered with 42 (InvalidRequest) - the Java class
  * tracks the duplicates itself, see `CreatePartitionsRequest.duplicates`.
  *
- * @see docs/protocol/1.1.md, section "CreatePartitions API (key 37, v0)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0)"
  */
 class CreatePartitionsRequest extends AbstractRequest
 {

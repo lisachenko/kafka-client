@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * {@see \Protocol\Kafka\Common\Security\SaslToken::ofPlainCredentials()}, and the answer is the empty token of a
  * completed exchange.
  *
- * @see docs/protocol/1.1.md, section "SaslAuthenticate API (key 36, v0)"
+ * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0)"
  * @see \Protocol\Kafka\IO\SocketStream::authenticate()
  */
 class SaslAuthenticateRequest extends AbstractRequest

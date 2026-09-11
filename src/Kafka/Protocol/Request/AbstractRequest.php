@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *   correlation_id => INT32
  *   client_id      => STRING
  *
- * @see docs/protocol/1.1.md, section "Requests"
+ * @see docs/protocol/2.8.md, section "Requests"
  */
 abstract class AbstractRequest extends AbstractProtocolMessage
 {

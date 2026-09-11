@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
  * `DESCRIBE_GROUPS_RESPONSE_V1` reuses `DESCRIBE_GROUPS_RESPONSE_GROUP_METADATA_V0` in `Protocol.java` @ 0.11.0.3;
  * {@see DescribeGroupsResponseV0} is the answer without it.
  *
- * @see docs/protocol/1.1.md, sections "DescribeGroups API (key 15, v0 and v1)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 and v1)" and "Quotas and throttle time"
  */
 class DescribeGroupsResponse extends AbstractResponse
 {

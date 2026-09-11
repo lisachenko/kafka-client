@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * answers a client that may not `Describe` the cluster resource with an empty `log_dirs` array instead of an error
  * code, which the Java admin client translates back into 31 (ClusterAuthorizationFailed).
  *
- * @see docs/protocol/1.1.md, section "DescribeLogDirs API (key 35, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0)"
  */
 class DescribeLogDirsResponse extends AbstractResponse
 {

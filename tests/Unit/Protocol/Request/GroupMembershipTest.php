@@ -51,7 +51,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponseV0;
  * coordinator never parses them - so every test here uses arbitrary bytes for them, including a NUL byte, and only
  * checks that they survive the round trip untouched.
  *
- * @see docs/protocol/1.1.md, sections "JoinGroup API (key 11, v0, v1 and v2)", "SyncGroup API (key 14, v0 and v1)",
+ * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0, v1 and v2)", "SyncGroup API (key 14, v0 and v1)",
  *      "Heartbeat API (key 12, v0 and v1)" and "LeaveGroup API (key 13, v0 and v1)"
  */
 #[CoversClass(JoinGroupRequest::class)]

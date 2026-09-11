@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
  * | 29   | TopicAuthorizationFailed | The client may describe the topic but not delete it                        |
  * | 41   | NotController            | The broker that was asked is not the active controller                     |
  *
- * @see docs/protocol/1.1.md, section "DeleteTopics API (key 20, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 and v1)"
  */
 class DeleteTopicsResponse extends AbstractResponse
 {

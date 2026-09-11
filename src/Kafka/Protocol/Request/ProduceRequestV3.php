@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `LogStartOffset`, so this class only lowers the version constant that {@see ProduceRequest::getScheme()} and
  * {@see ProduceResponse::topicClass()} follow.
  *
- * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v5)"
  */
 final class ProduceRequestV3 extends ProduceRequest
 {

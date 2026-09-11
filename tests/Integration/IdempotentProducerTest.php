@@ -51,7 +51,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * The deduplication is the whole point of the guarantee, and it can only be seen against a log: a batch that is
  * sent twice has to come back with the offset of the first append and must not appear twice in the partition.
  *
- * @see docs/protocol/1.1.md, sections "InitProducerId API (key 22, v0)" and "The idempotent producer"
+ * @see docs/protocol/2.8.md, sections "InitProducerId API (key 22, v0)" and "The idempotent producer"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(TransactionManager::class)]

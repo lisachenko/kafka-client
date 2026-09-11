@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
  * A partition the broker does not host is not an error: the broker intersects the requested set with the logs it
  * has, so an unknown topic simply produces no entry anywhere in the answer.
  *
- * @see docs/protocol/1.1.md, section "DescribeLogDirs API (key 35, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0)"
  */
 class DescribeLogDirsRequest extends AbstractRequest
 {

@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Common\Security;
  * The SSLv2/SSLv3 members exist because the Java client accepts them; they are broken protocols and modern OpenSSL
  * builds refuse them outright, which surfaces here as a failed handshake.
  *
- * @see docs/protocol/1.1.md, section "Transport security (SSL)"
+ * @see docs/protocol/2.8.md, section "Transport security (SSL)"
  * @see \Protocol\Kafka\Common\ClientConfig::SSL_PROTOCOL
  */
 final class SslProtocol

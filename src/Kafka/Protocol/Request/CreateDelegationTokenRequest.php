@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `delegation.token.max.lifetime.ms` (7 days by default) and a value of `-1`
  * ({@see self::DEFAULT_MAX_LIFE_TIME}, i.e. anything `<= 0`) asks for exactly that maximum.
  *
- * @see docs/protocol/1.1.md, section "CreateDelegationToken API (key 38, v0)"
+ * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0)"
  */
 class CreateDelegationTokenRequest extends AbstractRequest
 {

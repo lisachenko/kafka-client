@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * This class is what a client sends to a broker of the lines up to `0.11.x`, which report the api as v0 only, and
  * it is the class the version 0 wire vectors are replayed through.
  *
- * @see docs/protocol/1.1.md, section "SaslHandshake API (key 17, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "SaslHandshake API (key 17, v0 and v1)"
  */
 final class SaslHandshakeRequestV0 extends SaslHandshakeRequest
 {

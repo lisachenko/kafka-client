@@ -83,7 +83,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
  * {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4}, {@see FetchRequestV3},
  * {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower versions available.
  *
- * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchRequest extends AbstractRequest
 {

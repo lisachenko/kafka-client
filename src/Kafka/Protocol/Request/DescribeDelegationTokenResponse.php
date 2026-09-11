@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
  * see no token at all is not an error: the answer is the code 0 with an empty array, and the same is true for a
  * request whose `owners` array is empty.
  *
- * @see docs/protocol/1.1.md, section "DescribeDelegationToken API (key 41, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeDelegationToken API (key 41, v0)"
  */
 class DescribeDelegationTokenResponse extends AbstractResponse
 {

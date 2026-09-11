@@ -56,7 +56,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * afterwards, and every way a broker can refuse - the 58 with a message after a v1 handshake, and the connection
  * that simply goes away after a v0 one.
  *
- * @see docs/protocol/1.1.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0)"
+ * @see docs/protocol/2.8.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0)"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
  */
 #[CoversClass(SocketStream::class)]
@@ -79,7 +79,7 @@ final class SaslTransportTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t8-sasl';
 
     /**
-     * Credentials of `docker/kafka-1.1.1/jaas.conf`
+     * Credentials of `docker/kafka-2.8.2/jaas.conf`
      */
     private const string USERNAME = 'kafkatest';
 
@@ -124,7 +124,7 @@ final class SaslTransportTest extends IntegrationTestCase
         $records = [[null, 'authenticated'], ['key', 'with SASL/PLAIN']];
 
         // The batch is a message set of the specification, which only a request below version 3 may carry: a
-        // Produce v3 accepts the message format v2 alone, see docs/protocol/1.1.md
+        // Produce v3 accepts the message format v2 alone, see docs/protocol/2.8.md
         new ProduceRequestV2(
             [$topic => [0 => SpecMessageSet::of($records)]],
             1,
@@ -670,7 +670,7 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     private static function saslBrokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-1.1.1/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-2.8.2/ssl/broker.crt';
     }
 
     /**

@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * Response Header => correlation_id
  *   correlation_id => INT32
  *
- * @see docs/protocol/1.1.md, section "Responses"
+ * @see docs/protocol/2.8.md, section "Responses"
  */
 abstract class AbstractResponse extends AbstractProtocolMessage
 {

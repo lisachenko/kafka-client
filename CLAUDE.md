@@ -3,17 +3,24 @@
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
 (Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
-(Kafka 0.11.0.3, **complete**) → `1.x` (Kafka **1.1.1**, **complete**) → `main` (Kafka 2.0.1, **next**). See `docs/CASCADE.md` and,
-for each line, `docs/handoff/<branch>.md`: every one of those files carries the release notes of its
-line with the plan it was built from below them — `docs/handoff/main.md` is the record of the 1.x
-line. The grammar `main` implements is `docs/protocol/1.1.md`.
+(Kafka 0.11.0.3, **complete**) → `1.x` (Kafka **1.1.1**, **complete**) → `main` (the **2.x line**, Kafka
+**2.8.2**, **in development**). From the 1.x line on the lines are **major** lines: one branch per Kafka major
+version, covering every minor release inside it (`1.x` speaks 1.1.1 and with it everything 1.0 and 1.1 added;
+`main` speaks 2.8.2 and with it everything 2.0 to 2.8 added). See `docs/CASCADE.md` and, for each line,
+`docs/handoff/<branch>.md`: every one of those files carries the release notes of its line with the plan it was
+built from below them — `docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/main.md` is the plan of
+the 2.x line and becomes its record when the line is complete. The grammar `main` implements is
+`docs/protocol/2.8.md`.
 
-**The next line is Kafka 2.0.1**, and it starts from `main` as it stands: no api key and no message
-format is added, almost every api is bumped by one version with a byte-identical schema (KIP-219),
-`OffsetsForLeaderEpochResponse` v1 gains a `leader_epoch`, the three ACL apis gain a
-`resource_pattern_type` (KIP-290) and the error code **72** `LISTENER_NOT_FOUND` is added. What it
-adds api by api, the ticket plan, the environment recipe and the pitfalls of the 1.x session are in
-`docs/handoff/2.0.x.md`; the finished 1.x tree was branched off as `1.x` (at `2ee4866`, the merge of PR #109) so that `main` can carry it.
+**The 2.x line starts from `main` as it stood at the end of 1.x** (the finished 1.x tree was branched off as `1.x`
+at `2ee4866`, the merge of PR #109, so that `main` can carry it). What Kafka 2.0 to 2.8 add over 1.1.1 api by
+api, the ticket plan, the environment recipe and the pitfalls of the 1.x session are in `docs/handoff/main.md`.
+The broker of the line is **2.8.2**, the last release of the 2.x line, which still serves every version 2.0 to
+2.7 added, so one container verifies the whole line. Its four big additions over 1.1.1: the **flexible versions**
+of KIP-482 (compact strings, bytes and arrays, tagged fields, request header v2 and response header v1, Kafka
+2.4), the **leader epochs** of KIP-320 (2.1), the **zstd** codec of KIP-110 (2.1) and **22 new api keys** (43 to
+64, of which a ZooKeeper-backed broker serves 43-51, 56, 57, 60 and 61), next to some 140 version bumps and the
+error codes 72-104.
 
 ## Hard rules (owner's decisions)
 
@@ -37,9 +44,12 @@ adds api by api, the ticket plan, the environment recipe and the pitfalls of the
 For the lines up to 0.11 the `main` of the rules 2, 3 and 4 was the **pre-schema `main`**, i.e. the branch as
 it stood before the cascade merge of `0.10.x` (`git show 94f896a:<path>`): its identifiers are the ones this
 package publishes, and its `$header = null` requests were the defect the schema engine replaced. Since the 0.11
-line landed, the finished, schema-based implementation of Kafka 0.11.0.3 lives on `0.11.x` and on `main`, and a
-line above 0.11 starts from **that** `main`: rule 4 then means "start from the 0.11 class and add what the new
-release adds", and rule 2 means "the names of the 0.11 classes, plus the names of the Java client for what is new".
+line landed, every line starts from the finished, schema-based implementation of the line below it: for the 2.x
+line that is the **1.1.1 implementation** (`git show origin/1.x:<path>`), rule 4 means "start from the 1.1 class
+and add what the new release adds", and rule 2 means "the names of the 1.1 classes, plus the names of the Java
+client @ 2.8.2 for what is new" (`ElectLeadersRequest`, `IncrementalAlterConfigsRequest`, `OffsetDeleteRequest`,
+…). A published identifier is never renamed for a rename in the Java client (code 47 stays
+`ProducerFencedException`, code 90 is `TransactionalProducerFencedException`).
 
 ## Toolchain and quality gate
 
@@ -75,7 +85,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 
 - `docker compose up -d --wait` starts the broker of this branch's Kafka version
   (`docker/kafka-<version>/`, ZooKeeper bundled, advertised as 127.0.0.1:9092). On `main` that is
-  **`docker/kafka-1.1.1`**, the container `kafka-1-1-1`; on `0.11.x` it is `docker/kafka-0.11.0.3`, the
+  **`docker/kafka-2.8.2`**, the container `kafka-2-8-2`; on `0.11.x` it is `docker/kafka-0.11.0.3`, the
   container `kafka-0-11-0-3`. Either way it has the four listeners PLAINTEXT 9092, SSL 9093,
   SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch carries — the first
   ticket of a new line adds its image, points `docker-compose.yml` and every fixture at it and
@@ -107,7 +117,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   newline as well, so `start.sh` keeps appending one, and the one-broker `transaction.state.log.*=1` settings are
   still needed. Two settings are new in this image: **two log directories**
   (`log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2` — a partition lands in either, find it with
-  `docker exec kafka-1-1-1 ls /tmp/kafka-logs /tmp/kafka-logs-2`) and a
+  `docker exec kafka-2-8-2 ls /tmp/kafka-logs /tmp/kafka-logs-2`) and a
   **`delegation.token.master.key`**, without which the token apis 38–41 answer 61 instead of 64. And **a 1.x broker
   closes the socket on a version above its table for every api, ControlledShutdown included** — only ApiVersions
   answers an unknown version with the error code 35.
@@ -128,7 +138,7 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 - Conventional commits. No force-pushes on shared branches.
 - Cascade: after a line is complete, merge it upwards on a `cascade/<from>-into-<to>` branch (rules in
   `docs/CASCADE.md`); `.github/workflows/cascade.yml` opens the PR automatically on pushes to `0.8.x`,
-  `0.9.x`, `0.10.x` and `0.11.x`. `main` is the top of the cascade and the line in development.
+  `0.9.x`, `0.10.x`, `0.11.x` and `1.x`. `main` is the top of the cascade and the line in development.
 
 ## How the work is organised (multi-agent)
 

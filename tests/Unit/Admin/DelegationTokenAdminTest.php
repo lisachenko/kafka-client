@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * mapping alone: which request the client builds, what it makes of the answer, and which exception each error
  * code becomes.
  *
- * @see docs/protocol/1.1.md, section "Delegation tokens (KIP-48)"
+ * @see docs/protocol/2.8.md, section "Delegation tokens (KIP-48)"
  * @see \Protocol\Kafka\Tests\Integration\DelegationTokenApiTest for the same calls against a real broker
  */
 #[CoversClass(AdminClient::class)]
