@@ -26,12 +26,14 @@ use Protocol\Kafka\Common\TopicMetadataV0;
 use Protocol\Kafka\Common\TopicMetadataV1;
 use Protocol\Kafka\Common\TopicMetadataV5;
 use Protocol\Kafka\Common\TopicMetadataV7;
+use Protocol\Kafka\Common\TopicMetadataV8;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\MetadataRequestTopic;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV1;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV10;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV4;
@@ -39,6 +41,7 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV5;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV6;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV7;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV8;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV9;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
@@ -49,6 +52,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponseV5;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV6;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV7;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV8;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV9;
 
 /**
  * Byte-exact tests of the Metadata API, versions 0 to 5.
@@ -67,7 +71,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponseV8;
  *                          [OfflineReplicas [int32]]      # since version 5
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v9)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -221,8 +225,13 @@ final class MetadataApiTest extends TestCase
         self::assertStringEndsWith('00', $refused);
         self::assertStringEndsWith(
             '01' . '00' . '00' . '00',
-            bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3)),
+            bin2hex((string) new MetadataRequestV9(['orders'], true, 'test', 3)),
             'and a version 9 frame closes with the two booleans and the tagged-field section of the body'
+        );
+        self::assertStringEndsWith(
+            '01' . '00' . '00',
+            bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3)),
+            'a version 11 frame has only the topic boolean left: KIP-700 took the cluster one out'
         );
         self::assertSame(substr($allowed, 0, -2), substr($refused, 0, -2), 'the flag is the only difference');
         self::assertTrue(new MetadataRequest()->isAutoTopicCreationAllowed(), 'true is the behaviour of every older version');
@@ -245,7 +254,9 @@ final class MetadataApiTest extends TestCase
         self::assertSame(6, new MetadataRequestV6()->getApiVersion());
         self::assertSame(7, new MetadataRequestV7()->getApiVersion());
         self::assertSame(8, new MetadataRequestV8()->getApiVersion());
-        self::assertSame(9, new MetadataRequest()->getApiVersion());
+        self::assertSame(9, new MetadataRequestV9()->getApiVersion());
+        self::assertSame(10, new MetadataRequestV10()->getApiVersion());
+        self::assertSame(11, new MetadataRequest()->getApiVersion());
         self::assertArrayNotHasKey('allowAutoTopicCreation', MetadataRequestV3::getScheme());
         self::assertArrayHasKey('allowAutoTopicCreation', MetadataRequest::getScheme());
     }
@@ -273,8 +284,10 @@ final class MetadataApiTest extends TestCase
         self::assertSame(7, MetadataResponseV7::VERSION);
         self::assertSame(8, MetadataRequestV8::VERSION);
         self::assertSame(8, MetadataResponseV8::VERSION);
-        self::assertSame(9, MetadataRequest::VERSION);
-        self::assertSame(9, MetadataResponse::VERSION);
+        self::assertSame(9, MetadataRequestV9::VERSION);
+        self::assertSame(9, MetadataResponseV9::VERSION);
+        self::assertSame(11, MetadataRequest::VERSION);
+        self::assertSame(11, MetadataResponse::VERSION);
     }
 
     public function testVersionEightAsksForTheAuthorizedOperationsAndIsAnsweredTwoBitfields(): void
@@ -298,7 +311,12 @@ final class MetadataApiTest extends TestCase
         // The topic entry ends with its own bitfield, behind the partitions
         self::assertSame(
             ['topicErrorCode', 'topic', 'isInternal', 'partitions', 'authorizedOperations'],
-            array_keys(TopicMetadata::getScheme())
+            array_keys(TopicMetadataV8::getScheme())
+        );
+        self::assertSame(
+            ['topicErrorCode', 'topic', 'topicId', 'isInternal', 'partitions', 'authorizedOperations'],
+            array_keys(TopicMetadata::getScheme()),
+            'the topic id of KIP-516 sits between the name and the internal flag from version 10 on'
         );
         self::assertSame(
             ['topicErrorCode', 'topic', 'isInternal', 'partitions'],
@@ -339,7 +357,7 @@ final class MetadataApiTest extends TestCase
     {
         // KIP-482 (Kafka 2.4): the request header v2 (a tag buffer behind the client id), compact strings and
         // arrays, and a tagged-field section at the end of every structure. Not one field is added or moved
-        $flexible = bin2hex((string) new MetadataRequest(['t2-24-flex'], false, 't2', 600));
+        $flexible = bin2hex((string) new MetadataRequestV9(['t2-24-flex'], false, 't2', 600));
 
         self::assertSame(
             '0000001e'
@@ -353,6 +371,7 @@ final class MetadataApiTest extends TestCase
             . '00',                                        // the tag buffer of the body
             $flexible
         );
+        self::assertTrue(MetadataRequestV9::isFlexible());
         self::assertTrue(MetadataRequest::isFlexible());
         self::assertSame(9, MetadataRequest::FLEXIBLE_VERSION);
         self::assertFalse(MetadataRequestV8::isFlexible());
@@ -592,6 +611,11 @@ final class MetadataApiTest extends TestCase
             ['topic' => TopicMetadata::class],
             MetadataResponse::getScheme()['topics'],
             'version 5 reads the partition entries with the offline replicas'
+        );
+        self::assertSame(
+            ['topic' => TopicMetadataV8::class],
+            MetadataResponseV9::getScheme()['topics'],
+            'and the versions 8 and 9 the topic entries without a topic id'
         );
         self::assertSame(['topic' => TopicMetadataV1::class], MetadataResponseV4::getScheme()['topics']);
         self::assertSame(['topic' => TopicMetadataV1::class], MetadataResponseV3::getScheme()['topics']);

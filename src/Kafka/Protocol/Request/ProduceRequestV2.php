@@ -31,7 +31,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The **answer** of a version 2 request is the answer of a version 3 one, byte for byte, see
  * {@see ProduceResponseV2}: version 3 added no field to it.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
  */
 final class ProduceRequestV2 extends ProduceRequest
 {

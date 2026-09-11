@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * ends with the `offline_replicas` array of version 5, and nothing of version 6 is on the wire. The two versions
  * differ only in what the client promises about the throttle time of KIP-219, see {@see MetadataResponse}.
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v9)" and "Cluster readiness"
+ * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v11)" and "Cluster readiness"
  */
 final class MetadataResponseV5 extends MetadataResponse
 {

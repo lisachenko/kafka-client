@@ -25,11 +25,13 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partitions => OffsetsRequestPartition
  * </pre>
  *
- * The topic entry itself is the same in both versions of the request; only the layout of a partition entry changes,
- * so the class of the entries is derived from {@see OffsetsRequestTopic::VERSION}, which
- * {@see OffsetsRequestTopicV0} lowers.
+ * The topic entry itself is the same in every version of the request; only the layout of a partition entry
+ * changes, so the class of the entries is derived from {@see OffsetsRequestTopic::VERSION}, which
+ * {@see OffsetsRequestTopicV1} and {@see OffsetsRequestTopicV0} lower. The **encoding** of the entry is not its
+ * own business: a version 6 request (Kafka 2.8, KIP-482) writes this very scheme with compact types and a
+ * tagged-field section, which the engine derives from the top-level message, see {@see BinarySchema}.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 class OffsetsRequestTopic implements BinarySchemaInterface
 {

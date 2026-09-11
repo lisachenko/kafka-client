@@ -20,10 +20,10 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
 
 /**
- * Offsets (ListOffset) response object (key 2, v5)
+ * Offsets (ListOffset) response object (key 2, v6)
  *
  * <pre>
- *   ListOffsets Response (Version: 5) => throttle_time_ms [responses]
+ *   ListOffsets Response (Version: 6) => throttle_time_ms [responses]
  *     throttle_time_ms => INT32     -- since version 2
  *     responses => topic [partition_responses]
  *       topic               => STRING
@@ -66,12 +66,17 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
  * version below 5 is answered in that state, see {@see OffsetsRequest}. Both are retriable; 78 is the one that
  * says the leader exists, so a client simply asks again instead of refreshing its metadata first.
  *
+ * **Version 6 (Kafka 2.8) is the flexible version of KIP-482**, see {@see self::FLEXIBLE_VERSION}: the response
+ * header **v1**, a compact topic name, compact arrays and a tagged-field section at the end of the body, of every
+ * topic entry and of every partition entry, with the same fields as version 5. {@see OffsetsResponseV5} decodes
+ * the plain frame.
+ *
  * A target timestamp that no message matches - one above the timestamp of every message of the log, and any
  * timestamp on an empty log - is **not** an error: the broker answers the code 0 with
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
  * and -1 (`KafkaApis.fetchOffsetForTimestamp` @ 0.11.0.3).
  *
- * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v5), a.k.a. ListOffset",
+ * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v6), a.k.a. ListOffset",
  *      "Quotas and throttle time" and "The leader epoch (KIP-320)"
  */
 class OffsetsResponse extends AbstractResponse
@@ -79,7 +84,15 @@ class OffsetsResponse extends AbstractResponse
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `ListOffsetsResponse.json` @ 2.8.2 declares `"flexibleVersions": "6+"`; not a field was added to the
+     * answer, the encoding changed.
+     */
+    public const int FLEXIBLE_VERSION = 6;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

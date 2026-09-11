@@ -82,14 +82,23 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV5;
  *
  * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
      * Version of the Produce API that this class decodes the answer of
      */
-    public const int VERSION = 8;
+    public const int VERSION = 9;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `ProduceResponse.json` @ 2.8.2 declares `"flexibleVersions": "9+"`; not a field was added to the answer,
+     * the encoding changed - the response header **v1**, compact strings and arrays and a tagged-field section
+     * behind every structure.
+     */
+    public const int FLEXIBLE_VERSION = 9;
 
     /**
      * Result for each topic of the request, indexed by the topic name

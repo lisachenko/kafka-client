@@ -26,6 +26,7 @@ use Protocol\Kafka\Common\TopicMetadataV0;
 use Protocol\Kafka\Common\TopicMetadataV1;
 use Protocol\Kafka\Common\TopicMetadataV5;
 use Protocol\Kafka\Common\TopicMetadataV7;
+use Protocol\Kafka\Common\TopicMetadataV8;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
@@ -74,6 +75,13 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * currently on. It is the half of KIP-320 that tells a consumer *that* a leader changed;
  * {@see MetadataResponseV6} keeps the answer that carries no epoch.
  *
+ * **Version 8 (Kafka 2.3, KIP-430) added the two authorized-operation bitfields**, **version 9 (Kafka 2.4) is
+ * the first flexible answer** (KIP-482), **version 10 (Kafka 2.8, KIP-516) put the `topic_id` of every topic
+ * between its name and its `is_internal` flag**, see {@see \Protocol\Kafka\Common\TopicMetadata::$topicId},
+ * and **version 11 (Kafka 2.8, KIP-700) dropped `cluster_authorized_operations`** from the end of the frame -
+ * the cluster-wide question is the DescribeCluster api (key 60) now. This class is version 11;
+ * {@see MetadataResponseV10} and {@see MetadataResponseV9} decode the two answers below it.
+ *
  * `ControllerId` is the broker id of the active controller, or `-1` (`MetadataResponse.NO_CONTROLLER_ID` @
  * 1.1.1) while the cluster is electing one; it is what {@see \Protocol\Kafka\Admin\AdminClient::findController()}
  * asks for. `ClusterId` is the identifier that a 0.10.1 broker generates once and keeps in ZooKeeper under
@@ -83,7 +91,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v9)" and "Cluster readiness"
+ * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v11)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
@@ -92,7 +100,7 @@ class MetadataResponse extends AbstractResponse
     /**
      * Version of the Metadata API that this class unpacks
      */
-    public const int VERSION = 9;
+    public const int VERSION = 11;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -180,7 +188,9 @@ class MetadataResponse extends AbstractResponse
             $body['controllerId'] = BinarySchema::TYPE_INT32;
         }
         $body['topics'] = ['topic' => static::topicClass()];
-        if (static::VERSION >= 8) {
+        // KIP-700 took the cluster-wide bitfield out again in version 11 and gave it to the new DescribeCluster
+        // api: `MetadataResponse.json` @ 2.8.2 declares the field as "8-10", a closed range
+        if (static::VERSION >= 8 && static::VERSION <= 10) {
             $body['clusterAuthorizedOperations'] = BinarySchema::TYPE_INT32;
         }
 
@@ -205,7 +215,8 @@ class MetadataResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 8 => TopicMetadata::class,
+            static::VERSION >= 10 => TopicMetadata::class,
+            static::VERSION >= 8 => TopicMetadataV8::class,
             static::VERSION >= 7 => TopicMetadataV7::class,
             static::VERSION >= 5 => TopicMetadataV5::class,
             static::VERSION >= 1 => TopicMetadataV1::class,

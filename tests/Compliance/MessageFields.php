@@ -91,7 +91,8 @@ final class MessageFields
             return $value === null ? null : self::of($value);
         }
 
-        // A uuid is 16 raw bytes as well - the topic ids of KIP-516 - and JSON cannot carry them either
+        // A uuid is 16 RAW bytes (KIP-516) and a vector file is json, which carries no binary: it is written
+        // down as `{"$bytes": "<hex>"}` like every other byte field
         $isBytes = $schemeType === BinarySchema::TYPE_BYTEARRAY
             || $schemeType === BinarySchema::TYPE_VARCHAR_ZIGZAG
             || $schemeType === BinarySchema::TYPE_UUID;

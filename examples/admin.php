@@ -23,7 +23,7 @@
  *   docker compose up -d
  *   php examples/admin.php [topic] [groupId]
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v9)", "ListGroups API (key 16, v0 to v4)",
+ * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v11)", "ListGroups API (key 16, v0 to v4)",
  *      "DescribeGroups API (key 15, v0 to v5)" and "DeleteGroups API (key 42, v0 to v2)"
  */
 

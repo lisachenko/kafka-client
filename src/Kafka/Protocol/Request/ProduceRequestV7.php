@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version that may carry a zstd-compressed record set. Version 8 (Kafka 2.4, KIP-467) sends the very same body
  * once more and states that the client understands the record errors of the answer, see {@see ProduceRequest}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
  */
 final class ProduceRequestV7 extends ProduceRequest
 {

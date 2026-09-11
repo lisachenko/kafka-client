@@ -769,6 +769,67 @@ them. What the release added lives in the group and transaction apis.)*
 
 ### Kafka 2.8
 
+- **DescribeCluster (key 60, v0, KIP-700)** — the cluster id, the controller and the brokers, asked for without
+  naming a topic. Until this release a client that wanted those three had to send a request about *topics* with an
+  empty topic array, which is what `AdminClient::describeClusterFromMetadata()` still does for a broker below 2.8;
+  `AdminClient::describeCluster(bool $includeAuthorizedOperations = false)` sends the new api and answers
+  `Admin\ClusterDescription`. The request is the **smallest of this protocol** - one boolean - and the flag is the
+  only thing in it: without it `cluster_authorized_operations` is `Integer.MIN_VALUE`
+  (`ClusterDescription::OPERATIONS_NOT_REQUESTED`), the default of the specification and not an error; with it the
+  container answers **8096**, the seven `AclOperation` bits `AclEntry.supportedOperations(CLUSTER)` names, because
+  it runs without an authorizer. Four wire vectors in the new `describe-cluster.json`.
+- **DescribeProducers (key 61, v0, KIP-664)** — the first api of this protocol that reads out the
+  `ProducerStateManager` of a partition, the table that makes the idempotent producer of KIP-98 work; before it,
+  the only way to see which producer ids a partition remembered was `DumpLogSegments` on the broker's disk.
+  `AdminClient::describeProducers(array $topicPartitions)` groups the partitions **by their leader** - the state
+  lives in the log, so no other broker can answer for one - and reports `Admin\ProducerState` per partition, or
+  the exception of that partition, because the api has no top-level error code. A partition the broker does not
+  lead is **3**, and a partition that remembers no producer is the code 0 with an empty list.
+- Measured on the container, and the surprise of the api: the two transaction fields of a producer state move on
+  different beats. `current_txn_start_offset` is the base offset of the first batch of an open transaction and is
+  cleared by its marker, but the `coordinator_epoch` next to it is written **by the marker**, so a producer whose
+  very first transaction is still open is reported with the -1 of a producer that has none, and one whose second
+  transaction is open still carries the epoch the previous marker wrote. An abort marker clears the first offset
+  exactly as a commit marker does. `producer_epoch` is an `int32` in this api although it is an `int16` in every
+  other one. Four wire vectors in the new `describe-producers.json`.
+- **The flexible v1 of the two client-quota apis** — `DescribeClientQuotas` (48) and `AlterClientQuotas` (49) are
+  the last pair of this line to become compact, two releases after the encoding arrived:
+  `DescribeClientQuotas.json` @ 2.8.2 says `"validVersions": "0-1"` and `"flexibleVersions": "1+"`, where the same
+  file @ 2.6.3 and @ 2.7.2 says `"flexibleVersions": "none"`. No field is added, so the base classes are the v1
+  and `DescribeClientQuotasRequestV0`/`ResponseV0` and `AlterClientQuotasRequestV0`/`ResponseV0` keep the plain
+  frame a 2.6 or 2.7 broker serves. The `float64` quota value is the same eight bytes in both encodings; what does
+  differ is the `error_message` of a successful DescribeClientQuotas answer, which is the compact **empty** string
+  in the v1 and the **null** string in the v0. Seven new wire vectors next to the plain ones in the two existing
+  files.
+- **Produce v9, ListOffsets v6 and OffsetForLeaderEpoch v4** (KIP-482) — the **flexible** versions of the three
+  apis, and not one new field in any of them: the request header **v2**, the response header **v1**, compact
+  strings and arrays, a tagged-field section behind the body and behind every structure, and - the one that
+  matters for the size of a produce frame - a **compact record set**. The three pairs are what this client sends
+  now; `ProduceRequestV8`/`ProduceResponseV8`, `OffsetsRequestV5`/`OffsetsResponseV5` and
+  `OffsetForLeaderEpochRequestV3`/`OffsetForLeaderEpochResponseV3` keep the plain frames. Measured on the
+  container: the same exchanges in 124/60, 53/54 and 48/46 bytes instead of 140/67, 56/57 and 51/49.
+- **Metadata v10, the topic ids of KIP-516** — every topic entry of the answer carries the **16 raw bytes** of
+  the id the topic was created with (`Common\TopicMetadata::$topicId`), and every topic entry of the request
+  carries one in front of its name. The new `Protocol\Kafka\Common\Uuid` is the pair of functions that turns
+  those bytes into the text form Kafka prints and back - a url-safe base64 without padding, 22 characters, which
+  is what `Uuid.toString()` @ 2.8.2 and `kafka-topics.sh --describe` show, **not** the `8-4-4-4-12` hex of
+  RFC 4122 - with `Uuid::ZERO` for the "no topic id" of the protocol. The **request** half of the KIP does not
+  work on a 2.8.2 broker ("this functionality was not implemented on the server"), so this client writes the zero
+  uuid and the real name, as the Java client does.
+- **Metadata v11 (KIP-700)** — the version that takes a field **away**: `include_cluster_authorized_operations`
+  is gone from the request and `cluster_authorized_operations` from the end of the answer, both declared `"8-10"`
+  in the specification, because the cluster-wide question moved to the new DescribeCluster api (key 60). The
+  per-topic bitfield is untouched. `MetadataRequest`/`MetadataResponse` are version 11 and what `Client` and
+  `Cluster` send; `MetadataRequestV10`/`MetadataResponseV10` are the version to ask with when a caller wants the
+  cluster bitfield from this api, and `MetadataRequestV9`/`MetadataResponseV9` and `TopicMetadataV8` keep the
+  frames below it.
+- Measured on the container: a Metadata v11 answers the real topic id (`PXjls0c8TyiESVVG2DNSKg` for the vector
+  topic) and leaves `clusterAuthorizedOperations` at `NOT_REQUESTED` because the field is not on the wire at all,
+  while the same question as a v10 with both booleans on answers the 8096 of the cluster and the 3576 of the
+  topic. Ten wire vectors, the section "Topic ids (v10, KIP-516)" of the protocol document, the version 9/10/11
+  grammar blocks of the four apis, the api-table rows 0, 2, 3 and 23, and the new integration suite
+  `TopicIdsApiTest` - which also pins the point of KIP-516: a topic that is deleted and created again under the
+  same name comes back with **another** id.
 - **The topic ids of KIP-516 — CreateTopics v7 and DeleteTopics v6.** Every topic of a Kafka 2.8 cluster has an
   id that outlives its name: a topic that is deleted and created again under the same name is a different topic,
   and the id is what says so. The **answer** of CreateTopics v7 carries it between the name and the error code

@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `MATCH_TYPE_SPECIFIED` asks for every entity of the type that has a name of its own - the three values of
  * `ClientQuotaFilterComponent` @ 2.8.2. A filter with no component at all describes every quota of the cluster.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
  */
 class ClientQuotaComponentData implements BinarySchemaInterface
 {
