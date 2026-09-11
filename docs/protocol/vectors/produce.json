@@ -1,8 +1,8 @@
 {
     "api": "produce",
     "apiKey": 0,
-    "section": "Produce API (key 0, v0 to v7)",
-    "description": "Wire vectors of the Produce API (key 0, v0 to v7), replayed by tests/Compliance.",
+    "section": "Produce API (key 0, v0 to v8)",
+    "description": "Wire vectors of the Produce API (key 0, v0 to v8), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "produce.request.v3",
@@ -794,7 +794,7 @@
         {
             "id": "produce.request.v7",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV7",
             "version": 7,
             "source": "broker",
             "description": "Produce request v7 (Kafka 2.1, KIP-110) of one record batch: the frame of version 3, byte for byte - ProduceRequest.json @ 2.8.2 has no field above version 3 - with another number in its header. What version 7 states is that the record sets of the request may carry the compression type 4, zstd; a lower version that does is refused with the error code 76.",
@@ -826,7 +826,7 @@
         {
             "id": "produce.response.v7",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer v7: the frame of version 5, unchanged - ProduceResponse.json @ 2.8.2 has no field above version 5 - with the base offset, the log append time -1 of a CreateTime topic, the log start offset and the throttle time.",
@@ -872,6 +872,167 @@
                                 "baseOffset": -1,
                                 "logAppendTime": -1,
                                 "logStartOffset": -1
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
+        },
+        {
+            "id": "produce.request.v8",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "Produce request v8 (Kafka 2.4, KIP-467) of one record batch: the frame of version 3, byte for byte - ProduceRequest.json @ 2.8.2 has no field above version 3 - with another number in its header. What version 8 states is that the client understands the record_errors and the error_message that a refused batch is answered with.",
+            "hex": "0000008c00000008000001f400027432ffff0001000005dc00000001000d74322d32342d766563746f727300000001000000000000005900000000000000000000004dffffffff02bf173b3f000000000000000001a091b9fb23000001a091b9fb23ffffffffffffffffffffffffffff0000000136000000046b38267265636f72642d6572726f72732d76616c756500",
+            "fields": {
+                "messageSize": 140,
+                "apiKey": 0,
+                "apiVersion": 8,
+                "correlationId": 500,
+                "clientId": "t2",
+                "transactionalId": null,
+                "requiredAcks": 1,
+                "timeout": 1500,
+                "topicMessages": {
+                    "t2-24-vectors": {
+                        "topic": "t2-24-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "00000000000000000000004dffffffff02bf173b3f000000000000000001a091b9fb23000001a091b9fb23ffffffffffffffffffffffffffff0000000136000000046b38267265636f72642d6572726f72732d76616c756500"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v8",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer v8 of an accepted batch: the frame of version 5 with two more fields per partition - an EMPTY record_errors array (00 00 00 00) and a null error_message (ff ff) behind the log start offset. Nothing was refused, so there is nothing to name.",
+            "hex": "00000043000001f400000001000d74322d32342d766563746f7273000000010000000000000000000000000000ffffffffffffffff000000000000000000000000ffff00000000",
+            "fields": {
+                "messageSize": 67,
+                "correlationId": 500,
+                "topics": {
+                    "t2-24-vectors": {
+                        "topic": "t2-24-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 0,
+                                "logAppendTime": -1,
+                                "logStartOffset": 0,
+                                "recordErrors": [],
+                                "errorMessage": null
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
+        },
+        {
+            "id": "produce.request.v8.invalid-record",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "Produce request v8 of a batch of three records, the second and the third of them WITHOUT a key, to a topic that is configured cleanup.policy=compact. A compacted log is keyed by definition, so the broker refuses the whole batch - and version 8 is the first version that can say which of the records it refused it for.",
+            "hex": "000000b100000008000001f500027432ffff0001000005dc00000001000f74322d32342d636f6d70616374656400000001000000000000007c000000000000000000000070ffffffff02312f2e15000000000002000001a091b9fb23000001a091b9fb25ffffffffffffffffffffffffffff0000000322000000026b14776974682d612d6b65790026000202011a776974686f75742d612d6b657900300004040124616c736f2d776974686f75742d612d6b657900",
+            "fields": {
+                "messageSize": 177,
+                "apiKey": 0,
+                "apiVersion": 8,
+                "correlationId": 501,
+                "clientId": "t2",
+                "transactionalId": null,
+                "requiredAcks": 1,
+                "timeout": 1500,
+                "topicMessages": {
+                    "t2-24-compacted": {
+                        "topic": "t2-24-compacted",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000070ffffffff02312f2e15000000000002000001a091b9fb23000001a091b9fb25ffffffffffffffffffffffffffff0000000322000000026b14776974682d612d6b65790026000202011a776974686f75742d612d6b657900300004040124616c736f2d776974686f75742d612d6b657900"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v8.invalid-record",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer: the error code 87 INVALID_RECORD for the partition, the offsets -1 of a batch that was never appended, and the record_errors array of KIP-467 - one entry per refused record, with its BATCH INDEX (the position inside the sent batch, counted from 0, not an offset) - followed by the error_message that summarizes the common cause. This is the whole point of version 8: every version below it answers the same 87 and nothing else.",
+            "hex": "00000125000001f500000001000f74322d32342d636f6d70616374656400000001000000000057ffffffffffffffffffffffffffffffff000000000000000000000002000000010057436f6d70616374656420746f7069632063616e6e6f7420616363657074206d65737361676520776974686f7574206b657920696e20746f70696320706172746974696f6e2074322d32342d636f6d7061637465642d302e000000020057436f6d70616374656420746f7069632063616e6e6f7420616363657074206d65737361676520776974686f7574206b657920696e20746f70696320706172746974696f6e2074322d32342d636f6d7061637465642d302e00264f6e65206f72206d6f7265207265636f7264732068617665206265656e2072656a656374656400000000",
+            "fields": {
+                "messageSize": 293,
+                "correlationId": 501,
+                "topics": {
+                    "t2-24-compacted": {
+                        "topic": "t2-24-compacted",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 87,
+                                "baseOffset": -1,
+                                "logAppendTime": -1,
+                                "logStartOffset": 0,
+                                "recordErrors": {
+                                    "1": {
+                                        "batchIndex": 1,
+                                        "batchIndexErrorMessage": "Compacted topic cannot accept message without key in topic partition t2-24-compacted-0."
+                                    },
+                                    "2": {
+                                        "batchIndex": 2,
+                                        "batchIndexErrorMessage": "Compacted topic cannot accept message without key in topic partition t2-24-compacted-0."
+                                    }
+                                },
+                                "errorMessage": "One or more records have been rejected"
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
+        },
+        {
+            "id": "produce.response.v7.invalid-record",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV7",
+            "version": 7,
+            "source": "broker",
+            "description": "The answer of a version 7 request to the very same refused batch: the error code 87 and the offsets -1, and not a byte more. A producer that speaks version 7 or below learns that its batch was refused and nothing about which record caused it - the gap KIP-467 closed.",
+            "hex": "0000003f000001f600000001000f74322d32342d636f6d70616374656400000001000000000057ffffffffffffffffffffffffffffffff000000000000000000000000",
+            "fields": {
+                "messageSize": 63,
+                "correlationId": 502,
+                "topics": {
+                    "t2-24-compacted": {
+                        "topic": "t2-24-compacted",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 87,
+                                "baseOffset": -1,
+                                "logAppendTime": -1,
+                                "logStartOffset": 0
                             }
                         ]
                     }
