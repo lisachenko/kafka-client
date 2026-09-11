@@ -128,6 +128,23 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   `InitProducerIdResponseV1`, `CreateDelegationTokenRequestV1` and `CreateDelegationTokenResponseV1`
   keep the version Kafka 2.0 bumped. Six new wire vectors, the v2 pair of each api and the two error
   answers of the token api.
+- **OffsetDelete (key 47, v0, Kafka 2.4, KIP-496)** — the api that makes a coordinator forget the committed offsets
+  of **single partitions** of a group without touching the group itself, where `deleteConsumerGroups()` can only
+  throw the whole group away. It is the one thing Kafka 2.4 added **without** the flexible encoding — with
+  SaslHandshake (17) it is one of the two client apis of this line the compact types never reach — and its answer
+  opens with the **top-level error code before the throttle time**, which no other api of this protocol does.
+  `OffsetDeleteRequest`/`OffsetDeleteResponse` with `OffsetDeleteRequestTopic`, `OffsetDeleteRequestPartition`,
+  `OffsetDeleteResponseTopic` and `OffsetDeleteResponsePartition`, `Client::deleteGroupOffsets()` and
+  **`AdminClient::deleteConsumerGroupOffsets(string $groupId, iterable $partitions)`** (the Java name), which takes
+  `Common\TopicPartition`s, answers `topic => [partition => KafkaException|null]` and throws the group-level error,
+  because an answer that carries one names no partition at all. Five new wire vectors in the new
+  `docs/protocol/vectors/offset-delete.json`, and every state of a group measured on the container: an `Empty` group
+  hands over every partition, a live `consumer` group answers **86** `GROUP_SUBSCRIBED_TO_TOPIC` for the topics its
+  members are subscribed to and deletes the rest, a live group of any other protocol type is refused as a whole with
+  **68** `NON_EMPTY_GROUP`, a group the coordinator does not know with **69** `GROUP_ID_NOT_FOUND`, and a topic the
+  broker does not have is **3** per partition. Two quirks are pinned by tests: a partition that never had a
+  committed offset is answered with **0** like one that had, and deleting the **last** committed offset of an
+  `Empty` group transitions it to `Dead` and drops it, so the next request for it answers 69.
 - **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
   **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
   **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not

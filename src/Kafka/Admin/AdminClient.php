@@ -1642,6 +1642,54 @@ class AdminClient
     }
 
     /**
+     * Makes the coordinator forget the committed offsets of some partitions of a group (ApiKey 47, Kafka 2.4)
+     *
+     * The counterpart of `kafka-consumer-groups.sh --delete-offsets`, which KIP-496 gave a protocol of its own in
+     * Kafka 2.4: where {@see self::deleteConsumerGroups()} throws a whole group away, this deletes the committed
+     * offset of single partitions and leaves the group alone. The coordinator writes a tombstone into
+     * `__consumer_offsets` for every partition it deleted, so {@see self::listGroupOffsets()} - and any
+     * consumer of the group that seeks to its committed offset - sees -1 for it afterwards.
+     *
+     * **What the coordinator allows depends on the state of the group**, and only part of it is per partition:
+     *
+     * * an `Empty` group - every member gone or timed out - hands over every partition of the request;
+     * * a live group whose members speak the `consumer` protocol keeps the partitions of the topics its members are
+     *   subscribed to, which come back as a `GroupSubscribedToTopicException` (86), and deletes the rest;
+     * * a live group of any **other** protocol type is refused as a whole with 68 (NonEmptyGroup), which is
+     *   *thrown*, because the answer of such a request carries no partition at all;
+     * * a group the coordinator does not know is 69 (GroupIdNotFound), thrown for the same reason;
+     * * a topic or a partition this broker does not have is per partition again, with the code 3.
+     *
+     * The request goes to the coordinator of the group ({@see self::findCoordinator()}); a broker that does not
+     * coordinate it answers 16 (NotCoordinatorForGroup).
+     *
+     * @param string                    $groupId    Name of the group whose committed offsets are deleted
+     * @param iterable<TopicPartition>  $partitions Partitions to delete the committed offset of
+     *
+     * @throws KafkaException If the group itself refuses the request - 68 for a non-empty group of another protocol
+     *         type, 69 for a group the coordinator does not know, 16 when the coordinator moved
+     *
+     * @return array<string, array<int, KafkaException|null>> One entry per requested partition, indexed by topic and
+     *         partition index: `null` when the committed offset is gone, the exception of its code otherwise
+     */
+    public function deleteConsumerGroupOffsets(string $groupId, iterable $partitions): array
+    {
+        $topicPartitions = [];
+        foreach ($partitions as $topicPartition) {
+            $topicPartitions[$topicPartition->topic][$topicPartition->partition] = $topicPartition->partition;
+        }
+
+        if ($topicPartitions === []) {
+            return [];
+        }
+
+        return $this->client()->deleteGroupOffsets($this->findCoordinator($groupId), $groupId, $topicPartitions);
+    }
+
+    /**
+    }
+
+    /**
      * Turns the error code of one group of a DeleteGroups answer into the exception of the caller
      */
     private static function groupError(string $groupId, int $errorCode): ?KafkaException
