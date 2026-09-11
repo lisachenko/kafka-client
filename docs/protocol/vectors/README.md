@@ -2,7 +2,7 @@ Wire vectors of the Kafka 1.1.1 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **380** of them in **36** files: **62** were captured on the `kafka-2-8-2` container of the **2.x**
+hex dumps. There are **384** of them in **36** files: **66** were captured on the `kafka-2-8-2` container of the **2.x**
 line - the request and the answer of every version Kafka **2.0** added to the admin, the transaction and the
 delegation-token apis (34 frames), to the ten group apis (20 frames) and to ApiVersions (2 frames), all of them
 KIP-219 bumps, plus the 6 frames of what Kafka **2.1** added to OffsetCommit and OffsetFetch - and of the
@@ -15,7 +15,9 @@ What the group apis of this line have captured so far is the KIP-219 version bum
 v4, OffsetFetch v4, FindCoordinator v2, JoinGroup v3, Heartbeat v2, LeaveGroup v2, SyncGroup v2, DescribeGroups v2,
 ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from one life of the group
 `t3-kip219-group` — and what Kafka 2.1 added to the two offset apis: OffsetCommit v5 (the frame without
-`retention_time`, KIP-211), OffsetCommit v6 and OffsetFetch v5 (the `committed_leader_epoch` of KIP-320).
+`retention_time`, KIP-211), OffsetCommit v6 and OffsetFetch v5 (the `committed_leader_epoch` of KIP-320) — and the
+four frames of the KIP-394 exchange of Kafka 2.2 (JoinGroup v4 with an empty member id, the 79 that refuses it,
+and the join that follows).
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`

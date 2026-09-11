@@ -30,10 +30,12 @@ use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV1;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV2;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequestV3;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV1;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV2;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponseV3;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV1;
@@ -54,25 +56,28 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponseV1;
  * JoinGroup, which is its version 1; Kafka 0.11 added the leading `ThrottleTimeMs` to the ANSWER of all four
  * (KIP-124), which is JoinGroup v2 and SyncGroup, Heartbeat and LeaveGroup v1; and Kafka 2.0 raised every one of
  * them once more without touching a single field (KIP-219), which is JoinGroup v3 and SyncGroup, Heartbeat and
- * LeaveGroup v2 - the versions this client sends. A lower-version frame therefore differs from the current one in
- * the version field of its header only.
+ * LeaveGroup v2. Kafka 2.2 raised JoinGroup once more, to **v4** (KIP-394), again without changing a field: what
+ * that version changes is what an EMPTY member id means, see the integration suite. A lower-version frame
+ * therefore differs from the current one in the version field of its header only.
  *
  * The member metadata of JoinGroup and the assignments of SyncGroup are opaque byte arrays to these apis - the
  * coordinator never parses them here - so every test in this class uses arbitrary bytes for them, including a NUL
  * byte, and only checks that they survive the round trip untouched. A real `consumer` group is a different matter:
  * a 2.x coordinator does parse the metadata of such a group, see the integration suite.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v3)", "SyncGroup API (key 14, v0 to v2)",
+ * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v4)", "SyncGroup API (key 14, v0 to v2)",
  *      "Heartbeat API (key 12, v0 to v2)" and "LeaveGroup API (key 13, v0 to v2)"
  */
 #[CoversClass(JoinGroupRequest::class)]
 #[CoversClass(JoinGroupRequestV0::class)]
 #[CoversClass(JoinGroupRequestV1::class)]
 #[CoversClass(JoinGroupRequestV2::class)]
+#[CoversClass(JoinGroupRequestV3::class)]
 #[CoversClass(JoinGroupResponse::class)]
 #[CoversClass(JoinGroupResponseV0::class)]
 #[CoversClass(JoinGroupResponseV1::class)]
 #[CoversClass(JoinGroupResponseV2::class)]
+#[CoversClass(JoinGroupResponseV3::class)]
 #[CoversClass(SyncGroupRequest::class)]
 #[CoversClass(SyncGroupRequestV0::class)]
 #[CoversClass(SyncGroupRequestV1::class)]
@@ -107,11 +112,11 @@ final class GroupMembershipTest extends TestCase
     private const string ASSIGNMENT = "\x01\x00\x02";
 
     /**
-     * JoinGroup request v3 for the group "my-group", correlation id 1, client id "test".
+     * JoinGroup request v4 for the group "my-group", correlation id 1, client id "test".
      *
      *   Size             => 00 00 00 3d (61 bytes)
      *   ApiKey           => 00 0b
-     *   ApiVersion       => 00 03
+     *   ApiVersion       => 00 04
      *   CorrelationId    => 00 00 00 01
      *   ClientId         => 00 04 "test"
      *   GroupId          => 00 08 "my-group"
@@ -124,6 +129,23 @@ final class GroupMembershipTest extends TestCase
      *     ProtocolMetadata => 00 00 00 02 00 ff
      */
     private const string JOIN_REQUEST_HEX = '0000003d'
+        . '000b'
+        . '0004'
+        . '00000001'
+        . '0004' . '74657374'
+        . '0008' . '6d792d67726f7570'
+        . '00007530'
+        . '000493e0'
+        . '0000'
+        . '0008' . '636f6e73756d6572'
+        . '00000001'
+        . '0005' . '72616e6765'
+        . '00000002' . '00ff';
+
+    /**
+     * The same request as a version 3 frame, which is the same body with the version field 3
+     */
+    private const string JOIN_REQUEST_V3_HEX = '0000003d'
         . '000b'
         . '0003'
         . '00000001'
@@ -397,7 +419,29 @@ final class GroupMembershipTest extends TestCase
 
         self::assertSame(self::JOIN_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::JOIN_GROUP, $request->getApiKey());
-        self::assertSame(3, $request->getApiVersion(), 'KIP-219 makes the version this client sends 3');
+        self::assertSame(4, $request->getApiVersion(), 'KIP-394 makes the version this client sends 4');
+    }
+
+    public function testJoinGroupRequestV3SendsTheSameBodyAsVersionFour(): void
+    {
+        $request = new JoinGroupRequestV3(
+            'my-group',
+            30000,
+            300000,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            'consumer',
+            ['range' => self::METADATA],
+            'test',
+            1
+        );
+
+        self::assertSame(self::JOIN_REQUEST_V3_HEX, bin2hex((string) $request));
+        self::assertSame(3, $request->getApiVersion());
+        self::assertSame(
+            substr(self::JOIN_REQUEST_HEX, 16),
+            substr(self::JOIN_REQUEST_V3_HEX, 16),
+            'KIP-394 changed what an EMPTY member id means, not a single byte of the frame'
+        );
     }
 
     public function testJoinGroupRequestV2SendsTheSameBodyAsVersionThree(): void
@@ -533,7 +577,7 @@ final class GroupMembershipTest extends TestCase
 
     public function testJoinGroupResponseOfVersionTwoAndThreeStartsWithTheThrottleTime(): void
     {
-        foreach ([JoinGroupResponseV2::class, JoinGroupResponse::class] as $class) {
+        foreach ([JoinGroupResponseV2::class, JoinGroupResponseV3::class, JoinGroupResponse::class] as $class) {
             $response = $class::unpack(new StringStream((string) hex2bin(self::JOIN_RESPONSE_V2_HEX)));
 
             self::assertSame(0, $response->throttleTimeMs);

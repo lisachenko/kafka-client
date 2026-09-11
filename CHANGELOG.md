@@ -107,6 +107,22 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   from the container, and the broker stores whatever epoch it is given — 74 and 75 are answered by
   the fetch path, not by the coordinator.
 
+### Kafka 2.2
+
+- **JoinGroup v4 (KIP-394)** — the version that refuses a **first join**. A request with an empty member id is
+  answered immediately with the error code **79** (`MemberIdRequired`) and the member id the coordinator
+  generated, and the client sends the same request again with that id; the coordinator no longer adds a member it
+  cannot identify to a rebalance, and a client that never comes back leaves the group `Empty` with 0 members
+  instead of holding a rebalance up. `Consumer\Internals\ConsumerCoordinator` does that second join by itself,
+  immediately and without counting the refusal as a failed attempt, exactly as the Java
+  `AbstractCoordinator.handleJoinResponse` does; `Client::joinGroup()` reports the code as a
+  `MemberIdRequiredException` whose context carries the assigned id under **`assignedMemberId`** and leaves the
+  second join to its caller. `JoinGroupRequestV3`/`JoinGroupResponseV3` keep the version below it, and four wire
+  vectors of the exchange were captured from the container.
+- **The error code 81 `GroupMaxSizeReached`** of the same KIP is documented from the broker sources and is not
+  asserted against the container: `group.max.size` defaults to 2147483647 and is not a dynamically updatable
+  broker config in Kafka 2.8, so it cannot be lowered without a restart.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

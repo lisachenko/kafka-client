@@ -1132,11 +1132,17 @@ class Client
     /**
      * Joins the group with the specified protocol and member information (ApiKey 11, Kafka 0.9)
      *
-     * A client that has no member id yet passes {@see JoinGroupRequest::DEFAULT_MEMBER_ID} and receives the id the
-     * coordinator assigned to it; a member that rejoins has to pass the id of the previous generation. The answer
-     * names the generation, the protocol the coordinator picked out of `$groupProtocols` and the leader of the
-     * group - the member whose id equals the `leaderId` of the answer is the one that computes the assignment and
-     * publishes it with {@see self::syncGroup()}; only that member receives the `members` array.
+     * A client that has no member id yet passes {@see JoinGroupRequest::DEFAULT_MEMBER_ID}; a member that rejoins
+     * has to pass the id of the previous generation. The answer names the generation, the protocol the coordinator
+     * picked out of `$groupProtocols` and the leader of the group - the member whose id equals the `leaderId` of
+     * the answer is the one that computes the assignment and publishes it with {@see self::syncGroup()}; only that
+     * member receives the `members` array.
+     *
+     * **A first join is refused once** (KIP-394, Kafka 2.2): the version 4 request this client sends is answered
+     * with the error code 79 and the member id the coordinator assigned, which is reported as a
+     * {@see Common\Errors\MemberIdRequiredException} whose context carries that id under `assignedMemberId`. The
+     * caller sends the very same request again with it - {@see \Protocol\Kafka\Consumer\Internals\ConsumerCoordinator}
+     * does it immediately and without a backoff, as the Java `AbstractCoordinator.handleJoinResponse` does.
      *
      * **The coordinator holds this request until the rebalance is over**, i.e. until every known member of the
      * group has rejoined or has run out of time. How much time each of them gets is the `rebalance_timeout` of the
@@ -1192,10 +1198,15 @@ class Client
             JoinGroupResponse::class,
             static function (JoinGroupResponse $response) use ($groupId, $memberId, $protocolType): JoinGroupResponse {
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
-                    throw KafkaException::fromCode(
-                        $response->errorCode,
-                        ['groupId' => $groupId, 'memberId' => $memberId, 'protocolType' => $protocolType]
-                    );
+                    // The 79 of KIP-394 is the one error answer that carries something the caller needs: the
+                    // member id the coordinator assigned, which the next join has to send. It travels in the
+                    // context under `assignedMemberId`, next to the (empty) id this request was sent with.
+                    $context = ['groupId' => $groupId, 'memberId' => $memberId, 'protocolType' => $protocolType];
+                    if ($response->errorCode === KafkaException::MEMBER_ID_REQUIRED) {
+                        $context['assignedMemberId'] = $response->memberId;
+                    }
+
+                    throw KafkaException::fromCode($response->errorCode, $context);
                 }
 
                 return $response;
