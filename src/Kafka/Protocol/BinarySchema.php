@@ -398,10 +398,13 @@ class BinarySchema
             $result = [];
             for ($index = 0; $index < $arraySize; $index++) {
                 $value = self::readSingleType($arrayItemType, $stream, "{$path}[{$index}]", $flexible);
-                if (is_string($arrayKeyName)) {
-                    $result[$value->$arrayKeyName] = $value;
-                } else {
+                $key = is_string($arrayKeyName) ? $value->$arrayKeyName : null;
+                if ($key === null) {
+                    // Either an array the scheme does not key at all, or - since the nullable topic name of
+                    // KIP-516 (DeleteTopics v6) - an entry whose key field is null, which is no key at all
                     $result[] = $value;
+                } else {
+                    $result[$key] = $value;
                 }
             }
 

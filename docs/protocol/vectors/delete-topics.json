@@ -288,6 +288,133 @@
                     }
                 }
             }
+        },
+        {
+            "id": "deletetopics.request.v6",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "DeleteTopics request v6 (Kafka 2.8, KIP-516) that names its topic by its NAME: the flat `[]TopicNames` of every version below is gone, and the topic is one `DeleteTopicState` of the name and the **zero** id.",
+            "hex": "0000003a001400060000032d000a74342d766563746f727300020e74342d32382d766563746f727300000000000000000000000000000000000000271000",
+            "fields": {
+                "messageSize": 58,
+                "apiKey": 20,
+                "apiVersion": 6,
+                "correlationId": 813,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topicStates": [
+                    {
+                        "name": "t4-28-vectors",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        }
+                    }
+                ],
+                "timeout": 10000
+            }
+        },
+        {
+            "id": "deletetopics.response.v6",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "DeleteTopics answer v6 of a deletion by NAME: the name the request used, the error code 0 and the null `error_message` of Kafka 2.7 - and the **zero** `topic_id`, because a 2.8.2 ZooKeeper broker fills the id of an answer only for a topic the request named by its id.",
+            "hex": "0000002d0000032d0000000000020e74342d32382d766563746f7273000000000000000000000000000000000000000000",
+            "fields": {
+                "messageSize": 45,
+                "correlationId": 813,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-28-vectors": {
+                        "topic": "t4-28-vectors",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletetopics.request.v6.by-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "DeleteTopics request v6 that names its topic by its ID alone: the name is the compact **null** and the `topic_id` is the one the CreateTopics v7 answer carried - the way KIP-516 lets a client delete the topic it created and not the one that wears its name now.",
+            "hex": "0000002d001400060000032e000a74342d766563746f7273000200d07b6dfb1206439fa95b55d305f7774c000000271000",
+            "fields": {
+                "messageSize": 45,
+                "apiKey": 20,
+                "apiVersion": 6,
+                "correlationId": 814,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topicStates": [
+                    {
+                        "name": null,
+                        "topicId": {
+                            "$bytes": "d07b6dfb1206439fa95b55d305f7774c"
+                        }
+                    }
+                ],
+                "timeout": 10000
+            }
+        },
+        {
+            "id": "deletetopics.response.v6.by-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "DeleteTopics answer v6 of a deletion by ID: the controller resolved the id to the name of the topic it deleted and echoes the `topic_id` of the request next to it, with the error code 0.",
+            "hex": "000000320000032e0000000000021374342d32382d766563746f72732d62796964d07b6dfb1206439fa95b55d305f7774c0000000000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 814,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-28-vectors-byid": {
+                        "topic": "t4-28-vectors-byid",
+                        "topicId": {
+                            "$bytes": "d07b6dfb1206439fa95b55d305f7774c"
+                        },
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletetopics.response.v6.unknown-topic-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "DeleteTopics answer v6 for a `topic_id` no topic of the cluster carries: the error code **100** `UnknownTopicId` that Kafka 2.8 added with the topic ids, where a name the cluster does not know is still answered the 3 `UnknownTopicOrPartition`.",
+            "hex": "000000200000032f000000000002000123456789abcdef0123456789abcdef0064000000",
+            "fields": {
+                "messageSize": 32,
+                "correlationId": 815,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": [
+                    {
+                        "topic": null,
+                        "topicId": {
+                            "$bytes": "0123456789abcdef0123456789abcdef"
+                        },
+                        "errorCode": 100,
+                        "errorMessage": null
+                    }
+                ]
+            }
         }
     ]
 }

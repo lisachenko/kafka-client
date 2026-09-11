@@ -219,6 +219,62 @@
                     }
                 }
             }
+        },
+        {
+            "id": "alterreplicalogdirs.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs request v2 (Kafka 2.8, KIP-482): one replica moved to the other log directory of the broker, the fields of the version 1 in the flexible encoding this version introduced.",
+            "hex": "0000003d0022000200000326000a74342d766563746f72730002102f746d702f6b61666b612d6c6f6773020e74342d32382d766563746f72730200000000000000",
+            "fields": {
+                "messageSize": 61,
+                "apiKey": 34,
+                "apiVersion": 2,
+                "correlationId": 806,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": {
+                            "t4-28-vectors": {
+                                "topic": "t4-28-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterreplicalogdirs.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "AlterReplicaLogDirs answer v2: the error code 0 of the accepted move, which the broker carries out in the background.",
+            "hex": "00000022000003260000000000020e74342d32382d766563746f727302000000000000000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 806,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-28-vectors": {
+                        "topic": "t4-28-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
         }
     ]
 }

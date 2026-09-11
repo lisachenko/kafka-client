@@ -30,6 +30,13 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopic;
  * answer as well when the broker could not read it back, in which case {@see $configErrorCode} says why - it is the
  * tagged field 0 of the entry, and it is 0 whenever the configuration is there.
  *
+ * {@see $topicId} is what **KIP-516** added with the version 7 (Kafka 2.8): the id the controller gave the topic,
+ * as the raw 16 bytes of its UUID, which outlive the name - a topic that is deleted and created again under the
+ * same name is a different topic and carries a different id. It is
+ * {@see CreateTopicsResponseTopic::NO_TOPIC_ID}, sixteen zero bytes, for a topic the controller refused and for
+ * every answer below the version 7; `bin2hex()` renders it, and {@see \Protocol\Kafka\Protocol\Data\DeleteTopicsRequestTopic}
+ * is where it can be handed back.
+ *
  * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreatedTopic
@@ -41,6 +48,7 @@ final class CreatedTopic
      * @param int                 $replicationFactor Replicas per partition, or `CreateTopicsResponseTopic::UNKNOWN`
      * @param Config|null         $config            Configuration of the new topic, `null` when the broker sent none
      * @param int                 $configErrorCode   Why the configuration is null, 0 when there is no reason
+     * @param string              $topicId           Id of the new topic, the raw 16 bytes of its UUID
      */
     public function __construct(
         public readonly string $topic,
@@ -48,7 +56,8 @@ final class CreatedTopic
         public readonly int $numPartitions = CreateTopicsResponseTopic::UNKNOWN,
         public readonly int $replicationFactor = CreateTopicsResponseTopic::UNKNOWN,
         public readonly ?Config $config = null,
-        public readonly int $configErrorCode = 0
+        public readonly int $configErrorCode = 0,
+        public readonly string $topicId = CreateTopicsResponseTopic::NO_TOPIC_ID
     ) {}
 
     /**
@@ -86,7 +95,8 @@ final class CreatedTopic
             $entry->numPartitions,
             $entry->replicationFactor,
             $config,
-            $entry->topicConfigErrorCode
+            $entry->topicConfigErrorCode,
+            $entry->topicId
         );
     }
 }

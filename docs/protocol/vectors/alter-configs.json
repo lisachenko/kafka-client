@@ -360,6 +360,59 @@
                     }
                 ]
             }
+        },
+        {
+            "id": "alterconfigs.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "AlterConfigs request v2 (Kafka 2.8, KIP-482): the whole configuration of a topic resource, one option of it, in the flexible encoding this version introduced - the fields are those of the version 1.",
+            "hex": "0000003f0021000200000324000a74342d766563746f72730002020e74342d32382d766563746f7273020d726574656e74696f6e2e6d73083732303030303000000000",
+            "fields": {
+                "messageSize": 63,
+                "apiKey": 33,
+                "apiVersion": 2,
+                "correlationId": 804,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "resources": [
+                    {
+                        "resourceType": 2,
+                        "resourceName": "t4-28-vectors",
+                        "configEntries": {
+                            "retention.ms": {
+                                "configName": "retention.ms",
+                                "configValue": "7200000"
+                            }
+                        }
+                    }
+                ],
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "alterconfigs.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "AlterConfigs answer v2: the error code 0 and the compact null of the error message for the resource that was replaced, with a tagged-field section behind the body and behind the resource.",
+            "hex": "0000001e00000324000000000002000000020e74342d32382d766563746f72730000",
+            "fields": {
+                "messageSize": 30,
+                "correlationId": 804,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "resources": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "resourceType": 2,
+                        "resourceName": "t4-28-vectors"
+                    }
+                ]
+            }
         }
     ]
 }

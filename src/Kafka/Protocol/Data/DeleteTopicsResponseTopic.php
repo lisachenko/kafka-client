@@ -32,12 +32,19 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * only marked for deletion because the request carried a timeout of 0 with 7 (RequestTimedOut), and every topic of
  * the request with 41 (NotController) when the broker is not the active controller.
  *
+ * **Kafka 2.7 added the `error_message` with the version 5** (KIP-599), which a 2.8.2 broker leaves `null` in
+ * every answer it sends - the field is filled by the KRaft controller of the later lines. **Kafka 2.8 added the
+ * `topic_id` with the version 6** (KIP-516) and made the name **nullable** with it: an answer names the topic by
+ * the id the controller gave it next to the name the request used, and the name is null for a topic that was
+ * deleted by its id and could not be resolved to one. {@see DeleteTopicsResponseTopicV5} is the entry of the
+ * version 5 and {@see DeleteTopicsResponseTopicV0} the one of every version below it.
+ *
  * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 class DeleteTopicsResponseTopic implements BinarySchemaInterface
 {
     /**
-     * Version of the entry this class stands for, the one Kafka 2.7 gave an error message
+     * Version of the entry this class stands for, the one Kafka 2.8 gave a topic id
      */
     public const int VERSION = 6;
 
