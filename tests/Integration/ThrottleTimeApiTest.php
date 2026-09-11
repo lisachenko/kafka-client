@@ -36,6 +36,7 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV2;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
@@ -307,7 +308,9 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
         self::assertSame(RawApiProbe::ANSWERED, $answer['status'], 'the connection stays open on a 2.x broker');
         self::assertSame(501, $answer['correlationId']);
 
-        $coordinator = GroupCoordinatorResponse::unpack(
+        // The frame was sent as a version 2 request, so it is read with the class of that version: the main one
+        // speaks the flexible v3 of KIP-482 now
+        $coordinator = GroupCoordinatorResponseV2::unpack(
             new StringStream(pack('N', 4 + strlen($answer['body'])) . pack('N', 501) . $answer['body'])
         );
 
