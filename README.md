@@ -30,12 +30,13 @@ composer require lisachenko/kafka-client:dev-main
 ```
 
 **PHP 8.4 or newer, and nothing else** — `ext-openssl` is needed only for `SSL`/`SASL_SSL` and
-`ext-zlib` (bundled with PHP) for `gzip`; the `snappy` and `lz4` codecs are implemented in PHP and
-use `ext-snappy` only when it happens to be installed. `main` is the branch the top of the
-cascade lives on, so it is installed by branch name; the frozen lines below it carry a numeric
-branch and are installed by constraint (`^0.11@dev` for `0.11.x`, `^0.10@dev` for `0.10.x`, and so
-on). A line is frozen as a numeric branch when the line above it starts, so code that must keep
-speaking Kafka 1.1.1 pins the branch rather than `dev-main`.
+`ext-zlib` (bundled with PHP) for `gzip` and `ext-zstd` for the `zstd` codec of Kafka 2.1; the
+`snappy` and `lz4` codecs are implemented in PHP and use `ext-snappy` only when it happens to be
+installed. `main` is the branch the top of the cascade lives on, so it is installed by branch name;
+the frozen lines below it carry a numeric branch and are installed by constraint (`^1.1@dev` for
+`1.x`, `^0.11@dev` for `0.11.x`, `^0.10@dev` for `0.10.x`, and so on). A line is frozen as a numeric
+branch when the line above it starts, so code that must keep speaking Kafka 1.1.1 pins the branch
+rather than `dev-main`.
 
 Producer API
 ------------
@@ -78,8 +79,9 @@ collected until they fill `ProducerConfig::BATCH_SIZE` bytes or `ProducerConfig:
 has passed, and a batch that fails with a retriable error is sent again `ProducerConfig::RETRIES`
 times — that option is the whole retry budget of a batch and defaults to no retry at all, like
 the Java producer. Compression is set with `ProducerConfig::COMPRESSION_TYPE` and applies to a
-whole batch: `gzip`, `snappy` and — new in Kafka 0.10.0 — `lz4`, in the frame format of the
-Kafka producer including the KAFKA-3160 checksum quirk of a message format v0 frame.
+whole batch: `gzip`, `snappy`, `lz4` (Kafka 0.10.0) and `zstd` (Kafka 2.1, KIP-110, through
+`ext-zstd`), in the frame format of the Kafka producer including the KAFKA-3160 checksum quirk of a
+message format v0 frame.
 
 **Message formats, timestamps and headers.** Kafka 0.10.0 gave every record a timestamp:
 `Record::$timestamp` (milliseconds since the epoch) and `Record::$timestampType`
@@ -89,11 +91,12 @@ metadata next to the key and the value. `send()` stamps the create time of every
 not carry one, and `ProducerConfig::MESSAGE_FORMAT_VERSION` (`message.format.version`, `0.11.0` by
 default) selects the format a batch is written in — the record batch v2 by default, `0.10.x` for a
 message set with timestamps and `0.9.0` for one without. The format decides the version of the
-Produce request: only the message format v2 travels in a **Produce v5**, and only it has a place
+Produce request: only the message format v2 travels in a **Produce v9**, and only it has a place
 for the headers, for the producer id of an idempotent producer and for a transaction; a message set
-is sent as a Produce v2, and a 1.1.1 broker closes the connection on a Produce v3 or above that
-carries one. `RecordMetadata::$timestamp` reports what the **log** holds: the create time of the
-first record of the batch, or the `LogAppendTime` the broker answered with (Produce v2 and above)
+is sent as a Produce v2, and a 2.8.2 broker answers **87** `INVALID_RECORD` for every partition of
+a Produce v3 or above that carries one. `RecordMetadata::$timestamp` reports what the **log** holds:
+the create time of the first record of the batch, or the `LogAppendTime` the broker answered with
+(Produce v2 and above)
 when the topic is configured with `message.timestamp.type=LogAppendTime`. Version 5 (Kafka 1.0)
 also reports the `logStartOffset` of every partition it answers — the first offset the log still
 holds after a retention run or a `deleteRecords()` — on `ProduceResponsePartition`.
@@ -318,11 +321,11 @@ does not.
 of a record batch v2 carries the headers the producer wrote (`ConsumerRecord::$headers`, a list of
 `Common\Record\Header`), next to the key, the value, the timestamp and its type; a topic whose
 `message.format.version` is older simply has none. `ConsumerConfig::ISOLATION_LEVEL`
-(`isolation.level`, `read_uncommitted` by default) is sent as the isolation level of the Fetch v7
+(`isolation.level`, `read_uncommitted` by default) is sent as the isolation level of the Fetch v12
 request: with `read_committed` the broker answers only up to the **last stable offset** — the first
 record of a transaction that has neither committed nor aborted — and names the aborted transactions
 of the answer, whose records the consumer drops. The control batches of the transaction protocol are
-never handed to an application in either level. The option travels in the **Offsets v2** request as
+never handed to an application in either level. The option travels in the **Offsets v6** request as
 well, so `endOffsets()`, `position()` and `seekToEnd()` of a `read_committed` consumer answer the last
 stable offset instead of the log end offset — a consumer that compares its position against the end of
 a partition compares it against the offset it can really reach. `AdminClient::listOffsets()` stays at
@@ -647,8 +650,8 @@ marked **(0.10)**.
 | `acks` | 1 | `0` fire-and-forget, `1` the leader's log, `-1` all in-sync replicas |
 | `timeout.ms` | 2000 | how long the broker waits for the replicas of a batch |
 | `batch.size` / `linger.ms` | 0 / 0 | when a batch is sent |
-| `compression.type` | `none` | `none`, `gzip`, `snappy`, **(0.10)** `lz4` |
-| `message.format.version` **(0.10)** | `0.11.0` | format a batch is written in, and with it the Produce version: `0.9.0` and below format v0, `0.10.x` format v1 with timestamps (both a Produce v2), `0.11.0` the record batch v2 with headers (a Produce v5) |
+| `compression.type` | `none` | `none`, `gzip`, `snappy`, **(0.10)** `lz4`, **(2.1)** `zstd` (needs `ext-zstd`) |
+| `message.format.version` **(0.10)** | `0.11.0` | format a batch is written in, and with it the Produce version: `0.9.0` and below format v0, `0.10.x` format v1 with timestamps (both a Produce v2), `0.11.0` the record batch v2 with headers (a Produce v9) |
 | `max.request.size` | 1048576 | biggest record this client will buffer |
 | `retries` / `retry.backoff.ms` | 0 / 100 | retry budget of a batch; **3** when `enable.idempotence` is on and it was not set |
 | `enable.idempotence` **(0.11)** | false | exactly once and in order per partition; implies `acks = all` and a non-zero `retries` |
@@ -889,7 +892,7 @@ current milestone):
 | **KIP-430: authorized operations** of Metadata v8 and DescribeGroups v3 (`Common\AclOperation`) | 2.3 | – | – | – | – | – | **yes** (the supported operations on a broker without an authorizer) |
 | **KIP-392: reading from a follower** (`client.rack`, `preferred_read_replica` of Fetch v11) | 2.3 | – | – | – | – | – | **wire only** — one broker never names another replica |
 | **KIP-339: `incrementalAlterConfigs()`** (IncrementalAlterConfigs v0) | 2.3 | – | – | – | – | – | **yes** (SET, DELETE, APPEND, SUBTRACT) |
-| **KIP-482: flexible versions and tagged fields** (compact strings, bytes and arrays, request header v2, response header v1) | 2.4 | – | – | – | – | – | **yes** — every api whose 2.4 version is flexible is sent that way (ApiVersions v3, Metadata v9, the ten group apis, CreateTopics v5, DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1, ControlledShutdown v3, InitProducerId v2, CreateDelegationToken v2) |
+| **KIP-482: flexible versions and tagged fields** (compact strings, bytes and arrays, request header v2, response header v1) | 2.4 | – | – | – | – | – | **yes** — the 2.4 versions were the first (ApiVersions v3, Metadata v9, the ten group apis, CreateTopics v5, DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1, ControlledShutdown v3, InitProducerId v2, CreateDelegationToken v2), and every flexible version Kafka 2.5 to 2.8 added is sent that way too — DeleteRecords v2 (2.6), Fetch v12 and the four transaction apis (2.7), Produce v9, ListOffsets v6, OffsetForLeaderEpoch v4 and Metadata v10/v11 (2.8) — so that **SaslHandshake v1 and OffsetDelete v0 are the only requests this client still sends in a plain frame** |
 | **KIP-455: partition reassignments** (`alterPartitionReassignments()`, `listPartitionReassignments()`) | 2.4 | – | – | – | – | – | **yes** |
 | **KIP-496: `deleteConsumerGroupOffsets()`** (OffsetDelete v0) | 2.4 | – | – | – | – | – | **yes** |
 | **KIP-345: static members removed by hand** (`removeMembersFromConsumerGroup()`, LeaveGroup v3) and the `group_instance_id` of DescribeGroups v4 | 2.4 | – | – | – | – | – | **yes** |
@@ -908,11 +911,11 @@ current milestone):
 | **KIP-554: SCRAM credentials over the wire** (`describeUserScramCredentials()`, `alterUserScramCredentials()`) | 2.7 | – | – | – | – | – | **yes** — the credentials can be managed, the SCRAM login itself is still not spoken |
 | **KIP-584: feature versions** (`describeFeatures()`, `updateFeatures()`) | 2.7 | – | – | – | – | – | **yes** |
 | **KIP-516: topic ids** (`Common\Uuid`, Metadata v10 and v11, `TopicMetadata::$topicId`) | 2.8 | – | – | – | – | – | **yes** — a deleted and re-created topic of the same name gets a new id |
-| **KIP-700 / KIP-664: `describeCluster()` and `describeProducers()`** | 2.8 | – | – | – | – | – | **yes** |
+| **KIP-700: the cluster-wide authorized operations leave Metadata** (gone from the request and the answer of Metadata v11, asked with `describeCluster()`) and **KIP-664: `describeProducers()`** | 2.8 | – | – | – | – | – | **yes** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) |
 
-What a later minor of Kafka 2.x adds is not on this branch yet — the line is built minor by minor and
-the current milestone is **Kafka 2.7**:
+The 2.x line is complete at **Kafka 2.8**; what is missing below is missing for another reason than
+the milestone:
 
 | Feature                                          | Arrived in | On this branch                        |
 |--------------------------------------------------|------------|---------------------------------------|
@@ -925,7 +928,7 @@ Five properties of a 2.8.2 broker regularly surprise clients, and this implement
 with all of them explicitly:
 
 * **An api the broker does not serve costs the connection.** A request whose api key or version
-  a 1.1.1 broker cannot parse — and a body that does not match the schema of a version it
+  a 2.8.2 broker cannot parse — and a body that does not match the schema of a version it
   does serve — makes it **close the socket**: `Closing socket for … because of error` in the
   broker log, and the end of the stream for the client, reported as a `NetworkException`. A
   0.9.0.1 broker only dropped such a frame and kept the connection open, so code ported from
