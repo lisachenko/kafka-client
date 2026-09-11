@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The topic entry itself never changed; what a version selects is the shape of its partition entries, which is
  * what the version constant of this DTO picks in {@see self::partitionClass()}, see {@see FetchRequestTopicV0}.
  *
- * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v8)"
  */
 class FetchRequestTopic implements BinarySchemaInterface
 {

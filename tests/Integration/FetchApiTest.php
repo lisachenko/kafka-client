@@ -35,6 +35,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
 use Protocol\Kafka\Protocol\Request\FetchRequestV5;
 use Protocol\Kafka\Protocol\Request\FetchRequestV6;
+use Protocol\Kafka\Protocol\Request\FetchRequestV7;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
@@ -42,6 +43,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 use Protocol\Kafka\Protocol\Request\FetchResponseV5;
 use Protocol\Kafka\Protocol\Request\FetchResponseV6;
+use Protocol\Kafka\Protocol\Request\FetchResponseV7;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
@@ -59,7 +61,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * ({@see FetchSessionApiTest}) - this one only checks that a version 7 request **without** a session is served
  * like a version 6 one, which is what {@see \Protocol\Kafka\Client::fetchPartitions()} sends.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v8)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV6::class)]
@@ -90,9 +92,12 @@ final class FetchApiTest extends IntegrationTestCase
     private const int FETCH_MAX_WAIT_MS = 500;
 
     /**
-     * A fixed CreateTime for the produced records, 2017-03-12T13:20:00Z
+     * CreateTime of the records this test produces, taken from the clock in {@see self::setUp()}
+     *
+     * It must never be a fixed date of the past: the retention of the broker deletes a log segment by the LARGEST
+     * timestamp it holds, so a record stamped with 2017 is swept away while the suite is still running.
      */
-    private const int CREATE_TIME = 1489324800000;
+    private int $createTime;
 
     /**
      * Topic of the current test, created and given a leader by {@see self::setUp()}
@@ -103,7 +108,8 @@ final class FetchApiTest extends IntegrationTestCase
     {
         parent::setUp();
 
-        $this->topic = self::uniqueTopicName('t4-fetch');
+        $this->topic      = self::uniqueTopicName('t4-fetch');
+        $this->createTime = self::currentTimestampMs();
         new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, self::CLIENT_ID)
             ->awaitTopicWithLeaders($this->topic);
     }
@@ -111,8 +117,8 @@ final class FetchApiTest extends IntegrationTestCase
     public function testAVersionTwoAnswerCarriesTheMessageFormatOfTheLogAndAVersionOneAnswerDoesNot(): void
     {
         $this->produce(0, [
-            new Record('with a timestamp', 'key', 0, null, self::CREATE_TIME),
-            new Record('and another one', null, 0, null, self::CREATE_TIME + 1),
+            new Record('with a timestamp', 'key', 0, null, $this->createTime),
+            new Record('and another one', null, 0, null, $this->createTime + 1),
         ]);
 
         $stream   = $this->connect();
@@ -121,7 +127,7 @@ final class FetchApiTest extends IntegrationTestCase
 
         self::assertSame(Message::MAGIC_V1, $version2->getRecords()->getMagic());
         self::assertSame(
-            [self::CREATE_TIME, self::CREATE_TIME + 1],
+            [$this->createTime, $this->createTime + 1],
             array_map(static fn(Record $record): ?int => $record->timestamp, $records),
             'from version 2 on the broker answers with the message format the log holds'
         );
@@ -151,7 +157,7 @@ final class FetchApiTest extends IntegrationTestCase
 
     public function testTheAnswerOfAVersionThreeRequestIsTheAnswerOfAVersionTwoOne(): void
     {
-        $this->produce(0, [new Record('same frame', null, 0, null, self::CREATE_TIME)]);
+        $this->produce(0, [new Record('same frame', null, 0, null, $this->createTime)]);
 
         $stream   = $this->connect();
         $version2 = $this->fetch($stream, FetchRequestV2::class, FetchResponseV2::class, 0, 63);
@@ -289,6 +295,29 @@ final class FetchApiTest extends IntegrationTestCase
         );
     }
 
+    public function testTheAnswerOfAVersionEightRequestIsTheVersionSevenFrame(): void
+    {
+        // `FetchRequest.json` @ 2.8.2 says "Version 8 is the same as version 7" and `FetchResponse.json` only
+        // notes that a throttled answer is now sent before the delay: the two frames are the same bytes, and the
+        // version this client sends (8, KIP-219) is the promise that it waits the throttle time out itself
+        $this->produce(0, [new Record('version eight', null, 0, null, self::currentTimestampMs())]);
+
+        $stream       = $this->connect();
+        $versionSeven = $this->fetch($stream, FetchRequestV7::class, FetchResponseV7::class, 0, 94);
+        $versionEight = $this->fetch($stream, FetchRequest::class, FetchResponse::class, 0, 95);
+
+        self::assertSame(0, $versionEight->errorCode);
+        self::assertSame(['version eight'], self::valuesOf($versionEight));
+        self::assertSame($versionSeven->highWaterMarkOffset, $versionEight->highWaterMarkOffset);
+        self::assertSame($versionSeven->lastStableOffset, $versionEight->lastStableOffset);
+        self::assertSame($versionSeven->logStartOffset, $versionEight->logStartOffset);
+        self::assertSame(
+            bin2hex((string) $versionSeven->messageSet),
+            bin2hex((string) $versionEight->messageSet)
+        );
+        self::assertSame(8, FetchRequest::VERSION, 'the client sends the Fetch version Kafka 2.0 added');
+    }
+
     public function testAVersionSevenRequestWithoutASessionIsServedLikeAVersionSixOne(): void
     {
         // `session_id = 0` with `epoch = -1` is the LEGACY metadata of the Java client, which is what
@@ -334,12 +363,24 @@ final class FetchApiTest extends IntegrationTestCase
         $committedV4    = $this->fetchWithIsolationLevel($stream, 4, FetchRequest::READ_COMMITTED, 74);
         $uncommittedV5  = $this->fetchWithIsolationLevel($stream, 5, FetchRequest::READ_UNCOMMITTED, 75);
         $committedV5    = $this->fetchWithIsolationLevel($stream, 5, FetchRequest::READ_COMMITTED, 76);
+        $uncommittedV8  = $this->fetchWithIsolationLevel($stream, 8, FetchRequest::READ_UNCOMMITTED, 77);
+        $committedV8    = $this->fetchWithIsolationLevel($stream, 8, FetchRequest::READ_COMMITTED, 78);
 
-        foreach (['v4' => $uncommittedV4, 'v5' => $uncommittedV5] as $version => $partition) {
+        // **What changed with Kafka 2.x**: a 0.11.0.3 and a 1.1.1 broker answered `last_stable_offset = -1` to a
+        // read_uncommitted fetch - "you did not ask, so I did not compute it" - while a 2.8.2 broker fills the
+        // field in for both isolation levels (`Partition.readRecords` always puts the LSO into its LogReadInfo).
+        // The aborted-transactions array did NOT change: it is still null unless read_committed asked for it.
+        $uncommitted = ['v4' => $uncommittedV4, 'v5' => $uncommittedV5, 'v8' => $uncommittedV8];
+        foreach ($uncommitted as $version => $partition) {
             self::assertSame(
+                $partition->highWaterMarkOffset,
+                $partition->lastStableOffset,
+                "a 2.8.2 broker answers the real last stable offset to a read_uncommitted {$version} fetch too"
+            );
+            self::assertNotSame(
                 FetchResponsePartition::INVALID_LAST_STABLE_OFFSET,
                 $partition->lastStableOffset,
-                "a read_uncommitted {$version} fetch is answered with the last stable offset -1"
+                "the -1 of the lines below this one is gone ({$version})"
             );
             self::assertNull(
                 $partition->abortedTransactions,
@@ -347,7 +388,7 @@ final class FetchApiTest extends IntegrationTestCase
             );
         }
 
-        foreach (['v4' => $committedV4, 'v5' => $committedV5] as $version => $partition) {
+        foreach (['v4' => $committedV4, 'v5' => $committedV5, 'v8' => $committedV8] as $version => $partition) {
             self::assertSame(
                 $partition->highWaterMarkOffset,
                 $partition->lastStableOffset,
@@ -387,8 +428,8 @@ final class FetchApiTest extends IntegrationTestCase
 
     public function testTheRequestLevelMaxBytesIsSpentOnThePartitionsInTheOrderOfTheRequest(): void
     {
-        $this->produce(0, [new Record('partition zero', null, 0, null, self::CREATE_TIME)]);
-        $this->produce(1, [new Record('partition one', null, 0, null, self::CREATE_TIME)]);
+        $this->produce(0, [new Record('partition zero', null, 0, null, $this->createTime)]);
+        $this->produce(1, [new Record('partition one', null, 0, null, $this->createTime)]);
 
         // 40 bytes are less than a single message of either partition, so the broker serves the first partition of
         // the request - which gets its message in full - and leaves nothing for the second one
@@ -407,7 +448,7 @@ final class FetchApiTest extends IntegrationTestCase
 
     public function testTheFirstPartitionOfAnAnswerIsServedEvenWhenItsMessageIsBiggerThanEveryLimit(): void
     {
-        $this->produce(0, [new Record(str_repeat('x', 4096), null, 0, null, self::CREATE_TIME)]);
+        $this->produce(0, [new Record(str_repeat('x', 4096), null, 0, null, $this->createTime)]);
 
         // Neither the partition limit nor the request limit fits that message; version 3 returns it anyway, so
         // that a consumer can always make progress (KIP-74)
@@ -448,7 +489,11 @@ final class FetchApiTest extends IntegrationTestCase
         self::assertSame(0, $uncommitted->errorCode);
         self::assertSame(1, $uncommitted->highWaterMarkOffset);
         self::assertSame(0, $uncommitted->logStartOffset, 'version 5 reports it for both isolation levels');
-        self::assertSame(-1, $uncommitted->lastStableOffset, 'a read_uncommitted fetch does not ask for the LSO');
+        self::assertSame(
+            1,
+            $uncommitted->lastStableOffset,
+            'a 2.8.2 broker answers the real LSO to a read_uncommitted fetch as well, where 1.1.1 answered -1'
+        );
         self::assertNull($uncommitted->abortedTransactions);
 
         self::assertSame(1, $committed->lastStableOffset, 'without a transaction the LSO is the high water mark');
@@ -615,8 +660,16 @@ final class FetchApiTest extends IntegrationTestCase
         int $correlationId,
         int $partition = 0
     ): FetchResponsePartition {
-        $requestClass  = $version === 5 ? FetchRequestV5::class : FetchRequestV4::class;
-        $responseClass = $version === 5 ? FetchResponseV5::class : FetchResponseV4::class;
+        $requestClass = match ($version) {
+            8       => FetchRequest::class,
+            5       => FetchRequestV5::class,
+            default => FetchRequestV4::class,
+        };
+        $responseClass = match ($version) {
+            8       => FetchResponse::class,
+            5       => FetchResponseV5::class,
+            default => FetchResponseV4::class,
+        };
 
         new $requestClass(
             [$this->topic => [$partition => 0]],

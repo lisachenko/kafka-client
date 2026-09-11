@@ -43,6 +43,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
 use Protocol\Kafka\Protocol\Request\FetchRequestV5;
 use Protocol\Kafka\Protocol\Request\FetchRequestV6;
+use Protocol\Kafka\Protocol\Request\FetchRequestV7;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV0;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
@@ -51,6 +52,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 use Protocol\Kafka\Protocol\Request\FetchResponseV5;
 use Protocol\Kafka\Protocol\Request\FetchResponseV6;
+use Protocol\Kafka\Protocol\Request\FetchResponseV7;
 
 /**
  * Byte-exact tests for the Fetch API, versions 0 to 7.
@@ -71,7 +73,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV6;
  *   FetchResponse v7        => ThrottleTimeMs ErrorCode SessionId [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v7)", "Fetch sessions (v7, KIP-227)" and
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v8)", "Fetch sessions (v7, KIP-227)" and
  *      "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
@@ -162,14 +164,37 @@ final class FetchApiTest extends TestCase
         . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400';
 
     /**
-     * The same request as a version 7 one: the `SessionId` and the `Epoch` of KIP-227 between the
-     * `IsolationLevel` and the topics, and the `forgotten_topics_data` array behind them.
+     * The same request as a version 8 one, which is what this client sends: the `SessionId` and the `Epoch` of
+     * KIP-227 between the `IsolationLevel` and the topics, and the `forgotten_topics_data` array behind them.
      *
-     *   Size           => 00 00 00 6a (106 bytes), ApiVersion => 00 07
+     * Version 8 (Kafka 2.0, KIP-219) is byte-identical to version 7, see {@see self::FETCH_REQUEST_V7_HEX}.
+     *
+     *   Size           => 00 00 00 6a (106 bytes), ApiVersion => 00 08
      *   SessionId      => 00 00 00 00 (no session), Epoch => ff ff ff ff (-1, FINAL_EPOCH)
      *   [ForgottenTopic] => 00 00 00 00 (nothing to forget)
      */
     private const string FETCH_REQUEST_HEX = '0000006a'
+        . '0001'
+        . '0008'
+        . '00000001'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00000064'
+        . '00000001'
+        . '00100000'
+        . '00'
+        . '00000000' . 'ffffffff'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000002'
+        . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+        . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
+        . '00000000';
+
+    /**
+     * The very same frame with the api version 7 in its header, which is what a Kafka 1.1.1 broker was sent
+     */
+    private const string FETCH_REQUEST_V7_HEX = '0000006a'
         . '0001'
         . '0007'
         . '00000001'
@@ -256,7 +281,7 @@ final class FetchApiTest extends TestCase
 
     public function testVersion7SendsTheSessionIdAndTheEpochBetweenTheIsolationLevelAndTheTopics(): void
     {
-        $request = new FetchRequest(
+        $request = new FetchRequestV7(
             ['topic' => [0 => 0]],
             100,
             1,
@@ -286,6 +311,24 @@ final class FetchApiTest extends TestCase
         self::assertSame(123, $request->getMetadata()->sessionId);
         self::assertSame(4, $request->getMetadata()->epoch);
         self::assertSame(['topic' => [2, 3], 'other' => [0]], $request->getForgottenTopicPartitions());
+    }
+
+    public function testVersion8IsTheVersionSevenFrameWithAnotherApiVersion(): void
+    {
+        $request = new FetchRequest(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        // `FetchRequest.json` @ 2.8.2 has no field of version 8 and says "Version 8 is the same as version 7":
+        // what version 8 (Kafka 2.0, KIP-219) states is that the client waits out `throttle_time_ms` itself,
+        // because the broker answers a throttled request first and mutes the channel afterwards
+        self::assertSame(self::FETCH_REQUEST_V7_HEX, substr_replace(self::FETCH_REQUEST_HEX, '0007', 12, 4));
+        self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
+        self::assertSame(8, $request->getApiVersion());
+        self::assertSame(FetchRequestV7::getScheme(), FetchRequest::getScheme());
+        self::assertSame(FetchResponseV7::getScheme(), FetchResponse::getScheme());
+        self::assertSame(8, FetchRequest::VERSION);
+        self::assertSame(8, FetchResponse::VERSION);
+        self::assertSame(7, FetchRequestV7::VERSION);
+        self::assertSame(7, FetchResponseV7::VERSION);
     }
 
     public function testVersion6RequestIsTheVersionFiveFrameWithAnotherApiVersion(): void

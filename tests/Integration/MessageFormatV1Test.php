@@ -67,9 +67,12 @@ final class MessageFormatV1Test extends IntegrationTestCase
     private const int PRODUCE_TIMEOUT_MS = 5000;
 
     /**
-     * A fixed CreateTime for the produced records, 2017-03-12T12:00:00Z
+     * CreateTime of the records this test produces, taken from the clock in {@see self::setUp()}
+     *
+     * It must never be a fixed date of the past: the retention of the broker deletes a log segment by the LARGEST
+     * timestamp it holds, so a record stamped with 2017 is swept away while the suite is still running.
      */
-    private const int CREATE_TIME = 1489324800000;
+    private int $createTime;
 
     /**
      * Topic of the current test, created and given a leader by {@see MessageFormatV1Test::setUp()}
@@ -80,7 +83,8 @@ final class MessageFormatV1Test extends IntegrationTestCase
     {
         parent::setUp();
 
-        $this->topic = self::uniqueTopicName('t2-message-format');
+        $this->topic      = self::uniqueTopicName('t2-message-format');
+        $this->createTime = self::currentTimestampMs();
         $this->awaitTopic($this->topic);
     }
 
@@ -99,9 +103,9 @@ final class MessageFormatV1Test extends IntegrationTestCase
     public function testTheTimestampsOfABatchSurviveTheRoundTripThroughTheBroker(int $codec): void
     {
         $records = [
-            new Record('alpha', 'first', 0, null, self::CREATE_TIME),
-            new Record('bravo', null, 0, null, self::CREATE_TIME + 10),
-            new Record('charlie', 'third', 0, null, self::CREATE_TIME + 5),
+            new Record('alpha', 'first', 0, null, $this->createTime),
+            new Record('bravo', null, 0, null, $this->createTime + 10),
+            new Record('charlie', 'third', 0, null, $this->createTime + 5),
         ];
 
         $baseOffset = $this->produce(MessageSet::fromRecords($records, $codec));
@@ -109,7 +113,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
 
         self::assertCount(3, $fetched);
         self::assertSame(
-            [self::CREATE_TIME, self::CREATE_TIME + 10, self::CREATE_TIME + 5],
+            [$this->createTime, $this->createTime + 10, $this->createTime + 5],
             array_map(static fn(Record $record): ?int => $record->timestamp, $fetched),
             'the broker stores the CreateTime of every record as it was produced'
         );
@@ -132,7 +136,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
     public function testTheBrokerStoresTheMessageFormatTheProducerWrote(int $codec): void
     {
         $baseOffset = $this->produce(MessageSet::fromRecords(
-            [new Record('alpha', null, 0, null, self::CREATE_TIME)],
+            [new Record('alpha', null, 0, null, $this->createTime)],
             $codec
         ));
 
@@ -181,8 +185,8 @@ final class MessageFormatV1Test extends IntegrationTestCase
         $before     = (int) round(microtime(true) * 1000);
         $baseOffset = $this->produce(
             MessageSet::fromRecords([
-                new Record('alpha', null, 0, null, self::CREATE_TIME),
-                new Record('bravo', null, 0, null, self::CREATE_TIME + 10),
+                new Record('alpha', null, 0, null, $this->createTime),
+                new Record('bravo', null, 0, null, $this->createTime + 10),
             ]),
             $topic
         );
@@ -212,8 +216,8 @@ final class MessageFormatV1Test extends IntegrationTestCase
 
         $baseOffset = $this->produce(
             MessageSet::fromRecords([
-                new Record('alpha', null, 0, null, self::CREATE_TIME),
-                new Record('bravo', null, 0, null, self::CREATE_TIME + 10),
+                new Record('alpha', null, 0, null, $this->createTime),
+                new Record('bravo', null, 0, null, $this->createTime + 10),
             ], CompressionCodec::GZIP),
             $topic
         );
@@ -260,8 +264,8 @@ final class MessageFormatV1Test extends IntegrationTestCase
     public function testTheBrokerDownConvertsToMessageFormatV0ForAFetchBelowVersionTwo(int $codec): void
     {
         $records = [
-            new Record('alpha', 'first', 0, null, self::CREATE_TIME),
-            new Record('bravo', null, 0, null, self::CREATE_TIME + 10),
+            new Record('alpha', 'first', 0, null, $this->createTime),
+            new Record('bravo', null, 0, null, $this->createTime + 10),
         ];
 
         $baseOffset = $this->produce(MessageSet::fromRecords($records, $codec));
@@ -339,7 +343,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
         $this->awaitTopic($topic);
 
         $baseOffset = $this->produce(
-            MessageSet::fromRecords([new Record('alpha', null, 0, null, self::CREATE_TIME)], CompressionCodec::NONE),
+            MessageSet::fromRecords([new Record('alpha', null, 0, null, $this->createTime)], CompressionCodec::NONE),
             $topic
         );
 
@@ -423,7 +427,7 @@ final class MessageFormatV1Test extends IntegrationTestCase
         $topic ??= $this->topic;
         $stream = $this->connect();
         // A message set of the formats v0 and v1 may only travel in a request below version 3, see
-        // docs/protocol/2.8.md, section "Produce API (key 0, v0 to v5)"
+        // docs/protocol/2.8.md, section "Produce API (key 0, v0 to v6)"
         new ProduceRequestV2(
             [$topic => [self::PARTITION => $messageSet]],
             1,
@@ -478,5 +482,14 @@ final class MessageFormatV1Test extends IntegrationTestCase
         }
 
         return $partition;
+    }
+
+    /**
+     * The current time in milliseconds; a test never stamps a record with a timestamp of the past, because the
+     * retention of the broker deletes a segment by the largest timestamp it holds
+     */
+    private static function currentTimestampMs(): int
+    {
+        return (int) round(microtime(true) * 1000);
     }
 }

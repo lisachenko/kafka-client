@@ -114,17 +114,32 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Throwable;
 
 /**
- * Low-level client for the Kafka 0.11.0.3 protocol.
+ * Low-level client for the Kafka protocol.
  *
- * Every api is sent with the highest version a 0.11.0.3 broker serves: Produce v3, which carries a record batch of
- * the message format v2 and the transactional id of its producer and whose answer reports the `LogAppendTime` and
- * the `LogStartOffset` of every partition, Fetch v5, which asks for the log as it lies, bounds the whole answer
- * with `fetch.max.bytes` and states the isolation level of the consumer, OffsetCommit v6 with its leader epoch,
- * and OffsetCommit v0 when the offsets are stored in ZooKeeper. The apis that KIP-124 raised go out with the
- * version whose answer carries a `throttle_time_ms` - Metadata v4, Offsets v2, OffsetFetch v5, GroupCoordinator v2
- * and the group membership apis one version up. The lower version classes of those apis stay usable directly, for a
- * client that has to talk to an older broker - and `message.format.version` lowers the Produce request to v2 by
- * itself, because a message set of the formats v0 and v1 has no place in a version 3 request.
+ * Every api is sent with the highest version this line implements for it. **Kafka 2.0 raised every request-response
+ * api by one** without changing a single byte of its frame (KIP-219): Produce goes out as **v6**, Fetch as **v8**,
+ * Offsets (ListOffsets) as **v3** and Metadata as **v6**, where the 1.x line sent v5, v7, v2 and v5, and the group
+ * apis one version up as well. Kafka 2.1 and 2.2 then raised three of those: OffsetCommit goes out as **v6**, with
+ * the `committed_leader_epoch` of KIP-320 and without the `retention_time` that KIP-211 removed, OffsetFetch as
+ * **v5**, whose answer carries that epoch back, and JoinGroup as **v4**, whose first join is refused once with the
+ * member id the coordinator assigns (KIP-394); GroupCoordinator, Heartbeat, SyncGroup, LeaveGroup, DescribeGroups,
+ * ListGroups and DeleteGroups stay at their KIP-219 versions. What those versions promise is what
+ * {@see self::awaitThrottle()} does - see the runtime note below.
+ * Everything else is unchanged: Produce carries a record batch of the message format v2 and the transactional id of
+ * its producer and its answer reports the `LogAppendTime` and the `LogStartOffset` of every partition, Fetch asks
+ * for the log as it lies, bounds the whole answer with `fetch.max.bytes`, states the isolation level of the
+ * consumer and can open an incremental fetch session, and OffsetCommit v0 is used when the offsets are stored in
+ * ZooKeeper. The lower version classes of every api stay usable directly,
+ * for a client that has to talk to an older broker - and `message.format.version` lowers the Produce request to v2
+ * by itself, because a message set of the formats v0 and v1 has no place in a version 3 or higher request.
+ *
+ * **The one runtime change of Kafka 2.0 (KIP-219).** A broker that throttles a request answers it *first* and
+ * **mutes the channel** for the `throttle_time_ms` it reports, instead of holding the answer back for that long -
+ * and a 2.8.2 broker does that for every api version, the bumped ones only being how a client *states* that it
+ * knows. This client therefore remembers the moment the throttle of each broker ends and sleeps whatever is left
+ * of it before its next request to that broker, exactly as the Java `NetworkClient` does;
+ * {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT} switches the waiting off and leaves the stall on
+ * the broker side, where it makes the next throttle longer.
  *
  * Every request that addresses topic-partitions is split by their current leader and sent to all of those brokers
  * at once; the answers are collected with `stream_select()` as they arrive. A topic-partition whose leader answered
@@ -160,6 +175,18 @@ class Client
      * @var array<int, FetchSessionHandler>
      */
     private array $fetchSessionHandlers = [];
+
+    /**
+     * Moment at which the throttle of a broker ends, as a UNIX timestamp with microseconds, by node id (KIP-219)
+     *
+     * An entry is written whenever an answer of that broker reported a `throttle_time_ms` above zero and is spent
+     * - and removed - by the next request this client sends to the same broker, see {@see self::awaitThrottle()}.
+     *
+     * @see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT
+     *
+     * @var array<int, float>
+     */
+    private array $throttledUntil = [];
 
     public function __construct(
         /**
@@ -217,16 +244,19 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as **Produce v5** for the message format v2 (`message.format.version=0.11.0`, `1.0` or
-     * `1.1`, the default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version
-     * 3 request has no place for. Every accepted partition carries three values the broker reported next to its
-     * base offset: the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured
+     * The request goes out as **Produce v6** for the message format v2 (`message.format.version=0.11.0` and every
+     * value above it, the default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which
+     * a version 3 request has no place for. Version 6 (Kafka 2.0, KIP-219) is the version 5 frame with another
+     * number in its header; what it changes is that a throttled answer arrives immediately and the channel is
+     * muted afterwards, which {@see self::awaitThrottle()} waits out.
+     *
+     * Every accepted partition carries three values the broker reported next to its base offset: the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured
      * with `message.timestamp.type=LogAppendTime`, the `logStartOffset` of the partition, which version 5 (Kafka
      * 1.0) appended to the answer and which a producer needs to tell a spurious `OutOfOrderSequence` from a real
      * one, and the `throttleTimeMs` of the answer it arrived in, which is 0 without a `producer_byte_rate` quota.
-     * The versions 3 and 4 added no field to the answer at all - `PRODUCE_RESPONSE_V4` is `PRODUCE_RESPONSE_V3` is
-     * `PRODUCE_RESPONSE_V2` @ 1.1.1 - so the version this client sends is the first one that reports the log start
-     * offset.
+     * The versions 3, 4 and 6 added no field to the answer at all - `ProduceResponse.json` @ 2.8.2 has none of
+     * them - so version 5 is the first one that reports the log start offset, and the version this client sends
+     * carries the very same partition entry.
      *
      * An idempotent or transactional producer hands over its {@see TransactionManager}, which is the whole
      * difference between "at least once" and "exactly once, in order": the batch of every topic-partition is then
@@ -522,9 +552,10 @@ class Client
             }
         }
 
-        // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the highest
-        // version that has no place for a transactional id; the message format v2 goes out as Produce v5, the
-        // first version whose answer reports the log start offset of every partition
+        // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the
+        // highest version that has no place for a transactional id; the message format v2 goes out as Produce v6,
+        // the version Kafka 2.0 bumped the api to (KIP-219), whose answer is the version 5 frame - the first one
+        // that reports the log start offset of every partition
         $requestClass  = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceRequest::class : ProduceRequestV2::class;
         $createRequest = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
             => new $requestClass(
@@ -1583,6 +1614,8 @@ class Client
             $stream        = $coordinatorNode->getConnection($this->configuration);
             $correlationId = AbstractRequest::nextCorrelationId();
 
+            // KIP-219: the channel of a broker that throttled the last answer is muted, see self::awaitThrottle()
+            $this->awaitThrottle($coordinatorNode->nodeId);
             $createRequest($correlationId)->writeTo($stream);
 
             try {
@@ -1597,6 +1630,7 @@ class Client
 
                 throw $exception;
             }
+            $this->recordThrottleTime($coordinatorNode->nodeId, $response);
 
             return $readResponse($response);
         });
@@ -1672,6 +1706,9 @@ class Client
 
         foreach ($messageSetsByNode as $nodeId => $nodeTopicPartitionMessageSets) {
             $stream = $this->connectionTo($nodeId);
+            // An acks = 0 request is never answered, so it can never learn of a throttle itself - but a throttle
+            // that an earlier answer of this broker reported still mutes the channel, and is waited out here
+            $this->awaitThrottle($nodeId);
             $createRequest($nodeTopicPartitionMessageSets, AbstractRequest::nextCorrelationId())->writeTo($stream);
         }
     }
@@ -1791,6 +1828,9 @@ class Client
                 $correlationId = AbstractRequest::nextCorrelationId();
                 $request       = $nodeRequest($nodeTopicPartitions, $correlationId, $nodeId);
                 $stream        = $this->connectionTo($nodeId);
+                // KIP-219: a broker that throttled the last answer has muted this channel, so the request is
+                // held back until the reported delay has passed instead of being written into the mute
+                $this->awaitThrottle($nodeId);
                 if ($stream instanceof SocketStream) {
                     // Opened before the request is written, so that the answers of every leader can be awaited at
                     // once with stream_select() instead of one after another
@@ -1823,6 +1863,7 @@ class Client
                     $correlationIds[$nodeId],
                     ['node' => $nodeId]
                 );
+                $this->recordThrottleTime($nodeId, $responses[$nodeId]);
             } catch (CorrelationIdMismatchException $exception) {
                 // The stream position of a desynchronized connection is unknown, it must not be used again
                 ConnectionFactory::closeStream($stream);
@@ -1883,6 +1924,99 @@ class Client
         }
 
         return $result;
+    }
+
+    /**
+     * Waits out whatever is left of the throttle a broker imposed on this client, before the next request to it.
+     *
+     * This is the client half of **KIP-219** (Kafka 2.0), which the versions Produce v6, Fetch v8, Offsets v3 and
+     * Metadata v6 announce: a broker that throttles a request answers it **immediately**, with the delay it is
+     * about to impose in `throttle_time_ms`, and mutes the channel for that long afterwards, where a broker below
+     * Kafka 2.0 simply held the answer back for the same time. A client that writes its next request right away
+     * therefore does not get served any earlier - it writes into a muted connection, waits out the mute anyway and
+     * makes the next throttle longer - which is why this method sleeps the remaining time first, exactly as the
+     * Java `NetworkClient` does.
+     *
+     * What is remembered is the **deadline**, not the value: a caller that spent the throttle time doing
+     * something else does not wait for it twice, and the entry is spent by the first request that follows the
+     * throttled answer. {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT} switches the waiting off,
+     * which leaves the stall on the broker side, as every line of this package below 2.0 had it.
+     *
+     * The metadata refresh of {@see Cluster} does not pass through here: it opens its own connection to any
+     * broker of the bootstrap list and is not part of this client's per-node bookkeeping.
+     *
+     * @param int $nodeId Broker the next request goes to
+     */
+    private function awaitThrottle(int $nodeId): void
+    {
+        $deadline = $this->throttledUntil[$nodeId] ?? null;
+        if ($deadline === null) {
+            return;
+        }
+
+        unset($this->throttledUntil[$nodeId]);
+        // Rounded to whole microseconds, which is the resolution of usleep(): the product of two floats is off
+        // by a few nanoseconds and would otherwise turn a 400 ms throttle into 400001 microseconds of sleep
+        $remainingMicroseconds = (int) round(($deadline - $this->currentTime()) * 1000000);
+        if ($remainingMicroseconds > 0) {
+            $this->sleepFor($remainingMicroseconds);
+        }
+    }
+
+    /**
+     * Remembers when the throttle that an answer reports ends, so that the next request to that broker waits.
+     *
+     * Nothing is remembered when the answer carries no throttle time, when it reports zero - the answer of every
+     * broker without a quota - or when {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT} is off.
+     *
+     * @param int              $nodeId   Broker that sent the answer
+     * @param AbstractResponse $response Answer that was just read
+     */
+    private function recordThrottleTime(int $nodeId, AbstractResponse $response): void
+    {
+        if (!($this->configuration[ClientConfig::THROTTLE_WAIT] ?? true)) {
+            return;
+        }
+
+        $throttleTimeMs = self::throttleTimeOf($response);
+        if ($throttleTimeMs > 0) {
+            $this->throttledUntil[$nodeId] = $this->currentTime() + $throttleTimeMs / 1000;
+        }
+    }
+
+    /**
+     * Reads the `throttle_time_ms` of any answer, whatever the property of its class is called.
+     *
+     * The field has two names in this package, because the apis spell it differently on the wire and the classes
+     * follow the spec: the Produce answer reports `ThrottleTime` **behind** its topics array
+     * ({@see ProduceResponse::$throttleTime}), every other api carries `throttle_time_ms` in front of its body
+     * ({@see FetchResponse::$throttleTimeMs}). An answer of a version that predates KIP-124 has neither.
+     */
+    private static function throttleTimeOf(AbstractResponse $response): int
+    {
+        foreach (['throttleTimeMs', 'throttleTime'] as $property) {
+            if (property_exists($response, $property)) {
+                return (int) $response->$property;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Returns the current time as a UNIX timestamp with microseconds; a test double replaces the clock here
+     */
+    protected function currentTime(): float
+    {
+        return microtime(true);
+    }
+
+    /**
+     * Sleeps for the given number of microseconds; a test double replaces the sleep here
+     */
+    protected function sleepFor(int $microseconds): void
+    {
+        usleep($microseconds);
     }
 
     /**
