@@ -19,6 +19,7 @@ namespace Protocol\Kafka;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Admin\ElectionType;
 use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Admin\RecordsToDelete;
@@ -2374,28 +2375,35 @@ class Client
     }
 
     /**
-     * Asks the controller to elect the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183)
+     * Asks the controller to elect the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183/KIP-460)
      *
-     * The version 0 of the api can only ask for the **preferred** replica - the `election_type` of KIP-460 is a
-     * field of the version 1 - so this method has no election type at all; {@see Admin\AdminClient::electLeaders()}
-     * is what refuses anything else. `$topicPartitions` is a `topic => list of partition ids` map, or **null** for
-     * every partition of the cluster, and the answer is read into a `topic => partition => error` map with `null`
-     * for every partition that really got a new leader.
+     * `$electionType` is the `election_type` byte Kafka 2.4 added with the **version 1** of the api (KIP-460):
+     * {@see Admin\ElectionType::PREFERRED} moves the leadership back to the first replica of the assignment, and
+     * {@see Admin\ElectionType::UNCLEAN} makes the first LIVE replica the leader even when none of them is in
+     * sync. `$topicPartitions` is a `topic => list of partition ids` map, or **null** for every partition of the
+     * cluster, and the answer is read into a `topic => partition => error` map with `null` for every partition
+     * that really got a new leader.
      *
      * A partition that the controller left out of its answer - which happens for a **null** request, where every
      * partition that needed no election is dropped - is not in the result either: the caller asked for "whatever
-     * needs electing", and nothing else is reported.
+     * needs electing", and nothing else is reported. The **top-level** error code of the version 1 answer is the
+     * one case this method throws for: it is the 31 of a client the authorizer refused, which names no partition
+     * at all.
      *
      * @param Node                          $controller      Active controller of the cluster
      * @param array<string, list<int>>|null $topicPartitions Partitions to elect a leader for, null for all of them
      * @param int                           $timeoutMs       How long the controller waits for the elections
+     * @param int                           $electionType    Kind of election, an {@see Admin\ElectionType} constant
+     *
+     * @throws KafkaException If the answer carries a top-level error code (version 1 and above)
      *
      * @return array<string, array<int, KafkaException|null>> Error of every answered partition
      */
     public function electLeaders(
         Node $controller,
         ?array $topicPartitions,
-        int $timeoutMs = ElectLeadersRequest::DEFAULT_TIMEOUT_MS
+        int $timeoutMs = ElectLeadersRequest::DEFAULT_TIMEOUT_MS,
+        int $electionType = ElectionType::PREFERRED
     ): array {
         $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
 
@@ -2404,11 +2412,19 @@ class Client
             fn(int $correlationId): AbstractRequest => new ElectLeadersRequest(
                 $topicPartitions,
                 $timeoutMs,
+                $electionType,
                 $clientId,
                 $correlationId
             ),
             ElectLeadersResponse::class,
             static function (ElectLeadersResponse $response): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['error' => 'The request as a whole was refused by the broker']
+                    );
+                }
+
                 $result = [];
                 foreach ($response->replicaElectionResults as $topic => $election) {
                     foreach ($election->partitionResult as $partition) {
