@@ -616,7 +616,7 @@ class AdminClient
     }
 
     /**
-     * Elects the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183)
+     * Elects the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183 and KIP-460)
      *
      * The api of KIP-183 is what `kafka-preferred-replica-election.sh` had to write into ZooKeeper before: it asks
      * the **active controller** to move the leadership of a partition to its **preferred replica**, the first
@@ -629,22 +629,25 @@ class AdminClient
      * answer of such a request holds only the partitions that were really elected or really failed - the broker
      * drops every `ElectionNotNeeded` from it. A named partition that needs no election is reported with **84**.
      *
-     * Version 0 of the api can only ask for the preferred replica: the `election_type` byte of
-     * {@see ElectionType::UNCLEAN} is a field of the version 1 that Kafka 2.4 adds, and the Java client of 2.8.2
-     * refuses the combination in the very same way ("API Version 0 only supports PREFERRED election type").
+     * **Kafka 2.4 added the `election_type` of KIP-460** with the version 1 of the api, which is what this line
+     * sends: {@see ElectionType::UNCLEAN} makes the first LIVE replica the leader of a partition that has none,
+     * accepting the data loss of the records the old leader had and the new one has not. It is the emergency
+     * button of `kafka-leader-election.sh --election-type unclean`, and the controller only acts on it for a
+     * partition whose leader is gone - a partition that still has a live leader is **84**, exactly as for the
+     * preferred election. The election type is refused client-side when it is not one of the two.
      *
      * Every requested partition gets an entry in the result: `null` when it was elected, otherwise the exception of
      * its error code - 84 ElectionNotNeeded, 3 UnknownTopicOrPartition, 17 InvalidTopic for a topic that is being
-     * deleted, 80 PreferredLeaderNotAvailable when the preferred replica is not in the ISR. Nothing is thrown for
-     * a partition that failed, exactly like {@see self::createTopics()}.
+     * deleted, 80 PreferredLeaderNotAvailable when the preferred replica is not in the ISR and 83
+     * EligibleLeadersNotAvailable when an unclean election finds no live replica at all. Nothing is thrown for a
+     * partition that failed, exactly like {@see self::createTopics()}.
      *
      * @param int $electionType Kind of election, one of the {@see ElectionType} constants
      * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Partitions to elect a leader
      *        for, null for every partition of the cluster
      * @param int $timeoutMs How long the controller waits for the elections, in milliseconds
      *
-     * @throws UnsupportedVersionException If an election type other than PREFERRED is asked of the version 0 this
-     *         line sends
+     * @throws UnsupportedVersionException If the election type is not one of the {@see ElectionType} constants
      * @throws AllBrokersNotAvailableException If no broker of the cluster answered
      * @throws NotControllerException If the cluster has no active controller
      *
@@ -656,16 +659,16 @@ class AdminClient
         ?iterable $topicPartitions = null,
         int $timeoutMs = ElectLeadersRequest::DEFAULT_TIMEOUT_MS
     ): array {
-        if ($electionType !== ElectionType::PREFERRED) {
+        if (!ElectionType::isKnown($electionType)) {
             throw new UnsupportedVersionException([
                 'electionType' => ElectionType::nameOf($electionType),
-                'error'        => 'API Version 0 only supports PREFERRED election type',
+                'error'        => 'Unknown election type',
             ]);
         }
 
         $partitions = $topicPartitions === null ? null : self::normalizeTopicPartitions($topicPartitions);
         $request    = fn(Node $controller): array => $this->client()
-            ->electLeaders($controller, $partitions, $timeoutMs);
+            ->electLeaders($controller, $partitions, $timeoutMs, $electionType);
 
         $result = $request($this->findController());
         if (self::holdsNotController($result)) {

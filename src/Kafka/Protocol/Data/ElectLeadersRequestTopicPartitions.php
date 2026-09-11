@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `topic_partitions` array of the request is **nullable**, and a null one asks the controller to look at every
  * partition of the cluster.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
  */
 class ElectLeadersRequestTopicPartitions implements BinarySchemaInterface
 {
