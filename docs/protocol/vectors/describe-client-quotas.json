@@ -1,0 +1,102 @@
+{
+    "api": "describe-client-quotas",
+    "apiKey": 48,
+    "section": "DescribeClientQuotas API (key 48, v0)",
+    "description": "Wire vectors of the DescribeClientQuotas API (key 48, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describeclientquotas.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClientQuotasRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeClientQuotas request v0 for one named `client-id`. Kafka 2.6 added this api **after** KIP-482 and still without the compact encoding - `DescribeClientQuotasRequest.json` @ 2.6.3 and @ 2.7.2 both say `\"flexibleVersions\": \"none\"` - so the frame is a plain one: int16-prefixed strings, an int32-counted component array and no tag buffer anywhere. `strict` is the single byte `00` that closes it.",
+            "hex": "0000004400300000000017d600176b61666b612d636c69656e742d74312d766563746f7273000000010009636c69656e742d696400001074312d71756f74612d766563746f727300",
+            "fields": {
+                "messageSize": 68,
+                "apiKey": 48,
+                "apiVersion": 0,
+                "correlationId": 6102,
+                "clientId": "kafka-client-t1-vectors",
+                "components": [
+                    {
+                        "entityType": "client-id",
+                        "matchType": 0,
+                        "match": "t1-quota-vectors"
+                    }
+                ],
+                "strict": false
+            }
+        },
+        {
+            "id": "describeclientquotas.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClientQuotasResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the container: one entry, whose entity is the array `[client-id = t1-quota-vectors]` and whose values are the two quotas that were set. **`producer_byte_rate` and `request_percentage` are `float64`s** - eight bytes of an IEEE 754 double in network order, `41 30 00 00 00 00 00 00` being 1048576 and `40 29 00 00 00 00 00 00` being 12.5 - the only place in this protocol where that type appears.",
+            "hex": "0000006d000017d6000000000000000000000001000000010009636c69656e742d6964001074312d71756f74612d766563746f7273000000020012726571756573745f70657263656e746167654029000000000000001270726f64756365725f627974655f726174654130000000000000",
+            "fields": {
+                "messageSize": 109,
+                "correlationId": 6102,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "entries": [
+                    {
+                        "entity": {
+                            "client-id": {
+                                "entityType": "client-id",
+                                "entityName": "t1-quota-vectors"
+                            }
+                        },
+                        "values": {
+                            "request_percentage": {
+                                "key": "request_percentage",
+                                "value": 12.5
+                            },
+                            "producer_byte_rate": {
+                                "key": "producer_byte_rate",
+                                "value": 1048576.0
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeclientquotas.response.v0.unsupported-entity-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClientQuotasResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "What a filter for an entity type the broker does not know is answered with: **35** (`UnsupportedVersion`, not 42) and the message *\"Custom entity type 't1-nonsense' not supported\"*, and the entry array is **null** (`ff ff ff ff`) - `DescribeClientQuotasResponse.fromException()` @ 2.8.2 builds every error answer with a null array, while a filter that simply matched nothing answers an empty one.",
+            "hex": "0000003e000017d8000000000023002e437573746f6d20656e746974792074797065202774312d6e6f6e73656e736527206e6f7420737570706f72746564ffffffff",
+            "fields": {
+                "messageSize": 62,
+                "correlationId": 6104,
+                "throttleTimeMs": 0,
+                "errorCode": 35,
+                "errorMessage": "Custom entity type 't1-nonsense' not supported",
+                "entries": null
+            }
+        },
+        {
+            "id": "describeclientquotas.response.v0.unknown-match-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClientQuotasResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "And what a **match type** the broker does not know is answered with: the error code **-1** (`UnknownServerError`) and a null message. `DescribeClientQuotasRequest.filter()` @ 2.8.2 throws a plain `IllegalArgumentException(\"Unexpected match type: 7\")` before any error mapping happens, so the request falls into the generic handler of `KafkaApis` - a validation gap of the broker rather than a code it means to send.",
+            "hex": "00000010000017d900000000ffffffffffffffff",
+            "fields": {
+                "messageSize": 16,
+                "correlationId": 6105,
+                "throttleTimeMs": 0,
+                "errorCode": -1,
+                "errorMessage": null,
+                "entries": null
+            }
+        }
+    ]
+}

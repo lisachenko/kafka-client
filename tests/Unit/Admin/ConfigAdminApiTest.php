@@ -19,6 +19,7 @@ use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\Config;
 use Protocol\Kafka\Admin\ConfigResource;
 use Protocol\Kafka\Admin\ConfigSource;
+use Protocol\Kafka\Admin\ConfigType;
 use Protocol\Kafka\Admin\DeletedRecords;
 use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Client;
@@ -42,7 +43,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 to v2)", "DescribeConfigs API (key 32, v0, v1 and v2)" and
+ * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 to v2)", "DescribeConfigs API (key 32, v0 to v3)" and
  *      "AlterConfigs API (key 33, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
@@ -54,7 +55,7 @@ final class ConfigAdminApiTest extends TestCase
     /**
      * The topic of the DescribeConfigs v1 vectors, which was created with `segment.bytes` of its own
      */
-    private const string VECTOR_TOPIC = 't4-configs-own';
+    private const string VECTOR_TOPIC = 't4-26-own';
 
     private const string BOOTSTRAP_ADDRESS = 'tcp://bootstrap:9092';
 
@@ -76,12 +77,13 @@ final class ConfigAdminApiTest extends TestCase
 
     public function testDescribeConfigsOfATopicGoesToAnyBrokerAndIsKeyedByTheResource(): void
     {
-        // The answer of a 1.1.1 broker to the version 1 this client sends: the resource of the ANSWER is what the
-        // result is keyed by, and every entry carries its config source and its synonyms
+        // The answer of a 2.8.2 broker to the version 3 this client sends: the resource of the ANSWER is what the
+        // result is keyed by, every entry carries its config source and its synonyms (KIP-226) and, behind them,
+        // the data type and the documentation of KIP-569
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, new BrokerConnection(
-                self::vector('describe-configs', 'describeconfigs.response.v1.topic')
+                self::vector('describe-configs', 'describeconfigs.response.v3.own-option')
             ))
             ->install();
 
@@ -103,9 +105,9 @@ final class ConfigAdminApiTest extends TestCase
         );
     }
 
-    public function testTheRequestIsTheVersionTwoOfKafkaTwoZeroWithTheSynonymFlagOfKip226(): void
+    public function testTheRequestIsTheVersionThreeOfKafkaTwoSixWithBothFlagsOfKip226AndKip569(): void
     {
-        $broker = new BrokerConnection(self::vector('describe-configs', 'describeconfigs.response.v1.topic'));
+        $broker = new BrokerConnection(self::vector('describe-configs', 'describeconfigs.response.v3.own-option'));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, $broker)
@@ -117,11 +119,15 @@ final class ConfigAdminApiTest extends TestCase
         $frame = $broker->getReceivedFrames()[0];
         self::assertSame(ApiKeys::DESCRIBE_CONFIGS, unpack('n', substr($frame, 0, 2))[1]);
         self::assertSame(
-            2,
+            3,
             unpack('n', substr($frame, 2, 2))[1],
-            'the api version of the header is the 2 that Kafka 2.0 added (KIP-219)'
+            'the api version of the header is the 3 that Kafka 2.6 added (KIP-569)'
         );
-        self::assertSame("\x01", substr($frame, -1), 'and include_synonyms is the last byte of the frame');
+        self::assertSame(
+            "\x01\x00",
+            substr($frame, -2),
+            'and the two flags close the frame: include_synonyms true, include_documentation false'
+        );
     }
 
     public function testDescribeConfigsOfABrokerGoesToThatBroker(): void
@@ -138,6 +144,11 @@ final class ConfigAdminApiTest extends TestCase
         self::assertTrue($configs['broker:1']->get('broker.id')->isReadOnly, 'the id of a broker is never dynamic');
         self::assertSame(ConfigSource::STATIC_BROKER_CONFIG, $configs['broker:1']->get('broker.id')->source);
         self::assertFalse($configs['broker:1']->get('broker.id')->isDefault, 'a static value is not a default');
+        self::assertSame(ConfigType::INT, $configs['broker:1']->get('broker.id')->type, 'the type of KIP-569');
+        self::assertNull(
+            $configs['broker:1']->get('broker.id')->documentation,
+            'which the broker fills whatever `include_documentation` says, unlike the documentation'
+        );
         self::assertSame(
             ['broker.id' => '1'],
             $configs['broker:1']->nonDefaultValues(),
@@ -155,8 +166,8 @@ final class ConfigAdminApiTest extends TestCase
     {
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
-            // A resource that was refused carries no config entry at all, so its frame is the same in both
-            // versions of the api - the v0 vector of the 0.11 line is a valid v1 answer
+            // A resource that was refused carries no config entry at all, so its frame is the same in every
+            // version of the api - the v0 vector of the 0.11 line is a valid v3 answer
             ->on(self::SECOND_BROKER, new BrokerConnection(
                 self::vector('describe-configs', 'describeconfigs.response.v0.unknown-broker')
             ))
@@ -324,6 +335,9 @@ final class ConfigAdminApiTest extends TestCase
         $body .= pack('n', 9) . 'broker.id' . pack('n', strlen($name)) . $name
             . pack('c', ConfigSource::STATIC_BROKER_CONFIG);
         $body .= pack('n', 9) . 'broker.id' . pack('n', 2) . '-1' . pack('c', ConfigSource::DEFAULT_CONFIG);
+        // The two fields KIP-569 appended to every entry with the version 3: the data type of the option and its
+        // documentation, which is the null string for a request that did not ask for it
+        $body .= pack('c', ConfigType::INT) . pack('n', 0xFFFF);
 
         return ResponseFrame::of(0, $body);
     }

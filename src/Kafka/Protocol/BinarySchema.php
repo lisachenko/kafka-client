@@ -95,6 +95,15 @@ class BinarySchema
     public const int TYPE_TAG_BUFFER = 22;
 
     /**
+     * An IEEE 754 double in **big-endian** byte order, the `float64` of the JSON message specifications (Kafka 2.6)
+     *
+     * `Type.FLOAT64` of the Java client writes it with `ByteBuffer.putDouble()`, i.e. network order, and the only
+     * fields of Kafka 2.8.2 that use it are the quota values of DescribeClientQuotas (48) and AlterClientQuotas
+     * (49). A fixed-width type, so the compact encoding does not touch it.
+     */
+    public const int TYPE_FLOAT64 = 23;
+
+    /**
      * Array notation key: the element count is a zigzag varint instead of an int32 (the headers of a record, Kafka 0.11)
      */
     public const int FLAG_VARARRAY = 14;
@@ -154,6 +163,9 @@ class BinarySchema
 
             case self::TYPE_BOOLEAN:
                 return 1;
+
+            case self::TYPE_FLOAT64:
+                return 8;
 
             case self::TYPE_UUID:
                 return 16;
@@ -435,6 +447,9 @@ class BinarySchema
                 // Types.BOOLEAN of the Java client reads any non-zero byte as true and always writes 0 or 1
                 return $stream->read('CBOOLEAN')['BOOLEAN'] !== 0;
 
+            case self::TYPE_FLOAT64:
+                return $stream->read('EFLOAT64')['FLOAT64'];
+
             case self::TYPE_UUID:
                 return (string) $stream->read('a16data')['data'];
 
@@ -573,6 +588,10 @@ class BinarySchema
                 return;
             case self::TYPE_BOOLEAN:
                 $stream->write('C', $value ? 1 : 0);
+
+                return;
+            case self::TYPE_FLOAT64:
+                $stream->write('E', (float) $value);
 
                 return;
             case self::TYPE_UUID:

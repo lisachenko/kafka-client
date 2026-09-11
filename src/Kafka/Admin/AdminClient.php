@@ -47,6 +47,8 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\AlterClientQuotasResponse;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
@@ -59,6 +61,8 @@ use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
@@ -113,6 +117,14 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
  */
 class AdminClient
 {
+    /**
+     * Protocol type of a consumer group, the `consumer` of `ConsumerProtocol.PROTOCOL_TYPE` @ 2.8.2
+     *
+     * ListGroups answers **every** group its coordinator holds, whatever protocol it runs;
+     * {@see self::listConsumerGroups()} keeps the ones a consumer of this package could have created.
+     */
+    public const string CONSUMER_PROTOCOL_TYPE = 'consumer';
+
     /**
      * Client configuration, with the defaults of {@see ClientConfig} filled in
      *
@@ -424,25 +436,35 @@ class AdminClient
      *
      * A broker only knows the groups it coordinates itself, so this is never the list of the whole cluster - use
      * {@see self::listAllGroups()} for that. The answer holds one entry per group with its protocol type, `consumer`
-     * for the groups of a `KafkaConsumer` and of the Java consumer; an entry says nothing about the state of the
-     * group, {@see self::describeGroup()} does.
+     * for the groups of a `KafkaConsumer` and of the Java consumer, and - since version 4 (KIP-518, Kafka 2.6) -
+     * with the **state** of the group, which had to be asked of {@see self::describeGroup()} before.
+     *
+     * `$states` bounds the answer to the groups in one of the named states, which are the `STATE_*` constants of
+     * {@see DescribeGroupResponseMetadata} and are matched verbatim by the coordinator. An empty list is every
+     * group, and a state no group is in is an empty answer and not an error - so is a name that is not a state at
+     * all, because the coordinator compares strings and never validates them.
      *
      * A group appears here as soon as it has a member and stays until the coordinator forgets it, which happens once
      * the last member is gone and the retention of its committed offsets has expired.
      *
-     * @param Node $node Broker to ask
+     * @param Node         $node   Broker to ask
+     * @param list<string> $states States to list, empty for every group (KIP-518, version 4)
      *
      * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If the coordinator is shutting down
      * @throws \Protocol\Kafka\Common\Errors\GroupLoadInProgressException If it is still reading `__consumer_offsets`
      *
      * @return array<string, ListGroupResponseProtocol> Groups of that broker, indexed by the group id
      */
-    public function listGroups(Node $node): array
+    public function listGroups(Node $node, array $states = []): array
     {
         /** @var ListGroupsResponse $response */
         $response = $this->sendTo(
             $node->getConnection($this->configuration),
-            fn(int $correlationId): ListGroupsRequest => new ListGroupsRequest($this->clientId(), $correlationId),
+            fn(int $correlationId): ListGroupsRequest => new ListGroupsRequest(
+                $this->clientId(),
+                $correlationId,
+                $states
+            ),
             ListGroupsResponse::class,
             ['node' => $node->nodeId]
         );
@@ -463,18 +485,43 @@ class AdminClient
      * an unreachable broker through - a silently incomplete group list is worse than a failed call. Ask the brokers
      * one by one with {@see self::listGroups()} when a partial answer is good enough.
      *
+     * @param list<string> $states States to list, empty for every group (KIP-518, version 4)
+     *
      * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
      *
      * @return array<string, ListGroupResponseProtocol> Groups of the cluster, indexed by the group id
      */
-    public function listAllGroups(): array
+    public function listAllGroups(array $states = []): array
     {
         $groups = [];
         foreach ($this->findAllBrokers() as $node) {
-            $groups += $this->listGroups($node);
+            $groups += $this->listGroups($node, $states);
         }
 
         return $groups;
+    }
+
+    /**
+     * Lists the **consumer** groups of the whole cluster, optionally only those in one of the given states
+     *
+     * This is the `listConsumerGroups()` of the Java admin client, and it differs from {@see self::listAllGroups()}
+     * in one thing: a group of another protocol type - a Kafka Connect worker group, a Streams group of another
+     * kind, anything a client of this package did not create - is left out, because the api lists *every* group of
+     * the coordinator and not only the ones a consumer would recognise. The state of each group comes with the
+     * listing since KIP-518 (Kafka 2.6), so a caller no longer has to describe every group to find the empty ones.
+     *
+     * @param list<string> $states States to list, empty for every consumer group (KIP-518, version 4)
+     *
+     * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
+     *
+     * @return array<string, ListGroupResponseProtocol> Consumer groups of the cluster, indexed by the group id
+     */
+    public function listConsumerGroups(array $states = []): array
+    {
+        return array_filter(
+            $this->listAllGroups($states),
+            static fn(ListGroupResponseProtocol $group): bool => $group->protocolType === self::CONSUMER_PROTOCOL_TYPE
+        );
     }
 
     /**
@@ -1123,7 +1170,8 @@ class AdminClient
     public function describeConfigs(
         array $resources,
         ?array $configNames = null,
-        bool $includeSynonyms = false
+        bool $includeSynonyms = false,
+        bool $includeDocumentation = false
     ): array {
         $result = [];
         foreach ($this->groupByConfigNode($resources) as [$nodeId, $nodeResources]) {
@@ -1135,6 +1183,7 @@ class AdminClient
             $createRequest = fn(int $correlationId): DescribeConfigsRequest => new DescribeConfigsRequest(
                 $entries,
                 $includeSynonyms,
+                $includeDocumentation,
                 $this->clientId(),
                 $correlationId
             );
@@ -1729,6 +1778,106 @@ class AdminClient
     }
 
     /**
+     * Reads the client quotas of the cluster (ApiKey 48, Kafka 2.6, KIP-546)
+     *
+     * Until Kafka 2.6 a client quota could only be read out of **ZooKeeper**, which is why every quota test of the
+     * lines below this one shells into the container; KIP-546 gave it a protocol of its own. The request is served
+     * from the quota cache of whatever broker answers it, so it goes to the first broker that is reachable.
+     *
+     * The filter is a conjunction: an entity has to match **every** component to be answered, and
+     * {@see ClientQuotaFilter::all()} matches everything. The `strict` flag of {@see ClientQuotaFilter::containsOnly()}
+     * decides what happens to entities that carry parts of a type the filter does not name - a quota that is
+     * attached to a `user` *and* a `client-id` is answered by a non-strict `client-id` filter and hidden by a
+     * strict one.
+     *
+     * The answer carries **every** quota of a matching entity, not only the ones the filter was interested in.
+     *
+     * @param ClientQuotaFilter $filter Which entities to describe
+     *
+     * @throws KafkaException If the broker refused the filter, e.g. with 42 (InvalidRequest) for an entity type it
+     *         does not know
+     *
+     * @return array<string, array<string, float>> Quotas per entity, indexed by the string form of
+     *         {@see ClientQuotaEntity} (`client-id=t1-quota`, `user=<default>`) and by the quota name
+     */
+    public function describeClientQuotas(ClientQuotaFilter $filter): array
+    {
+        /** @var DescribeClientQuotasResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeClientQuotasRequest => new DescribeClientQuotasRequest(
+                $filter->toData(),
+                $filter->strict,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeClientQuotasResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The broker refused the quota filter']
+            );
+        }
+
+        $result = [];
+        foreach ($response->entries ?? [] as $entry) {
+            $values = [];
+            foreach ($entry->values as $value) {
+                $values[$value->key] = $value->value;
+            }
+            $result[(string) ClientQuotaEntity::fromData($entry->entity)] = $values;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Sets and removes client quotas (ApiKey 49, Kafka 2.6, KIP-546)
+     *
+     * The other half of KIP-546. One {@see ClientQuotaAlteration} carries one entity and every change asked for
+     * it, a change being a value to set or a quota to remove ({@see ClientQuotaAlterationOp::remove()}); an entity
+     * that is refused does not stop the others, so the result reports **every** entity of the call and throws
+     * nothing - there is no top-level error code in this api at all.
+     *
+     * `$validateOnly` asks the broker to check the request and change nothing, which answers the very same shape.
+     *
+     * A quota that was removed leaves the entity with whatever the `<default>` entity of its type says, and an
+     * entity without a single quota left disappears from {@see self::describeClientQuotas()}.
+     *
+     * @param list<ClientQuotaAlteration> $alterations  Entities and the changes asked for them
+     * @param bool                        $validateOnly Whether the broker only checks the request
+     *
+     * @return array<string, KafkaException|null> Error of every entity of the call, indexed by the string form of
+     *         {@see ClientQuotaEntity}; null when every change of that entity was applied
+     */
+    public function alterClientQuotas(array $alterations, bool $validateOnly = false): array
+    {
+        $entries = array_map(static fn(ClientQuotaAlteration $a) => $a->toData(), array_values($alterations));
+
+        /** @var AlterClientQuotasResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): AlterClientQuotasRequest => new AlterClientQuotasRequest(
+                $entries,
+                $validateOnly,
+                $this->clientId(),
+                $correlationId
+            ),
+            AlterClientQuotasResponse::class
+        );
+
+        $result = [];
+        foreach ($response->entries as $entry) {
+            $entity          = (string) ClientQuotaEntity::fromData($entry->entity);
+            $result[$entity] = $entry->errorCode === KafkaException::NO_ERROR
+                ? null
+                : KafkaException::fromCode(
+                    $entry->errorCode,
+                    ['entity' => $entity] + ($entry->errorMessage !== null ? ['error' => $entry->errorMessage] : [])
+                );
+        }
+
+        return $result;
     }
 
     /**

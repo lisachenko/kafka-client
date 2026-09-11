@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
  * {@see DescribeConfigsResponseV0}. A 1.1.1 broker still serves it, which is what
  * `tests/Integration/ConfigsApiTest.php` checks.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
  */
 final class DescribeConfigsRequestV0 extends DescribeConfigsRequest
 {
@@ -45,6 +45,6 @@ final class DescribeConfigsRequestV0 extends DescribeConfigsRequest
      */
     public function __construct(array $resources, string $clientId = '', int $correlationId = 0)
     {
-        parent::__construct($resources, false, $clientId, $correlationId);
+        parent::__construct($resources, false, false, $clientId, $correlationId);
     }
 }
