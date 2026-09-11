@@ -44,8 +44,10 @@ use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV0;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV0;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequest;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 
@@ -53,7 +55,7 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
  * @see docs/protocol/2.8.md, sections "AddPartitionsToTxn API (key 24, v0 and v1)", "AddOffsetsToTxn API (key 25, v0 and v1)",
- *      "EndTxn API (key 26, v0 and v1)", "WriteTxnMarkers API (key 27, v0)" and "TxnOffsetCommit API (key 28, v0 and v1)"
+ *      "EndTxn API (key 26, v0 and v1)", "WriteTxnMarkers API (key 27, v0)" and "TxnOffsetCommit API (key 28, v0 to v2)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
 #[CoversClass(AddPartitionsToTxnRequestV0::class)]
@@ -77,8 +79,10 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 #[CoversClass(WriteTxnMarkersResponsePartition::class)]
 #[CoversClass(TxnOffsetCommitRequest::class)]
 #[CoversClass(TxnOffsetCommitRequestV0::class)]
+#[CoversClass(TxnOffsetCommitRequestV1::class)]
 #[CoversClass(TxnOffsetCommitResponse::class)]
 #[CoversClass(TxnOffsetCommitResponseV0::class)]
+#[CoversClass(TxnOffsetCommitResponseV1::class)]
 #[CoversClass(TxnOffsetCommitRequestTopic::class)]
 #[CoversClass(TxnOffsetCommitRequestPartition::class)]
 #[CoversClass(TxnOffsetCommitResponseTopic::class)]
@@ -211,12 +215,31 @@ final class TransactionApiTest extends TestCase
     /**
      * TxnOffsetCommit request v0 for one partition with metadata.
      *
-     *   Size => 00 00 00 4a (74), ApiKey => 00 1c (28), TransactionalId "tx-1", GroupId "my-group",
-     *   ProducerId 42, Epoch 3, Topics => 1 ("topic": partition 0, offset 17, metadata "state")
+     *   Size => 00 00 00 4e (78), ApiKey => 00 1c (28), ApiVersion => 00 02, TransactionalId "tx-1",
+     *   GroupId "my-group", ProducerId 42, Epoch 3, Topics => 1 ("topic": partition 0, offset 17,
+     *   committed_leader_epoch -1, metadata "state")
      */
-    private const string TXN_OFFSET_COMMIT_REQUEST_HEX = '0000004a'
+    private const string TXN_OFFSET_COMMIT_REQUEST_HEX = '0000004e'
         . '001c'
-        . '0001'
+        . '0002'
+        . '0000000b'
+        . '0004' . '74657374'
+        . '0004' . '74782d31'
+        . '0008' . '6d792d67726f7570'
+        . '000000000000002a'
+        . '0003'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000001'
+        . '00000000' . '0000000000000011' . 'ffffffff' . '0005' . '7374617465';
+
+    /**
+     * The same commit as the versions 0 and 1 of Kafka 0.11 and 2.0 send it: four bytes shorter, because the
+     * partition entry of those versions has no `committed_leader_epoch` between the offset and the metadata.
+     */
+    private const string TXN_OFFSET_COMMIT_REQUEST_V0_HEX = '0000004a'
+        . '001c'
+        . '0000'
         . '0000000b'
         . '0004' . '74657374'
         . '0004' . '74782d31'
@@ -376,8 +399,12 @@ final class TransactionApiTest extends TestCase
     {
         $request = new TxnOffsetCommitRequest('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], 'test', 11);
 
-        // The metadata is a nullable string, so an offset without one is the two bytes ff ff
-        self::assertStringEndsWith('00000000' . '0000000000000011' . 'ffff', bin2hex((string) $request));
+        // The metadata is a nullable string, so an offset without one is the two bytes ff ff, behind the -1 of
+        // the `committed_leader_epoch` that version 2 added
+        self::assertStringEndsWith(
+            '00000000' . '0000000000000011' . 'ffffffff' . 'ffff',
+            bin2hex((string) $request)
+        );
     }
 
     public function testTxnOffsetCommitReportsEveryErrorPerPartition(): void
@@ -420,16 +447,67 @@ final class TransactionApiTest extends TestCase
         );
         self::assertSame(substr_replace(self::ADD_OFFSETS_REQUEST_HEX, '0000', 12, 4), bin2hex((string) $addOffsets));
         self::assertSame(substr_replace(self::END_TXN_COMMIT_HEX, '0000', 12, 4), bin2hex((string) $endTxn));
-        self::assertSame(
-            substr_replace(self::TXN_OFFSET_COMMIT_REQUEST_HEX, '0000', 12, 4),
-            bin2hex((string) $txnOffsets)
-        );
+        self::assertSame(self::TXN_OFFSET_COMMIT_REQUEST_V0_HEX, bin2hex((string) $txnOffsets));
         self::assertSame([0, 0, 0, 0], [
             $addPartitions->getApiVersion(),
             $addOffsets->getApiVersion(),
             $endTxn->getApiVersion(),
             $txnOffsets->getApiVersion(),
         ]);
+    }
+
+    /**
+     * Kafka 2.1 put the `committed_leader_epoch` of KIP-320 into the partition entry of TxnOffsetCommit **v2**
+     * alone; the version 1 of Kafka 2.0 is still the body of version 0 with a higher version field
+     */
+    public function testTheVersionOneOfTxnOffsetCommitIsTheBodyOfVersionZero(): void
+    {
+        $request = new TxnOffsetCommitRequestV1(
+            'tx-1',
+            'my-group',
+            42,
+            3,
+            ['topic' => [0 => new OffsetAndMetadata(17, 'state')]],
+            'test',
+            11
+        );
+
+        self::assertSame(1, $request->getApiVersion());
+        self::assertSame(
+            substr_replace(self::TXN_OFFSET_COMMIT_REQUEST_V0_HEX, '0001', 12, 4),
+            bin2hex((string) $request),
+            'the entries of version 1 carry no leader epoch either'
+        );
+
+        $response = TxnOffsetCommitResponseV1::unpack(
+            new StringStream((string) hex2bin(self::TXN_OFFSET_COMMIT_RESPONSE_HEX))
+        );
+
+        self::assertSame(self::TXN_OFFSET_COMMIT_RESPONSE_HEX, bin2hex((string) $response));
+    }
+
+    /**
+     * The leader epoch of version 2 is the one the caller put on the offset, and -1 when there is none
+     */
+    public function testTheCommittedLeaderEpochOfVersionTwoComesFromTheOffsetValueObject(): void
+    {
+        $request = new TxnOffsetCommitRequest(
+            'tx-1',
+            'my-group',
+            42,
+            3,
+            ['topic' => [0 => new OffsetAndMetadata(17, 'state', 7)]],
+            'test',
+            11
+        );
+
+        self::assertSame(2, $request->getApiVersion());
+        self::assertStringEndsWith(
+            '0000000000000011' . '00000007' . '0005' . '7374617465',
+            bin2hex((string) $request),
+            'the epoch stands between the offset and the metadata'
+        );
+        self::assertSame(-1, OffsetAndMetadata::NO_LEADER_EPOCH);
     }
 
     /**
