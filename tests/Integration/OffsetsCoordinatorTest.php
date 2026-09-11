@@ -41,9 +41,13 @@ use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV4;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV5;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
@@ -59,7 +63,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * client and version 1 is the version a 0.8 broker expects.
  *
  * @see docs/protocol/2.8.md, sections "GroupCoordinator API (key 10, v0 to v2)",
- *      "OffsetCommit API (key 8, v0 to v4)" and "OffsetFetch API (key 9, v0 to v4)"
+ *      "OffsetCommit API (key 8, v0 to v6)" and "OffsetFetch API (key 9, v0 to v5)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]
@@ -476,9 +480,23 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $stream        = $this->coordinatorStream($groupId);
         $retentionTime = 60000;
 
-        // The first commit asks for the retention of the broker, the second one brings its own
+        // The first commit asks for the retention of the broker, the second one brings its own - and has to be a
+        // version 4 frame to do so at all, because version 5 has no such field any more (KIP-211)
         $this->commitInKafka($stream, $groupId, [$topic => [0 => 5]]);
-        $this->commitInKafka($stream, $groupId, [$topic => [0 => 6]], true, $retentionTime);
+        new OffsetCommitRequestV4(
+            $groupId,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            $retentionTime,
+            [$topic => [0 => 6]],
+            'kafka-client-t6',
+            10
+        )->writeTo($stream);
+
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            OffsetCommitResponseV4::unpack($stream)->topics[$topic]->partitions[0]->errorCode
+        );
 
         $stored = $this->readStoredOffsets($groupId, $topic, 0);
 
@@ -491,7 +509,7 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         self::assertSame(6, $offsetOfExplicit);
         self::assertSame(3, $schemaOfDefault, 'retention_time = -1 is written with the value schema v3 (KIP-211)');
         self::assertNull($expiryOfDefault, 'the value schema v3 has no expire_timestamp at all');
-        self::assertSame(-1, $epochOfDefault, 'and its committed leader epoch is the -1 of a v4 request');
+        self::assertSame(-1, $epochOfDefault, 'and its committed leader epoch is the -1 of a commit without one');
         self::assertSame(
             1,
             $schemaOfExplicit,
@@ -501,6 +519,128 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             $retentionTime,
             $expiryOfExplicit - $commitOfExplicit,
             'and it is still honoured: the expiry is the receive time of the commit plus the retention'
+        );
+    }
+
+    /**
+     * KIP-211 (Kafka 2.1) took `retention_time` out of the frame at version 5, and the stored offset follows
+     *
+     * The field has the versions `2-4` in `OffsetCommitRequest.json` @ 2.8.2 - it is not sent as -1 - so a v5
+     * request cannot ask for a retention of its own at all, whatever a caller passes. The offset is then written
+     * with the `__consumer_offsets` value schema **v3**, which has no `expire_timestamp` field: the offsets of the
+     * group expire `offsets.retention.minutes` after the GROUP became empty, not a fixed time after this commit.
+     */
+    public function testVersion5SendsNoRetentionTimeAndTheOffsetIsStoredWithoutAnExpiry(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $topic   = $this->createTopic();
+        $stream  = $this->coordinatorStream($groupId);
+
+        // An hour of retention, which a v4 frame would honour and a v5 frame has no field for
+        new OffsetCommitRequestV5(
+            $groupId,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            3600000,
+            [$topic => [0 => 9]],
+            'kafka-client-t6',
+            11
+        )->writeTo($stream);
+        $response = OffsetCommitResponseV5::unpack($stream);
+
+        self::assertSame(KafkaException::NO_ERROR, $response->topics[$topic]->partitions[0]->errorCode);
+        self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'consumerGroup', 'generationId',
+                'memberName', 'topicPartitions'],
+            array_keys(OffsetCommitRequestV5::getScheme()),
+            'the frame of version 5 has no retention time to send'
+        );
+
+        $stored = $this->readStoredOffsets($groupId, $topic, 0);
+
+        self::assertNotSame([], $stored, 'the commit has to be readable back out of __consumer_offsets');
+
+        [$offset, , , $expiry, $valueSchema, $leaderEpoch] = $stored[0];
+
+        self::assertSame(9, $offset);
+        self::assertSame(3, $valueSchema, 'a commit without a retention is written with the value schema v3');
+        self::assertNull($expiry, 'and the value schema v3 has no expire_timestamp at all');
+        self::assertSame(-1, $leaderEpoch, 'a v5 frame has no leader epoch either, so the stored one is -1');
+    }
+
+    /**
+     * The `committed_leader_epoch` of OffsetCommit v6 and OffsetFetch v5 (KIP-320, Kafka 2.1)
+     *
+     * The epoch travels through the coordinator untouched: it is stored in the `leaderEpoch` field of the
+     * `__consumer_offsets` value schema v3 and handed back by every OffsetFetch from version 5 on. An offset
+     * committed with a frame below v6 has no epoch, and the answer reports the -1 of "not known" for it.
+     */
+    public function testTheLeaderEpochOfACommittedOffsetSurvivesTheRoundTrip(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $topic   = $this->createTopic();
+        $stream  = $this->coordinatorStream($groupId);
+
+        // The leader of a partition that was elected once and never moved is at the epoch 0
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(21, 'with an epoch', 0)]]);
+
+        $withEpoch = $this->fetchInKafka($stream, $groupId, [$topic => [0]])[$topic]->partitions[0];
+
+        self::assertSame(21, $withEpoch->offset);
+        self::assertSame(0, $withEpoch->leaderEpoch, 'the epoch of the commit comes back in the version 5 answer');
+        self::assertSame('with an epoch', $withEpoch->metadata);
+        self::assertSame(0, $withEpoch->toOffsetAndMetadata()->leaderEpoch);
+
+        [, , , , $valueSchema, $storedEpoch] = $this->readStoredOffsets($groupId, $topic, 0)[0];
+
+        self::assertSame(3, $valueSchema, 'the value schema v3 is the one with a leaderEpoch field');
+        self::assertSame(0, $storedEpoch, 'and the coordinator stored the epoch of the commit in it');
+
+        // The same partition committed with a version 4 frame, which has no field for the epoch
+        new OffsetCommitRequestV4(
+            $groupId,
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME,
+            [$topic => [0 => 22]],
+            'kafka-client-t6',
+            12
+        )->writeTo($stream);
+
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            OffsetCommitResponseV4::unpack($stream)->topics[$topic]->partitions[0]->errorCode
+        );
+
+        $withoutEpoch = $this->fetchInKafka($stream, $groupId, [$topic => [0]])[$topic]->partitions[0];
+
+        self::assertSame(22, $withoutEpoch->offset);
+        self::assertSame(
+            OffsetFetchResponsePartition::UNKNOWN_LEADER_EPOCH,
+            $withoutEpoch->leaderEpoch,
+            'an offset committed below version 6 has no epoch, and the answer says so with -1'
+        );
+        self::assertNull(
+            $withoutEpoch->toOffsetAndMetadata()->leaderEpoch,
+            'which the value object reports as the empty Optional of the Java client'
+        );
+    }
+
+    /**
+     * The coordinator does not validate the epoch of a commit: the check of KIP-320 is on the fetch side
+     */
+    public function testAnEpochTheLeaderNeverHadIsStoredAllTheSame(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $topic   = $this->createTopic();
+        $stream  = $this->coordinatorStream($groupId);
+
+        $this->commitInKafka($stream, $groupId, [$topic => [0 => new OffsetAndMetadata(3, null, 4242)]]);
+
+        self::assertSame(
+            4242,
+            $this->fetchInKafka($stream, $groupId, [$topic => [0]])[$topic]->partitions[0]->leaderEpoch,
+            'the coordinator stores whatever epoch it is given - 74 and 75 are answered by the fetch path'
         );
     }
 

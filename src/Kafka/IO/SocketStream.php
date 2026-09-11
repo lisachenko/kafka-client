@@ -103,6 +103,17 @@ class SocketStream extends AbstractStream
     private bool $isAuthenticating = false;
 
     /**
+     * Session lifetime the broker answered the last SaslAuthenticate with, null before an authentication
+     *
+     * The `session_lifetime_ms` of KIP-368 (SaslAuthenticate **v1**, Kafka 2.2): the number of milliseconds after
+     * which the broker stops serving this connection unless the client has re-authenticated over it. **0** means
+     * that the session never expires, which is what a broker without a `connections.max.reauth.ms` for this
+     * listener answers - the container of this line among them. The re-authentication itself is not implemented
+     * (it belongs to the SaslAuthenticate v2 of Kafka 2.5); the value is kept so that it can be.
+     */
+    private ?int $saslSessionLifetimeMs = null;
+
+    /**
      * Socket stream constructor
      *
      * @param string               $tcpAddress        Tcp address for connection
@@ -129,6 +140,17 @@ class SocketStream extends AbstractStream
     public function getSecurityProtocol(): string
     {
         return $this->securityProtocol;
+    }
+
+    /**
+     * Returns the session lifetime of the last SASL authentication, or null when there was none
+     *
+     * See {@see self::$saslSessionLifetimeMs}: 0 is the answer of a broker that never expires the session, which
+     * is every listener of the container this line is verified against.
+     */
+    public function getSaslSessionLifetimeMs(): ?int
+    {
+        return $this->saslSessionLifetimeMs;
     }
 
     /**
@@ -470,6 +492,8 @@ class SocketStream extends AbstractStream
                 $exception
             );
         }
+
+        $this->saslSessionLifetimeMs = $answer->sessionLifetimeMs;
 
         if ($answer->errorCode !== 0) {
             // 58 SaslAuthenticationFailed is what wrong credentials look like from Kafka 1.0 on, and the broker

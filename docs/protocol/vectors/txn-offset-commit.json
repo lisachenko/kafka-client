@@ -1,8 +1,8 @@
 {
     "api": "txn-offset-commit",
     "apiKey": 28,
-    "section": "TxnOffsetCommit API (key 28, v0 and v1)",
-    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 and v1), replayed by tests/Compliance.",
+    "section": "TxnOffsetCommit API (key 28, v0 to v2)",
+    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "txnoffsetcommit.request.v0",
@@ -64,7 +64,7 @@
         {
             "id": "txnoffsetcommit.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV1",
             "version": 1,
             "source": "broker",
             "description": "TxnOffsetCommit request v1, the frame of version 0 with the api version Kafka 2.0 added: one offset with its metadata, committed inside the transaction rather than with an OffsetCommit.",
@@ -96,7 +96,7 @@
         {
             "id": "txnoffsetcommit.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV1",
             "version": 1,
             "source": "broker",
             "description": "TxnOffsetCommit response v1: the error code 0 of the partition whose offset the coordinator wrote.",
@@ -108,6 +108,64 @@
                 "topics": {
                     "t4-20-vectors": {
                         "topic": "t4-20-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "TxnOffsetCommit request v2, the first frame of this api that Kafka really changed: every partition carries the `committed_leader_epoch` of KIP-320 between the offset and the metadata - the epoch 0 of a partition whose leader was never re-elected.",
+            "hex": "00000075001c00020000025c000a74342d766563746f7273001074342d32312d766563746f72732d7478001374342d32312d766563746f72732d67726f75700000000000000170000000000001000d74342d32312d766563746f72730000000100000000000000000000000c0000000000076b69702d333230",
+            "fields": {
+                "messageSize": 117,
+                "apiKey": 28,
+                "apiVersion": 2,
+                "correlationId": 604,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-21-vectors-tx",
+                "groupId": "t4-21-vectors-group",
+                "producerId": 368,
+                "producerEpoch": 0,
+                "topics": {
+                    "t4-21-vectors": {
+                        "topic": "t4-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 12,
+                                "committedLeaderEpoch": 0,
+                                "metadata": "kip-320"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "TxnOffsetCommit response v2: the frame of version 0, and the error code 0 of the partition whose offset the group coordinator wrote with that epoch.",
+            "hex": "000000250000025c0000000000000001000d74342d32312d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 604,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-21-vectors": {
+                        "topic": "t4-21-vectors",
                         "partitions": [
                             {
                                 "partition": 0,

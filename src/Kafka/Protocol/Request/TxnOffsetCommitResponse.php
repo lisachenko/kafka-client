@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
 
 /**
- * TxnOffsetCommit response object, version 1 (key 28)
+ * TxnOffsetCommit response object, version 2 (key 28)
  *
  * <pre>
- *   TxnOffsetCommit Response (Version: 0 and 1) => throttle_time_ms [topics]
+ *   TxnOffsetCommit Response (Version: 0 to 2) => throttle_time_ms [topics]
  *     throttle_time_ms => INT32
  *     topics           => topic [partitions]
  *       topic      => STRING
@@ -40,16 +40,18 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
  * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
  * FIRST and muting the channel afterwards, instead of holding the answer back
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
- * {@see TxnOffsetCommitResponseV0} is the same frame with the version field of Kafka 0.11.
+ * {@see TxnOffsetCommitResponseV0} is the same frame with the version field of Kafka 0.11, and
+ * {@see TxnOffsetCommitResponseV1} the one of Kafka 2.0: the `committed_leader_epoch` that Kafka 2.1 added with
+ * version 2 is a field of the REQUEST alone, so the three answers are one and the same frame.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v2)"
  */
 class TxnOffsetCommitResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation

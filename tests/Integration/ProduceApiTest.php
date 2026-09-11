@@ -19,7 +19,8 @@ use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
-use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Errors\InvalidRecordException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\MessageSet;
@@ -50,12 +51,14 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV5;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV5;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
@@ -67,7 +70,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * really answers: the `LogAppendTime` of a partition, which is -1 for a topic that keeps the `CreateTime` of the
  * producer and the clock of the broker for a topic with `message.timestamp.type=LogAppendTime`.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceRequestV4::class)]
@@ -422,11 +425,13 @@ final class ProduceApiTest extends IntegrationTestCase
         ));
     }
 
-    public function testAVersionThreeRequestRefusesAMessageSetAndClosesTheConnection(): void
+    public function testAVersionThreeOrHigherRequestRefusesAMessageSetWithTheErrorCode87(): void
     {
-        // `ProduceRequest.parse` @ 0.11.0.3: "Produce requests with version 3 are only allowed to contain record
-        // batches with magic version 2". The broker does not answer an error code - it closes the socket, the way
-        // it does for every frame it can not parse
+        // `ProduceRequest.validateRecords` @ 2.8.2: "Produce requests with version 3 or higher are only allowed to
+        // contain record batches with magic version 2". A **1.1.1** broker turned that into an
+        // InvalidRequestException and closed the socket; a 2.8.2 broker answers the offending partition with the
+        // error code 87 INVALID_RECORD - the code KIP-467 gave to record validation - and leaves the connection
+        // open, which is what every version from 3 up does here.
         $stream = $this->connect();
 
         new ProduceRequest(
@@ -437,9 +442,24 @@ final class ProduceApiTest extends IntegrationTestCase
             59
         )->writeTo($stream);
 
-        $this->expectException(NetworkException::class);
+        $response  = ProduceResponse::unpack($stream);
+        $partition = $response->topics[$this->topic]->partitions[0];
 
-        ProduceResponse::unpack($stream);
+        self::assertSame(59, $response->getCorrelationId());
+        self::assertSame(
+            KafkaException::INVALID_RECORD,
+            $partition->errorCode,
+            'a legacy message set in a version 6 request is refused per partition, not by closing the connection'
+        );
+        self::assertSame(87, KafkaException::INVALID_RECORD);
+        self::assertInstanceOf(
+            InvalidRecordException::class,
+            KafkaException::fromCode($partition->errorCode, ['topic' => $this->topic])
+        );
+
+        // The connection survives it: the very same records travel in a version 2 request right afterwards
+        $accepted = $this->produce($stream, SpecMessageSet::of([[null, 'a message set']]), 1, 60);
+        self::assertSame(0, $accepted->errorCode);
     }
 
     /**
@@ -505,10 +525,11 @@ final class ProduceApiTest extends IntegrationTestCase
         self::assertSame(3, $this->produceRecordBatch($stream, 1, ['fourth'], 65)->baseOffset);
     }
 
-    public function testTheBrokerAcceptsTheVersionsThreeFourAndFiveWithOneAndTheSameBody(): void
+    public function testTheBrokerAcceptsTheVersionsThreeToSixWithOneAndTheSameBody(): void
     {
-        // PRODUCE_REQUEST_V5 = PRODUCE_REQUEST_V4 = PRODUCE_REQUEST_V3 @ 1.1.1, and the broker really accepts all
-        // three: what the later versions state is which error code and which answer the client understands
+        // `ProduceRequest.json` @ 2.8.2 has no field above version 3, and the broker really accepts all four:
+        // what the later versions state is which error code, which answer and - with version 6 (Kafka 2.0,
+        // KIP-219) - which throttling behaviour the client understands
         $stream    = $this->connect();
         $timestamp = self::currentTimestampMs();
         $frames    = [];
@@ -516,7 +537,8 @@ final class ProduceApiTest extends IntegrationTestCase
         $versions  = [
             3 => [ProduceRequestV3::class, ProduceResponseV3::class],
             4 => [ProduceRequestV4::class, ProduceResponseV4::class],
-            5 => [ProduceRequest::class, ProduceResponse::class],
+            5 => [ProduceRequestV5::class, ProduceResponseV5::class],
+            6 => [ProduceRequest::class, ProduceResponse::class],
         ];
         foreach ($versions as $version => [$requestClass, $responseClass]) {
             $request = new $requestClass(
@@ -536,8 +558,8 @@ final class ProduceApiTest extends IntegrationTestCase
             self::assertSame(0, $partition->errorCode, "the broker accepted the version {$version} request");
         }
 
-        self::assertCount(1, array_unique($frames), 'the three versions send one and the same body');
-        self::assertSame([3 => 0, 4 => 1, 5 => 2], $offsets, 'every one of them appended one record');
+        self::assertCount(1, array_unique($frames), 'the four versions send one and the same body');
+        self::assertSame([3 => 0, 4 => 1, 5 => 2, 6 => 3], $offsets, 'every one of them appended one record');
     }
 
     /**

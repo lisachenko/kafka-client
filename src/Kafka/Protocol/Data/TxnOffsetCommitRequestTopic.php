@@ -26,10 +26,15 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partitions => TxnOffsetCommitRequestPartition
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v2)"
  */
 class TxnOffsetCommitRequestTopic implements BinarySchemaInterface
 {
+    /**
+     * Version of the TxnOffsetCommit API that this DTO belongs to
+     */
+    public const int VERSION = 2;
+
     /**
      * Name of the topic whose offsets are committed
      */
@@ -51,11 +56,12 @@ class TxnOffsetCommitRequestTopic implements BinarySchemaInterface
      */
     public function __construct(string $topic, array $partitionOffsets)
     {
-        $partitions = [];
+        $partitionClass = static::partitionClass();
+        $partitions     = [];
         foreach ($partitionOffsets as $partition => $offset) {
             $partitions[$partition] = $offset instanceof TxnOffsetCommitRequestPartition
                 ? $offset
-                : new TxnOffsetCommitRequestPartition((int) $partition, $offset);
+                : new $partitionClass((int) $partition, $offset);
         }
 
         $this->topic      = $topic;
@@ -69,7 +75,19 @@ class TxnOffsetCommitRequestTopic implements BinarySchemaInterface
     {
         return [
             'topic'      => BinarySchema::TYPE_STRING,
-            'partitions' => ['partition' => TxnOffsetCommitRequestPartition::class],
+            'partitions' => ['partition' => static::partitionClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a partition entry for the version of the API that this DTO belongs to
+     *
+     * @return class-string<TxnOffsetCommitRequestPartition>
+     */
+    protected static function partitionClass(): string
+    {
+        return static::VERSION >= 2
+            ? TxnOffsetCommitRequestPartition::class
+            : TxnOffsetCommitRequestPartitionV0::class;
     }
 }

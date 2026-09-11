@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * **Version 5 (Kafka 1.0) appended `LogStartOffset`**, which is what this class adds, see
  * {@see self::$logStartOffset}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {

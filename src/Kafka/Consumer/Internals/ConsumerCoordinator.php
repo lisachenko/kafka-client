@@ -19,6 +19,7 @@ use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\MemberIdRequiredException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
@@ -28,6 +29,7 @@ use Protocol\Kafka\Consumer\PartitionAssignorInterface;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 
 /**
@@ -46,8 +48,14 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  * ```
  *
  * The error codes of the protocol are what drives it: 27 (RebalanceInProgress) and 22 (IllegalGeneration) ask for
- * a rejoin with the member id of the previous generation, 25 (UnknownMemberId) for a rejoin without one, and 15/16
+ * a rejoin with the member id of the previous generation, 25 (UnknownMemberId) for a rejoin without one, 79
+ * (MemberIdRequired, KIP-394) for a rejoin with the id the coordinator just assigned, and 15/16
  * (GroupCoordinatorNotAvailable, NotCoordinatorForGroup) for another coordinator lookup.
+ *
+ * **The 79 is the first answer of every first join** since the client sends JoinGroup v4: a request with an empty
+ * member id is refused with it and the id the coordinator assigned, and the very same request is sent again with
+ * that id right away - no backoff, no rebalance in between, and the attempt is not counted against
+ * {@see self::MAX_REBALANCE_ATTEMPTS}, exactly as `AbstractCoordinator.handleJoinResponse` @ 2.8.2 does it.
  *
  * Every JoinGroup carries the `rebalance_timeout` of Kafka 0.10.1 - `max.poll.interval.ms` - which is how long the
  * coordinator waits for this member to rejoin a rebalance. Nothing else of KIP-62 applies to a client without
@@ -292,15 +300,7 @@ final class ConsumerCoordinator
     {
         $node         = $this->getNode();
         $subscription = $this->assignor->subscription($topics);
-
-        $joinResponse = $this->client->joinGroup(
-            $node,
-            $this->groupId,
-            $this->memberId,
-            self::PROTOCOL_TYPE,
-            [$this->assignor->name() => $subscription->pack()],
-            $this->rebalanceTimeoutMs
-        );
+        $joinResponse = $this->joinWithAssignedMemberId($node, $subscription->pack());
 
         $this->memberId     = $joinResponse->memberId;
         $this->generationId = $joinResponse->generationId;
@@ -322,6 +322,48 @@ final class ConsumerCoordinator
         $this->lastHeartbeatMs = (int) (microtime(true) * 1e3);
 
         return self::readAssignment($syncResponse->memberAssignment);
+    }
+
+    /**
+     * Sends the JoinGroup and answers the 79 of KIP-394 with the member id the coordinator assigned
+     *
+     * A version 4 request with an empty member id is never accepted: the coordinator answers 79 together with the
+     * id it generated for this client and expects the very same request back with that id, which is how it keeps
+     * a member it cannot identify out of the rebalance. The second request is sent immediately - the first one
+     * cost nothing, no rebalance was started and no member was added - and only one retry is made, because a
+     * coordinator that refuses a join it has just handed an id to has a problem this loop cannot solve.
+     *
+     * @param Node   $node     Coordinator of the group
+     * @param string $metadata Packed subscription of this member
+     */
+    private function joinWithAssignedMemberId(Node $node, string $metadata): JoinGroupResponse
+    {
+        $protocols = [$this->assignor->name() => $metadata];
+
+        try {
+            return $this->client->joinGroup(
+                $node,
+                $this->groupId,
+                $this->memberId,
+                self::PROTOCOL_TYPE,
+                $protocols,
+                $this->rebalanceTimeoutMs
+            );
+        } catch (MemberIdRequiredException $exception) {
+            $this->memberId = (string) ($exception->getContext()['assignedMemberId'] ?? '');
+            if ($this->memberId === JoinGroupRequest::DEFAULT_MEMBER_ID) {
+                throw $exception;
+            }
+        }
+
+        return $this->client->joinGroup(
+            $node,
+            $this->groupId,
+            $this->memberId,
+            self::PROTOCOL_TYPE,
+            $protocols,
+            $this->rebalanceTimeoutMs
+        );
     }
 
     /**

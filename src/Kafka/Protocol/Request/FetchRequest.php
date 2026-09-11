@@ -18,10 +18,12 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
 
 /**
- * Fetch API (key 1), version 7
+ * Fetch API (key 1), version 10
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -36,9 +38,9 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
  * handle this case.
  *
  * <pre>
- *   FetchRequest (Version: 7) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
- *                                [TopicName [Partition FetchOffset LogStartOffset MaxBytes]]
- *                                [TopicName [Partition]]
+ *   FetchRequest (Version: 10) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
+ *                                 [TopicName [Partition CurrentLeaderEpoch FetchOffset LogStartOffset MaxBytes]]
+ *                                 [TopicName [Partition]]
  *     ReplicaId      => int32
  *     MaxWaitTime    => int32
  *     MinBytes       => int32
@@ -46,11 +48,12 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
  *     IsolationLevel => int8
  *     SessionId      => int32     -- since version 7
  *     Epoch          => int32     -- since version 7
+ *     CurrentLeaderEpoch => int32 -- since version 9
  *     FetchOffset    => int64
  *     LogStartOffset => int64
  * </pre>
  *
- * The seven versions of this api that a 1.1.1 broker serves next to this one differ as follows:
+ * The eight versions of this api that a 2.8.2 broker serves below this one differ as follows:
  *
  * * **v1** (Kafka 0.9) left the request untouched and only prefixed the answer with `ThrottleTimeMs`, see
  *   {@see FetchResponse};
@@ -73,17 +76,35 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
  * * **v7** (Kafka 1.1, KIP-227) adds the **incremental fetch sessions**: the `SessionId` and the `Epoch` of
  *   {@see FetchMetadata} in front of the topics array, and the trailing `forgotten_topics_data` behind it
  *   ({@see \Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic}); the answer gains a top-level error code
- *   and the session id, see {@see FetchResponse}.
+ *   and the session id, see {@see FetchResponse};
+ * * **v8** (Kafka 2.0, KIP-219) is byte-identical to v7 in both directions - `FetchRequest.json` @ 2.8.2 has no
+ *   field of it and its only comment is "Version 8 is the same as version 7" - and states that the **client**
+ *   honours `throttle_time_ms` itself: a throttled fetch is answered *before* the delay, with an empty topics
+ *   array, and the channel is muted for the reported time afterwards. This class is that version, and
+ *   {@see \Protocol\Kafka\Client} sleeps the remaining throttle time before its next request to that broker
+ *   unless {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT} switches it off. A 2.8.2 broker throttles
+ *   a version 7 fetch ({@see FetchRequestV7}) in exactly the same way - the version is the promise of the client,
+ *   not a switch of the broker;
+ * * **v9** (Kafka 2.1, KIP-320) adds `current_leader_epoch` to every partition entry of the request, between the
+ *   partition index and the fetch offset, see
+ *   {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$currentLeaderEpoch}: the epoch the client
+ *   believes the partition is being led with, which fences a consumer whose metadata is out of date with **74**
+ *   `FENCED_LEADER_EPOCH` or **75** `UNKNOWN_LEADER_EPOCH` ({@see FetchRequestV9} keeps that version);
+ * * **v10** (Kafka 2.1, KIP-110) is byte-identical to v9 in both directions - `FetchRequest.json` @ 2.8.2 has no
+ *   field of it - and states that the client understands a **zstd**-compressed record batch. A fetch below this
+ *   version of a partition whose records are zstd-compressed is refused with **76**
+ *   `UNSUPPORTED_COMPRESSION_TYPE`, because the broker does not down-convert zstd. This class is that version.
  *
- * A version 7 request **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
+ * A request of version 7 and above **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
  * which is what this class sends when it is given no metadata - is served exactly like a version 6 request: the
  * whole requested set comes back and the answer reports `session_id = 0`. That is what
  * {@see \Protocol\Kafka\Client::fetchPartitions()} sends today.
  *
- * {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4}, {@see FetchRequestV3},
- * {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower versions available.
+ * {@see FetchRequestV9}, {@see FetchRequestV8}, {@see FetchRequestV7}, {@see FetchRequestV6},
+ * {@see FetchRequestV5}, {@see FetchRequestV4}, {@see FetchRequestV3}, {@see FetchRequestV2},
+ * {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower versions available.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -95,7 +116,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 7;
+    public const int VERSION = 10;
 
     /**
      * Default bound of a whole answer, the 50 MiB of the `fetch.max.bytes` option of the Java consumer
@@ -149,10 +170,19 @@ class FetchRequest extends AbstractRequest
     protected readonly array $forgottenTopics;
 
     /**
-     * @param array<string, array<int, int>> $topicPartitions   Fetch offset of every partition, as topic =>
-     *                                                          partition => offset. The **order** of this array is
-     *                                                          the order the broker fills the answer in, see
-     *                                                          {@see self::$maxBytes}.
+     * @param array<string, array<int, int|array{int, int}>> $topicPartitions Fetch offset of every partition, as
+     *                                                          topic => partition => offset. The **order** of this
+     *                                                          array is the order the broker fills the answer in,
+     *                                                          see {@see self::$maxBytes}.
+     *
+     *                                                          A value may also be the pair
+     *                                                          `[offset, currentLeaderEpoch]`, which is how a
+     *                                                          caller states the leader epoch that version 9
+     *                                                          (KIP-320) puts on the wire; a plain integer is the
+     *                                                          offset with
+     *                                                          {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::UNKNOWN_LEADER_EPOCH},
+     *                                                          which is what every call written before Kafka 2.1
+     *                                                          means and what a version below 9 sends anyway.
      * @param int                            $maxWaitTime       The maximum amount of time in milliseconds to block
      *                                                          waiting if insufficient data is available at the time
      *                                                          the request is issued.
@@ -230,7 +260,14 @@ class FetchRequest extends AbstractRequest
         foreach ($topicPartitions as $topic => $partitionOffsets) {
             $partitions = [];
             foreach ($partitionOffsets as $partition => $fetchOffset) {
-                $partitions[$partition] = new $partitionClass($partition, $fetchOffset, $partitionMaxBytes);
+                [$offset, $currentLeaderEpoch] = self::offsetAndEpoch($fetchOffset);
+                $partitions[$partition]        = new $partitionClass(
+                    $partition,
+                    $offset,
+                    $partitionMaxBytes,
+                    FetchRequestTopicPartition::INVALID_LOG_START_OFFSET,
+                    $currentLeaderEpoch
+                );
             }
             $packedTopicPartitions[$topic] = new $topicClass($topic, $partitions);
         }
@@ -245,8 +282,10 @@ class FetchRequest extends AbstractRequest
      * The order of the pairs is kept, because it is the order in which the broker fills the answer of a version 3
      * request until its `MaxBytes` are used up.
      *
-     * @param iterable<array{TopicPartition, int}> $partitionOffsets         Pairs of a topic partition and its
-     *                                                                       fetch offset
+     * @param iterable<array{TopicPartition, int|array{int, int}}> $partitionOffsets Pairs of a topic partition and
+     *                                                                       its fetch offset, the offset optionally
+     *                                                                       being the `[offset, epoch]` pair of
+     *                                                                       version 9
      * @param array<string, list<int>>             $forgottenTopicPartitions Partitions the session should forget
      */
     public static function fromTopicPartitions(
@@ -280,6 +319,26 @@ class FetchRequest extends AbstractRequest
             $metadata,
             $forgottenTopicPartitions
         );
+    }
+
+    /**
+     * Splits a value of the `$topicPartitions` map into the fetch offset and the current leader epoch.
+     *
+     * A plain integer is the offset of a caller that does not track leader epochs, which is what every call of
+     * this client meant before Kafka 2.1; the pair `[offset, epoch]` is how a caller states the epoch that
+     * version 9 (KIP-320) puts on the wire.
+     *
+     * @param int|array{int, int} $fetchOffset
+     *
+     * @return array{int, int} the fetch offset and the current leader epoch
+     */
+    public static function offsetAndEpoch(int|array $fetchOffset): array
+    {
+        if (is_array($fetchOffset)) {
+            return [(int) $fetchOffset[0], (int) $fetchOffset[1]];
+        }
+
+        return [$fetchOffset, FetchRequestTopicPartition::UNKNOWN_LEADER_EPOCH];
     }
 
     /**
@@ -349,6 +408,10 @@ class FetchRequest extends AbstractRequest
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 5 ? FetchRequestTopic::class : FetchRequestTopicV0::class;
+        return match (true) {
+            static::VERSION >= 9 => FetchRequestTopic::class,
+            static::VERSION >= 5 => FetchRequestTopicV5::class,
+            default              => FetchRequestTopicV0::class,
+        };
     }
 }

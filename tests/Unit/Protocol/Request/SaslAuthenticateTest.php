@@ -22,7 +22,9 @@ use Protocol\Kafka\Common\Security\SaslToken;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Request\SaslAuthenticateRequest;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateRequestV0;
 use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponse;
+use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponseV0;
 
 /**
  * Byte-exact tests for the SaslAuthenticate API (key 36, v0, Kafka 1.0 / KIP-152).
@@ -30,26 +32,28 @@ use Protocol\Kafka\Protocol\Request\SaslAuthenticateResponse;
  * The request carries the token that a v0 exchange would write on the socket raw, and the answer is the one thing
  * the raw exchange never had: an error code with a message.
  *
- * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0)"
+ * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0 and v1)"
  */
 #[CoversClass(SaslAuthenticateRequest::class)]
+#[CoversClass(SaslAuthenticateRequestV0::class)]
 #[CoversClass(SaslAuthenticateResponse::class)]
+#[CoversClass(SaslAuthenticateResponseV0::class)]
 #[CoversClass(SaslToken::class)]
 final class SaslAuthenticateTest extends TestCase
 {
     /**
-     * SaslAuthenticate request v0 carrying the PLAIN token of `kafkatest`, correlation id 2, client id "test".
+     * SaslAuthenticate request v1 carrying the PLAIN token of `kafkatest`, correlation id 2, client id "test".
      *
      *   Size          => 00 00 00 2d (45 bytes)
      *   ApiKey        => 00 24 (36)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 02
      *   ClientId      => 00 04 "test"
      *   SaslAuthBytes => 00 00 00 1b, "\0kafkatest\0kafkatest-secret"
      */
     private const string REQUEST_HEX = '0000002d'
         . '0024'
-        . '0000'
+        . '0001'
         . '00000002'
         . '0004' . '74657374'
         . '0000001b' . '006b61666b6174657374006b61666b61746573742d736563726574';
@@ -91,7 +95,12 @@ final class SaslAuthenticateTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::SASL_AUTHENTICATE, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'a 1.1.1 broker serves version 0 only');
+        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.2 raised the api to version 1 (KIP-368)');
+        self::assertSame(
+            substr_replace(self::REQUEST_HEX, '0000', 12, 4),
+            bin2hex((string) new SaslAuthenticateRequestV0($token->token, 'test', 2)),
+            'SASL_AUTHENTICATE_REQUEST_V1 = SASL_AUTHENTICATE_REQUEST_V0 @ 2.2.2: only the version field differs'
+        );
     }
 
     /**
@@ -106,9 +115,33 @@ final class SaslAuthenticateTest extends TestCase
         self::assertStringEndsWith(bin2hex($token->pack()), $frame);
     }
 
+    /**
+     * The answer of version 1 is the answer of version 0 plus the `session_lifetime_ms` of KIP-368
+     */
+    public function testTheAnswerOfVersionOneCarriesTheSessionLifetimeOfKip368(): void
+    {
+        // Captured on the container: the empty token of a finished PLAIN exchange, the empty error message a
+        // 2.8.2 broker sends instead of a null one, and the lifetime 0 of a listener without
+        // `connections.max.reauth.ms`
+        $hex      = '00000014' . '00000322' . '0000' . '0000' . '00000000' . '0000000000000000';
+        $response = SaslAuthenticateResponse::unpack(new StringStream((string) hex2bin($hex)));
+
+        self::assertSame(802, $response->getCorrelationId());
+        self::assertSame(0, $response->errorCode);
+        self::assertSame('', $response->errorMessage);
+        self::assertSame('', $response->saslAuthBytes);
+        self::assertSame(0, $response->sessionLifetimeMs, 'zero means that the session never expires');
+        self::assertSame($hex, bin2hex((string) $response));
+        self::assertSame(
+            ['messageSize', 'correlationId', 'errorCode', 'errorMessage', 'saslAuthBytes'],
+            array_keys(SaslAuthenticateResponseV0::getScheme()),
+            'and the answer of version 0 has no such field'
+        );
+    }
+
     public function testResponseOfACompletedExchangeIsUnpackedAccordingToTheSpec(): void
     {
-        $response = SaslAuthenticateResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = SaslAuthenticateResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(2, $response->getCorrelationId());
         self::assertSame(0, $response->errorCode);
@@ -118,7 +151,7 @@ final class SaslAuthenticateTest extends TestCase
 
     public function testRefusedCredentialsCarryTheErrorCode58AndTheMessageOfTheBroker(): void
     {
-        $response = SaslAuthenticateResponse::unpack(new StringStream((string) hex2bin(self::REFUSED_RESPONSE_HEX)));
+        $response = SaslAuthenticateResponseV0::unpack(new StringStream((string) hex2bin(self::REFUSED_RESPONSE_HEX)));
 
         self::assertSame(KafkaException::SASL_AUTHENTICATION_FAILED, $response->errorCode);
         self::assertSame('Authentication failed: Invalid username or password', $response->errorMessage);
@@ -132,7 +165,7 @@ final class SaslAuthenticateTest extends TestCase
 
     public function testARequestAfterTheAuthenticationIsAnsweredWithTheIllegalSaslState(): void
     {
-        $response = SaslAuthenticateResponse::unpack(
+        $response = SaslAuthenticateResponseV0::unpack(
             new StringStream((string) hex2bin(self::ILLEGAL_STATE_RESPONSE_HEX))
         );
 
@@ -144,7 +177,7 @@ final class SaslAuthenticateTest extends TestCase
     public function testEveryAnswerSurvivesADecodeAndEncodeRoundTrip(): void
     {
         foreach ([self::RESPONSE_HEX, self::REFUSED_RESPONSE_HEX, self::ILLEGAL_STATE_RESPONSE_HEX] as $hex) {
-            $response = SaslAuthenticateResponse::unpack(new StringStream((string) hex2bin($hex)));
+            $response = SaslAuthenticateResponseV0::unpack(new StringStream((string) hex2bin($hex)));
 
             self::assertSame($hex, bin2hex((string) $response));
         }
