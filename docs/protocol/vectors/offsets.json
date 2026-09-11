@@ -557,6 +557,66 @@
                     }
                 }
             }
+        },
+        {
+            "id": "offsets.request.v6",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "ListOffsets request v6 (Kafka 2.8), the FLEXIBLE version of the api (KIP-482): the same question as version 5 - the replica id -1 of a consumer, read_uncommitted, one topic with one partition, the current_leader_epoch -1 of KIP-320 and the timestamp -1 of \"the latest offset\" - with compact types and a tag buffer behind the body, the topic entry and the partition entry.",
+            "hex": "0000003500020006000003850002743200ffffffff00020e74322d32382d766563746f72730200000000ffffffffffffffffffffffff000000",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 2,
+                "apiVersion": 6,
+                "correlationId": 901,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-28-vectors": {
+                        "topic": "t2-28-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v6",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The answer v6: the response header v1, the throttle time, a compact topic array and name, a compact partition array whose entry carries the error code, the timestamp -1 and the offset of the end of the log with the leader_epoch of KIP-320, and the tagged-field sections of a flexible frame.",
+            "hex": "00000036000003850000000000020e74322d32382d766563746f727302000000000000ffffffffffffffff000000000000000200000000000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 901,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-28-vectors": {
+                        "topic": "t2-28-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 2,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
         }
     ]
 }

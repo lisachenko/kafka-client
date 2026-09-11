@@ -1047,6 +1047,164 @@
                 },
                 "clusterAuthorizedOperations": -2147483648
             }
+        },
+        {
+            "id": "metadata.request.v11",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 11,
+            "source": "broker",
+            "description": "Metadata request v11 (Kafka 2.8, KIP-700), the version this client sends: every topic entry carries the topic_id of KIP-516 IN FRONT of its name - the zero uuid, because the server side of naming a topic by its id is not implemented - and the body ends with allow_auto_topic_creation and include_topic_authorized_operations alone: KIP-700 took include_cluster_authorized_operations out and gave the question to the DescribeCluster api.",
+            "hex": "000000300003000b00000386000274320002000000000000000000000000000000000e74322d32382d766563746f727300000000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 3,
+                "apiVersion": 11,
+                "correlationId": 902,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "name": "t2-28-vectors"
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeTopicAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "metadata.response.v11",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 11,
+            "source": "broker",
+            "description": "The answer v11: the topic entry carries the 16 raw bytes of the topic id between its name and its is_internal flag, and the frame ends with the tagged-field section of the body - there is no cluster_authorized_operations behind the topics any more.",
+            "hex": "0000007c00000386000000000002000000000a3132372e302e302e3100002384000017517a53536957324a517132576c5079364664444c5a77000000000200000e74322d32382d766563746f72733d78e5b3473c4f2884495546d833522a00020000000000000000000000000000020000000002000000000100800000000000",
+            "fields": {
+                "messageSize": 124,
+                "correlationId": 902,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "QzSSiW2JQq2WlPy6FdDLZw",
+                "controllerId": 0,
+                "topics": {
+                    "t2-28-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-28-vectors",
+                        "topicId": {
+                            "$bytes": "3d78e5b3473c4f2884495546d833522a"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v10",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV10",
+            "version": 10,
+            "source": "broker",
+            "description": "The same question as a version 10 frame, the last one that carries include_cluster_authorized_operations: both booleans of KIP-430 are asked for here, and the topic entry is the same one of KIP-516.",
+            "hex": "000000310003000a00000387000274320002000000000000000000000000000000000e74322d32382d766563746f72730000010100",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 3,
+                "apiVersion": 10,
+                "correlationId": 903,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "name": "t2-28-vectors"
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeClusterAuthorizedOperations": true,
+                "includeTopicAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "metadata.response.v10",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV10",
+            "version": 10,
+            "source": "broker",
+            "description": "The answer v10: the topic id of KIP-516 in every topic entry, the topic_authorized_operations bitfield behind its partitions and the cluster_authorized_operations at the very end of the frame, in front of the tagged-field section of the body.",
+            "hex": "0000008000000387000000000002000000000a3132372e302e302e3100002384000017517a53536957324a517132576c5079364664444c5a77000000000200000e74322d32382d766563746f72733d78e5b3473c4f2884495546d833522a0002000000000000000000000000000002000000000200000000010000000df80000001fa000",
+            "fields": {
+                "messageSize": 128,
+                "correlationId": 903,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "QzSSiW2JQq2WlPy6FdDLZw",
+                "controllerId": 0,
+                "topics": {
+                    "t2-28-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-28-vectors",
+                        "topicId": {
+                            "$bytes": "3d78e5b3473c4f2884495546d833522a"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": 3576
+                    }
+                },
+                "clusterAuthorizedOperations": 8096
+            }
         }
     ]
 }

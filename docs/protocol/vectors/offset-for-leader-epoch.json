@@ -298,6 +298,64 @@
                     }
                 }
             }
+        },
+        {
+            "id": "offsetforleaderepoch.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "OffsetForLeaderEpoch request v4 (Kafka 2.8), the FLEXIBLE version of the api (KIP-482): the replica_id of KIP-392, a compact topic array and name, a compact partition array whose entry carries the current_leader_epoch and the epoch that is asked about, and a tag buffer behind every structure.",
+            "hex": "0000003000170004000003880002743200fffffffe020e74322d32382d766563746f72730200000000ffffffff00000000000000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 23,
+                "apiVersion": 4,
+                "correlationId": 904,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "replicaId": -2,
+                "topics": {
+                    "t2-28-vectors": {
+                        "topic": "t2-28-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetforleaderepoch.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer v4: the response header v1, the throttle time of KIP-320, a compact topic array and name and a compact partition array whose entry puts the error code FIRST, then the partition index, the leader epoch and the end offset of that epoch.",
+            "hex": "0000002e000003880000000000020e74322d32382d766563746f727302000000000000000000000000000000000002000000",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 904,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-28-vectors": {
+                        "topic": "t2-28-vectors",
+                        "partitions": [
+                            {
+                                "errorCode": 0,
+                                "partition": 0,
+                                "leaderEpoch": 0,
+                                "endOffset": 2
+                            }
+                        ]
+                    }
+                }
+            }
         }
     ]
 }

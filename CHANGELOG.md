@@ -542,6 +542,36 @@ them. What the release added lives in the group and transaction apis.)*
   "Epoch validation in the fetch itself (v12, KIP-595)" of the protocol document and the two version 12 grammar
   blocks.
 
+### Kafka 2.8
+
+- **Produce v9, ListOffsets v6 and OffsetForLeaderEpoch v4** (KIP-482) — the **flexible** versions of the three
+  apis, and not one new field in any of them: the request header **v2**, the response header **v1**, compact
+  strings and arrays, a tagged-field section behind the body and behind every structure, and - the one that
+  matters for the size of a produce frame - a **compact record set**. The three pairs are what this client sends
+  now; `ProduceRequestV8`/`ProduceResponseV8`, `OffsetsRequestV5`/`OffsetsResponseV5` and
+  `OffsetForLeaderEpochRequestV3`/`OffsetForLeaderEpochResponseV3` keep the plain frames. Measured on the
+  container: the same exchanges in 124/60, 53/54 and 48/46 bytes instead of 140/67, 56/57 and 51/49.
+- **Metadata v10, the topic ids of KIP-516** — every topic entry of the answer carries the **16 raw bytes** of
+  the id the topic was created with (`Common\TopicMetadata::$topicId`), and every topic entry of the request
+  carries one in front of its name. The new `Protocol\Kafka\Common\Uuid` is the pair of functions that turns
+  those bytes into the text form Kafka prints and back - a url-safe base64 without padding, 22 characters, which
+  is what `Uuid.toString()` @ 2.8.2 and `kafka-topics.sh --describe` show, **not** the `8-4-4-4-12` hex of
+  RFC 4122 - with `Uuid::ZERO` for the "no topic id" of the protocol. The **request** half of the KIP does not
+  work on a 2.8.2 broker ("this functionality was not implemented on the server"), so this client writes the zero
+  uuid and the real name, as the Java client does.
+- **Metadata v11 (KIP-700)** — the version that takes a field **away**: `include_cluster_authorized_operations`
+  is gone from the request and `cluster_authorized_operations` from the end of the answer, both declared `"8-10"`
+  in the specification, because the cluster-wide question moved to the new DescribeCluster api (key 60). The
+  per-topic bitfield is untouched. `MetadataRequest`/`MetadataResponse` are version 11 and what `Client` and
+  `Cluster` send; `MetadataRequestV10`/`MetadataResponseV10` are the version to ask with when a caller wants the
+  cluster bitfield from this api, and `MetadataRequestV9`/`MetadataResponseV9` and `TopicMetadataV8` keep the
+  frames below it.
+- Measured on the container: a Metadata v11 answers the real topic id (`PXjls0c8TyiESVVG2DNSKg` for the vector
+  topic) and leaves `clusterAuthorizedOperations` at `NOT_REQUESTED` because the field is not on the wire at all,
+  while the same question as a v10 with both booleans on answers the 8096 of the cluster and the 3576 of the
+  topic. Ten wire vectors, the section "Topic ids (v10, KIP-516)" of the protocol document, the version 9/10/11
+  grammar blocks of the four apis and the api-table rows 0, 2, 3 and 23.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 
