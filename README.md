@@ -759,12 +759,12 @@ The `1.x` column is where the line started.
 | 6 | UpdateMetadata | v0 … v7 | broker→broker | no | no |
 | 7 | ControlledShutdown | v0 … v3 | controller | v0, **v1** | v0 … v2, **v3** |
 | 8 | OffsetCommit | v0 … v8 | yes | v0 … v2, **v3** | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) |
-| 9 | OffsetFetch | v0 … v7 | yes | v0 … v2, **v3** | v0 … v5, **v6** (**v0** for `offsets.storage = zookeeper`); v7 not yet |
+| 9 | OffsetFetch | v0 … v7 | yes | v0 … v2, **v3** | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) |
 | 10 | GroupCoordinator (FindCoordinator) | v0 … v3 | yes | v0, **v1** | v0 … v2, **v3** |
-| 11 | JoinGroup | v0 … v7 | yes | v0, v1, **v2** | v0 … v5, **v6**; v7 not yet |
+| 11 | JoinGroup | v0 … v7 | yes | v0, v1, **v2** | v0 … v6, **v7** |
 | 12 | Heartbeat | v0 … v4 | yes | v0, **v1** | v0 … v3, **v4** |
 | 13 | LeaveGroup | v0 … v4 | yes | v0, **v1** | v0 … v3, **v4** |
-| 14 | SyncGroup | v0 … v5 | yes | v0, **v1** | v0 … v3, **v4**; v5 not yet |
+| 14 | SyncGroup | v0 … v5 | yes | v0, **v1** | v0 … v4, **v5** |
 | 15 | DescribeGroups | v0 … v5 | yes | v0, **v1** | v0 … v4, **v5** |
 | 16 | ListGroups | v0 … v4 | yes | v0, **v1** | v0 … v2, **v3**; v4 not yet |
 | 17 | SaslHandshake | v0, v1 | yes | v0, **v1** | v0, **v1** |

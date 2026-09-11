@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *                                            member_id [members]
  * </pre>
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v6)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v7)" and "Quotas and throttle time"
  */
 final class JoinGroupResponseV2 extends JoinGroupResponse
 {

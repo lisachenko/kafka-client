@@ -125,7 +125,9 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
+use Protocol\Kafka\Protocol\Request\SyncGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
+use Protocol\Kafka\Protocol\Request\SyncGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Throwable;
@@ -1231,6 +1233,9 @@ class Client
      * @param string                              $groupId         Name of the group
      * @param array<string, array<int, int>>|null $topicPartitions List of topic => partitions for fetching
      *        information, or null for every topic of the group
+     * @param bool                                $requireStable   Whether the coordinator has to hold back an
+     *        offset whose transaction has not been committed yet and answer that partition with the retriable 88
+     *        instead (KIP-447, version 7); false answers the offset of the last commit, pending or not
      *
      * @return array<string, array<int, int>> Committed offsets in the form [topic => [partition => offset]]
      *
@@ -1241,14 +1246,18 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, ?array $topicPartitions): array
-    {
+    public function fetchGroupOffsets(
+        Node $coordinatorNode,
+        string $groupId,
+        ?array $topicPartitions,
+        bool $requireStable = false
+    ): array {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         return $this->coordinatorRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
-                ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId)
+                ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId, $requireStable)
                 : new OffsetFetchRequestV0($groupId, $topicPartitions, $clientId, $correlationId),
             $this->isOffsetStorageKafka() ? OffsetFetchResponse::class : OffsetFetchResponseV0::class,
             static function (OffsetFetchResponse $response) use ($groupId): array {
@@ -1454,6 +1463,11 @@ class Client
      * assignment for each member; every other member passes an empty array and receives its own share in the
      * answer, which the coordinator holds back until the leader has sent the assignment.
      *
+     * **The version follows the two arguments of KIP-559.** A caller that names the `protocol_type` and the
+     * `protocol_name` of its generation sends the **version 5** and is answered with the same pair; a caller that
+     * names neither sends the **version 4**, because a version 5 without them is refused with 23
+     * (`InconsistentGroupProtocol`) before the coordinator looks at the group at all.
+     *
      * @param Node                  $coordinatorNode  Current group coordinator for $groupId
      * @param string                $groupId          Name of the group
      * @param string                $memberId         Name of the group member
@@ -1462,6 +1476,10 @@ class Client
      *        only; opaque bytes to this api - a `consumer` leader sends a `MemberAssignment` per member
      * @param string|null           $groupInstanceId  `group.instance.id` of a static member (KIP-345, version 3),
      *        null for a dynamic one
+     * @param string|null           $protocolType     The `protocol_type` the member joined with, `consumer` for a
+     *        consumer group (KIP-559, version 5); leaving it null sends the version 4 frame instead
+     * @param string|null           $protocolName     The protocol of the generation, as the JoinGroup answer
+     *        reported it (KIP-559, version 5); leaving it null sends the version 4 frame instead
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -1469,6 +1487,7 @@ class Client
      * @throws Common\Errors\IllegalGenerationException
      * @throws Common\Errors\UnknownMemberIdException
      * @throws Common\Errors\RebalanceInProgressException
+     * @throws Common\Errors\InconsistentGroupProtocolException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
     public function syncGroup(
@@ -1477,22 +1496,35 @@ class Client
         string $memberId,
         int $generationId,
         array $groupAssignments = [],
-        ?string $groupInstanceId = null
+        ?string $groupInstanceId = null,
+        ?string $protocolType = null,
+        ?string $protocolName = null
     ): SyncGroupResponse {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
+        // KIP-559 made the two fields mandatory in a version 5, not optional: a request that leaves either of them
+        // null is answered 23 before the coordinator is asked anything. A caller that does not know the protocol of
+        // the generation therefore gets the version 4 frame, which has no such field and which a 2.8.2 broker
+        // serves unchanged - the same "fall back to the version that can carry what you asked for" the Java
+        // `OffsetFetchRequest.Builder` does for the `require_stable` of KIP-447
+        $namesProtocol = $protocolType !== null && $protocolName !== null;
+        $requestClass  = $namesProtocol ? SyncGroupRequest::class : SyncGroupRequestV4::class;
+        $responseClass = $namesProtocol ? SyncGroupResponse::class : SyncGroupResponseV4::class;
+
         return $this->groupRequest(
             $coordinatorNode,
-            fn(int $correlationId): AbstractRequest => new SyncGroupRequest(
+            fn(int $correlationId): AbstractRequest => new $requestClass(
                 $groupId,
                 $generationId,
                 $memberId,
                 $groupAssignments,
                 $clientId,
                 $correlationId,
-                $groupInstanceId
+                $groupInstanceId,
+                $protocolType,
+                $protocolName
             ),
-            SyncGroupResponse::class,
+            $responseClass,
             static function (SyncGroupResponse $response) use ($groupId, $memberId, $generationId): SyncGroupResponse {
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
                     throw KafkaException::fromCode(

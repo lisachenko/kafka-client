@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * why the version 4 request needs the answer class {@see OffsetFetchResponseV4} while
  * {@see OffsetFetchRequest} is read with {@see OffsetFetchResponse}.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v7)"
  */
 final class OffsetFetchRequestV4 extends OffsetFetchRequest
 {

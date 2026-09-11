@@ -1,8 +1,8 @@
 {
     "api": "join-group",
     "apiKey": 11,
-    "section": "JoinGroup API (key 11, v0 to v6)",
-    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v6), replayed by tests/Compliance.",
+    "section": "JoinGroup API (key 11, v0 to v7)",
+    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v7), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "joingroup.request.v1",
@@ -438,7 +438,7 @@
         {
             "id": "joingroup.request.v6",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV6",
             "version": 6,
             "source": "broker",
             "description": "JoinGroup request v6 (KIP-482) of a static member: the same fields as version 5 with compact strings, a compact protocol array and a tag buffer after every structure - the header, every entry of `group_protocols` and the body.",
@@ -469,7 +469,7 @@
         {
             "id": "joingroup.response.v6",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV6",
             "version": 6,
             "source": "broker",
             "description": "The answer v6: the member array is compact, every member entry ends in its own tag buffer and so does the body.",
@@ -493,6 +493,120 @@
                         }
                     }
                 }
+            }
+        },
+        {
+            "id": "joingroup.request.v7",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 7,
+            "source": "broker",
+            "description": "JoinGroup request v7 (Kafka 2.5, KIP-559): byte for byte the flexible version 6 frame with the version field 7 - \"Version 7 is the same as version 6\" in `JoinGroupRequest.json` @ 2.8.2 - sent with the member id the coordinator had just assigned. What the version states is that the client understands the two protocol fields of the answer.",
+            "hex": "0000009e000b0007000003ea00126b61666b612d636c69656e742d74332d3235001474332d32352d766563746f72732d67726f75700000753000004e20386b61666b612d636c69656e742d74332d32352d62303930303031342d306565352d343663652d613031392d6336353034373639323763350009636f6e73756d6572020672616e67651a000000000001000d74332d32352d766563746f7273000000000000",
+            "fields": {
+                "messageSize": 158,
+                "apiKey": 11,
+                "apiVersion": 7,
+                "correlationId": 1002,
+                "clientId": "kafka-client-t3-25",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-25-vectors-group",
+                "sessionTimeout": 30000,
+                "rebalanceTimeout": 20000,
+                "memberId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
+                "groupInstanceId": null,
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d32352d766563746f727300000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v7",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 7,
+            "source": "broker",
+            "description": "The answer v7 of an accepted join: the nullable `protocol_type` of KIP-559 stands in front of the protocol name, both as compact strings - `consumer` and the `range` the coordinator selected - so a member can check that the group it joined is of the kind it asked for.",
+            "hex": "000000e4000003ea000000000000000000000109636f6e73756d65720672616e6765386b61666b612d636c69656e742d74332d32352d62303930303031342d306565352d343663652d613031392d633635303437363932376335386b61666b612d636c69656e742d74332d32352d62303930303031342d306565352d343663652d613031392d63363530343736393237633502386b61666b612d636c69656e742d74332d32352d62303930303031342d306565352d343663652d613031392d633635303437363932376335001a000000000001000d74332d32352d766563746f7273000000000000",
+            "fields": {
+                "messageSize": 228,
+                "correlationId": 1002,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 1,
+                "protocolType": "consumer",
+                "groupProtocol": "range",
+                "leaderId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
+                "memberId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
+                "members": {
+                    "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5": {
+                        "memberId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
+                        "groupInstanceId": null,
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d32352d766563746f727300000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.request.v7.member-id-required",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 7,
+            "source": "broker",
+            "description": "The first join of a dynamic member, with an **empty** member id: the 79 of KIP-394 is answered to a version 7 exactly as it is to a version 4, and the frame is the one above with a zero-length compact member id.",
+            "hex": "00000067000b0007000003e900126b61666b612d636c69656e742d74332d3235001474332d32352d766563746f72732d67726f75700000753000004e20010009636f6e73756d6572020672616e67651a000000000001000d74332d32352d766563746f7273000000000000",
+            "fields": {
+                "messageSize": 103,
+                "apiKey": 11,
+                "apiVersion": 7,
+                "correlationId": 1001,
+                "clientId": "kafka-client-t3-25",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-25-vectors-group",
+                "sessionTimeout": 30000,
+                "rebalanceTimeout": 20000,
+                "memberId": "",
+                "groupInstanceId": null,
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d32352d766563746f727300000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v7.member-id-required",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 7,
+            "source": "broker",
+            "description": "The refusal: the error code **79** with the member id the coordinator generated - and, from version 7 on, a **null** `protocol_type` and a **null** `protocol_name`, both the single byte `00` of a null compact string, where a version 6 answer carries the empty string of `GroupCoordinator.NoProtocol` in the name and has no type at all.",
+            "hex": "0000004c000003e90000000000004fffffffff000001386b61666b612d636c69656e742d74332d32352d62303930303031342d306565352d343663652d613031392d6336353034373639323763350100",
+            "fields": {
+                "messageSize": 76,
+                "correlationId": 1001,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 79,
+                "generationId": -1,
+                "protocolType": null,
+                "groupProtocol": null,
+                "leaderId": "",
+                "memberId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
+                "members": []
             }
         }
     ]

@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `SYNC_GROUP_REQUEST_V1 = SYNC_GROUP_REQUEST_V0` in `Protocol.java` @ 0.11.0.3: only the answer of version 1 is
  * different ({@see SyncGroupResponseV0}).
  *
- * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v4)"
+ * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v5)"
  */
 final class SyncGroupRequestV0 extends SyncGroupRequest
 {

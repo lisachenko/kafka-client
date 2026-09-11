@@ -492,6 +492,51 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   connection (measured). `Protocol\Data\MetadataRequestTopic` is that structure and `getTopics()` still answers
   the list of names. The vector pair `metadata.*.v9` is annotated down to every compact length and tag buffer.
 
+### Kafka 2.5
+
+- **JoinGroup v7 and SyncGroup v5 (KIP-559)** — the protocol of a generation travels in both directions now. The
+  JoinGroup **answer** gained a nullable `protocol_type` in front of its `protocol_name`, and the name itself
+  became nullable with it (`JoinGroupResponse::$protocolType`, `$groupProtocol`); the SyncGroup **request** and
+  answer gained the same pair behind the `group_instance_id` (`SyncGroupRequest`'s two new trailing arguments,
+  `SyncGroupResponse::$protocolType`/`$protocolName`). The JoinGroup request did not change at all - "Version 7
+  is the same as version 6" - so `JoinGroupRequest` sends the version 6 bytes with the version field 7 and
+  `JoinGroupRequestV6`/`JoinGroupResponseV6` and `SyncGroupRequestV4`/`SyncGroupResponseV4` keep the versions
+  Kafka 2.4 added.
+- **The two fields of a SyncGroup v5 are mandatory in the broker**: a version 5 that leaves either of them null
+  is answered **23** (`InconsistentGroupProtocol`) by `areMandatoryProtocolTypeAndNamePresent()` before the
+  coordinator is asked anything, and one that names a protocol the generation did not settle on gets the same
+  code one check later. `Client::syncGroup()` therefore takes the pair as its last two arguments and
+  `Consumer\Internals\ConsumerCoordinator` passes the `protocol_type` it joined with and the protocol name of the
+  JoinGroup answer, exactly as `AbstractCoordinator` @ 2.8.2 does. Measured on the container: both null → 23 with
+  a null type, a null name and an empty assignment **and the membership untouched**, a wrong name or a wrong type
+  → 23 as well, the right pair → 0. And an error answer of a JoinGroup **v7** carries `null` in both fields where
+  a v6 carries the empty string of `GroupCoordinator.NoProtocol` - measured on the 79 of KIP-394.
+- **`Client::syncGroup()` falls back to the version 4 frame** when the caller names neither field: a version 5
+  without them is refused with 23 before the coordinator reads the group, so a caller that does not know the
+  protocol of the generation - every caller written before this release - keeps sending the version Kafka 2.4
+  added, which carries no such field and which a 2.8.2 broker still serves. The consumer of this package always
+  names both and always sends the version 5.
+- **OffsetFetch v7 (KIP-447)** — the boolean `require_stable` behind the topic array asks the coordinator to hold
+  back an offset whose transaction has not been committed yet and to answer that partition with the **retriable**
+  error code **88** (`UnstableOffsetCommit`) instead. `OffsetFetchRequest` is the v7 now and takes the flag as its
+  last argument (`forAllTopics()` too), `Client::fetchGroupOffsets()` passes it on, and
+  `OffsetFetchRequestV6`/`OffsetFetchResponseV6` keep the flexible version of Kafka 2.4, whose answer can never
+  carry the 88.
+- **`KafkaConsumer` reads stable offsets when `isolation.level = read_committed`** — both for the positions it
+  resolves after a rebalance and for `committed()` - and waits an 88 out with `retry.backoff.ms` before it
+  reports it, because the code is retriable and the cure is the end of the transaction that holds the offset. A
+  read-uncommitted consumer sends the flag off, which is the behaviour of every version below 7. (The Java
+  consumer of 2.8 asks for stable offsets on *every* such fetch and uses an internal option to decide what an old
+  broker costs; this client asks where an unstable offset could become a position.)
+- Measured on the container, one partition of one group: with nothing pending both `require_stable = false` and
+  `true` answer the committed offset; while a transactional commit of 42 is open the flag answers **88** with the
+  offset -1 and the group-level code 0, and *without* the flag the same request answers the last **stable**
+  offset 25 - never the pending one; once the transaction commits, the stable read answers 42.
+- 14 wire vectors of the new frames were captured from the container, the document gained the sections "The
+  protocol type and name of KIP-559 (Kafka 2.5)" and "Stable offsets and the 88 of KIP-447 (Kafka 2.5)", and the
+  two integration suites `GroupProtocolApiTest` and `StableOffsetsApiTest` measure both halves against a real
+  broker.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

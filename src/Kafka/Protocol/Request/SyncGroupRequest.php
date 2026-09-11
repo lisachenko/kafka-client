@@ -18,19 +18,21 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
 
 /**
- * SyncGroup, version 3: the request with which the leader of a group publishes the state of the new generation.
+ * SyncGroup, version 5: the request with which the leader of a group publishes the state of the new generation.
  *
  * All members send SyncGroup immediately after they joined the group, but only the leader provides the assignment
  * of the group; every other member sends an empty assignment array and receives its own share in the answer. The
  * coordinator holds the answers of the followers until the leader has sent its assignment.
  *
  * <pre>
- *   SyncGroup Request (Version: 0 to 3) => group_id generation_id member_id group_instance_id
- *                                            [group_assignment]
+ *   SyncGroup Request (Version: 0 to 5) => group_id generation_id member_id group_instance_id protocol_type
+ *                                            protocol_name [group_assignment]
  *     group_id          => STRING
  *     generation_id     => INT32
  *     member_id         => STRING
  *     group_instance_id => NULLABLE_STRING   -- since version 3
+ *     protocol_type     => NULLABLE_STRING   -- since version 5
+ *     protocol_name     => NULLABLE_STRING   -- since version 5
  *     group_assignment  => member_id member_assignment
  *       member_id         => STRING
  *       member_assignment => BYTES
@@ -46,7 +48,16 @@ use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
  * fences the first, whose requests are answered 82 (`FencedInstanceId`) afterwards. A dynamic member sends
  * `null`, which is the frame {@see SyncGroupRequestV2} sends with one field less.
  *
- * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v4)"
+ * **Version 5 (KIP-559, Kafka 2.5) appended the `protocol_type` and the `protocol_name` of the generation**, both
+ * nullable on the wire and both **mandatory** in practice: `KafkaApis.handleSyncGroupRequest` @ 2.8.2 answers a
+ * version 5 that leaves either of them null with **23** (`InconsistentGroupProtocol`) before it looks at anything
+ * else, and `GroupCoordinator.handleSyncGroup` answers the same 23 when they do not match what the coordinator
+ * settled on for that generation. A member therefore echoes the `protocol_type` it joined with and the
+ * `protocol_name` the JoinGroup answer reported, which is what
+ * {@see \Protocol\Kafka\Consumer\Internals\ConsumerCoordinator} passes on. {@see SyncGroupRequestV4} is the
+ * same frame without the two fields.
+ *
+ * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v5)"
  */
 class SyncGroupRequest extends AbstractRequest
 {
@@ -58,7 +69,7 @@ class SyncGroupRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -108,7 +119,19 @@ class SyncGroupRequest extends AbstractRequest
          *
          * @since Version 3 of protocol
          */
-        protected readonly ?string $groupInstanceId = null
+        protected readonly ?string $groupInstanceId = null,
+        /**
+         * The class of protocols of the group, the `protocol_type` the member joined with, e.g. `consumer`.
+         *
+         * @since Version 5 of protocol
+         */
+        protected readonly ?string $protocolType = null,
+        /**
+         * The protocol the coordinator selected for this generation, as the JoinGroup answer reported it.
+         *
+         * @since Version 5 of protocol
+         */
+        protected readonly ?string $protocolName = null
     ) {
         $packedGroupAssignments = [];
         foreach ($groupAssignments as $groupMemberId => $memberAssignment) {
@@ -135,6 +158,10 @@ class SyncGroupRequest extends AbstractRequest
         ];
         if (static::VERSION >= 3) {
             $body['groupInstanceId'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        if (static::VERSION >= 5) {
+            $body['protocolType'] = BinarySchema::TYPE_NULLABLE_STRING;
+            $body['protocolName'] = BinarySchema::TYPE_NULLABLE_STRING;
         }
         $body['groupAssignments'] = ['memberId' => SyncGroupRequestMember::class];
 

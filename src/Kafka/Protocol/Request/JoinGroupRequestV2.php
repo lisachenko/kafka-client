@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `rebalance_timeout` of version 1 and the `group_instance_id` of version 5, so this class sends the very same
  * bytes as {@see JoinGroupRequest}. Its answer is unchanged too and is read with {@see JoinGroupResponseV2}.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v6)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v7)" and "Quotas and throttle time"
  */
 final class JoinGroupRequestV2 extends JoinGroupRequest
 {
