@@ -271,6 +271,10 @@ abstract class AbstractStream implements Stream
             'Q' => 8,
             'J' => 8,
             'P' => 8,
+            // IEEE 754 doubles: 'd' is machine order, 'e' little-endian and 'E' the big-endian one of the protocol
+            'd' => 8,
+            'e' => 8,
+            'E' => 8,
         ];
         static $cache = [];
         if (isset($cache[$format])) {

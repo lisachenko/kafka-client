@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * single byte `00` where this one carries nothing at all.
  *
  * @see docs/protocol/2.8.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/2.8.md, section "ListGroups API (key 16, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "ListGroups API (key 16, v0 to v4)"
  */
 final class ListGroupsRequestV2 extends ListGroupsRequest
 {

@@ -585,6 +585,26 @@ them. What the release added lives in the group and transaction apis.)*
 
 ### Kafka 2.6
 
+- **ListGroups v4 (KIP-518)** — the api that had no request body at all for four versions got one: the
+  `states_filter`, an array of group state names that bounds the answer to the groups in one of them, and every
+  entry of the answer gained the `group_state` of that group. `ListGroupsRequest` is the v4 now and takes the
+  states as its last argument, `ListGroupResponseProtocol::$groupState` carries the state (null for every version
+  below 4, which does not report it), and `ListGroupsRequestV3`/`ListGroupsResponseV3` and
+  `Protocol\Data\ListGroupResponseProtocolV0` keep the flexible version of Kafka 2.4.
+- **`AdminClient::listGroups()` and `listAllGroups()` take the states**, and the new
+  **`AdminClient::listConsumerGroups()`** - the name of the Java admin client - lists the groups of the whole
+  cluster whose protocol type is `consumer` (`AdminClient::CONSUMER_PROTOCOL_TYPE`), with the same filter. Finding
+  the empty groups of a cluster no longer costs one DescribeGroups per group.
+- Measured on the container: an **empty** filter is every group the coordinator holds - 176 of them on the shared
+  container, each with its state - `["Stable"]` answered exactly the one group of the capture,
+  `["Empty", "PreparingRebalance"]` the other 175, and `["stable"]` in lower case answered the error code **0**
+  with an **empty** array: `GroupCoordinator.handleListGroups` @ 2.8.2 compares the names with
+  `states.contains(g.summary.state)`, so the filter is case sensitive and a name that is not a state at all is no
+  match rather than an error. A null filter is the empty one (`KafkaApis`: "Handle a null array the same as
+  empty"); this client sends the empty array.
+- 4 wire vectors of the new frames were captured from the container, the document gained the section "The group
+  states of KIP-518 (Kafka 2.6)", and the new integration suite `GroupStatesApiTest` measures the filter and the
+  state of a group through its life.
 - **DeleteRecords v2** (KIP-482) — the first **flexible** version of the api: not one field is added,
   `DeleteRecordsRequest.json` and `DeleteRecordsResponse.json` @ 2.8.2 both say "Version 2 is the first flexible
   version". The version 0 question travels with the request header **v2**, compact strings and arrays and a
@@ -602,6 +622,58 @@ them. What the release added lives in the group and transaction apis.)*
   and `__transaction_state` without a leader. The cleanup is best effort: a topic that was never created, or that
   a test deleted itself, is answered with the error code 3 and ignored, and a broker that is gone never turns a
   green suite red.
+- **The two client-quota apis of KIP-546** — `DescribeClientQuotas` (key **48**, v0) and `AlterClientQuotas`
+  (key **49**, v0). Until Kafka 2.6 a client quota could only be read and written through **ZooKeeper**, which is
+  why the quota fixture of the lines below shells `kafka-configs.sh` into the container; these two requests replace
+  it. Both are **plain** frames although the release is well past KIP-482 —
+  `DescribeClientQuotasRequest.json` @ 2.6.3 and @ 2.7.2 declare `"flexibleVersions": "none"` — and their flexible
+  v1 is Kafka 2.8. `AdminClient::describeClientQuotas(ClientQuotaFilter)` answers `entity => [quota => value]` and
+  `AdminClient::alterClientQuotas(array $alterations, bool $validateOnly = false)` reports one result per entity
+  and throws nothing, because the alter api has **no top-level error code**. The value objects carry the Java
+  names: `Admin\ClientQuotaEntity` (a map of entity type to name, `null` being the `<default>` entity),
+  `ClientQuotaFilter`/`ClientQuotaFilterComponent` with the three match types, and
+  `ClientQuotaAlteration`/`ClientQuotaAlterationOp` whose `remove()` is the api's `remove` flag. Nine new wire
+  vectors in the new `docs/protocol/vectors/describe-client-quotas.json` and `alter-client-quotas.json`, and three
+  broker behaviours measured: an unknown entity type is **35** (not 42) with `Custom entity type 'x' not
+  supported` and a **null** entry array where a filter that matched nothing answers an empty one, an unknown quota
+  key is **42** per entity, and an unknown **match type** escapes `DescribeClientQuotasRequest.filter()` as a plain
+  `IllegalArgumentException` and comes back as the error code **-1** with a null message — a validation gap of the
+  broker. `strict` was measured too: it excludes an entity that also carries a `user` part, and the non-strict
+  filter keeps it.
+- **`float64` in the schema engine** — `BinarySchema::TYPE_FLOAT64`, eight bytes of an IEEE 754 double in network
+  order (`pack('E')`, `Type.FLOAT64` of the Java client), and the three double formats in the size table of
+  `IO\AbstractStream`. The quota values of the keys 48 and 49 are the only fields of Kafka 2.8.2 that use it; like
+  every fixed-width type it is untouched by the compact encoding.
+- **DescribeConfigs v3 - the config type and the documentation of KIP-569** - the request gains an
+  `include_documentation` boolean behind `include_synonyms`, and every entry of the answer gains a
+  `config_type int8` and a nullable `documentation` string behind its synonyms. The type is the `ConfigDef.Type`
+  of the option - `Admin\ConfigType` carries the ten values, with `CLASS` spelled `ConfigType::CLASS_NAME`
+  because `class` is a reserved word in PHP and `nameOf()` answering the Java name - and the documentation is the
+  prose of `ConfigDef.define(...)`. `ConfigEntry::$type` and `ConfigEntry::$documentation` hold them,
+  `AdminClient::describeConfigs(..., bool $includeDocumentation = false)` asks for the second.
+  `DescribeConfigsRequestV2`/`ResponseV2` (and `DescribeConfigsResponseConfigEntryV1`/`ResourceV1` below them)
+  keep the frames of the versions 0 to 2.
+- Measured on the container: the **type is filled whatever the flag says** -
+  `ConfigHelper.createTopicConfigEntry` @ 2.8.2 ends in
+  `.setDocumentation(configDocumentation).setConfigType(dataType.id)`, where only the documentation is behind
+  `if (includeDocumentation)` - and an unrestricted request with the flag is **enormous**: every option of a topic
+  is 26 entries and 9 284 bytes, every option of the **broker** 233 entries and 58 272 bytes, against 74 bytes for
+  the one option the vectors of this document ask for. A client that wants a type or a help text should name its
+  `configuration_keys`.
+- **DescribeLogDirs v2 - the flexible version of KIP-482** - no field was added: the same request and answer in
+  the compact encoding, with the request header v2 and a tagged-field section at the end of every structure. The
+  nullable topic array of the request is the compact nullable one, so the `ff ff ff ff` that asks for every
+  replica of every directory becomes a single `00` and the whole request is 15 bytes.
+  `DescribeLogDirsRequestV1`/`ResponseV1` keep the frame of the versions 0 and 1.
+- Measured on the container: a **2.8.2 broker ignores the selection of the request altogether** and groups every
+  log of a directory into the answer, so a request that names one partition, one with an empty topic array and one
+  with the null array are answered with the same frame - 16 391 bytes and 581 replicas when the version 2 pair was
+  captured, where a 1.1.1 broker answered an empty array with 64 bytes. The empty array is therefore no longer the
+  cheap "which disks does this broker have" of the 1.x line, and `describelogdirs.response.v2` is a **constructed**
+  vector for the same reason as its version 1 counterpart.
+- **Ten wire vectors**: the six DescribeConfigs v3 frames (the topics `t4-26-vectors` and `t4-26-own`) and the four
+  DescribeLogDirs v2 frames (the topic `t4-26-logdirs`), each with its annotated dump, and the two headings moved
+  to their new ranges.
 
 ### Kafka 2.7
 

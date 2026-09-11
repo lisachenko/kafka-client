@@ -24,17 +24,21 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseTopic;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV0;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV0;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV1;
 
 /**
  * Byte-exact tests for the DescribeLogDirs API of Kafka 1.0 (api key 35, v0, KIP-113).
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
  */
 #[CoversClass(DescribeLogDirsRequest::class)]
+#[CoversClass(DescribeLogDirsRequestV1::class)]
 #[CoversClass(DescribeLogDirsRequestV0::class)]
 #[CoversClass(DescribeLogDirsResponse::class)]
+#[CoversClass(DescribeLogDirsResponseV1::class)]
 #[CoversClass(DescribeLogDirsResponseV0::class)]
 #[CoversClass(DescribeLogDirsRequestTopic::class)]
 #[CoversClass(DescribeLogDirsResponseLogDir::class)]
@@ -125,7 +129,7 @@ final class DescribeLogDirsTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new DescribeLogDirsRequest(['topic' => [0, 1]], 'test', 5);
+        $request = new DescribeLogDirsRequestV1(['topic' => [0, 1]], 'test', 5);
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DESCRIBE_LOG_DIRS, $request->getApiKey());
@@ -137,7 +141,7 @@ final class DescribeLogDirsTest extends TestCase
     {
         // `DescribeLogDirsRequest.isAllTopicPartitions` @ 1.1.1: the -1 size of the nullable array is what the
         // Java admin client and `kafka-log-dirs.sh --describe` always send
-        $request = new DescribeLogDirsRequest(null, 'test', 5);
+        $request = new DescribeLogDirsRequestV1(null, 'test', 5);
 
         self::assertSame(self::ALL_PARTITIONS_REQUEST_HEX, bin2hex((string) $request));
         self::assertStringEndsWith('ffffffff', self::ALL_PARTITIONS_REQUEST_HEX);
@@ -147,14 +151,14 @@ final class DescribeLogDirsTest extends TestCase
     {
         self::assertSame(
             self::ALL_PARTITIONS_REQUEST_HEX,
-            bin2hex((string) new DescribeLogDirsRequest(clientId: 'test', correlationId: 5))
+            bin2hex((string) new DescribeLogDirsRequestV1(clientId: 'test', correlationId: 5))
         );
     }
 
     public function testAnEmptyTopicArrayIsNotTheSameFrameAsANullOne(): void
     {
         // The empty array asks for NO replica, and is the cheapest way to ask which disks a broker has
-        $request = new DescribeLogDirsRequest([], 'test', 5);
+        $request = new DescribeLogDirsRequestV1([], 'test', 5);
 
         self::assertSame(self::NO_PARTITIONS_REQUEST_HEX, bin2hex((string) $request));
         self::assertNotSame(self::ALL_PARTITIONS_REQUEST_HEX, self::NO_PARTITIONS_REQUEST_HEX);
@@ -162,7 +166,7 @@ final class DescribeLogDirsTest extends TestCase
 
     public function testAlreadyBuiltTopicEntriesAreTakenAsTheyAre(): void
     {
-        $built = new DescribeLogDirsRequest(['topic' => new DescribeLogDirsRequestTopic('topic', [0, 1])], 'test', 5);
+        $built = new DescribeLogDirsRequestV1(['topic' => new DescribeLogDirsRequestTopic('topic', [0, 1])], 'test', 5);
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $built));
     }
@@ -170,7 +174,7 @@ final class DescribeLogDirsTest extends TestCase
     public function testTheRequestSurvivesADecodeAndEncodeRoundTrip(): void
     {
         foreach ([self::REQUEST_HEX, self::ALL_PARTITIONS_REQUEST_HEX, self::NO_PARTITIONS_REQUEST_HEX] as $hex) {
-            $decoded = DescribeLogDirsRequest::unpack(new StringStream((string) hex2bin($hex)));
+            $decoded = DescribeLogDirsRequestV1::unpack(new StringStream((string) hex2bin($hex)));
 
             self::assertSame($hex, bin2hex((string) $decoded));
         }
@@ -178,7 +182,7 @@ final class DescribeLogDirsTest extends TestCase
 
     public function testResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = DescribeLogDirsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = DescribeLogDirsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(5, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);
@@ -205,7 +209,7 @@ final class DescribeLogDirsTest extends TestCase
 
     public function testAPartitionThatIsBeingMovedIsReportedInBothDirectories(): void
     {
-        $response = DescribeLogDirsResponse::unpack(new StringStream((string) hex2bin(self::MOVING_RESPONSE_HEX)));
+        $response = DescribeLogDirsResponseV1::unpack(new StringStream((string) hex2bin(self::MOVING_RESPONSE_HEX)));
 
         $source      = $response->logDirs['/disk']->topics['topic']->partitions[0];
         $destination = $response->logDirs['/disk2']->topics['topic']->partitions[0];
@@ -220,7 +224,7 @@ final class DescribeLogDirsTest extends TestCase
     public function testTheResponseSurvivesADecodeAndEncodeRoundTrip(): void
     {
         foreach ([self::RESPONSE_HEX, self::MOVING_RESPONSE_HEX] as $hex) {
-            $decoded = DescribeLogDirsResponse::unpack(new StringStream((string) hex2bin($hex)));
+            $decoded = DescribeLogDirsResponseV1::unpack(new StringStream((string) hex2bin($hex)));
 
             self::assertSame($hex, bin2hex((string) $decoded));
         }

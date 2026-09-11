@@ -329,22 +329,26 @@ final class DelegationTokenApiTest extends IntegrationTestCase
 
     public function testARenewerWhoseTypeIsNotUserIsRefusedAndNoTokenIsCreated(): void
     {
-        $admin  = $this->adminClient();
-        $before = $admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]);
+        $admin   = $this->adminClient();
+        $renewer = new KafkaPrincipal('Group', 'analytics');
 
         try {
-            $admin->createDelegationToken([new KafkaPrincipal('Group', 'analytics')], self::MAX_LIFETIME_MS);
+            $admin->createDelegationToken([$renewer], self::MAX_LIFETIME_MS);
             self::fail('a renewer that is not a User has to be refused');
         } catch (InvalidPrincipalTypeException) {
             self::assertTrue(true);
         }
 
-        $after = $admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]);
-        self::assertSame(
-            [],
-            array_values(array_diff(array_keys($after), array_keys($before))),
-            'the request is refused before a token is issued'
-        );
+        // Every suite of this line authenticates as the same `User:kafkatest`, so the tokens of the owner are a
+        // shared resource: a token another suite issued between the two describes of this test is visible here.
+        // What the refusal really promises is that no token of this owner carries the renewer it named.
+        foreach ($admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]) as $tokenId => $token) {
+            self::assertNotContains(
+                (string) $renewer,
+                $token->tokenInformation->renewersAsString(),
+                "the refused request issued the token {$tokenId} after all"
+            );
+        }
     }
 
     public function testAnEmptyOwnerArrayAsksForNothingAndIsNotTheSameAsANullOne(): void

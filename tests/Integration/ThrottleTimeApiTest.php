@@ -95,6 +95,11 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
     /**
      * Session timeout of the group member this class joins with, inside `group.min/max.session.timeout.ms`
      */
+    /**
+     * How often the KIP-394 pair is started over when the coordinator drops the pending member in between
+     */
+    private const int JOIN_ATTEMPTS = 3;
+
     private const int SESSION_TIMEOUT_MS = 10000;
 
     /**
@@ -172,34 +177,42 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
 
         // Version 4 of the api (KIP-394) refuses a join that carries no member id, and the refusal is a normal
         // answer of the api: it carries the throttle time of version 4 in front of the error code just as the
-        // successful one does, and the member id the coordinator assigned behind it.
-        new JoinGroupRequest(
-            $groupId,
-            self::SESSION_TIMEOUT_MS,
-            self::SESSION_TIMEOUT_MS,
-            JoinGroupRequest::DEFAULT_MEMBER_ID,
-            'consumer',
-            ['range' => new Subscription([$topic])->pack()],
-            self::CLIENT_ID,
-            201
-        )->writeTo($stream);
-        $refused = JoinGroupResponse::unpack($stream);
+        // successful one does, and the member id the coordinator assigned behind it. The pair is started over
+        // when the rejoin is answered 25: the assigned id lives in `group.pendingMembers` for one session timeout
+        // only, and the coordinator of the shared container drops it in between when the other suites keep it busy
+        for ($attempt = 1; ; ++$attempt) {
+            new JoinGroupRequest(
+                $groupId,
+                self::SESSION_TIMEOUT_MS,
+                self::SESSION_TIMEOUT_MS,
+                JoinGroupRequest::DEFAULT_MEMBER_ID,
+                'consumer',
+                ['range' => new Subscription([$topic])->pack()],
+                self::CLIENT_ID,
+                201
+            )->writeTo($stream);
+            $refused = JoinGroupResponse::unpack($stream);
 
-        self::assertSame(0, $refused->throttleTimeMs);
-        self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
-        self::assertNotSame(JoinGroupRequest::DEFAULT_MEMBER_ID, $refused->memberId);
+            self::assertSame(0, $refused->throttleTimeMs);
+            self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
+            self::assertNotSame(JoinGroupRequest::DEFAULT_MEMBER_ID, $refused->memberId);
 
-        new JoinGroupRequest(
-            $groupId,
-            self::SESSION_TIMEOUT_MS,
-            self::SESSION_TIMEOUT_MS,
-            $refused->memberId,
-            'consumer',
-            ['range' => new Subscription([$topic])->pack()],
-            self::CLIENT_ID,
-            202
-        )->writeTo($stream);
-        $join = JoinGroupResponse::unpack($stream);
+            new JoinGroupRequest(
+                $groupId,
+                self::SESSION_TIMEOUT_MS,
+                self::SESSION_TIMEOUT_MS,
+                $refused->memberId,
+                'consumer',
+                ['range' => new Subscription([$topic])->pack()],
+                self::CLIENT_ID,
+                202
+            )->writeTo($stream);
+            $join = JoinGroupResponse::unpack($stream);
+
+            if ($join->errorCode !== KafkaException::UNKNOWN_MEMBER_ID || $attempt === self::JOIN_ATTEMPTS) {
+                break;
+            }
+        }
 
         self::assertSame(0, $join->throttleTimeMs);
         self::assertSame(KafkaException::NO_ERROR, $join->errorCode);

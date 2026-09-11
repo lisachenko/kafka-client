@@ -105,6 +105,15 @@ final class GroupMembershipApiTest extends IntegrationTestCase
     /**
      * Session timeout of every member here: `group.min.session.timeout.ms` of the container is 1000
      */
+    /**
+     * How often the KIP-394 pair - the refused first join and the rejoin with the assigned id - is started over
+     *
+     * The member id of a 79 lives in `group.pendingMembers` for one session timeout only, and the coordinator of
+     * the shared container has been seen dropping it between the two requests while the other suites hammer it;
+     * the rejoin is then answered 25 and the exchange has to begin again with an empty member id.
+     */
+    private const int JOIN_ATTEMPTS = 3;
+
     private const int SESSION_TIMEOUT_MS = 6000;
 
     /**
@@ -784,6 +793,11 @@ final class GroupMembershipApiTest extends IntegrationTestCase
      * `Client::joinGroup()` is the api and not the state machine: it reports the 79 and leaves the second join to
      * its caller, which is what `Consumer\Internals\ConsumerCoordinator` does in the client itself.
      *
+     * **The pair is started over when the rejoin is answered 25.** A member id the coordinator assigned lives in
+     * `group.pendingMembers` for one session timeout, and on the shared container of this line the coordinator has
+     * been seen dropping it between the two requests under the load of the other suites - the second join is then
+     * a join with an id the group no longer has, which is an `UnknownMemberId` and not a defect of the client.
+     *
      * @param array<string, string> $protocols Metadata of every offered protocol, by protocol name
      */
     private function joinThroughClient(
@@ -793,22 +807,30 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         array $protocols,
         string $protocolType = self::PROTOCOL_TYPE
     ): JoinGroupResponse {
-        try {
-            return $client->joinGroup(
-                $coordinator,
-                $groupId,
-                JoinGroupRequest::DEFAULT_MEMBER_ID,
-                $protocolType,
-                $protocols
-            );
-        } catch (MemberIdRequiredException $exception) {
-            return $client->joinGroup(
-                $coordinator,
-                $groupId,
-                (string) $exception->getContext()['assignedMemberId'],
-                $protocolType,
-                $protocols
-            );
+        for ($attempt = 1; ; ++$attempt) {
+            try {
+                return $client->joinGroup(
+                    $coordinator,
+                    $groupId,
+                    JoinGroupRequest::DEFAULT_MEMBER_ID,
+                    $protocolType,
+                    $protocols
+                );
+            } catch (MemberIdRequiredException $exception) {
+                try {
+                    return $client->joinGroup(
+                        $coordinator,
+                        $groupId,
+                        (string) $exception->getContext()['assignedMemberId'],
+                        $protocolType,
+                        $protocols
+                    );
+                } catch (UnknownMemberIdException $expired) {
+                    if ($attempt === self::JOIN_ATTEMPTS) {
+                        throw $expired;
+                    }
+                }
+            }
         }
     }
 
@@ -820,9 +842,17 @@ final class GroupMembershipApiTest extends IntegrationTestCase
      */
     private function join(Stream $stream, string $groupId, string $memberId, string $metadata): JoinGroupResponse
     {
-        $response = $this->rawJoin($stream, $groupId, $memberId, $metadata, 101);
-        if ($response->errorCode === KafkaException::MEMBER_ID_REQUIRED) {
-            $response = $this->rawJoin($stream, $groupId, $response->memberId, $metadata, 102);
+        for ($attempt = 1; ; ++$attempt) {
+            $response = $this->rawJoin($stream, $groupId, $memberId, $metadata, 101);
+            if ($response->errorCode === KafkaException::MEMBER_ID_REQUIRED) {
+                $response = $this->rawJoin($stream, $groupId, $response->memberId, $metadata, 102);
+            }
+
+            // The coordinator can drop the pending member of the 79 before the rejoin arrives, which answers the
+            // second request 25; the exchange is simply done again, see joinThroughClient()
+            if ($response->errorCode !== KafkaException::UNKNOWN_MEMBER_ID || $attempt === self::JOIN_ATTEMPTS) {
+                break;
+            }
         }
 
         self::assertSame(KafkaException::NO_ERROR, $response->errorCode, 'The broker refused the join');
@@ -841,28 +871,35 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         string $metadata = 'metadata',
         int $sessionTimeoutMs = self::SESSION_TIMEOUT_MS
     ): JoinGroupResponse {
-        $response = $this->rawJoinWith(
-            $stream,
-            $groupId,
-            JoinGroupRequest::DEFAULT_MEMBER_ID,
-            $metadata,
-            $sessionTimeoutMs,
-            $rebalanceTimeoutMs,
-            $correlationId
-        );
-        if ($response->errorCode !== KafkaException::MEMBER_ID_REQUIRED) {
-            return $response;
-        }
+        for ($attempt = 1; ; ++$attempt) {
+            $response = $this->rawJoinWith(
+                $stream,
+                $groupId,
+                JoinGroupRequest::DEFAULT_MEMBER_ID,
+                $metadata,
+                $sessionTimeoutMs,
+                $rebalanceTimeoutMs,
+                $correlationId
+            );
+            if ($response->errorCode !== KafkaException::MEMBER_ID_REQUIRED) {
+                return $response;
+            }
 
-        return $this->rawJoinWith(
-            $stream,
-            $groupId,
-            $response->memberId,
-            $metadata,
-            $sessionTimeoutMs,
-            $rebalanceTimeoutMs,
-            $correlationId + 1000
-        );
+            $joined = $this->rawJoinWith(
+                $stream,
+                $groupId,
+                $response->memberId,
+                $metadata,
+                $sessionTimeoutMs,
+                $rebalanceTimeoutMs,
+                $correlationId + 1000
+            );
+
+            // A pending member the coordinator dropped before the rejoin is a 25, see joinThroughClient()
+            if ($joined->errorCode !== KafkaException::UNKNOWN_MEMBER_ID || $attempt === self::JOIN_ATTEMPTS) {
+                return $joined;
+            }
+        }
     }
 
     /**

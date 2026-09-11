@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Admin;
  * broker config, which overrides the `server.properties`, which overrides the built-in default. That is also the
  * order of the synonyms of an entry, whose first element is the one that won.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
  */
 final class ConfigSource
 {
