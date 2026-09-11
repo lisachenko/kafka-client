@@ -54,14 +54,19 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DescribeLogDirsResponseV0} is the same frame with the version field of Kafka 1.0.
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
  */
 class DescribeLogDirsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * The version 2 of Kafka 2.6 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation

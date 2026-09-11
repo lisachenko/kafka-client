@@ -1,8 +1,8 @@
 {
     "api": "describe-log-dirs",
     "apiKey": 35,
-    "section": "DescribeLogDirs API (key 35, v0 and v1)",
-    "description": "Wire vectors of the DescribeLogDirs API (key 35, v0 and v1), replayed by tests/Compliance.",
+    "section": "DescribeLogDirs API (key 35, v0 to v2)",
+    "description": "Wire vectors of the DescribeLogDirs API (key 35, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describelogdirs.request.v0",
@@ -179,7 +179,7 @@
         {
             "id": "describelogdirs.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "DescribeLogDirs request v1, the frame of version 0 with the api version Kafka 2.0 added: one named partition of one topic.",
@@ -203,7 +203,7 @@
         {
             "id": "describelogdirs.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV1",
             "version": 1,
             "source": "constructed",
             "description": "DescribeLogDirs response v1 for one named partition: the two log directories of the container, the one that holds the replica with its size and its offset lag, the other one with an empty topic array. This is the ONE vector of this line that is not a captured frame: a 2.8.2 broker groups **every** log of a directory by topic and only filters the partitions inside those groups (`ReplicaManager.describeLogDirs` @ 2.8.2), so the answer of the shared container named a hundred topics of other test suites with empty partition arrays. The frame below is that answer with the foreign topics removed and re-encoded by the client.",
