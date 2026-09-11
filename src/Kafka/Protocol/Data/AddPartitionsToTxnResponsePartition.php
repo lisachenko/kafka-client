@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * unauthorized with `OperationNotAttempted` for every partition it did not look at, so that a client cannot
  * conclude from a missing error that a partition was added.
  *
- * @see docs/protocol/2.8.md, section "AddPartitionsToTxn API (key 24, v0)"
+ * @see docs/protocol/2.8.md, section "AddPartitionsToTxn API (key 24, v0 and v1)"
  */
 class AddPartitionsToTxnResponsePartition implements BinarySchemaInterface
 {

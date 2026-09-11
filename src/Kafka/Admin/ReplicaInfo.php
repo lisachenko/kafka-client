@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponsePartition;
  * A replica whose lag the broker cannot tell - because it has no replica object for the partition at all - carries
  * {@see self::INVALID_OFFSET_LAG}.
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 and v1)"
  */
 final class ReplicaInfo
 {

@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * have to agree with: an Offsets request with `EARLIEST`, the `log_start_offset` of a Fetch v5 answer, and the
  * error a Fetch below it gets.
  *
- * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Client::class)]

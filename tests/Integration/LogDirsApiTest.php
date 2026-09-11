@@ -26,8 +26,8 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\LogDirNotFoundException;
-use Protocol\Kafka\Common\Errors\ReplicaNotAvailableException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig;
@@ -52,8 +52,8 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
  * this suite possible at all: a broker with one directory can only ever answer "the replica is already there".
  * Every test moves replicas of a topic it created itself, because the broker is shared with the other suites.
  *
- * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0)" and
- *      "AlterReplicaLogDirs API (key 34, v0)"
+ * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0 and v1)" and
+ *      "AlterReplicaLogDirs API (key 34, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeLogDirsRequest::class)]
@@ -338,7 +338,17 @@ final class LogDirsApiTest extends IntegrationTestCase
         self::assertInstanceOf(LogDirNotFoundException::class, $result[$key]);
     }
 
-    public function testAReplicaTheBrokerDoesNotHostIsReplicaNotAvailableAndNoTopicIsCreated(): void
+    /**
+     * A replica of a topic the broker does not know is **3** on a 2.8.2 broker, where 1.1.1 answered 9
+     *
+     * `ReplicaManager.alterReplicaLogDirs()` still maps a `NotLeaderOrFollowerException` to the error code 9
+     * (`REPLICA_NOT_AVAILABLE`) - "retaining REPLICA_NOT_AVAILABLE exception for ALTER_REPLICA_LOG_DIRS for
+     * compatibility", the comment of the catch block says - but `getPartitionOrException()` @ 2.8.2 only throws
+     * that exception when the METADATA CACHE knows the partition; for a partition it does not know it throws
+     * `UnknownTopicOrPartitionException` instead, which is the error code **3**. A 1.1.1 broker had no such
+     * distinction and answered 9 for both.
+     */
+    public function testAReplicaOfATopicTheBrokerDoesNotKnowIsUnknownTopicOrPartitionAndNoTopicIsCreated(): void
     {
         $absent = self::uniqueTopicName('t5-logdirs-no-replica');
         $key    = TopicPartitionReplica::of($absent, 0, $this->brokerId())->key();
@@ -346,21 +356,25 @@ final class LogDirsApiTest extends IntegrationTestCase
         $result = $this->admin->alterReplicaLogDirs([$key => self::FIRST_DIR]);
 
         self::assertInstanceOf(
-            ReplicaNotAvailableException::class,
+            UnknownTopicOrPartitionException::class,
             $result[$key],
-            'the topic apis answer 3 for an unknown topic, this one answers 9'
+            'the metadata cache does not know the partition, so it is 3 and not the 9 of a 1.1.1 broker'
         );
         self::assertNotContains($absent, $this->admin->listTopics());
     }
 
-    public function testAPartitionTheTopicDoesNotHaveIsAlsoReplicaNotAvailable(): void
+    /**
+     * And so is a partition index that the topic does not have: `MetadataCache.contains(TopicPartition)` is asked
+     * for the PARTITION, not for the topic, so an index above the partition count is unknown as well
+     */
+    public function testAPartitionTheTopicDoesNotHaveIsAlsoUnknownTopicOrPartition(): void
     {
         $topic = $this->topicWithRecords('no-partition');
         $key   = TopicPartitionReplica::of($topic, 7, $this->brokerId())->key();
 
         $result = $this->admin->alterReplicaLogDirs([$key => self::SECOND_DIR]);
 
-        self::assertInstanceOf(ReplicaNotAvailableException::class, $result[$key]);
+        self::assertInstanceOf(UnknownTopicOrPartitionException::class, $result[$key]);
     }
 
     public function testABrokerIdTheClusterDoesNotHaveIsRefusedBeforeAnythingIsSent(): void

@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
 
 /**
- * TxnOffsetCommit response object, version 0 (key 28)
+ * TxnOffsetCommit response object, version 1 (key 28)
  *
  * <pre>
- *   TxnOffsetCommit Response (Version: 0) => throttle_time_ms [topics]
+ *   TxnOffsetCommit Response (Version: 0 and 1) => throttle_time_ms [topics]
  *     throttle_time_ms => INT32
  *     topics           => topic [partitions]
  *       topic      => STRING
@@ -35,14 +35,21 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
  * transaction - 14, 15, 16, 47, 48 - is repeated on every partition of the answer, because
  * `GroupCoordinator.handleTxnCommitOffsets` @ 0.11.0.3 maps its single result over the requested partitions.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TXN_OFFSET_COMMIT_RESPONSE_V1 =
+ * TXN_OFFSET_COMMIT_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see TxnOffsetCommitResponseV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 and v1)"
  */
 class TxnOffsetCommitResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation

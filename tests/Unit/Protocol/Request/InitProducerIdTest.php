@@ -20,15 +20,19 @@ use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV0;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
+use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV0;
 
 /**
  * Byte-exact tests for the InitProducerId API of Kafka 0.11 (api key 22, v0).
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 and v1)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
+#[CoversClass(InitProducerIdRequestV0::class)]
 #[CoversClass(InitProducerIdResponse::class)]
+#[CoversClass(InitProducerIdResponseV0::class)]
 final class InitProducerIdTest extends TestCase
 {
     /**
@@ -36,7 +40,7 @@ final class InitProducerIdTest extends TestCase
      *
      *   Size                 => 00 00 00 14 (20 bytes)
      *   ApiKey               => 00 16 (22)
-     *   ApiVersion           => 00 00
+     *   ApiVersion           => 00 01
      *   CorrelationId        => 00 00 00 07
      *   ClientId             => 00 04 "test"
      *   TransactionalId      => ff ff (null)
@@ -44,7 +48,7 @@ final class InitProducerIdTest extends TestCase
      */
     private const string REQUEST_HEX = '00000014'
         . '0016'
-        . '0000'
+        . '0001'
         . '00000007'
         . '0004' . '74657374'
         . 'ffff'
@@ -59,7 +63,7 @@ final class InitProducerIdTest extends TestCase
      */
     private const string TRANSACTIONAL_REQUEST_HEX = '00000019'
         . '0016'
-        . '0000'
+        . '0001'
         . '00000008'
         . '0004' . '74657374'
         . '0005' . '74782d3432'
@@ -98,7 +102,7 @@ final class InitProducerIdTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.0 raised the api to version 1 (KIP-219)');
         self::assertNull($request->getTransactionalId());
         self::assertSame(60000, $request->getTransactionTimeoutMs());
     }
@@ -158,4 +162,18 @@ final class InitProducerIdTest extends TestCase
         self::assertStringContainsString('0000' . '0000ea60', $frame);
         self::assertStringNotContainsString('ffff' . '0000ea60', $frame);
     }
+
+    public function testTheVersionZeroFrameIsTheSameBodyWithALowerVersionField(): void
+    {
+        $request = new InitProducerIdRequestV0(null, 60000, 'test', 7);
+
+        // `INIT_PRODUCER_ID_REQUEST_V1 = INIT_PRODUCER_ID_REQUEST_V0` @ 2.0.1
+        self::assertSame(substr_replace(self::REQUEST_HEX, '0000', 12, 4), bin2hex((string) $request));
+        self::assertSame(0, $request->getApiVersion());
+
+        $response = InitProducerIdResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+
+        self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
+    }
+
 }

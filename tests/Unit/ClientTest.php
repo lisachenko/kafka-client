@@ -760,7 +760,7 @@ final class ClientTest extends TestCase
         $frame = $anyBroker->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frame));
-        self::assertSame(0, $this->apiVersionOf($frame));
+        self::assertSame(1, $this->apiVersionOf($frame), 'Kafka 2.0 raised the api to version 1 (KIP-219)');
         // NullableString -1 followed by the default transaction timeout of one minute
         self::assertStringEndsWith('ffff' . '0000ea60', bin2hex($frame));
     }

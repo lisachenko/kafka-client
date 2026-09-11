@@ -34,7 +34,7 @@ use Protocol\Kafka\Common\TopicPartition;
  * two** dash-separated fields as the partition and the broker id, which is unambiguous even for a topic name that
  * contains dashes itself.
  *
- * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0)"
+ * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 and v1)"
  */
 final class TopicPartitionReplica
 {

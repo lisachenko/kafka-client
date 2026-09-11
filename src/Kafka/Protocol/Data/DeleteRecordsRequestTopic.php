@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `Map<TopicPartition, Long>` and groups it by topic only while it writes the frame
  * (`CollectionUtils.groupDataByTopic`), which is exactly the shape of this DTO.
  *
- * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 and v1)"
  */
 class DeleteRecordsRequestTopic implements BinarySchemaInterface
 {

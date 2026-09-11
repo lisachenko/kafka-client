@@ -17,10 +17,10 @@ use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * CreateDelegationToken response object, version 0 (key 38)
+ * CreateDelegationToken response object, version 1 (key 38)
  *
  * <pre>
- *   CreateDelegationToken Response (Version: 0) => error_code owner issue_timestamp expiry_timestamp max_timestamp
+ *   CreateDelegationToken Response (Version: 0 and 1) => error_code owner issue_timestamp expiry_timestamp max_timestamp
  *                                                  token_id hmac throttle_time_ms
  *     error_code => INT16
  *     owner      => principal_type name
@@ -62,14 +62,21 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * | 64   | DelegationTokenRequestNotAllowed| The connection authenticated nobody, or authenticated with a token |
  * | 67   | InvalidPrincipalType            | A renewer of the request is not of the type `User`               |
  *
- * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TOKEN_CREATE_RESPONSE_V1 =
+ * TOKEN_CREATE_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see CreateDelegationTokenResponseV0} is the same frame with the version field of Kafka 1.1.
+ *
+ * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 and v1)"
  */
 class CreateDelegationTokenResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Timestamp of an answer that carries no token at all, `DelegationTokenManager.ErrorTimestamp`

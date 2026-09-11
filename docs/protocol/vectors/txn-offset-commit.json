@@ -1,13 +1,13 @@
 {
     "api": "txn-offset-commit",
     "apiKey": 28,
-    "section": "TxnOffsetCommit API (key 28, v0)",
-    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0), replayed by tests/Compliance.",
+    "section": "TxnOffsetCommit API (key 28, v0 and v1)",
+    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "txnoffsetcommit.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV0",
             "version": 0,
             "source": "broker",
             "description": "TxnOffsetCommit request v0, the only request of the transaction protocol that goes to the **group** coordinator: the offset 2 of `t8-vectors`-0 is committed for the group `t8-vectors-group` inside the transaction of `t8-vectors-txn`. There is no generation id and no member id in it - the producer is not a member of the group, and the producer epoch is what fences it instead.",
@@ -39,7 +39,7 @@
         {
             "id": "txnoffsetcommit.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of the group coordinator: one entry per requested partition, the error code 0 for an offset that was written into `__consumer_offsets` as a transactional record. It stays invisible to an OffsetFetch of the group until the transaction is committed.",
@@ -51,6 +51,63 @@
                 "topics": {
                     "t8-vectors": {
                         "topic": "t8-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "TxnOffsetCommit request v1, the frame of version 0 with the api version Kafka 2.0 added: one offset with its metadata, committed inside the transaction rather than with an OffsetCommit.",
+            "hex": "00000071001c0001000001ff000a74342d766563746f7273001074342d32302d766563746f72732d7478001374342d32302d766563746f72732d67726f75700000000000000029000000000001000d74342d32302d766563746f7273000000010000000000000000000000030007766563746f7273",
+            "fields": {
+                "messageSize": 113,
+                "apiKey": 28,
+                "apiVersion": 1,
+                "correlationId": 511,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-20-vectors-tx",
+                "groupId": "t4-20-vectors-group",
+                "producerId": 41,
+                "producerEpoch": 0,
+                "topics": {
+                    "t4-20-vectors": {
+                        "topic": "t4-20-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 3,
+                                "metadata": "vectors"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "txnoffsetcommit.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "TxnOffsetCommit response v1: the error code 0 of the partition whose offset the coordinator wrote.",
+            "hex": "00000025000001ff0000000000000001000d74342d32302d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 511,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-20-vectors": {
+                        "topic": "t4-20-vectors",
                         "partitions": [
                             {
                                 "partition": 0,

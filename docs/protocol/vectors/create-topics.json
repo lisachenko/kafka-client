@@ -1,8 +1,8 @@
 {
     "api": "create-topics",
     "apiKey": 19,
-    "section": "CreateTopics API (key 19, v0, v1 and v2)",
-    "description": "Wire vectors of the CreateTopics API (key 19, v0, v1 and v2), replayed by tests/Compliance.",
+    "section": "CreateTopics API (key 19, v0 to v3)",
+    "description": "Wire vectors of the CreateTopics API (key 19, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "createtopics.request.v1",
@@ -124,7 +124,7 @@
         {
             "id": "createtopics.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "CreateTopics request v2, the frame of v1 with a higher version field.",
@@ -156,7 +156,7 @@
         {
             "id": "createtopics.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2: the throttle time in front of the topic errors of a v1 answer.",
@@ -168,6 +168,59 @@
                 "topics": {
                     "t3-throttle-created": {
                         "topic": "t3-throttle-created",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "createtopics.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "CreateTopics request v3, the frame of version 2 with the api version Kafka 2.0 added (KIP-219): one topic with one partition, one replica and one topic level option, waiting up to 30 seconds for the controller.",
+            "hex": "0000005100130003000001f5000a74342d766563746f727300000001000d74342d32302d766563746f72730000000100010000000000000001000c726574656e74696f6e2e6d730007333630303030300000753000",
+            "fields": {
+                "messageSize": 81,
+                "apiKey": 19,
+                "apiVersion": 3,
+                "correlationId": 501,
+                "clientId": "t4-vectors",
+                "topics": {
+                    "t4-20-vectors": {
+                        "topic": "t4-20-vectors",
+                        "numPartitions": 1,
+                        "replicationFactor": 1,
+                        "replicaAssignment": [],
+                        "configs": {
+                            "retention.ms": {
+                                "configKey": "retention.ms",
+                                "configValue": "3600000"
+                            }
+                        }
+                    }
+                },
+                "timeout": 30000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createtopics.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "CreateTopics response v3 of the controller for a topic it created: the throttle time of version 2, the error code 0 and a null error message.",
+            "hex": "0000001f000001f50000000000000001000d74342d32302d766563746f72730000ffff",
+            "fields": {
+                "messageSize": 31,
+                "correlationId": 501,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-20-vectors": {
+                        "topic": "t4-20-vectors",
                         "errorCode": 0,
                         "errorMessage": null
                     }
