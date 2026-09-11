@@ -248,6 +248,9 @@ the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLe
 
 ### Kafka 2.3
 
+The fourth milestone of the line (PRs #125, #126, #132): static membership (KIP-345), the authorized operations
+of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs api (KIP-339).
+
 - **Static membership (KIP-345)** — a consumer configured with the new
   **`ConsumerConfig::GROUP_INSTANCE_ID`** (`group.instance.id`) carries that name in the
   `group_instance_id` of **JoinGroup v5, SyncGroup v3, Heartbeat v3 and OffsetCommit v7**, which are the
@@ -271,9 +274,6 @@ the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLe
   together with the DTO versions `JoinGroupResponseMemberV0` and `DescribeGroupResponseMetadataV0`, and
   twelve wire vectors of the new frames were captured from the container.
 - **LeaveGroup stays at v2**: the batch leave of KIP-345 is LeaveGroup v3, a Kafka 2.4 api.
-
-### Kafka 2.3
-
 - **Fetch v11** (KIP-392, reading from a follower) — a `rack_id` as the **last** field of the request, behind the
   forgotten topics, and a `preferred_read_replica` in every partition entry of the answer, **between** the
   aborted transactions and the record set. The consumer names its rack
@@ -305,6 +305,11 @@ the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLe
   "The authorized operations (v8, KIP-430)" — with the measured bitfields of an unsecured broker, **8096** for
   the cluster and **3576** for a topic, which are the *supported* operations of the resource type — plus the
   version paragraphs of the three apis and two more broker quirks.
+- **IncrementalAlterConfigs (key 44) v0 (KIP-339)** — changes **single options** of a topic or a broker, where
+  `AlterConfigs` carries the whole configuration and resets everything a caller forgot to send back (Kafka 2.3
+  deprecated it for this one). `Admin\AlterConfigOp` carries the operations `SET`, `DELETE`, `APPEND` and
+  `SUBTRACT` — the last two only for a list option — and `AdminClient::incrementalAlterConfigs()` answers a
+  `KafkaException|null` per resource. A resource is validated and applied as a whole.
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
