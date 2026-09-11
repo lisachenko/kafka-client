@@ -40,6 +40,65 @@ final class ResponseFrame
     }
 
     /**
+     * Wraps a body in a **flexible** answer (KIP-482, Kafka 2.4): the response header v1 carries a tag buffer
+     * behind the correlation id, and the body of such a frame ends in one of its own
+     *
+     * @param string $body Body of the answer, its own tagged-field section NOT included
+     */
+    public static function flexible(int $correlationId, string $body): string
+    {
+        return self::of($correlationId, self::tagBuffer() . $body . self::tagBuffer());
+    }
+
+    /**
+     * Encodes the empty tagged-field section that closes every structure of a flexible version
+     */
+    public static function tagBuffer(): string
+    {
+        return "\x00";
+    }
+
+    /**
+     * Encodes an unsigned varint, the length type of every compact field (`ByteUtils.writeUnsignedVarint`)
+     */
+    public static function unsignedVarint(int $value): string
+    {
+        $bytes = '';
+        while (($value & ~0x7F) !== 0) {
+            $bytes .= chr(($value & 0x7F) | 0x80);
+            $value >>= 7;
+        }
+
+        return $bytes . chr($value);
+    }
+
+    /**
+     * Encodes a compact string: the unsigned varint `length + 1`, then the bytes; `0` is null
+     */
+    public static function compactString(?string $value): string
+    {
+        return $value === null
+            ? self::unsignedVarint(0)
+            : self::unsignedVarint(strlen($value) + 1) . $value;
+    }
+
+    /**
+     * Encodes a compact byte array, which is the same shape as a compact string
+     */
+    public static function compactBytes(?string $value): string
+    {
+        return self::compactString($value);
+    }
+
+    /**
+     * Encodes the element count of a compact array: the unsigned varint `count + 1`; `0` is null
+     */
+    public static function compactCount(int $count): string
+    {
+        return self::unsignedVarint($count + 1);
+    }
+
+    /**
      * Cluster id that {@see self::metadata()} answers with, 22 characters like the one a 0.10.1 broker generates
      */
     public const string CLUSTER_ID = 'kafka-client-test-clst';
@@ -377,24 +436,26 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetCommit response (api key 8, v3 - the version this client sends)
+     * Builds an OffsetCommit response (api key 8, v8 - the flexible version this client sends)
      *
-     * The versions 0, 1 and 2 share one response format, and version 3 (KIP-124) put the throttle time in front
-     * of it.
+     * The versions 0, 1 and 2 share one response format, version 3 (KIP-124) put the throttle time in front of it
+     * and version 8 (KIP-482, Kafka 2.4) writes the very same fields with the compact types and a tagged-field
+     * section per structure.
      *
      * @param array<string, array<int, int>> $topics topic => partition => error code
      */
     public static function offsetCommit(int $correlationId, array $topics): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        $body = pack('N', 0) . self::compactCount(count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= self::string((string) $topic) . pack('N', count($partitions));
+            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
             foreach ($partitions as $partitionId => $errorCode) {
-                $body .= pack('N', $partitionId) . pack('n', $errorCode);
+                $body .= pack('N', $partitionId) . pack('n', $errorCode) . self::tagBuffer();
             }
+            $body .= self::tagBuffer();
         }
 
-        return self::of($correlationId, $body);
+        return self::flexible($correlationId, $body);
     }
 
     /**
@@ -411,23 +472,25 @@ final class ResponseFrame
      */
     public static function offsetFetch(int $correlationId, array $topics, ?int $groupErrorCode = 0): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        $body = pack('N', 0) . self::compactCount(count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= self::string((string) $topic) . pack('N', count($partitions));
+            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
             foreach ($partitions as $partitionId => $partition) {
                 [$errorCode, $offset, $metadata] = $partition;
                 $body .= pack('N', $partitionId)
                     . pack('J', $offset)
                     . pack('N', $partition[3] ?? -1)
-                    . self::string($metadata)
-                    . pack('n', $errorCode);
+                    . self::compactString($metadata)
+                    . pack('n', $errorCode)
+                    . self::tagBuffer();
             }
+            $body .= self::tagBuffer();
         }
         if ($groupErrorCode !== null) {
             $body .= pack('n', $groupErrorCode);
         }
 
-        return self::of($correlationId, $body);
+        return self::flexible($correlationId, $body);
     }
 
     /**
@@ -445,12 +508,12 @@ final class ResponseFrame
     ): string {
         $body = pack('N', 0)
             . pack('n', $errorCode)
-            . pack('n', 0xFFFF)
+            . self::compactString(null)
             . pack('N', $nodeId)
-            . self::string($host)
+            . self::compactString($host)
             . pack('N', $port);
 
-        return self::of($correlationId, $body);
+        return self::flexible($correlationId, $body);
     }
 
     /**
@@ -478,15 +541,18 @@ final class ResponseFrame
         $body = pack('N', 0)
             . pack('n', $errorCode)
             . pack('N', $generationId)
-            . self::string($groupProtocol)
-            . self::string($leaderId)
-            . self::string($memberId)
-            . pack('N', count($members));
+            . self::compactString($groupProtocol)
+            . self::compactString($leaderId)
+            . self::compactString($memberId)
+            . self::compactCount(count($members));
         foreach ($members as $member => $metadata) {
-            $body .= self::string((string) $member) . self::nullableString(null) . self::bytes($metadata);
+            $body .= self::compactString((string) $member)
+                . self::compactString(null)
+                . self::compactBytes($metadata)
+                . self::tagBuffer();
         }
 
-        return self::of($correlationId, $body);
+        return self::flexible($correlationId, $body);
     }
 
     /**
@@ -494,7 +560,7 @@ final class ResponseFrame
      */
     public static function syncGroup(int $correlationId, int $errorCode, string $assignment = ''): string
     {
-        return self::of($correlationId, pack('N', 0) . pack('n', $errorCode) . self::bytes($assignment));
+        return self::flexible($correlationId, pack('N', 0) . pack('n', $errorCode) . self::compactBytes($assignment));
     }
 
     /**
@@ -502,7 +568,7 @@ final class ResponseFrame
      */
     public static function heartbeat(int $correlationId, int $errorCode): string
     {
-        return self::of($correlationId, pack('N', 0) . pack('n', $errorCode));
+        return self::flexible($correlationId, pack('N', 0) . pack('n', $errorCode));
     }
 
     /**
@@ -524,14 +590,15 @@ final class ResponseFrame
         $members ??= ['one-1' => [null, $errorCode]];
         $body     = pack('N', 0)
             . pack('n', $members === [] ? $errorCode : 0)
-            . pack('N', count($members));
+            . self::compactCount(count($members));
         foreach ($members as $memberId => [$groupInstanceId, $memberErrorCode]) {
-            $body .= self::string((string) $memberId)
-                . self::nullableString($groupInstanceId)
-                . pack('n', $memberErrorCode);
+            $body .= self::compactString((string) $memberId)
+                . self::compactString($groupInstanceId)
+                . pack('n', $memberErrorCode)
+                . self::tagBuffer();
         }
 
-        return self::of($correlationId, $body);
+        return self::flexible($correlationId, $body);
     }
 
     /**
@@ -569,12 +636,12 @@ final class ResponseFrame
      */
     public static function listGroups(int $correlationId, array $groups, int $errorCode = 0): string
     {
-        $body = pack('N', 0) . pack('n', $errorCode) . pack('N', count($groups));
+        $body = pack('N', 0) . pack('n', $errorCode) . self::compactCount(count($groups));
         foreach ($groups as $groupId => $protocolType) {
-            $body .= self::string((string) $groupId) . self::string($protocolType);
+            $body .= self::compactString((string) $groupId) . self::compactString($protocolType) . self::tagBuffer();
         }
 
-        return self::of($correlationId, $body);
+        return self::flexible($correlationId, $body);
     }
 
     /**
@@ -593,27 +660,30 @@ final class ResponseFrame
      */
     public static function describeGroups(int $correlationId, array $groups): string
     {
-        $body = pack('N', 0) . pack('N', count($groups));
+        $body = pack('N', 0) . self::compactCount(count($groups));
         foreach ($groups as $groupId => [$errorCode, $state, $protocolType, $protocol, $members]) {
             $body .= pack('n', $errorCode)
-                . self::string((string) $groupId)
-                . self::string($state)
-                . self::string($protocolType)
-                . self::string($protocol)
-                . pack('N', count($members));
+                . self::compactString((string) $groupId)
+                . self::compactString($state)
+                . self::compactString($protocolType)
+                . self::compactString($protocol)
+                . self::compactCount(count($members));
             foreach ($members as $memberId => [$metadata, $assignment]) {
-                $body .= self::string((string) $memberId)
-                    . self::string('test')
-                    . self::string('/172.18.0.1')
-                    . self::bytes($metadata)
-                    . self::bytes($assignment);
+                $body .= self::compactString((string) $memberId)
+                    // the `group_instance_id` of version 4 (KIP-345): null, a dynamic member
+                    . self::compactString(null)
+                    . self::compactString('test')
+                    . self::compactString('/172.18.0.1')
+                    . self::compactBytes($metadata)
+                    . self::compactBytes($assignment)
+                    . self::tagBuffer();
             }
             // `authorized_operations` of version 3 (KIP-430, Kafka 2.3): Integer.MIN_VALUE, the value of an answer
             // whose request left `include_authorized_operations` at false
-            $body .= pack('N', 0x80000000);
+            $body .= pack('N', 0x80000000) . self::tagBuffer();
         }
 
-        return self::of($correlationId, $body);
+        return self::flexible($correlationId, $body);
     }
 
     /**

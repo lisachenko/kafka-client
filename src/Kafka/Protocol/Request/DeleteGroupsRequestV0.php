@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * field `GroupsNames` at `0+` - so this class puts the very same bytes on the wire as {@see DeleteGroupsRequest}
  * and reads its answer with {@see DeleteGroupsResponseV0}.
  *
- * @see docs/protocol/2.8.md, sections "DeleteGroups API (key 42, v0 and v1)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "DeleteGroups API (key 42, v0 to v2)" and "Quotas and throttle time"
  */
 final class DeleteGroupsRequestV0 extends DeleteGroupsRequest
 {

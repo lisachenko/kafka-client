@@ -36,14 +36,20 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * this answer can carry: **82** (`FencedInstanceId`), for a static member whose instance id another consumer has
  * taken over.
  *
- * @see docs/protocol/2.8.md, sections "Heartbeat API (key 12, v0 to v3)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "Heartbeat API (key 12, v0 to v4)" and "Quotas and throttle time"
  */
 class HeartbeatResponse extends AbstractResponse
 {
     /**
      * Version of the Heartbeat API that this class decodes the answer of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

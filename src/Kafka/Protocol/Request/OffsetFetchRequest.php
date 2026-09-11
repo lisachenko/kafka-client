@@ -61,7 +61,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * topics is refused here with an {@see UnsupportedVersionException}, exactly as `OffsetFetchRequest.Builder.build()`
  * @ 0.11.0.3 does; sending a `-1` topic array with version 1 makes the broker close the connection.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
  */
 class OffsetFetchRequest extends AbstractRequest
 {
@@ -73,7 +73,13 @@ class OffsetFetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 6;
 
     /**
      * Partitions whose offsets are requested, indexed by the topic they belong to, or null for every topic

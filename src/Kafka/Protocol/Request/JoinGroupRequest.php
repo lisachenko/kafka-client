@@ -92,7 +92,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * and the rebalance timeout, exactly as in the Java client, whose `request.timeout.ms` defaults to 305000 against a
  * `max.poll.interval.ms` of 300000.
  *
- * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v6)"
  */
 class JoinGroupRequest extends AbstractRequest
 {
@@ -111,7 +111,13 @@ class JoinGroupRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 6;
 
     /**
      * List of protocols that the member supports, indexed by the protocol name

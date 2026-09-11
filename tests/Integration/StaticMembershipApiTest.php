@@ -69,8 +69,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * next to the other suites on the shared container.
  *
  * @see docs/protocol/2.8.md, sections "Static membership (KIP-345)", "The authorized operations of a group (v3,
- *      KIP-430)", "JoinGroup API (key 11, v0 to v5)", "SyncGroup API (key 14, v0 to v3)", "Heartbeat API (key 12,
- *      v0 to v3)", "OffsetCommit API (key 8, v0 to v7)", "DescribeGroups API (key 15, v0 to v3)" and
+ *      KIP-430)", "JoinGroup API (key 11, v0 to v6)", "SyncGroup API (key 14, v0 to v4)", "Heartbeat API (key 12,
+ *      v0 to v3)", "OffsetCommit API (key 8, v0 to v8)", "DescribeGroups API (key 15, v0 to v5)" and
  *      "The batch leave of KIP-345 (v3)"
  */
 #[CoversClass(JoinGroupRequest::class)]

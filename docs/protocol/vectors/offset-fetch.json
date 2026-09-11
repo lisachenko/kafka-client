@@ -1,8 +1,8 @@
 {
     "api": "offset-fetch",
     "apiKey": 9,
-    "section": "OffsetFetch API (key 9, v0 to v5)",
-    "description": "Wire vectors of the OffsetFetch API (key 9, v0 to v5), replayed by tests/Compliance.",
+    "section": "OffsetFetch API (key 9, v0 to v6)",
+    "description": "Wire vectors of the OffsetFetch API (key 9, v0 to v6), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsetfetch.request.v2",
@@ -412,7 +412,7 @@
         {
             "id": "offsetfetch.request.v5",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV5",
             "version": 5,
             "source": "broker",
             "description": "OffsetFetch request v5 (Kafka 2.1, KIP-320), byte for byte the frame of v2 to v4 with a higher version field: the change of this version is in the answer.",
@@ -437,7 +437,7 @@
         {
             "id": "offsetfetch.response.v5",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV5",
             "version": 5,
             "source": "broker",
             "description": "The answer v5 of the coordinator to the offset the v6 commit above stored: the partition entry now carries the `committed_leader_epoch` 0 between the committed offset and the metadata.",
@@ -454,6 +454,62 @@
                                 "partition": 0,
                                 "offset": 21,
                                 "leaderEpoch": 0,
+                                "metadata": "",
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                },
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "offsetfetch.request.v6",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "OffsetFetch request v6 (KIP-482): a compact group id and a compact topic array, which stays **nullable** in the flexible encoding - a `0` instead of the count asks for every topic the group committed.",
+            "hex": "0000004a000900060000038a00136b61666b612d636c69656e742d74332d323462001574332d3234622d766563746f72732d67726f7570020f74332d3234622d766563746f727302000000000000",
+            "fields": {
+                "messageSize": 74,
+                "apiKey": 9,
+                "apiVersion": 6,
+                "correlationId": 906,
+                "clientId": "kafka-client-t3-24b",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-24b-vectors-group",
+                "topicPartitions": {
+                    "t3-24b-vectors": {
+                        "topic": "t3-24b-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.response.v6",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The answer v6: the committed offset with the `committed_leader_epoch` of KIP-320 and a compact metadata string, and the group-level error code of version 2 behind the topic array.",
+            "hex": "000000320000038a0000000000020f74332d3234622d766563746f72730200000000000000000000000bffffffff0100000000000000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 906,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-24b-vectors": {
+                        "topic": "t3-24b-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 11,
+                                "leaderEpoch": -1,
                                 "metadata": "",
                                 "errorCode": 0
                             }

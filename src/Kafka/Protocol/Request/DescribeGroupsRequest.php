@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * leaves that bit set at {@see \Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata::OPERATIONS_NOT_REQUESTED}.
  * {@see DescribeGroupsRequestV2} is the frame without the flag.
  *
- * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v5)"
  */
 class DescribeGroupsRequest extends AbstractRequest
 {
@@ -51,7 +51,13 @@ class DescribeGroupsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 5;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 5;
 
     /**
      * @param list<string> $groups        Groups to describe, an empty list is answered with an empty description

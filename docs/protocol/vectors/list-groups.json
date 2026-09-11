@@ -1,8 +1,8 @@
 {
     "api": "list-groups",
     "apiKey": 16,
-    "section": "ListGroups API (key 16, v0 to v2)",
-    "description": "Wire vectors of the ListGroups API (key 16, v0 to v2), replayed by tests/Compliance.",
+    "section": "ListGroups API (key 16, v0 to v3)",
+    "description": "Wire vectors of the ListGroups API (key 16, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "listgroups.request.v0",
@@ -84,7 +84,7 @@
         {
             "id": "listgroups.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "ListGroups request v2: the bare request header, exactly as v0 and v1.",
@@ -100,7 +100,7 @@
         {
             "id": "listgroups.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2 of the container at the moment of the capture. There is no filter below version 4 (KIP-518): a broker answers with EVERY group it coordinates, which on a container shared by several test runs is every group of all of them - the 28 entries here are exactly what the api is for.",
@@ -221,6 +221,57 @@
                     },
                     "t3-kip219-group": {
                         "groupId": "t3-kip219-group",
+                        "protocolType": "consumer"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "ListGroups request v3 (KIP-482): the api has no field at all, so the whole body of the frame is the empty tag buffer `00` that every flexible structure ends in - one byte more than the version 2 request, which has no body.",
+            "hex": "0000001f001000030000038d00136b61666b612d636c69656e742d74332d3234620000",
+            "fields": {
+                "messageSize": 31,
+                "apiKey": 16,
+                "apiVersion": 3,
+                "correlationId": 909,
+                "clientId": "kafka-client-t3-24b",
+                "headerTaggedFields": []
+            }
+        },
+        {
+            "id": "listgroups.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer v3: the throttle time, the error code and a compact array of the groups this broker coordinates, each with a compact id, a compact protocol type and its own tag buffer.",
+            "hex": "000000920000038d00000000000000051d74342d61646d696e2d67726f7570732d36666663343165646237313601001574332d3234622d766563746f72732d67726f757009636f6e73756d6572001674372d67726f75702d34386238636531363462643409636f6e73756d6572001d74342d61646d696e2d67726f7570732d66306163656131353666623509636f6e73756d65720000",
+            "fields": {
+                "messageSize": 146,
+                "correlationId": 909,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t4-admin-groups-6ffc41edb716": {
+                        "groupId": "t4-admin-groups-6ffc41edb716",
+                        "protocolType": ""
+                    },
+                    "t3-24b-vectors-group": {
+                        "groupId": "t3-24b-vectors-group",
+                        "protocolType": "consumer"
+                    },
+                    "t7-group-48b8ce164bd4": {
+                        "groupId": "t7-group-48b8ce164bd4",
+                        "protocolType": "consumer"
+                    },
+                    "t4-admin-groups-f0acea156fb5": {
+                        "groupId": "t4-admin-groups-f0acea156fb5",
                         "protocolType": "consumer"
                     }
                 }

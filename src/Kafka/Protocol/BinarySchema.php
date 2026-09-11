@@ -236,7 +236,7 @@ class BinarySchema
         };
         $objectSize = $sizeCalculator->call($object, $plainScheme);
 
-        if ($flexible) {
+        if ($flexible && !self::isInlineStruct($object::class)) {
             $objectSize += self::taggedSectionSize(self::taggedFieldsOf($object, $taggedScheme));
         }
 
@@ -272,7 +272,7 @@ class BinarySchema
         };
         $reader->call($record, $plainScheme);
 
-        if ($flexible) {
+        if ($flexible && !self::isInlineStruct($recordClass)) {
             self::readTaggedSection($record, $taggedScheme, $stream, $path);
         }
 
@@ -299,7 +299,7 @@ class BinarySchema
         };
         $writer->call($record, $plainScheme);
 
-        if ($flexible) {
+        if ($flexible && !self::isInlineStruct($record::class)) {
             self::writeTaggedSection(self::taggedFieldsOf($record, $taggedScheme), $stream);
         }
     }
@@ -797,6 +797,20 @@ class BinarySchema
     private static function isFlexibleClass(string $class): bool
     {
         return is_a($class, FlexibleSchemaInterface::class, true) && $class::isFlexible();
+    }
+
+    /**
+     * Whether the given class only groups fields of its parent and therefore has no tagged section of its own
+     *
+     * See {@see InlineStruct}: the `node_id`, `host` and `port` of a FindCoordinator answer are three fields of
+     * that answer in `FindCoordinatorResponse.json` @ 2.8.2, and the DTO that holds them here is a convenience of
+     * the object model. A flexible version must not write a tag buffer for such a group.
+     *
+     * @param class-string $class
+     */
+    private static function isInlineStruct(string $class): bool
+    {
+        return is_a($class, InlineStruct::class, true);
     }
 
     /**

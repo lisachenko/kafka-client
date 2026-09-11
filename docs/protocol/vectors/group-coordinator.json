@@ -1,8 +1,8 @@
 {
     "api": "group-coordinator",
     "apiKey": 10,
-    "section": "GroupCoordinator API (key 10, v0 to v2)",
-    "description": "Wire vectors of the GroupCoordinator API (key 10, v0 to v2), replayed by tests/Compliance.",
+    "section": "GroupCoordinator API (key 10, v0 to v3)",
+    "description": "Wire vectors of the GroupCoordinator API (key 10, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "groupcoordinator.request.v0",
@@ -121,7 +121,7 @@
         {
             "id": "groupcoordinator.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequestV2",
             "version": 2,
             "source": "broker",
             "description": "GroupCoordinator (FindCoordinator) request v2 for a consumer group, byte for byte the frame of v1 with a higher version field.",
@@ -139,7 +139,7 @@
         {
             "id": "groupcoordinator.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2 of a 2.8.2 broker: the throttle time, the error code, the coordinator - and the error message \"NONE\" where a 0.11 or 1.1 broker sent the null marker, because every answer of `KafkaApis.handleFindCoordinatorRequest` @ 2.8.2 is built with `Errors.message()`.",
@@ -147,6 +147,47 @@
             "fields": {
                 "messageSize": 35,
                 "correlationId": 200,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "NONE",
+                "coordinator": {
+                    "nodeId": 0,
+                    "host": "127.0.0.1",
+                    "port": 9092
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "FindCoordinator request v3 (Kafka 2.4, KIP-482), the first **flexible** frame of the group apis: the header is the request header **v2** and ends in a tagged-field section, the group id is a `compact_string` whose length is the unsigned varint `20 + 1`, and the body closes with a tag buffer of its own. The `client_id` of the header stays an `int16`-prefixed string in every version - `\"flexibleVersions\": \"none\"` in `RequestHeader.json` @ 2.8.2.",
+            "hex": "00000035000a00030000038500136b61666b612d636c69656e742d74332d323462001574332d3234622d766563746f72732d67726f75700000",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 10,
+                "apiVersion": 3,
+                "correlationId": 901,
+                "clientId": "kafka-client-t3-24b",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-24b-vectors-group",
+                "coordinatorType": 0
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer: the response header **v1**, whose tag buffer follows the correlation id, and the four fields of the version 1 answer in the compact encoding. The `node_id`, `host` and `port` of the coordinator are three ordinary fields of the answer and **not** a structure of their own, so the frame carries exactly one more tag buffer - the one that closes the body.",
+            "hex": "000000230000038500000000000000054e4f4e45000000000a3132372e302e302e310000238400",
+            "fields": {
+                "messageSize": 35,
+                "correlationId": 901,
+                "headerTaggedFields": [],
                 "throttleTimeMs": 0,
                 "errorCode": 0,
                 "errorMessage": "NONE",

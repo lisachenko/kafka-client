@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **450** of them in **37** files: **132** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **472** of them in **37** files: **154** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -12,7 +12,8 @@ frames of **Kafka 2.2**: SaslAuthenticate v1, ControlledShutdown v2 and the new 
 `elect-leaders.json` is the one file this line added, and the 4 frames of the KIP-394 exchange (JoinGroup v4); the
 12 frames of what **Kafka 2.3** added to the group apis (static membership, KIP-345, and the authorized operations
 of KIP-430); and of **Kafka 2.4** the 3 flexible ApiVersions v3 frames of KIP-511/KIP-482 and the 6 frames of the
-batch LeaveGroup v3 - and of the other 318, **229** were
+batch LeaveGroup v3 and the 22 frames of the **flexible** versions of the ten group apis (KIP-482) - and of the
+other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,

@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadataV0;
+use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadataV3;
 
 /**
  * DescribeGroups response, version 3 (key 15)
@@ -39,14 +40,20 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadataV0;
  * {@see DescribeGroupsResponseV2} is the answer whose entries end with the member array. The entry grows once
  * more at version 4 (KIP-345, Kafka 2.4), which gives every member a `group_instance_id`.
  *
- * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v3)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v5)" and "Quotas and throttle time"
  */
 class DescribeGroupsResponse extends AbstractResponse
 {
     /**
      * Version of the DescribeGroups API that this class decodes the answer of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 5;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 5;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
@@ -84,6 +91,10 @@ class DescribeGroupsResponse extends AbstractResponse
      */
     protected static function groupClass(): string
     {
-        return static::VERSION >= 3 ? DescribeGroupResponseMetadata::class : DescribeGroupResponseMetadataV0::class;
+        return match (true) {
+            static::VERSION >= 4  => DescribeGroupResponseMetadata::class,
+            static::VERSION === 3 => DescribeGroupResponseMetadataV3::class,
+            default               => DescribeGroupResponseMetadataV0::class,
+        };
     }
 }

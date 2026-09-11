@@ -50,7 +50,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * by {@see ConsumerGroupTest}.
  *
  * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)", "Offsets API (key 2, v0 to v4), a.k.a.
- *      ListOffset" and "OffsetFetch API (key 9, v0 to v5)"
+ *      ListOffset" and "OffsetFetch API (key 9, v0 to v6)"
  */
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(SubscriptionState::class)]

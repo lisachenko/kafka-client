@@ -48,14 +48,20 @@ use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
  * `__transaction_state` for a transactional id - the answer is the error code 15 (GroupCoordinatorNotAvailable)
  * with the coordinator `-1:"":-1`, so the lookup is worth retrying.
  *
- * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 to v3)"
  */
 class GroupCoordinatorResponse extends AbstractResponse
 {
     /**
      * Version of the GroupCoordinator API that this class decodes the answer of
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

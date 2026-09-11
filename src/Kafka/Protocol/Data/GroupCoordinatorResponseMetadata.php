@@ -14,7 +14,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Data;
 
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\InlineStruct;
 
 /**
  * GroupCoordinator response data
@@ -27,9 +27,9 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *   CoordinatorPort => int32
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 to v3)"
  */
-class GroupCoordinatorResponseMetadata implements BinarySchemaInterface
+class GroupCoordinatorResponseMetadata implements InlineStruct
 {
     /**
      * The broker id.
