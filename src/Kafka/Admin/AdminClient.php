@@ -140,14 +140,14 @@ class AdminClient
      * instead of being reported with an empty range, and the KRaft apis of the controller listener (52-55, 58, 59,
      * 62-64) never appear on a ZooKeeper-backed broker at all.
      *
-     * The request goes out as version 2 ({@see ApiVersionsRequest}), the KIP-219 bump of Kafka 2.0, so the answer
-     * carries the trailing `throttleTimeMs` of KIP-124; only the whole {@see Client::apiVersions()} response
-     * exposes it, this method returns the api table alone.
+     * The request goes out as version 3 ({@see ApiVersionsRequest}), the first flexible version of the protocol, so
+     * the answer carries the trailing `throttleTimeMs` of KIP-124 and the features of KIP-584 as tagged fields;
+     * only the whole {@see Client::apiVersions()} response exposes them, this method returns the api table alone.
      *
      * @param Node $node Broker to ask
      *
      * @throws KafkaException If the broker answered the error code 35 (UnsupportedVersion), i.e. it is older than
-     *                        Kafka 2.0 and does not serve version 2 of this api
+     *                        Kafka 2.4 and does not serve version 3 of this api
      *
      * @return array<int, ApiVersionsResponseMetadata> Version range of each api, indexed by the api key
      */

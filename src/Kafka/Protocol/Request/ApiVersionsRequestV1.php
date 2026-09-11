@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * This class is what a client sends to a broker of the `0.11.x` or `1.x` line, which reports the api as v0 to v1
  * only, and it is the class the version 1 wire vectors are replayed through.
  *
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
  */
 final class ApiVersionsRequestV1 extends ApiVersionsRequest
 {

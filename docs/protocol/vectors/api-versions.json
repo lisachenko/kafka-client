@@ -1,8 +1,8 @@
 {
     "api": "api-versions",
     "apiKey": 18,
-    "section": "ApiVersions API (key 18, v0 to v2)",
-    "description": "Wire vectors of the ApiVersions API (key 18, v0 to v2), replayed by tests/Compliance.",
+    "section": "ApiVersions API (key 18, v0 to v3)",
+    "description": "Wire vectors of the ApiVersions API (key 18, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "apiversions.request.v0",
@@ -632,7 +632,7 @@
         {
             "id": "apiversions.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "ApiVersions request v2, the version this client sends: the KIP-219 bump of Kafka 2.0, again the header and nothing else.",
@@ -648,7 +648,7 @@
         {
             "id": "apiversions.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "ApiVersions response v2: the frame of version 1 byte for byte, because KIP-219 raised the version without changing the schema.",
@@ -940,6 +940,344 @@
                     }
                 },
                 "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "apiversions.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "ApiVersions request v3, the version this client sends: the first flexible frame of the protocol - a request header v2 with a tag buffer, two compact strings of KIP-511 and a tag buffer of its own.",
+            "hex": "0000003f001200030000006a00176b61666b612d636c69656e742d74312d766563746f727300186c6973616368656e6b6f2d6b61666b612d636c69656e7404322e3800",
+            "fields": {
+                "messageSize": 63,
+                "apiKey": 18,
+                "apiVersion": 3,
+                "correlationId": 106,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "clientSoftwareName": "lisachenko-kafka-client",
+                "clientSoftwareVersion": "2.8"
+            }
+        },
+        {
+            "id": "apiversions.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "ApiVersions response v3 of the container: a response header v0 (the exception of KIP-511), a compact api array whose 56 entries each end in a tag buffer, and a body tag buffer that carries the finalized-features epoch 0 of KIP-584.",
+            "hex": "0000019e0000006a0000390000000000090000010000000c000002000000060000030000000b00000400000005000005000000030000060000000700000700000003000008000000080000090000000700000a0000000300000b0000000700000c0000000400000d0000000400000e0000000500000f000000050000100000000400001100000001000012000000030000130000000700001400000006000015000000020000160000000400001700000004000018000000030000190000000300001a0000000300001b0000000100001c0000000300001d0000000200001e0000000200001f000000020000200000000400002100000002000022000000020000230000000200002400000002000025000000030000260000000200002700000002000028000000020000290000000200002a0000000200002b0000000200002c0000000100002d0000000000002e0000000000002f0000000000003000000001000031000000010000320000000000003300000000000038000000000000390000000000003c0000000000003d0000000000000000000101080000000000000000",
+            "fields": {
+                "messageSize": 414,
+                "correlationId": 106,
+                "errorCode": 0,
+                "apiVersions": {
+                    "0": {
+                        "apiKey": 0,
+                        "minVersion": 0,
+                        "maxVersion": 9
+                    },
+                    "1": {
+                        "apiKey": 1,
+                        "minVersion": 0,
+                        "maxVersion": 12
+                    },
+                    "2": {
+                        "apiKey": 2,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "3": {
+                        "apiKey": 3,
+                        "minVersion": 0,
+                        "maxVersion": 11
+                    },
+                    "4": {
+                        "apiKey": 4,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "5": {
+                        "apiKey": 5,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "6": {
+                        "apiKey": 6,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "7": {
+                        "apiKey": 7,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "8": {
+                        "apiKey": 8,
+                        "minVersion": 0,
+                        "maxVersion": 8
+                    },
+                    "9": {
+                        "apiKey": 9,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "10": {
+                        "apiKey": 10,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "11": {
+                        "apiKey": 11,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "12": {
+                        "apiKey": 12,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "13": {
+                        "apiKey": 13,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "14": {
+                        "apiKey": 14,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "15": {
+                        "apiKey": 15,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "16": {
+                        "apiKey": 16,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "17": {
+                        "apiKey": 17,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "18": {
+                        "apiKey": 18,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "19": {
+                        "apiKey": 19,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "20": {
+                        "apiKey": 20,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "21": {
+                        "apiKey": 21,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "22": {
+                        "apiKey": 22,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "23": {
+                        "apiKey": 23,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "24": {
+                        "apiKey": 24,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "25": {
+                        "apiKey": 25,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "26": {
+                        "apiKey": 26,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "27": {
+                        "apiKey": 27,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "28": {
+                        "apiKey": 28,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "29": {
+                        "apiKey": 29,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "30": {
+                        "apiKey": 30,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "31": {
+                        "apiKey": 31,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "32": {
+                        "apiKey": 32,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "33": {
+                        "apiKey": 33,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "34": {
+                        "apiKey": 34,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "35": {
+                        "apiKey": 35,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "36": {
+                        "apiKey": 36,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "37": {
+                        "apiKey": 37,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "38": {
+                        "apiKey": 38,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "39": {
+                        "apiKey": 39,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "40": {
+                        "apiKey": 40,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "41": {
+                        "apiKey": 41,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "42": {
+                        "apiKey": 42,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "43": {
+                        "apiKey": 43,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "44": {
+                        "apiKey": 44,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "45": {
+                        "apiKey": 45,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "46": {
+                        "apiKey": 46,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "47": {
+                        "apiKey": 47,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "48": {
+                        "apiKey": 48,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "49": {
+                        "apiKey": 49,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "50": {
+                        "apiKey": 50,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "51": {
+                        "apiKey": 51,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "56": {
+                        "apiKey": 56,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "57": {
+                        "apiKey": 57,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "60": {
+                        "apiKey": 60,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "61": {
+                        "apiKey": 61,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    }
+                },
+                "throttleTimeMs": 0,
+                "supportedFeatures": [],
+                "finalizedFeaturesEpoch": 0,
+                "finalizedFeatures": []
+            }
+        },
+        {
+            "id": "apiversions.response.v3.invalid-software-name",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer to a v3 request whose client_software_name is \"php/kafka\": the error code 42 (InvalidRequest) and an empty api array, in the v3 layout - the broker matches both KIP-511 strings against [a-zA-Z0-9](?:[a-zA-Z0-9\\-.]*[a-zA-Z0-9])? and refuses the request before it reads anything else.",
+            "hex": "0000000c0000006b002a010000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 107,
+                "errorCode": 42,
+                "apiVersions": [],
+                "throttleTimeMs": 0,
+                "supportedFeatures": [],
+                "finalizedFeaturesEpoch": -1,
+                "finalizedFeatures": []
             }
         },
         {
