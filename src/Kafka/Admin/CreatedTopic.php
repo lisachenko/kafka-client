@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopic;
  * answer as well when the broker could not read it back, in which case {@see $configErrorCode} says why - it is the
  * tagged field 0 of the entry, and it is 0 whenever the configuration is there.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
  */
 final class CreatedTopic
 {

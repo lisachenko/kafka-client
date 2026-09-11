@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-360 changed the REQUEST alone, so the two versions share this frame; what differs is the meaning of the
  * answer to a request that carried a producer id of its own.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v4)"
  */
 final class InitProducerIdResponseV2 extends InitProducerIdResponse
 {

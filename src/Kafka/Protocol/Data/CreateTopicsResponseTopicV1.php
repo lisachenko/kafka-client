@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * entry with the version 5 (KIP-525); everything below it ends after the error message, which is what this class
  * only lowers the version constant for.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
  */
 final class CreateTopicsResponseTopicV1 extends CreateTopicsResponseTopic
 {

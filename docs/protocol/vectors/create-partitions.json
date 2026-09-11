@@ -1,8 +1,8 @@
 {
     "api": "create-partitions",
     "apiKey": 37,
-    "section": "CreatePartitions API (key 37, v0 to v2)",
-    "description": "Wire vectors of the CreatePartitions API (key 37, v0 to v2), replayed by tests/Compliance.",
+    "section": "CreatePartitions API (key 37, v0 to v3)",
+    "description": "Wire vectors of the CreatePartitions API (key 37, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "createpartitions.request.v0",
@@ -248,7 +248,7 @@
         {
             "id": "createpartitions.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "CreatePartitions request v2, the first **flexible** version of the api (KIP-482): the same fields as version 1 in the compact encoding, with the tag buffer of the header, of every topic, of the assignment array and of the body. The topic grows from one partition to two, without a replica assignment of its own.",
@@ -274,7 +274,7 @@
         {
             "id": "createpartitions.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "CreatePartitions answer v2: the error code 0 and a null error message for the one topic, and the tag buffers of the flexible encoding.",
@@ -296,7 +296,7 @@
         {
             "id": "createpartitions.request.v2.assignment",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "CreatePartitions request v2 with a replica ASSIGNMENT: the one added partition is placed on the broker 0 by hand. `CreatePartitionsAssignment` is a structure with the single field `broker_ids`, so the flexible version closes every entry of the array with a tagged-field section of its own - a frame without it is one byte short and the broker closes the connection without an answer.",
@@ -328,7 +328,7 @@
         {
             "id": "createpartitions.response.v2.assignment",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "CreatePartitions answer v2 of an accepted assignment: the error code 0 and a null error message.",
@@ -341,6 +341,54 @@
                 "topics": {
                     "t4-25-vectors-assign": {
                         "topic": "t4-25-vectors-assign",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "createpartitions.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "CreatePartitions request v3 (Kafka 2.7, KIP-599): identical to the version 2, with the promise that the client understands the error code 89 and retries after the `throttle_time_ms` of the answer.",
+            "hex": "0000003000250003000003c2000a74342d766563746f727300020e74342d32372d766563746f7273000000020000000027100000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 37,
+                "apiVersion": 3,
+                "correlationId": 962,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-27-vectors": {
+                        "topic": "t4-27-vectors",
+                        "count": 2,
+                        "assignment": null
+                    }
+                },
+                "timeout": 10000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createpartitions.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "CreatePartitions answer v3: the error code 0 and a null message for the one topic.",
+            "hex": "0000001d000003c20000000000020e74342d32372d766563746f72730000000000",
+            "fields": {
+                "messageSize": 29,
+                "correlationId": 962,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-27-vectors": {
+                        "topic": "t4-27-vectors",
                         "errorCode": 0,
                         "errorMessage": null
                     }

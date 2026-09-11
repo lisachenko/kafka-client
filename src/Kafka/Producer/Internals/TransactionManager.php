@@ -28,6 +28,7 @@ use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\TransactionalIdAuthorizationException;
+use Protocol\Kafka\Common\Errors\TransactionalProducerFencedException;
 use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\RecordBatch;
@@ -110,7 +111,7 @@ use Throwable;
  * again" and "your records are there and we disagree about them" visible at all.
  *
  * @see \Protocol\Kafka\Client::initProducerId()
- * @see docs/protocol/2.8.md, sections "InitProducerId API (key 22, v0 to v3)" and "The idempotent producer"
+ * @see docs/protocol/2.8.md, sections "InitProducerId API (key 22, v0 to v4)" and "The idempotent producer"
  */
 class TransactionManager
 {
@@ -528,7 +529,10 @@ class TransactionManager
      *
      * * **47** InvalidProducerEpoch ({@see ProducerFencedException}) - another producer took this id over, or the
      *   coordinator expired the transaction. Nothing this producer sends will ever be accepted again, so it goes
-     *   into a fatal state and every following call fails with the same error.
+     *   into a fatal state and every following call fails with the same error. Since Kafka 2.7 the transaction
+     *   apis answer the very same thing with the code **90** `ProducerFenced` when the request carried the version
+     *   KIP-588 added ({@see TransactionalProducerFencedException}, whose name keeps the 47 as the published
+     *   `ProducerFencedException`), and it is treated identically here.
      * * **45** OutOfOrderSequence - the producer and the broker do not agree on what is in the log any more. An
      *   idempotent producer throws its producer id away and starts over; a transactional one reports the error and
      *   leaves the decision to the caller, which has to abort the transaction.
@@ -559,7 +563,9 @@ class TransactionManager
             return;
         }
 
-        if ($error instanceof ProducerFencedException) {
+        if ($error instanceof ProducerFencedException || $error instanceof TransactionalProducerFencedException) {
+            // The 47 of KIP-98 and the 90 that KIP-588 (Kafka 2.7) answers a fenced producer of a bumped api
+            // version with: the same end of the same producer, under two error codes
             $this->transitionToFatalError($error);
 
             return;
@@ -1184,6 +1190,7 @@ class TransactionManager
             $send();
         } catch (Throwable $error) {
             if ($error instanceof ProducerFencedException
+                || $error instanceof TransactionalProducerFencedException
                 || $error instanceof InvalidTxnStateException
                 || $error instanceof InvalidPidMappingException
                 || $error instanceof TransactionalIdAuthorizationException

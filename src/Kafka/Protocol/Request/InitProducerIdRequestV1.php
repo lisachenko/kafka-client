@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see InitProducerIdRequest} sends. Version 1 itself is the frame of version 0 with a higher number in the
  * header, which is the client's promise that it honours a `throttle_time_ms` itself.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v4)"
  */
 final class InitProducerIdRequestV1 extends InitProducerIdRequest
 {

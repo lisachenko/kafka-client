@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * NEW producer id. Its constructor is the one of {@see InitProducerIdRequest} and the two fields it inherits are
  * simply not written.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v4)"
  */
 final class InitProducerIdRequestV2 extends InitProducerIdRequest
 {

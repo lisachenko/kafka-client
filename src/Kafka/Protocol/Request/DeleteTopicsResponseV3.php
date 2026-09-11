@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The fields of the version 4 are these; what KIP-482 changed is how they are written - a compact array of compact
  * strings, and a tagged-field section at the end of the body and of every topic result.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v4)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
  */
 final class DeleteTopicsResponseV3 extends DeleteTopicsResponse
 {

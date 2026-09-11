@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see AddOffsetsToTxnRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "AddOffsetsToTxn API (key 25, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AddOffsetsToTxn API (key 25, v0 to v2)"
  */
 class AddOffsetsToTxnRequest extends AbstractRequest
 {
@@ -59,7 +59,7 @@ class AddOffsetsToTxnRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @param string $transactionalId `transactional.id` of the producer that owns the transaction
