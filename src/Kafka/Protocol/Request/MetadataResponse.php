@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Common\AclOperation;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\NodeV0;
 use Protocol\Kafka\Common\RestorableTrait;
@@ -24,6 +25,7 @@ use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicMetadataV0;
 use Protocol\Kafka\Common\TopicMetadataV1;
 use Protocol\Kafka\Common\TopicMetadataV5;
+use Protocol\Kafka\Common\TopicMetadataV7;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
@@ -81,7 +83,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v7)" and "Cluster readiness"
+ * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v8)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
@@ -90,7 +92,7 @@ class MetadataResponse extends AbstractResponse
     /**
      * Version of the Metadata API that this class unpacks
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * Broker id that the answer reports while the cluster has no active controller
@@ -135,6 +137,19 @@ class MetadataResponse extends AbstractResponse
     public array $topics = [];
 
     /**
+     * Operations the principal of this connection is authorized for on the **cluster**, the bitfield of KIP-430.
+     *
+     * {@see \Protocol\Kafka\Common\AclOperation} reads it; {@see \Protocol\Kafka\Common\AclOperation::NOT_REQUESTED}
+     * is what a broker writes when the request did not set `include_cluster_authorized_operations`, and what every
+     * answer below version 8 leaves here. The field exists in the versions **8 to 10** only: KIP-700 moved the
+     * cluster-wide operations to the DescribeCluster api and version 11 dropped it again, which is beyond this
+     * line.
+     *
+     * @since Version 8 of protocol (Kafka 2.3, KIP-430)
+     */
+    public int $clusterAuthorizedOperations = AclOperation::NOT_REQUESTED;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -155,6 +170,9 @@ class MetadataResponse extends AbstractResponse
             $body['controllerId'] = BinarySchema::TYPE_INT32;
         }
         $body['topics'] = ['topic' => static::topicClass()];
+        if (static::VERSION >= 8) {
+            $body['clusterAuthorizedOperations'] = BinarySchema::TYPE_INT32;
+        }
 
         return $header + $body;
     }
@@ -177,7 +195,8 @@ class MetadataResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 7 => TopicMetadata::class,
+            static::VERSION >= 8 => TopicMetadata::class,
+            static::VERSION >= 7 => TopicMetadataV7::class,
             static::VERSION >= 5 => TopicMetadataV5::class,
             static::VERSION >= 1 => TopicMetadataV1::class,
             default              => TopicMetadataV0::class,

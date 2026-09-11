@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `leader_epoch` is the epoch the asking replica believes it followed, i.e. the value that the record batches it
  * has on disk carry in `partition_leader_epoch` ({@see \Protocol\Kafka\Common\Record\RecordBatch::$partitionLeaderEpoch}).
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
  */
 class OffsetForLeaderEpochRequestPartition implements BinarySchemaInterface
 {

@@ -65,6 +65,7 @@ final class ConsumerConfig extends GeneralConfig
         ConsumerConfig::OFFSET_RETENTION_MS           => -1, // Use the broker retention time for offsets
         ConsumerConfig::CHECK_CRCS                    => true,
         ConsumerConfig::ISOLATION_LEVEL               => ConsumerConfig::ISOLATION_LEVEL_READ_UNCOMMITTED,
+        ConsumerConfig::CLIENT_RACK                   => FetchRequest::NO_RACK,
         ConsumerConfig::KEY_DESERIALIZER              => null,
         ConsumerConfig::VALUE_DESERIALIZER            => null,
     ];
@@ -261,6 +262,24 @@ final class ConsumerConfig extends GeneralConfig
      * @see docs/protocol/2.8.md, section "Transactions"
      */
     public const string ISOLATION_LEVEL = 'isolation.level';
+
+    /**
+     * Rack of this consumer, the `rack_id` of a Fetch v11 request (KIP-392, Kafka 2.3).
+     *
+     * A rack-aware cluster puts the replicas of a partition into different racks (`broker.rack` of a broker), and
+     * a consumer that reads across racks pays for the traffic twice - once inside the cluster, once out of it.
+     * KIP-392 lets the consumer name its own rack in every fetch; the **leader** of the partition then picks a
+     * replica for that rack with its `replica.selector.class` and answers the node id in the
+     * `preferred_read_replica` of the partition entry, and the consumer reads from that broker until an answer
+     * names another one, see {@see \Protocol\Kafka\Common\FetchedPartition::$preferredReadReplica}.
+     *
+     * The default is the empty string, "I am in no rack", which is also what every version below 11 says by
+     * having no field at all. A broker without a `replica.selector.class` - the default, and the configuration of
+     * the container of this line - answers `-1` to every fetch whatever the rack, i.e. "read from me".
+     *
+     * @see docs/protocol/2.8.md, section "Reading from a follower (v11, KIP-392)"
+     */
+    public const string CLIENT_RACK = 'client.rack';
 
     /**
      * `isolation.level` of a consumer that sees every record of the log, the default

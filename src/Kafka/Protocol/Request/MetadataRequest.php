@@ -86,7 +86,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v8)"
  */
 class MetadataRequest extends AbstractRequest
 {
@@ -98,7 +98,7 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * @param list<string>|null $topics                    Topics to fetch the metadata for, null asks for every topic
@@ -116,7 +116,28 @@ class MetadataRequest extends AbstractRequest
          */
         protected bool $allowAutoTopicCreation = true,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Whether the answer should carry the operations this principal is authorized for on the **cluster**.
+         *
+         * The bitfield of KIP-430 (Kafka 2.3), see
+         * {@see MetadataResponse::$clusterAuthorizedOperations} and {@see \Protocol\Kafka\Common\AclOperation}.
+         * `false` - the default of this client, as of the Java `describeCluster` without the option - makes the
+         * broker write `Integer.MIN_VALUE` instead, "you did not ask". The field lives in the versions 8 to 10
+         * only; KIP-700 moved the question to the DescribeCluster api.
+         *
+         * @since Version 8 of protocol
+         */
+        protected bool $includeClusterAuthorizedOperations = false,
+        /**
+         * Whether every topic entry of the answer should carry the operations this principal is authorized for
+         * on **that topic**.
+         *
+         * The same bitfield, per topic, see {@see \Protocol\Kafka\Common\TopicMetadata::$authorizedOperations}.
+         *
+         * @since Version 8 of protocol
+         */
+        protected bool $includeTopicAuthorizedOperations = false
     ) {
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
@@ -134,6 +155,10 @@ class MetadataRequest extends AbstractRequest
         $body = ['topics' => $topics];
         if (static::VERSION >= 4) {
             $body['allowAutoTopicCreation'] = BinarySchema::TYPE_BOOLEAN;
+        }
+        if (static::VERSION >= 8) {
+            $body['includeClusterAuthorizedOperations'] = BinarySchema::TYPE_BOOLEAN;
+            $body['includeTopicAuthorizedOperations']   = BinarySchema::TYPE_BOOLEAN;
         }
 
         return $header + $body;
