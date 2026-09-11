@@ -677,6 +677,61 @@ them. What the release added lives in the group and transaction apis.)*
 
 ### Kafka 2.7
 
+- **Fetch v12** (KIP-482, KIP-595) — the first **flexible** version of the api and the version of the epoch
+  validation in the fetch itself. The encoding half is the usual one: the request header **v2**, the response
+  header **v1**, compact strings and arrays, a **compact record set** and a tagged-field section behind the body,
+  every topic entry and every partition entry. `FetchRequest`/`FetchResponse` declare `FLEXIBLE_VERSION = 12` and
+  are what `Client::fetchPartitions()`, `Client::fetchPartitionsWithSessions()` and `KafkaConsumer` send;
+  `FetchRequestV11`/`FetchResponseV11`, `FetchRequestTopicV9`/`FetchRequestTopicPartitionV9` and
+  `FetchResponseTopicV11`/`FetchResponsePartitionV11` keep the plain frames of the versions 9 to 11.
+- **The `last_fetched_epoch` of KIP-595** — every partition entry of the request gained the epoch of the last
+  record the fetcher really read, **between the fetch offset and the log start offset**
+  (`FetchRequestTopicPartition::$lastFetchedEpoch`, `UNKNOWN_LAST_FETCHED_EPOCH = -1`). A caller states it as the
+  **triple** `[offset, currentLeaderEpoch, lastFetchedEpoch]` in the partition map of `Client::fetchPartitions()`,
+  next to the plain offset and the `[offset, currentLeaderEpoch]` pair of version 9
+  (`FetchRequest::lastFetchedEpochOf()`); this client and the Java consumer @ 2.8.2 send -1 and keep detecting a
+  truncation the KIP-320 way.
+- **The three tagged fields of a partition entry of the answer** — `diverging_epoch` (tag 0,
+  `Protocol\Data\FetchResponseDivergingEpoch`), `current_leader` (tag 1, `FetchResponseCurrentLeader`) and
+  `snapshot_id` (tag 2, `FetchResponseSnapshotId`, KIP-630). The first of them is the answer to a fetch that
+  stated an epoch the leader's log does not match: the largest epoch from which the two logs differ and the
+  offset it ends at, which is the offset the fetcher truncates to. `FetchedPartition::$divergingEpoch` carries it
+  to the caller; the other two belong to the raft replication of a KRaft quorum and are read from the protocol
+  DTO.
+- **The tagged `cluster_id` of the request** (tag 0 of the body, `FetchRequest::$clusterId`) — `null` by default,
+  which leaves it off the wire; a broker that is given a wrong one answers **100** `INCONSISTENT_CLUSTER_ID`.
+- Measured on the container and pinned by the new integration suite `FetchEpochValidationTest`: an epoch the log
+  never had is **1** `OFFSET_OUT_OF_RANGE` with a high water mark of **-1**, not a divergence; a fetch offset
+  **behind** the end of the stated epoch is the code **0**, an empty record set and the tagged
+  `diverging_epoch [epoch 0, end_offset 1]`; the end of the epoch itself and a fetch that states no epoch at all
+  are served as ever; and `current_leader` and `snapshot_id` stayed empty in every answer. Four wire vectors
+  (`fetch.request.v12`, `fetch.response.v12` and the `last-fetched-epoch`/`diverging-epoch` pair), the section
+  "Epoch validation in the fetch itself (v12, KIP-595)" of the protocol document and the two version 12 grammar
+  blocks.
+- **The two SCRAM credential apis of KIP-554 (Kafka 2.7)** — `DescribeUserScramCredentials` (key **50**) and
+  `AlterUserScramCredentials` (key **51**), both flexible from their v0, which end the practice of writing SCRAM
+  users into ZooKeeper by hand. The interesting half happens in the **client**: `Admin\UserScramCredentialUpsertion`
+  takes a *password*, derives `Hi(password, salt, iterations)` of RFC 5802 with
+  `hash_pbkdf2()` and sends only that, so the broker never sees a password and no answer can ever hand one out.
+  `Admin\ScramMechanism` (an enum of the two mechanisms with their hash, key length and the 4096-iteration
+  minimum), `ScramCredentialInfo`, `UserScramCredentialsDescription`, `UserScramCredentialDeletion` and the
+  `UserScramCredentialAlteration` interface carry the Java names;
+  `AdminClient::describeUserScramCredentials(?array $users = null)` and `::alterUserScramCredentials(array)` are
+  the two calls. Eight new wire vectors in `describe-user-scram-credentials.json` and
+  `alter-user-scram-credentials.json`, and the answers measured: **91** `RESOURCE_NOT_FOUND` for a user without a
+  credential and for the deletion of one that is not there, **92** `DUPLICATE_RESOURCE` for the same user and
+  mechanism twice, **93** `UNACCEPTABLE_CREDENTIAL` for an iteration count below the minimum — and the fact that
+  the changes of one user are applied **all-or-nothing**, so one impossible change discards the possible ones of
+  the same user.
+- **UpdateFeatures (key 57, v0, Kafka 2.7, KIP-584)** — `AdminClient::updateFeatures(array $updates, int $timeoutMs =
+  60000)`, sent to the **controller** and repeated once when it moved, with `Admin\FeatureUpdate` (whose `delete()` is
+  the version level below 1 plus the downgrade flag the broker insists on). Its read half is not an api at all but the
+  **tagged fields of the ApiVersions v3 answer**, which `AdminClient::describeFeatures()` reads into
+  `Admin\FeatureMetadata`, `SupportedVersionRange` and `FinalizedVersionRange`. A ZooKeeper-backed 2.8.2 cluster
+  finalizes nothing: it supports no feature, the finalized set is empty, the epoch is `0`, and every update is
+  answered per feature with **42** `INVALID_REQUEST`. An empty update list is not refused at all — the controller
+  iterates an empty collection and answers the top-level 0 with no result. Two new wire vectors in
+  `update-features.json`.
 - **The three topic apis of KIP-599** - **CreateTopics v6**, **DeleteTopics v5** and **CreatePartitions v3** - are
   the versions the client sends now. Not a field moves in two of them: the version is the client's promise that it
   understands the error code **89** `ThrottlingQuotaExceeded` and repeats the topics the *controller mutation

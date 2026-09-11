@@ -581,9 +581,9 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 11, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // ApiKey 1, ApiVersion 12, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
         // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch
-        self::assertStringStartsWith('0001000b', $request, 'the Fetch api is spoken in version 11');
+        self::assertStringStartsWith('0001000c', $request, 'the Fetch api is spoken in version 12');
         self::assertStringContainsString(
             '00100000' . '00' . '00000000' . 'ffffffff',
             $request,
@@ -591,14 +591,18 @@ final class ClientTest extends TestCase
         );
         // The partitions travel in the order they were given, which is the order the broker fills the answer in;
         // the -1 in front of every MaxBytes is the LogStartOffset of v5, which only a follower fills in, and the
-        // trailing empty array is the `forgotten_topics_data` of version 7
-        // The -1 in front of every fetch offset is the `current_leader_epoch` of Fetch v9 (KIP-320): this client
-        // sends "I do not know the epoch" unless the caller passed one
+        // trailing compact empty array is the `forgotten_topics_data` of version 7.
+        // The -1 in front of every fetch offset is the `current_leader_epoch` of Fetch v9 (KIP-320) and the one
+        // behind it the `last_fetched_epoch` of version 12 (KIP-595): this client sends "I do not know the
+        // epoch" for both unless the caller passed one. Every partition and every topic of a version 12 frame
+        // ends in a tag buffer of its own, and so does the body, behind the empty compact rack id of KIP-392
         self::assertStringEndsWith(
-            '00000001' . 'ffffffff' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
-            . '00000000' . 'ffffffff' . '0000000000000003' . 'ffffffffffffffff' . '00010000'
-            . '00000000'
-            . '0000',
+            '00000001' . 'ffffffff' . '0000000000000007' . 'ffffffff' . 'ffffffffffffffff' . '00010000' . '00'
+            . '00000000' . 'ffffffff' . '0000000000000003' . 'ffffffff' . 'ffffffffffffffff' . '00010000' . '00'
+            . '00'
+            . '01'
+            . '01'
+            . '00',
             $request
         );
     }
@@ -1208,16 +1212,19 @@ final class ClientTest extends TestCase
 
         [$full, $incremental] = array_map(bin2hex(...), $connection->getReceivedFrames());
 
-        // The first request carries the session id 0 with the epoch 0 - "open a session" - and both partitions
-        self::assertStringContainsString('00000000' . '00000000' . '00000001' . '00066f7264657273', $full);
+        // The first request carries the session id 0 with the epoch 0 - "open a session" - and both partitions;
+        // the topics array and the topic name are compact ones, because version 12 is a flexible version
+        self::assertStringContainsString('00000000' . '00000000' . '02' . '076f7264657273', $full);
         // The second one carries the session id of the answer, the epoch 1, the partition whose offset moved and
-        // nothing else; the trailing empty array is the forgotten_topics_data
+        // nothing else; the trailing empty compact array is the forgotten_topics_data
         self::assertStringContainsString('00001267' . '00000001', $incremental, 'the session id and the epoch 1');
         self::assertStringEndsWith(
-            '00000001' . '00066f7264657273' . '00000001'
-            . '00000000' . 'ffffffff' . '0000000000000001' . 'ffffffffffffffff' . '00010000'
-            . '00000000'
-            . '0000',
+            '02' . '076f7264657273' . '02'
+            . '00000000' . 'ffffffff' . '0000000000000001' . 'ffffffff' . 'ffffffffffffffff' . '00010000' . '00'
+            . '00'
+            . '01'
+            . '01'
+            . '00',
             $incremental,
             'only the partition whose fetch offset moved travels, and nothing is forgotten'
         );
@@ -1252,10 +1259,12 @@ final class ClientTest extends TestCase
         $incremental = bin2hex($connection->getReceivedFrames()[1]);
 
         self::assertStringEndsWith(
-            '00000000'                                     // topicPartitions: nothing moved
-            . '00000001' . '00066f7264657273' . '00000001' // forgottenTopics: one topic ...
-            . '00000001'                                   // ... with the partition 1
-            . '0000',                                      // rackId: the empty rack of KIP-392
+            '01'                                   // topicPartitions: nothing moved (the empty compact array)
+            . '02' . '076f7264657273' . '02'       // forgottenTopics: one topic ...
+            . '00000001'                           // ... with the partition 1
+            . '00'                                 // TAG_BUFFER of that forgotten topic
+            . '01'                                 // rackId: the empty rack of KIP-392, compact since v12
+            . '00',                                // TAG_BUFFER of the body: no cluster id
             $incremental
         );
         self::assertSame([], $answer, 'an answer with no topic at all is a legal answer of a session');
@@ -1291,7 +1300,7 @@ final class ClientTest extends TestCase
         // The recovery is a full fetch with the epoch 0 and the session id 0, because a 70 says that the id is gone
         $recovery = bin2hex($connection->getReceivedFrames()[2]);
 
-        self::assertStringContainsString('00000000' . '00000000' . '00000001' . '00066f7264657273', $recovery);
+        self::assertStringContainsString('00000000' . '00000000' . '02' . '076f7264657273', $recovery);
     }
 
     public function testEveryBrokerOfTheClusterGetsAFetchSessionOfItsOwn(): void

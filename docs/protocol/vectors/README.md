@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **608** of them in **43** files: **290** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **622** of them in **46** files: **304** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -29,9 +29,10 @@ not committed yet, and the 21 frames of its transaction, admin and SASL half: th
 with its epoch bump, the TxnOffsetCommit v3 of KIP-447 with the consumer it names, CreatePartitions v2,
 SaslAuthenticate v2 and the token apis v2; and of **Kafka 2.6** the 4 frames of ListGroups v4 (KIP-518), the
 states filter of the request and the group state of every entry of the answer, and the 9 frames of its two
-client-quota apis (KIP-546, the two new files `describe-client-quotas.json` and `alter-client-quotas.json`), the 6
-frames of its DescribeConfigs **v3** (KIP-569) and the 4 frames of its DescribeLogDirs **v2**; and of **Kafka 2.7**
-the 17 frames of the admin and transaction half: CreateTopics v6, CreatePartitions v3 and DeleteTopics v5 of
+client-quota apis (KIP-546, the two new files `describe-client-quotas.json` and `alter-client-quotas.json`), and the 6 frames of its DescribeConfigs **v3** (KIP-569) and the 4 frames of its
+DescribeLogDirs **v2**, and the 10 frames of the three apis **Kafka 2.7** added - the two SCRAM credential apis of
+KIP-554 and UpdateFeatures of KIP-584, in the three new files `describe-user-scram-credentials.json`,
+`alter-user-scram-credentials.json` and `update-features.json`, and of the same release the 17 frames of the admin and transaction half: CreateTopics v6, CreatePartitions v3 and DeleteTopics v5 of
 KIP-599, and InitProducerId v4, AddPartitionsToTxn v2, AddOffsetsToTxn v2 and EndTxn v2 of KIP-588, two of them
 carrying the 90 `ProducerFenced` the KIP added - and of the other 318,
 **229** were
@@ -49,7 +50,7 @@ ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from on
 | File | Of it captured here | What was captured on the 2.8.2 broker |
 |---|---|---|
 | `produce.json` | 11 of 35 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond; **Produce v7** (KIP-110), request and answer, and the **76** a v6 is answered when its record set is compressed with zstd; **Produce v8** (KIP-467), the accepted pair, the batch a `cleanup.policy=compact` topic refuses with the record errors that name its key-less records, and the same refusal answered to a version 7 request |
-| `fetch.json` | 16 of 49 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283); **Fetch v9** and **v10** (KIP-320, KIP-110) with the `current_leader_epoch` on the wire, the **75** of an epoch above the leader's, and the three frames of the zstd rule — the **76** of a v9 against a `compression.type=zstd` topic and the same partition served to a v10 |
+| `fetch.json` | 22 of 53 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283); **Fetch v9** and **v10** (KIP-320, KIP-110) with the `current_leader_epoch` on the wire, the **75** of an epoch above the leader's, and the three frames of the zstd rule — the **76** of a v9 against a `compression.type=zstd` topic and the same partition served to a v10; **Fetch v11** (KIP-392) with the `rack_id` of the consumer and the `preferred_read_replica` it is answered with; and the four frames of **Fetch v12** (Kafka 2.7), the first flexible version of the api - the plain pair of a consumer fetch and the pair in which the `last_fetched_epoch` of KIP-595 is really asked and answered with the tagged `diverging_epoch` |
 | `offsets.json` | 6 of 20 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header; **v4** (KIP-320), which carries a `current_leader_epoch` in the request and a `leader_epoch` behind every answered offset; and **v5** (KIP-207), the version 4 frames again — what it adds is the error code **78**, which a one-broker container can not produce |
 | `metadata.json` | 9 of 28 | **Metadata v6** (KIP-219), likewise; **v7** (KIP-320), whose partition entries carry the `leader_epoch` of their leader; and **v8** (KIP-430), with the two booleans that ask for the authorized operations, the bitfields they are answered with and the `Integer.MIN_VALUE` of the same answer when they are off |
 | `offset-for-leader-epoch.json` | 7 of 11 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset; and **v2** (KIP-320), the version a consumer sends, with a `current_leader_epoch` in the request, a `throttle_time_ms` at the head of the answer and the **75** of a fenced epoch |

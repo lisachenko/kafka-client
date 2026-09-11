@@ -84,8 +84,10 @@ final class MessageFields
             return $result;
         }
 
+        // A nested structure that is not there at all - a tagged field of a flexible version that the writer left
+        // out, which is what its default "nothing to report" looks like after decoding - stays null
         if (is_string($schemeType)) {
-            return self::of($value);
+            return $value === null ? null : self::of($value);
         }
 
         $isBytes = $schemeType === BinarySchema::TYPE_BYTEARRAY || $schemeType === BinarySchema::TYPE_VARCHAR_ZIGZAG;
