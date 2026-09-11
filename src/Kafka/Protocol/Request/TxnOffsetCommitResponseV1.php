@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka 2.1 kept it as well: the `committed_leader_epoch` of KIP-320 is a field of the request alone. This class
  * only lowers the version constant, so that an answer of version 1 is read through the class of its own version.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 final class TxnOffsetCommitResponseV1 extends TxnOffsetCommitResponse
 {

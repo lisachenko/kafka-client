@@ -44,7 +44,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * i.e. "the session never expires", which is what the container of this line does.
  * {@see SaslAuthenticateResponseV0} is the answer without that field.
  *
- * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0 and v1)"
+ * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
+ * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
+ *
+ * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0 to v2)"
  * @see \Protocol\Kafka\Common\Errors\SaslAuthenticationFailedException for the error code 58
  */
 class SaslAuthenticateResponse extends AbstractResponse
@@ -52,7 +55,12 @@ class SaslAuthenticateResponse extends AbstractResponse
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Error code of the answer, 0 when the broker accepted the token

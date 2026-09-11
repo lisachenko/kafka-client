@@ -47,6 +47,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\Internals\FetchSessionHandler;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
@@ -468,8 +469,16 @@ class Client
      * by default) the answer is the error code 50 (InvalidTransactionTimeout), while a `null` transactional id is
      * answered with a producer id whatever the value is.
      *
+     * **Kafka 2.5 added the pair of KIP-360** to the request, and with it a second meaning: a transactional
+     * producer that hands its own `$producerId` and `$producerEpoch` over asks the coordinator to **bump** that
+     * epoch instead of handing out a new id. The answer is the same id with `epoch + 1`, everything that still
+     * writes under the old epoch is fenced, and a producer that hit an abortable error can carry on with it
+     * instead of being finished. The -1/-1 of `InitProducerIdRequest::NO_PRODUCER_ID` is the old "give me an id".
+     *
      * @param string|null $transactionalId      Transactional id of the producer, `null` for an idempotent one
      * @param int         $transactionTimeoutMs `transaction.timeout.ms` of the producer, ignored without an id
+     * @param int         $producerId           Producer id whose epoch should be bumped (KIP-360), or -1
+     * @param int         $producerEpoch        Epoch that belongs to it, or -1
      *
      * @throws Common\Errors\InvalidTxnTimeoutException For a timeout above `transaction.max.timeout.ms`
      * @throws Common\Errors\InvalidRequestException    For the empty string as a transactional id
@@ -477,7 +486,9 @@ class Client
      */
     public function initProducerId(
         ?string $transactionalId = null,
-        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS
+        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS,
+        int $producerId = InitProducerIdRequest::NO_PRODUCER_ID,
+        int $producerEpoch = InitProducerIdRequest::NO_PRODUCER_EPOCH
     ): ProducerIdAndEpoch {
         // A producer id without a transactional id is not coordinated by anything, so any broker may answer it
         $node = $transactionalId === null
@@ -489,6 +500,8 @@ class Client
             fn(int $correlationId): InitProducerIdRequest => new InitProducerIdRequest(
                 $transactionalId,
                 $transactionTimeoutMs,
+                $producerId,
+                $producerEpoch,
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),
@@ -3046,6 +3059,8 @@ class Client
      * @param string             $groupId            Consumer group whose offsets are committed
      * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
+     * @param ConsumerGroupMetadata|null $groupMetadata Who the consumer is inside the group (KIP-447, version 3);
+     *        `null` is the "not a member" commit of every version below 3
      *
      * @throws KafkaException The error code of the first partition that was refused
      */
@@ -3054,7 +3069,8 @@ class Client
         string $transactionalId,
         string $groupId,
         ProducerIdAndEpoch $producerIdAndEpoch,
-        array $topicPartitionOffsets
+        array $topicPartitionOffsets,
+        ?ConsumerGroupMetadata $groupMetadata = null
     ): void {
         $this->coordinatorRequest(
             $coordinatorNode,
@@ -3064,6 +3080,7 @@ class Client
                 $producerIdAndEpoch->producerId,
                 $producerIdAndEpoch->epoch,
                 $topicPartitionOffsets,
+                $groupMetadata,
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),
