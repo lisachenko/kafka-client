@@ -34,6 +34,18 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   the published name of the code 47.
 - **`tools/dev/gate.sh`** — the whole local gate (php -l, cs, phpstan, unit + compliance, integration
   on the four listeners) for any worktree path, JIT off.
+
+### Changed
+
+- **The protocol document is `docs/protocol/2.8.md`**, renamed from `docs/protocol/1.1.md` with every
+  `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the
+  plan of the 2.x line (`docs/handoff/2.0.x.md`) took its place as `docs/handoff/main.md`.
+
+### Kafka 2.0 — Added
+
+The first milestone of the line (PRs #117, #118, #119, #122): what Kafka 2.0 added on the wire —
+almost only the version bumps of KIP-219 — and its one runtime change, the client-side throttle wait.
+
 - **ApiVersions v2** (Kafka 2.0, KIP-219) — the frame of v1, byte for byte, and the promise that the
   client waits out a `throttle_time_ms` itself, because a broker answers a throttled request of a
   bumped version **before** it mutes the channel. `ApiVersionsRequest`/`ApiVersionsResponse` are the
@@ -69,7 +81,7 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   **wire vector pair captured from the 2.8.2 container**; `Client`, `KafkaConsumer` and `AdminClient`
   send the new versions.
 
-### Changed
+### Kafka 2.0 — Changed
 
 - **`Client` speaks the Kafka 2.0 versions**: Produce v6 for the message format v2 (v2 stays for the
   legacy message sets), Fetch v8 (with and without a fetch session), ListOffsets v3 and Metadata v6.
@@ -91,10 +103,6 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   once; an OffsetCommit that leaves `retention_time` at -1 is stored with the `__consumer_offsets`
   value schema **v3**, which has no expiry at all (KIP-211), while an explicit retention still falls
   back to the schema v1 and is still honoured up to version 4 of the api.
-
-- **The protocol document is `docs/protocol/2.8.md`**, renamed from `docs/protocol/1.1.md` with every
-  `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the
-  plan of the 2.x line (`docs/handoff/2.0.x.md`) took its place as `docs/handoff/main.md`.
 - **The "API keys" section of the protocol document is the literal answer of a 2.8.2 broker**: the
   **56** keys 0–51, 56, 57, 60 and 61 with their version range, the first flexible version of every
   api, the Kafka minor that added every version above the 1.1.1 ceiling, and — while the line is
