@@ -1,8 +1,8 @@
 {
     "api": "fetch",
     "apiKey": 1,
-    "section": "Fetch API (key 1, v0 to v11)",
-    "description": "Wire vectors of the Fetch API (key 1, v0 to v11), replayed by tests/Compliance.",
+    "section": "Fetch API (key 1, v0 to v12)",
+    "description": "Wire vectors of the Fetch API (key 1, v0 to v12), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "fetch.request.v4",

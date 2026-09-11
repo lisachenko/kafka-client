@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see FetchResponsePartition::$preferredReadReplica}; this class is the entry without it, and
  * {@see FetchResponsePartition::NO_PREFERRED_READ_REPLICA} is what its property keeps.
  *
- * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v11)"
+ * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v12)"
  */
 final class FetchResponsePartitionV5 extends FetchResponsePartition
 {

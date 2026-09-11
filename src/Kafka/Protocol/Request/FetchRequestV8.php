@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * What version 8 does state is the throttling of KIP-219, see {@see FetchRequestV7} for what changed there.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "The leader epoch (KIP-320)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "The leader epoch (KIP-320)"
  */
 final class FetchRequestV8 extends FetchRequest
 {
