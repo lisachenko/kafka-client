@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * see {@see FetchRequestTopic::partitionClass()}. The versions 5 to 8 send the entry of
  * {@see FetchRequestTopicPartitionV5}, which carries the `LogStartOffset` of KIP-107 and no leader epoch.
  *
- * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v11)"
+ * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v12)"
  */
 final class FetchRequestTopicV5 extends FetchRequestTopic
 {

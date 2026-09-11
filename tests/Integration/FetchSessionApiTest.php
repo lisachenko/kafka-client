@@ -36,7 +36,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * still sends session-less full fetches ({@see \Protocol\Kafka\Client::fetchPartitions()}), so this is the only
  * place where the session half of the frame meets a broker.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]

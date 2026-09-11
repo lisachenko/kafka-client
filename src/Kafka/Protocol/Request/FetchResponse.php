@@ -16,17 +16,19 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopicV11;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
 
 /**
- * Fetch response object (key 1), version 10
+ * Fetch response object (key 1), version 12
  *
  * <pre>
- *   FetchResponse (Version: 10) => ThrottleTimeMs ErrorCode SessionId
+ *   FetchResponse (Version: 12) => ThrottleTimeMs ErrorCode SessionId
  *                                 [TopicName [Partition ErrorCode HighwaterMarkOffset
  *                                             LastStableOffset LogStartOffset
- *                                             [AbortedTransactions] RecordSetSize RecordSet]]
+ *                                             [AbortedTransactions] PreferredReadReplica
+ *                                             RecordSetSize RecordSet TAG_BUFFER] TAG_BUFFER] TAG_BUFFER
  *     ThrottleTimeMs      => int32
  *     ErrorCode           => int16      -- since version 7
  *     SessionId           => int32      -- since version 7
@@ -37,7 +39,11 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
  *     LastStableOffset    => int64
  *     LogStartOffset      => int64
  *     AbortedTransactions => nullable [ProducerId int64 FirstOffset int64]
+ *     PreferredReadReplica => int32     -- since version 11
  *     RecordSetSize       => int32
+ *     DivergingEpoch      => tag 0, [Epoch int32 EndOffset int64] -- since version 12
+ *     CurrentLeader       => tag 1, [LeaderId int32 LeaderEpoch int32] -- since version 12
+ *     SnapshotId          => tag 2, [EndOffset int64 Epoch int32] -- since version 12
  * </pre>
  *
  * Version 1 of the API added `ThrottleTimeMs` **before** the topics array - the opposite end of the response from
@@ -75,19 +81,39 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
  * the codes **74** and **75** of KIP-320, version 10 that it understands a **zstd**-compressed record batch, which
  * a broker refuses to a lower version with **76** `UNSUPPORTED_COMPRESSION_TYPE` per partition.
  *
+ * **Version 11 (Kafka 2.3, KIP-392)** put the `preferred_read_replica` between the aborted transactions and the
+ * record set of every partition entry, see
+ * {@see \Protocol\Kafka\Protocol\Data\FetchResponsePartition::$preferredReadReplica}.
+ *
+ * **Version 12 (Kafka 2.7)** is the first **flexible** version, see {@see self::FLEXIBLE_VERSION}, and adds the
+ * three **tagged** fields of a partition entry - `diverging_epoch` (KIP-595), `current_leader` and `snapshot_id`
+ * (KIP-630). A ZooKeeper-backed broker fills none of them in for an ordinary consumer: they carry the answers of
+ * the raft replication and of a leader that detected a divergence from the `last_fetched_epoch` of the request.
+ *
  * What the answer of every version has to match is the *version of the request it belongs to*, which is why
- * {@see FetchResponseV9}, {@see FetchResponseV8}, {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4}, {@see FetchResponseV3},
- * {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
+ * {@see FetchResponseV11}, {@see FetchResponseV10}, {@see FetchResponseV9}, {@see FetchResponseV8},
+ * {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4},
+ * {@see FetchResponseV3}, {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 11;
+    public const int VERSION = 12;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `FetchResponse.json` @ 2.8.2 declares `"flexibleVersions": "12+"`: the answer carries the response header
+     * **v1**, compact strings, compact arrays and a **compact record set**, and a tagged-field section at the
+     * end of the body, of every topic entry and of every partition entry - the section the three fields of
+     * version 12 travel in, see {@see \Protocol\Kafka\Protocol\Data\FetchResponsePartition::$divergingEpoch}.
+     */
+    public const int FLEXIBLE_VERSION = 12;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
@@ -159,7 +185,8 @@ class FetchResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 11 => FetchResponseTopic::class,
+            static::VERSION >= 12 => FetchResponseTopic::class,
+            static::VERSION >= 11 => FetchResponseTopicV11::class,
             static::VERSION >= 5  => FetchResponseTopicV5::class,
             static::VERSION >= 4  => FetchResponseTopicV4::class,
             default               => FetchResponseTopicV0::class,

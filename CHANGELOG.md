@@ -675,6 +675,40 @@ them. What the release added lives in the group and transaction apis.)*
   DescribeLogDirs v2 frames (the topic `t4-26-logdirs`), each with its annotated dump, and the two headings moved
   to their new ranges.
 
+### Kafka 2.7
+
+- **Fetch v12** (KIP-482, KIP-595) — the first **flexible** version of the api and the version of the epoch
+  validation in the fetch itself. The encoding half is the usual one: the request header **v2**, the response
+  header **v1**, compact strings and arrays, a **compact record set** and a tagged-field section behind the body,
+  every topic entry and every partition entry. `FetchRequest`/`FetchResponse` declare `FLEXIBLE_VERSION = 12` and
+  are what `Client::fetchPartitions()`, `Client::fetchPartitionsWithSessions()` and `KafkaConsumer` send;
+  `FetchRequestV11`/`FetchResponseV11`, `FetchRequestTopicV9`/`FetchRequestTopicPartitionV9` and
+  `FetchResponseTopicV11`/`FetchResponsePartitionV11` keep the plain frames of the versions 9 to 11.
+- **The `last_fetched_epoch` of KIP-595** — every partition entry of the request gained the epoch of the last
+  record the fetcher really read, **between the fetch offset and the log start offset**
+  (`FetchRequestTopicPartition::$lastFetchedEpoch`, `UNKNOWN_LAST_FETCHED_EPOCH = -1`). A caller states it as the
+  **triple** `[offset, currentLeaderEpoch, lastFetchedEpoch]` in the partition map of `Client::fetchPartitions()`,
+  next to the plain offset and the `[offset, currentLeaderEpoch]` pair of version 9
+  (`FetchRequest::lastFetchedEpochOf()`); this client and the Java consumer @ 2.8.2 send -1 and keep detecting a
+  truncation the KIP-320 way.
+- **The three tagged fields of a partition entry of the answer** — `diverging_epoch` (tag 0,
+  `Protocol\Data\FetchResponseDivergingEpoch`), `current_leader` (tag 1, `FetchResponseCurrentLeader`) and
+  `snapshot_id` (tag 2, `FetchResponseSnapshotId`, KIP-630). The first of them is the answer to a fetch that
+  stated an epoch the leader's log does not match: the largest epoch from which the two logs differ and the
+  offset it ends at, which is the offset the fetcher truncates to. `FetchedPartition::$divergingEpoch` carries it
+  to the caller; the other two belong to the raft replication of a KRaft quorum and are read from the protocol
+  DTO.
+- **The tagged `cluster_id` of the request** (tag 0 of the body, `FetchRequest::$clusterId`) — `null` by default,
+  which leaves it off the wire; a broker that is given a wrong one answers **100** `INCONSISTENT_CLUSTER_ID`.
+- Measured on the container and pinned by the new integration suite `FetchEpochValidationTest`: an epoch the log
+  never had is **1** `OFFSET_OUT_OF_RANGE` with a high water mark of **-1**, not a divergence; a fetch offset
+  **behind** the end of the stated epoch is the code **0**, an empty record set and the tagged
+  `diverging_epoch [epoch 0, end_offset 1]`; the end of the epoch itself and a fetch that states no epoch at all
+  are served as ever; and `current_leader` and `snapshot_id` stayed empty in every answer. Four wire vectors
+  (`fetch.request.v12`, `fetch.response.v12` and the `last-fetched-epoch`/`diverging-epoch` pair), the section
+  "Epoch validation in the fetch itself (v12, KIP-595)" of the protocol document and the two version 12 grammar
+  blocks.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

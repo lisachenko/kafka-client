@@ -21,9 +21,11 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Fetch API (key 1), version 10
+ * Fetch API (key 1), version 12
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -38,9 +40,10 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
  * handle this case.
  *
  * <pre>
- *   FetchRequest (Version: 10) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
- *                                 [TopicName [Partition CurrentLeaderEpoch FetchOffset LogStartOffset MaxBytes]]
- *                                 [TopicName [Partition]]
+ *   FetchRequest (Version: 12) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
+ *                                 [TopicName [Partition CurrentLeaderEpoch FetchOffset LastFetchedEpoch
+ *                                             LogStartOffset MaxBytes TAG_BUFFER] TAG_BUFFER]
+ *                                 [TopicName [Partition] TAG_BUFFER] RackId TAG_BUFFER
  *     ReplicaId      => int32
  *     MaxWaitTime    => int32
  *     MinBytes       => int32
@@ -50,10 +53,16 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
  *     Epoch          => int32     -- since version 7
  *     CurrentLeaderEpoch => int32 -- since version 9
  *     FetchOffset    => int64
+ *     LastFetchedEpoch => int32   -- since version 12
  *     LogStartOffset => int64
+ *     RackId         => compact string -- since version 11, compact since version 12
+ *     ClusterId      => tag 0, compact nullable string -- since version 12
  * </pre>
  *
- * The eight versions of this api that a 2.8.2 broker serves below this one differ as follows:
+ * Every `TopicName` and `RackId` of a version 12 frame is a COMPACT string, every array a compact one, and the
+ * `TAG_BUFFER` of the grammar is the tagged-field section that closes every structure of a flexible version.
+ *
+ * The eleven versions of this api that a 2.8.2 broker serves below this one differ as follows:
  *
  * * **v1** (Kafka 0.9) left the request untouched and only prefixed the answer with `ThrottleTimeMs`, see
  *   {@see FetchResponse};
@@ -93,18 +102,29 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
  * * **v10** (Kafka 2.1, KIP-110) is byte-identical to v9 in both directions - `FetchRequest.json` @ 2.8.2 has no
  *   field of it - and states that the client understands a **zstd**-compressed record batch. A fetch below this
  *   version of a partition whose records are zstd-compressed is refused with **76**
- *   `UNSUPPORTED_COMPRESSION_TYPE`, because the broker does not down-convert zstd. This class is that version.
+ *   `UNSUPPORTED_COMPRESSION_TYPE`, because the broker does not down-convert zstd;
+ * * **v11** (Kafka 2.3, KIP-392) appends the `rack_id` of the consumer to the request - the last field of the
+ *   frame, behind the forgotten topics - and the `preferred_read_replica` to every partition entry of the answer,
+ *   see {@see self::$rackId} and {@see \Protocol\Kafka\Protocol\Data\FetchResponsePartition::$preferredReadReplica}
+ *   ({@see FetchRequestV11} keeps that version);
+ * * **v12** (Kafka 2.7) is the first **flexible** version of the api (KIP-482), see {@see self::FLEXIBLE_VERSION},
+ *   and adds two things of KIP-595 on top of the encoding: the `last_fetched_epoch` of every partition entry,
+ *   which lets the **leader** detect a divergence of the logs in the fetch itself instead of in a separate
+ *   OffsetForLeaderEpoch round trip (see
+ *   {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$lastFetchedEpoch} and the tagged
+ *   `diverging_epoch` of the answer), and the tagged `cluster_id` of the request. This class is that version.
  *
  * A request of version 7 and above **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
  * which is what this class sends when it is given no metadata - is served exactly like a version 6 request: the
  * whole requested set comes back and the answer reports `session_id = 0`. That is what
  * {@see \Protocol\Kafka\Client::fetchPartitions()} sends today.
  *
- * {@see FetchRequestV9}, {@see FetchRequestV8}, {@see FetchRequestV7}, {@see FetchRequestV6},
- * {@see FetchRequestV5}, {@see FetchRequestV4}, {@see FetchRequestV3}, {@see FetchRequestV2},
- * {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower versions available.
+ * {@see FetchRequestV11}, {@see FetchRequestV10}, {@see FetchRequestV9}, {@see FetchRequestV8},
+ * {@see FetchRequestV7}, {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4},
+ * {@see FetchRequestV3}, {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower
+ * versions available.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -116,7 +136,17 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 11;
+    public const int VERSION = 12;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `FetchRequest.json` @ 2.8.2 declares `"flexibleVersions": "12+"`: a version 12 request carries the request
+     * header **v2**, every string and array as a compact one, and a tagged-field section at the end of the body,
+     * of every topic entry and of every partition entry. The `cluster_id` of the same version is itself a
+     * **tagged** field (tag 0), see {@see self::$clusterId}.
+     */
+    public const int FLEXIBLE_VERSION = 12;
 
     /**
      * Value of the `rack_id` of version 11 that names no rack: the empty string (KIP-392)
@@ -175,6 +205,23 @@ class FetchRequest extends AbstractRequest
     protected readonly array $forgottenTopics;
 
     /**
+     * Cluster this request is meant for, the tagged `cluster_id` of version 12 (Kafka 2.7).
+     *
+     * `null` - the default of the specification and of this client - leaves the field off the wire altogether,
+     * which is what a tagged field whose value is its default does. It exists for the raft replication of
+     * KIP-595, where a broker that has not registered yet validates that it is talking to the cluster it thinks
+     * it is; a consumer has nothing to say here, and a broker that is given a wrong one answers **100**
+     * `INCONSISTENT_CLUSTER_ID`.
+     *
+     * The property is declared here instead of being promoted in the constructor, because a **tagged** field is
+     * left out of a frame that does not carry it: an unpacked request would leave a promoted property
+     * uninitialized, and writing it back out again would fail.
+     *
+     * @since Version 12 of protocol
+     */
+    protected ?string $clusterId = null;
+
+    /**
      * @param array<string, array<int, int|array{int, int}>> $topicPartitions Fetch offset of every partition, as
      *                                                          topic => partition => offset. The **order** of this
      *                                                          array is the order the broker fills the answer in,
@@ -183,7 +230,10 @@ class FetchRequest extends AbstractRequest
      *                                                          A value may also be the pair
      *                                                          `[offset, currentLeaderEpoch]`, which is how a
      *                                                          caller states the leader epoch that version 9
-     *                                                          (KIP-320) puts on the wire; a plain integer is the
+     *                                                          (KIP-320) puts on the wire, or the triple
+     *                                                          `[offset, currentLeaderEpoch, lastFetchedEpoch]`,
+     *                                                          which adds the epoch of the last record it really
+     *                                                          read (version 12, KIP-595); a plain integer is the
      *                                                          offset with
      *                                                          {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::UNKNOWN_LEADER_EPOCH},
      *                                                          which is what every call written before Kafka 2.1
@@ -213,6 +263,9 @@ class FetchRequest extends AbstractRequest
      *                                                          topic => [partition, ...]; only version 7 puts them
      *                                                          on the wire and only a session does anything with
      *                                                          them.
+     * @param string|null                    $clusterId        The tagged `cluster_id` of version 12,
+     *                                                          {@see self::$clusterId}; `null` leaves it off the
+     *                                                          wire, and that is what a client sends.
      */
     public function __construct(
         array $topicPartitions,
@@ -259,8 +312,11 @@ class FetchRequest extends AbstractRequest
          * {@see \Protocol\Kafka\Consumer\ConsumerConfig::CLIENT_RACK}; a broker without a selector ignores the
          * field altogether.
          */
-        protected readonly string $rackId = self::NO_RACK
+        protected readonly string $rackId = self::NO_RACK,
+        ?string $clusterId = null
     ) {
+        $this->clusterId = $clusterId;
+
         $metadata ??= FetchMetadata::legacy();
         $this->sessionId = $metadata->sessionId;
         $this->epoch     = $metadata->epoch;
@@ -283,7 +339,8 @@ class FetchRequest extends AbstractRequest
                     $offset,
                     $partitionMaxBytes,
                     FetchRequestTopicPartition::INVALID_LOG_START_OFFSET,
-                    $currentLeaderEpoch
+                    $currentLeaderEpoch,
+                    self::lastFetchedEpochOf($fetchOffset)
                 );
             }
             $packedTopicPartitions[$topic] = new $topicClass($topic, $partitions);
@@ -359,6 +416,25 @@ class FetchRequest extends AbstractRequest
     }
 
     /**
+     * Reads the `last_fetched_epoch` of version 12 out of a value of the `$topicPartitions` map.
+     *
+     * The third element of the triple `[offset, currentLeaderEpoch, lastFetchedEpoch]` is the epoch of the last
+     * record the caller really read from the partition, the field version 12 (KIP-595) added; an offset and a
+     * pair both mean {@see FetchRequestTopicPartition::UNKNOWN_LAST_FETCHED_EPOCH}, which is what the Java
+     * consumer @ 2.8.2 sends for every partition of every fetch.
+     *
+     * @param int|array{int, int}|array{int, int, int} $fetchOffset
+     */
+    public static function lastFetchedEpochOf(int|array $fetchOffset): int
+    {
+        if (is_array($fetchOffset) && isset($fetchOffset[2])) {
+            return (int) $fetchOffset[2];
+        }
+
+        return FetchRequestTopicPartition::UNKNOWN_LAST_FETCHED_EPOCH;
+    }
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -385,6 +461,11 @@ class FetchRequest extends AbstractRequest
         }
         if (static::VERSION >= 11) {
             $body['rackId'] = BinarySchema::TYPE_STRING;
+        }
+        // The `cluster_id` of version 12 is a TAGGED field (tag 0) and is therefore written at the end of the
+        // body whatever its place in the json, and only when it is not the `null` of the specification
+        if (static::VERSION >= 12) {
+            $body['clusterId'] = new TaggedField(0, BinarySchema::TYPE_NULLABLE_STRING, null);
         }
 
         return $header + $body;
@@ -429,9 +510,10 @@ class FetchRequest extends AbstractRequest
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 9 => FetchRequestTopic::class,
-            static::VERSION >= 5 => FetchRequestTopicV5::class,
-            default              => FetchRequestTopicV0::class,
+            static::VERSION >= 12 => FetchRequestTopic::class,
+            static::VERSION >= 9  => FetchRequestTopicV9::class,
+            static::VERSION >= 5  => FetchRequestTopicV5::class,
+            default               => FetchRequestTopicV0::class,
         };
     }
 }

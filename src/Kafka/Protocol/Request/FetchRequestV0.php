@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * a version 0 request is answered without the `ThrottleTimeMs` prefix, see {@see FetchResponseV0}, and - like every
  * version below 2 - with a message set that the broker converted down to message format v0.
  *
- * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v11)"
+ * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v12)"
  */
 final class FetchRequestV0 extends FetchRequest
 {

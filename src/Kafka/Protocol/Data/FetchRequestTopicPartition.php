@@ -32,16 +32,20 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * and nothing else, which is {@see FetchRequestTopicPartitionV5}.
  *
  * **Version 9 (Kafka 2.1, KIP-320) inserted `current_leader_epoch`** between the partition index and the fetch
- * offset, see {@see self::$currentLeaderEpoch}.
+ * offset, see {@see self::$currentLeaderEpoch}, and **version 12 (Kafka 2.7, KIP-595) `last_fetched_epoch`**
+ * between the fetch offset and the log start offset, see {@see self::$lastFetchedEpoch};
+ * {@see FetchRequestTopicPartitionV9} keeps the entry of the versions 9 to 11. A version 12 entry also ends in
+ * the tagged-field section of a flexible structure, which the schema engine writes on its own.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "The leader epoch (KIP-320)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)", "The leader epoch (KIP-320)" and
+ *      "Epoch validation in the fetch itself (v12, KIP-595)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface
 {
     /**
      * Version of the Fetch API that this DTO is packed for
      */
-    public const int VERSION = 9;
+    public const int VERSION = 12;
 
     /**
      * `LogStartOffset` of a consumer, which is not a follower and therefore has no log of its own
@@ -61,6 +65,11 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
      * decodes to. That is what every call of this client sends unless the caller knows better.
      */
     public const int UNKNOWN_LEADER_EPOCH = -1;
+
+    /**
+     * Value of `last_fetched_epoch` of a client that has read no record of the partition yet (KIP-595)
+     */
+    public const int UNKNOWN_LAST_FETCHED_EPOCH = -1;
 
     /**
      * Offset of the first message to fetch
@@ -106,18 +115,36 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
      */
     public int $logStartOffset = self::INVALID_LOG_START_OFFSET;
 
+    /**
+     * Epoch of the **last record this client really read** from the partition, the field of version 12.
+     *
+     * **KIP-595** (Kafka 2.7) turned the truncation detection of KIP-320 around: instead of asking the leader
+     * where an epoch ended with an OffsetForLeaderEpoch, a fetcher states the epoch of the record it stopped at
+     * and the leader compares it with its own log. When they diverge, the answer carries the
+     * `diverging_epoch` of {@see FetchResponsePartition::$divergingEpoch} - the largest epoch and its end offset
+     * from which the two logs are known to differ - and the fetcher truncates to that offset without a second
+     * request. The field is used by the raft replication of KIP-595 and by a follower; an ordinary consumer of
+     * this client sends {@see self::UNKNOWN_LAST_FETCHED_EPOCH}, which is what the Java consumer sends as well
+     * while it validates its positions the KIP-320 way.
+     *
+     * @since Version 12 of protocol
+     */
+    public int $lastFetchedEpoch = self::UNKNOWN_LAST_FETCHED_EPOCH;
+
     public function __construct(
         int $partition,
         int $fetchOffset,
         int $maxBytes,
         int $logStartOffset = self::INVALID_LOG_START_OFFSET,
-        int $currentLeaderEpoch = self::UNKNOWN_LEADER_EPOCH
+        int $currentLeaderEpoch = self::UNKNOWN_LEADER_EPOCH,
+        int $lastFetchedEpoch = self::UNKNOWN_LAST_FETCHED_EPOCH
     ) {
         $this->partition          = $partition;
         $this->fetchOffset        = $fetchOffset;
         $this->maxBytes           = $maxBytes;
         $this->logStartOffset     = $logStartOffset;
         $this->currentLeaderEpoch = $currentLeaderEpoch;
+        $this->lastFetchedEpoch   = $lastFetchedEpoch;
     }
 
     /**
@@ -132,6 +159,11 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
             $scheme['currentLeaderEpoch'] = BinarySchema::TYPE_INT32;
         }
         $scheme['fetchOffset'] = BinarySchema::TYPE_INT64;
+        // The epoch of the last record this client really read, which version 12 (Kafka 2.7, KIP-595) put
+        // between the fetch offset and the log start offset - the field order of `FetchRequest.json` @ 2.8.2
+        if (static::VERSION >= 12) {
+            $scheme['lastFetchedEpoch'] = BinarySchema::TYPE_INT32;
+        }
         if (static::VERSION >= 5) {
             $scheme['logStartOffset'] = BinarySchema::TYPE_INT64;
         }
