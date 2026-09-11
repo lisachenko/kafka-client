@@ -1,8 +1,8 @@
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v8)",
-    "description": "Wire vectors of the Metadata API (key 3, v0 to v8), replayed by tests/Compliance.",
+    "section": "Metadata API (key 3, v0 to v9)",
+    "description": "Wire vectors of the Metadata API (key 3, v0 to v9), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
@@ -859,7 +859,7 @@
         {
             "id": "metadata.request.v8",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV8",
             "version": 8,
             "source": "broker",
             "description": "Metadata request v8 (Kafka 2.3, KIP-430) for one named topic, with both booleans of the version ON: include_cluster_authorized_operations and include_topic_authorized_operations sit behind the allow_auto_topic_creation of version 4, in that order.",
@@ -881,7 +881,7 @@
         {
             "id": "metadata.response.v8",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV8",
             "version": 8,
             "source": "broker",
             "description": "The answer of that request: every topic entry ends with a topic_authorized_operations bitfield, behind its partitions, and the frame ends with the cluster_authorized_operations. A broker without an authorizer - the container has none - answers the full set of the operations of the resource; the bits are the codes of AclOperation @ 2.8.2.",
@@ -929,7 +929,7 @@
         {
             "id": "metadata.response.v8.not-requested",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV8",
             "version": 8,
             "source": "broker",
             "description": "The answer of the same version 8 request with both booleans OFF, which is what this client sends by default: the two bitfields are there - they are fields of the version, not of the question - and carry 80 00 00 00, Integer.MIN_VALUE, \"you did not ask\". That is not the empty set, which is the bitfield 0.",
@@ -952,6 +952,80 @@
                     "t2-23-vectors": {
                         "topicErrorCode": 0,
                         "topic": "t2-23-vectors",
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": -2147483648
+                    }
+                },
+                "clusterAuthorizedOperations": -2147483648
+            }
+        },
+        {
+            "id": "metadata.request.v9",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 9,
+            "source": "broker",
+            "description": "Metadata request v9 (Kafka 2.4), the first FLEXIBLE version of this api (KIP-482): the request header v2 - the client id as a NON-compact string and a tag buffer of its own behind it - a COMPACT topic array (the unsigned varint 02 for one entry), the topic name as a compact string (0b for ten bytes), the three booleans of the versions 4 and 8 and the tagged-field section of the body. The question is the one of version 8, in the other encoding.",
+            "hex": "0000001e00030009000002580002743200020b74322d32342d666c65780000000000",
+            "fields": {
+                "messageSize": 30,
+                "apiKey": 3,
+                "apiVersion": 9,
+                "correlationId": 600,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "name": "t2-24-flex"
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeClusterAuthorizedOperations": false,
+                "includeTopicAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "metadata.response.v9",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 9,
+            "source": "broker",
+            "description": "The answer v9: the response header v1 - the correlation id and a tag buffer - then the throttle time, a compact broker array whose entry ends in its own tag buffer, the compact cluster id, the controller id, a compact topic array whose partitions carry compact replica, isr and offline-replica arrays and a tag buffer each, the two authorized_operations bitfields of KIP-430 with Integer.MIN_VALUE (\"not asked\") and the tagged-field section of the body.",
+            "hex": "0000006d00000258000000000002000000000a3132372e302e302e31000023840000174138623343395155532d2d7a5f2d344f6a7777307051000000000200000b74322d32342d666c65780002000000000000000000000000000002000000000200000000010080000000008000000000",
+            "fields": {
+                "messageSize": 109,
+                "correlationId": 600,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "A8b3C9QUS--z_-4Ojww0pQ",
+                "controllerId": 0,
+                "topics": {
+                    "t2-24-flex": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-24-flex",
                         "isInternal": false,
                         "partitions": [
                             {

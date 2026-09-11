@@ -19,6 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\MetadataRequestTopic;
 
 /**
  * This API answers the following questions:
@@ -86,7 +87,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v9)"
  */
 class MetadataRequest extends AbstractRequest
 {
@@ -98,7 +99,17 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 8;
+    public const int VERSION = 9;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `MetadataRequest.json` @ 2.8.2 declares `"flexibleVersions": "9+"`, so a version 9 request carries the
+     * request header **v2** - the tag buffer behind the client id - every string as a compact one and a
+     * tagged-field section at the end of the body and of every topic entry. Nothing else about the frame
+     * changes: version 9 is the version 8 question in the other encoding.
+     */
+    public const int FLEXIBLE_VERSION = 9;
 
     /**
      * @param list<string>|null $topics                    Topics to fetch the metadata for, null asks for every topic
@@ -139,6 +150,16 @@ class MetadataRequest extends AbstractRequest
          */
         protected bool $includeTopicAuthorizedOperations = false
     ) {
+        if (static::VERSION >= 9 && $this->topics !== null) {
+            // A flexible version writes the topics as structures, see {@see MetadataRequestTopic}; the public
+            // shape of this field stays the list of names, which {@see self::getTopics()} hands back
+            $this->topics = array_map(
+                static fn(MetadataRequestTopic|string $topic): MetadataRequestTopic
+                    => $topic instanceof MetadataRequestTopic ? $topic : new MetadataRequestTopic($topic),
+                $this->topics
+            );
+        }
+
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
@@ -151,6 +172,13 @@ class MetadataRequest extends AbstractRequest
         $topics = static::VERSION >= 1
             ? [BinarySchema::TYPE_STRING, BinarySchema::FLAG_NULLABLE => true]
             : [BinarySchema::TYPE_STRING];
+
+        // From version 9 - the first flexible one - a topic entry is a STRUCTURE of the specification and gets
+        // the tagged-field section that closes every structure of a flexible version, so the array can not be a
+        // list of bare strings any more, see {@see MetadataRequestTopic}
+        if (static::VERSION >= 9) {
+            $topics = [MetadataRequestTopic::class, BinarySchema::FLAG_NULLABLE => true];
+        }
 
         $body = ['topics' => $topics];
         if (static::VERSION >= 4) {
@@ -171,7 +199,15 @@ class MetadataRequest extends AbstractRequest
      */
     public function getTopics(): ?array
     {
-        return $this->topics;
+        if ($this->topics === null) {
+            return null;
+        }
+
+        return array_map(
+            static fn(MetadataRequestTopic|string $topic): string
+                => $topic instanceof MetadataRequestTopic ? $topic->name : $topic,
+            array_values($this->topics)
+        );
     }
 
     /**
