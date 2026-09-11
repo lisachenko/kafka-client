@@ -19,8 +19,10 @@ namespace Protocol\Kafka;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Admin\NewPartitionReassignment;
 use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
+use Protocol\Kafka\Admin\PartitionReassignment;
 use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
@@ -68,6 +70,8 @@ use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
+use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsRequest;
+use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
@@ -92,6 +96,8 @@ use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
+use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsRequest;
+use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
@@ -2122,6 +2128,139 @@ class Client
     }
 
     /**
+     * Asks the controller to move the replicas of partitions to other brokers (ApiKey 45, Kafka 2.4, KIP-455)
+     *
+     * The api that took the last piece of `kafka-reassign-partitions.sh` away from ZooKeeper: before Kafka 2.4 a
+     * reassignment was a JSON document written into the `/admin/reassign_partitions` znode, one at a time for the
+     * whole cluster and impossible to cancel. Like CreateTopics it is served by the **active controller** alone -
+     * `$controller` has to be the node that {@see \Protocol\Kafka\Admin\AdminClient::findController()} returned -
+     * and a broker that is not (or is no longer) the controller answers the TOP-LEVEL error code 41
+     * (NotController), which is thrown here, because it says nothing about the individual partitions.
+     *
+     * Every entry of `$reassignments` names the **whole** replica set its partition should end up with, as a
+     * {@see NewPartitionReassignment} or as a plain list of broker ids - the first one is the preferred leader -
+     * and `null` **cancels** a reassignment that is still in progress. The answer is one error per requested
+     * partition, and a partition with the error code 0 is one the controller *accepted*: the data is moved
+     * afterwards by the replica fetchers and watched with {@see self::listPartitionReassignments()}.
+     *
+     * The codes a 2.8.2 broker answers per partition are 3 (UnknownTopicOrPartition) for a topic or a partition it
+     * does not have, 39 (InvalidReplicaAssignment) for an empty replica list or a broker that is not alive, and 85
+     * (NoReassignmentInProgress) for a cancellation that had nothing to cancel.
+     *
+     * @param Node                                                              $controller    Active controller
+     * @param array<string, array<int, list<int>|NewPartitionReassignment|null>> $reassignments Target replica set of
+     *        every partition, as `topic => [partition => [broker ids]]`; `null` cancels that partition
+     * @param int                                                               $timeoutMs     How long the
+     *        controller waits for the reassignment to be registered
+     *
+     * @throws KafkaException If the request as a whole was refused, e.g. with 41 (NotController)
+     *
+     * @return array<string, array<int, KafkaException|null>> Error of every requested partition, null when accepted
+     */
+    public function alterPartitionReassignments(
+        Node $controller,
+        array $reassignments,
+        int $timeoutMs = AlterPartitionReassignmentsRequest::DEFAULT_TIMEOUT_MS
+    ): array {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new AlterPartitionReassignmentsRequest(
+                $reassignments,
+                $timeoutMs,
+                $clientId,
+                $correlationId
+            ),
+            AlterPartitionReassignmentsResponse::class,
+            static function (AlterPartitionReassignmentsResponse $response) use ($reassignments): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['error' => $response->errorMessage ?? 'The controller refused the whole request']
+                    );
+                }
+
+                $result = [];
+                foreach ($reassignments as $topic => $partitions) {
+                    foreach (array_keys($partitions) as $partition) {
+                        $answer = $response->responses[$topic]->partitions[$partition] ?? null;
+                        $result[(string) $topic][(int) $partition] = self::partitionError(
+                            (string) $topic,
+                            (int) $partition,
+                            $answer?->errorCode,
+                            $answer?->errorMessage
+                        );
+                    }
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Asks the controller which partitions are being reassigned right now (ApiKey 46, Kafka 2.4, KIP-455)
+     *
+     * The other half of KIP-455, and the replacement of `kafka-reassign-partitions.sh --verify`: a partition is in
+     * the answer while its reassignment is in flight and disappears from it when the controller is done. A topic or
+     * a partition that does not exist is not an error here - it is simply absent, because the answer is what is
+     * going on and not what was asked for - and the only error code is the top-level one, which is thrown.
+     *
+     * **`null` asks for every reassignment of the cluster**, an empty array for none of them; on a shared cluster a
+     * caller should name its own partitions.
+     *
+     * @param Node                          $controller Active controller of the cluster
+     * @param array<string, list<int>>|null $partitions Partitions to ask for, `null` for the whole cluster
+     * @param int                           $timeoutMs  How long the controller waits before it answers
+     *
+     * @throws KafkaException If the request was refused, e.g. with 41 (NotController)
+     *
+     * @return list<PartitionReassignment> Every partition that is being reassigned, in the order of the answer
+     */
+    public function listPartitionReassignments(
+        Node $controller,
+        ?array $partitions = null,
+        int $timeoutMs = ListPartitionReassignmentsRequest::DEFAULT_TIMEOUT_MS
+    ): array {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new ListPartitionReassignmentsRequest(
+                $partitions,
+                $timeoutMs,
+                $clientId,
+                $correlationId
+            ),
+            ListPartitionReassignmentsResponse::class,
+            static function (ListPartitionReassignmentsResponse $response): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['error' => $response->errorMessage ?? 'The controller refused the request']
+                    );
+                }
+
+                $reassignments = [];
+                foreach ($response->topics as $topic => $topicReassignment) {
+                    foreach ($topicReassignment->partitions as $partition) {
+                        $reassignments[] = new PartitionReassignment(
+                            (string) $topic,
+                            $partition->partitionIndex,
+                            $partition->replicas,
+                            $partition->addingReplicas,
+                            $partition->removingReplicas
+                        );
+                    }
+                }
+
+                return $reassignments;
+            }
+        );
+    }
+
+    /**
      * Sends one request of the topic administration apis to the active controller and hands its answer to a reader.
      *
      * The transport is the one of {@see self::coordinatorRequest()} - a single request to one named broker, with a
@@ -2145,6 +2284,37 @@ class Client
         Closure $readResponse
     ): mixed {
         return $this->coordinatorRequest($controller, $createRequest, $responseClass, $readResponse);
+    }
+
+    /**
+     * Turns the error code of one partition of a reassignment answer into the exception of the caller
+     *
+     * A partition the controller did not report on at all is an answer this client can not interpret, so it becomes
+     * an {@see UnknownErrorException} instead of a silent success.
+     */
+    private static function partitionError(
+        string $topic,
+        int $partition,
+        ?int $errorCode,
+        ?string $errorMessage = null
+    ): ?KafkaException {
+        if ($errorCode === null) {
+            return new UnknownErrorException([
+                'topic'     => $topic,
+                'partition' => $partition,
+                'error'     => 'The controller sent no result for this partition',
+            ]);
+        }
+        if ($errorCode === KafkaException::NO_ERROR) {
+            return null;
+        }
+
+        $context = ['topic' => $topic, 'partition' => $partition];
+        if ($errorMessage !== null && $errorMessage !== '') {
+            $context['error'] = $errorMessage;
+        }
+
+        return KafkaException::fromCode($errorCode, $context);
     }
 
     /**

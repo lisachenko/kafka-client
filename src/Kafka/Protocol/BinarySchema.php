@@ -134,6 +134,12 @@ class BinarySchema
             return self::getArrayTypeSize($schemeType, $value, $flexible);
         }
 
+        // A nested object that the specification does not have: its fields belong to the structure around it, so
+        // it carries no tagged-field section of its own even in a flexible version
+        if ($schemeType instanceof InlineStruct) {
+            return self::objectSize($value, $flexible, false);
+        }
+
         // If it's a string, then we have an object with an internal scheme
         if (is_string($schemeType)) {
             return self::getObjectTypeSize($value, $flexible);
@@ -223,7 +229,14 @@ class BinarySchema
      */
     public static function getObjectTypeSize(BinarySchemaInterface $object, ?bool $flexible = null): int
     {
-        $flexible ??= self::isFlexibleClass($object::class);
+        return self::objectSize($object, $flexible ?? self::isFlexibleClass($object::class), true);
+    }
+
+    /**
+     * Calculates the size of an object, with or without the tagged-field section of a flexible structure
+     */
+    private static function objectSize(BinarySchemaInterface $object, bool $flexible, bool $withTaggedSection): int
+    {
         [$plainScheme, $taggedScheme] = self::splitScheme($object::getScheme());
 
         $sizeCalculator = function (array $objectScheme) use ($object, $flexible): int {
@@ -236,7 +249,7 @@ class BinarySchema
         };
         $objectSize = $sizeCalculator->call($object, $plainScheme);
 
-        if ($flexible) {
+        if ($flexible && $withTaggedSection) {
             $objectSize += self::taggedSectionSize(self::taggedFieldsOf($object, $taggedScheme));
         }
 
@@ -255,7 +268,27 @@ class BinarySchema
         string $path = '',
         ?bool $flexible = null
     ): object {
-        $flexible ??= self::isFlexibleClass($recordClass);
+        return self::readObject(
+            $recordClass,
+            $stream,
+            $path,
+            $flexible ?? self::isFlexibleClass($recordClass),
+            true
+        );
+    }
+
+    /**
+     * Reads an object, with or without the tagged-field section of a flexible structure
+     *
+     * @param class-string<BinarySchemaInterface> $recordClass
+     */
+    private static function readObject(
+        string $recordClass,
+        Stream $stream,
+        string $path,
+        bool $flexible,
+        bool $withTaggedSection
+    ): object {
         [$plainScheme, $taggedScheme] = self::splitScheme($recordClass::getScheme());
         $recordReflection             = new ReflectionClass($recordClass);
         $record                       = $recordReflection->newInstanceWithoutConstructor();
@@ -272,7 +305,7 @@ class BinarySchema
         };
         $reader->call($record, $plainScheme);
 
-        if ($flexible) {
+        if ($flexible && $withTaggedSection) {
             self::readTaggedSection($record, $taggedScheme, $stream, $path);
         }
 
@@ -289,7 +322,18 @@ class BinarySchema
         Stream $stream,
         ?bool $flexible = null
     ): void {
-        $flexible ??= self::isFlexibleClass($record::class);
+        self::writeObject($record, $stream, $flexible ?? self::isFlexibleClass($record::class), true);
+    }
+
+    /**
+     * Writes an object, with or without the tagged-field section of a flexible structure
+     */
+    private static function writeObject(
+        BinarySchemaInterface $record,
+        Stream $stream,
+        bool $flexible,
+        bool $withTaggedSection
+    ): void {
         [$plainScheme, $taggedScheme] = self::splitScheme($record::getScheme());
 
         $writer = function (array $scheme) use ($record, $stream, $flexible): void {
@@ -299,7 +343,7 @@ class BinarySchema
         };
         $writer->call($record, $plainScheme);
 
-        if ($flexible) {
+        if ($flexible && $withTaggedSection) {
             self::writeTaggedSection(self::taggedFieldsOf($record, $taggedScheme), $stream);
         }
     }
@@ -350,6 +394,11 @@ class BinarySchema
             }
 
             return $result;
+        }
+
+        // A nested object the specification does not have, i.e. a group of fields of this structure
+        if ($schemeType instanceof InlineStruct) {
+            return self::readObject($schemeType->type, $stream, "{$path}:{$schemeType->type}", $flexible, false);
         }
 
         // If it's a string, then we have a nested object that can be unpacked
@@ -487,6 +536,13 @@ class BinarySchema
             foreach ($value as $singleItemValue) {
                 self::writeSingleType($arrayItemType, $singleItemValue, $stream, $flexible);
             }
+
+            return;
+        }
+
+        // A nested object the specification does not have, i.e. a group of fields of this structure
+        if ($schemeType instanceof InlineStruct) {
+            self::writeObject($value, $stream, $flexible, false);
 
             return;
         }
