@@ -143,6 +143,56 @@
                 "throttleTimeMs": 0,
                 "errorCode": 0
             }
+        },
+        {
+            "id": "endtxn.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "EndTxn request v2 (Kafka 2.7, KIP-588) that ABORTS: the frame of version 1, with the promise of the error code 90.",
+            "hex": "00000031001a0002000003c7000a74342d766563746f7273001074342d32372d766563746f72732d7478000000000000002d000600",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 26,
+                "apiVersion": 2,
+                "correlationId": 967,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-27-vectors-tx",
+                "producerId": 45,
+                "producerEpoch": 6,
+                "transactionResult": false
+            }
+        },
+        {
+            "id": "endtxn.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "EndTxn answer v2: the error code 0 - the coordinator took the decision and writes the markers afterwards.",
+            "hex": "0000000a000003c7000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 967,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "endtxn.response.v2.fenced",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "EndTxn answer v2 to a producer that a later incarnation of the same transactional id has fenced: the error code **90** `ProducerFenced` of KIP-588, where the versions 0 and 1 are answered the 47.",
+            "hex": "0000000a000003c900000000005a",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 969,
+                "throttleTimeMs": 0,
+                "errorCode": 90
+            }
         }
     ]
 }

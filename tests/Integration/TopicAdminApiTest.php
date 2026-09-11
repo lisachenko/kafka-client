@@ -182,7 +182,11 @@ final class TopicAdminApiTest extends IntegrationTestCase
             $created->config->get('cleanup.policy'),
             'an option the request never mentioned, with the value the topic inherited'
         );
-        self::assertSame(5, CreateTopicsRequest::VERSION, 'the version KIP-525 needs');
+        self::assertGreaterThanOrEqual(
+            5,
+            CreateTopicsRequest::VERSION,
+            'the answer of KIP-525 arrived with the version 5 and every version above it carries it'
+        );
     }
 
     /**

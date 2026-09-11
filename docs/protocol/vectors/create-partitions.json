@@ -346,6 +346,54 @@
                     }
                 }
             }
+        },
+        {
+            "id": "createpartitions.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "CreatePartitions request v3 (Kafka 2.7, KIP-599): identical to the version 2, with the promise that the client understands the error code 89 and retries after the `throttle_time_ms` of the answer.",
+            "hex": "0000003000250003000003c2000a74342d766563746f727300020e74342d32372d766563746f7273000000020000000027100000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 37,
+                "apiVersion": 3,
+                "correlationId": 962,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-27-vectors": {
+                        "topic": "t4-27-vectors",
+                        "count": 2,
+                        "assignment": null
+                    }
+                },
+                "timeout": 10000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createpartitions.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "CreatePartitions answer v3: the error code 0 and a null message for the one topic.",
+            "hex": "0000001d000003c20000000000020e74342d32372d766563746f72730000000000",
+            "fields": {
+                "messageSize": 29,
+                "correlationId": 962,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-27-vectors": {
+                        "topic": "t4-27-vectors",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
         }
     ]
 }

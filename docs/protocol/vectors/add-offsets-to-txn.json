@@ -73,6 +73,41 @@
                 "throttleTimeMs": 0,
                 "errorCode": 0
             }
+        },
+        {
+            "id": "addoffsetstotxn.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "AddOffsetsToTxn request v2 (Kafka 2.7, KIP-588): the frame of version 1, with the promise of the error code 90 for a fenced producer.",
+            "hex": "0000004500190002000003c6000a74342d766563746f7273001074342d32372d766563746f72732d7478000000000000002d0006001374342d32372d766563746f72732d67726f7570",
+            "fields": {
+                "messageSize": 69,
+                "apiKey": 25,
+                "apiVersion": 2,
+                "correlationId": 966,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-27-vectors-tx",
+                "producerId": 45,
+                "producerEpoch": 6,
+                "groupId": "t4-27-vectors-group"
+            }
+        },
+        {
+            "id": "addoffsetstotxn.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "AddOffsetsToTxn answer v2: the error code 0 for the whole request.",
+            "hex": "0000000a000003c6000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 966,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
         }
     ]
 }

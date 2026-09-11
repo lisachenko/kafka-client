@@ -223,6 +223,71 @@
                     }
                 }
             }
+        },
+        {
+            "id": "deletetopics.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "DeleteTopics request v5 (Kafka 2.7): the same two fields as every version below - what the version changes is the answer, which gains an `error_message` per topic, and the promise of KIP-599 that the client understands the error code 89.",
+            "hex": "0000002900140005000003ca000a74342d766563746f727300020e74342d32372d766563746f72730000271000",
+            "fields": {
+                "messageSize": 41,
+                "apiKey": 20,
+                "apiVersion": 5,
+                "correlationId": 970,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": [
+                    "t4-27-vectors"
+                ],
+                "timeout": 10000
+            }
+        },
+        {
+            "id": "deletetopics.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "DeleteTopics answer v5: the error code 0 of the deleted topic and the compact **null** of the error message that the version added.",
+            "hex": "0000001d000003ca0000000000020e74342d32372d766563746f72730000000000",
+            "fields": {
+                "messageSize": 29,
+                "correlationId": 970,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-27-vectors": {
+                        "topic": "t4-27-vectors",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletetopics.response.v5.unknown-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "DeleteTopics answer v5 for a topic the cluster does not have: the error code 3 `UnknownTopicOrPartition` and the `error_message` the version added, which a 2.8.2 broker leaves **null** even here - the field is filled by the KRaft controller of later releases, not by the ZooKeeper one.",
+            "hex": "00000022000003cb0000000000021374342d32372d6e6f7468696e672d686572650003000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 971,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-27-nothing-here": {
+                        "topic": "t4-27-nothing-here",
+                        "errorCode": 3,
+                        "errorMessage": null
+                    }
+                }
+            }
         }
     ]
 }

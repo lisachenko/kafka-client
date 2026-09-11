@@ -675,6 +675,43 @@ them. What the release added lives in the group and transaction apis.)*
   DescribeLogDirs v2 frames (the topic `t4-26-logdirs`), each with its annotated dump, and the two headings moved
   to their new ranges.
 
+### Kafka 2.7
+
+- **The three topic apis of KIP-599** - **CreateTopics v6**, **DeleteTopics v5** and **CreatePartitions v3** - are
+  the versions the client sends now. Not a field moves in two of them: the version is the client's promise that it
+  understands the error code **89** `ThrottlingQuotaExceeded` and repeats the topics the *controller mutation
+  quota* refused, where a broker used to **hold the request back** until the debt was paid.
+  `AdminClient::onController()` sends the request again while any topic carries the 89, bounded by the `retries`
+  of the configuration; the waiting is the KIP-219 promise of `Client`, which sleeps the rest of the throttle
+  before the next request goes to that broker. Keep-behind classes for every version below.
+- **DeleteTopics v5 also adds a field**: every topic result gains an `error_message` (a compact nullable string)
+  behind its error code, and `Client::deleteTopics()` reads it into the exception of the topic, as CreateTopics
+  has done since Kafka 0.11. `Protocol\Data\DeleteTopicsResponseTopicV0` is the result without it. Measured on
+  the container: a **ZooKeeper** broker leaves the message `null` even for a topic the cluster does not have
+  (error code 3) - `ZkAdminManager.deleteTopics` @ 2.8.2 builds its results from the error code alone.
+- **The four transaction apis of KIP-588** - **InitProducerId v4**, **AddPartitionsToTxn v2**,
+  **AddOffsetsToTxn v2** and **EndTxn v2** - change no byte either: what the version buys is the error code **90**
+  `ProducerFenced` for a producer whose epoch the coordinator has left behind, where the versions below answer the
+  47 `InvalidProducerEpoch`. The KIP splits the two meanings the 47 carried at once ("you were fenced" and "your
+  epoch is one behind, ask for a bump" - the KIP-360 case of Kafka 2.5), and `TransactionManager` treats the 90
+  exactly as the 47: a fatal state for the batch and for every transactional request. **The identifiers keep the
+  published names**: the 47 stays `ProducerFencedException`, the 90 is `TransactionalProducerFencedException` -
+  the Java client swapped those two names, this package does not move a published one.
+- **The three transaction apis are NOT flexible in their version 2.** `"flexibleVersions": "none"` at the 2.7.2
+  tag for AddPartitionsToTxn, AddOffsetsToTxn and EndTxn; the flexible version of each is the **3** that Kafka 2.8
+  adds.
+- Measured on the container with the transactional id `t4-27-vectors-tx`: an InitProducerId **v4** that names an
+  epoch the coordinator really left behind is answered **90** with the id -1 and the epoch -1, while the pair one
+  step behind the current epoch is still taken as the *retry of a bump* and answered 0 with the current pair
+  (`prepareInitProducerIdTransit` @ 2.8.2 treats `expectedEpoch == currentEpoch - 1` as one), and the **EndTxn v2**
+  of a producer that a second incarnation of the same id has fenced is answered **90** as well. The 89 of KIP-599
+  cannot be produced on the shared container - it needs a `controller_mutation_rate` quota - so the retry is
+  covered by the unit tests with a scripted controller.
+- **Seventeen wire vectors**: the CreateTopics v6, CreatePartitions v3 and DeleteTopics v5 pairs (with the answer
+  for a topic the cluster does not have) and the InitProducerId v4, AddPartitionsToTxn v2, AddOffsetsToTxn v2 and
+  EndTxn v2 pairs (with the two frames that carry the 90), captured with the topic `t4-27-vectors` and the group
+  `t4-27-vectors-group`, each with its annotated dump, and the seven headings moved to their new ranges.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

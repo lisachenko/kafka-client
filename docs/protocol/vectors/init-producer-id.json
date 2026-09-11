@@ -276,6 +276,63 @@
                 "producerId": -1,
                 "producerEpoch": -1
             }
+        },
+        {
+            "id": "initproducerid.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "InitProducerId request v4 (Kafka 2.7, KIP-588): the four fields of the version 3, with the promise that the client understands the error code 90 `ProducerFenced` where the version 3 is answered the 47.",
+            "hex": "0000003500160004000003c3000a74342d766563746f7273001174342d32372d766563746f72732d74780000ea60ffffffffffffffffffff00",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 22,
+                "apiVersion": 4,
+                "correlationId": 963,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-27-vectors-tx",
+                "transactionTimeoutMs": 60000,
+                "producerId": -1,
+                "producerEpoch": -1
+            }
+        },
+        {
+            "id": "initproducerid.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "InitProducerId answer v4 of a fresh pair: the producer id of the transactional id with its next epoch.",
+            "hex": "00000016000003c300000000000000000000000000002d000500",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 963,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "producerId": 45,
+                "producerEpoch": 5
+            }
+        },
+        {
+            "id": "initproducerid.response.v4.fenced",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "InitProducerId answer v4 to a producer whose epoch the coordinator has left behind: the error code **90** `ProducerFenced` that KIP-588 put in place of the 47 `InvalidProducerEpoch` of the versions below, with the id -1 and the epoch -1. `TransactionalProducerFencedException` is the 90 here, because the published name `ProducerFencedException` belongs to the 47.",
+            "hex": "00000016000003c40000000000005affffffffffffffffffff00",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 964,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 90,
+                "producerId": -1,
+                "producerEpoch": -1
+            }
         }
     ]
 }
