@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   RenewDelegationToken Request (Version: 0) => hmac renew_time_period
  * </pre>
  *
- `TOKEN_RENEW_REQUEST_V1 = TOKEN_RENEW_REQUEST_V0` in `Protocol.java` @ 2.0.1.
+ * `TOKEN_RENEW_REQUEST_V1 = TOKEN_RENEW_REQUEST_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see RenewDelegationTokenRequest::getScheme()} follows.
  *

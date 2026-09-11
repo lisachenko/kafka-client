@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   TxnOffsetCommit Request (Version: 0) => transactional_id consumer_group_id producer_id producer_epoch [topics]
  * </pre>
  *
- `TXN_OFFSET_COMMIT_REQUEST_V1 = TXN_OFFSET_COMMIT_REQUEST_V0` in `Protocol.java` @ 2.0.1.
+ * `TXN_OFFSET_COMMIT_REQUEST_V1 = TXN_OFFSET_COMMIT_REQUEST_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see TxnOffsetCommitRequest::getScheme()} follows.
  *

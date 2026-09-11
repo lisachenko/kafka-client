@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   InitProducerId Response (Version: 0) => throttle_time_ms error_code producer_id producer_epoch
  * </pre>
  *
- `INIT_PRODUCER_ID_RESPONSE_V1 = INIT_PRODUCER_ID_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
+ * `INIT_PRODUCER_ID_RESPONSE_V1 = INIT_PRODUCER_ID_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see InitProducerIdResponse::getScheme()} follows.
  *

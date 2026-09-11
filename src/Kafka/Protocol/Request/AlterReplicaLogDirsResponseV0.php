@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   AlterReplicaLogDirs Response (Version: 0) => throttle_time_ms [topics]
  * </pre>
  *
- `ALTER_REPLICA_LOG_DIRS_RESPONSE_V1 = ALTER_REPLICA_LOG_DIRS_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
+ * `ALTER_REPLICA_LOG_DIRS_RESPONSE_V1 = ALTER_REPLICA_LOG_DIRS_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see AlterReplicaLogDirsResponse::getScheme()} follows.
  *

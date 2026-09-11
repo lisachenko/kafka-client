@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   CreateTopics Request (Version: 1 and 2) => [create_topic_requests] timeout validate_only
  * </pre>
  *
- `CREATE_TOPICS_REQUEST_V3 = CREATE_TOPICS_REQUEST_V2` in `Protocol.java` @ 2.0.1.
+ * `CREATE_TOPICS_REQUEST_V3 = CREATE_TOPICS_REQUEST_V2` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see CreateTopicsRequest::getScheme()} follows.
  *

@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   ExpireDelegationToken Request (Version: 0) => hmac expiry_time_period
  * </pre>
  *
- `TOKEN_EXPIRE_REQUEST_V1 = TOKEN_EXPIRE_REQUEST_V0` in `Protocol.java` @ 2.0.1.
+ * `TOKEN_EXPIRE_REQUEST_V1 = TOKEN_EXPIRE_REQUEST_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see ExpireDelegationTokenRequest::getScheme()} follows.
  *

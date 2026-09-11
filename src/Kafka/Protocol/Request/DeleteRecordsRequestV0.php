@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   DeleteRecords Request (Version: 0) => [topics] timeout
  * </pre>
  *
- `DELETE_RECORDS_REQUEST_V1 = DELETE_RECORDS_REQUEST_V0` in `Protocol.java` @ 2.0.1.
+ * `DELETE_RECORDS_REQUEST_V1 = DELETE_RECORDS_REQUEST_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see DeleteRecordsRequest::getScheme()} follows.
  *

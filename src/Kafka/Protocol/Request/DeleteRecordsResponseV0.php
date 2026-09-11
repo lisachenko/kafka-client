@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   DeleteRecords Response (Version: 0) => throttle_time_ms [topics]
  * </pre>
  *
- `DELETE_RECORDS_RESPONSE_V1 = DELETE_RECORDS_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
+ * `DELETE_RECORDS_RESPONSE_V1 = DELETE_RECORDS_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see DeleteRecordsResponse::getScheme()} follows.
  *

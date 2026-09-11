@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   CreatePartitions Request (Version: 0) => [topic_partitions] timeout validate_only
  * </pre>
  *
- `CREATE_PARTITIONS_REQUEST_V1 = CREATE_PARTITIONS_REQUEST_V0` in `Protocol.java` @ 2.0.1.
+ * `CREATE_PARTITIONS_REQUEST_V1 = CREATE_PARTITIONS_REQUEST_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see CreatePartitionsRequest::getScheme()} follows.
  *

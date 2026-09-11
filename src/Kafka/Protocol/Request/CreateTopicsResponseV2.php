@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   CreateTopics Response (Version: 2) => throttle_time_ms [topic_errors]
  * </pre>
  *
- `CREATE_TOPICS_RESPONSE_V3 = CREATE_TOPICS_RESPONSE_V2` in `Protocol.java` @ 2.0.1.
+ * `CREATE_TOPICS_RESPONSE_V3 = CREATE_TOPICS_RESPONSE_V2` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see CreateTopicsResponse::getScheme()} follows.
  *

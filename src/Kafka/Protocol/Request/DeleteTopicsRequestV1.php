@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   DeleteTopics Request (Version: 0 and 1) => [topics] timeout
  * </pre>
  *
- `DELETE_TOPICS_REQUEST_V2 = DELETE_TOPICS_REQUEST_V1` in `Protocol.java` @ 2.0.1.
+ * `DELETE_TOPICS_REQUEST_V2 = DELETE_TOPICS_REQUEST_V1` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see DeleteTopicsRequest::getScheme()} follows.
  *

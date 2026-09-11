@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   CreateDelegationToken Request (Version: 0) => [renewers] max_life_time
  * </pre>
  *
- `TOKEN_CREATE_REQUEST_V1 = TOKEN_CREATE_REQUEST_V0` in `Protocol.java` @ 2.0.1.
+ * `TOKEN_CREATE_REQUEST_V1 = TOKEN_CREATE_REQUEST_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see CreateDelegationTokenRequest::getScheme()} follows.
  *

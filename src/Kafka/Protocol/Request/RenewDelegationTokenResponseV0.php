@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   RenewDelegationToken Response (Version: 0) => error_code expiry_timestamp throttle_time_ms
  * </pre>
  *
- `TOKEN_RENEW_RESPONSE_V1 = TOKEN_RENEW_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
+ * `TOKEN_RENEW_RESPONSE_V1 = TOKEN_RENEW_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see RenewDelegationTokenResponse::getScheme()} follows.
  *

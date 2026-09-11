@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   EndTxn Request (Version: 0) => transactional_id producer_id producer_epoch transaction_result
  * </pre>
  *
- `END_TXN_REQUEST_V1 = END_TXN_REQUEST_V0` in `Protocol.java` @ 2.0.1.
+ * `END_TXN_REQUEST_V1 = END_TXN_REQUEST_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see EndTxnRequest::getScheme()} follows.
  *

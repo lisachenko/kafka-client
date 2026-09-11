@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   InitProducerId Request (Version: 0) => transactional_id transaction_timeout_ms
  * </pre>
  *
- `INIT_PRODUCER_ID_REQUEST_V1 = INIT_PRODUCER_ID_REQUEST_V0` in `Protocol.java` @ 2.0.1.
+ * `INIT_PRODUCER_ID_REQUEST_V1 = INIT_PRODUCER_ID_REQUEST_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see InitProducerIdRequest::getScheme()} follows.
  *

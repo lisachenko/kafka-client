@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   DescribeConfigs Request (Version: 1) => [resources] include_synonyms
  * </pre>
  *
- `DESCRIBE_CONFIGS_REQUEST_V2 = DESCRIBE_CONFIGS_REQUEST_V1` in `Protocol.java` @ 2.0.1.
+ * `DESCRIBE_CONFIGS_REQUEST_V2 = DESCRIBE_CONFIGS_REQUEST_V1` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see DescribeConfigsRequest::getScheme()} follows.
  *

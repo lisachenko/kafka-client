@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   DescribeLogDirs Response (Version: 0) => throttle_time_ms [log_dirs]
  * </pre>
  *
- `DESCRIBE_LOG_DIRS_RESPONSE_V1 = DESCRIBE_LOG_DIRS_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
+ * `DESCRIBE_LOG_DIRS_RESPONSE_V1 = DESCRIBE_LOG_DIRS_RESPONSE_V0` in `Protocol.java` @ 2.0.1.
  * Kafka 2.0 raised the api by one version without touching a single byte of the frame, so this class only lowers
  * the version constant that {@see DescribeLogDirsResponse::getScheme()} follows.
  *
