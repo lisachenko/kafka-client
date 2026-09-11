@@ -430,20 +430,23 @@ foreach ($group->members as $memberId => $member) {
 | `listOffsets()`                              | Offsets v5              | Earliest, latest or by message timestamp; **one** offset per partition, sent to the partition leader, with the isolation level `read_uncommitted` |
 | `findCoordinator()`                          | GroupCoordinator v3     | Retries the codes 15 and 14 while the coordinator warms up; version 1 also looks a **transactional id** up (`coordinator_type = 1`) |
 | `listGroupOffsets()`                         | OffsetFetch v7          | Without a partition list it asks for **every** topic the group committed (`null` topics of v2) |
-| `listGroups()` / `listAllGroups()`           | ListGroups v3           | A broker only knows its own groups; `listAllGroups()` merges them all  |
+| `listGroups()` / `listAllGroups()`           | ListGroups v4           | A broker only knows its own groups; `listAllGroups()` merges them all  |
 | `describeGroup()` / `describeGroups()`       | DescribeGroups v5       | Sent to the coordinator of the group; an unknown group answers `Dead`, one whose last member left `Empty` |
 | `electLeaders()`                             | ElectLeaders v2         | Asks the **controller** to move partitions back to their preferred replica (KIP-183, Kafka 2.2); per-partition results, 84 for a partition that already has the right leader; `ElectionType::UNCLEAN` needs the v1 of KIP-460 |
 | `controlledShutdown()`                       | ControlledShutdown v3   | Moves every partition leader off a broker — it really does stop it; the `broker_epoch` of KIP-380 (Kafka 2.2) defaults to -1, `UNKNOWN_BROKER_EPOCH`, the only epoch that skips the controller's staleness check |
-| `deleteRecords()`                            | DeleteRecords v1        | Moves the **low watermark** of a partition forward (KIP-107); sent to the partition leader, answers a `DeletedRecords` per partition |
-| `describeConfigs()`                          | DescribeConfigs v2      | The configuration of a topic or a broker (KIP-133); every entry says which `ConfigSource` its value comes from and, with `$includeSynonyms`, every place the broker looked (KIP-226). A broker resource is only answered by that broker, and a sensitive value comes back `null` |
+| `deleteRecords()`                            | DeleteRecords v2        | Moves the **low watermark** of a partition forward (KIP-107); sent to the partition leader, answers a `DeletedRecords` per partition |
+| `describeConfigs()`                          | DescribeConfigs v3      | The configuration of a topic or a broker (KIP-133); every entry says which `ConfigSource` its value comes from and, with `$includeSynonyms`, every place the broker looked (KIP-226). A broker resource is only answered by that broker, and a sensitive value comes back `null` |
 | `alterConfigs()`                             | AlterConfigs v1         | **Replaces** the whole configuration of a resource (`Config::ownValues()` is the set to send back); a 1.1 broker takes a **broker** resource too — the dynamic options of KIP-226, per broker or cluster-wide with `ConfigResource::defaultBroker()` — and refuses the ones it cannot change at runtime with 42 |
 | `incrementalAlterConfigs()`                  | IncrementalAlterConfigs v1 | Changes **single options** of a topic or a broker (KIP-339, Kafka 2.3) and leaves the ones it does not name alone — `AlterConfigOp::set()`, `delete()`, `append()` and `subtract()`; the api Kafka 2.3 put in place of `alterConfigs()` |
+| `describeClientQuotas()`                     | DescribeClientQuotas v0 | The quotas of users, client ids and their defaults, filtered by entity (KIP-546, Kafka 2.6); `ClientQuotaFilter` and `ClientQuotaEntity` as in the Java admin client |
+| `alterClientQuotas()`                        | AlterClientQuotas v0 | Sets or removes the producer, consumer and request quotas of an entity (KIP-546); one error per entity, `validateOnly` checks without writing |
+| `listConsumerGroups()`                       | ListGroups v4 | The groups of the `consumer` protocol type of every broker, with their state and an optional state filter (KIP-518, Kafka 2.6) |
 | `createTopicsWithResults()`                  | CreateTopics v5 | The same creation, answered with what the broker made of it (KIP-525, Kafka 2.4): `CreatedTopic` with the partition count, the replication factor and every configuration entry of the new topic; `NewTopic::withBrokerDefaults()` asks for `num.partitions` and `default.replication.factor` (KIP-464) |
 | `alterPartitionReassignments()`              | AlterPartitionReassignments v0 | Moves the replicas of partitions to other brokers, or cancels a move with `null` (KIP-455, Kafka 2.4); sent to the **controller**, one error per partition |
 | `listPartitionReassignments()`               | ListPartitionReassignments v0 | The reassignments in flight, with the target, adding and removing replica lists of each partition (KIP-455) |
 | `removeMembersFromConsumerGroup()`           | LeaveGroup v3 | Removes members of a group by hand, a static one by its `group.instance.id` (KIP-345, Kafka 2.4); one error per member, `MemberToRemove::byInstanceId()`/`byMemberId()` |
 | `deleteConsumerGroupOffsets()`               | OffsetDelete v0 | Deletes the committed offsets of single partitions of a group (KIP-496, Kafka 2.4); an `Empty` group hands over everything, a live consumer group answers 86 for the topics it consumes, another protocol type 68 and an unknown group 69 |
-| `describeLogDirs()`                          | DescribeLogDirs v1      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories |
+| `describeLogDirs()`                          | DescribeLogDirs v2      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories |
 | `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v1  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
 | `createPartitions()`                         | CreatePartitions v2     | Raises the partition count of topics that exist (KIP-195); controller-only like `createTopics()`, and it can only ever grow a topic (37 otherwise) |
 | `deleteConsumerGroups()`                     | DeleteGroups v2         | Makes the coordinator forget groups and their committed offsets (KIP-229); a group with a live member is 68, one the coordinator does not know 69 |
@@ -733,7 +736,7 @@ This branch is the **2.x line** and tracks the **Kafka 2.8.2** wire protocol —
 2.x major, so everything Kafka 2.0 to 2.8 added — and it is built **one Kafka minor at a time**: each
 minor is a gated milestone commit of the branch (the tag points are listed in
 [docs/handoff/main.md](docs/handoff/main.md)), and until the line is complete the table below says
-which versions the current milestone has reached. **Current milestone: Kafka 2.5.** The frozen
+which versions the current milestone has reached. **Current milestone: Kafka 2.6.** The frozen
 protocol snapshots of the lines below live on `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3),
 `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2).
 
@@ -748,7 +751,7 @@ The "main" column lists the versions this client has a class for; the one in **b
 it sends, and "not yet" names the versions the broker serves that a later milestone of the line adds.
 The `1.x` column is where the line started.
 
-| Api key | API | Versions in 2.8.2 | Client-facing | `1.x` | `main` (2.x, Kafka 2.5 milestone) |
+| Api key | API | Versions in 2.8.2 | Client-facing | `1.x` | `main` (2.x, Kafka 2.6 milestone) |
 |---|---|---|---|---|---|
 | 0 | Produce | v0 … v9 | yes | v0 … v4, **v5** | v0 … v7, **v8** (**v2** for `message.format.version` below 0.11.0); v9 not yet |
 | 1 | Fetch | v0 … v12 | yes | v0 … v6, **v7** | v0 … v10, **v11** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer); v12 not yet |
@@ -771,7 +774,7 @@ The `1.x` column is where the line started.
 | 18 | ApiVersions | v0 … v3 | yes | v0, **v1** | v0 … v2, **v3** |
 | 19 | CreateTopics | v0 … v7 | controller | v0, v1, **v2** | v0 … v4, **v5**; v6-v7 not yet |
 | 20 | DeleteTopics | v0 … v6 | controller | v0, **v1** | v0 … v3, **v4**; v5-v6 not yet |
-| 21 | DeleteRecords | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
+| 21 | DeleteRecords | v0, v1, v2 | yes | **v0** | v0, v1, **v2** |
 | 22 | InitProducerId | v0 … v4 | yes | **v0** | v0 … v2, **v3**; v4 not yet |
 | 23 | OffsetForLeaderEpoch | v0 … v4 | broker→broker | **v0** | v0 … v2, **v3** (classes, vectors and the consumer's truncation detection); v4 not yet |
 | 24 | AddPartitionsToTxn | v0 … v3 | yes | **v0** | v0, **v1**; v2-v3 not yet |
@@ -782,10 +785,10 @@ The `1.x` column is where the line started.
 | 29 | DescribeAcls | v0, v1, v2 | yes | no | no, see below |
 | 30 | CreateAcls | v0, v1, v2 | yes | no | no, see below |
 | 31 | DeleteAcls | v0, v1, v2 | yes | no | no, see below |
-| 32 | DescribeConfigs | v0 … v4 | yes | v0, **v1** | v0, v1, **v2**; v3-v4 not yet |
+| 32 | DescribeConfigs | v0 … v4 | yes | v0, **v1** | v0 … v2, **v3**; v4 not yet |
 | 33 | AlterConfigs | v0, v1, v2 | yes | **v0** | v0, **v1** (topics and brokers); v2 not yet |
 | 34 | AlterReplicaLogDirs | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
-| 35 | DescribeLogDirs | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
+| 35 | DescribeLogDirs | v0, v1, v2 | yes | **v0** | v0, v1, **v2** |
 | 36 | SaslAuthenticate | v0, v1, v2 | yes | **v0** | v0, v1, **v2** |
 | 37 | CreatePartitions | v0 … v3 | controller | **v0** | v0, v1, **v2**; v3 not yet |
 | 38 | CreateDelegationToken | v0, v1, v2 | yes | **v0** | v0, v1, **v2** |
@@ -798,8 +801,8 @@ The `1.x` column is where the line started.
 | 45 | AlterPartitionReassignments | v0 | controller | – | **v0** (Kafka 2.4) |
 | 46 | ListPartitionReassignments | v0 | controller | – | **v0** (Kafka 2.4) |
 | 47 | OffsetDelete | v0 | yes | – | **v0** (Kafka 2.4) |
-| 48 | DescribeClientQuotas | v0, v1 | yes | – | not yet — Kafka 2.6 |
-| 49 | AlterClientQuotas | v0, v1 | yes | – | not yet — Kafka 2.6 |
+| 48 | DescribeClientQuotas | v0, v1 | yes | – | **v0** (Kafka 2.6); v1 not yet |
+| 49 | AlterClientQuotas | v0, v1 | yes | – | **v0** (Kafka 2.6); v1 not yet |
 | 50 | DescribeUserScramCredentials | v0 | yes | – | not yet — Kafka 2.7 |
 | 51 | AlterUserScramCredentials | v0 | yes | – | not yet — Kafka 2.7 |
 | 56 | AlterIsr | v0 | broker→controller | – | no — broker→controller, probed only |
@@ -891,14 +894,17 @@ current milestone):
 | **KIP-360: the epoch bump of a transactional producer** (InitProducerId v3 with the producer's own id and epoch; an abortable error no longer ends the producer) | 2.5 | – | – | – | – | – | **yes** |
 | **KIP-447: exactly-once with a consumer group** (`sendOffsetsToTransaction()` with `ConsumerGroupMetadata`, TxnOffsetCommit v3; `require_stable` of OffsetFetch v7 and the 88, read by a `read_committed` consumer) | 2.5 | – | – | – | – | – | **yes** |
 | **KIP-559: the protocol type and name of a generation** (JoinGroup v7, SyncGroup v5) | 2.5 | – | – | – | – | – | **yes** |
+| **KIP-546: client quotas over the wire** (`describeClientQuotas()`, `alterClientQuotas()`) | 2.6 | – | – | – | – | – | **yes** |
+| **KIP-518: the states of `listConsumerGroups()`** (ListGroups v4) | 2.6 | – | – | – | – | – | **yes** |
+| **KIP-569: the type and documentation of a configuration entry** (DescribeConfigs v3, `ConfigType`) | 2.6 | – | – | – | – | – | **yes** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) |
 
 What a later minor of Kafka 2.x adds is not on this branch yet — the line is built minor by minor and
-the current milestone is **Kafka 2.5**:
+the current milestone is **Kafka 2.6**:
 
 | Feature                                          | Arrived in | On this branch                        |
 |--------------------------------------------------|------------|---------------------------------------|
-| The client quota and SCRAM credential apis, KIP-599, topic ids, `DescribeCluster`, `DescribeProducers` | 2.6 … 2.8 | not yet — the milestones 2.6 to 2.8 |
+| The SCRAM credential and feature apis, KIP-599, KIP-588, topic ids, `DescribeCluster`, `DescribeProducers` | 2.7 … 2.8 | not yet — the milestones 2.7 and 2.8 |
 | SASL/SCRAM, SASL/GSSAPI and SASL/OAUTHBEARER    | 0.10.2 / 0.9 / 2.0 | no — PLAIN only, which is why a delegation token can be issued but not used |
 | ACL apis `DescribeAcls`/`CreateAcls`/`DeleteAcls` | 0.11       | no — they need a broker with an `authorizer.class.name` |
 | Replication apis `LeaderAndIsr`/`StopReplica`/`UpdateMetadata`/`AlterIsr` | 0.8 / 2.7 | no — only a controller sends them; the probe checks that the broker answers them |
