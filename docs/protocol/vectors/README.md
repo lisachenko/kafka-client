@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **464** of them in **38** files: **146** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **466** of them in **38** files: **148** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -14,7 +14,8 @@ KIP-394 exchange (JoinGroup v4), the 6 frames of the new api IncrementalAlterCon
 in the new file `incremental-alter-configs.json`, the 12 frames of what Kafka **2.3** added to the group apis
 (static membership, KIP-345, and the authorized operations of KIP-430) and the 7 frames of what it added to the
 producer and consumer apis (Metadata v8 of KIP-430, Fetch v11 and OffsetForLeaderEpoch v3 of KIP-392), and the 5
-frames of the Produce v8 of **Kafka 2.4** (KIP-467, the record errors of a refused batch) - and of
+frames of the Produce v8 of **Kafka 2.4** (KIP-467, the record errors of a refused batch) and the Metadata v9
+pair of the same release, the first flexible version of an api the consumer sends (KIP-482) - and of
 the other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
@@ -32,7 +33,7 @@ ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from on
 | `produce.json` | 11 of 35 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond; **Produce v7** (KIP-110), request and answer, and the **76** a v6 is answered when its record set is compressed with zstd |
 | `fetch.json` | 16 of 49 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283); **Fetch v9** and **v10** (KIP-320, KIP-110) with the `current_leader_epoch` on the wire, the **75** of an epoch above the leader's, and the three frames of the zstd rule — the **76** of a v9 against a `compression.type=zstd` topic and the same partition served to a v10 |
 | `offsets.json` | 6 of 20 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header; **v4** (KIP-320), which carries a `current_leader_epoch` in the request and a `leader_epoch` behind every answered offset; and **v5** (KIP-207), the version 4 frames again — what it adds is the error code **78**, which a one-broker container can not produce |
-| `metadata.json` | 7 of 26 | **Metadata v6** (KIP-219), likewise; **v7** (KIP-320), whose partition entries carry the `leader_epoch` of their leader; and **v8** (KIP-430), with the two booleans that ask for the authorized operations, the bitfields they are answered with and the `Integer.MIN_VALUE` of the same answer when they are off |
+| `metadata.json` | 9 of 28 | **Metadata v6** (KIP-219), likewise; **v7** (KIP-320), whose partition entries carry the `leader_epoch` of their leader; and **v8** (KIP-430), with the two booleans that ask for the authorized operations, the bitfields they are answered with and the `Integer.MIN_VALUE` of the same answer when they are off |
 | `offset-for-leader-epoch.json` | 7 of 11 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset; and **v2** (KIP-320), the version a consumer sends, with a `current_leader_epoch` in the request, a `throttle_time_ms` at the head of the answer and the **75** of a fenced epoch |
 
 What Kafka 2.1 added to the two offset apis: OffsetCommit v5 (the frame without
@@ -103,7 +104,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v8)",
+    "section": "Metadata API (key 3, v0 to v9)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

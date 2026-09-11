@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 /**
  * Verifies the Metadata API v0 to v4 against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v9)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -231,7 +231,23 @@ final class MetadataApiTest extends IntegrationTestCase
         new MetadataRequestV4([$topic], true, self::CLIENT_ID, 32)->writeTo($stream);
         $versionFour = MetadataResponseV4::unpack($stream);
 
-        self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
+        // The broker promises no ordering for the partitions of a topic, so the two frames are compared by what
+        // they say and not byte for byte: the same partitions, the same leaders, the same replicas
+        self::assertSame($versionThree->getMessageSize(), $versionFour->getMessageSize());
+        self::assertSame($versionThree->clusterId, $versionFour->clusterId);
+        self::assertSame($versionThree->controllerId, $versionFour->controllerId);
+
+        $three = $versionThree->topics[$topic]->partitions;
+        $four  = $versionFour->topics[$topic]->partitions;
+        ksort($three);
+        ksort($four);
+
+        self::assertSame(array_keys($three), array_keys($four));
+        foreach ($three as $partitionId => $partition) {
+            self::assertSame($partition->leader, $four[$partitionId]->leader);
+            self::assertSame($partition->replicas, $four[$partitionId]->replicas);
+            self::assertSame($partition->isr, $four[$partitionId]->isr);
+        }
         self::assertSame(0, $versionFour->throttleTimeMs);
     }
 
@@ -297,7 +313,7 @@ final class MetadataApiTest extends IntegrationTestCase
         $versionSix = MetadataResponseV6::unpack($stream);
 
         self::assertSame(6, MetadataRequestV6::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(8, MetadataRequest::VERSION, 'and the client sends the version Kafka 2.3 added');
+        self::assertSame(9, MetadataRequest::VERSION, 'and the client sends the flexible version Kafka 2.4 added');
         self::assertSame($versionFive->getMessageSize(), $versionSix->getMessageSize());
         self::assertSame($versionFive->clusterId, $versionSix->clusterId);
         self::assertSame($versionFive->controllerId, $versionSix->controllerId);

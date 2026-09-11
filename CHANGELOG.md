@@ -357,6 +357,16 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   been rejected", and the very same request as a version 7 one comes back with the 87 and the offsets `-1`
   alone. Five wire vectors, the section "The record errors of a refused batch (v8, KIP-467)" of the protocol
   document, a broker quirk, unit tests and the new integration suite `RecordErrorsTest`.
+- **Metadata v9** (KIP-482) — the first **flexible** version of an api the client sends: the same fields as
+  version 8, written with compact strings and arrays, a tagged-field section at the end of every structure, the
+  request header **v2** and the response header **v1**. `MetadataRequest`/`MetadataResponse` declare
+  `FLEXIBLE_VERSION = 9` next to their `VERSION` and the engine of T1 does the rest;
+  `MetadataRequestV8`/`MetadataResponseV8` keep the plain encoding, and `Client`/`Cluster` send version 9.
+  One thing in this package had to change for it: the topics of the request were a plain array of **strings**
+  here, while the specification has always declared them as a `[]MetadataRequestTopic` **structure** — invisible
+  up to version 8, and one byte short per topic in a flexible frame, which the broker answers by closing the
+  connection (measured). `Protocol\Data\MetadataRequestTopic` is that structure and `getTopics()` still answers
+  the list of names. The vector pair `metadata.*.v9` is annotated down to every compact length and tag buffer.
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
