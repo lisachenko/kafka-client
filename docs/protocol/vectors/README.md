@@ -2,9 +2,11 @@ Wire vectors of the Kafka 1.1.1 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **356** of them in **36** files: **38** were captured on the `kafka-2-8-2` container of the **2.x**
+hex dumps. There are **364** of them in **37** files: **46** were captured on the `kafka-2-8-2` container of the **2.x**
 line - the request and the answer of every version Kafka **2.0** added to the admin, the transaction and the
-delegation-token apis (KIP-219), and of DeleteTopics v3 and TxnOffsetCommit v2 of **Kafka 2.1** - and of the other 318, **229** were captured by the four lines below the 1.x one
+delegation-token apis (KIP-219), of DeleteTopics v3 and TxnOffsetCommit v2 of **Kafka 2.1**, and of what **Kafka
+2.2** added there: SaslAuthenticate v1, ControlledShutdown v2 and the new api ElectLeaders (key 43), whose
+`elect-leaders.json` is the file this line added - and of the other 318, **229** were captured by the four lines below the 1.x one
 and are replayed against the classes of this line unchanged, while **85**
 were captured on the 1.1.1 broker of the 1.x line. Two of the inherited vectors were **re-captured** rather
 than added — `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker.

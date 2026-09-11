@@ -328,6 +328,14 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function electLeadersVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function delegationTokensVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -753,6 +761,15 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('txnOffsetCommitVectors')]
     public function testTxnOffsetCommitApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('electLeadersVectors')]
+    public function testElectLeadersApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }
