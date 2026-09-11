@@ -528,7 +528,14 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   `IllegalGeneration` per partition, of a member id the group does not have **25** `UnknownMemberId`, and of the
   generation -1 with the empty member id **0**. SaslAuthenticate v2 was measured over SASL_PLAINTEXT and SASL_SSL
   and answers the session lifetime 0 in 22 bytes.
-- **Nineteen wire vectors** of the seven versions, with their annotated dumps, and two new subsections of
+- **The assignment of CreatePartitions is a structure, and the flexible version says so** — `CreatePartitions
+  Assignment` of `CreatePartitionsRequest.json` @ 2.8.2 has the single field `broker_ids`, which the plain
+  encoding of the versions 0 and 1 cannot tell from the flat `list<list<int>>` this client wrote: a structure is
+  neither counted nor delimited there. From the version 2 on it ends in a tagged-field section of its own, and a
+  frame without it is one byte short — the broker **closes the connection without an answer**.
+  `Protocol\Data\CreatePartitionsRequestAssignment` is that structure now, for every version, so the v0 and v1
+  frames are unchanged to the byte and the v2 frame is accepted.
+- **Twenty-one wire vectors** of the seven versions, with their annotated dumps, and two new subsections of
   [docs/protocol/2.8.md](docs/protocol/2.8.md): "Bumping the epoch (KIP-360)" and "The consumer group metadata of
   a transactional commit (KIP-447)".
 

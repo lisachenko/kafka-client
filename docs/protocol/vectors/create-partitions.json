@@ -69,12 +69,16 @@
                         "topic": "t4-configs-partitions",
                         "count": 5,
                         "assignment": [
-                            [
-                                0
-                            ],
-                            [
-                                0
-                            ]
+                            {
+                                "brokerIds": [
+                                    0
+                                ]
+                            },
+                            {
+                                "brokerIds": [
+                                    0
+                                ]
+                            }
                         ]
                     }
                 },
@@ -283,6 +287,60 @@
                 "topics": {
                     "t4-25-vectors": {
                         "topic": "t4-25-vectors",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "createpartitions.request.v2.assignment",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "CreatePartitions request v2 with a replica ASSIGNMENT: the one added partition is placed on the broker 0 by hand. `CreatePartitionsAssignment` is a structure with the single field `broker_ids`, so the flexible version closes every entry of the array with a tagged-field section of its own - a frame without it is one byte short and the broker closes the connection without an answer.",
+            "hex": "0000003d00250002000003a4000a74342d766563746f727300021574342d32352d766563746f72732d61737369676e000000020202000000000000000027100000",
+            "fields": {
+                "messageSize": 61,
+                "apiKey": 37,
+                "apiVersion": 2,
+                "correlationId": 932,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-25-vectors-assign": {
+                        "topic": "t4-25-vectors-assign",
+                        "count": 2,
+                        "assignment": [
+                            {
+                                "brokerIds": [
+                                    0
+                                ]
+                            }
+                        ]
+                    }
+                },
+                "timeout": 10000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createpartitions.response.v2.assignment",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "CreatePartitions answer v2 of an accepted assignment: the error code 0 and a null error message.",
+            "hex": "00000024000003a40000000000021574342d32352d766563746f72732d61737369676e0000000000",
+            "fields": {
+                "messageSize": 36,
+                "correlationId": 932,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-25-vectors-assign": {
+                        "topic": "t4-25-vectors-assign",
                         "errorCode": 0,
                         "errorMessage": null
                     }
