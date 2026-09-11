@@ -1,8 +1,8 @@
 {
     "api": "offsets",
     "apiKey": 2,
-    "section": "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset",
-    "description": "Wire vectors of the Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset, replayed by tests/Compliance.",
+    "section": "Offsets API (key 2, v0 to v3), a.k.a. ListOffset",
+    "description": "Wire vectors of the Offsets API (key 2, v0 to v3), a.k.a. ListOffset, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsets.request.v0.latest",
@@ -277,7 +277,7 @@
         {
             "id": "offsets.request.v2.latest",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "Offsets (ListOffset) request v2 for the log end offset, with the isolation level `read_uncommitted`.",
@@ -306,7 +306,7 @@
         {
             "id": "offsets.response.v2.latest",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2: the throttle time in front of the topics of a v1 answer.",
@@ -333,7 +333,7 @@
         {
             "id": "offsets.request.v2.read-committed",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "The same request with the isolation level `read_committed`, which asks for the last stable offset instead.",
@@ -362,7 +362,7 @@
         {
             "id": "offsets.response.v2.read-committed",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer to it; without an open transaction the last stable offset is the log end offset.",
@@ -374,6 +374,62 @@
                 "topics": {
                     "t3-throttle": {
                         "topic": "t3-throttle",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 2
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v3.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "ListOffsets request v3 for the log end offset (-1) of one partition, asked by an ordinary consumer (replica id -1) with the isolation level read_uncommitted. The body is the body of version 2, byte for byte - ListOffsetsRequest.json @ 2.8.2 says \"Version 3 is the same as version 2\".",
+            "hex": "00000031000200030000001700027432ffffffff0000000001000a74322d766563746f72730000000100000000ffffffffffffffff",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 2,
+                "apiVersion": 3,
+                "correlationId": 23,
+                "clientId": "t2",
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v3.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "ListOffsets response v3: the throttle time of version 2, then the single offset and the timestamp -1 that every -1/-2 lookup answers. The frame is the one of version 2.",
+            "hex": "00000032000000170000000000000001000a74322d766563746f727300000001000000000000ffffffffffffffff0000000000000002",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 23,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
                         "partitions": [
                             {
                                 "partition": 0,

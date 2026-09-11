@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 
 /**
- * JoinGroup response, version 2.
+ * JoinGroup response, version 3.
  *
  * <pre>
- *   JoinGroup Response (Version: 2) => throttle_time_ms error_code generation_id group_protocol leader_id
+ *   JoinGroup Response (Version: 2 and 3) => throttle_time_ms error_code generation_id group_protocol leader_id
  *                                      member_id [members]
  *     throttle_time_ms => INT32     -- since version 2
  *     error_code       => INT16
@@ -48,16 +48,18 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
  * The `rebalance_timeout` of the version 1 request did not change the answer at all: `JOIN_GROUP_RESPONSE_V1 =
  * JOIN_GROUP_RESPONSE_V0` in `Protocol.java` @ 0.11.0.3, so {@see JoinGroupResponseV1} and
  * {@see JoinGroupResponseV0} decode the same bytes. Version 2 (KIP-124, Kafka 0.11) is the first one that changed
- * the answer, and only by the leading `throttle_time_ms`.
+ * the answer, and only by the leading `throttle_time_ms`. Version 3 (KIP-219, Kafka 2.0) left it alone again, so
+ * {@see JoinGroupResponseV2} decodes the very same bytes; the answer changes next at version 5 (KIP-345, Kafka
+ * 2.3), where every member gains a `group_instance_id`.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0, v1 and v2)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v3)" and "Quotas and throttle time"
  */
 class JoinGroupResponse extends AbstractResponse
 {
     /**
      * Version of the JoinGroup API that this class decodes the answer of
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

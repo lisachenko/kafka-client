@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * which is what {@see FetchRequestTopicPartitionV0} lowers the version constant for. The partition entry did not
  * change in any other version.
  *
- * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v8)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface
 {

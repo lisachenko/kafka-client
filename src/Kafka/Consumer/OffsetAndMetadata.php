@@ -16,32 +16,32 @@ namespace Protocol\Kafka\Consumer;
 /**
  * The committed position of a topic-partition, together with the metadata the client keeps next to it.
  *
- * The metadata is opaque to the broker: it stores the string and hands it back with the next OffsetFetch. Kafka
- * 0.10.2.2 rejects a commit whose metadata is longer than `offset.metadata.max.bytes` (4096 by default) with the
- * error code 12, OffsetMetadataTooLarge.
+ * The metadata is opaque to the broker: it stores the string and hands it back with the next OffsetFetch. A broker
+ * rejects a commit whose metadata is longer than `offset.metadata.max.bytes` (4096 by default) with the error code
+ * 12, OffsetMetadataTooLarge.
  *
- * Kafka 2.1 added the **leader epoch** of the record the offset points behind (KIP-320): the epoch travels with a
- * commit from `TxnOffsetCommit` **v2** and from `OffsetCommit` v6 on, and a broker uses it to refuse a commit that
- * a fenced leader produced. A `null` epoch means "the client does not know it" and is written as the -1 both apis
- * default to ({@see self::UNKNOWN_LEADER_EPOCH}), which is what every offset of this client carries until the
- * consumer tracks epochs (KIP-320 in the consumer is a later minor of this line).
+ * **The leader epoch arrived with Kafka 2.1** (KIP-320): version 6 of the OffsetCommit api carries a
+ * `committed_leader_epoch` per partition and version 5 of the OffsetFetch api hands it back, so that a consumer
+ * that resumes from a committed offset can tell the broker which leader that offset was read from. A partition
+ * whose epoch is unknown - a client that never fetched it, an offset committed by a client of an older release, or
+ * a broker below 2.1 - carries {@see self::UNKNOWN_LEADER_EPOCH} on the wire, and `null` here, exactly as the Java
+ * `OffsetAndMetadata.leaderEpoch()` carries an empty `Optional`.
+ *
+ * @see docs/protocol/2.8.md, section "The leader epoch of a committed offset (KIP-320)"
  */
 final class OffsetAndMetadata implements \Stringable
 {
     /**
-     * The wire value of an offset whose leader epoch the client does not know, the default of every api that carries one
-     *
-     * `RecordBatch.NO_PARTITION_LEADER_EPOCH` of the Java client, and the `default: -1` of `committed_leader_epoch`
-     * in `TxnOffsetCommitRequest.json` and `OffsetCommitRequest.json` @ 2.8.2. The property itself is `null` for
-     * that case, and this constant is what a request writes for it.
+     * The value the wire uses for "the leader epoch of this offset is not known", `RecordBatch
+     * .NO_PARTITION_LEADER_EPOCH` in the Java client
      */
     public const int UNKNOWN_LEADER_EPOCH = -1;
 
     /**
      * @param int         $offset      The offset to commit for a topic-partition
      * @param string|null $metadata    Any associated metadata the client wants the broker to keep, or null for none
-     * @param int|null    $leaderEpoch Leader epoch of the record the offset points behind (KIP-320), or `null` when
-     *                                 the client does not know it - written as {@see self::UNKNOWN_LEADER_EPOCH}
+     * @param int|null    $leaderEpoch Epoch of the leader this offset was read from, null when it is not known
+     *        (`committed_leader_epoch` of OffsetCommit v6 and OffsetFetch v5, Kafka 2.1, KIP-320)
      */
     public function __construct(
         public readonly int $offset,
@@ -51,8 +51,14 @@ final class OffsetAndMetadata implements \Stringable
 
     public function __toString(): string
     {
-        return $this->metadata === null
-            ? "OffsetAndMetadata{offset={$this->offset}}"
-            : "OffsetAndMetadata{offset={$this->offset}, metadata='{$this->metadata}'}";
+        $parts = ["offset={$this->offset}"];
+        if ($this->metadata !== null) {
+            $parts[] = "metadata='{$this->metadata}'";
+        }
+        if ($this->leaderEpoch !== null) {
+            $parts[] = "leaderEpoch={$this->leaderEpoch}";
+        }
+
+        return 'OffsetAndMetadata{' . implode(', ', $parts) . '}';
     }
 }

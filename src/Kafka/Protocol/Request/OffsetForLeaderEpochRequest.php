@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopic;
 
 /**
- * OffsetForLeaderEpoch, version 0: asks a leader where an epoch of a partition ended (key 23, Kafka 0.11)
+ * OffsetForLeaderEpoch, version 1: asks a leader where an epoch of a partition ended (key 23, Kafka 2.0)
  *
  * This is the api of **KIP-101**, "Alter Replication Protocol to use Leader Epoch rather than High Watermark for
  * Truncation". A follower that comes back after a leader change used to truncate its log to the high watermark it
@@ -26,7 +26,7 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopic;
  * instead: "you were the leader of epoch `e` - which offset does that epoch end at?" and truncates to the answer.
  *
  * <pre>
- *   OffsetForLeaderEpoch Request (Version: 0) => [topics]
+ *   OffsetForLeaderEpoch Request (Version: 1) => [topics]
  *     topics => topic [partitions]
  *       topic      => STRING
  *       partitions => partition_id leader_epoch
@@ -34,16 +34,21 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopic;
  *         leader_epoch => INT32
  * </pre>
  *
+ * **Version 1 (Kafka 2.0, KIP-279) left the request untouched** - `OffsetForLeaderEpochRequest.json` @ 2.8.2 says
+ * "Version 1 is the same as version 0" - and only added the `leader_epoch` of every partition to the ANSWER, see
+ * {@see OffsetForLeaderEpochResponse}. {@see OffsetForLeaderEpochRequestV0} keeps version 0, whose answer carries
+ * no epoch.
+ *
  * **This is a broker-to-broker api and this client sends it nowhere.** The classes exist because the api is part
- * of the protocol of 0.11.0.3 and this repository documents every api of the release with a wire vector of a real
- * broker; a 0.11.0.3 broker answers an ordinary client just as it answers a follower, because
- * `KafkaApis.handleOffsetForLeaderEpochRequest` @ 0.11.0.3 authorizes it with `ClusterAction on Cluster`, which a
+ * of the protocol of the release and this repository documents every api of it with a wire vector of a real
+ * broker; a 2.8.2 broker answers an ordinary client just as it answers a follower, because
+ * `KafkaApis.handleOffsetForLeaderEpochRequest` @ 2.8.2 authorizes it with `ClusterAction on Cluster`, which a
  * broker without an `authorizer.class.name` grants to everybody.
  *
  * The epoch a client asks with is the `partition_leader_epoch` that the record batches of the partition carry
  * ({@see \Protocol\Kafka\Common\Record\RecordBatch::$partitionLeaderEpoch}), which is the other half of KIP-101.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 and v1)"
  */
 class OffsetForLeaderEpochRequest extends AbstractRequest
 {
@@ -55,7 +60,7 @@ class OffsetForLeaderEpochRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Epochs to resolve, indexed by the topic they belong to

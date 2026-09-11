@@ -41,6 +41,107 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the
   plan of the 2.x line (`docs/handoff/2.0.x.md`) took its place as `docs/handoff/main.md`.
 
+### Kafka 2.0 — Added
+
+The first milestone of the line (PRs #117, #118, #119, #122): what Kafka 2.0 added on the wire —
+almost only the version bumps of KIP-219 — and its one runtime change, the client-side throttle wait.
+
+- **ApiVersions v2** (Kafka 2.0, KIP-219) — the frame of v1, byte for byte, and the promise that the
+  client waits out a `throttle_time_ms` itself, because a broker answers a throttled request of a
+  bumped version **before** it mutes the channel. `ApiVersionsRequest`/`ApiVersionsResponse` are the
+  v2 now and `Client::apiVersions()`/`AdminClient::getApiVersions()` send it; the new
+  `ApiVersionsRequestV1`/`ApiVersionsResponseV1` keep the version Kafka 0.11 added, next to the
+  existing `…V0`. Two new wire vectors (`apiversions.request.v2`, `apiversions.response.v2`).
+- **The four version bumps of Kafka 2.0 (KIP-219)** — **Produce v6**, **Fetch v8**, **ListOffsets v3**
+  and **Metadata v6**, each with a byte-identical schema and its own class, its own wire vector pair
+  captured from the 2.8.2 broker and its own version-equivalence test: `ProduceRequestV5`/`ProduceResponseV5`,
+  `FetchRequestV7`/`FetchResponseV7`, `OffsetsRequestV2`/`OffsetsResponseV2` and
+  `MetadataRequestV5`/`MetadataResponseV5` keep the versions the 1.x line sent.
+- **KIP-219 in `Client`** — a broker that throttles a request now answers **first** and mutes the
+  channel for the reported `throttle_time_ms`, so the client remembers the moment the throttle of each
+  broker ends and sleeps whatever is left of it before its next request to that broker, exactly as the
+  Java `NetworkClient` does. **`ClientConfig::THROTTLE_WAIT`** (`throttle.wait`, `true` by default)
+  switches the waiting off and leaves the stall on the broker side. Measured against a real client
+  quota in `tests/Integration/QuotaThrottleTest.php`.
+- **OffsetForLeaderEpoch v1 (KIP-279)** — the response partition gained the `leader_epoch` the answered
+  `end_offset` belongs to (`OffsetForLeaderEpochResponsePartition::$leaderEpoch`, `UNDEFINED_EPOCH` = -1);
+  `OffsetForLeaderEpochRequestV0`/`OffsetForLeaderEpochResponseV0` keep version 0, whose answer has no
+  such field.
+- **KIP-283** — `tests/Integration/DownConversionTest.php` measures the down-conversion matrix of a
+  2.8.2 broker and the topic option **`message.downconversion.enable=false`**, which refuses a fetch
+  that would need a conversion with **35** `UNSUPPORTED_VERSION` (not 43) per partition.
+- **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
+  **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
+  **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not
+  one of them adds a field: from those versions on a throttled broker sends the answer **first** and
+  mutes the channel for the delay afterwards, so a client that sends them honours `throttle_time_ms`
+  itself. Every bump has a class of its own (`OffsetCommitRequestV3`, `GroupCoordinatorRequestV1`,
+  `JoinGroupRequestV2`, `HeartbeatRequestV1`, `LeaveGroupRequestV1`, `SyncGroupRequestV1`,
+  `DescribeGroupsRequestV1`, `ListGroupsRequestV1`, `DeleteGroupsRequestV0` and their answers) and a
+  **wire vector pair captured from the 2.8.2 container**; `Client`, `KafkaConsumer` and `AdminClient`
+  send the new versions.
+
+### Kafka 2.0 — Changed
+
+- **`Client` speaks the Kafka 2.0 versions**: Produce v6 for the message format v2 (v2 stays for the
+  legacy message sets), Fetch v8 (with and without a fetch session), ListOffsets v3 and Metadata v6.
+- **A 2.8.2 broker fills `last_stable_offset` for a `read_uncommitted` fetch too**, where a 1.1.1
+  broker answered -1; only the `aborted_transactions` array still distinguishes the isolation levels.
+- **A legacy message set in a Produce v3 or higher request is answered with 87 `INVALID_RECORD` per
+  partition** instead of costing the connection, as it did on a 1.1.1 broker.
+- **OffsetForLeaderEpoch answers the log end offset for the epoch the leader currently leads**, an
+  empty partition included, where a 1.1.1 broker answered -1 (KAFKA-7415).
+
+- **What a 2.x coordinator does differently**, measured on the container and written down in
+  "Broker quirks and observations" of [docs/protocol/2.8.md](docs/protocol/2.8.md): a **`consumer`**
+  group whose member metadata is not a real `Subscription` never leaves `PreparingRebalance` (KIP-345
+  parses it, and the parse error is swallowed by the purgatory's timer thread); an error answer of
+  JoinGroup carries the generation **-1** instead of 0; a successful FindCoordinator answer carries
+  the error message **`"NONE"`** instead of null, and an unknown `coordinator_type` is answered with
+  the error code **42** instead of costing the connection; the rebalance timeout is also the
+  SyncGroup deadline (KAFKA-9752), so a member that joined with `rebalance_timeout = 0` is dropped at
+  once; an OffsetCommit that leaves `retention_time` at -1 is stored with the `__consumer_offsets`
+  value schema **v3**, which has no expiry at all (KIP-211), while an explicit retention still falls
+  back to the schema v1 and is still honoured up to version 4 of the api.
+- **The "API keys" section of the protocol document is the literal answer of a 2.8.2 broker**: the
+  **56** keys 0–51, 56, 57, 60 and 61 with their version range, the first flexible version of every
+  api, the Kafka minor that added every version above the 1.1.1 ceiling, and — while the line is
+  built minor by minor — which of them this branch already implements.
+  `tests/Integration/ApiVersionProbeTest.php` sends a real frame of every one of the 56 keys at its
+  **maximum** version (with the request header v2 and a compact body for the 34 keys whose maximum is
+  flexible, built by the raw probe fixture) and one frame above every one of them. Three inherited
+  vectors were re-captured on the 2.8.2 container: `apiversions.response.v0`, `.v1` and
+  `.v0.unsupported-version`.
+- **What a 2.8.2 broker does with a frame it cannot serve, re-measured** (documented in "An api the
+  broker does not serve closes the connection"): a version above the table is refused by the
+  generated message class (`UnsupportedVersionException: The OFFSET_COMMIT protocol does not support
+  version 9`), an api key of the **controller** listener with `Received request api key VOTE which is
+  not enabled`, a key above `ApiKeys.java` with `Unexpected api key: 65`, and a flexible body with a
+  wrong compact length or a missing tag buffer with a `BufferUnderflowException` — every one of them
+  with a closed connection. The **35** of an unknown ApiVersions version now carries the ApiVersions
+  row itself (KIP-511) instead of an empty array, and the request that asks for it has to carry the
+  request header **v2**, because the broker derives the header version from the version it was asked
+  for.
+
+### Kafka 2.1
+
+- **OffsetCommit v5 (KIP-211)** — the version that **removes** `retention_time` from the frame. The
+  committed offsets of a group expire `offsets.retention.minutes` after the **group** became empty
+  from Kafka 2.1 on, so a per-commit retention has no place any more: the field has the versions
+  `2-4` and is not sent as -1. `OffsetCommitRequestV4` is the last version that writes it, and a v5
+  commit is stored with the `__consumer_offsets` value schema v3, which has no expiry at all.
+- **OffsetCommit v6 and OffsetFetch v5 (KIP-320)** — the `committed_leader_epoch` of a committed
+  offset: the epoch of the leader it was read from, so that a consumer that resumes from it can be
+  told that the log was truncated behind its back. It lives on
+  **`Consumer\OffsetAndMetadata::$leaderEpoch`** as a nullable int (`null` is the -1 of "not known",
+  the empty `Optional` of the Java `OffsetAndMetadata.leaderEpoch()`), travels through
+  `Client::commitGroupOffsets()` and comes back on
+  `Protocol\Data\OffsetFetchResponsePartition::$leaderEpoch`, whose `toOffsetAndMetadata()` is the
+  way into the value object. `OffsetCommitRequestV5`/`…V4`, `OffsetFetchRequestV4` and the
+  `…PartitionV0`/`…TopicV0` entries keep the versions below; six more wire vectors were captured
+  from the container, and the broker stores whatever epoch it is given — 74 and 75 are answered by
+  the fetch path, not by the coordinator.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

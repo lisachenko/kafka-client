@@ -25,13 +25,20 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partition_responses => OffsetFetchResponsePartition
  * </pre>
  *
- * The entry did not change across the three versions of the api: the topics array of a version 2 answer holds the
- * very same structures, only the group-level error code behind the array is new.
+ * The entry itself did not change across the versions of the api - the topics array of a version 2 answer holds the
+ * very same structures, only the group-level error code behind the array is new - but its **partitions** gained
+ * the `committed_leader_epoch` of KIP-320 at version 5, so the class of a partition entry follows
+ * {@see OffsetFetchResponseTopic::VERSION}, which {@see OffsetFetchResponseTopicV0} lowers.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v5)"
  */
 class OffsetFetchResponseTopic implements BinarySchemaInterface
 {
+    /**
+     * Version of the OffsetFetch API that this DTO decodes an entry of
+     */
+    public const int VERSION = 5;
+
     /**
      * Name of the topic
      */
@@ -51,7 +58,19 @@ class OffsetFetchResponseTopic implements BinarySchemaInterface
     {
         return [
             'topic'      => BinarySchema::TYPE_STRING,
-            'partitions' => ['partition' => OffsetFetchResponsePartition::class],
+            'partitions' => ['partition' => static::partitionClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a partition entry for the version of the API that this class decodes
+     *
+     * @return class-string<OffsetFetchResponsePartition>
+     */
+    protected static function partitionClass(): string
+    {
+        return static::VERSION >= 5
+            ? OffsetFetchResponsePartition::class
+            : OffsetFetchResponsePartitionV0::class;
     }
 }

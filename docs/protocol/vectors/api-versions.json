@@ -1,8 +1,8 @@
 {
     "api": "api-versions",
     "apiKey": 18,
-    "section": "ApiVersions API (key 18, v0 and v1)",
-    "description": "Wire vectors of the ApiVersions API (key 18, v0 and v1), replayed by tests/Compliance.",
+    "section": "ApiVersions API (key 18, v0 to v2)",
+    "description": "Wire vectors of the ApiVersions API (key 18, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "apiversions.request.v0",
@@ -26,238 +26,303 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponseV0",
             "version": 0,
             "source": "broker",
-            "description": "ApiVersions response v0 of a Kafka 1.1.1 broker: the 43 api keys 0 to 42 it serves, without a throttle time.",
-            "hex": "0000010c0000006400000000002b000000000005000100000007000200000002000300000005000400000001000500000000000600000004000700000001000800000003000900000003000a00000001000b00000002000c00000001000d00000001000e00000001000f00000001001000000001001100000001001200000001001300000002001400000001001500000000001600000000001700000000001800000000001900000000001a00000000001b00000000001c00000000001d00000000001e00000000001f00000000002000000001002100000000002200000000002300000000002400000000002500000000002600000000002700000000002800000000002900000000002a00000000",
+            "description": "ApiVersions response v0 of the Kafka 2.8.2 container: the 56 api keys it serves on the PLAINTEXT listener, without a throttle time.",
+            "hex": "0000015a0000006400000000003800000000000900010000000c00020000000600030000000b000400000005000500000003000600000007000700000003000800000008000900000007000a00000003000b00000007000c00000004000d00000004000e00000005000f00000005001000000004001100000001001200000003001300000007001400000006001500000002001600000004001700000004001800000003001900000003001a00000003001b00000001001c00000003001d00000002001e00000002001f00000002002000000004002100000002002200000002002300000002002400000002002500000003002600000002002700000002002800000002002900000002002a00000002002b00000002002c00000001002d00000000002e00000000002f00000000003000000001003100000001003200000000003300000000003800000000003900000000003c00000000003d00000000",
             "fields": {
-                "messageSize": 268,
+                "messageSize": 346,
                 "correlationId": 100,
                 "errorCode": 0,
-                "apiVersions": [
-                    {
+                "apiVersions": {
+                    "0": {
                         "apiKey": 0,
+                        "minVersion": 0,
+                        "maxVersion": 9
+                    },
+                    "1": {
+                        "apiKey": 1,
+                        "minVersion": 0,
+                        "maxVersion": 12
+                    },
+                    "2": {
+                        "apiKey": 2,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "3": {
+                        "apiKey": 3,
+                        "minVersion": 0,
+                        "maxVersion": 11
+                    },
+                    "4": {
+                        "apiKey": 4,
                         "minVersion": 0,
                         "maxVersion": 5
                     },
-                    {
-                        "apiKey": 1,
+                    "5": {
+                        "apiKey": 5,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "6": {
+                        "apiKey": 6,
                         "minVersion": 0,
                         "maxVersion": 7
                     },
-                    {
-                        "apiKey": 2,
+                    "7": {
+                        "apiKey": 7,
                         "minVersion": 0,
-                        "maxVersion": 2
+                        "maxVersion": 3
                     },
-                    {
-                        "apiKey": 3,
+                    "8": {
+                        "apiKey": 8,
                         "minVersion": 0,
-                        "maxVersion": 5
+                        "maxVersion": 8
                     },
-                    {
-                        "apiKey": 4,
+                    "9": {
+                        "apiKey": 9,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 7
                     },
-                    {
-                        "apiKey": 5,
+                    "10": {
+                        "apiKey": 10,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
-                        "apiKey": 6,
+                    "11": {
+                        "apiKey": 11,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "12": {
+                        "apiKey": 12,
                         "minVersion": 0,
                         "maxVersion": 4
                     },
-                    {
-                        "apiKey": 7,
-                        "minVersion": 0,
-                        "maxVersion": 1
-                    },
-                    {
-                        "apiKey": 8,
-                        "minVersion": 0,
-                        "maxVersion": 3
-                    },
-                    {
-                        "apiKey": 9,
-                        "minVersion": 0,
-                        "maxVersion": 3
-                    },
-                    {
-                        "apiKey": 10,
-                        "minVersion": 0,
-                        "maxVersion": 1
-                    },
-                    {
-                        "apiKey": 11,
-                        "minVersion": 0,
-                        "maxVersion": 2
-                    },
-                    {
-                        "apiKey": 12,
-                        "minVersion": 0,
-                        "maxVersion": 1
-                    },
-                    {
+                    "13": {
                         "apiKey": 13,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 4
                     },
-                    {
+                    "14": {
                         "apiKey": 14,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 5
                     },
-                    {
+                    "15": {
                         "apiKey": 15,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 5
                     },
-                    {
+                    "16": {
                         "apiKey": 16,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 4
                     },
-                    {
+                    "17": {
                         "apiKey": 17,
                         "minVersion": 0,
                         "maxVersion": 1
                     },
-                    {
+                    "18": {
                         "apiKey": 18,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 3
                     },
-                    {
+                    "19": {
                         "apiKey": 19,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "20": {
+                        "apiKey": 20,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "21": {
+                        "apiKey": 21,
                         "minVersion": 0,
                         "maxVersion": 2
                     },
-                    {
-                        "apiKey": 20,
-                        "minVersion": 0,
-                        "maxVersion": 1
-                    },
-                    {
-                        "apiKey": 21,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
+                    "22": {
                         "apiKey": 22,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 4
                     },
-                    {
+                    "23": {
                         "apiKey": 23,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 4
                     },
-                    {
+                    "24": {
                         "apiKey": 24,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
+                    "25": {
                         "apiKey": 25,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
+                    "26": {
                         "apiKey": 26,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
+                    "27": {
                         "apiKey": 27,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 28,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 29,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 30,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 31,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 32,
                         "minVersion": 0,
                         "maxVersion": 1
                     },
-                    {
+                    "28": {
+                        "apiKey": 28,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "29": {
+                        "apiKey": 29,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "30": {
+                        "apiKey": 30,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "31": {
+                        "apiKey": 31,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "32": {
+                        "apiKey": 32,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "33": {
                         "apiKey": 33,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "34": {
                         "apiKey": 34,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "35": {
                         "apiKey": 35,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "36": {
                         "apiKey": 36,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "37": {
                         "apiKey": 37,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
+                    "38": {
                         "apiKey": 38,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "39": {
                         "apiKey": 39,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "40": {
                         "apiKey": 40,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "41": {
                         "apiKey": 41,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "42": {
+                        "apiKey": 42,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "43": {
+                        "apiKey": 43,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "44": {
+                        "apiKey": 44,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "45": {
+                        "apiKey": 45,
                         "minVersion": 0,
                         "maxVersion": 0
                     },
-                    {
-                        "apiKey": 42,
+                    "46": {
+                        "apiKey": 46,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "47": {
+                        "apiKey": 47,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "48": {
+                        "apiKey": 48,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "49": {
+                        "apiKey": 49,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "50": {
+                        "apiKey": 50,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "51": {
+                        "apiKey": 51,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "56": {
+                        "apiKey": 56,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "57": {
+                        "apiKey": 57,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "60": {
+                        "apiKey": 60,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "61": {
+                        "apiKey": 61,
                         "minVersion": 0,
                         "maxVersion": 0
                     }
-                ]
+                }
             }
         },
         {
             "id": "apiversions.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequestV1",
             "version": 1,
             "source": "broker",
-            "description": "ApiVersions request v1, the version this client sends: the same empty body as v0, only the api version of the header differs.",
+            "description": "ApiVersions request v1 (Kafka 0.11): the same empty body as v0, only the api version of the header differs.",
             "hex": "00000021001200010000006600176b61666b612d636c69656e742d74312d766563746f7273",
             "fields": {
                 "messageSize": 33,
@@ -270,232 +335,610 @@
         {
             "id": "apiversions.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponseV1",
             "version": 1,
             "source": "broker",
-            "description": "ApiVersions response v1 of the same broker: the same 43 keys followed by the throttle_time_ms that Kafka 0.11 appended.",
-            "hex": "000001100000006600000000002b000000000005000100000007000200000002000300000005000400000001000500000000000600000004000700000001000800000003000900000003000a00000001000b00000002000c00000001000d00000001000e00000001000f00000001001000000001001100000001001200000001001300000002001400000001001500000000001600000000001700000000001800000000001900000000001a00000000001b00000000001c00000000001d00000000001e00000000001f00000000002000000001002100000000002200000000002300000000002400000000002500000000002600000000002700000000002800000000002900000000002a0000000000000000",
+            "description": "ApiVersions response v1 of the same broker: the same 56 keys followed by the throttle_time_ms that Kafka 0.11 appended.",
+            "hex": "0000015e0000006600000000003800000000000900010000000c00020000000600030000000b000400000005000500000003000600000007000700000003000800000008000900000007000a00000003000b00000007000c00000004000d00000004000e00000005000f00000005001000000004001100000001001200000003001300000007001400000006001500000002001600000004001700000004001800000003001900000003001a00000003001b00000001001c00000003001d00000002001e00000002001f00000002002000000004002100000002002200000002002300000002002400000002002500000003002600000002002700000002002800000002002900000002002a00000002002b00000002002c00000001002d00000000002e00000000002f00000000003000000001003100000001003200000000003300000000003800000000003900000000003c00000000003d0000000000000000",
             "fields": {
-                "messageSize": 272,
+                "messageSize": 350,
                 "correlationId": 102,
                 "errorCode": 0,
-                "apiVersions": [
-                    {
+                "apiVersions": {
+                    "0": {
                         "apiKey": 0,
+                        "minVersion": 0,
+                        "maxVersion": 9
+                    },
+                    "1": {
+                        "apiKey": 1,
+                        "minVersion": 0,
+                        "maxVersion": 12
+                    },
+                    "2": {
+                        "apiKey": 2,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "3": {
+                        "apiKey": 3,
+                        "minVersion": 0,
+                        "maxVersion": 11
+                    },
+                    "4": {
+                        "apiKey": 4,
                         "minVersion": 0,
                         "maxVersion": 5
                     },
-                    {
-                        "apiKey": 1,
+                    "5": {
+                        "apiKey": 5,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "6": {
+                        "apiKey": 6,
                         "minVersion": 0,
                         "maxVersion": 7
                     },
-                    {
-                        "apiKey": 2,
+                    "7": {
+                        "apiKey": 7,
                         "minVersion": 0,
-                        "maxVersion": 2
+                        "maxVersion": 3
                     },
-                    {
-                        "apiKey": 3,
+                    "8": {
+                        "apiKey": 8,
                         "minVersion": 0,
-                        "maxVersion": 5
+                        "maxVersion": 8
                     },
-                    {
-                        "apiKey": 4,
+                    "9": {
+                        "apiKey": 9,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 7
                     },
-                    {
-                        "apiKey": 5,
+                    "10": {
+                        "apiKey": 10,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
-                        "apiKey": 6,
+                    "11": {
+                        "apiKey": 11,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "12": {
+                        "apiKey": 12,
                         "minVersion": 0,
                         "maxVersion": 4
                     },
-                    {
-                        "apiKey": 7,
-                        "minVersion": 0,
-                        "maxVersion": 1
-                    },
-                    {
-                        "apiKey": 8,
-                        "minVersion": 0,
-                        "maxVersion": 3
-                    },
-                    {
-                        "apiKey": 9,
-                        "minVersion": 0,
-                        "maxVersion": 3
-                    },
-                    {
-                        "apiKey": 10,
-                        "minVersion": 0,
-                        "maxVersion": 1
-                    },
-                    {
-                        "apiKey": 11,
-                        "minVersion": 0,
-                        "maxVersion": 2
-                    },
-                    {
-                        "apiKey": 12,
-                        "minVersion": 0,
-                        "maxVersion": 1
-                    },
-                    {
+                    "13": {
                         "apiKey": 13,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 4
                     },
-                    {
+                    "14": {
                         "apiKey": 14,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 5
                     },
-                    {
+                    "15": {
                         "apiKey": 15,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 5
                     },
-                    {
+                    "16": {
                         "apiKey": 16,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 4
                     },
-                    {
+                    "17": {
                         "apiKey": 17,
                         "minVersion": 0,
                         "maxVersion": 1
                     },
-                    {
+                    "18": {
                         "apiKey": 18,
                         "minVersion": 0,
-                        "maxVersion": 1
+                        "maxVersion": 3
                     },
-                    {
+                    "19": {
                         "apiKey": 19,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "20": {
+                        "apiKey": 20,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "21": {
+                        "apiKey": 21,
                         "minVersion": 0,
                         "maxVersion": 2
                     },
-                    {
-                        "apiKey": 20,
-                        "minVersion": 0,
-                        "maxVersion": 1
-                    },
-                    {
-                        "apiKey": 21,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
+                    "22": {
                         "apiKey": 22,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 4
                     },
-                    {
+                    "23": {
                         "apiKey": 23,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 4
                     },
-                    {
+                    "24": {
                         "apiKey": 24,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
+                    "25": {
                         "apiKey": 25,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
+                    "26": {
                         "apiKey": 26,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
+                    "27": {
                         "apiKey": 27,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 28,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 29,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 30,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 31,
-                        "minVersion": 0,
-                        "maxVersion": 0
-                    },
-                    {
-                        "apiKey": 32,
                         "minVersion": 0,
                         "maxVersion": 1
                     },
-                    {
+                    "28": {
+                        "apiKey": 28,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "29": {
+                        "apiKey": 29,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "30": {
+                        "apiKey": 30,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "31": {
+                        "apiKey": 31,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "32": {
+                        "apiKey": 32,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "33": {
                         "apiKey": 33,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "34": {
                         "apiKey": 34,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "35": {
                         "apiKey": 35,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "36": {
                         "apiKey": 36,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "37": {
                         "apiKey": 37,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 3
                     },
-                    {
+                    "38": {
                         "apiKey": 38,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "39": {
                         "apiKey": 39,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "40": {
                         "apiKey": 40,
                         "minVersion": 0,
-                        "maxVersion": 0
+                        "maxVersion": 2
                     },
-                    {
+                    "41": {
                         "apiKey": 41,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "42": {
+                        "apiKey": 42,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "43": {
+                        "apiKey": 43,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "44": {
+                        "apiKey": 44,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "45": {
+                        "apiKey": 45,
                         "minVersion": 0,
                         "maxVersion": 0
                     },
-                    {
-                        "apiKey": 42,
+                    "46": {
+                        "apiKey": 46,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "47": {
+                        "apiKey": 47,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "48": {
+                        "apiKey": 48,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "49": {
+                        "apiKey": 49,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "50": {
+                        "apiKey": 50,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "51": {
+                        "apiKey": 51,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "56": {
+                        "apiKey": 56,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "57": {
+                        "apiKey": 57,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "60": {
+                        "apiKey": 60,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "61": {
+                        "apiKey": 61,
                         "minVersion": 0,
                         "maxVersion": 0
                     }
-                ],
+                },
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "apiversions.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "ApiVersions request v2, the version this client sends: the KIP-219 bump of Kafka 2.0, again the header and nothing else.",
+            "hex": "00000021001200020000006800176b61666b612d636c69656e742d74312d766563746f7273",
+            "fields": {
+                "messageSize": 33,
+                "apiKey": 18,
+                "apiVersion": 2,
+                "correlationId": 104,
+                "clientId": "kafka-client-t1-vectors"
+            }
+        },
+        {
+            "id": "apiversions.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "ApiVersions response v2: the frame of version 1 byte for byte, because KIP-219 raised the version without changing the schema.",
+            "hex": "0000015e0000006800000000003800000000000900010000000c00020000000600030000000b000400000005000500000003000600000007000700000003000800000008000900000007000a00000003000b00000007000c00000004000d00000004000e00000005000f00000005001000000004001100000001001200000003001300000007001400000006001500000002001600000004001700000004001800000003001900000003001a00000003001b00000001001c00000003001d00000002001e00000002001f00000002002000000004002100000002002200000002002300000002002400000002002500000003002600000002002700000002002800000002002900000002002a00000002002b00000002002c00000001002d00000000002e00000000002f00000000003000000001003100000001003200000000003300000000003800000000003900000000003c00000000003d0000000000000000",
+            "fields": {
+                "messageSize": 350,
+                "correlationId": 104,
+                "errorCode": 0,
+                "apiVersions": {
+                    "0": {
+                        "apiKey": 0,
+                        "minVersion": 0,
+                        "maxVersion": 9
+                    },
+                    "1": {
+                        "apiKey": 1,
+                        "minVersion": 0,
+                        "maxVersion": 12
+                    },
+                    "2": {
+                        "apiKey": 2,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "3": {
+                        "apiKey": 3,
+                        "minVersion": 0,
+                        "maxVersion": 11
+                    },
+                    "4": {
+                        "apiKey": 4,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "5": {
+                        "apiKey": 5,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "6": {
+                        "apiKey": 6,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "7": {
+                        "apiKey": 7,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "8": {
+                        "apiKey": 8,
+                        "minVersion": 0,
+                        "maxVersion": 8
+                    },
+                    "9": {
+                        "apiKey": 9,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "10": {
+                        "apiKey": 10,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "11": {
+                        "apiKey": 11,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "12": {
+                        "apiKey": 12,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "13": {
+                        "apiKey": 13,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "14": {
+                        "apiKey": 14,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "15": {
+                        "apiKey": 15,
+                        "minVersion": 0,
+                        "maxVersion": 5
+                    },
+                    "16": {
+                        "apiKey": 16,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "17": {
+                        "apiKey": 17,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "18": {
+                        "apiKey": 18,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "19": {
+                        "apiKey": 19,
+                        "minVersion": 0,
+                        "maxVersion": 7
+                    },
+                    "20": {
+                        "apiKey": 20,
+                        "minVersion": 0,
+                        "maxVersion": 6
+                    },
+                    "21": {
+                        "apiKey": 21,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "22": {
+                        "apiKey": 22,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "23": {
+                        "apiKey": 23,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "24": {
+                        "apiKey": 24,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "25": {
+                        "apiKey": 25,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "26": {
+                        "apiKey": 26,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "27": {
+                        "apiKey": 27,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "28": {
+                        "apiKey": 28,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "29": {
+                        "apiKey": 29,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "30": {
+                        "apiKey": 30,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "31": {
+                        "apiKey": 31,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "32": {
+                        "apiKey": 32,
+                        "minVersion": 0,
+                        "maxVersion": 4
+                    },
+                    "33": {
+                        "apiKey": 33,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "34": {
+                        "apiKey": 34,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "35": {
+                        "apiKey": 35,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "36": {
+                        "apiKey": 36,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "37": {
+                        "apiKey": 37,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    },
+                    "38": {
+                        "apiKey": 38,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "39": {
+                        "apiKey": 39,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "40": {
+                        "apiKey": 40,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "41": {
+                        "apiKey": 41,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "42": {
+                        "apiKey": 42,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "43": {
+                        "apiKey": 43,
+                        "minVersion": 0,
+                        "maxVersion": 2
+                    },
+                    "44": {
+                        "apiKey": 44,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "45": {
+                        "apiKey": 45,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "46": {
+                        "apiKey": 46,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "47": {
+                        "apiKey": 47,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "48": {
+                        "apiKey": 48,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "49": {
+                        "apiKey": 49,
+                        "minVersion": 0,
+                        "maxVersion": 1
+                    },
+                    "50": {
+                        "apiKey": 50,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "51": {
+                        "apiKey": 51,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "56": {
+                        "apiKey": 56,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "57": {
+                        "apiKey": 57,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "60": {
+                        "apiKey": 60,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    },
+                    "61": {
+                        "apiKey": 61,
+                        "minVersion": 0,
+                        "maxVersion": 0
+                    }
+                },
                 "throttleTimeMs": 0
             }
         },
@@ -505,13 +948,19 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\ApiVersionsResponseV0",
             "version": 0,
             "source": "broker",
-            "description": "Answer to an ApiVersions request of version 7: the error code 35 and an empty api array, in the version 0 layout.",
-            "hex": "0000000a00000065002300000000",
+            "description": "Answer to an ApiVersions request of version 4: the error code 35 and, since KIP-511, the single row of the ApiVersions api itself, in the version 0 layout.",
+            "hex": "0000001000000065002300000001001200000003",
             "fields": {
-                "messageSize": 10,
+                "messageSize": 16,
                 "correlationId": 101,
                 "errorCode": 35,
-                "apiVersions": []
+                "apiVersions": {
+                    "18": {
+                        "apiKey": 18,
+                        "minVersion": 0,
+                        "maxVersion": 3
+                    }
+                }
             }
         }
     ]

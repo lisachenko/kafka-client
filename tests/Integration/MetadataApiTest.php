@@ -30,18 +30,20 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV1;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV4;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV5;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV2;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV4;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV5;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
  * Verifies the Metadata API v0 to v4 against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v6)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -244,13 +246,16 @@ final class MetadataApiTest extends IntegrationTestCase
         new MetadataRequestV4([$topic], true, self::CLIENT_ID, 41)->writeTo($stream);
         $versionFour = MetadataResponseV4::unpack($stream);
 
-        new MetadataRequest([$topic], true, self::CLIENT_ID, 41)->writeTo($stream);
-        $versionFive = MetadataResponse::unpack($stream);
+        new MetadataRequestV5([$topic], true, self::CLIENT_ID, 41)->writeTo($stream);
+        $versionFive = MetadataResponseV5::unpack($stream);
 
-        self::assertSame(
-            array_keys($versionFour->topics[$topic]->partitions),
-            array_keys($versionFive->topics[$topic]->partitions)
-        );
+        // The broker promises no ordering for the partitions of a topic - two answers of the same request can
+        // list them in a different order - so only the SET of partition ids is compared here
+        $versionFourIds = array_keys($versionFour->topics[$topic]->partitions);
+        $versionFiveIds = array_keys($versionFive->topics[$topic]->partitions);
+        sort($versionFourIds);
+        sort($versionFiveIds);
+        self::assertSame($versionFourIds, $versionFiveIds);
         self::assertSame(
             $versionFive->getMessageSize(),
             $versionFour->getMessageSize() + 4 * count($versionFive->topics[$topic]->partitions),
@@ -273,9 +278,45 @@ final class MetadataApiTest extends IntegrationTestCase
         }
     }
 
+    public function testVersionSixAnswersTheVerySameFrameAsVersionFive(): void
+    {
+        // `MetadataRequest.json` @ 2.8.2 has no field between version 4 and version 8, and
+        // `MetadataResponse.json` only notes "Starting in version 6, on quota violation, brokers send out
+        // responses before throttling": version 6 (Kafka 2.0, KIP-219) is the version 5 frame with another number
+        // in its header, and it is the version this client sends.
+        $topic = self::uniqueTopicName('t3-metadata-v6');
+        $this->awaitTopicWithLeaders($topic);
+
+        $stream = $this->connect();
+        new MetadataRequestV5([$topic], true, self::CLIENT_ID, 46)->writeTo($stream);
+        $versionFive = MetadataResponseV5::unpack($stream);
+
+        new MetadataRequest([$topic], true, self::CLIENT_ID, 47)->writeTo($stream);
+        $versionSix = MetadataResponse::unpack($stream);
+
+        self::assertSame(6, MetadataRequest::VERSION);
+        self::assertSame($versionFive->getMessageSize(), $versionSix->getMessageSize());
+        self::assertSame($versionFive->clusterId, $versionSix->clusterId);
+        self::assertSame($versionFive->controllerId, $versionSix->controllerId);
+        self::assertSame(0, $versionSix->throttleTimeMs, 'no quota is set for this client id');
+        // The broker promises no ordering for the partitions of a topic, so only the set of ids is compared
+        $versionFiveIds = array_keys($versionFive->topics[$topic]->partitions);
+        $versionSixIds  = array_keys($versionSix->topics[$topic]->partitions);
+        sort($versionFiveIds);
+        sort($versionSixIds);
+        self::assertSame($versionFiveIds, $versionSixIds);
+        foreach ($versionSix->topics[$topic]->partitions as $partitionId => $partition) {
+            $sameOfVersionFive = $versionFive->topics[$topic]->partitions[$partitionId];
+            self::assertSame($sameOfVersionFive->leader, $partition->leader);
+            self::assertSame($sameOfVersionFive->replicas, $partition->replicas);
+            self::assertSame($sameOfVersionFive->isr, $partition->isr);
+            self::assertSame($sameOfVersionFive->offlineReplicas, $partition->offlineReplicas);
+        }
+    }
+
     public function testTheAdminClientReportsTheOfflineReplicasOfEveryPartition(): void
     {
-        // AdminClient::describeTopics() sends Metadata v5, so the TopicMetadata it hands over carries the offline
+        // AdminClient::describeTopics() sends Metadata v6, so the TopicMetadata it hands over carries the offline
         // replicas of every partition next to its replicas and its in-sync replicas
         $topic = self::uniqueTopicName('t3-metadata-admin-v5');
         $this->awaitTopicWithLeaders($topic);

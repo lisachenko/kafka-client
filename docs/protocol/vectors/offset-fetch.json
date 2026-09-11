@@ -1,8 +1,8 @@
 {
     "api": "offset-fetch",
     "apiKey": 9,
-    "section": "OffsetFetch API (key 9, v0 to v3)",
-    "description": "Wire vectors of the OffsetFetch API (key 9, v0 to v3), replayed by tests/Compliance.",
+    "section": "OffsetFetch API (key 9, v0 to v5)",
+    "description": "Wire vectors of the OffsetFetch API (key 9, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsetfetch.request.v2",
@@ -306,7 +306,7 @@
         {
             "id": "offsetfetch.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV3",
             "version": 3,
             "source": "broker",
             "description": "OffsetFetch request v3, byte for byte the frame of v2 with a higher version field.",
@@ -331,7 +331,7 @@
         {
             "id": "offsetfetch.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer v3: the throttle time first, the topics, and then the group-level error code of v2.",
@@ -347,6 +347,113 @@
                             {
                                 "partition": 0,
                                 "offset": 3,
+                                "metadata": "",
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                },
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "offsetfetch.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV4",
+            "version": 4,
+            "source": "broker",
+            "description": "OffsetFetch request v4 that names its partition explicitly, the frame of v2 and v3 with a higher version field.",
+            "hex": "0000004800090004000000cd00166b61666b612d636c69656e742d74332d6b6970323139000f74332d6b69703231392d67726f757000000001000974332d6b69703231390000000100000000",
+            "fields": {
+                "messageSize": 72,
+                "apiKey": 9,
+                "apiVersion": 4,
+                "correlationId": 205,
+                "clientId": "kafka-client-t3-kip219",
+                "consumerGroup": "t3-kip219-group",
+                "topicPartitions": {
+                    "t3-kip219": {
+                        "topic": "t3-kip219",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV4",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer v4 reading back the offset the v4 commit stored: the throttle time, the topics, and the group-level error code that closes every answer from v2 on. The metadata of an offset committed without one is the EMPTY string, never null.",
+            "hex": "0000002d000000cd0000000000000001000974332d6b697032313900000001000000000000000000000015000000000000",
+            "fields": {
+                "messageSize": 45,
+                "correlationId": 205,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-kip219": {
+                        "topic": "t3-kip219",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 21,
+                                "metadata": "",
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                },
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "offsetfetch.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "OffsetFetch request v5 (Kafka 2.1, KIP-320), byte for byte the frame of v2 to v4 with a higher version field: the change of this version is in the answer.",
+            "hex": "0000004c000900050000012f00126b61666b612d636c69656e742d74332d3231001374332d32312d766563746f72732d67726f757000000001000d74332d32312d766563746f72730000000100000000",
+            "fields": {
+                "messageSize": 76,
+                "apiKey": 9,
+                "apiVersion": 5,
+                "correlationId": 303,
+                "clientId": "kafka-client-t3-21",
+                "consumerGroup": "t3-21-vectors-group",
+                "topicPartitions": {
+                    "t3-21-vectors": {
+                        "topic": "t3-21-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer v5 of the coordinator to the offset the v6 commit above stored: the partition entry now carries the `committed_leader_epoch` 0 between the committed offset and the metadata.",
+            "hex": "000000350000012f0000000000000001000d74332d32312d766563746f72730000000100000000000000000000001500000000000000000000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 303,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-21-vectors": {
+                        "topic": "t3-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 21,
+                                "leaderEpoch": 0,
                                 "metadata": "",
                                 "errorCode": 0
                             }

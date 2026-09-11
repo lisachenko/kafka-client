@@ -1,15 +1,34 @@
-Wire vectors of the Kafka 1.1.1 protocol
+Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **364** of them in **37** files: **46** were captured on the `kafka-2-8-2` container of the **2.x**
-line - the request and the answer of every version Kafka **2.0** added to the admin, the transaction and the
-delegation-token apis (KIP-219), of DeleteTopics v3 and TxnOffsetCommit v2 of **Kafka 2.1**, and of what **Kafka
-2.2** added there: SaslAuthenticate v1, ControlledShutdown v2 and the new api ElectLeaders (key 43), whose
-`elect-leaders.json` is the file this line added - and of the other 318, **229** were captured by the four lines below the 1.x one
-and are replayed against the classes of this line unchanged, while **85**
-were captured on the 1.1.1 broker of the 1.x line. Two of the inherited vectors were **re-captured** rather
-than added — `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker.
+hex dumps. There are **406** of them in **37** files: **88** were captured on the `kafka-2-8-2` container of the
+**2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
+(14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
+(20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, the 6 frames of what Kafka
+**2.1** added to OffsetCommit and OffsetFetch and the 4 of what it added to DeleteTopics and TxnOffsetCommit, and
+the 8 frames of **Kafka 2.2**: SaslAuthenticate v1, ControlledShutdown v2 and the new api ElectLeaders (key 43),
+whose `elect-leaders.json` is the one file this line added - and of the other 318, **229** were
+captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
+**89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
+rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
+and `apiversions.response.v0.unsupported-version`, which gained the api row of KIP-511.
+
+What the group apis of this line have captured so far is the KIP-219 version bump of Kafka 2.0 — OffsetCommit
+v4, OffsetFetch v4, FindCoordinator v2, JoinGroup v3, Heartbeat v2, LeaveGroup v2, SyncGroup v2, DescribeGroups v2,
+ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from one life of the group
+`t3-kip219-group` — and the same bump of the four apis the producer and the consumer send:
+
+| File | Of it captured here | What was captured on the 2.8.2 broker |
+|---|---|---|
+| `produce.json` | 3 of 27 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond |
+| `fetch.json` | 5 of 38 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; and the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283) |
+| `offsets.json` | 2 of 16 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header |
+| `metadata.json` | 2 of 21 | **Metadata v6** (KIP-219), likewise |
+| `offset-for-leader-epoch.json` | 2 of 6 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset |
+
+What Kafka 2.1 added to the two offset apis: OffsetCommit v5 (the frame without
+`retention_time`, KIP-211), OffsetCommit v6 and OffsetFetch v5 (the `committed_leader_epoch` of KIP-320).
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
@@ -29,7 +48,7 @@ of the files below are new on this line; the rest gained the frames of the versi
 
 | File | Of it captured here | What was captured on the 1.1.1 broker |
 |---|---|---|
-| `api-versions.json` | 2 of 5, **re-captured** | The two ApiVersions **answers**. The answer of this api *is* the api-key table of the broker, so it is re-captured on every line: it now carries the **43** keys 0 to 42 of a Kafka 1.1.1 broker (272 and 276 bytes), where the 0.11 capture carried 34 and the 0.10 one 21. The two requests are unchanged — an ApiVersions frame has no body in either version |
+| `api-versions.json` | 2 new of 7, 3 **re-captured** | The **ApiVersions v2** pair (Kafka 2.0, KIP-219; the frame of v1) and the three re-captured answers. The answer of this api *is* the api-key table of the broker, so it is re-captured on every line: it now carries the **56** keys 0-51, 56, 57, 60 and 61 of a Kafka 2.8.2 broker, where the 1.1.1 capture carried 43, the 0.11 one 34 and the 0.10 one 21; the 35 answer of an unknown version carries the row `18 0 3` of KIP-511 instead of an empty array |
 | `sasl-handshake.json` | 6 of 12 | **SaslHandshake v1** (KIP-152): the accepted handshake, a mechanism the broker has not enabled (33), and a second handshake on the same connection (34, with the **empty** mechanism list that 1.1 answers where 1.0.2 still filled it). The v0 frames of the `0.10.x` line are replayed unchanged, now through `SaslHandshakeRequestV0` |
 | `sasl-authenticate.json` | 5 of 5, **new file** | **SaslAuthenticate v0** (key 36): the framed PLAIN token and its empty answer, a wrong password (**58** with the message of the broker) and a second `SaslAuthenticate` on an authenticated connection (**34**, which leaves the connection usable) |
 | `produce.json` | 8 of 24 | **Produce v4** (the v3 body, one api version higher) and **Produce v5** with its `log_start_offset`, captured after a `DeleteRecords` so that the field is really 2; plus the two pairs of the 1.x idempotent producer — a duplicate of the batch **four batches back** (error code 0 and the base offset of the original append: the five-batch window) and the batch after a `DeleteRecords` of the whole partition (**59** `UNKNOWN_PRODUCER_ID` with `log_start_offset = 5`) |
@@ -58,7 +77,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v5)",
+    "section": "Metadata API (key 3, v0 to v6)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

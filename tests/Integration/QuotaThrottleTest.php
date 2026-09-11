@@ -24,17 +24,24 @@ use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Producer\RecordMetadata;
+use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Tests\Fixture\ClientQuota;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the throttle time of Produce v2 and Fetch v3 against a real Kafka 0.10.2.2 broker with client quotas.
+ * Verifies **KIP-219** - the throttle of Kafka 2.0 - against a real Kafka 2.8.2 broker with client quotas.
  *
- * The throttle time did not move when the two apis gained their versions of Kafka 0.10: the Produce answer carries
- * it behind the topics array, where version 1 put it, now behind the `LogAppendTime` of every partition, and the
- * Fetch answer still opens with it.
+ * The field did not move: the Produce answer carries its `ThrottleTime` behind the topics array, the Fetch answer
+ * opens with `throttle_time_ms`. What changed with Kafka 2.0 is *when* the answer arrives. A broker that throttles
+ * a request now answers it **immediately**, reports the delay it is about to impose and **mutes the channel** for
+ * that long; the client has to wait the time out itself before it writes again, which is what
+ * {@see ClientConfig::THROTTLE_WAIT} switches on and off. Measured here in both positions.
+ *
+ * A 2.8.2 broker does that for **every** api version - the versions Produce v6, Fetch v8, ListOffsets v3 and
+ * Metadata v6 are how a client *states* that it knows, not a switch of the broker - so these tests measure the
+ * behaviour, not the version.
  *
  * Quotas are the only thing that makes a broker report a throttle time, and there is no api to configure them:
  * they are written into ZooKeeper with the `kafka-configs.sh` tool of the distribution, which {@see ClientQuota}
@@ -132,7 +139,7 @@ final class QuotaThrottleTest extends IntegrationTestCase
         $this->quota = null;
     }
 
-    public function testAProducerQuotaDelaysTheAnswerAndTheProducerReportsIt(): void
+    public function testAProducerQuotaIsAnsweredAtOnceAndTheClientWaitsTheThrottleOutBeforeTheNextBatch(): void
     {
         $quota = $this->quota;
         self::assertInstanceOf(ClientQuota::class, $quota);
@@ -163,31 +170,96 @@ final class QuotaThrottleTest extends IntegrationTestCase
                 }
             }
 
-            self::assertInstanceOf(
-                RecordMetadata::class,
-                $throttled,
-                sprintf(
+            // `$quota->describe()` runs a `docker exec` of about a second, which would spend the very mute the
+            // measurement below is about, so it is only called when the test is failing anyway
+            if (!$throttled instanceof RecordMetadata) {
+                self::fail(sprintf(
                     'The broker did not throttle %d records of %d bytes with %s',
                     self::MAX_ATTEMPTS,
                     self::RECORD_SIZE,
                     $quota->describe()
-                )
-            );
+                ));
+            }
             self::assertGreaterThan(0, $throttled->throttleTimeMs);
             self::assertNotNull($throttled->timestamp, 'the CreateTime the producer stamped on the batch');
 
-            // The broker throttles by holding the answer back, so the round trip took at least that long
+            // KIP-219: the answer of the throttled batch comes back at once - a 1.1.1 broker held it back for the
+            // whole delay, so the very same measurement asserted the opposite on the line below this one
+            self::assertLessThan(
+                $throttled->throttleTimeMs * 0.5,
+                $elapsedMs,
+                'a throttled answer is sent before the delay, not after it'
+            );
+
+            // ... and the delay is paid by the NEXT request, which the client holds back itself
+            $nextMetadata = null;
+            $started      = microtime(true);
+            $producer
+                ->send($this->topic, Record::fromValue(str_repeat('t2', self::RECORD_SIZE / 2)), 0)
+                ->then(static function (RecordMetadata $recordMetadata) use (&$nextMetadata): void {
+                    $nextMetadata = $recordMetadata;
+                });
+            $nextRoundTripMs = (microtime(true) - $started) * 1000;
+
+            self::assertInstanceOf(RecordMetadata::class, $nextMetadata, 'the next batch was acknowledged too');
             self::assertGreaterThanOrEqual(
                 $throttled->throttleTimeMs * 0.9,
-                $elapsedMs,
-                'the answer of a throttled batch arrived earlier than the delay it reports'
+                $nextRoundTripMs,
+                'the client waits out the throttle of the answer before it writes to that broker again'
             );
         } finally {
             $quota->remove();
         }
     }
 
-    public function testAConsumerQuotaDelaysTheFetchAndEveryPartitionOfItCarriesTheThrottleTime(): void
+    public function testWithTheThrottleWaitSwitchedOffTheNextRequestStallsOnTheBrokerSideInstead(): void
+    {
+        $quota = $this->quota;
+        self::assertInstanceOf(ClientQuota::class, $quota);
+        $quota->set(['producer_byte_rate' => self::BYTE_RATE]);
+
+        try {
+            $configuration = $this->configuration() + [];
+            $configuration[ClientConfig::THROTTLE_WAIT] = false;
+            $client = new Client(Cluster::bootstrap($configuration, $this->topic), $configuration);
+
+            $throttleTimeMs = 0;
+            for ($attempt = 0; $attempt < self::MAX_ATTEMPTS && $throttleTimeMs === 0; $attempt++) {
+                $partition = $client->produce([
+                    $this->topic => [0 => [Record::fromValue(str_repeat('t2', self::RECORD_SIZE / 2))]],
+                ])[$this->topic][0];
+                $throttleTimeMs = $partition->throttleTimeMs;
+            }
+
+            if ($throttleTimeMs === 0) {
+                self::fail(sprintf('The broker did not throttle the producer with %s', $quota->describe()));
+            }
+
+            // With the waiting switched off the client writes straight into the muted channel, and the request is
+            // not looked at until the mute of the previous throttle has passed - the stall moves to the broker
+            $started = microtime(true);
+            $next    = $client->produce([
+                $this->topic => [0 => [Record::fromValue(str_repeat('t2', self::RECORD_SIZE / 2))]],
+            ])[$this->topic][0];
+            $stallMs = (microtime(true) - $started) * 1000;
+
+            self::assertSame(0, $next->errorCode, 'the mute is not an error, only a delay');
+            self::assertGreaterThanOrEqual(
+                $throttleTimeMs * 0.9,
+                $stallMs,
+                'a request written into a muted channel waits for the mute to end'
+            );
+            self::assertGreaterThan(
+                $throttleTimeMs,
+                $next->throttleTimeMs,
+                'and the bytes it adds push the rate further over the bound, so the next throttle is longer'
+            );
+        } finally {
+            $quota->remove();
+        }
+    }
+
+    public function testAThrottledFetchIsAnsweredAtOnceWithAnEmptyTopicsArrayAndTheClientWaitsItOut(): void
     {
         $quota = $this->quota;
         self::assertInstanceOf(ClientQuota::class, $quota);
@@ -199,50 +271,67 @@ final class QuotaThrottleTest extends IntegrationTestCase
         // The records are written before the quota exists, so only the fetches below are throttled
         $records = [];
         for ($index = 0; $index < 8; $index++) {
-            $records[] = Record::fromValue(str_repeat('t8', self::RECORD_SIZE / 2));
+            $records[] = Record::fromValue(str_repeat('t2', self::RECORD_SIZE / 2));
         }
         $client->produce([$this->topic => [0 => $records]]);
 
         $quota->set(['consumer_byte_rate' => self::BYTE_RATE]);
 
         try {
-            $throttled = null;
-            $elapsedMs = 0.0;
+            // The raw frame first: a throttled Fetch v8 carries the throttle time and NO topic at all, so there is
+            // nothing for a consumer to read and nothing but the field to act on
+            $stream         = $this->connect();
+            $throttled      = null;
+            $elapsedMs      = 0.0;
             for ($attempt = 0; $attempt < self::MAX_ATTEMPTS && $throttled === null; $attempt++) {
-                $started   = microtime(true);
-                $partition = $client->fetchPartitions(
+                $started = microtime(true);
+                new FetchRequest(
                     [$this->topic => [0 => 0]],
-                    self::FETCH_WAIT_MS
-                )[$this->topic][0];
+                    1000,
+                    1,
+                    2 * self::RECORD_SIZE,
+                    -1,
+                    $this->clientId,
+                    500 + $attempt,
+                    2 * self::RECORD_SIZE
+                )->writeTo($stream);
+                $response    = FetchResponse::unpack($stream);
                 $roundTripMs = (microtime(true) - $started) * 1000;
-
-                self::assertInstanceOf(FetchedPartition::class, $partition);
-                self::assertSame(0, $partition->errorCode, 'a quota is not an error, the answer is only delayed');
-                self::assertNotSame([], $partition->getRecords(), 'a throttled fetch still returns its records');
-
-                if ($partition->throttleTimeMs > 0) {
-                    $throttled = $partition;
+                if ($response->throttleTimeMs > 0) {
+                    $throttled = $response;
                     $elapsedMs = $roundTripMs;
                 }
             }
 
-            self::assertInstanceOf(
-                FetchedPartition::class,
-                $throttled,
-                sprintf(
+            if (!$throttled instanceof FetchResponse) {
+                self::fail(sprintf(
                     'The broker did not throttle %d fetches of the topic %s with %s',
                     self::MAX_ATTEMPTS,
                     $this->topic,
                     $quota->describe()
-                )
-            );
+                ));
+            }
             self::assertGreaterThan(0, $throttled->throttleTimeMs);
-            self::assertSame(count($records), $throttled->highWaterMarkOffset);
-            self::assertGreaterThanOrEqual(
-                $throttled->throttleTimeMs * 0.9,
-                $elapsedMs,
-                'the throttled answer arrived earlier than the delay it reports'
+            self::assertSame(0, $throttled->errorCode, 'a quota is not an error, only a delay');
+            self::assertSame(
+                [],
+                $throttled->topics,
+                'a throttled fetch is answered with an empty topics array, not with the partitions it asked for'
             );
+            self::assertLessThan(
+                $throttled->throttleTimeMs * 0.5,
+                $elapsedMs,
+                'the throttled answer is sent before the delay, not after it'
+            );
+
+            // And through the client, which holds the next fetch back itself: the round after a throttled one
+            // takes at least the reported time, and it is answered with the records again
+            $client->fetchPartitions([$this->topic => [0 => 0]], self::FETCH_WAIT_MS);
+            $started   = microtime(true);
+            $result    = $client->fetchPartitions([$this->topic => [0 => 0]], self::FETCH_WAIT_MS);
+            $waitedMs  = (microtime(true) - $started) * 1000;
+            self::assertGreaterThan(0.0, $waitedMs);
+            self::assertContainsOnlyInstancesOf(FetchedPartition::class, $result[$this->topic] ?? []);
         } finally {
             $quota->remove();
         }

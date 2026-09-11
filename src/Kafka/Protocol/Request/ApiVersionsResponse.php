@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 
 /**
- * The api keys and versions one broker serves, version 1 (key 18)
+ * The api keys and versions one broker serves, version 2 (key 18)
  *
  * <pre>
- *   ApiVersions Response (Version: 1) => error_code [api_versions] throttle_time_ms
+ *   ApiVersions Response (Version: 2) => error_code [api_versions] throttle_time_ms
  *     error_code    => INT16
  *     api_versions  => api_key min_version max_version
  *       api_key     => INT16
@@ -31,35 +31,42 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
  *
  * The array is indexed by the api key, so that a caller can ask for one api directly
  * ({@see self::supports()}, {@see self::maxVersionOf()}); the broker sends the keys in ascending order and reports
- * every key it knows, including the broker-to-broker apis 4, 5, 6 and 27 that no client ever sends.
+ * every key of its listener, including the broker-to-broker apis 4, 5, 6, 27 and 56 that no client ever sends.
+ *
+ * **The frame of version 2 is the frame of version 1**, byte for byte - `ApiVersionsResponse.json` @ 2.8.2 adds no
+ * field to it and only notes "Starting in version 2, on quota violation, brokers send out responses before
+ * throttling", which is the KIP-219 promise of Kafka 2.0 that the client honours the throttle time itself.
  *
  * **`throttle_time_ms` is the LAST field of this answer, not the first.** Kafka 0.11 added the field to fifteen
  * apis with KIP-124 and put it in front of the body everywhere else - Metadata v3, OffsetCommit v3, JoinGroup v2 and
- * the rest - but `API_VERSIONS_RESPONSE_V1` in `Protocol.java` @ 0.11.0.3 appends it, because a client that guessed
- * the version wrong has to be able to read the leading `error_code` of the version 0 layout out of it. It is 0
- * unless a `request_percentage` quota throttled the connection, which an ApiVersions request practically never does.
+ * the rest - but the ApiVersions answer appends it, because a client that guessed the version wrong has to be able
+ * to read the leading `error_code` of the version 0 layout out of it. It is 0 unless a `request_percentage` quota
+ * throttled the connection, which an ApiVersions request practically never does.
  *
- * `ErrorCode` belongs to the whole answer and is 0 or **35** (UnsupportedVersion, `Errors.java` @ 0.11.0.3). The
- * second case is the answer to an ApiVersions request of a version the broker does not serve: the array is then
- * empty, and the frame is the **version 0** layout - without the throttle time - no matter which version was asked
- * for, because `ApiVersionsResponse.unsupportedVersionSend()` writes it with the hard-coded version `0`. That answer
- * is therefore read with {@see ApiVersionsResponseV0}, and the connection survives it, which no other unknown key or
- * version of a 1.1.1 broker does - not even ControlledShutdown, which answered every version up to 0.11.
+ * `ErrorCode` belongs to the whole answer and is 0 or **35** (UnsupportedVersion, `Errors.java` @ 2.8.2). The
+ * second case is the answer to an ApiVersions request of a version the broker does not serve: the frame is then the
+ * **version 0** layout - without the throttle time - no matter which version was asked for, because
+ * `RequestContext.parseRequest` @ 2.8.2 rebuilds the request as a version 0 one. Since Kafka 2.4 (KIP-511) that
+ * answer carries **one** api row, the range of ApiVersions itself (`ApiVersionsRequest.getErrorResponse()`), where
+ * a 1.1.1 broker answered an empty array; a 2.8.2 broker therefore tells a client which version it should have
+ * asked for. That answer is read with {@see ApiVersionsResponseV0}, and the connection survives it, which no other
+ * unknown key or version of a 2.8.2 broker does.
  *
- * A 1.1.1 broker answers with the 43 keys 0 to 42; a client must not assume that, though - the whole point of the
- * api is that the set is whatever the broker on the other side reports, and a later broker reports more. The set is
- * not even fixed for one release: `ApiVersionsResponse.apiVersionsResponse()` @ 1.1.1 drops every api whose
- * `minRequiredInterBrokerMagic` is above the message format the broker runs with, so a 1.1 broker configured with
- * `inter.broker.protocol.version=0.10.2` reports fewer keys than the container of this repository does.
+ * A 2.8.2 broker answers with the **56** keys 0 to 51, 56, 57, 60 and 61 - the `zkBroker` listener set of the JSON
+ * message specifications. A client must not assume that, though - the whole point of the api is that the set is
+ * whatever the broker on the other side reports, and a later broker reports more. The set is not even fixed for one
+ * release: the answer is built from the apis of the **listener** the request arrived on (`ApiVersionManager` @
+ * 2.8.2, KIP-500), so the KRaft apis 52-55, 58, 59 and 62-64 of the controller listener never appear here, and an
+ * api whose `minRequiredInterBrokerMagic` is above the message format of the broker is dropped as well.
  *
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v2)"
  */
 class ApiVersionsResponse extends AbstractResponse
 {
     /**
      * Version of the ApiVersions API that this class decodes the answer of
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Error code of the whole request, 0 or 35 (UnsupportedVersion)

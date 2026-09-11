@@ -30,10 +30,10 @@ use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises the AdminClient against a real Kafka 0.11.0.3 broker.
+ * Exercises the AdminClient against a real Kafka 2.8.2 broker.
  *
  * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v2)"
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ApiVersionsRequest::class)]
@@ -189,9 +189,9 @@ final class AdminApiTest extends IntegrationTestCase
         // Both announced versions really are answered. Up to 0.11 this test proved something else: key 7 was the
         // last api a broker parsed with its Scala class, which never validated the version, so v0 was answered
         // although the table did not contain it - and so was any version above 1. On this line the api is an
-        // ordinary Java-schema api and v2 closes the connection like every other unknown version
-        // (`ApiVersionProbeTest::testControlledShutdownAboveItsMaximumVersionClosesTheConnection`). The AdminClient
-        // sends v1; v0 is kept for the 0.8/0.9 lines and their vectors.
+        // ordinary Java-schema api and the first version above its table closes the connection like every other
+        // unknown version (`ApiVersionProbeTest::testTheBrokerClosesTheConnectionForAVersionAboveTheTable`). The
+        // AdminClient sends v1; v0 is kept for the 0.8/0.9 lines and their vectors.
         $stream = $this->connect();
 
         new ControlledShutdownRequestV0(self::UNKNOWN_BROKER_ID, 4200)->writeTo($stream);
