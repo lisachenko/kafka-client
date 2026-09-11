@@ -84,6 +84,13 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   (`PreservesUnknownTaggedFields`) so that a frame of a later broker survives a decode and encode round trip. The
   two exceptions of the protocol are two overrides: ControlledShutdown v0 has no client id in its header, and the
   **ApiVersions answer keeps the response header v0** whatever its version is (KIP-511).
+- **`Protocol\InlineStruct`** in the schema engine — a scheme entry for a nested object the **specification does
+  not have**, whose fields belong to the structure around it (`'owner' => new InlineStruct(KafkaPrincipal::class)`).
+  It changes nothing in a plain version, where a group of fields and a nested structure are the same bytes, but in
+  a flexible one it keeps the group from being given a tagged-field section of its own. The marker belongs to the
+  **field**, not to the class: the same class is a real structure wherever the specification declares one. The first two places of Kafka 2.8.2 that need it are the **owner of a
+  delegation token** (two flat fields of the answer that this package reads into a `KafkaPrincipal`, while the very
+  same class *is* a structure in the request of that api) and the coordinator of a FindCoordinator v3 answer.
 - **ApiVersions v3** (Kafka 2.4, KIP-511 + KIP-482 + KIP-584) — the first flexible frame this client sends: the
   request carries `client_software_name` = `lisachenko-kafka-client` and `client_software_version` = `2.8` as
   compact strings (a broker refuses a name that does not match `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?` with
@@ -121,13 +128,6 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   `InitProducerIdResponseV1`, `CreateDelegationTokenRequestV1` and `CreateDelegationTokenResponseV1`
   keep the version Kafka 2.0 bumped. Six new wire vectors, the v2 pair of each api and the two error
   answers of the token api.
-- **`Protocol\InlineStruct`** in the schema engine — a scheme entry that declares a nested object the
-  **specification does not have**, whose fields belong to the structure around it. It changes nothing
-  in a plain version, where a group of fields and a nested structure are the same bytes, but in a
-  flexible one it keeps the group from being given a tagged-field section of its own. The one place
-  of Kafka 2.8.2 that needs it is the **owner of a delegation token**, two flat fields of the answer
-  that this package reads into a `KafkaPrincipal` — the very same class that *is* a real structure in
-  the request of the same api.
 - **OffsetDelete (key 47, v0, Kafka 2.4, KIP-496)** — the api that makes a coordinator forget the committed offsets
   of **single partitions** of a group without touching the group itself, where `deleteConsumerGroups()` can only
   throw the whole group away. It is the one thing Kafka 2.4 added **without** the flexible encoding — with

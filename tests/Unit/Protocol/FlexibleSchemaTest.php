@@ -28,6 +28,7 @@ use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\TaggedField;
 use Protocol\Kafka\Tests\Fixture\BrokerRecord;
 use Protocol\Kafka\Tests\Fixture\FlexibleRecord;
+use Protocol\Kafka\Tests\Fixture\InlinedGroupRecord;
 
 /**
  * Byte-exact tests for the **flexible** encoding of KIP-482 (Kafka 2.4): compact types and tagged fields.
@@ -332,6 +333,66 @@ final class FlexibleSchemaTest extends TestCase
         self::assertTrue(ApiVersionsResponse::isFlexible());
         self::assertSame(AbstractResponse::HEADER_V0, ApiVersionsResponse::getHeaderVersion());
         self::assertArrayNotHasKey('headerTaggedFields', ApiVersionsResponse::getScheme());
+    }
+
+    /**
+     * A group of flat fields carries no tagged-field section, while the same class as a real structure does
+     *
+     * The difference is invisible in the plain encoding - neither a group nor a structure is delimited on the wire
+     * - and is exactly one byte per occurrence in a flexible one, which is why {@see InlineStruct} exists.
+     */
+    public function testAnInlineStructCarriesNoTaggedFieldSection(): void
+    {
+        $leader = BrokerRecord::of(1, 'a', 2);
+        $record = InlinedGroupRecord::of('t', $leader, [BrokerRecord::of(3, 'b', 4)]);
+
+        $plain    = bin2hex(self::pack($record, false));
+        $flexible = bin2hex(self::pack($record, true));
+
+        self::assertSame(
+            '0001' . '74'                                    // name
+            . '00000001' . '0001' . '61' . '00000002'        // the inlined leader, three flat fields
+            . '00000001'                                     // one replica
+            . '00000003' . '0001' . '62' . '00000004',       // which is a structure of the same class
+            $plain,
+            'in a plain version a group of fields and a nested structure are the same bytes'
+        );
+        self::assertSame(
+            '02' . '74'                                      // compact name
+            . '00000001' . '02' . '61' . '00000002'          // the inlined leader: NO tag buffer of its own
+            . '02'                                           // one replica
+            . '00000003' . '02' . '62' . '00000004' . '00'   // the real structure, which ends in one
+            . '00',                                          // and the tag buffer of the body
+            $flexible,
+            'and in a flexible one only the real structure ends in a tagged-field section'
+        );
+    }
+
+    /**
+     * What is written without a section is read back without one, so the round trip is byte-exact
+     */
+    public function testAnInlineStructIsReadBackWithoutASection(): void
+    {
+        $record = InlinedGroupRecord::of('t', BrokerRecord::of(1, 'a', 2), [BrokerRecord::of(3, 'b', 4)]);
+        $hex    = bin2hex(self::pack($record, true));
+
+        $decoded = BinarySchema::readObjectFromStream(
+            InlinedGroupRecord::class,
+            new StringStream((string) hex2bin($hex)),
+            'record',
+            true
+        );
+
+        self::assertInstanceOf(InlinedGroupRecord::class, $decoded);
+        self::assertSame(1, $decoded->leader->nodeId);
+        self::assertSame('a', $decoded->leader->host);
+        self::assertSame(3, $decoded->replicas[0]->nodeId);
+        self::assertSame($hex, bin2hex(self::pack($decoded, true)));
+        self::assertSame(
+            strlen((string) hex2bin($hex)),
+            BinarySchema::getObjectTypeSize($record, true),
+            'and the size the engine announces counts the missing section as missing'
+        );
     }
 
     private static function pack(object $record, bool $flexible): string
