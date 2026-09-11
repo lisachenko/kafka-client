@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * that throttles a version 2 request answers first and mutes the channel afterwards, where version 1 was answered
  * only at the end of the throttle window.
  *
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
  */
 final class ApiVersionsResponseV1 extends ApiVersionsResponse
 {

@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * | 80   | PreferredLeaderNotAvailable  | A preferred election whose preferred replica is not in the ISR       |
  * | 84   | ElectionNotNeeded            | The partition already has the leader the election would give it      |
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
  */
 class ElectLeadersResponsePartitionResult implements BinarySchemaInterface
 {

@@ -14,32 +14,38 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Asks a broker which api keys and versions it serves, version 2 (key 18)
+ * Asks a broker which api keys and versions it serves, version 3 (key 18)
  *
- * The request has no body at all up to and including this version, only the common request header - the whole frame
- * is 4 + 8 + the client id. It is the first request a client of Kafka 0.10 or later sends on a new connection, and
- * the only one whose answer tells a client what the broker on the other side speaks; Kafka 0.9.0.1 and 0.8.2.2 have
- * no such api, which is why the lower lines of this repository probe the surface of their broker by hand.
+ * It is the first request a client of Kafka 0.10 or later sends on a new connection, and the only one whose answer
+ * tells a client what the broker on the other side speaks; Kafka 0.9.0.1 and 0.8.2.2 have no such api, which is why
+ * the lower lines of this repository probe the surface of their broker by hand.
  *
  * <pre>
- *   ApiVersions Request (Version: 2) =>
+ *   ApiVersions Request (Version: 3) => client_software_name client_software_version TAG_BUFFER
+ *     client_software_name    => COMPACT_STRING
+ *     client_software_version => COMPACT_STRING
  * </pre>
  *
- * `ApiVersionsRequest.json` @ 2.8.2 says "Versions 0 through 2 of ApiVersionsRequest are the same": the three
- * frames differ in exactly one field, the `ApiVersion` of the request header, and the version number is the whole
- * message. Kafka 0.11 added the v1 whose *answer* carries a `throttle_time_ms` (KIP-124,
- * {@see ApiVersionsResponse}), and Kafka **2.0** added this v2 as one of the api bumps of **KIP-219**: a client
- * that sends it promises to honour the throttle time itself, because a broker that throttles a v2 request answers
- * **first** and mutes the channel afterwards, where it used to mute the channel and answer at the end of the
- * throttle window. Nothing on the wire changes - `ApiVersionsResponse.json` @ 2.8.2 notes it as "Starting in
- * version 2, on quota violation, brokers send out responses before throttling".
+ * The versions 0, 1 and 2 have **no body at all** - `ApiVersionsRequest.json` @ 2.8.2 says "Versions 0 through 2 of
+ * ApiVersionsRequest are the same" - so the whole frame of those is 4 + 8 + the client id, and the version number is
+ * the entire message. Kafka 0.11 added the v1 whose *answer* carries a `throttle_time_ms` (KIP-124,
+ * {@see ApiVersionsResponse}), and Kafka 2.0 the v2 of **KIP-219**: a client that sends it promises to honour the
+ * throttle time itself, because a broker that throttles a v2 request answers **first** and mutes the channel
+ * afterwards.
  *
- * Kafka 2.4 raised the api once more, to the first **flexible** version 3 (KIP-482 and KIP-511: a compact
- * `client_software_name` and `client_software_version`, a request header v2 and tagged fields); that version is not
- * implemented on this branch yet, and a 2.8.2 broker answers it as it answers every version above the one this
- * class sends - see {@see ApiVersionsResponse} for what comes back.
+ * **Version 3 is the first flexible version of the protocol this client speaks** (Kafka 2.4): its frame carries the
+ * request header **v2** with a tagged-field section, its two new fields are **compact** strings and its body ends in
+ * a tag buffer of its own. The two fields are KIP-511: they name the client *software*, not the connection, so that
+ * a broker can report `kafka.server:type=ClientMetrics` per client library and version instead of guessing from the
+ * client id. They are **not** the client id: `ClientConfig::CLIENT_ID` identifies the application and may be
+ * anything, while these two are matched against `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?`
+ * (`ApiVersionsRequest.isValid()` @ 2.8.2) and a frame that fails that test is answered with the error code **42**
+ * (`InvalidRequest`) - measured on the container, with an empty name, an empty version, a name with a `/` and a name
+ * that starts with a `-`. This client sends {@see self::CLIENT_SOFTWARE_NAME} and
+ * {@see self::CLIENT_SOFTWARE_VERSION}.
  *
  * Two properties of this api make it usable before anything else is known about the broker
  * (`KafkaApis.handleApiVersionsRequest` and `RequestContext.parseRequest` @ 2.8.2):
@@ -57,7 +63,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
  * * It is answered on a SASL listener before the authentication has happened, so a client can learn the surface of
  *   the broker before it knows whether it may talk to it at all.
  *
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
  */
 class ApiVersionsRequest extends AbstractRequest
 {
@@ -69,7 +75,42 @@ class ApiVersionsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 3;
+
+    /**
+     * Name of the client software this package is, as KIP-511 means it: the library, not the application
+     *
+     * The broker matches it against `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?` and counts one metric per name and
+     * version, so it is the name of the Composer package with the `/` that the pattern refuses replaced by a `-`.
+     */
+    public const string CLIENT_SOFTWARE_NAME = 'lisachenko-kafka-client';
+
+    /**
+     * Version of the client software, which for this package is the Kafka protocol line it speaks
+     *
+     * Every line of this repository follows the Apache Kafka release it implements instead of a semantic version of
+     * its own - `main` speaks Kafka 2.8 - so that is what a broker is told.
+     */
+    public const string CLIENT_SOFTWARE_VERSION = '2.8';
+
+    /**
+     * Name of the client software, sent from version 3 on (COMPACT_STRING, KIP-511)
+     *
+     * @since Version 3 of protocol
+     */
+    protected string $clientSoftwareName = self::CLIENT_SOFTWARE_NAME;
+
+    /**
+     * Version of the client software, sent from version 3 on (COMPACT_STRING, KIP-511)
+     *
+     * @since Version 3 of protocol
+     */
+    protected string $clientSoftwareVersion = self::CLIENT_SOFTWARE_VERSION;
 
     /**
      * @param string $clientId      A user specified identifier for the client making the request
@@ -78,5 +119,21 @@ class ApiVersionsRequest extends AbstractRequest
     public function __construct(string $clientId = '', int $correlationId = 0)
     {
         parent::__construct(self::API_KEY, $clientId, $correlationId);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public static function getScheme(): array
+    {
+        $header = parent::getScheme();
+        if (static::VERSION < 3) {
+            return $header;
+        }
+
+        return $header + [
+            'clientSoftwareName'    => BinarySchema::TYPE_STRING,
+            'clientSoftwareVersion' => BinarySchema::TYPE_STRING,
+        ];
     }
 }

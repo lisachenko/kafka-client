@@ -70,6 +70,34 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
 - **KIP-283** — `tests/Integration/DownConversionTest.php` measures the down-conversion matrix of a
   2.8.2 broker and the topic option **`message.downconversion.enable=false`**, which refuses a fetch
   that would need a conversion with **35** `UNSUPPORTED_VERSION` (not 43) per partition.
+- **Flexible versions (KIP-482, Kafka 2.4) in the schema engine** — the compact types (`compact_string`,
+  `compact_bytes`, `compact_[foo]`: an unsigned varint `length + 1`, `0` for `null`), the **unsigned varints**
+  themselves (`Stream::readUnsignedVarint()`/`writeUnsignedVarint()`), the **tagged fields** of every structure
+  (`Protocol\TaggedField`, declared in the scheme, written in ascending order of the tag and left out at their
+  default), the **request header v2** and **response header v1** (`AbstractRequest::getHeaderVersion()` and
+  `AbstractResponse::getHeaderVersion()`, the `ApiKeys.requestHeaderVersion()`/`responseHeaderVersion()` of the Java
+  client), the `uuid` of KIP-516 (`TYPE_UUID`) and the one string that never becomes compact
+  (`TYPE_STRING_NEVER_COMPACT`, the `client_id` of the header v2). Flexibility is a property of the **message**
+  (`FlexibleSchemaInterface::isFlexible()`, `VERSION >= FLEXIBLE_VERSION`) that the engine hands down to every
+  nested structure, so a `Data` class needs no change to serve a flexible version - the same scheme is written
+  plainly in one version of an api and compactly in the next. Unknown tagged fields are kept
+  (`PreservesUnknownTaggedFields`) so that a frame of a later broker survives a decode and encode round trip. The
+  two exceptions of the protocol are two overrides: ControlledShutdown v0 has no client id in its header, and the
+  **ApiVersions answer keeps the response header v0** whatever its version is (KIP-511).
+- **`Protocol\InlineStruct`** in the schema engine — a scheme entry for a nested object the **specification does
+  not have**, whose fields belong to the structure around it (`'owner' => new InlineStruct(KafkaPrincipal::class)`).
+  It changes nothing in a plain version, where a group of fields and a nested structure are the same bytes, but in
+  a flexible one it keeps the group from being given a tagged-field section of its own. The marker belongs to the
+  **field**, not to the class: the same class is a real structure wherever the specification declares one.
+- **ApiVersions v3** (Kafka 2.4, KIP-511 + KIP-482 + KIP-584) — the first flexible frame this client sends: the
+  request carries `client_software_name` = `lisachenko-kafka-client` and `client_software_version` = `2.8` as
+  compact strings (a broker refuses a name that does not match `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?` with
+  the error code **42**, measured), and the answer carries the api table as a compact array and the features of
+  KIP-584 as tagged fields (`supportedFeatures`, `finalizedFeaturesEpoch`, `finalizedFeatures` on
+  `ApiVersionsResponse`, with `ApiVersionsSupportedFeature` and `ApiVersionsFinalizedFeature`). A ZooKeeper-backed
+  2.8.2 broker answers exactly one of the three, the epoch `0`. `ApiVersionsRequestV2`/`ApiVersionsResponseV2` keep
+  the version 2, and three new wire vectors show the flexible frames byte by byte (`apiversions.request.v3`,
+  `apiversions.response.v3`, `apiversions.response.v3.invalid-software-name`).
 - **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
   **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
   **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not
@@ -248,6 +276,9 @@ the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLe
 
 ### Kafka 2.3
 
+The fourth milestone of the line (PRs #125, #126, #132): static membership (KIP-345), the authorized operations
+of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs api (KIP-339).
+
 - **Static membership (KIP-345)** — a consumer configured with the new
   **`ConsumerConfig::GROUP_INSTANCE_ID`** (`group.instance.id`) carries that name in the
   `group_instance_id` of **JoinGroup v5, SyncGroup v3, Heartbeat v3 and OffsetCommit v7**, which are the
@@ -271,9 +302,6 @@ the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLe
   together with the DTO versions `JoinGroupResponseMemberV0` and `DescribeGroupResponseMetadataV0`, and
   twelve wire vectors of the new frames were captured from the container.
 - **LeaveGroup stays at v2**: the batch leave of KIP-345 is LeaveGroup v3, a Kafka 2.4 api.
-
-### Kafka 2.3
-
 - **Fetch v11** (KIP-392, reading from a follower) — a `rack_id` as the **last** field of the request, behind the
   forgotten topics, and a `preferred_read_replica` in every partition entry of the answer, **between** the
   aborted transactions and the record set. The consumer names its rack
@@ -305,6 +333,32 @@ the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLe
   "The authorized operations (v8, KIP-430)" — with the measured bitfields of an unsecured broker, **8096** for
   the cluster and **3576** for a topic, which are the *supported* operations of the resource type — plus the
   version paragraphs of the three apis and two more broker quirks.
+- **IncrementalAlterConfigs (key 44) v0 (KIP-339)** — changes **single options** of a topic or a broker, where
+  `AlterConfigs` carries the whole configuration and resets everything a caller forgot to send back (Kafka 2.3
+  deprecated it for this one). `Admin\AlterConfigOp` carries the operations `SET`, `DELETE`, `APPEND` and
+  `SUBTRACT` — the last two only for a list option — and `AdminClient::incrementalAlterConfigs()` answers a
+  `KafkaException|null` per resource. A resource is validated and applied as a whole.
+
+### Kafka 2.4
+
+- **LeaveGroup v3, the batch leave of KIP-345** — the request's single `member_id` is **replaced** by a list of
+  member identities (`member_id` plus a nullable `group_instance_id` each), and the answer gains a matching
+  member array behind its error code, one entry per member with an error code of its own. The top-level code is
+  about the request alone and stays **0** even when every member was refused. `LeaveGroupRequest`/`Response` are
+  version 3, `LeaveGroupRequestV2`/`LeaveGroupResponseV2` keep the single-member frame, and
+  `Protocol\Data\LeaveGroupRequestMember`/`LeaveGroupResponseMember` are the entries.
+- **`AdminClient::removeMembersFromConsumerGroup(string $groupId, iterable $members)`** — the api half of it, and
+  the reason the version exists: a static member does not leave on its own, so an instance that is retired for
+  good is removed by hand, **by its `group.instance.id`**. A member is named with `MemberToRemove::byInstanceId()`,
+  `byMemberId()` or `byBoth()` (a plain string is an instance id, as in the Java admin client), and the result maps
+  every member to its error or `null`, without throwing for a member that was refused.
+- `Client::leaveGroup()` sends the one-element batch of a member that removes itself — optionally with its
+  instance id — and reports the error of that entry as it always reported the error code of the answer; a static
+  consumer still sends nothing at all when it is closed.
+- Measured on the container: a static member removed by its instance id is gone **at once** (0), an instance id or
+  member id the group does not have is **25** per entry (and so is every entry of a request against a group that
+  does not exist, with the top-level code 0), a **pending** member of KIP-394 removes itself with **0**, and an
+  empty batch is answered with 0 and an empty member array. Six wire vectors of the exchange were captured.
 
 ### Kafka 2.4
 

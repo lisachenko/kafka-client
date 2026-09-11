@@ -32,7 +32,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   that answer is **not empty**: it carries the single row of the ApiVersions api itself, `18 0 3` on this
  *   container, where a 1.1.1 broker answered `00 00 00 00`.
  *
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
  */
 final class ApiVersionsResponseV0 extends ApiVersionsResponse
 {

@@ -105,20 +105,23 @@ class ControlledShutdownRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
+    public static function getHeaderVersion(): int
+    {
+        // Version 0 of this api is the one frame of the protocol whose header carries no client id at all -
+        // `RequestHeader.json` @ 2.8.2 keeps a header version 0 for it and for nothing else
+        return static::VERSION < 1 ? self::HEADER_V0 : parent::getHeaderVersion();
+    }
+
     public static function getScheme(): array
     {
-        $header = parent::getScheme();
-        if (static::VERSION < 1) {
-            // Version 0 does not read a client id for this api key, see the class docblock
-            unset($header['clientId']);
-        }
-
+        // The version 0 header has no client id, which is {@see self::getHeaderVersion()} and not an edit of the
+        // scheme since the flexible-version engine made the header version a property of the message
         $body = ['brokerId' => BinarySchema::TYPE_INT32];
         if (static::VERSION >= 2) {
             $body['brokerEpoch'] = BinarySchema::TYPE_INT64;
         }
 
-        return $header + $body;
+        return parent::getScheme() + $body;
     }
 
     /**

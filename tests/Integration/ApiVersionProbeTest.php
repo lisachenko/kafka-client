@@ -26,9 +26,11 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV1;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV2;
 use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 
 /**
@@ -59,8 +61,8 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * The frame of every key is sent at the **maximum version the broker reports**, which for 34 of the 56 keys is a
  * **flexible** version (KIP-482): a compact body, the request header v2 and a tagged-field section at the end of
  * every structure. The bytes are built by the fixture, not by the schema engine, exactly as the frames above the
- * table are - the engine of this line learns the flexible encoding in the ticket that follows this one, and the
- * probe has to keep working without it.
+ * table are: a probe that used the engine could only send what the engine believes, and half of what this class
+ * checks is what happens to a frame no class of this package can build.
  *
  * The probe never changes the state of the cluster: the broker-to-broker apis are sent with the stale controller
  * epoch -1 and empty partition sets, ControlledShutdown asks for a broker id that does not exist, the group and
@@ -74,9 +76,11 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 #[CoversClass(ApiVersionsRequest::class)]
 #[CoversClass(ApiVersionsRequestV0::class)]
 #[CoversClass(ApiVersionsRequestV1::class)]
+#[CoversClass(ApiVersionsRequestV2::class)]
 #[CoversClass(ApiVersionsResponse::class)]
 #[CoversClass(ApiVersionsResponseV0::class)]
 #[CoversClass(ApiVersionsResponseV1::class)]
+#[CoversClass(ApiVersionsResponseV2::class)]
 #[CoversClass(ApiVersionsResponseMetadata::class)]
 final class ApiVersionProbeTest extends IntegrationTestCase
 {
@@ -296,16 +300,22 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     }
 
     /**
-     * The client sends version 2, whose answer is the version 1 answer: the throttle time closes it
+     * The client sends version 3, and every version of the answer closes with the throttle time
      */
-    public function testTheAnswerOfVersionTwoCarriesTheTrailingThrottleTime(): void
+    public function testTheAnswerCarriesTheTrailingThrottleTimeInEveryVersion(): void
     {
         $response = $this->client()->apiVersions($this->anyNode());
 
-        self::assertSame(2, ApiVersionsRequest::VERSION, 'this line sends ApiVersions v2 (KIP-219)');
+        self::assertSame(3, ApiVersionsRequest::VERSION, 'this line sends the flexible ApiVersions v3 (KIP-511)');
+        self::assertSame(2, ApiVersionsRequestV2::VERSION);
         self::assertSame(1, ApiVersionsRequestV1::VERSION);
         self::assertSame(0, ApiVersionsRequestV0::VERSION);
         self::assertSame(0, $response->throttleTimeMs, 'an ApiVersions request is never throttled without a quota');
+        self::assertSame(
+            0,
+            $response->finalizedFeaturesEpoch,
+            'the one tagged field a ZooKeeper-backed broker answers (KIP-584)'
+        );
 
         // The v1 frame is the v0 frame plus the four bytes of the throttle time - the one api of Kafka 0.11 that
         // appends the field instead of prepending it, so that the leading error code stays where a v0 client
@@ -502,6 +512,37 @@ final class ApiVersionProbeTest extends IntegrationTestCase
 
         self::assertSame(RawApiProbe::ANSWERED, $served['status']);
         self::assertSame(3002, $served['correlationId']);
+    }
+
+    /**
+     * The flexible v3 of this api is what the client itself sends, and the broker answers it with a header v0
+     *
+     * The probe builds the frame by hand as it does for every other key, which is what makes this an independent
+     * check of {@see \Protocol\Kafka\Protocol\BinarySchema}: the same bytes the engine produces, assembled
+     * without it, and the answer read without it as well.
+     */
+    public function testTheFlexibleVersionOfApiVersionsIsAnsweredWithAResponseHeaderVersionZero(): void
+    {
+        $result = $this->probe(ApiKeys::API_VERSIONS, 3, 3004);
+        $body   = $result['body'];
+
+        self::assertSame(RawApiProbe::ANSWERED, $result['status']);
+        self::assertSame(3004, $result['correlationId']);
+        self::assertSame(
+            0,
+            self::errorCodeOf($body),
+            'the error code follows the correlation id directly: no tag buffer, the response header stays v0'
+        );
+        self::assertSame(
+            57,
+            ord($body[2]),
+            'the compact count of the api array is 56 + 1, in a single byte'
+        );
+        self::assertStringEndsWith(
+            hex2bin('0101080000000000000000') ?: '',
+            $body,
+            'and the body ends in one tagged field: the finalized-features epoch 0 of KIP-584'
+        );
     }
 
     /**
@@ -895,7 +936,8 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             // The versions 0 to 2 have no body at all; v3 (KIP-511) carries the name and the version of the client
             // software as compact strings, and the broker matches both against `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?`
             ApiKeys::API_VERSIONS   => $apiVersion >= 3
-                ? RawApiProbe::compactString('kafka-client-php') . RawApiProbe::compactString('2.8') . $tag
+                ? RawApiProbe::compactString(ApiVersionsRequest::CLIENT_SOFTWARE_NAME)
+                    . RawApiProbe::compactString(ApiVersionsRequest::CLIENT_SOFTWARE_VERSION) . $tag
                 : '',
             // No topic to create and no topic to delete
             ApiKeys::CREATE_TOPICS => $emptyArray . RawApiProbe::int32(1000) . RawApiProbe::boolean(true) . $tag,

@@ -19,9 +19,9 @@ namespace Protocol\Kafka\Admin;
  * Kafka 2.2 added the api as **ElectPreferredLeaders** (KIP-183): it could elect the preferred replica and nothing
  * else, and its version 0 frame has no field for the kind of election at all. Kafka 2.4 renamed the api to
  * ElectLeaders and gave its version 1 a leading `election_type` byte (KIP-460), whose values are the two constants
- * below - which is why {@see self::UNCLEAN} cannot be asked of the version 0 this line sends.
+ * below; a version 0 request is read by the broker as {@see self::PREFERRED}.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
  */
 final class ElectionType
 {
@@ -36,9 +36,15 @@ final class ElectionType
     /**
      * Elect the first live replica even when no replica is in sync, accepting the data loss that comes with it
      *
-     * `ElectionType.UNCLEAN` of the Java client, the election of KIP-460 and of `kafka-leader-election.sh --type
-     * unclean`. It needs the **version 1** of the api, which Kafka 2.4 added; a request of version 0 has no field
-     * to carry it, so {@see AdminClient::electLeaders()} refuses it until this line implements that version.
+     * `ElectionType.UNCLEAN` of the Java client, the election of KIP-460 and of `kafka-leader-election.sh
+     * --election-type unclean`. It needs the **version 1** of the api, which Kafka 2.4 added and this line sends;
+     * a request of {@see \Protocol\Kafka\Protocol\Request\ElectLeadersRequestV0} has no field to carry it and
+     * always means the preferred election.
+     *
+     * The controller only acts on it for a partition whose leader is **gone**
+     * (`KafkaController.processReplicaLeaderElection` @ 2.8.2: `currentLeader == LeaderAndIsr.NoLeader ||
+     * !controllerContext.liveBrokerIds.contains(currentLeader)`); a partition that still has a live leader is
+     * answered 84 `ElectionNotNeeded`, exactly as for a preferred election that is not needed.
      */
     public const int UNCLEAN = 1;
 

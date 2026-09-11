@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * Exercises the AdminClient against a real Kafka 2.8.2 broker.
  *
  * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v2)"
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ApiVersionsRequest::class)]
@@ -65,6 +65,29 @@ final class AdminApiTest extends IntegrationTestCase
 
         $this->cluster = Cluster::bootstrap($this->configuration());
         $this->admin   = new AdminClient($this->cluster, $this->configuration());
+    }
+
+    /**
+     * Removes the one topic of this class again: the container is shared and outlives the suite
+     *
+     * The topic is created once for the whole class, so it is deleted once as well - a topic per test would be
+     * one leader election per test on a container that already carries the topics of every other suite.
+     */
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$topic === null) {
+            return;
+        }
+
+        $configuration = [
+            ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID                 => 't10-admin',
+            ClientConfig::REQUEST_TIMEOUT_MS        => 10000,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+        ];
+        new AdminClient(Cluster::bootstrap($configuration), $configuration)->deleteTopics([self::$topic]);
+
+        self::$topic = null;
     }
 
     public function testFindAllBrokersReturnsTheLiveBrokersOfTheCluster(): void
