@@ -51,7 +51,7 @@ use Protocol\Kafka\Protocol\Data\DeleteRecordsRequestTopic;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DeleteRecordsRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 to v2)"
  */
 class DeleteRecordsRequest extends AbstractRequest
 {
@@ -63,7 +63,17 @@ class DeleteRecordsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `DeleteRecordsRequest.json` @ 2.8.2 says "Version 2 is the first flexible version" and declares
+     * `"flexibleVersions": "2+"`. Not one field is added: a version 2 request asks the version 0 question with
+     * the request header **v2**, compact strings and arrays and a tagged-field section at the end of the body,
+     * of every topic entry and of every partition entry.
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Deletes every record up to the high watermark of the partition, `DeleteRecordsRequest.HIGH_WATERMARK`

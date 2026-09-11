@@ -408,9 +408,6 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   section of its own for the group.
 - 22 wire vectors of the new versions were captured from the container, and the document gained the section
   "The flexible versions of the group apis (Kafka 2.4)".
-
-### Kafka 2.4
-
 - **Produce v8** (KIP-467) — the version that says **which** records of a refused batch were refused. Every
   partition entry of the answer gains a `record_errors` array of `[batch_index, batch_index_error_message]`
   pairs and an `error_message`, both behind the `log_start_offset`; the request body is unchanged.
@@ -427,6 +424,23 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   been rejected", and the very same request as a version 7 one comes back with the 87 and the offsets `-1`
   alone. Five wire vectors, the section "The record errors of a refused batch (v8, KIP-467)" of the protocol
   document, a broker quirk, unit tests and the new integration suite `RecordErrorsTest`.
+
+### Kafka 2.5
+
+*(Nothing on the Produce, Fetch, ListOffsets, Metadata and OffsetForLeaderEpoch apis: Kafka 2.5 raised none of
+them. What the release added lives in the group and transaction apis.)*
+
+### Kafka 2.6
+
+- **DeleteRecords v2** (KIP-482) — the first **flexible** version of the api: not one field is added,
+  `DeleteRecordsRequest.json` and `DeleteRecordsResponse.json` @ 2.8.2 both say "Version 2 is the first flexible
+  version". The version 0 question travels with the request header **v2**, compact strings and arrays and a
+  tagged-field section at the end of the body, of every topic entry and of every partition entry, and the answer
+  with the response header **v1** and the same sections. `DeleteRecordsRequest`/`DeleteRecordsResponse` declare
+  `FLEXIBLE_VERSION = 2` next to their `VERSION` and `AdminClient::deleteRecords()` sends it;
+  `DeleteRecordsRequestV1`/`DeleteRecordsResponseV1` keep the plain frame of the versions 0 and 1. The vector
+  pair `deleterecords.*.v2` was captured on the container and is annotated down to every compact length and tag
+  buffer: the same question and the same answer as the version 1 pair in 48 and 42 bytes instead of 59 and 45.
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
