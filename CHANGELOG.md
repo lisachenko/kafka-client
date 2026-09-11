@@ -34,8 +34,30 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   the published name of the code 47.
 - **`tools/dev/gate.sh`** — the whole local gate (php -l, cs, phpstan, unit + compliance, integration
   on the four listeners) for any worktree path, JIT off.
+- **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
+  **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
+  **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not
+  one of them adds a field: from those versions on a throttled broker sends the answer **first** and
+  mutes the channel for the delay afterwards, so a client that sends them honours `throttle_time_ms`
+  itself. Every bump has a class of its own (`OffsetCommitRequestV3`, `GroupCoordinatorRequestV1`,
+  `JoinGroupRequestV2`, `HeartbeatRequestV1`, `LeaveGroupRequestV1`, `SyncGroupRequestV1`,
+  `DescribeGroupsRequestV1`, `ListGroupsRequestV1`, `DeleteGroupsRequestV0` and their answers) and a
+  **wire vector pair captured from the 2.8.2 container**; `Client`, `KafkaConsumer` and `AdminClient`
+  send the new versions.
 
 ### Changed
+
+- **What a 2.x coordinator does differently**, measured on the container and written down in
+  "Broker quirks and observations" of [docs/protocol/2.8.md](docs/protocol/2.8.md): a **`consumer`**
+  group whose member metadata is not a real `Subscription` never leaves `PreparingRebalance` (KIP-345
+  parses it, and the parse error is swallowed by the purgatory's timer thread); an error answer of
+  JoinGroup carries the generation **-1** instead of 0; a successful FindCoordinator answer carries
+  the error message **`"NONE"`** instead of null, and an unknown `coordinator_type` is answered with
+  the error code **42** instead of costing the connection; the rebalance timeout is also the
+  SyncGroup deadline (KAFKA-9752), so a member that joined with `rebalance_timeout = 0` is dropped at
+  once; an OffsetCommit that leaves `retention_time` at -1 is stored with the `__consumer_offsets`
+  value schema **v3**, which has no expiry at all (KIP-211), while an explicit retention still falls
+  back to the schema v1 and is still honoured up to version 4 of the api.
 
 - **The protocol document is `docs/protocol/2.8.md`**, renamed from `docs/protocol/1.1.md` with every
   `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the

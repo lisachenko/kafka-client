@@ -40,13 +40,23 @@ use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 
 /**
- * Verifies the four apis of the group membership protocol against a real Kafka 0.9.0.1 broker.
+ * Verifies the four apis of the group membership protocol against a real Kafka 2.8.2 broker.
  *
  * Kafka 0.9 moved the coordination of a group out of ZooKeeper into the coordinator broker, and these tests drive
  * the whole cycle of a generation over raw requests: a member joins, the leader publishes an assignment, the
  * members heartbeat, a second member joins and forces a rebalance, and both leave. The payloads - the metadata of a
- * member and its assignment - are opaque byte arrays to these apis, so arbitrary bytes are used for them here; the
- * `consumer` structures that really go in there belong to another ticket.
+ * member and its assignment - are opaque byte arrays to these **apis**, so arbitrary bytes are used for them here.
+ *
+ * They are not opaque to a **2.x coordinator**, though, and that is why the group protocol type of this class is
+ * {@see self::PROTOCOL_TYPE} and not `consumer`: from Kafka 2.3 on `GroupMetadata.computeSubscribedTopics()` parses
+ * the metadata of every member of a group whose protocol type *is* `consumer` as a `ConsumerProtocolSubscription`,
+ * and bytes it cannot parse leave the group in `PreparingRebalance` for good - see "A `consumer` group whose member
+ * metadata is not a Subscription never rebalances" in the "Broker quirks and observations" section of the protocol
+ * document. {@see self::testTheConsumerProtocolPayloadsSurviveTheRoundTripThroughTheseApis} is the one test here
+ * that uses the `consumer` protocol type, and it sends the real structures of that type.
+ *
+ * Every request goes out with the version this line sends, which Kafka 2.0 raised by one for all four apis without
+ * changing a field (KIP-219): JoinGroup v3, SyncGroup v2, Heartbeat v2 and LeaveGroup v2.
  *
  * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 to v3)",
  *      "SyncGroup API (key 14, v0 to v2)", "Heartbeat API (key 12, v0 to v2)" and "LeaveGroup API (key 13, v0 to v2)"
@@ -66,9 +76,18 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 final class GroupMembershipApiTest extends IntegrationTestCase
 {
     /**
-     * Protocol type of the consumer groups, the only one Kafka itself knows about
+     * Protocol type of the groups of this class, which is deliberately **not** `consumer`
+     *
+     * A group whose protocol type is `consumer` has its member metadata parsed by the coordinator itself from
+     * Kafka 2.3 on; a protocol type of its own keeps the arbitrary bytes of these tests genuinely opaque, which is
+     * what the four apis promise. {@see self::CONSUMER_PROTOCOL_TYPE} is used where the real structures are sent.
      */
-    private const string PROTOCOL_TYPE = 'consumer';
+    private const string PROTOCOL_TYPE = 't3-membership';
+
+    /**
+     * The protocol type of a real consumer group, the only one Kafka itself knows about
+     */
+    private const string CONSUMER_PROTOCOL_TYPE = 'consumer';
 
     /**
      * Name of the protocol this test offers; its metadata is opaque to the coordinator
@@ -252,9 +271,9 @@ final class GroupMembershipApiTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::INVALID_SESSION_TIMEOUT, $response->errorCode);
         self::assertSame(
-            0,
+            -1,
             $response->generationId,
-            'GroupCoordinator.joinError builds an error answer with the generation 0, not with -1'
+            'a 2.x error answer carries the UNKNOWN_GENERATION_ID -1, where a 0.11 or 1.1 broker sent 0'
         );
         self::assertSame('', $response->groupProtocol);
         self::assertSame('', $response->leaderId);
@@ -262,38 +281,103 @@ final class GroupMembershipApiTest extends IntegrationTestCase
     }
 
     /**
-     * The rebalance timeout of version 1 is not validated at all - only the session timeout is
+     * The rebalance timeout is not validated at all - only the session timeout is - but it is no longer harmless
      *
-     * `group.max.session.timeout.ms` of the container is 60000, and `GroupCoordinator.handleJoinGroup` @ 0.10.2.2
+     * `group.max.session.timeout.ms` of the container is 60000, and `GroupCoordinator.handleJoinGroup` @ 2.8.2
      * checks nothing but the session timeout against it: a rebalance timeout far above that bound is accepted, and
-     * so is a rebalance timeout of 0.
+     * so is a rebalance timeout of 0. What Kafka 2.5 added (KAFKA-9752, the pending-sync expiration of KIP-345) is
+     * a **second** use of the field: `onCompleteJoin` schedules a `DelayedSync` with exactly this timeout and
+     * `onExpirePendingSync` drops every member of the fresh generation that has not sent its SyncGroup by then.
+     * With a rebalance timeout of 0 that expiry fires the moment the generation is formed, so the member is gone
+     * before it can do anything with the answer it just received - which is what the LeaveGroup below measures.
      */
-    public function testTheRebalanceTimeoutOfVersionOneIsNotBoundedByTheBroker(): void
+    public function testTheRebalanceTimeoutIsNotBoundedByTheBrokerButIsAlsoTheSyncDeadline(): void
     {
         $groupId = self::uniqueGroupName();
         $stream  = $this->coordinatorStream($groupId);
 
-        foreach ([300000, 0] as $index => $rebalanceTimeoutMs) {
-            new JoinGroupRequest(
-                $groupId,
-                self::SESSION_TIMEOUT_MS,
-                $rebalanceTimeoutMs,
-                JoinGroupRequest::DEFAULT_MEMBER_ID,
-                self::PROTOCOL_TYPE,
-                [self::PROTOCOL_NAME => 'metadata'],
-                $this->clientId(),
-                310 + $index
-            )->writeTo($stream);
-            $response = JoinGroupResponse::unpack($stream);
+        new JoinGroupRequest(
+            $groupId,
+            self::SESSION_TIMEOUT_MS,
+            300000,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            self::PROTOCOL_TYPE,
+            [self::PROTOCOL_NAME => 'metadata'],
+            $this->clientId(),
+            310
+        )->writeTo($stream);
+        $generous = JoinGroupResponse::unpack($stream);
 
-            self::assertSame(
-                KafkaException::NO_ERROR,
-                $response->errorCode,
-                "a rebalance timeout of {$rebalanceTimeoutMs} ms is accepted, however group.max.session.timeout.ms "
-                . 'is configured'
-            );
-            $this->leave($stream, $groupId, $response->memberId);
-        }
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $generous->errorCode,
+            'a rebalance timeout of 300000 ms is accepted, however group.max.session.timeout.ms is configured'
+        );
+        $this->leave($stream, $groupId, $generous->memberId);
+
+        // The same join with a rebalance timeout of 0: accepted as well, and the member is dropped right away
+        $immediate = self::uniqueGroupName();
+        new JoinGroupRequest(
+            $immediate,
+            self::SESSION_TIMEOUT_MS,
+            0,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            self::PROTOCOL_TYPE,
+            [self::PROTOCOL_NAME => 'metadata'],
+            $this->clientId(),
+            311
+        )->writeTo($stream);
+        $zero = JoinGroupResponse::unpack($stream);
+
+        self::assertSame(KafkaException::NO_ERROR, $zero->errorCode, 'a rebalance timeout of 0 is accepted too');
+        self::assertSame(1, $zero->generationId);
+
+        new LeaveGroupRequest($immediate, $zero->memberId, $this->clientId(), 312)->writeTo($stream);
+
+        self::assertSame(
+            KafkaException::UNKNOWN_MEMBER_ID,
+            LeaveGroupResponse::unpack($stream)->errorCode,
+            'the pending-sync expiration of the rebalance timeout 0 removed the member before it could sync'
+        );
+    }
+
+    /**
+     * The metadata of a group whose protocol type is not `consumer` is never parsed by the coordinator
+     *
+     * This is the counterpart of the quirk that the class docblock names: a 2.x coordinator parses the member
+     * metadata of a `consumer` group and wedges the group when it cannot, but it only does that for that one
+     * protocol type - `GroupMetadata.computeSubscribedTopics()` @ 2.8.2 matches
+     * `Some(ConsumerProtocol.PROTOCOL_TYPE)` and answers `None` for everything else. Bytes that are not a
+     * `ConsumerProtocolSubscription` - here a NUL byte, an invalid UTF-8 byte and a length prefix that promises far
+     * more data than follows - therefore travel through JoinGroup and SyncGroup untouched.
+     */
+    public function testTheCoordinatorNeverParsesTheMetadataOfANonConsumerProtocolType(): void
+    {
+        $groupId    = self::uniqueGroupName();
+        $stream     = $this->coordinatorStream($groupId);
+        $metadata   = "\x00\xff\x7f\xff\xff\xffnot a subscription";
+        $assignment = "\xff\xff\xff\xff\x00not an assignment";
+
+        $join = $this->join($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, $metadata);
+
+        self::assertSame(1, $join->generationId, 'the group rebalanced although the metadata is not parseable');
+        self::assertSame(
+            [$join->memberId => $metadata],
+            array_map(static fn(JoinGroupResponseMember $member): string => $member->metadata, $join->members)
+        );
+
+        $sync = $this->sync($stream, $groupId, $join->memberId, $join->generationId, [
+            $join->memberId => $assignment,
+        ]);
+
+        self::assertSame($assignment, $sync->memberAssignment);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $this->heartbeat($stream, $groupId, $join->memberId, $join->generationId)->errorCode,
+            'the group is stable, which a `consumer` group with these bytes would never become'
+        );
+
+        $this->leave($stream, $groupId, $join->memberId);
     }
 
     /**
@@ -508,7 +592,7 @@ final class GroupMembershipApiTest extends IntegrationTestCase
             $coordinator,
             $groupId,
             JoinGroupRequest::DEFAULT_MEMBER_ID,
-            self::PROTOCOL_TYPE,
+            self::CONSUMER_PROTOCOL_TYPE,
             [self::PROTOCOL_NAME => $subscription->pack()]
         );
 

@@ -369,8 +369,15 @@ final class AdminGroupApiTest extends IntegrationTestCase
 
         $topics = $this->admin->listGroupOffsets($groupId);
 
+        $partitions = array_keys($topics[$topic]->partitions);
+        sort($partitions);
+
         self::assertSame([$topic], array_keys($topics), 'the group committed exactly one topic');
-        self::assertSame([0, 2], array_keys($topics[$topic]->partitions));
+        self::assertSame(
+            [0, 2],
+            $partitions,
+            'a 2.8.2 coordinator answers a null topic array in the order of its internal map, not by partition'
+        );
         self::assertSame(12, $topics[$topic]->partitions[0]->offset);
         self::assertSame(34, $topics[$topic]->partitions[2]->offset);
 
