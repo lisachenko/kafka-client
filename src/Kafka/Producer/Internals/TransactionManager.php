@@ -32,6 +32,7 @@ use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
@@ -109,7 +110,7 @@ use Throwable;
  * again" and "your records are there and we disagree about them" visible at all.
  *
  * @see \Protocol\Kafka\Client::initProducerId()
- * @see docs/protocol/2.8.md, sections "InitProducerId API (key 22, v0 to v2)" and "The idempotent producer"
+ * @see docs/protocol/2.8.md, sections "InitProducerId API (key 22, v0 to v3)" and "The idempotent producer"
  */
 class TransactionManager
 {
@@ -813,15 +814,29 @@ class TransactionManager
      * The consumer of that group must **not** commit those offsets itself (`enable.auto.commit = false`), and it
      * has to read `read_committed`, otherwise it would see the records of a transaction that is later aborted.
      *
+     * **Kafka 2.5 added the membership of KIP-447** to the second request: a `ConsumerGroupMetadata` names the
+     * generation, the member id and the `group.instance.id` of the consumer, and the group coordinator refuses a
+     * commit of a generation that is over (22), of a member it does not know (25) or of an instance id that has
+     * moved on (82). A bare group id keeps meaning what it meant before - the generation -1 with an empty member
+     * id, which the coordinator accepts without checking anything.
+     *
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit, as
      *        topic => partition => offset
-     * @param string $groupId Consumer group the offsets belong to
+     * @param string|ConsumerGroupMetadata $groupMetadata Consumer group the offsets belong to, as its id or - from
+     *        Kafka 2.5 - as the whole membership of the consumer
      *
      * @throws LogicException For a producer that is not inside a transaction
      * @throws KafkaException For an error a coordinator reports
      */
-    public function sendOffsetsToTransaction(array $topicPartitionOffsets, string $groupId): void
-    {
+    public function sendOffsetsToTransaction(
+        array $topicPartitionOffsets,
+        string|ConsumerGroupMetadata $groupMetadata
+    ): void {
+        $groupMetadata = is_string($groupMetadata)
+            ? ConsumerGroupMetadata::forGroup($groupMetadata)
+            : $groupMetadata;
+        $groupId       = $groupMetadata->groupId;
+
         $this->ensureTransactional();
         $this->maybeFailWithError();
 
@@ -844,13 +859,19 @@ class TransactionManager
         ));
         $this->transactionalRequest(fn(): mixed => $this->onGroupCoordinator(
             $groupId,
-            function (Node $coordinator) use ($transactionalId, $groupId, $topicPartitionOffsets): void {
+            function (Node $coordinator) use (
+                $transactionalId,
+                $groupId,
+                $topicPartitionOffsets,
+                $groupMetadata
+            ): void {
                 $this->client->txnOffsetCommit(
                     $coordinator,
                     $transactionalId,
                     $groupId,
                     $this->producerIdAndEpoch,
-                    $topicPartitionOffsets
+                    $topicPartitionOffsets,
+                    $groupMetadata
                 );
             }
         ));

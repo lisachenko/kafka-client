@@ -19,6 +19,8 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV2;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV2;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV0;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV1;
@@ -29,12 +31,14 @@ use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV1;
 /**
  * Byte-exact tests for the InitProducerId API of Kafka 0.11 (api key 22, v0).
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
 #[CoversClass(InitProducerIdRequestV0::class)]
 #[CoversClass(InitProducerIdResponse::class)]
 #[CoversClass(InitProducerIdResponseV0::class)]
+#[CoversClass(InitProducerIdRequestV2::class)]
+#[CoversClass(InitProducerIdResponseV2::class)]
 final class InitProducerIdTest extends TestCase
 {
     /**
@@ -148,14 +152,14 @@ final class InitProducerIdTest extends TestCase
      */
     public function testTheRequestOfVersionTwoIsCompact(): void
     {
-        $request = new InitProducerIdRequest(null, 60000, 'test', 7);
+        $request = new InitProducerIdRequestV2(null, 60000, 'test', 7);
 
         self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
         self::assertSame(2, $request->getApiVersion(), 'Kafka 2.4 raised the api to the flexible version 2');
-        self::assertTrue(InitProducerIdRequest::isFlexible());
+        self::assertTrue(InitProducerIdRequestV2::isFlexible());
         self::assertNull($request->getTransactionalId(), 'the compact null of a string is the single byte 00');
 
-        $response = InitProducerIdResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+        $response = InitProducerIdResponseV2::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
 
         self::assertSame(2000, $response->producerId);
         self::assertSame(3, $response->producerEpoch);
@@ -167,7 +171,7 @@ final class InitProducerIdTest extends TestCase
         self::assertSame(60000, InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS);
         self::assertSame(
             InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS,
-            new InitProducerIdRequest()->getTransactionTimeoutMs()
+            new InitProducerIdRequestV2()->getTransactionTimeoutMs()
         );
     }
 
@@ -218,7 +222,7 @@ final class InitProducerIdTest extends TestCase
         self::assertStringNotContainsString('ffff' . '0000ea60', $frame);
 
         // and in the flexible version 2 the empty string is the compact length 1, where null is the length 0
-        $flexible = bin2hex((string) new InitProducerIdRequest('', 60000, 'test', 7));
+        $flexible = bin2hex((string) new InitProducerIdRequestV2('', 60000, 'test', 7));
 
         self::assertStringContainsString('01' . '0000ea60', $flexible);
         self::assertStringNotContainsString('00' . '0000ea60' . '00' . '0000ea60', $flexible);

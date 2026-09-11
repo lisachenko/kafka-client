@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * to be `count` minus the current partition count, and every entry has to have as many brokers as the replication
  * factor of the topic; anything else is the error code 39 (InvalidReplicaAssignment).
  *
- * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v2)"
  */
 class CreatePartitionsRequestTopic implements BinarySchemaInterface
 {

@@ -1,7 +1,7 @@
 {
     "api": "sasl-authenticate",
     "apiKey": 36,
-    "section": "SaslAuthenticate API (key 36, v0 and v1)",
+    "section": "SaslAuthenticate API (key 36, v0 to v2)",
     "description": "Wire vectors of the SaslAuthenticate API (key 36, v0, Kafka 1.0 / KIP-152), the request that carries the SASL tokens after a SaslHandshake v1, replayed by tests/Compliance.",
     "vectors": [
         {
@@ -99,7 +99,7 @@
         {
             "id": "saslauthenticate.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequestV1",
             "version": 1,
             "source": "broker",
             "description": "SaslAuthenticate request v1, the frame of version 0 with the api version Kafka 2.2 added: the PLAIN token of `User:kafkatest` inside an ordinary request, on the SASL_PLAINTEXT listener.",
@@ -118,7 +118,7 @@
         {
             "id": "saslauthenticate.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponseV1",
             "version": 1,
             "source": "broker",
             "description": "SaslAuthenticate answer v1 of KIP-368: the empty token of a finished PLAIN exchange and the `session_lifetime_ms` the version added - 0 on a broker whose listener sets no `connections.max.reauth.ms`, which means that the session never has to re-authenticate.",

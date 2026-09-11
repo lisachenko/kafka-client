@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see InitProducerIdRequest} sends. Version 1 itself is the frame of version 0 with a higher number in the
  * header, which is the client's promise that it honours a `throttle_time_ms` itself.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
  */
 final class InitProducerIdRequestV1 extends InitProducerIdRequest
 {
@@ -32,4 +32,31 @@ final class InitProducerIdRequestV1 extends InitProducerIdRequest
      * @inheritdoc
      */
     public const int VERSION = 1;
+
+    /**
+     * @param string|null $transactionalId      Transactional id whose producer id is asked for, `null` for a plain
+     *        idempotent producer
+     * @param int         $transactionTimeoutMs How long the coordinator waits for a status update of an open
+     *        transaction before it aborts it
+     * @param string      $clientId             A user specified identifier for the client making the request
+     * @param int         $correlationId        A user-supplied value that the broker passes back unmodified
+     */
+    public function __construct(
+        ?string $transactionalId = null,
+        int $transactionTimeoutMs = self::DEFAULT_TRANSACTION_TIMEOUT_MS,
+        string $clientId = '',
+        int $correlationId = 0
+    ) {
+        // The `producer_id` and the `producer_epoch` of KIP-360 are fields of the version 3 and have no place in
+        // this frame, so this version can only ever ask for a NEW producer id
+        parent::__construct(
+            $transactionalId,
+            $transactionTimeoutMs,
+            self::NO_PRODUCER_ID,
+            self::NO_PRODUCER_EPOCH,
+            $clientId,
+            $correlationId
+        );
+    }
+
 }

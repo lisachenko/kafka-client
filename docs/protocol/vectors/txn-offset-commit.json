@@ -1,8 +1,8 @@
 {
     "api": "txn-offset-commit",
     "apiKey": 28,
-    "section": "TxnOffsetCommit API (key 28, v0 to v2)",
-    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v2), replayed by tests/Compliance.",
+    "section": "TxnOffsetCommit API (key 28, v0 to v3)",
+    "description": "Wire vectors of the TxnOffsetCommit API (key 28, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "txnoffsetcommit.request.v0",
@@ -121,7 +121,7 @@
         {
             "id": "txnoffsetcommit.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitRequestV2",
             "version": 2,
             "source": "broker",
             "description": "TxnOffsetCommit request v2, the first frame of this api that Kafka really changed: every partition carries the `committed_leader_epoch` of KIP-320 between the offset and the metadata - the epoch 0 of a partition whose leader was never re-elected.",
@@ -154,7 +154,7 @@
         {
             "id": "txnoffsetcommit.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\TxnOffsetCommitResponseV2",
             "version": 2,
             "source": "broker",
             "description": "TxnOffsetCommit response v2: the frame of version 0, and the error code 0 of the partition whose offset the group coordinator wrote with that epoch.",

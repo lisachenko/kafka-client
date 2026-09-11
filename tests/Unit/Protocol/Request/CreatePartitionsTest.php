@@ -22,6 +22,8 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\CreatePartitionsRequestTopic;
 use Protocol\Kafka\Protocol\Data\CreatePartitionsResponseTopic;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsRequestV1;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsResponseV1;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequestV0;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsResponse;
@@ -30,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\CreatePartitionsResponseV0;
 /**
  * Byte-exact tests for the CreatePartitions API of Kafka 1.0 (api key 37, v0, KIP-195).
  *
- * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v2)"
  */
 #[CoversClass(CreatePartitionsRequest::class)]
 #[CoversClass(CreatePartitionsRequestV0::class)]
@@ -39,6 +41,8 @@ use Protocol\Kafka\Protocol\Request\CreatePartitionsResponseV0;
 #[CoversClass(CreatePartitionsRequestTopic::class)]
 #[CoversClass(CreatePartitionsResponseTopic::class)]
 #[CoversClass(NewPartitions::class)]
+#[CoversClass(CreatePartitionsRequestV1::class)]
+#[CoversClass(CreatePartitionsResponseV1::class)]
 final class CreatePartitionsTest extends TestCase
 {
     /**
@@ -90,7 +94,7 @@ final class CreatePartitionsTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new CreatePartitionsRequest(
+        $request = new CreatePartitionsRequestV1(
             [
                 'grow'   => NewPartitions::increaseTo(5),
                 'placed' => NewPartitions::increaseTo(3, [[0], [0, 1]]),
@@ -108,15 +112,15 @@ final class CreatePartitionsTest extends TestCase
 
     public function testAPlainCountIsTheSameFrameAsANewPartitionsWithoutAnAssignment(): void
     {
-        $fromInteger = new CreatePartitionsRequest(['grow' => 5], 30000, false, 'test', 7);
-        $fromObject  = new CreatePartitionsRequest(
+        $fromInteger = new CreatePartitionsRequestV1(['grow' => 5], 30000, false, 'test', 7);
+        $fromObject  = new CreatePartitionsRequestV1(
             ['grow' => NewPartitions::increaseTo(5)],
             30000,
             false,
             'test',
             7
         );
-        $fromEntry   = new CreatePartitionsRequest(
+        $fromEntry   = new CreatePartitionsRequestV1(
             ['grow' => new CreatePartitionsRequestTopic('grow', 5)],
             30000,
             false,
@@ -139,7 +143,7 @@ final class CreatePartitionsTest extends TestCase
 
     public function testResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = CreatePartitionsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = CreatePartitionsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(7, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);
@@ -158,14 +162,14 @@ final class CreatePartitionsTest extends TestCase
 
     public function testResponseSurvivesARoundTrip(): void
     {
-        $response = CreatePartitionsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = CreatePartitionsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
     }
 
     public function testRequestSurvivesARoundTrip(): void
     {
-        $request = CreatePartitionsRequest::unpack(new StringStream((string) hex2bin(self::REQUEST_HEX)));
+        $request = CreatePartitionsRequestV1::unpack(new StringStream((string) hex2bin(self::REQUEST_HEX)));
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
     }

@@ -1,8 +1,8 @@
 {
     "api": "create-partitions",
     "apiKey": 37,
-    "section": "CreatePartitions API (key 37, v0 and v1)",
-    "description": "Wire vectors of the CreatePartitions API (key 37, v0 and v1), replayed by tests/Compliance.",
+    "section": "CreatePartitions API (key 37, v0 to v2)",
+    "description": "Wire vectors of the CreatePartitions API (key 37, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "createpartitions.request.v0",
@@ -198,7 +198,7 @@
         {
             "id": "createpartitions.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "CreatePartitions request v1, the frame of version 0 with the api version Kafka 2.0 added: one topic grown to two partitions, the placement left to the controller.",
@@ -223,7 +223,7 @@
         {
             "id": "createpartitions.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "CreatePartitions response v1: the error code 0 and a null error message of the topic that was grown.",

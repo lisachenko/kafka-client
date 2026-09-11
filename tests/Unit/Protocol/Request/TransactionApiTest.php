@@ -30,6 +30,8 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarker;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponsePartition;
 use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseTopic;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV2;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV2;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
@@ -55,7 +57,7 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
  * @see docs/protocol/2.8.md, sections "AddPartitionsToTxn API (key 24, v0 and v1)", "AddOffsetsToTxn API (key 25, v0 and v1)",
- *      "EndTxn API (key 26, v0 and v1)", "WriteTxnMarkers API (key 27, v0)" and "TxnOffsetCommit API (key 28, v0 to v2)"
+ *      "EndTxn API (key 26, v0 and v1)", "WriteTxnMarkers API (key 27, v0)" and "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
 #[CoversClass(AddPartitionsToTxnRequestV0::class)]
@@ -87,6 +89,8 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 #[CoversClass(TxnOffsetCommitRequestPartition::class)]
 #[CoversClass(TxnOffsetCommitResponseTopic::class)]
 #[CoversClass(TxnOffsetCommitResponsePartition::class)]
+#[CoversClass(TxnOffsetCommitRequestV2::class)]
+#[CoversClass(TxnOffsetCommitResponseV2::class)]
 final class TransactionApiTest extends TestCase
 {
     /**
@@ -381,7 +385,7 @@ final class TransactionApiTest extends TestCase
 
     public function testTxnOffsetCommitRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new TxnOffsetCommitRequest(
+        $request = new TxnOffsetCommitRequestV2(
             'tx-1',
             'my-group',
             42,
@@ -397,7 +401,7 @@ final class TransactionApiTest extends TestCase
 
     public function testAPlainOffsetOfATxnOffsetCommitCarriesNoMetadata(): void
     {
-        $request = new TxnOffsetCommitRequest('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], 'test', 11);
+        $request = new TxnOffsetCommitRequestV2('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], 'test', 11);
 
         // The metadata is a nullable string, so an offset without one is the two bytes ff ff, behind the -1 of
         // the `committed_leader_epoch` that version 2 added
@@ -409,7 +413,7 @@ final class TransactionApiTest extends TestCase
 
     public function testTxnOffsetCommitReportsEveryErrorPerPartition(): void
     {
-        $response = TxnOffsetCommitResponse::unpack(
+        $response = TxnOffsetCommitResponseV2::unpack(
             new StringStream((string) hex2bin(self::TXN_OFFSET_COMMIT_RESPONSE_HEX))
         );
 
@@ -491,7 +495,7 @@ final class TransactionApiTest extends TestCase
      */
     public function testTheCommittedLeaderEpochOfVersionTwoComesFromTheOffsetValueObject(): void
     {
-        $request = new TxnOffsetCommitRequest(
+        $request = new TxnOffsetCommitRequestV2(
             'tx-1',
             'my-group',
             42,
@@ -507,7 +511,7 @@ final class TransactionApiTest extends TestCase
             bin2hex((string) $request),
             'the epoch stands between the offset and the metadata'
         );
-        $withoutEpoch = new TxnOffsetCommitRequest(
+        $withoutEpoch = new TxnOffsetCommitRequestV2(
             'tx-1',
             'my-group',
             42,

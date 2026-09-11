@@ -20,6 +20,12 @@ use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponseV1;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV1;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponseV1;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequestV1;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV1;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV0;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV1;
@@ -49,8 +55,8 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV0;
  * struct {@see KafkaPrincipal}.
  *
  * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
- *      "RenewDelegationToken API (key 39, v0 and v1)", "ExpireDelegationToken API (key 40, v0 and v1)" and
- *      "DescribeDelegationToken API (key 41, v0 and v1)"
+ *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
+ *      "DescribeDelegationToken API (key 41, v0 to v2)"
  */
 #[CoversClass(CreateDelegationTokenRequest::class)]
 #[CoversClass(CreateDelegationTokenRequestV0::class)]
@@ -69,6 +75,12 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV0;
 #[CoversClass(DescribeDelegationTokenResponse::class)]
 #[CoversClass(DescribeDelegationTokenResponseV0::class)]
 #[CoversClass(DescribeDelegationTokenResponseToken::class)]
+#[CoversClass(RenewDelegationTokenRequestV1::class)]
+#[CoversClass(RenewDelegationTokenResponseV1::class)]
+#[CoversClass(ExpireDelegationTokenRequestV1::class)]
+#[CoversClass(ExpireDelegationTokenResponseV1::class)]
+#[CoversClass(DescribeDelegationTokenRequestV1::class)]
+#[CoversClass(DescribeDelegationTokenResponseV1::class)]
 final class DelegationTokenTest extends TestCase
 {
     /**
@@ -369,7 +381,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheRenewRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new RenewDelegationTokenRequest("\x01\x02\x03\x04", 600000, 'test', 6);
+        $request = new RenewDelegationTokenRequestV1("\x01\x02\x03\x04", 600000, 'test', 6);
 
         self::assertSame(self::RENEW_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::RENEW_DELEGATION_TOKEN, $request->getApiKey());
@@ -381,7 +393,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheRenewResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = RenewDelegationTokenResponse::unpack(
+        $response = RenewDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::RENEW_RESPONSE_HEX))
         );
 
@@ -393,7 +405,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testAnErrorOfTheRenewApiCarriesTheTimestampMinusOne(): void
     {
-        $response = RenewDelegationTokenResponse::unpack(
+        $response = RenewDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::RENEW_RESPONSE_MISMATCH_HEX))
         );
 
@@ -403,7 +415,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheExpireRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new ExpireDelegationTokenRequest("\x01\x02\x03\x04", -1, 'test', 7);
+        $request = new ExpireDelegationTokenRequestV1("\x01\x02\x03\x04", -1, 'test', 7);
 
         self::assertSame(self::EXPIRE_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::EXPIRE_DELEGATION_TOKEN, $request->getApiKey());
@@ -415,7 +427,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheExpireResponseHasTheSameFrameAsTheRenewOne(): void
     {
-        $response = ExpireDelegationTokenResponse::unpack(
+        $response = ExpireDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::EXPIRE_RESPONSE_HEX))
         );
 
@@ -432,7 +444,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheDescribeRequestSendsANullArrayForEveryVisibleToken(): void
     {
-        $request = new DescribeDelegationTokenRequest(null, 'test', 8);
+        $request = new DescribeDelegationTokenRequestV1(null, 'test', 8);
 
         self::assertSame(self::DESCRIBE_REQUEST_ALL_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DESCRIBE_DELEGATION_TOKEN, $request->getApiKey());
@@ -444,7 +456,7 @@ final class DelegationTokenTest extends TestCase
     {
         self::assertSame(
             self::DESCRIBE_REQUEST_NONE_HEX,
-            bin2hex((string) new DescribeDelegationTokenRequest([], 'test', 8)),
+            bin2hex((string) new DescribeDelegationTokenRequestV1([], 'test', 8)),
             'an empty array asks for nothing, a null array for everything'
         );
         self::assertNotSame(self::DESCRIBE_REQUEST_NONE_HEX, self::DESCRIBE_REQUEST_ALL_HEX);
@@ -452,7 +464,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheDescribeRequestPacksTheOwnersItIsGiven(): void
     {
-        $request = new DescribeDelegationTokenRequest(['User:kafkatest'], 'test', 8);
+        $request = new DescribeDelegationTokenRequestV1(['User:kafkatest'], 'test', 8);
 
         self::assertSame(self::DESCRIBE_REQUEST_ONE_HEX, bin2hex((string) $request));
         self::assertEquals([KafkaPrincipal::user('kafkatest')], $request->getOwners());
@@ -460,7 +472,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheDescribeResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = DescribeDelegationTokenResponse::unpack(
+        $response = DescribeDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::DESCRIBE_RESPONSE_HEX))
         );
 

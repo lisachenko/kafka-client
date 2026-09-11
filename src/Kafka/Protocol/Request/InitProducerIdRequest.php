@@ -64,7 +64,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The versions 3 (Kafka 2.5, KIP-360: the producer id and epoch of the caller) and 4 (Kafka 2.7, KIP-588) belong to
  * a later ticket of this line.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v2)"
+ * **Kafka 2.5 added the version 3** (KIP-360): the request gained a `producer_id` and a `producer_epoch`, both -1
+ * by default. A **transactional** producer that already holds an id sends the pair to have its epoch **bumped**
+ * instead of asking for a new id: `TransactionCoordinator.handleInitProducerId` @ 2.8.2 answers the same id with
+ * `epoch + 1` and fences everything that still writes under the old one, which is how a producer recovers from an
+ * error that used to make it unusable. The -1/-1 of {@see self::NO_PRODUCER_ID} is the old behaviour, "give me an
+ * id"; {@see InitProducerIdRequestV2} is the frame without the two fields.
+ *
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
  */
 class InitProducerIdRequest extends AbstractRequest
 {
@@ -76,7 +83,7 @@ class InitProducerIdRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * @inheritdoc
@@ -89,10 +96,30 @@ class InitProducerIdRequest extends AbstractRequest
     public const int DEFAULT_TRANSACTION_TIMEOUT_MS = 60000;
 
     /**
+     * `producer_id` of a request that asks for a NEW producer id instead of bumping the epoch of one it has
+     *
+     * The `"default": "-1"` of the field in `InitProducerIdRequest.json` @ 2.5.1, and
+     * `RecordBatch.NO_PRODUCER_ID` of the Java client.
+     *
+     * @since Version 3 of protocol
+     */
+    public const int NO_PRODUCER_ID = -1;
+
+    /**
+     * `producer_epoch` that goes with {@see self::NO_PRODUCER_ID}, `RecordBatch.NO_PRODUCER_EPOCH`
+     *
+     * @since Version 3 of protocol
+     */
+    public const int NO_PRODUCER_EPOCH = -1;
+
+    /**
      * @param string|null $transactionalId       Transactional id whose producer id is asked for, `null` for the
      *        producer id of a plain idempotent producer
      * @param int         $transactionTimeoutMs  How long the coordinator waits for a status update of an open
      *        transaction before it aborts it; ignored for a `null` transactional id
+     * @param int         $producerId            Producer id the caller already has, whose epoch it wants bumped
+     *        (KIP-360), or {@see self::NO_PRODUCER_ID} for a new one
+     * @param int         $producerEpoch         Epoch that belongs to that id, or {@see self::NO_PRODUCER_EPOCH}
      * @param string      $clientId              A user specified identifier for the client making the request
      * @param int         $correlationId         A user-supplied value that the broker passes back unmodified
      */
@@ -105,6 +132,18 @@ class InitProducerIdRequest extends AbstractRequest
          * The time in ms to wait for before aborting idle transactions sent by this producer
          */
         protected readonly int $transactionTimeoutMs = self::DEFAULT_TRANSACTION_TIMEOUT_MS,
+        /**
+         * Producer id the caller holds, or -1 to ask for a new one
+         *
+         * @since Version 3 of protocol
+         */
+        protected readonly int $producerId = self::NO_PRODUCER_ID,
+        /**
+         * Epoch of that producer id, or -1
+         *
+         * @since Version 3 of protocol
+         */
+        protected readonly int $producerEpoch = self::NO_PRODUCER_EPOCH,
         string $clientId = '',
         int $correlationId = 0
     ) {
@@ -118,10 +157,16 @@ class InitProducerIdRequest extends AbstractRequest
     {
         $header = parent::getScheme();
 
-        return $header + [
+        $body = [
             'transactionalId'      => BinarySchema::TYPE_NULLABLE_STRING,
             'transactionTimeoutMs' => BinarySchema::TYPE_INT32,
         ];
+        if (static::VERSION >= 3) {
+            $body['producerId']    = BinarySchema::TYPE_INT64;
+            $body['producerEpoch'] = BinarySchema::TYPE_INT16;
+        }
+
+        return $header + $body;
     }
 
     /**
@@ -138,5 +183,21 @@ class InitProducerIdRequest extends AbstractRequest
     public function getTransactionTimeoutMs(): int
     {
         return $this->transactionTimeoutMs;
+    }
+
+    /**
+     * Returns the producer id whose epoch this request wants bumped, {@see self::NO_PRODUCER_ID} for a new one
+     */
+    public function getProducerId(): int
+    {
+        return $this->producerId;
+    }
+
+    /**
+     * Returns the epoch that belongs to it, {@see self::NO_PRODUCER_EPOCH} when there is none
+     */
+    public function getProducerEpoch(): int
+    {
+        return $this->producerEpoch;
     }
 }

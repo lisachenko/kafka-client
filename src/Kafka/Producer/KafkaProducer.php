@@ -30,6 +30,7 @@ use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Record\RecordV2;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
@@ -417,9 +418,12 @@ class KafkaProducer
      * @throws \LogicException               For a producer that has no open transaction
      * @throws KafkaException                For an error a coordinator reports
      */
-    public function sendOffsetsToTransaction(array $topicPartitionOffsets, string $consumerGroupId): void
-    {
-        $this->requireTransactionManager()->sendOffsetsToTransaction($topicPartitionOffsets, $consumerGroupId);
+    public function sendOffsetsToTransaction(
+        array $topicPartitionOffsets,
+        string|ConsumerGroupMetadata $consumerGroupMetadata
+    ): void {
+        $this->requireTransactionManager()
+            ->sendOffsetsToTransaction($topicPartitionOffsets, $consumerGroupMetadata);
     }
 
     /**

@@ -52,8 +52,8 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
  * at all (the broker answers 66 for that too), and only the broker's own sweeper removes it.
  *
  * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
- *      "RenewDelegationToken API (key 39, v0 and v1)", "ExpireDelegationToken API (key 40, v0 and v1)" and
- *      "DescribeDelegationToken API (key 41, v0 and v1)"
+ *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
+ *      "DescribeDelegationToken API (key 41, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DelegationToken::class)]

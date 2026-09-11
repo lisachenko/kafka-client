@@ -1,8 +1,8 @@
 {
     "api": "init-producer-id",
     "apiKey": 22,
-    "section": "InitProducerId API (key 22, v0 to v2)",
-    "description": "Wire vectors of the InitProducerId API (key 22, v0 to v2), replayed by tests/Compliance.",
+    "section": "InitProducerId API (key 22, v0 to v3)",
+    "description": "Wire vectors of the InitProducerId API (key 22, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "initproducerid.request.v0",
@@ -147,7 +147,7 @@
         {
             "id": "initproducerid.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequestV2",
             "version": 2,
             "source": "broker",
             "description": "InitProducerId request v2, the flexible version of Kafka 2.4 and the one this client sends: the request header v2, the transactional id as a compact string and a tag buffer at the end of the header and of the body.",
@@ -166,7 +166,7 @@
         {
             "id": "initproducerid.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer of the transaction coordinator to it: the same four fields as every version of this api, between the tag buffer of the response header v1 and the one of the body. The epoch is 1 because the coordinator had already handed a producer id to this transactional id and bumps the epoch on every InitProducerId of the same id.",

@@ -54,14 +54,18 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see InitProducerIdResponseV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v2)"
+ * **Kafka 2.5 added the version 3** (KIP-360) and gave the answer nothing: the two new fields are in the request.
+ * What changes is what the answer MEANS for a request that carried a producer id - the same id with `epoch + 1`
+ * instead of a fresh id. {@see InitProducerIdResponseV2} is the identical frame with the version of Kafka 2.4.
+ *
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
  */
 class InitProducerIdResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * @inheritdoc
