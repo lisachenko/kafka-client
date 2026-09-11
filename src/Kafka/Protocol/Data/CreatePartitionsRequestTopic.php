@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *   CreatePartitionsRequestTopic => topic count assignment
  *     topic      => STRING
  *     count      => INT32
- *     assignment => NULLABLE_ARRAY of ARRAY of INT32
+ *     assignment => NULLABLE_ARRAY of CreatePartitionsRequestAssignment
  * </pre>
  *
  * `CREATE_PARTITIONS_REQUEST_V0` of `CreatePartitionsRequest.java` @ 1.1.1 declares `count` and `assignment` as a
@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * to be `count` minus the current partition count, and every entry has to have as many brokers as the replication
  * factor of the topic; anything else is the error code 39 (InvalidReplicaAssignment).
  *
- * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v2)"
  */
 class CreatePartitionsRequestTopic implements BinarySchemaInterface
 {
@@ -55,24 +55,37 @@ class CreatePartitionsRequestTopic implements BinarySchemaInterface
     public int $count;
 
     /**
-     * Broker ids of every partition that is added, or null to leave the placement to the controller
+     * Replica placement of every partition that is added, or null to leave it to the controller
      *
-     * @var list<list<int>>|null
+     * @var list<CreatePartitionsRequestAssignment>|null
      */
     public ?array $assignment;
 
     /**
-     * @param string                $topic      Name of the topic
-     * @param int                   $count      Total number of partitions the topic should have afterwards
-     * @param list<list<int>>|null  $assignment Replicas of every added partition, null for the controller's choice
+     * @param string                                                  $topic      Name of the topic
+     * @param int                                                     $count      Total number of partitions the
+     *        topic should have afterwards
+     * @param list<list<int>|CreatePartitionsRequestAssignment>|null   $assignment Replicas of every added
+     *        partition, null for the controller's choice
      */
     public function __construct(string $topic, int $count, ?array $assignment = null)
     {
-        $this->topic      = $topic;
-        $this->count      = $count;
-        $this->assignment = $assignment === null
-            ? null
-            : array_values(array_map(array_values(...), $assignment));
+        $this->topic = $topic;
+        $this->count = $count;
+
+        if ($assignment === null) {
+            $this->assignment = null;
+
+            return;
+        }
+
+        $entries = [];
+        foreach ($assignment as $replicas) {
+            $entries[] = $replicas instanceof CreatePartitionsRequestAssignment
+                ? $replicas
+                : new CreatePartitionsRequestAssignment($replicas);
+        }
+        $this->assignment = $entries;
     }
 
     /**
@@ -91,7 +104,7 @@ class CreatePartitionsRequestTopic implements BinarySchemaInterface
         return [
             'topic'      => BinarySchema::TYPE_STRING,
             'count'      => BinarySchema::TYPE_INT32,
-            'assignment' => [[BinarySchema::TYPE_INT32], BinarySchema::FLAG_NULLABLE => true],
+            'assignment' => [CreatePartitionsRequestAssignment::class, BinarySchema::FLAG_NULLABLE => true],
         ];
     }
 }

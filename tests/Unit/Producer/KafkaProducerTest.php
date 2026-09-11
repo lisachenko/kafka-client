@@ -36,6 +36,7 @@ use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Producer\RecordMetadata;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\ClusterFixture;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\TestKafkaProducer;
@@ -723,7 +724,12 @@ final class KafkaProducerTest extends TestCase
 
         self::assertCount(1, $client->initProducerIdCalls, 'The producer id is asked for once, with the first flush');
         self::assertSame(
-            ['transactionalId' => null, 'transactionTimeoutMs' => 60000],
+            [
+                'transactionalId'      => null,
+                'transactionTimeoutMs' => 60000,
+                'producerId'           => InitProducerIdRequest::NO_PRODUCER_ID,
+                'producerEpoch'        => InitProducerIdRequest::NO_PRODUCER_EPOCH,
+            ],
             $client->initProducerIdCalls[0],
             'An idempotent producer has no transactional id'
         );

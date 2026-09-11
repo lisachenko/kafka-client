@@ -26,6 +26,7 @@ use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnstableOffsetCommitException;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
@@ -1577,6 +1578,105 @@ final class KafkaConsumerTest extends TestCase
         }
 
         return $client;
+    }
+
+    /**
+     * KIP-447 (Kafka 2.5): a read-committed consumer may only start from an offset no transaction can still change
+     */
+    public function testAReadCommittedConsumerAsksForStableOffsetsOnly(): void
+    {
+        $client = $this->clientWithLog([0 => 5]);
+        $client->committedOffsets[self::GROUP][self::TOPIC][0] = 3;
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ISOLATION_LEVEL => ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED,
+        ]);
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->committed([self::TOPIC => [0]]);
+
+        self::assertNotSame([], $client->offsetFetches);
+        foreach ($client->offsetFetches as $fetch) {
+            self::assertTrue($fetch['requireStable'], 'every committed-offset read of this consumer is a stable one');
+        }
+    }
+
+    /**
+     * A read-uncommitted consumer sends the flag off, which is the behaviour of every version below 7
+     */
+    public function testAReadUncommittedConsumerDoesNotAskForStableOffsets(): void
+    {
+        $client = $this->clientWithLog([0 => 5]);
+        $client->committedOffsets[self::GROUP][self::TOPIC][0] = 3;
+
+        $consumer = $this->consumer($client);
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->committed([self::TOPIC => [0]]);
+
+        self::assertNotSame([], $client->offsetFetches);
+        foreach ($client->offsetFetches as $fetch) {
+            self::assertFalse($fetch['requireStable'], 'read_uncommitted is the default and asks for no such thing');
+        }
+    }
+
+    /**
+     * The 88 of a held-back partition is retriable: the consumer waits `retry.backoff.ms` and asks again
+     */
+    public function testTheEightyEightOfAnUnstableOffsetIsWaitedOut(): void
+    {
+        $client = $this->clientWithLog([0 => 5]);
+        $client->committedOffsets[self::GROUP][self::TOPIC][0] = 3;
+        $client->unstableOffsetFetches = [
+            new UnstableOffsetCommitException(['groupId' => self::GROUP]),
+            new UnstableOffsetCommitException(['groupId' => self::GROUP]),
+        ];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ISOLATION_LEVEL  => ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED,
+            ConsumerConfig::RETRY_BACKOFF_MS => 1,
+        ]);
+        $consumer->assign([self::TOPIC => [0]]);
+
+        self::assertSame(3, $consumer->position(self::TOPIC, 0), 'the offset of the third attempt');
+        self::assertCount(3, $client->offsetFetches, 'two refusals and the answer');
+    }
+
+    /**
+     * KIP-447, Kafka 2.5: what a transactional producer names in its `TxnOffsetCommit`
+     */
+    public function testTheGroupMetadataOfAConsumerThatNeverJoinedIsTheNotAMemberOne(): void
+    {
+        $metadata = $this->consumer(new FakeClient())->groupMetadata();
+
+        self::assertSame(self::GROUP, $metadata->groupId);
+        self::assertSame(OffsetCommitRequest::DEFAULT_GENERATION_ID, $metadata->generationId);
+        self::assertSame('', $metadata->memberId);
+        self::assertNull($metadata->groupInstanceId);
+    }
+
+    public function testTheGroupMetadataCarriesTheConfiguredInstanceIdOfAStaticMember(): void
+    {
+        $metadata = $this->consumer(new FakeClient(), [ConsumerConfig::GROUP_INSTANCE_ID => 't9-instance'])
+            ->groupMetadata();
+
+        self::assertSame('t9-instance', $metadata->groupInstanceId);
+        self::assertSame(
+            "ConsumerGroupMetadata{groupId=t9-unit-group, generationId=-1, memberId='', "
+            . "groupInstanceId='t9-instance'}",
+            (string) $metadata
+        );
+    }
+
+    public function testAConsumerWithoutAGroupHasNoGroupMetadataAtAll(): void
+    {
+        $consumer = new TestKafkaConsumer(new FakeClient(), [
+            ConsumerConfig::GROUP_ID           => '',
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/group\.id/');
+
+        $consumer->groupMetadata();
     }
 
     /**

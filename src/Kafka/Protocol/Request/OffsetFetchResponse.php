@@ -19,10 +19,10 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
 
 /**
- * OffsetFetch response object, version 5
+ * OffsetFetch response object, version 7
  *
  * <pre>
- *   OffsetFetch Response (Version: 5) => throttle_time_ms [responses] error_code
+ *   OffsetFetch Response (Version: 5 to 7) => throttle_time_ms [responses] error_code
  *     throttle_time_ms => INT32     -- since version 3
  *     responses => topic [partition_responses]
  *       topic               => STRING
@@ -53,14 +53,21 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
  * {@see KafkaException::NO_ERROR} here, because the whole answer of those versions is made of per-partition
  * results.
  *
- * @see docs/protocol/2.8.md, sections "OffsetFetch API (key 9, v0 to v6)" and "Quotas and throttle time"
+ * **Versions 6 (KIP-482, Kafka 2.4) and 7 (KIP-447, Kafka 2.5) changed no field of this answer**: the first is
+ * the flexible encoding of the very same layout, and the second is a promise about an error code - a partition of
+ * a version 7 answer can carry the retriable **88** (`UnstableOffsetCommit`) when the request asked for stable
+ * offsets and the last commit of that partition belongs to a transaction that is still open.
+ * {@see OffsetFetchResponseV6} decodes the same bytes one api version lower.
+ *
+ * @see docs/protocol/2.8.md, sections "OffsetFetch API (key 9, v0 to v7)", "Stable offsets and the 88 of KIP-447
+ *      (Kafka 2.5)" and "Quotas and throttle time"
  */
 class OffsetFetchResponse extends AbstractResponse
 {
     /**
      * Version of the OffsetFetch API that this class decodes the answer of
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it

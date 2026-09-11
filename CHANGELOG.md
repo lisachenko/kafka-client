@@ -464,7 +464,6 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   section of its own for the group.
 - 22 wire vectors of the new versions were captured from the container, and the document gained the section
   "The flexible versions of the group apis (Kafka 2.4)".
-
 - **Produce v8** (KIP-467) — the version that says **which** records of a refused batch were refused. Every
   partition entry of the answer gains a `record_errors` array of `[batch_index, batch_index_error_message]`
   pairs and an `error_message`, both behind the `log_start_offset`; the request body is unchanged.
@@ -492,8 +491,137 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   connection (measured). `Protocol\Data\MetadataRequestTopic` is that structure and `getTopics()` still answers
   the list of names. The vector pair `metadata.*.v9` is annotated down to every compact length and tag buffer.
 
+### Kafka 2.5
+
+- **JoinGroup v7 and SyncGroup v5 (KIP-559)** — the protocol of a generation travels in both directions now. The
+  JoinGroup **answer** gained a nullable `protocol_type` in front of its `protocol_name`, and the name itself
+  became nullable with it (`JoinGroupResponse::$protocolType`, `$groupProtocol`); the SyncGroup **request** and
+  answer gained the same pair behind the `group_instance_id` (`SyncGroupRequest`'s two new trailing arguments,
+  `SyncGroupResponse::$protocolType`/`$protocolName`). The JoinGroup request did not change at all - "Version 7
+  is the same as version 6" - so `JoinGroupRequest` sends the version 6 bytes with the version field 7 and
+  `JoinGroupRequestV6`/`JoinGroupResponseV6` and `SyncGroupRequestV4`/`SyncGroupResponseV4` keep the versions
+  Kafka 2.4 added.
+- **The two fields of a SyncGroup v5 are mandatory in the broker**: a version 5 that leaves either of them null
+  is answered **23** (`InconsistentGroupProtocol`) by `areMandatoryProtocolTypeAndNamePresent()` before the
+  coordinator is asked anything, and one that names a protocol the generation did not settle on gets the same
+  code one check later. `Client::syncGroup()` therefore takes the pair as its last two arguments and
+  `Consumer\Internals\ConsumerCoordinator` passes the `protocol_type` it joined with and the protocol name of the
+  JoinGroup answer, exactly as `AbstractCoordinator` @ 2.8.2 does. Measured on the container: both null → 23 with
+  a null type, a null name and an empty assignment **and the membership untouched**, a wrong name or a wrong type
+  → 23 as well, the right pair → 0. And an error answer of a JoinGroup **v7** carries `null` in both fields where
+  a v6 carries the empty string of `GroupCoordinator.NoProtocol` - measured on the 79 of KIP-394.
+- **`Client::syncGroup()` falls back to the version 4 frame** when the caller names neither field: a version 5
+  without them is refused with 23 before the coordinator reads the group, so a caller that does not know the
+  protocol of the generation - every caller written before this release - keeps sending the version Kafka 2.4
+  added, which carries no such field and which a 2.8.2 broker still serves. The consumer of this package always
+  names both and always sends the version 5.
+- **OffsetFetch v7 (KIP-447)** — the boolean `require_stable` behind the topic array asks the coordinator to hold
+  back an offset whose transaction has not been committed yet and to answer that partition with the **retriable**
+  error code **88** (`UnstableOffsetCommit`) instead. `OffsetFetchRequest` is the v7 now and takes the flag as its
+  last argument (`forAllTopics()` too), `Client::fetchGroupOffsets()` passes it on, and
+  `OffsetFetchRequestV6`/`OffsetFetchResponseV6` keep the flexible version of Kafka 2.4, whose answer can never
+  carry the 88.
+- **`KafkaConsumer` reads stable offsets when `isolation.level = read_committed`** — both for the positions it
+  resolves after a rebalance and for `committed()` - and waits an 88 out with `retry.backoff.ms` before it
+  reports it, because the code is retriable and the cure is the end of the transaction that holds the offset. A
+  read-uncommitted consumer sends the flag off, which is the behaviour of every version below 7. (The Java
+  consumer of 2.8 asks for stable offsets on *every* such fetch and uses an internal option to decide what an old
+  broker costs; this client asks where an unstable offset could become a position.)
+- Measured on the container, one partition of one group: with nothing pending both `require_stable = false` and
+  `true` answer the committed offset; while a transactional commit of 42 is open the flag answers **88** with the
+  offset -1 and the group-level code 0, and *without* the flag the same request answers the last **stable**
+  offset 25 - never the pending one; once the transaction commits, the stable read answers 42.
+- 14 wire vectors of the new frames were captured from the container, the document gained the sections "The
+  protocol type and name of KIP-559 (Kafka 2.5)" and "Stable offsets and the 88 of KIP-447 (Kafka 2.5)", and the
+  two integration suites `GroupProtocolApiTest` and `StableOffsetsApiTest` measure both halves against a real
+  broker.
+- **InitProducerId v3 and the epoch bump of KIP-360** — the request gains a `producer_id` and a `producer_epoch`,
+  and the two meanings of that pair are the whole KIP: the **-1/-1** every version below sent asks for a new id,
+  while the pair a producer already holds asks the coordinator for **the same id one epoch higher**. A
+  transactional producer that hit an abortable error therefore no longer has to be thrown away: `abortTransaction()`
+  rolls the transaction back and then sends that bump, and the sequence numbers of every partition start at zero
+  again (`TransactionManager::transitionToAbortableError()` sets the flag, the abort acts on it — the model is
+  `TransactionManager.bumpIdempotentEpochAndResetIdIfNeeded()` @ 2.8.2). An **idempotent** producer has no
+  coordinator that remembers it and keeps asking for a new id with the -1/-1, as it always did.
+  `InitProducerIdRequest`/`Response` are the version 3 with `InitProducerIdRequestV2`/`ResponseV2` for the
+  flexible frame without the pair; `Client::initProducerId()` takes the two values as optional arguments.
+- **TxnOffsetCommit v3 and the consumer group metadata of KIP-447** — the request gains a `generation_id`, a
+  `member_id` and a `group_instance_id` (and is the first flexible version of the api), so that the group
+  coordinator can refuse the commit of a consumer that has been rebalanced away instead of letting it write
+  offsets for partitions another member owns by now. The new `Consumer\ConsumerGroupMetadata` carries the four
+  values, `Consumer\KafkaConsumer::groupMetadata()` answers it — the `KafkaConsumer.groupMetadata()` of the Java
+  client — and `KafkaProducer::sendOffsetsToTransaction()` takes it in place of the bare group id, which still
+  works and means `ConsumerGroupMetadata::forGroup()`: the generation -1 with the empty member id, the "not a
+  member" commit of every version below 3. `TxnOffsetCommitRequestV2`/`ResponseV2` keep the frame of version 2.
+- **The flexible versions of five more apis (KIP-482)** — **CreatePartitions v2**, **SaslAuthenticate v2**,
+  **RenewDelegationToken v2**, **ExpireDelegationToken v2** and **DescribeDelegationToken v2** are the versions
+  the client sends now, each a `FLEXIBLE_VERSION` next to the `VERSION`, with a `…V1` class for the frame below
+  it. The `throttle_time_ms` of the three token apis stays **last** — the flexible encoding moves no field — the
+  SaslHandshake in front of a SaslAuthenticate stays the non-flexible **v1** (key 17 never became flexible), and
+  the `owner` of a described token is the one `Protocol\InlineStruct` of these apis: two flat fields of the
+  specification in one `KafkaPrincipal`, so no tag buffer follows it, while every renewer entry has one.
+- Measured on the container (topic `t4-25-vectors`, group `t4-25-vectors-group`, transactional id
+  `t4-25-vectors-tx`): a bump answers the same producer id with `epoch + 1`; a pair whose epoch the coordinator
+  has left behind is **47** `InvalidProducerEpoch` with the id -1 and the epoch -1 (the 90 `ProducerFenced` of the
+  Java client belongs to the version 4 of Kafka 2.7); a **null** transactional id with a real pair is answered 0
+  with a brand-new id and the epoch 0, because `handleInitProducerId` returns on the null branch before it looks
+  at the pair. A transactional commit of the current generation is **0**, of the generation before it **22**
+  `IllegalGeneration` per partition, of a member id the group does not have **25** `UnknownMemberId`, and of the
+  generation -1 with the empty member id **0**. SaslAuthenticate v2 was measured over SASL_PLAINTEXT and SASL_SSL
+  and answers the session lifetime 0 in 22 bytes.
+- **The assignment of CreatePartitions is a structure, and the flexible version says so** — `CreatePartitions
+  Assignment` of `CreatePartitionsRequest.json` @ 2.8.2 has the single field `broker_ids`, which the plain
+  encoding of the versions 0 and 1 cannot tell from the flat `list<list<int>>` this client wrote: a structure is
+  neither counted nor delimited there. From the version 2 on it ends in a tagged-field section of its own, and a
+  frame without it is one byte short — the broker **closes the connection without an answer**.
+  `Protocol\Data\CreatePartitionsRequestAssignment` is that structure now, for every version, so the v0 and v1
+  frames are unchanged to the byte and the v2 frame is accepted.
+- **Twenty-one wire vectors** of the seven versions, with their annotated dumps, and two new subsections of
+  [docs/protocol/2.8.md](docs/protocol/2.8.md): "Bumping the epoch (KIP-360)" and "The consumer group metadata of
+  a transactional commit (KIP-447)".
+
+*(Nothing on the Produce, Fetch, ListOffsets, Metadata and OffsetForLeaderEpoch apis: Kafka 2.5 raised none of
+them. What the release added lives in the group and transaction apis.)*
+
 ### Kafka 2.6
 
+- **ListGroups v4 (KIP-518)** — the api that had no request body at all for four versions got one: the
+  `states_filter`, an array of group state names that bounds the answer to the groups in one of them, and every
+  entry of the answer gained the `group_state` of that group. `ListGroupsRequest` is the v4 now and takes the
+  states as its last argument, `ListGroupResponseProtocol::$groupState` carries the state (null for every version
+  below 4, which does not report it), and `ListGroupsRequestV3`/`ListGroupsResponseV3` and
+  `Protocol\Data\ListGroupResponseProtocolV0` keep the flexible version of Kafka 2.4.
+- **`AdminClient::listGroups()` and `listAllGroups()` take the states**, and the new
+  **`AdminClient::listConsumerGroups()`** - the name of the Java admin client - lists the groups of the whole
+  cluster whose protocol type is `consumer` (`AdminClient::CONSUMER_PROTOCOL_TYPE`), with the same filter. Finding
+  the empty groups of a cluster no longer costs one DescribeGroups per group.
+- Measured on the container: an **empty** filter is every group the coordinator holds - 176 of them on the shared
+  container, each with its state - `["Stable"]` answered exactly the one group of the capture,
+  `["Empty", "PreparingRebalance"]` the other 175, and `["stable"]` in lower case answered the error code **0**
+  with an **empty** array: `GroupCoordinator.handleListGroups` @ 2.8.2 compares the names with
+  `states.contains(g.summary.state)`, so the filter is case sensitive and a name that is not a state at all is no
+  match rather than an error. A null filter is the empty one (`KafkaApis`: "Handle a null array the same as
+  empty"); this client sends the empty array.
+- 4 wire vectors of the new frames were captured from the container, the document gained the section "The group
+  states of KIP-518 (Kafka 2.6)", and the new integration suite `GroupStatesApiTest` measures the filter and the
+  state of a group through its life.
+- **DeleteRecords v2** (KIP-482) — the first **flexible** version of the api: not one field is added,
+  `DeleteRecordsRequest.json` and `DeleteRecordsResponse.json` @ 2.8.2 both say "Version 2 is the first flexible
+  version". The version 0 question travels with the request header **v2**, compact strings and arrays and a
+  tagged-field section at the end of the body, of every topic entry and of every partition entry, and the answer
+  with the response header **v1** and the same sections. `DeleteRecordsRequest`/`DeleteRecordsResponse` declare
+  `FLEXIBLE_VERSION = 2` next to their `VERSION` and `AdminClient::deleteRecords()` sends it;
+  `DeleteRecordsRequestV1`/`DeleteRecordsResponseV1` keep the plain frame of the versions 0 and 1. The vector
+  pair `deleterecords.*.v2` was captured on the container and is annotated down to every compact length and tag
+  buffer: the same question and the same answer as the version 1 pair in 48 and 42 bytes instead of 59 and 45.
+- **Every integration suite deletes the topics it created** — `IntegrationTestCase` remembers every name it hands
+  out in `uniqueTopicName()` and deletes them all with one DeleteTopics request in `tearDownAfterClass()`. Almost
+  every suite of this repository created a unique topic per test and never deleted it again: **2505** of them were
+  on the shared container after a few runs, 225 of a single class, across every ticket and every line of the
+  cascade - which is how a log directory goes offline with "Too many open files" and leaves `__consumer_offsets`
+  and `__transaction_state` without a leader. The cleanup is best effort: a topic that was never created, or that
+  a test deleted itself, is answered with the error code 3 and ignored, and a broker that is gone never turns a
+  green suite red.
 - **The two client-quota apis of KIP-546** — `DescribeClientQuotas` (key **48**, v0) and `AlterClientQuotas`
   (key **49**, v0). Until Kafka 2.6 a client quota could only be read and written through **ZooKeeper**, which is
   why the quota fixture of the lines below shells `kafka-configs.sh` into the container; these two requests replace
@@ -516,7 +644,36 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   order (`pack('E')`, `Type.FLOAT64` of the Java client), and the three double formats in the size table of
   `IO\AbstractStream`. The quota values of the keys 48 and 49 are the only fields of Kafka 2.8.2 that use it; like
   every fixed-width type it is untouched by the compact encoding.
-
+- **DescribeConfigs v3 - the config type and the documentation of KIP-569** - the request gains an
+  `include_documentation` boolean behind `include_synonyms`, and every entry of the answer gains a
+  `config_type int8` and a nullable `documentation` string behind its synonyms. The type is the `ConfigDef.Type`
+  of the option - `Admin\ConfigType` carries the ten values, with `CLASS` spelled `ConfigType::CLASS_NAME`
+  because `class` is a reserved word in PHP and `nameOf()` answering the Java name - and the documentation is the
+  prose of `ConfigDef.define(...)`. `ConfigEntry::$type` and `ConfigEntry::$documentation` hold them,
+  `AdminClient::describeConfigs(..., bool $includeDocumentation = false)` asks for the second.
+  `DescribeConfigsRequestV2`/`ResponseV2` (and `DescribeConfigsResponseConfigEntryV1`/`ResourceV1` below them)
+  keep the frames of the versions 0 to 2.
+- Measured on the container: the **type is filled whatever the flag says** -
+  `ConfigHelper.createTopicConfigEntry` @ 2.8.2 ends in
+  `.setDocumentation(configDocumentation).setConfigType(dataType.id)`, where only the documentation is behind
+  `if (includeDocumentation)` - and an unrestricted request with the flag is **enormous**: every option of a topic
+  is 26 entries and 9 284 bytes, every option of the **broker** 233 entries and 58 272 bytes, against 74 bytes for
+  the one option the vectors of this document ask for. A client that wants a type or a help text should name its
+  `configuration_keys`.
+- **DescribeLogDirs v2 - the flexible version of KIP-482** - no field was added: the same request and answer in
+  the compact encoding, with the request header v2 and a tagged-field section at the end of every structure. The
+  nullable topic array of the request is the compact nullable one, so the `ff ff ff ff` that asks for every
+  replica of every directory becomes a single `00` and the whole request is 15 bytes.
+  `DescribeLogDirsRequestV1`/`ResponseV1` keep the frame of the versions 0 and 1.
+- Measured on the container: a **2.8.2 broker ignores the selection of the request altogether** and groups every
+  log of a directory into the answer, so a request that names one partition, one with an empty topic array and one
+  with the null array are answered with the same frame - 16 391 bytes and 581 replicas when the version 2 pair was
+  captured, where a 1.1.1 broker answered an empty array with 64 bytes. The empty array is therefore no longer the
+  cheap "which disks does this broker have" of the 1.x line, and `describelogdirs.response.v2` is a **constructed**
+  vector for the same reason as its version 1 counterpart.
+- **Ten wire vectors**: the six DescribeConfigs v3 frames (the topics `t4-26-vectors` and `t4-26-own`) and the four
+  DescribeLogDirs v2 frames (the topic `t4-26-logdirs`), each with its annotated dump, and the two headings moved
+  to their new ranges.
 
 ### Kafka 2.7
 
@@ -535,14 +692,15 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   mechanism twice, **93** `UNACCEPTABLE_CREDENTIAL` for an iteration count below the minimum — and the fact that
   the changes of one user are applied **all-or-nothing**, so one impossible change discards the possible ones of
   the same user.
-- **UpdateFeatures (key 57, v0, Kafka 2.7, KIP-584)** — `AdminClient::updateFeatures(array $updates)`, sent to the
-  **controller** and repeated once when it moved, with `Admin\FeatureUpdate` (whose `delete()` is the version level
-  below 1 plus the downgrade flag the broker insists on). Its read half is not an api at all but the **tagged
-  fields of the ApiVersions v3 answer**, which `AdminClient::describeFeatures()` reads into `Admin\FeatureMetadata`,
-  `SupportedVersionRange` and `FinalizedVersionRange`. A ZooKeeper-backed 2.8.2 cluster finalizes nothing: it
-  supports no feature, the finalized set is empty, the epoch is `0`, and every update is answered per feature with
-  **42** `INVALID_REQUEST`. An empty update list is not refused at all — the controller iterates an empty
-  collection and answers the top-level 0 with no result. Two new wire vectors in `update-features.json`.
+- **UpdateFeatures (key 57, v0, Kafka 2.7, KIP-584)** — `AdminClient::updateFeatures(array $updates, int $timeoutMs =
+  60000)`, sent to the **controller** and repeated once when it moved, with `Admin\FeatureUpdate` (whose `delete()` is
+  the version level below 1 plus the downgrade flag the broker insists on). Its read half is not an api at all but the
+  **tagged fields of the ApiVersions v3 answer**, which `AdminClient::describeFeatures()` reads into
+  `Admin\FeatureMetadata`, `SupportedVersionRange` and `FinalizedVersionRange`. A ZooKeeper-backed 2.8.2 cluster
+  finalizes nothing: it supports no feature, the finalized set is empty, the epoch is `0`, and every update is
+  answered per feature with **42** `INVALID_REQUEST`. An empty update list is not refused at all — the controller
+  iterates an empty collection and answers the top-level 0 with no result. Two new wire vectors in
+  `update-features.json`.
 
 
 1.x — the 1.x line (Kafka 1.1.1)

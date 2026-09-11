@@ -1,8 +1,8 @@
 {
     "api": "delete-records",
     "apiKey": 21,
-    "section": "DeleteRecords API (key 21, v0 and v1)",
-    "description": "Wire vectors of the DeleteRecords API (key 21, v0 and v1), replayed by tests/Compliance.",
+    "section": "DeleteRecords API (key 21, v0 to v2)",
+    "description": "Wire vectors of the DeleteRecords API (key 21, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "deleterecords.request.v0",
@@ -169,7 +169,7 @@
         {
             "id": "deleterecords.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteRecordsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteRecordsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "DeleteRecords request v1, the frame of version 0 with the api version Kafka 2.0 added: everything below the offset 2 of the only partition of a topic that holds three records.",
@@ -197,7 +197,7 @@
         {
             "id": "deleterecords.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteRecordsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteRecordsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "DeleteRecords response v1: the new low watermark 2 of the partition and the error code 0.",
@@ -209,6 +209,62 @@
                 "topics": {
                     "t4-20-vectors": {
                         "topic": "t4-20-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "lowWatermark": 2,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "deleterecords.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteRecordsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DeleteRecords request v2 (Kafka 2.6), the first FLEXIBLE version of this api (KIP-482): the request header v2 - the client id as a non-compact string and a tag buffer of its own - a COMPACT topic array, the topic name as a compact string, a compact partition array whose entry ends in a tag buffer of its own, the timeout behind the topics as in every version, and the tagged-field section of the body. Not one field is added: DeleteRecordsRequest.json @ 2.8.2 declares \"Version 2 is the first flexible version\" and nothing else.",
+            "hex": "0000003000150002000002c60002743200020e74322d32362d766563746f72730200000000000000000000000200000000753000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 21,
+                "apiVersion": 2,
+                "correlationId": 710,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t2-26-vectors": {
+                        "topic": "t2-26-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 2
+                            }
+                        ]
+                    }
+                },
+                "timeout": 30000
+            }
+        },
+        {
+            "id": "deleterecords.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteRecordsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2: the response header v1 - the correlation id and a tag buffer - the throttle time, a compact topic array, the compact topic name, a compact partition array whose entry carries the new low water mark (2, the offset the deletion moved the front of the log to), the error code 0 and its own tag buffer, and the tagged-field section of the body.",
+            "hex": "0000002a000002c60000000000020e74322d32362d766563746f7273020000000000000000000000020000000000",
+            "fields": {
+                "messageSize": 42,
+                "correlationId": 710,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-26-vectors": {
+                        "topic": "t2-26-vectors",
                         "partitions": [
                             {
                                 "partition": 0,

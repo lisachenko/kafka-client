@@ -47,6 +47,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\Internals\FetchSessionHandler;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
@@ -125,7 +126,9 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
+use Protocol\Kafka\Protocol\Request\SyncGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
+use Protocol\Kafka\Protocol\Request\SyncGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Throwable;
@@ -466,8 +469,16 @@ class Client
      * by default) the answer is the error code 50 (InvalidTransactionTimeout), while a `null` transactional id is
      * answered with a producer id whatever the value is.
      *
+     * **Kafka 2.5 added the pair of KIP-360** to the request, and with it a second meaning: a transactional
+     * producer that hands its own `$producerId` and `$producerEpoch` over asks the coordinator to **bump** that
+     * epoch instead of handing out a new id. The answer is the same id with `epoch + 1`, everything that still
+     * writes under the old epoch is fenced, and a producer that hit an abortable error can carry on with it
+     * instead of being finished. The -1/-1 of `InitProducerIdRequest::NO_PRODUCER_ID` is the old "give me an id".
+     *
      * @param string|null $transactionalId      Transactional id of the producer, `null` for an idempotent one
      * @param int         $transactionTimeoutMs `transaction.timeout.ms` of the producer, ignored without an id
+     * @param int         $producerId           Producer id whose epoch should be bumped (KIP-360), or -1
+     * @param int         $producerEpoch        Epoch that belongs to it, or -1
      *
      * @throws Common\Errors\InvalidTxnTimeoutException For a timeout above `transaction.max.timeout.ms`
      * @throws Common\Errors\InvalidRequestException    For the empty string as a transactional id
@@ -475,7 +486,9 @@ class Client
      */
     public function initProducerId(
         ?string $transactionalId = null,
-        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS
+        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS,
+        int $producerId = InitProducerIdRequest::NO_PRODUCER_ID,
+        int $producerEpoch = InitProducerIdRequest::NO_PRODUCER_EPOCH
     ): ProducerIdAndEpoch {
         // A producer id without a transactional id is not coordinated by anything, so any broker may answer it
         $node = $transactionalId === null
@@ -487,6 +500,8 @@ class Client
             fn(int $correlationId): InitProducerIdRequest => new InitProducerIdRequest(
                 $transactionalId,
                 $transactionTimeoutMs,
+                $producerId,
+                $producerEpoch,
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),
@@ -1231,6 +1246,9 @@ class Client
      * @param string                              $groupId         Name of the group
      * @param array<string, array<int, int>>|null $topicPartitions List of topic => partitions for fetching
      *        information, or null for every topic of the group
+     * @param bool                                $requireStable   Whether the coordinator has to hold back an
+     *        offset whose transaction has not been committed yet and answer that partition with the retriable 88
+     *        instead (KIP-447, version 7); false answers the offset of the last commit, pending or not
      *
      * @return array<string, array<int, int>> Committed offsets in the form [topic => [partition => offset]]
      *
@@ -1241,14 +1259,18 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, ?array $topicPartitions): array
-    {
+    public function fetchGroupOffsets(
+        Node $coordinatorNode,
+        string $groupId,
+        ?array $topicPartitions,
+        bool $requireStable = false
+    ): array {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         return $this->coordinatorRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
-                ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId)
+                ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId, $requireStable)
                 : new OffsetFetchRequestV0($groupId, $topicPartitions, $clientId, $correlationId),
             $this->isOffsetStorageKafka() ? OffsetFetchResponse::class : OffsetFetchResponseV0::class,
             static function (OffsetFetchResponse $response) use ($groupId): array {
@@ -1454,6 +1476,11 @@ class Client
      * assignment for each member; every other member passes an empty array and receives its own share in the
      * answer, which the coordinator holds back until the leader has sent the assignment.
      *
+     * **The version follows the two arguments of KIP-559.** A caller that names the `protocol_type` and the
+     * `protocol_name` of its generation sends the **version 5** and is answered with the same pair; a caller that
+     * names neither sends the **version 4**, because a version 5 without them is refused with 23
+     * (`InconsistentGroupProtocol`) before the coordinator looks at the group at all.
+     *
      * @param Node                  $coordinatorNode  Current group coordinator for $groupId
      * @param string                $groupId          Name of the group
      * @param string                $memberId         Name of the group member
@@ -1462,6 +1489,10 @@ class Client
      *        only; opaque bytes to this api - a `consumer` leader sends a `MemberAssignment` per member
      * @param string|null           $groupInstanceId  `group.instance.id` of a static member (KIP-345, version 3),
      *        null for a dynamic one
+     * @param string|null           $protocolType     The `protocol_type` the member joined with, `consumer` for a
+     *        consumer group (KIP-559, version 5); leaving it null sends the version 4 frame instead
+     * @param string|null           $protocolName     The protocol of the generation, as the JoinGroup answer
+     *        reported it (KIP-559, version 5); leaving it null sends the version 4 frame instead
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -1469,6 +1500,7 @@ class Client
      * @throws Common\Errors\IllegalGenerationException
      * @throws Common\Errors\UnknownMemberIdException
      * @throws Common\Errors\RebalanceInProgressException
+     * @throws Common\Errors\InconsistentGroupProtocolException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
     public function syncGroup(
@@ -1477,22 +1509,35 @@ class Client
         string $memberId,
         int $generationId,
         array $groupAssignments = [],
-        ?string $groupInstanceId = null
+        ?string $groupInstanceId = null,
+        ?string $protocolType = null,
+        ?string $protocolName = null
     ): SyncGroupResponse {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
+        // KIP-559 made the two fields mandatory in a version 5, not optional: a request that leaves either of them
+        // null is answered 23 before the coordinator is asked anything. A caller that does not know the protocol of
+        // the generation therefore gets the version 4 frame, which has no such field and which a 2.8.2 broker
+        // serves unchanged - the same "fall back to the version that can carry what you asked for" the Java
+        // `OffsetFetchRequest.Builder` does for the `require_stable` of KIP-447
+        $namesProtocol = $protocolType !== null && $protocolName !== null;
+        $requestClass  = $namesProtocol ? SyncGroupRequest::class : SyncGroupRequestV4::class;
+        $responseClass = $namesProtocol ? SyncGroupResponse::class : SyncGroupResponseV4::class;
+
         return $this->groupRequest(
             $coordinatorNode,
-            fn(int $correlationId): AbstractRequest => new SyncGroupRequest(
+            fn(int $correlationId): AbstractRequest => new $requestClass(
                 $groupId,
                 $generationId,
                 $memberId,
                 $groupAssignments,
                 $clientId,
                 $correlationId,
-                $groupInstanceId
+                $groupInstanceId,
+                $protocolType,
+                $protocolName
             ),
-            SyncGroupResponse::class,
+            $responseClass,
             static function (SyncGroupResponse $response) use ($groupId, $memberId, $generationId): SyncGroupResponse {
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
                     throw KafkaException::fromCode(
@@ -3014,6 +3059,8 @@ class Client
      * @param string             $groupId            Consumer group whose offsets are committed
      * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
+     * @param ConsumerGroupMetadata|null $groupMetadata Who the consumer is inside the group (KIP-447, version 3);
+     *        `null` is the "not a member" commit of every version below 3
      *
      * @throws KafkaException The error code of the first partition that was refused
      */
@@ -3022,7 +3069,8 @@ class Client
         string $transactionalId,
         string $groupId,
         ProducerIdAndEpoch $producerIdAndEpoch,
-        array $topicPartitionOffsets
+        array $topicPartitionOffsets,
+        ?ConsumerGroupMetadata $groupMetadata = null
     ): void {
         $this->coordinatorRequest(
             $coordinatorNode,
@@ -3032,6 +3080,7 @@ class Client
                 $producerIdAndEpoch->producerId,
                 $producerIdAndEpoch->epoch,
                 $topicPartitionOffsets,
+                $groupMetadata,
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),

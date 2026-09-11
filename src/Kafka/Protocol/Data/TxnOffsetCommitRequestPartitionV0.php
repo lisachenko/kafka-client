@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * 2, so this class only lowers the version constant that
  * {@see TxnOffsetCommitRequestPartition::getScheme()} follows.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 final class TxnOffsetCommitRequestPartitionV0 extends TxnOffsetCommitRequestPartition
 {

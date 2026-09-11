@@ -1,8 +1,8 @@
 {
     "api": "list-groups",
     "apiKey": 16,
-    "section": "ListGroups API (key 16, v0 to v3)",
-    "description": "Wire vectors of the ListGroups API (key 16, v0 to v3), replayed by tests/Compliance.",
+    "section": "ListGroups API (key 16, v0 to v4)",
+    "description": "Wire vectors of the ListGroups API (key 16, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "listgroups.request.v0",
@@ -229,7 +229,7 @@
         {
             "id": "listgroups.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequestV3",
             "version": 3,
             "source": "broker",
             "description": "ListGroups request v3 (KIP-482): the api has no field at all, so the whole body of the frame is the empty tag buffer `00` that every flexible structure ends in - one byte more than the version 2 request, which has no body.",
@@ -246,7 +246,7 @@
         {
             "id": "listgroups.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer v3: the throttle time, the error code and a compact array of the groups this broker coordinates, each with a compact id, a compact protocol type and its own tag buffer.",
@@ -275,6 +275,86 @@
                         "protocolType": "consumer"
                     }
                 }
+            }
+        },
+        {
+            "id": "listgroups.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "ListGroups request v4 (Kafka 2.6, KIP-518): the first frame of this api with a field of its own, the `states_filter` - here one entry, `Stable`, as a compact array of compact strings. Every version below 4 has an empty body and asks for every group the broker coordinates, which is what an empty filter asks for here.",
+            "hex": "00000026001000040000051900126b61666b612d636c69656e742d74332d3236000207537461626c6500",
+            "fields": {
+                "messageSize": 38,
+                "apiKey": 16,
+                "apiVersion": 4,
+                "correlationId": 1305,
+                "clientId": "kafka-client-t3-26",
+                "headerTaggedFields": [],
+                "statesFilter": [
+                    "Stable"
+                ]
+            }
+        },
+        {
+            "id": "listgroups.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer: the groups of the coordinator that are in one of the named states, each with the `group_state` that version 4 appended to its entry. The container held 176 groups when this was captured and exactly one of them was `Stable`, the group of the capture itself - the filter is what makes the frame this small.",
+            "hex": "000000320000051900000000000000021474332d32362d766563746f72732d67726f757009636f6e73756d657207537461626c650000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 1305,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-26-vectors-group": {
+                        "groupId": "t3-26-vectors-group",
+                        "protocolType": "consumer",
+                        "groupState": "Stable"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v4.unknown-state",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The same request with the state `stable` in lower case. `GroupCoordinator.handleListGroups` @ 2.8.2 compares the names with `states.contains(g.summary.state)`, a plain string comparison, so the filter is **case sensitive** and a name that is not a state is not an error.",
+            "hex": "00000026001000040000051a00126b61666b612d636c69656e742d74332d3236000207737461626c6500",
+            "fields": {
+                "messageSize": 38,
+                "apiKey": 16,
+                "apiVersion": 4,
+                "correlationId": 1306,
+                "clientId": "kafka-client-t3-26",
+                "headerTaggedFields": [],
+                "statesFilter": [
+                    "stable"
+                ]
+            }
+        },
+        {
+            "id": "listgroups.response.v4.unknown-state",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer to it: the error code **0** and an **empty** group array - a state nothing is in and a state that does not exist are the same answer, which is why a client can not use this api to validate a state name.",
+            "hex": "0000000d0000051a000000000000000100",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 1306,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": []
             }
         }
     ]

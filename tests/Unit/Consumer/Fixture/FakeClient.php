@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Tests\Unit\Consumer\Fixture;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnstableOffsetCommitException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\CompressionCodec;
@@ -202,9 +203,23 @@ final class FakeClient extends Client
     /**
      * SyncGroup requests the consumer sent, in order
      *
-     * @var list<array{groupId: string, memberId: string, generationId: int, assignments: array<string, string>}>
+     * @var list<array<string, mixed>>
      */
     public array $syncs = [];
+
+    /**
+     * OffsetFetch requests the consumer sent, in order, with the `require_stable` flag of each (KIP-447)
+     *
+     * @var list<array{groupId: string, requireStable: bool}>
+     */
+    public array $offsetFetches = [];
+
+    /**
+     * Answers of the coordinator that hold an offset back, thrown one by one by a fetch that asks for stable ones
+     *
+     * @var list<UnstableOffsetCommitException>
+     */
+    public array $unstableOffsetFetches = [];
 
     /**
      * Heartbeat requests the consumer sent, in order
@@ -499,8 +514,19 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, ?array $topicPartitions): array
-    {
+    public function fetchGroupOffsets(
+        Node $coordinatorNode,
+        string $groupId,
+        ?array $topicPartitions,
+        bool $requireStable = false
+    ): array {
+        $this->offsetFetches[] = ['groupId' => $groupId, 'requireStable' => $requireStable];
+
+        $unstable = array_shift($this->unstableOffsetFetches);
+        if ($unstable !== null && $requireStable) {
+            throw $unstable;
+        }
+
         if ($topicPartitions === null) {
             // Version 2 of the api answers every topic-partition the group committed an offset for
             return $this->committedOffsets[$groupId] ?? [];
@@ -615,7 +641,9 @@ final class FakeClient extends Client
         string $memberId,
         int $generationId,
         array $groupAssignments = [],
-        ?string $groupInstanceId = null
+        ?string $groupInstanceId = null,
+        ?string $protocolType = null,
+        ?string $protocolName = null
     ): SyncGroupResponse {
         $this->syncs[] = [
             'groupId'      => $groupId,
@@ -623,6 +651,8 @@ final class FakeClient extends Client
             'generationId' => $generationId,
             'assignments'  => $groupAssignments,
             'instanceId'   => $groupInstanceId,
+            'protocolType' => $protocolType,
+            'protocolName' => $protocolName,
         ];
 
         $failure = array_shift($this->syncFailures);
@@ -636,6 +666,8 @@ final class FakeClient extends Client
 
         $response                   = new SyncGroupResponse();
         $response->errorCode        = KafkaException::NO_ERROR;
+        $response->protocolType      = $protocolType;
+        $response->protocolName      = $protocolName;
         $response->memberAssignment = $this->memberAssignments[$memberId] ?? '';
 
         return $response;

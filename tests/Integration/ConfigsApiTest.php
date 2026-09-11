@@ -15,17 +15,20 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\AlterConfigOp;
 use Protocol\Kafka\Admin\Config;
 use Protocol\Kafka\Admin\ConfigEntry;
 use Protocol\Kafka\Admin\ConfigResource;
 use Protocol\Kafka\Admin\ConfigSource;
 use Protocol\Kafka\Admin\ConfigSynonym;
+use Protocol\Kafka\Admin\ConfigType;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\InvalidTopicException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestConfigEntry;
@@ -43,9 +46,11 @@ use Protocol\Kafka\Protocol\Request\AlterConfigsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV1;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV1;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV2;
 
 /**
  * Exercises the DescribeConfigs (key 32) and AlterConfigs (key 33) apis against a real Kafka 2.8.2 broker.
@@ -61,13 +66,16 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV1;
  * touch `log.cleaner.backoff.ms` alone - a log-cleaner back-off nothing here depends on - and put the documented
  * default back in a `finally`, explicitly and not by removing the entry, see the quirk in the AlterConfigs section.
  *
- * @see docs/protocol/2.8.md, sections "DescribeConfigs API (key 32, v0, v1 and v2)" and "AlterConfigs API (key 33, v0 and v1)"
+ * @see docs/protocol/2.8.md, sections "DescribeConfigs API (key 32, v0 to v3)" and "AlterConfigs API (key 33, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Config::class)]
 #[CoversClass(ConfigEntry::class)]
 #[CoversClass(ConfigResource::class)]
 #[CoversClass(ConfigSource::class)]
+#[CoversClass(DescribeConfigsResponseV2::class)]
+#[CoversClass(DescribeConfigsRequestV2::class)]
+#[CoversClass(ConfigType::class)]
 #[CoversClass(ConfigSynonym::class)]
 #[CoversClass(DescribeConfigsRequest::class)]
 #[CoversClass(DescribeConfigsRequestV0::class)]
@@ -548,16 +556,24 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertSame('broker:', $default->key(), 'the resource type 4 with an empty name');
 
         try {
-            $result = $this->admin->alterConfigs([$default->key() => [self::DYNAMIC_OPTION => '17000']]);
-            self::assertSame([$default->key() => null], $result);
+            // The cluster-wide default resource is the one resource of the broker that a unique name cannot
+            // separate: every suite on the shared container writes into the very same `broker:`, and an
+            // `AlterConfigs` of it replaces the WHOLE resource, so another suite can drop this option between the
+            // write and the read. The write is therefore repeated until the read sees it, the assertion is a
+            // SUPERSET - this option with this value - instead of the exact key list, and the cleanup below
+            // deletes that one option instead of replacing the resource.
+            $entry = null;
+            for ($attempt = 0; $attempt < 5 && $entry === null; $attempt++) {
+                $result = $this->admin->alterConfigs([$default->key() => [self::DYNAMIC_OPTION => '17000']]);
+                self::assertSame([$default->key() => null], $result);
 
-            $configs = $this->admin->describeConfigs([$default], null, true);
-            $entry   = $configs[$default->key()]->get(self::DYNAMIC_OPTION);
+                $configs = $this->admin->describeConfigs([$default], null, true);
+                $entry   = $configs[$default->key()]->get(self::DYNAMIC_OPTION);
+            }
 
-            self::assertSame(
-                [self::DYNAMIC_OPTION],
-                array_keys($configs[$default->key()]->entries),
-                'the default resource holds the dynamic default configuration alone, not the options of a broker'
+            self::assertNotNull(
+                $entry,
+                'the default resource holds the dynamic default configuration, not the options of a broker'
             );
             self::assertSame('17000', $entry->value);
             self::assertSame(ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG, $entry->source);
@@ -567,7 +583,11 @@ final class ConfigsApiTest extends IntegrationTestCase
             self::assertSame('17000', $ofTheBroker->value, 'every broker of the cluster picks the default up');
             self::assertSame(ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG, $ofTheBroker->source);
         } finally {
-            $this->admin->alterConfigs([$default->key() => []]);
+            // IncrementalAlterConfigs (KIP-339) removes this one option and leaves every other option of the
+            // shared default resource alone, where an AlterConfigs of an empty map would wipe all of them
+            $this->admin->incrementalAlterConfigs(
+                [$default->key() => [AlterConfigOp::delete(self::DYNAMIC_OPTION)]]
+            );
             $this->restoreTheDynamicOption($broker);
         }
     }
@@ -712,6 +732,107 @@ final class ConfigsApiTest extends IntegrationTestCase
      *
      * @param array<string, string> $configs Topic-level options of the new topic
      */
+    /**
+     * The two fields KIP-569 gave every entry with the **version 3** of the api (Kafka 2.6)
+     *
+     * `config_type` is the `ConfigDef.Type` of the option and the broker fills it whatever the request asked for;
+     * `documentation` is the prose of `ConfigDef.define(...)` and is only sent for `include_documentation = true`.
+     */
+    public function testTheVersionThreeAnswersTheTypeOfEveryOptionAndItsDocumentationOnDemand(): void
+    {
+        $topic = $this->createTopic('type');
+        $key   = ConfigResource::topic($topic)->key();
+
+        // One option at a time: the documentation of a whole resource is tens of kilobytes of prose
+        $documented = $this->admin->describeConfigs(
+            [ConfigResource::topic($topic)],
+            ['cleanup.policy'],
+            false,
+            true
+        )[$key];
+        $entry = $documented->get('cleanup.policy');
+
+        self::assertInstanceOf(ConfigEntry::class, $entry);
+        self::assertSame(ConfigType::LIST, $entry->type, '`cleanup.policy` is a LIST - the type APPEND accepts');
+        self::assertNotNull($entry->documentation, 'the request asked for it');
+        self::assertStringContainsString(
+            'either "delete" or "compact"',
+            (string) $entry->documentation,
+            'the documentation of `LogConfig` @ 2.8.2'
+        );
+
+        // The very same request without the flag: the type is still filled, the documentation is not
+        $plain = $this->admin->describeConfigs([ConfigResource::topic($topic)], ['cleanup.policy'])[$key];
+
+        self::assertSame(ConfigType::LIST, $plain->get('cleanup.policy')->type, 'the type is unconditional');
+        self::assertNull($plain->get('cleanup.policy')->documentation, 'the documentation is not');
+        self::assertSame(3, DescribeConfigsRequest::VERSION, 'the version this line sends');
+    }
+
+    /**
+     * Every `ConfigDef.Type` this container can show, in one request
+     */
+    public function testTheTypeOfAnOptionIsTheOneOfItsConfigDef(): void
+    {
+        $topic = $this->createTopic('types');
+        $key   = ConfigResource::topic($topic)->key();
+
+        $config = $this->admin->describeConfigs(
+            [ConfigResource::topic($topic)],
+            ['retention.ms', 'preallocate', 'compression.type', 'min.insync.replicas', 'cleanup.policy']
+        )[$key];
+
+        self::assertSame(ConfigType::LONG, $config->get('retention.ms')->type);
+        self::assertSame(ConfigType::BOOLEAN, $config->get('preallocate')->type);
+        self::assertSame(ConfigType::STRING, $config->get('compression.type')->type);
+        self::assertSame(ConfigType::INT, $config->get('min.insync.replicas')->type);
+        self::assertSame(ConfigType::LIST, $config->get('cleanup.policy')->type);
+    }
+
+    /**
+     * A sensitive broker option is a `PASSWORD`, and its value is null as it always was
+     */
+    public function testASensitiveOptionIsAPasswordWhoseValueIsStillNull(): void
+    {
+        $resource = ConfigResource::broker(array_key_first($this->admin->findAllBrokers()));
+        $config   = $this->admin->describeConfigs([$resource], ['ssl.key.password'], true, true)[$resource->key()];
+        $entry    = $config->get('ssl.key.password');
+
+        self::assertSame(ConfigType::PASSWORD, $entry->type);
+        self::assertTrue($entry->isSensitive);
+        self::assertNull($entry->value, 'the broker never sends the value of a sensitive option');
+        self::assertNotNull($entry->documentation, 'but it does send its documentation');
+    }
+
+    /**
+     * An answer of a version below 3 carries neither field, and the client reads the documented defaults
+     */
+    public function testAnAnswerOfTheVersionTwoCarriesNeitherTheTypeNorTheDocumentation(): void
+    {
+        $topic  = $this->createTopic('no-type');
+        $nodes  = $this->cluster->nodes();
+        $stream = reset($nodes)->getConnection($this->configuration());
+
+        new DescribeConfigsRequestV2(
+            [DescribeConfigsRequestResource::fromConfigResource(
+                ConfigResource::topic($topic),
+                ['cleanup.policy']
+            )],
+            false,
+            true,
+            't5-configs',
+            801
+        )->writeTo($stream);
+
+        $answer = DescribeConfigsResponseV2::unpack($stream);
+        $entry  = $answer->resources[0]->configEntries['cleanup.policy'];
+
+        self::assertSame(KafkaException::NO_ERROR, $answer->resources[0]->errorCode);
+        self::assertSame('delete', $entry->configValue);
+        self::assertSame(ConfigType::UNKNOWN, $entry->configType, 'no type byte in the frame at all');
+        self::assertNull($entry->documentation, 'and no documentation either, although the flag was set');
+    }
+
     private function createTopic(string $purpose, array $configs = []): string
     {
         $topic                 = self::uniqueTopicName("t5-configs-{$purpose}");

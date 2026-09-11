@@ -17,21 +17,25 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Admin\ConfigResource;
 use Protocol\Kafka\Admin\ConfigSource;
+use Protocol\Kafka\Admin\ConfigType;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigEntry;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigEntryV0;
+use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigEntryV1;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigSynonym;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResource;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResourceV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV1;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV1;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV2;
 
 /**
  * Byte-exact tests for the DescribeConfigs API (api key 32), version 0 of Kafka 0.11 and version 1 of Kafka 1.1.
@@ -42,13 +46,17 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV1;
  * (`DESCRIBE_CONFIGS_REQUEST_V2 = DESCRIBE_CONFIGS_REQUEST_V1` @ 2.0.1, KIP-219), which is the version the client
  * sends. All three are exercised here, and the derivation of the source from the boolean of a version 0 answer.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
  */
 #[CoversClass(DescribeConfigsRequest::class)]
 #[CoversClass(DescribeConfigsRequestV1::class)]
 #[CoversClass(DescribeConfigsRequestV0::class)]
 #[CoversClass(DescribeConfigsResponse::class)]
+#[CoversClass(ConfigType::class)]
+#[CoversClass(DescribeConfigsRequestV2::class)]
 #[CoversClass(DescribeConfigsResponseV1::class)]
+#[CoversClass(DescribeConfigsResponseV2::class)]
+#[CoversClass(DescribeConfigsResponseConfigEntryV1::class)]
 #[CoversClass(DescribeConfigsResponseV0::class)]
 #[CoversClass(DescribeConfigsRequestResource::class)]
 #[CoversClass(DescribeConfigsResponseResource::class)]
@@ -196,7 +204,7 @@ final class DescribeConfigsTest extends TestCase
             DescribeConfigsRequestResource::fromConfigResource(ConfigResource::broker(0)),
         ];
 
-        $request = new DescribeConfigsRequestV1($resources, true, 'test', 7);
+        $request = new DescribeConfigsRequestV1($resources, true, false, 'test', 7);
 
         self::assertSame(self::REQUEST_V1_HEX, bin2hex((string) $request));
         self::assertSame(1, $request->getApiVersion(), 'the version Kafka 1.1 added with KIP-226');
@@ -207,7 +215,7 @@ final class DescribeConfigsTest extends TestCase
         );
         self::assertStringEndsWith(
             '00',
-            bin2hex((string) new DescribeConfigsRequestV1($resources, false, 'test', 7)),
+            bin2hex((string) new DescribeConfigsRequestV1($resources, false, false, 'test', 7)),
             'and the flag is the last byte of the frame'
         );
     }
@@ -219,13 +227,13 @@ final class DescribeConfigsTest extends TestCase
             DescribeConfigsRequestResource::fromConfigResource(ConfigResource::broker(0)),
         ];
 
-        $request = new DescribeConfigsRequest($resources, true, 'test', 7);
+        $request = new DescribeConfigsRequestV2($resources, true, false, 'test', 7);
 
         // `DESCRIBE_CONFIGS_REQUEST_V2 = DESCRIBE_CONFIGS_REQUEST_V1` @ 2.0.1: only the version field is different
         self::assertSame(2, $request->getApiVersion());
         self::assertSame(substr_replace(self::REQUEST_V1_HEX, '0002', 12, 4), bin2hex((string) $request));
 
-        $answer   = DescribeConfigsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $answer     = DescribeConfigsResponseV2::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
         $versionOne = DescribeConfigsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
 
         self::assertSame(
@@ -236,10 +244,132 @@ final class DescribeConfigsTest extends TestCase
         self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $answer));
     }
 
+    /**
+     * DescribeConfigs request v3 for two named options of a topic, with the synonyms and without the documentation.
+     *
+     *   ApiVersion            => 00 03
+     *   Resources             => 00 00 00 01, 02, 00 09 "t4-26-own", 00 00 00 02, "segment.bytes", "retention.ms"
+     *   IncludeSynonyms       => 01
+     *   IncludeDocumentation  => 00
+     */
+    private const string REQUEST_V3_HEX = '000000470020000300000516000a74342d766563746f72730000000102000974342d32362d6f776e00000002000d7365676d'
+        . '656e742e6279746573000c726574656e74696f6e2e6d730100';
+
+    /**
+     * The answer of that request: every entry ends in the `config_type` byte and the null documentation of KIP-569
+     */
+    private const string RESPONSE_V3_HEX = '000000c20000051600000000000000010000000002000974342d32362d6f776e00000002000d7365676d656e742e6279746573000931303438353736303000010000000003000d7365676d656e742e627974657300093130343835373630300100'
+        . '116c6f672e7365676d656e742e6279746573000a313037333734313832340400116c6f672e7365676d656e742e6279746573000a313037333734313832340503ffff000c726574656e74696f6e2e6d7300093630343830303030300005000000000005ffff';
+
+    /**
+     * The version Kafka 2.6 added: a second boolean in the request, a type and a documentation in every entry
+     */
+    public function testTheClientSendsTheVersionThreeOfKafkaTwoSix(): void
+    {
+        $request = new DescribeConfigsRequest(
+            [new DescribeConfigsRequestResource(
+                ConfigResource::TYPE_TOPIC,
+                't4-26-own',
+                ['segment.bytes', 'retention.ms']
+            )],
+            true,
+            false,
+            't4-vectors',
+            1302
+        );
+
+        self::assertSame(3, $request->getApiVersion());
+        self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $request));
+        self::assertSame(
+            [
+                'messageSize',
+                'apiKey',
+                'apiVersion',
+                'correlationId',
+                'clientId',
+                'resources',
+                'includeSynonyms',
+                'includeDocumentation',
+            ],
+            array_keys(DescribeConfigsRequest::getScheme()),
+            'the flag of KIP-569 is the last field of the frame, behind the one of KIP-226'
+        );
+    }
+
+    public function testTheEntryOfVersionThreeEndsInTheTypeAndTheDocumentation(): void
+    {
+        $response = DescribeConfigsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V3_HEX)));
+        $entries  = $response->resources[0]->configEntries;
+
+        self::assertSame(ConfigType::INT, $entries['segment.bytes']->configType, 'segment.bytes is an INT');
+        self::assertSame(ConfigType::LONG, $entries['retention.ms']->configType, 'retention.ms is a LONG');
+        self::assertNull($entries['segment.bytes']->documentation, 'the request did not ask for it');
+        self::assertNull($entries['retention.ms']->documentation);
+        self::assertCount(3, $entries['segment.bytes']->configSynonyms, 'the synonyms of KIP-226 are still there');
+        self::assertSame(
+            [
+                'configName',
+                'configValue',
+                'readOnly',
+                'configSource',
+                'isSensitive',
+                'configSynonyms',
+                'configType',
+                'documentation',
+            ],
+            array_keys(DescribeConfigsResponseConfigEntry::getScheme()),
+            'both fields stand BEHIND the synonyms'
+        );
+        self::assertSame(self::RESPONSE_V3_HEX, bin2hex((string) $response));
+    }
+
+    /**
+     * An answer of a lower version carries neither field, and the client reads the defaults of the two
+     */
+    public function testAnEntryOfVersionOneHasNoTypeAndNoDocumentation(): void
+    {
+        $response = DescribeConfigsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $entry    = $response->resources[0]->configEntries['retention.ms'];
+
+        self::assertSame(ConfigType::UNKNOWN, $entry->configType, 'the `"default": "0"` of the field');
+        self::assertNull($entry->documentation);
+        self::assertSame(
+            ['configName', 'configValue', 'readOnly', 'configSource', 'isSensitive', 'configSynonyms'],
+            array_keys(DescribeConfigsResponseConfigEntryV1::getScheme())
+        );
+    }
+
+    /**
+     * The ids of the type byte are the ordinals of `DescribeConfigsResponse.ConfigType` @ 2.8.2
+     */
+    public function testTheConfigTypesAreTheOnesOfTheJavaClient(): void
+    {
+        self::assertSame(
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            [
+                ConfigType::UNKNOWN,
+                ConfigType::BOOLEAN,
+                ConfigType::STRING,
+                ConfigType::INT,
+                ConfigType::SHORT,
+                ConfigType::LONG,
+                ConfigType::DOUBLE,
+                ConfigType::LIST,
+                ConfigType::CLASS_NAME,
+                ConfigType::PASSWORD,
+            ]
+        );
+        self::assertSame('CLASS', ConfigType::nameOf(ConfigType::CLASS_NAME), 'the name of the Java enum member');
+        self::assertSame('PASSWORD', ConfigType::nameOf(ConfigType::PASSWORD));
+        self::assertSame(ConfigType::UNKNOWN, ConfigType::fromWire(42), 'an id this client does not know');
+        self::assertSame('UNKNOWN', ConfigType::nameOf(42));
+    }
+
     public function testANullConfigNameArrayIsTheCountMinusOne(): void
     {
         $all = new DescribeConfigsRequest(
             [new DescribeConfigsRequestResource(ConfigResource::TYPE_TOPIC, 'topic', null)],
+            false,
             false,
             'test',
             7
@@ -247,13 +377,15 @@ final class DescribeConfigsTest extends TestCase
         $none = new DescribeConfigsRequest(
             [new DescribeConfigsRequestResource(ConfigResource::TYPE_TOPIC, 'topic', [])],
             false,
+            false,
             'test',
             7
         );
 
         // "every option" and "no option at all" are the same four bytes apart: ff ff ff ff against 00 00 00 00
-        self::assertStringEndsWith('ffffffff' . '00', bin2hex((string) $all));
-        self::assertStringEndsWith('00000000' . '00', bin2hex((string) $none));
+        // (each followed by the two flags of the version 3 request, both false)
+        self::assertStringEndsWith('ffffffff' . '0000', bin2hex((string) $all));
+        self::assertStringEndsWith('00000000' . '0000', bin2hex((string) $none));
         self::assertSame(strlen((string) $all), strlen((string) $none));
     }
 
@@ -301,7 +433,7 @@ final class DescribeConfigsTest extends TestCase
 
     public function testTheVersionOneAnswerCarriesTheSourceAndTheSynonyms(): void
     {
-        $response = DescribeConfigsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $response = DescribeConfigsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
 
         self::assertCount(1, $response->resources);
         $entry = $response->resources[0]->configEntries['retention.ms'];
@@ -341,7 +473,7 @@ final class DescribeConfigsTest extends TestCase
 
     public function testTheValueOfASensitiveOptionIsNullInItsSynonymsAsWell(): void
     {
-        $response = DescribeConfigsResponse::unpack(
+        $response = DescribeConfigsResponseV1::unpack(
             new StringStream((string) hex2bin(self::SENSITIVE_RESPONSE_V1_HEX))
         );
 
@@ -358,7 +490,7 @@ final class DescribeConfigsTest extends TestCase
     public function testResponseSurvivesARoundTrip(): void
     {
         $version0 = DescribeConfigsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
-        $version1 = DescribeConfigsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $version1 = DescribeConfigsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
 
         self::assertSame(self::RESPONSE_HEX, bin2hex((string) $version0));
         self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $version1));
