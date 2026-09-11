@@ -67,6 +67,29 @@ final class AdminApiTest extends IntegrationTestCase
         $this->admin   = new AdminClient($this->cluster, $this->configuration());
     }
 
+    /**
+     * Removes the one topic of this class again: the container is shared and outlives the suite
+     *
+     * The topic is created once for the whole class, so it is deleted once as well - a topic per test would be
+     * one leader election per test on a container that already carries the topics of every other suite.
+     */
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$topic === null) {
+            return;
+        }
+
+        $configuration = [
+            ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID                 => 't10-admin',
+            ClientConfig::REQUEST_TIMEOUT_MS        => 10000,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+        ];
+        new AdminClient(Cluster::bootstrap($configuration), $configuration)->deleteTopics([self::$topic]);
+
+        self::$topic = null;
+    }
+
     public function testFindAllBrokersReturnsTheLiveBrokersOfTheCluster(): void
     {
         $brokers = $this->admin->findAllBrokers();
