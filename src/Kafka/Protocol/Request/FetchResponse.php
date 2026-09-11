@@ -16,8 +16,8 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
-use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV11;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
 
 /**

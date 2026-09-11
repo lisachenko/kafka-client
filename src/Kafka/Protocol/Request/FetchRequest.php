@@ -16,13 +16,13 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\TaggedField;
 use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
  * Fetch API (key 1), version 12
@@ -205,6 +205,23 @@ class FetchRequest extends AbstractRequest
     protected readonly array $forgottenTopics;
 
     /**
+     * Cluster this request is meant for, the tagged `cluster_id` of version 12 (Kafka 2.7).
+     *
+     * `null` - the default of the specification and of this client - leaves the field off the wire altogether,
+     * which is what a tagged field whose value is its default does. It exists for the raft replication of
+     * KIP-595, where a broker that has not registered yet validates that it is talking to the cluster it thinks
+     * it is; a consumer has nothing to say here, and a broker that is given a wrong one answers **100**
+     * `INCONSISTENT_CLUSTER_ID`.
+     *
+     * The property is declared here instead of being promoted in the constructor, because a **tagged** field is
+     * left out of a frame that does not carry it: an unpacked request would leave a promoted property
+     * uninitialized, and writing it back out again would fail.
+     *
+     * @since Version 12 of protocol
+     */
+    protected ?string $clusterId = null;
+
+    /**
      * @param array<string, array<int, int|array{int, int}>> $topicPartitions Fetch offset of every partition, as
      *                                                          topic => partition => offset. The **order** of this
      *                                                          array is the order the broker fills the answer in,
@@ -213,7 +230,10 @@ class FetchRequest extends AbstractRequest
      *                                                          A value may also be the pair
      *                                                          `[offset, currentLeaderEpoch]`, which is how a
      *                                                          caller states the leader epoch that version 9
-     *                                                          (KIP-320) puts on the wire; a plain integer is the
+     *                                                          (KIP-320) puts on the wire, or the triple
+     *                                                          `[offset, currentLeaderEpoch, lastFetchedEpoch]`,
+     *                                                          which adds the epoch of the last record it really
+     *                                                          read (version 12, KIP-595); a plain integer is the
      *                                                          offset with
      *                                                          {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::UNKNOWN_LEADER_EPOCH},
      *                                                          which is what every call written before Kafka 2.1
@@ -243,6 +263,9 @@ class FetchRequest extends AbstractRequest
      *                                                          topic => [partition, ...]; only version 7 puts them
      *                                                          on the wire and only a session does anything with
      *                                                          them.
+     * @param string|null                    $clusterId        The tagged `cluster_id` of version 12,
+     *                                                          {@see self::$clusterId}; `null` leaves it off the
+     *                                                          wire, and that is what a client sends.
      */
     public function __construct(
         array $topicPartitions,
@@ -290,16 +313,10 @@ class FetchRequest extends AbstractRequest
          * field altogether.
          */
         protected readonly string $rackId = self::NO_RACK,
-        /**
-         * Cluster this request is meant for, the tagged `cluster_id` of version 12 (Kafka 2.7).
-         *
-         * `null` - the default of the specification and of this client - leaves the field off the wire
-         * altogether. It exists for the raft replication of KIP-595, where a broker that has not registered yet
-         * validates that it is talking to the cluster it thinks it is; a consumer has nothing to say here, and
-         * a broker that is given a wrong one answers **100** `INCONSISTENT_CLUSTER_ID`.
-         */
-        protected readonly ?string $clusterId = null
+        ?string $clusterId = null
     ) {
+        $this->clusterId = $clusterId;
+
         $metadata ??= FetchMetadata::legacy();
         $this->sessionId = $metadata->sessionId;
         $this->epoch     = $metadata->epoch;
@@ -322,7 +339,8 @@ class FetchRequest extends AbstractRequest
                     $offset,
                     $partitionMaxBytes,
                     FetchRequestTopicPartition::INVALID_LOG_START_OFFSET,
-                    $currentLeaderEpoch
+                    $currentLeaderEpoch,
+                    self::lastFetchedEpochOf($fetchOffset)
                 );
             }
             $packedTopicPartitions[$topic] = new $topicClass($topic, $partitions);
@@ -395,6 +413,25 @@ class FetchRequest extends AbstractRequest
         }
 
         return [$fetchOffset, FetchRequestTopicPartition::UNKNOWN_LEADER_EPOCH];
+    }
+
+    /**
+     * Reads the `last_fetched_epoch` of version 12 out of a value of the `$topicPartitions` map.
+     *
+     * The third element of the triple `[offset, currentLeaderEpoch, lastFetchedEpoch]` is the epoch of the last
+     * record the caller really read from the partition, the field version 12 (KIP-595) added; an offset and a
+     * pair both mean {@see FetchRequestTopicPartition::UNKNOWN_LAST_FETCHED_EPOCH}, which is what the Java
+     * consumer @ 2.8.2 sends for every partition of every fetch.
+     *
+     * @param int|array{int, int}|array{int, int, int} $fetchOffset
+     */
+    public static function lastFetchedEpochOf(int|array $fetchOffset): int
+    {
+        if (is_array($fetchOffset) && isset($fetchOffset[2])) {
+            return (int) $fetchOffset[2];
+        }
+
+        return FetchRequestTopicPartition::UNKNOWN_LAST_FETCHED_EPOCH;
     }
 
     /**

@@ -978,7 +978,8 @@ class Client
                     $responsePartition->lastStableOffset,
                     $responsePartition->logStartOffset,
                     $responsePartition->abortedTransactions,
-                    $responsePartition->preferredReadReplica
+                    $responsePartition->preferredReadReplica,
+                    $responsePartition->divergingEpoch
                 );
             }
         }

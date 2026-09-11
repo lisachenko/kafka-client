@@ -16,8 +16,8 @@ namespace Protocol\Kafka\Protocol\Data;
 use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Protocol\BinarySchema;
-use Protocol\Kafka\Protocol\TaggedField;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
  * One partition of a Fetch response
