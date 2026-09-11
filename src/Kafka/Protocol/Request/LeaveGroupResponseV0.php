@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 1 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of the error code; this class only lowers the
  * version constant that {@see LeaveGroupResponse::getScheme()} follows.
  *
- * @see docs/protocol/2.8.md, section "LeaveGroup API (key 13, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "LeaveGroup API (key 13, v0 to v2)"
  */
 final class LeaveGroupResponseV0 extends LeaveGroupResponse
 {

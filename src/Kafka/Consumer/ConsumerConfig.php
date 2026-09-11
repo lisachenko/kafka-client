@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
  * protocol of KIP-98, which decides whether a consumer sees the records of a transaction that is still open or
  * that was aborted; it travels in the Fetch v5 request and in the Offsets v2 request alike. The `offsets.storage`
  * option of the general config ({@see GeneralConfig::OFFSETS_STORAGE}) still selects where the committed offsets
- * live (OffsetCommit v0 vs v3).
+ * live (OffsetCommit v0 vs v4).
  *
  * A consumer overrides one option of the general config: `request.timeout.ms` defaults to 305000 instead of 30000,
  * as it does in the Java consumer of 0.10.1 and above ("chosen to be higher than the default of

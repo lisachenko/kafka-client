@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 
 /**
- * ListGroups response, version 1 (key 16)
+ * ListGroups response, version 2 (key 16)
  *
  * <pre>
- *   ListGroups Response (Version: 1) => throttle_time_ms error_code [groups]
+ *   ListGroups Response (Version: 1 and 2) => throttle_time_ms error_code [groups]
  *     throttle_time_ms => INT32     -- since version 1
  *     error_code       => INT16
  *     groups           => group_id protocol_type
@@ -33,16 +33,17 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
  * both with an empty group array (`GroupCoordinator.handleListGroups()` @ 0.11.0.3).
  *
  * Version 1 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of the error code;
- * {@see ListGroupsResponseV0} is the answer without it.
+ * {@see ListGroupsResponseV0} is the answer without it and {@see ListGroupsResponseV1} the one of version 1, which
+ * version 2 (KIP-219, Kafka 2.0) repeats byte for byte.
  *
- * @see docs/protocol/2.8.md, sections "ListGroups API (key 16, v0 and v1)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "ListGroups API (key 16, v0 to v2)" and "Quotas and throttle time"
  */
 class ListGroupsResponse extends AbstractResponse
 {
     /**
      * Version of the ListGroups API that this class decodes the answer of
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

@@ -46,8 +46,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The broker is shared with the other suites and coordinates their groups too, so every assertion here is about the
  * groups of this class and never about the whole answer.
  *
- * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 and v1)", "ListGroups API (key 16, v0 and v1)"
- *      and "DeleteGroups API (key 42, v0)"
+ * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v2)", "ListGroups API (key 16, v0 to v2)"
+ *      and "DeleteGroups API (key 42, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeGroupsRequest::class)]
@@ -219,8 +219,29 @@ final class AdminGroupApiTest extends IntegrationTestCase
         // From 0.10.1 on the group moves to `Empty` instead and keeps its committed offsets until
         // `offsets.retention.minutes` expires them; only the expiry makes it `Dead` and removes it
         // (`GroupMetadata`/`GroupCoordinator` @ 0.10.2.2). It is therefore still listed here.
-        $groupId = $this->uniqueGroupId();
-        $member  = $this->joinGroup($groupId, 't4-leaving-member');
+        //
+        // What keeps the group alive is the **committed offset**, and nothing else: the periodic
+        // `GroupMetadataManager.cleanupGroupMetadata` - every `offsets.retention.check.interval.ms`, 600000 by
+        // default - transitions an `Empty` group WITHOUT offsets to `Dead` and drops it right away, whatever the
+        // retention says (`if (group.is(Empty) && !group.hasOffsets)` @ 2.8.2). This test therefore commits one
+        // offset before the member leaves, so that the assertion below cannot race that pass; the offsets of an
+        // empty group expire `offsets.retention.minutes` after it became empty (KIP-186), which is 10080 minutes
+        // on this container.
+        $groupId     = $this->uniqueGroupId();
+        $topic       = self::uniqueTopicName('t4-admin-empty');
+        $client      = new Client(Cluster::bootstrap($this->configuration()), $this->configuration());
+        $coordinator = $client->getGroupCoordinator($groupId);
+        $member      = $this->joinGroup($groupId, 't4-leaving-member');
+
+        new TopicMetadataProbe(fn(): Stream => $this->connect(), 30.0, 't4-admin-groups')->awaitTopicWithLeaders($topic);
+        $client->commitGroupOffsets(
+            $coordinator,
+            $groupId,
+            $member->getMemberId(),
+            $member->getGenerationId(),
+            [$topic => [0 => 7]],
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME
+        );
 
         $member->leave();
 
@@ -369,8 +390,15 @@ final class AdminGroupApiTest extends IntegrationTestCase
 
         $topics = $this->admin->listGroupOffsets($groupId);
 
+        $partitions = array_keys($topics[$topic]->partitions);
+        sort($partitions);
+
         self::assertSame([$topic], array_keys($topics), 'the group committed exactly one topic');
-        self::assertSame([0, 2], array_keys($topics[$topic]->partitions));
+        self::assertSame(
+            [0, 2],
+            $partitions,
+            'a 2.8.2 coordinator answers a null topic array in the order of its internal map, not by partition'
+        );
         self::assertSame(12, $topics[$topic]->partitions[0]->offset);
         self::assertSame(34, $topics[$topic]->partitions[2]->offset);
 

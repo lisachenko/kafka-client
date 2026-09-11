@@ -350,12 +350,12 @@ class AdminClient
      * request that names no topic at all and comes back empty.
      *
      * The version of the request follows the `offsets.storage` option: `kafka` (the default) reads the offsets that
-     * version 2 stored in the `__consumer_offsets` topic and has to be sent to the coordinator of the group, while
+     * version 4 stored in the `__consumer_offsets` topic and has to be sent to the coordinator of the group, while
      * `zookeeper` reads with version 0 from ZooKeeper, which every broker of the cluster can answer - and which has
      * no nullable topic array, so it refuses a null with an
      * {@see \Protocol\Kafka\Common\Errors\UnsupportedVersionException}.
      *
-     * A topic-partition without a committed offset is not an error: version 2 answers it with the offset -1 and the
+     * A topic-partition without a committed offset is not an error: version 4 answers it with the offset -1 and the
      * error code 0, version 0 with the offset -1 and the error code 3 (UnknownTopicOrPartition). Both are returned
      * as they are, any other error code is thrown - including the group-level error code that version 2 appends
      * after the topics, which reports that this broker is not the coordinator of the group (16), that it is still
