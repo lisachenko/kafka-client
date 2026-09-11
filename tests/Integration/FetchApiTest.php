@@ -318,7 +318,7 @@ final class FetchApiTest extends IntegrationTestCase
             bin2hex((string) $versionEight->messageSet)
         );
         self::assertSame(8, FetchRequestV8::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(11, FetchRequest::VERSION, 'and the client sends the version Kafka 2.3 added');
+        self::assertSame(12, FetchRequest::VERSION, 'and the client sends the version Kafka 2.7 added');
     }
 
     public function testAVersionSevenRequestWithoutASessionIsServedLikeAVersionSixOne(): void

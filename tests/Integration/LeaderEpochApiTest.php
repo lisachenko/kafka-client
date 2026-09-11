@@ -29,6 +29,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV10;
+use Protocol\Kafka\Protocol\Request\FetchRequestV11;
 use Protocol\Kafka\Protocol\Request\FetchRequestV8;
 use Protocol\Kafka\Protocol\Request\FetchRequestV9;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
@@ -360,11 +361,20 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             self::assertSame(['epoch-value'], $this->valuesOf($partition->getRecords()->getRecords()));
         }
 
-        // The rack is a plain string at the very end of the frame, behind the forgotten topics
-        $frame = (string) $this->fetchRequest(FetchRequest::class, 981, $epoch);
-        self::assertStringEndsWith(hex2bin('0000') ?: '', $frame, 'the empty rack of a consumer without one');
-        self::assertSame(11, FetchRequest::VERSION);
-        self::assertSame(10, FetchRequestV10::VERSION, 'the version the Kafka 2.1 part of this line sent');
+        // The rack is the last field of the frame, behind the forgotten topics: a plain string in a version 11
+        // frame, a COMPACT string in the flexible version 12, which the tagged-field section of the body follows
+        $plain = (string) $this->fetchRequest(FetchRequestV11::class, 981, $epoch);
+        self::assertStringEndsWith(hex2bin('0000') ?: '', $plain, 'the empty rack of a consumer without one');
+
+        $flexible = (string) $this->fetchRequest(FetchRequest::class, 982, $epoch);
+        self::assertStringEndsWith(
+            hex2bin('010100') ?: '',
+            $flexible,
+            'the empty compact rack, and the tag buffer of the body behind it'
+        );
+        self::assertSame(12, FetchRequest::VERSION);
+        self::assertSame(11, FetchRequestV11::VERSION, 'the version the Kafka 2.3 part of this line sent');
+        self::assertSame(10, FetchRequestV10::VERSION, 'and the version the Kafka 2.1 part sent');
     }
 
     public function testMetadataVersionEightAnswersTheAuthorizedOperationsOfTheCallerWhenAsked(): void
