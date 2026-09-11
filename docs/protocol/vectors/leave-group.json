@@ -1,8 +1,8 @@
 {
     "api": "leave-group",
     "apiKey": 13,
-    "section": "LeaveGroup API (key 13, v0 and v1)",
-    "description": "Wire vectors of the LeaveGroup API (key 13, v0 and v1), replayed by tests/Compliance.",
+    "section": "LeaveGroup API (key 13, v0 to v2)",
+    "description": "Wire vectors of the LeaveGroup API (key 13, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "leavegroup.request.v0",
@@ -71,7 +71,7 @@
         {
             "id": "leavegroup.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequestV1",
             "version": 1,
             "source": "broker",
             "description": "LeaveGroup request v1, the frame of v0 with a higher version field.",
@@ -89,7 +89,7 @@
         {
             "id": "leavegroup.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer v1: a throttle time and an error code.",
@@ -97,6 +97,39 @@
             "fields": {
                 "messageSize": 10,
                 "correlationId": 100,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "leavegroup.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "LeaveGroup request v2 of the member that shuts down, the frame of v1 with a higher version field; version 3 is the one that replaces the member id with a batch (KIP-345).",
+            "hex": "0000006e000d0002000000d000166b61666b612d636c69656e742d74332d6b6970323139000f74332d6b69703231392d67726f7570003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d316634643563326139333365",
+            "fields": {
+                "messageSize": 110,
+                "apiKey": 13,
+                "apiVersion": 2,
+                "correlationId": 208,
+                "clientId": "kafka-client-t3-kip219",
+                "consumerGroup": "t3-kip219-group",
+                "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e"
+            }
+        },
+        {
+            "id": "leavegroup.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2: the throttle time and the error code of a coordinator that removed the member.",
+            "hex": "0000000a000000d0000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 208,
                 "throttleTimeMs": 0,
                 "errorCode": 0
             }

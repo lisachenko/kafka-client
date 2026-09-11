@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * so the class of the entries is derived from {@see OffsetCommitRequestTopic::VERSION}, which
  * {@see OffsetCommitRequestTopicV1} and {@see OffsetCommitRequestTopicV0} lower.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v4)"
  */
 class OffsetCommitRequestTopic implements BinarySchemaInterface
 {

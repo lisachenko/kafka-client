@@ -16,10 +16,10 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * SyncGroup response, version 1.
+ * SyncGroup response, version 2.
  *
  * <pre>
- *   SyncGroup Response (Version: 1) => throttle_time_ms error_code member_assignment
+ *   SyncGroup Response (Version: 1 and 2) => throttle_time_ms error_code member_assignment
  *     throttle_time_ms  => INT32    -- since version 1
  *     error_code        => INT16
  *     member_assignment => BYTES
@@ -30,16 +30,17 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * code carries an empty one as well.
  *
  * Version 1 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of the error code;
- * {@see SyncGroupResponseV0} is the answer without it.
+ * {@see SyncGroupResponseV0} is the answer without it and {@see SyncGroupResponseV1} the one of version 1, which
+ * version 2 (KIP-219, Kafka 2.0) repeats byte for byte.
  *
- * @see docs/protocol/2.8.md, sections "SyncGroup API (key 14, v0 and v1)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "SyncGroup API (key 14, v0 to v2)" and "Quotas and throttle time"
  */
 class SyncGroupResponse extends AbstractResponse
 {
     /**
      * Version of the SyncGroup API that this class decodes the answer of
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

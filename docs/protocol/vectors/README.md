@@ -2,10 +2,15 @@ Wire vectors of the Kafka 1.1.1 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **314** of them in **36** files, every one of which a **1.1.1** broker speaks: **229** were
-captured by the four lines below this one and are replayed against the classes of this line unchanged, and **85**
+hex dumps. There are **334** of them in **36** files, every one of which a **2.8.2** broker speaks: **314** were
+captured by the five lines below this one and are replayed against the classes of this line unchanged, and **20**
 were captured on the `kafka-2-8-2` container of this line. Two of the inherited vectors were **re-captured** rather
 than added — `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker.
+
+What this line has captured so far is the KIP-219 version bump of the ten group apis of Kafka 2.0 — OffsetCommit
+v4, OffsetFetch v4, FindCoordinator v2, JoinGroup v3, Heartbeat v2, LeaveGroup v2, SyncGroup v2, DescribeGroups v2,
+ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from one life of the group
+`t3-kip219-group`.
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`

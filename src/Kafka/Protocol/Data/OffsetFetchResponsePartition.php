@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * was committed without metadata is stored as `OffsetMetadata.NoMetadata`, the empty string, and comes back as
  * `00 00`. A capture from an older broker can still carry `ff ff`, so both have to be handled.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v4)"
  */
 class OffsetFetchResponsePartition implements BinarySchemaInterface
 {

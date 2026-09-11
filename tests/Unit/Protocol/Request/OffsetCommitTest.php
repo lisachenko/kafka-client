@@ -31,27 +31,34 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV2;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV2;
+use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV3;
 
 /**
- * Byte-exact tests for the OffsetCommit API (key 8), versions 0 to 3.
+ * Byte-exact tests for the OffsetCommit API (key 8), versions 0 to 4.
  *
  * Version 3 (KIP-124, Kafka 0.11) is the leading `ThrottleTimeMs` of the answer and nothing else: the request of
  * v2 and v3 is one and the same body, and the three lower versions of the answer are one and the same layout.
+ * Version 4 (KIP-219, Kafka 2.0) does not touch either half - it is the version from which a throttled broker
+ * answers first and mutes the channel afterwards - so the frames of v2, v3 and v4 differ in their api version
+ * field alone, and v4 is the version this client sends.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v4)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]
 #[CoversClass(OffsetCommitRequestV1::class)]
 #[CoversClass(OffsetCommitRequestV2::class)]
+#[CoversClass(OffsetCommitRequestV3::class)]
 #[CoversClass(OffsetCommitResponse::class)]
 #[CoversClass(OffsetCommitResponseV0::class)]
 #[CoversClass(OffsetCommitResponseV1::class)]
 #[CoversClass(OffsetCommitResponseV2::class)]
+#[CoversClass(OffsetCommitResponseV3::class)]
 #[CoversClass(OffsetCommitRequestTopic::class)]
 #[CoversClass(OffsetCommitRequestTopicV0::class)]
 #[CoversClass(OffsetCommitRequestTopicV1::class)]
@@ -87,6 +94,27 @@ final class OffsetCommitTest extends TestCase
     private const string REQUEST_V3_HEX = '00000043'
         . '0008'
         . '0003'
+        . '00000001'
+        . '0004' . '74657374'
+        . '0008' . '6d792d67726f7570'
+        . 'ffffffff'
+        . '0000'
+        . 'ffffffffffffffff'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000001'
+        . '00000000'
+        . '000000000000002a'
+        . 'ffff';
+
+    /**
+     * The very same commit as {@see self::REQUEST_V3_HEX} sent as version 4 (KIP-219, Kafka 2.0).
+     *
+     * Only the ApiVersion of the header changes, from 00 03 to 00 04; every other byte is the one of v2 and v3.
+     */
+    private const string REQUEST_V4_HEX = '00000043'
+        . '0008'
+        . '0004'
         . '00000001'
         . '0004' . '74657374'
         . '0008' . '6d792d67726f7570'
@@ -205,9 +233,26 @@ final class OffsetCommitTest extends TestCase
         . '00000000'
         . '0000';
 
-    public function testVersion3RequestIsPackedAccordingToTheSpec(): void
+    public function testVersion4RequestIsPackedAccordingToTheSpec(): void
     {
         $request = new OffsetCommitRequest(
+            'my-group',
+            OffsetCommitRequest::DEFAULT_GENERATION_ID,
+            OffsetCommitRequest::DEFAULT_MEMBER_NAME,
+            OffsetCommitRequest::DEFAULT_RETENTION_TIME,
+            ['topic' => [0 => 42]],
+            'test',
+            1
+        );
+
+        self::assertSame(self::REQUEST_V4_HEX, bin2hex((string) $request));
+        self::assertSame(ApiKeys::OFFSET_COMMIT, $request->getApiKey());
+        self::assertSame(4, $request->getApiVersion(), 'the highest non-flexible version of the api');
+    }
+
+    public function testVersion3RequestIsPackedAccordingToTheSpec(): void
+    {
+        $request = new OffsetCommitRequestV3(
             'my-group',
             OffsetCommitRequest::DEFAULT_GENERATION_ID,
             OffsetCommitRequest::DEFAULT_MEMBER_NAME,
@@ -220,6 +265,15 @@ final class OffsetCommitTest extends TestCase
         self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::OFFSET_COMMIT, $request->getApiKey());
         self::assertSame(3, $request->getApiVersion());
+    }
+
+    public function testTheBodyOfVersionFourIsTheBodyOfVersionThree(): void
+    {
+        self::assertSame(
+            substr(self::REQUEST_V3_HEX, 16),
+            substr(self::REQUEST_V4_HEX, 16),
+            'KIP-219 raised the api version without adding a field'
+        );
     }
 
     public function testVersion2RequestSendsTheSameBodyAsVersion3(): void
@@ -248,7 +302,7 @@ final class OffsetCommitTest extends TestCase
         $request = new OffsetCommitRequest('my-group', -1, '', 3600000, ['topic' => [0 => 42]], 'test', 1);
 
         self::assertSame(
-            str_replace('ffffffffffffffff' . '00000001', '000000000036ee80' . '00000001', self::REQUEST_V3_HEX),
+            str_replace('ffffffffffffffff' . '00000001', '000000000036ee80' . '00000001', self::REQUEST_V4_HEX),
             bin2hex((string) $request)
         );
     }
@@ -318,8 +372,8 @@ final class OffsetCommitTest extends TestCase
         // 1451606400000 ms, i.e. 2016-01-01T00:00:00Z, as an INT64
         self::assertStringEndsWith('00000151fa7bdc00' . 'ffff', bin2hex((string) $request));
 
-        // Version 3 has no field for it: the very same timestamp simply does not reach the wire
-        $v3 = new OffsetCommitRequest(
+        // Version 4 has no field for it: the very same timestamp simply does not reach the wire
+        $v4 = new OffsetCommitRequest(
             'my-group',
             -1,
             '',
@@ -329,7 +383,7 @@ final class OffsetCommitTest extends TestCase
             1
         );
 
-        self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $v3));
+        self::assertSame(self::REQUEST_V4_HEX, bin2hex((string) $v4));
     }
 
     public function testVersion0RequestIsPackedAccordingToTheSpec(): void
@@ -436,7 +490,7 @@ final class OffsetCommitTest extends TestCase
         }
     }
 
-    public function testTheVersion3AnswerStartsWithTheThrottleTime(): void
+    public function testTheVersion3AndVersion4AnswersStartWithTheThrottleTime(): void
     {
         $frame = '0000001d'
             . '00000001'
@@ -447,12 +501,14 @@ final class OffsetCommitTest extends TestCase
             . '00000000'
             . '0000';
 
-        $response = OffsetCommitResponse::unpack(new StringStream((string) hex2bin($frame)));
+        foreach ([OffsetCommitResponseV3::class, OffsetCommitResponse::class] as $class) {
+            $response = $class::unpack(new StringStream((string) hex2bin($frame)));
 
-        self::assertSame(0, $response->throttleTimeMs);
-        self::assertSame(['topic'], array_keys($response->topics));
-        self::assertSame(0, $response->topics['topic']->partitions[0]->errorCode);
-        self::assertSame($frame, bin2hex((string) $response));
+            self::assertSame(0, $response->throttleTimeMs);
+            self::assertSame(['topic'], array_keys($response->topics));
+            self::assertSame(0, $response->topics['topic']->partitions[0]->errorCode);
+            self::assertSame($frame, bin2hex((string) $response));
+        }
     }
 
     public function testPartitionErrorCodeIsReadAsASignedInteger(): void

@@ -1,8 +1,8 @@
 {
     "api": "sync-group",
     "apiKey": 14,
-    "section": "SyncGroup API (key 14, v0 and v1)",
-    "description": "Wire vectors of the SyncGroup API (key 14, v0 and v1), replayed by tests/Compliance.",
+    "section": "SyncGroup API (key 14, v0 to v2)",
+    "description": "Wire vectors of the SyncGroup API (key 14, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "syncgroup.request.v0",
@@ -88,7 +88,7 @@
         {
             "id": "syncgroup.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequestV1",
             "version": 1,
             "source": "broker",
             "description": "SyncGroup request v1 of the leader, which publishes the assignment of the generation.",
@@ -115,7 +115,7 @@
         {
             "id": "syncgroup.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer v1: the throttle time, the error code and the assignment of the member.",
@@ -127,6 +127,51 @@
                 "errorCode": 0,
                 "memberAssignment": {
                     "$bytes": "000000000001000b74332d7468726f74746c650000000300000000000000010000000200000000"
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "SyncGroup request v2 of the leader, which publishes the assignment of the generation; the frame of v1 with a higher version field.",
+            "hex": "000000d4000e0002000000ca00166b61666b612d636c69656e742d74332d6b6970323139000f74332d6b69703231392d67726f757000000001003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d31663464356332613933336500000001003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d3166346435633261393333650000001d000000000001000974332d6b6970323139000000010000000000000000",
+            "fields": {
+                "messageSize": 212,
+                "apiKey": 14,
+                "apiVersion": 2,
+                "correlationId": 202,
+                "clientId": "kafka-client-t3-kip219",
+                "consumerGroup": "t3-kip219-group",
+                "generationId": 1,
+                "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
+                "groupAssignments": {
+                    "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e": {
+                        "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
+                        "assignment": {
+                            "$bytes": "000000000001000974332d6b6970323139000000010000000000000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2: the throttle time, the error code and the share of the member that sent the request.",
+            "hex": "0000002b000000ca0000000000000000001d000000000001000974332d6b6970323139000000010000000000000000",
+            "fields": {
+                "messageSize": 43,
+                "correlationId": 202,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "memberAssignment": {
+                    "$bytes": "000000000001000974332d6b6970323139000000010000000000000000"
                 }
             }
         }

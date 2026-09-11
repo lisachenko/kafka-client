@@ -24,15 +24,17 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * is answered with an empty group array.
  *
  * <pre>
- *   DescribeGroups Request (Version: 0 and 1) => [group_ids]
+ *   DescribeGroups Request (Version: 0, 1 and 2) => [group_ids]
  *     group_ids => STRING
  * </pre>
  *
  * `DESCRIBE_GROUPS_REQUEST_V1 = DESCRIBE_GROUPS_REQUEST_V0` in `Protocol.java` @ 0.11.0.3: version 1 (KIP-124,
  * Kafka 0.11) added the `throttle_time_ms` to the ANSWER alone ({@see DescribeGroupsResponse}), so
- * {@see DescribeGroupsRequestV0} puts the same bytes on the wire.
+ * {@see DescribeGroupsRequestV0} puts the same bytes on the wire. Version 2 (KIP-219, Kafka 2.0) added nothing
+ * either and {@see DescribeGroupsRequestV1} sends the same frame; the request gains its first field at version 3
+ * (KIP-430, Kafka 2.3), the `include_authorized_operations` flag.
  *
- * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v2)"
  */
 class DescribeGroupsRequest extends AbstractRequest
 {
@@ -44,7 +46,7 @@ class DescribeGroupsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @param list<string> $groups        Groups to describe, an empty list is answered with an empty description

@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 1 (KIP-124, Kafka 0.11) put a `throttle_time_ms` in front of the array; this class only lowers the version
  * constant that {@see DescribeGroupsResponse::getScheme()} follows.
  *
- * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v2)"
  */
 final class DescribeGroupsResponseV0 extends DescribeGroupsResponse
 {
