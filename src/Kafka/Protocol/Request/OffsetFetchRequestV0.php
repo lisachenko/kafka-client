@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * The nullable topic array of version 2 does not exist here either, see {@see OffsetFetchRequestV1}.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
  */
 final class OffsetFetchRequestV0 extends OffsetFetchRequest
 {

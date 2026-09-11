@@ -791,9 +791,13 @@ final class ClientTest extends TestCase
         $lookupFrame = $lookupNode->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::GROUP_COORDINATOR, $this->apiKeyOf($lookupFrame));
-        self::assertSame(2, $this->apiVersionOf($lookupFrame), 'the highest non-flexible FindCoordinator');
+        self::assertSame(3, $this->apiVersionOf($lookupFrame), 'the flexible FindCoordinator of KIP-482');
         // The key "tx-1" and the CoordinatorType 1 of a transactional id
-        self::assertStringEndsWith('0004' . '74782d31' . '01', bin2hex($lookupFrame));
+        self::assertStringEndsWith(
+            '05' . '74782d31' . '01' . '00',
+            bin2hex($lookupFrame),
+            'the compact key is the transactional id, the type 1, and the body ends in its tag buffer'
+        );
 
         $initFrame = $coordinator->getReceivedFrames()[0];
 
@@ -1364,9 +1368,9 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(7, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 7');
+        self::assertSame(8, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 8');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(5, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 5');
+        self::assertSame(6, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 6');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -1422,8 +1426,12 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(5, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
-        self::assertStringEndsWith('ffffffff', bin2hex($frame), 'the topic array of the request is the null one');
+        self::assertSame(6, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
+        self::assertStringEndsWith(
+            '0000',
+            bin2hex($frame),
+            'the null topic array of a flexible version is the unsigned varint 0, then the tag buffer'
+        );
     }
 
     public function testAGroupLevelErrorOfOffsetFetchVersionTwoIsReported(): void
@@ -1493,7 +1501,7 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(5, $this->apiVersionOf($frame), 'JoinGroup v5 is the KIP-345 version of the v1 frame');
+        self::assertSame(6, $this->apiVersionOf($frame), 'JoinGroup v6 is the flexible version of KIP-482');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(
@@ -1571,7 +1579,7 @@ final class ClientTest extends TestCase
 
         self::assertSame('my-share', $response->memberAssignment);
         self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($coordinator->getReceivedFrames()[0]));
-        self::assertSame(3, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
+        self::assertSame(4, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
     }
 
     public function testAHeartbeatAndALeaveAreSentToTheCoordinatorAndReportNothingWhenTheySucceed(): void

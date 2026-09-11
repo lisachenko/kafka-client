@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
  * nothing it changes can reach another suite of the shared container; the only broker resource it names is asked
  * with `validate_only`, which validates the change and writes nothing.
  *
- * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0)"
+ * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(AlterConfigOp::class)]

@@ -37,14 +37,20 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
  * constant this scheme follows, and so do {@see OffsetCommitResponseV4} and {@see OffsetCommitResponseV5}: the
  * answer is one and the same layout from version 3 on, because neither KIP-211 nor KIP-320 touched it.
  *
- * @see docs/protocol/2.8.md, sections "OffsetCommit API (key 8, v0 to v7)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "OffsetCommit API (key 8, v0 to v8)" and "Quotas and throttle time"
  */
 class OffsetCommitResponse extends AbstractResponse
 {
     /**
      * Version of the OffsetCommit API that this class decodes the answer of
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 8;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

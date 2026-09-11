@@ -27,38 +27,46 @@ use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequestV0;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequestV1;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequestV2;
+use Protocol\Kafka\Protocol\Request\HeartbeatRequestV3;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponseV0;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponseV1;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponseV2;
+use Protocol\Kafka\Protocol\Request\HeartbeatResponseV3;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV1;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV2;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV3;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequestV4;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequestV5;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV1;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV2;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV3;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponseV4;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponseV5;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV1;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV2;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV3;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV1;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV2;
+use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV3;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV1;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV2;
+use Protocol\Kafka\Protocol\Request\SyncGroupRequestV3;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV1;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponseV2;
+use Protocol\Kafka\Protocol\Request\SyncGroupResponseV3;
 
 /**
  * Byte-exact tests for the four apis of the group membership protocol (keys 11 to 14).
@@ -76,8 +84,8 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponseV2;
  * byte, and only checks that they survive the round trip untouched. A real `consumer` group is a different matter:
  * a 2.x coordinator does parse the metadata of such a group, see the integration suite.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v5)", "SyncGroup API (key 14, v0 to v3)",
- *      "Heartbeat API (key 12, v0 to v3)" and "LeaveGroup API (key 13, v0 to v3)"
+ * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v6)", "SyncGroup API (key 14, v0 to v4)",
+ *      "Heartbeat API (key 12, v0 to v4)" and "LeaveGroup API (key 13, v0 to v4)"
  */
 #[CoversClass(JoinGroupRequest::class)]
 #[CoversClass(JoinGroupRequestV0::class)]
@@ -85,38 +93,46 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponseV2;
 #[CoversClass(JoinGroupRequestV2::class)]
 #[CoversClass(JoinGroupRequestV3::class)]
 #[CoversClass(JoinGroupRequestV4::class)]
+#[CoversClass(JoinGroupRequestV5::class)]
 #[CoversClass(JoinGroupResponse::class)]
 #[CoversClass(JoinGroupResponseV0::class)]
 #[CoversClass(JoinGroupResponseV1::class)]
 #[CoversClass(JoinGroupResponseV2::class)]
 #[CoversClass(JoinGroupResponseV3::class)]
 #[CoversClass(JoinGroupResponseV4::class)]
+#[CoversClass(JoinGroupResponseV5::class)]
 #[CoversClass(JoinGroupResponseMemberV0::class)]
 #[CoversClass(SyncGroupRequest::class)]
 #[CoversClass(SyncGroupRequestV0::class)]
 #[CoversClass(SyncGroupRequestV1::class)]
 #[CoversClass(SyncGroupRequestV2::class)]
+#[CoversClass(SyncGroupRequestV3::class)]
 #[CoversClass(SyncGroupResponse::class)]
 #[CoversClass(SyncGroupResponseV0::class)]
 #[CoversClass(SyncGroupResponseV1::class)]
 #[CoversClass(SyncGroupResponseV2::class)]
+#[CoversClass(SyncGroupResponseV3::class)]
 #[CoversClass(HeartbeatRequest::class)]
 #[CoversClass(HeartbeatRequestV0::class)]
 #[CoversClass(HeartbeatRequestV1::class)]
 #[CoversClass(HeartbeatRequestV2::class)]
+#[CoversClass(HeartbeatRequestV3::class)]
 #[CoversClass(HeartbeatResponse::class)]
 #[CoversClass(HeartbeatResponseV0::class)]
 #[CoversClass(HeartbeatResponseV1::class)]
 #[CoversClass(HeartbeatResponseV2::class)]
+#[CoversClass(HeartbeatResponseV3::class)]
 #[CoversClass(LeaveGroupRequest::class)]
 #[CoversClass(LeaveGroupRequestV0::class)]
 #[CoversClass(LeaveGroupRequestV1::class)]
 #[CoversClass(LeaveGroupRequestV2::class)]
+#[CoversClass(LeaveGroupRequestV3::class)]
 #[CoversClass(LeaveGroupRequestMember::class)]
 #[CoversClass(LeaveGroupResponse::class)]
 #[CoversClass(LeaveGroupResponseV0::class)]
 #[CoversClass(LeaveGroupResponseV1::class)]
 #[CoversClass(LeaveGroupResponseV2::class)]
+#[CoversClass(LeaveGroupResponseV3::class)]
 #[CoversClass(LeaveGroupResponseMember::class)]
 #[CoversClass(JoinGroupRequestProtocol::class)]
 #[CoversClass(JoinGroupResponseMember::class)]
@@ -151,7 +167,7 @@ final class GroupMembershipTest extends TestCase
      *     ProtocolName     => 00 05 "range"
      *     ProtocolMetadata => 00 00 00 02 00 ff
      */
-    private const string JOIN_REQUEST_HEX = '0000003f'
+    private const string JOIN_REQUEST_V5_HEX = '0000003f'
         . '000b'
         . '0005'
         . '00000001'
@@ -167,9 +183,48 @@ final class GroupMembershipTest extends TestCase
         . '00000002' . '00ff';
 
     /**
+     * The same request as a version 6 frame (Kafka 2.4, KIP-482), which is what this client sends.
+     *
+     *   Size             => 00 00 00 37 (55 bytes)
+     *   ApiKey           => 00 0b
+     *   ApiVersion       => 00 06
+     *   CorrelationId    => 00 00 00 01
+     *   ClientId         => 00 04 "test" (never compact)
+     *   TAG_BUFFER       => 00 (of the request header v2)
+     *   GroupId          => 09 "my-group" (compact: 8 + 1)
+     *   SessionTimeout   => 00 00 75 30
+     *   RebalanceTimeout => 00 04 93 e0
+     *   MemberId         => 01 (compact: the empty string, 0 + 1)
+     *   GroupInstanceId  => 00 (compact: null)
+     *   ProtocolType     => 09 "consumer"
+     *   GroupProtocols   => 02 (compact: 1 + 1)
+     *     ProtocolName     => 06 "range"
+     *     ProtocolMetadata => 03 00 ff (compact bytes: 2 + 1)
+     *     TAG_BUFFER       => 00 (of the protocol entry)
+     *   TAG_BUFFER       => 00 (of the body)
+     */
+    private const string JOIN_REQUEST_V6_HEX = '00000037'
+        . '000b'
+        . '0006'
+        . '00000001'
+        . '0004' . '74657374'
+        . '00'
+        . '09' . '6d792d67726f7570'
+        . '00007530'
+        . '000493e0'
+        . '01'
+        . '00'
+        . '09' . '636f6e73756d6572'
+        . '02'
+        . '06' . '72616e6765'
+        . '03' . '00ff'
+        . '00'
+        . '00';
+
+    /**
      * The same request of a STATIC member, whose `group_instance_id` "one" stands where the null was
      */
-    private const string JOIN_REQUEST_STATIC_HEX = '00000042'
+    private const string JOIN_REQUEST_STATIC_V5_HEX = '00000042'
         . '000b'
         . '0005'
         . '00000001'
@@ -568,7 +623,7 @@ final class GroupMembershipTest extends TestCase
 
     public function testJoinGroupRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new JoinGroupRequest(
+        $request = new JoinGroupRequestV5(
             'my-group',
             30000,
             300000,
@@ -579,14 +634,40 @@ final class GroupMembershipTest extends TestCase
             1
         );
 
-        self::assertSame(self::JOIN_REQUEST_HEX, bin2hex((string) $request));
+        self::assertSame(self::JOIN_REQUEST_V5_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::JOIN_GROUP, $request->getApiKey());
-        self::assertSame(5, $request->getApiVersion(), 'KIP-345 makes the version this client sends 5');
+        self::assertSame(5, $request->getApiVersion(), 'KIP-345 made this the last plain version');
+        self::assertFalse(JoinGroupRequestV5::isFlexible());
+    }
+
+    /**
+     * Version 6 (Kafka 2.4, KIP-482) is the same fields in the flexible encoding, and it is what this client sends
+     */
+    public function testJoinGroupRequestOfVersionSixIsTheFlexibleEncodingOfTheSameFields(): void
+    {
+        $request = new JoinGroupRequest(
+            'my-group',
+            30000,
+            300000,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            'consumer',
+            ['range' => self::METADATA],
+            'test',
+            1
+        );
+        self::assertSame(self::JOIN_REQUEST_V6_HEX, bin2hex((string) $request));
+        self::assertSame(6, $request->getApiVersion(), 'KIP-482 makes the version this client sends 6');
+        self::assertTrue(JoinGroupRequest::isFlexible());
+        self::assertSame(
+            $request->getMessageSize(),
+            strlen((string) $request) - 4,
+            'the size field counts everything behind it, compact lengths and tag buffers included'
+        );
     }
 
     public function testAStaticMemberWritesItsInstanceIdWhereTheNullOfADynamicOneStands(): void
     {
-        $request = new JoinGroupRequest(
+        $request = new JoinGroupRequestV5(
             'my-group',
             30000,
             300000,
@@ -598,10 +679,10 @@ final class GroupMembershipTest extends TestCase
             'one'
         );
 
-        self::assertSame(self::JOIN_REQUEST_STATIC_HEX, bin2hex((string) $request));
+        self::assertSame(self::JOIN_REQUEST_STATIC_V5_HEX, bin2hex((string) $request));
         self::assertSame(
-            strlen(self::JOIN_REQUEST_HEX) + 2 * 3,
-            strlen(self::JOIN_REQUEST_STATIC_HEX),
+            strlen(self::JOIN_REQUEST_V5_HEX) + 2 * 3,
+            strlen(self::JOIN_REQUEST_STATIC_V5_HEX),
             'the three characters of the instance id replace nothing but the two bytes of the null'
         );
     }
@@ -742,7 +823,7 @@ final class GroupMembershipTest extends TestCase
 
     public function testJoinGroupRequestAcceptsAnAlreadyBuiltProtocol(): void
     {
-        $request = new JoinGroupRequest(
+        $request = new JoinGroupRequestV5(
             'my-group',
             30000,
             300000,
@@ -753,7 +834,7 @@ final class GroupMembershipTest extends TestCase
             1
         );
 
-        self::assertSame(self::JOIN_REQUEST_HEX, bin2hex((string) $request));
+        self::assertSame(self::JOIN_REQUEST_V5_HEX, bin2hex((string) $request));
     }
 
     public function testJoinGroupResponseIsUnpackedAccordingToTheSpec(): void
@@ -802,7 +883,7 @@ final class GroupMembershipTest extends TestCase
 
     public function testTheVersionFiveAnswerGivesEveryMemberAGroupInstanceId(): void
     {
-        $response = JoinGroupResponse::unpack(new StringStream((string) hex2bin(self::JOIN_RESPONSE_V5_HEX)));
+        $response = JoinGroupResponseV5::unpack(new StringStream((string) hex2bin(self::JOIN_RESPONSE_V5_HEX)));
 
         self::assertSame(0, $response->throttleTimeMs);
         self::assertSame(['one-1', 'two-2'], array_keys($response->members));
@@ -870,16 +951,46 @@ final class GroupMembershipTest extends TestCase
 
     public function testSyncGroupRequestOfTheLeaderIsPackedAccordingToTheSpec(): void
     {
-        $request = new SyncGroupRequest('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2);
+        $request = new SyncGroupRequestV3('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2);
 
         self::assertSame(self::SYNC_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::SYNC_GROUP, $request->getApiKey());
-        self::assertSame(3, $request->getApiVersion(), 'KIP-345 makes the version this client sends 3');
+        self::assertSame(3, $request->getApiVersion(), 'KIP-345 made this the last plain version');
+        self::assertFalse(SyncGroupRequestV3::isFlexible());
+    }
+
+    /**
+     * Version 4 (Kafka 2.4, KIP-482) is the same request in the flexible encoding
+     */
+    public function testSyncGroupRequestOfVersionFourIsFlexible(): void
+    {
+        $request = new SyncGroupRequest('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2);
+
+        self::assertSame(
+            '00000030' . '000e' . '0004' . '00000002'
+            . '0004' . '74657374'
+            . '00'
+            . '09' . '6d792d67726f7570'
+            . '00000002'
+            . '06' . '6f6e652d31'
+            . '00'
+            . '02'
+            . '06' . '6f6e652d31' . '04' . '010002' . '00'
+            . '00',
+            bin2hex((string) $request)
+        );
+        self::assertSame(4, $request->getApiVersion(), 'KIP-482 makes the version this client sends 4');
+        self::assertTrue(SyncGroupRequest::isFlexible());
+        self::assertLessThan(
+            strlen((string) new SyncGroupRequestV3('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2)),
+            strlen((string) $request),
+            'the compact lengths more than pay for the three tagged sections of the flexible frame'
+        );
     }
 
     public function testASyncOfAStaticMemberCarriesItsInstanceIdBehindTheMemberId(): void
     {
-        $request = new SyncGroupRequest('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2, 'one');
+        $request = new SyncGroupRequestV3('my-group', 2, 'one-1', ['one-1' => self::ASSIGNMENT], 'test', 2, 'one');
 
         self::assertSame(self::SYNC_REQUEST_STATIC_HEX, bin2hex((string) $request));
     }
@@ -921,7 +1032,7 @@ final class GroupMembershipTest extends TestCase
 
     public function testSyncGroupRequestAcceptsAnAlreadyBuiltMember(): void
     {
-        $request = new SyncGroupRequest(
+        $request = new SyncGroupRequestV3(
             'my-group',
             2,
             'one-1',
@@ -935,7 +1046,7 @@ final class GroupMembershipTest extends TestCase
 
     public function testSyncGroupRequestOfAFollowerCarriesAnEmptyAssignmentArray(): void
     {
-        $request = new SyncGroupRequest('my-group', 2, 'two-2', [], 'test', 2);
+        $request = new SyncGroupRequestV3('my-group', 2, 'two-2', [], 'test', 2);
 
         $expected = '00000029'
             . '000e'
@@ -963,7 +1074,7 @@ final class GroupMembershipTest extends TestCase
 
     public function testSyncGroupResponseOfVersionOneAndTwoStartsWithTheThrottleTime(): void
     {
-        foreach ([SyncGroupResponseV1::class, SyncGroupResponseV2::class, SyncGroupResponse::class] as $class) {
+        foreach ([SyncGroupResponseV1::class, SyncGroupResponseV2::class, SyncGroupResponseV3::class] as $class) {
             $response = $class::unpack(new StringStream((string) hex2bin(self::SYNC_RESPONSE_HEX)));
 
             self::assertSame(2, $response->getCorrelationId());
@@ -990,16 +1101,34 @@ final class GroupMembershipTest extends TestCase
 
     public function testHeartbeatRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new HeartbeatRequest('my-group', 2, 'one-1', 'test', 3);
+        $request = new HeartbeatRequestV3('my-group', 2, 'one-1', 'test', 3);
 
         self::assertSame(self::HEARTBEAT_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::HEARTBEAT, $request->getApiKey());
-        self::assertSame(3, $request->getApiVersion(), 'KIP-345 makes the version this client sends 3');
+        self::assertSame(3, $request->getApiVersion(), 'KIP-345 made this the last plain version');
+        self::assertFalse(HeartbeatRequestV3::isFlexible());
+    }
+
+    /**
+     * Version 4 (Kafka 2.4, KIP-482): the same four fields, compactly, with two tagged sections
+     */
+    public function testHeartbeatRequestOfVersionFourIsFlexible(): void
+    {
+        $request = new HeartbeatRequest('my-group', 2, 'one-1', 'test', 3, 'one');
+        $frame   = bin2hex((string) $request);
+
+        self::assertSame(4, $request->getApiVersion(), 'KIP-482 makes the version this client sends 4');
+        self::assertTrue(HeartbeatRequest::isFlexible());
+        self::assertStringEndsWith(
+            '04' . bin2hex('one') . '00',
+            $frame,
+            'the instance id is a compact string and the body ends in its empty tag buffer'
+        );
     }
 
     public function testAHeartbeatOfAStaticMemberEndsWithItsInstanceId(): void
     {
-        $request = new HeartbeatRequest('my-group', 2, 'one-1', 'test', 3, 'one');
+        $request = new HeartbeatRequestV3('my-group', 2, 'one-1', 'test', 3, 'one');
 
         self::assertSame(self::HEARTBEAT_REQUEST_STATIC_HEX, bin2hex((string) $request));
     }
@@ -1054,7 +1183,7 @@ final class GroupMembershipTest extends TestCase
     {
         $frame = '0000000a' . '00000003' . '00000000' . '001b';
 
-        foreach ([HeartbeatResponseV1::class, HeartbeatResponse::class] as $class) {
+        foreach ([HeartbeatResponseV1::class, HeartbeatResponseV2::class, HeartbeatResponseV3::class] as $class) {
             $response = $class::unpack(new StringStream((string) hex2bin($frame)));
 
             self::assertSame(3, $response->getCorrelationId());
@@ -1066,17 +1195,35 @@ final class GroupMembershipTest extends TestCase
 
     public function testLeaveGroupRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new LeaveGroupRequest('my-group', 'one-1', 'test', 4);
+        $request = new LeaveGroupRequestV3('my-group', 'one-1', 'test', 4);
 
         self::assertSame(self::LEAVE_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::LEAVE_GROUP, $request->getApiKey());
-        self::assertSame(3, $request->getApiVersion(), 'KIP-345 makes the version this client sends 3');
+        self::assertSame(3, $request->getApiVersion(), 'KIP-345 gave the api its batch at version 3');
         self::assertCount(1, $request->getMembers(), 'a member that removes itself is a batch of one');
+        self::assertFalse(LeaveGroupRequestV3::isFlexible());
+    }
+
+    /**
+     * Version 4 (Kafka 2.4, KIP-482) is the batch of version 3 in the flexible encoding
+     */
+    public function testLeaveGroupRequestOfVersionFourIsFlexible(): void
+    {
+        $request = new LeaveGroupRequest('my-group', 'one-1', 'test', 4);
+        $frame   = bin2hex((string) $request);
+
+        self::assertSame(4, $request->getApiVersion(), 'KIP-482 makes the version this client sends 4');
+        self::assertTrue(LeaveGroupRequest::isFlexible());
+        self::assertStringEndsWith(
+            '02' . '06' . bin2hex('one-1') . '00' . '00' . '00',
+            $frame,
+            'a compact batch of one, the null instance id, and the tag buffers of the entry and of the body'
+        );
     }
 
     public function testTheVersionThreeRequestRemovesSeveralMembersAtOnce(): void
     {
-        $request = new LeaveGroupRequest(
+        $request = new LeaveGroupRequestV3(
             'my-group',
             [
                 new LeaveGroupRequestMember('one-1'),
@@ -1099,7 +1246,7 @@ final class GroupMembershipTest extends TestCase
         self::assertSame(2, $request->getApiVersion());
         self::assertArrayNotHasKey('members', LeaveGroupRequestV2::getScheme());
         self::assertArrayHasKey('memberId', LeaveGroupRequestV2::getScheme());
-        self::assertArrayHasKey('members', LeaveGroupRequest::getScheme());
+        self::assertArrayHasKey('members', LeaveGroupRequestV3::getScheme());
         self::assertArrayNotHasKey(
             'memberId',
             LeaveGroupRequest::getScheme(),
@@ -1170,7 +1317,7 @@ final class GroupMembershipTest extends TestCase
             . '0005' . '6f6e652d31' . 'ffff' . '0000'
             . '0000' . '0003' . '74776f' . '0019';
 
-        $response = LeaveGroupResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = LeaveGroupResponseV3::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(0, $response->throttleTimeMs);
         self::assertSame(0, $response->errorCode, 'a member that was refused does not fail the request');

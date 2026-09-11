@@ -44,14 +44,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * called {@see self::STATE_COMPLETING_REBALANCE} since then, where 0.9 to 0.11 called it
  * {@see self::STATE_AWAITING_SYNC}. Only the name on the wire changed, the state itself did not.
  *
- * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v5)"
  */
 class DescribeGroupResponseMetadata implements BinarySchemaInterface
 {
     /**
      * Version of the DescribeGroups API that this DTO decodes an entry of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 5;
 
     /**
      * `authorized_operations` of an entry whose operations were not asked for, `Integer.MIN_VALUE`
@@ -165,12 +165,22 @@ class DescribeGroupResponseMetadata implements BinarySchemaInterface
             'state'        => BinarySchema::TYPE_STRING,
             'protocolType' => BinarySchema::TYPE_STRING,
             'protocol'     => BinarySchema::TYPE_STRING,
-            'members'      => ['memberId' => DescribeGroupResponseMember::class],
+            'members'      => ['memberId' => static::memberClass()],
         ];
         if (static::VERSION >= 3) {
             $scheme['authorizedOperations'] = BinarySchema::TYPE_INT32;
         }
 
         return $scheme;
+    }
+
+    /**
+     * Returns the class of a member entry for the version of the API that this class decodes
+     *
+     * @return class-string<DescribeGroupResponseMember>
+     */
+    protected static function memberClass(): string
+    {
+        return static::VERSION >= 4 ? DescribeGroupResponseMember::class : DescribeGroupResponseMemberV0::class;
     }
 }

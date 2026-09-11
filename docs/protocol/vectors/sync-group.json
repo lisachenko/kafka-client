@@ -1,8 +1,8 @@
 {
     "api": "sync-group",
     "apiKey": 14,
-    "section": "SyncGroup API (key 14, v0 to v3)",
-    "description": "Wire vectors of the SyncGroup API (key 14, v0 to v3), replayed by tests/Compliance.",
+    "section": "SyncGroup API (key 14, v0 to v4)",
+    "description": "Wire vectors of the SyncGroup API (key 14, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "syncgroup.request.v0",
@@ -178,7 +178,7 @@
         {
             "id": "syncgroup.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequestV3",
             "version": 3,
             "source": "broker",
             "description": "SyncGroup request v3 of the same static member, which is the leader of its generation and publishes the assignment of all three partitions to itself. The `group_instance_id` of KIP-345 stands behind the member id.",
@@ -206,7 +206,7 @@
         {
             "id": "syncgroup.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer, which version 3 left exactly as version 1 made it: the throttle time, the error code and the assignment of this member.",
@@ -218,6 +218,54 @@
                 "errorCode": 0,
                 "memberAssignment": {
                     "$bytes": "000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000"
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "SyncGroup request v4 (KIP-482) of the leader of the generation: a compact assignment array whose entries carry compact `member_id` and `member_assignment` fields.",
+            "hex": "000000d0000e00040000038700136b61666b612d636c69656e742d74332d323462001574332d3234622d766563746f72732d67726f7570000000013074332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d6364653636326166613732360b74332d3234622d6f6e65023074332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d6364653636326166613732362b000000000001000e74332d3234622d766563746f727300000003000000000000000100000002000000000000",
+            "fields": {
+                "messageSize": 208,
+                "apiKey": 14,
+                "apiVersion": 4,
+                "correlationId": 903,
+                "clientId": "kafka-client-t3-24b",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-24b-vectors-group",
+                "generationId": 1,
+                "memberId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                "groupInstanceId": "t3-24b-one",
+                "groupAssignments": {
+                    "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726": {
+                        "memberId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                        "assignment": {
+                            "$bytes": "000000000001000e74332d3234622d766563746f72730000000300000000000000010000000200000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer v4: the throttle time, the error code and the assignment of this member as `compact_bytes`.",
+            "hex": "0000003700000387000000000000002b000000000001000e74332d3234622d766563746f7273000000030000000000000001000000020000000000",
+            "fields": {
+                "messageSize": 55,
+                "correlationId": 903,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "memberAssignment": {
+                    "$bytes": "000000000001000e74332d3234622d766563746f72730000000300000000000000010000000200000000"
                 }
             }
         }

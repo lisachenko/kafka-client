@@ -112,7 +112,7 @@ final class ConsumerCoordinatorTest extends TestCase
         $first  = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[1]))));
         $second = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[2]))));
 
-        self::assertSame(5, $first['apiVersion'], 'the client sends JoinGroup v5');
+        self::assertSame(6, $first['apiVersion'], 'the client sends JoinGroup v6');
         self::assertSame(JoinGroupRequest::DEFAULT_MEMBER_ID, $first['memberId']);
         self::assertSame(self::MEMBER_ID, $second['memberId'], 'the second join carries the assigned id');
         self::assertSame(

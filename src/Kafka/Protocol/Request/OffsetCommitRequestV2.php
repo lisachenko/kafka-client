@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * same body as {@see OffsetCommitRequest}; the answer of version 3 gained the leading `throttle_time_ms` and is
  * therefore read with {@see OffsetCommitResponseV2} for this version.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
  */
 final class OffsetCommitRequestV2 extends OffsetCommitRequest
 {

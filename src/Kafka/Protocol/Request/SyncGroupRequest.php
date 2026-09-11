@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
  * fences the first, whose requests are answered 82 (`FencedInstanceId`) afterwards. A dynamic member sends
  * `null`, which is the frame {@see SyncGroupRequestV2} sends with one field less.
  *
- * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v4)"
  */
 class SyncGroupRequest extends AbstractRequest
 {
@@ -58,7 +58,13 @@ class SyncGroupRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Assignment of each member of the group, indexed by the member id

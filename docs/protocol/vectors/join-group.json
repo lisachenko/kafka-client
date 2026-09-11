@@ -1,8 +1,8 @@
 {
     "api": "join-group",
     "apiKey": 11,
-    "section": "JoinGroup API (key 11, v0 to v5)",
-    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v5), replayed by tests/Compliance.",
+    "section": "JoinGroup API (key 11, v0 to v6)",
+    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v6), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "joingroup.request.v1",
@@ -380,7 +380,7 @@
         {
             "id": "joingroup.request.v5",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV5",
             "version": 5,
             "source": "broker",
             "description": "JoinGroup request v5 of a **static** member (KIP-345): the `group_instance_id` `t3-345-one` stands behind an empty `member_id`. A join that names an instance id is never refused with the 79 of KIP-394 - `requireKnownMemberId` is `version >= 4 && groupInstanceId.isEmpty` in `KafkaApis.handleJoinGroupRequest` @ 2.8.2 - so this one request joins the group.",
@@ -410,7 +410,7 @@
         {
             "id": "joingroup.response.v5",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV5",
             "version": 5,
             "source": "broker",
             "description": "The answer: the generation 1 and the member id the coordinator generated, which for a static member is `<group.instance.id>-<uuid>` and not `<client.id>-<uuid>`. Every entry of the member array carries the `group_instance_id` that version 5 added, here the very instance that joined.",
@@ -430,6 +430,66 @@
                         "groupInstanceId": "t3-345-one",
                         "metadata": {
                             "$bytes": "000000000001000e74332d3334352d766563746f727300000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.request.v6",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "JoinGroup request v6 (KIP-482) of a static member: the same fields as version 5 with compact strings, a compact protocol array and a tag buffer after every structure - the header, every entry of `group_protocols` and the body.",
+            "hex": "00000074000b00060000038600136b61666b612d636c69656e742d74332d323462001574332d3234622d766563746f72732d67726f75700000753000004e20010b74332d3234622d6f6e6509636f6e73756d6572020672616e67651b000000000001000e74332d3234622d766563746f7273000000000000",
+            "fields": {
+                "messageSize": 116,
+                "apiKey": 11,
+                "apiVersion": 6,
+                "correlationId": 902,
+                "clientId": "kafka-client-t3-24b",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-24b-vectors-group",
+                "sessionTimeout": 30000,
+                "rebalanceTimeout": 20000,
+                "memberId": "",
+                "groupInstanceId": "t3-24b-one",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000e74332d3234622d766563746f727300000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v6",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The answer v6: the member array is compact, every member entry ends in its own tag buffer and so does the body.",
+            "hex": "000000ce0000038600000000000000000000010672616e67653074332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d6364653636326166613732363074332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d636465363632616661373236023074332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d6364653636326166613732360b74332d3234622d6f6e651b000000000001000e74332d3234622d766563746f7273000000000000",
+            "fields": {
+                "messageSize": 206,
+                "correlationId": 902,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 1,
+                "groupProtocol": "range",
+                "leaderId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                "memberId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                "members": {
+                    "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726": {
+                        "memberId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                        "groupInstanceId": "t3-24b-one",
+                        "metadata": {
+                            "$bytes": "000000000001000e74332d3234622d766563746f727300000000"
                         }
                     }
                 }

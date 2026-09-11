@@ -24,8 +24,10 @@ use Protocol\Kafka\Protocol\Data\ElectLeadersResponsePartitionResult;
 use Protocol\Kafka\Protocol\Data\ElectLeadersResponseReplicaElectionResult;
 use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
 use Protocol\Kafka\Protocol\Request\ElectLeadersRequestV0;
+use Protocol\Kafka\Protocol\Request\ElectLeadersRequestV1;
 use Protocol\Kafka\Protocol\Request\ElectLeadersResponse;
 use Protocol\Kafka\Protocol\Request\ElectLeadersResponseV0;
+use Protocol\Kafka\Protocol\Request\ElectLeadersResponseV1;
 
 /**
  * Byte-exact tests for the ElectLeaders API of Kafka 2.2 (api key 43, v0, KIP-183).
@@ -34,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\ElectLeadersResponseV0;
  * else: the `election_type` byte of {@see ElectionType} is a field of the version 1 that Kafka 2.4 adds, and so is
  * the top-level error code of the answer. Everything this version reports is per partition.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 #[CoversClass(ElectLeadersRequest::class)]
 #[CoversClass(ElectLeadersRequestV0::class)]
@@ -44,6 +46,8 @@ use Protocol\Kafka\Protocol\Request\ElectLeadersResponseV0;
 #[CoversClass(ElectLeadersResponseReplicaElectionResult::class)]
 #[CoversClass(ElectLeadersResponsePartitionResult::class)]
 #[CoversClass(ElectionType::class)]
+#[CoversClass(ElectLeadersRequestV1::class)]
+#[CoversClass(ElectLeadersResponseV1::class)]
 final class ElectLeadersTest extends TestCase
 {
     /**
@@ -211,7 +215,7 @@ final class ElectLeadersTest extends TestCase
 
     public function testTheVersionOneCarriesTheElectionTypeOfKip460(): void
     {
-        $request = new ElectLeadersRequest(
+        $request = new ElectLeadersRequestV1(
             ['t4-24-vectors' => [0]],
             30000,
             ElectionType::PREFERRED,
@@ -226,7 +230,7 @@ final class ElectLeadersTest extends TestCase
 
     public function testTheUncleanElectionIsTheSameFrameWithTheTypeOne(): void
     {
-        $request = new ElectLeadersRequest(
+        $request = new ElectLeadersRequestV1(
             ['t4-24-vectors' => [0]],
             30000,
             ElectionType::UNCLEAN,
@@ -248,19 +252,19 @@ final class ElectLeadersTest extends TestCase
     {
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'electionType', 'topicPartitions', 'timeoutMs'],
-            array_keys(ElectLeadersRequest::getScheme()),
+            array_keys(ElectLeadersRequestV1::getScheme()),
             'the `election_type` of KIP-460 stands in FRONT of the topic array'
         );
         self::assertSame(
             ['messageSize', 'correlationId', 'throttleTimeMs', 'errorCode', 'replicaElectionResults'],
-            array_keys(ElectLeadersResponse::getScheme()),
+            array_keys(ElectLeadersResponseV1::getScheme()),
             'and the top-level error code between the throttle time and the results'
         );
     }
 
     public function testTheTopLevelErrorCodeOfVersionOneIsRead(): void
     {
-        $response = ElectLeadersResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $response = ElectLeadersResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
 
         self::assertSame(KafkaException::NO_ERROR, $response->errorCode, 'everything that reached the controller');
         self::assertSame(

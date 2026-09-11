@@ -69,8 +69,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * next to the other suites on the shared container.
  *
  * @see docs/protocol/2.8.md, sections "Static membership (KIP-345)", "The authorized operations of a group (v3,
- *      KIP-430)", "JoinGroup API (key 11, v0 to v5)", "SyncGroup API (key 14, v0 to v3)", "Heartbeat API (key 12,
- *      v0 to v3)", "OffsetCommit API (key 8, v0 to v7)", "DescribeGroups API (key 15, v0 to v3)" and
+ *      KIP-430)", "JoinGroup API (key 11, v0 to v6)", "SyncGroup API (key 14, v0 to v4)", "Heartbeat API (key 12,
+ *      v0 to v3)", "OffsetCommit API (key 8, v0 to v8)", "DescribeGroups API (key 15, v0 to v5)" and
  *      "The batch leave of KIP-345 (v3)"
  */
 #[CoversClass(JoinGroupRequest::class)]
@@ -178,11 +178,14 @@ final class StaticMembershipApiTest extends IntegrationTestCase
         $this->consumers = [];
 
         // The topic of the test is not needed afterwards, and a shared container that collects the debris of
-        // thousands of test runs is what makes its controller and its log directories give up
-        try {
-            new AdminClient($this->cluster(), $this->configuration())->deleteTopics([$this->topic]);
-        } catch (KafkaException) {
-            // A broker that can not delete the topic right now must not fail the test that just passed
+        // thousands of test runs is what makes its controller and its log directories give up. The property is
+        // unset when setUp() skipped the test before it created one.
+        if (isset($this->topic)) {
+            try {
+                new AdminClient($this->cluster(), $this->configuration())->deleteTopics([$this->topic]);
+            } catch (KafkaException) {
+                // A broker that can not delete the topic right now must not fail the test that just passed
+            }
         }
 
         parent::tearDown();

@@ -218,7 +218,7 @@ integration branch, which is in `main`'s history after the final merge):
 | `2.1.1` | 2.1 | `72d1bb3` (`chore(2.x): Kafka 2.1 complete`) | #121 (T3), #120 (T4), #128 (T2) |
 | `2.2.2` | 2.2 | `8c9fae9` (`chore(2.x): Kafka 2.2 complete`) | #123 (T4), #124 (T3), #130 (T2) |
 | `2.3.1` | 2.3 | `d2b20c6` (`chore(2.x): Kafka 2.3 complete`) | #125 (T4), #126 (T3), #132 (T2) |
-| `2.4.1` | 2.4 | _pending_ | |
+| `2.4.1` | 2.4 | `3e21b50` (`chore(2.x): Kafka 2.4 complete`) | #133 (T1), #127 (T4), #129 (T3), #134 (T1), #136 (T2), #137 (T3), #138 (T2), #139 (T1), #140 (T4) |
 | `2.5.1` | 2.5 | _pending_ | |
 | `2.6.3` | 2.6 | _pending_ | |
 | `2.7.2` | 2.7 | _pending_ | |
