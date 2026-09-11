@@ -21,9 +21,11 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartition;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV2;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV2;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV3;
 
 /**
  * The frames of the OffsetForLeaderEpoch api (key 23), version by version.
@@ -32,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV2;
  * position validation of a consumer; Kafka 2.3 added a `replica_id` at the head of the request (KIP-392), because
  * a consumer may now validate against a follower.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 #[CoversClass(OffsetForLeaderEpochRequest::class)]
 #[CoversClass(OffsetForLeaderEpochResponse::class)]
@@ -41,13 +43,13 @@ final class OffsetForLeaderEpochApiTest extends TestCase
 {
     public function testVersionThreeWritesTheReplicaIdInFrontOfTheTopics(): void
     {
-        $consumer = bin2hex((string) new OffsetForLeaderEpochRequest(
+        $consumer = bin2hex((string) new OffsetForLeaderEpochRequestV3(
             ['topic' => [0 => [7, 9]]],
             'test',
             3,
             OffsetForLeaderEpochRequest::CONSUMER_REPLICA_ID
         ));
-        $debug = bin2hex((string) new OffsetForLeaderEpochRequest(['topic' => [0 => [7, 9]]], 'test', 3));
+        $debug = bin2hex((string) new OffsetForLeaderEpochRequestV3(['topic' => [0 => [7, 9]]], 'test', 3));
 
         //   Size, ApiKey 0017, ApiVersion 0003, CorrelationId, ClientId "test", then the replica id
         self::assertSame('00170003' . '00000003' . '0004' . '74657374' . 'ffffffff', substr($consumer, 8, 36));
@@ -62,16 +64,23 @@ final class OffsetForLeaderEpochApiTest extends TestCase
             substr($consumer, 44 + 8),
             'the body behind the replica id is the body of version 2'
         );
-        self::assertSame(3, OffsetForLeaderEpochRequest::VERSION);
-        self::assertSame(3, OffsetForLeaderEpochResponse::VERSION);
+        self::assertSame(4, OffsetForLeaderEpochRequest::VERSION);
+        self::assertSame(4, OffsetForLeaderEpochResponse::VERSION);
+        self::assertSame(3, OffsetForLeaderEpochRequestV3::VERSION);
         self::assertSame(2, OffsetForLeaderEpochRequestV2::VERSION);
     }
 
     public function testEveryVersionOfTheRequestWritesExactlyTheFieldsItHas(): void
     {
         self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'headerTaggedFields',
+                'replicaId', 'topics'],
+            array_keys(OffsetForLeaderEpochRequest::getScheme()),
+            'version 4 is a flexible version, so its header carries a tagged-field section of its own'
+        );
+        self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'topics'],
-            array_keys(OffsetForLeaderEpochRequest::getScheme())
+            array_keys(OffsetForLeaderEpochRequestV3::getScheme())
         );
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'topics'],
@@ -92,10 +101,15 @@ final class OffsetForLeaderEpochApiTest extends TestCase
     public function testTheAnswerOfVersionThreeIsTheAnswerOfVersionTwo(): void
     {
         // `OffsetForLeaderEpochResponse.json` @ 2.8.2: "Version 3 is the same as version 2"
-        self::assertSame(OffsetForLeaderEpochResponseV2::getScheme(), OffsetForLeaderEpochResponse::getScheme());
+        self::assertSame(OffsetForLeaderEpochResponseV2::getScheme(), OffsetForLeaderEpochResponseV3::getScheme());
+        self::assertSame(
+            ['messageSize', 'correlationId', 'headerTaggedFields', 'throttleTimeMs', 'topics'],
+            array_keys(OffsetForLeaderEpochResponse::getScheme()),
+            'the answer of version 4 comes in a response header v1'
+        );
         self::assertSame(
             ['messageSize', 'correlationId', 'throttleTimeMs', 'topics'],
-            array_keys(OffsetForLeaderEpochResponse::getScheme())
+            array_keys(OffsetForLeaderEpochResponseV3::getScheme())
         );
         self::assertSame(
             ['messageSize', 'correlationId', 'topics'],

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * at all - version 4 (Kafka 2.1, KIP-320) put a `current_leader_epoch` into every partition of the request and a
  * `leader_epoch` into every partition of the answer, see {@see OffsetsRequest}.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 final class OffsetsRequestV3 extends OffsetsRequest
 {

@@ -337,7 +337,7 @@ final class FetchOffsetsTest extends IntegrationTestCase
         $versionThree = OffsetsResponseV3::unpack($stream);
 
         self::assertSame(3, OffsetsRequestV3::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(5, OffsetsRequest::VERSION, 'and the client sends the version Kafka 2.2 added');
+        self::assertSame(6, OffsetsRequest::VERSION, 'and the client sends the flexible version Kafka 2.8 added');
         self::assertSame($versionTwo->getMessageSize(), $versionThree->getMessageSize());
         self::assertSame(0, $versionThree->throttleTimeMs, 'no quota is set for this client id');
 

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * 2.1, KIP-320) is what the answer gained, the `leader_epoch` of every partition; version 8 (Kafka 2.3, KIP-430)
  * appended the two booleans that ask for the authorized operations, see {@see MetadataRequest}.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v9)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
  */
 final class MetadataRequestV7 extends MetadataRequest
 {

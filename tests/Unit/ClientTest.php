@@ -678,9 +678,10 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 8, correlation id, client id, then the null transactional id of a plain producer
-        self::assertStringStartsWith('00000008', $frame, 'the Produce api is spoken in version 8');
-        self::assertStringContainsString('74372d636c69656e74' . 'ffff', $frame, 'no transactional id is sent');
+        // ApiKey 0, ApiVersion 9, correlation id, client id, the tag buffer of the request header v2 and then
+        // the null transactional id of a plain producer, which a flexible frame writes as the single byte 00
+        self::assertStringStartsWith('00000009', $frame, 'the Produce api is spoken in version 9');
+        self::assertStringContainsString('74372d636c69656e74' . '00' . '00', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
         self::assertSame(RecordBatch::MAGIC, $records->getMagic());
@@ -728,7 +729,11 @@ final class ClientTest extends TestCase
         );
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        self::assertStringContainsString('0004' . '74782d31', $frame, 'the transactional id reached the frame');
+        self::assertStringContainsString(
+            '05' . '74782d31',
+            $frame,
+            'the transactional id reached the frame, as the compact string of a version 9 body'
+        );
 
         $batch = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]))->getBatches()[0];
         self::assertInstanceOf(RecordBatch::class, $batch);
@@ -1864,35 +1869,83 @@ final class ClientTest extends TestCase
      *   ApiKey ApiVersion CorrelationId ClientId [TransactionalId] RequiredAcks Timeout
      *   [TopicName [Partition RecordSetSize RecordSet]]
      * </pre>
+     *
+     * From version 9 on (Kafka 2.8, KIP-482) the frame is a **flexible** one: the header carries a tagged-field
+     * section behind the client id, and every string, array and byte field announces its length as an unsigned
+     * varint of `length + 1` instead of an int16/int32.
      */
     private static function messageSetOf(string $frame): string
     {
         /** @var array{apiVersion: int, clientIdLength: int} $header */
-        $header = unpack('napiKey/napiVersion/NcorrelationId/nclientIdLength', $frame);
-        $offset = 2 + 2 + 4 + 2 + $header['clientIdLength'];
+        $header   = unpack('napiKey/napiVersion/NcorrelationId/nclientIdLength', $frame);
+        $flexible = $header['apiVersion'] >= 9;
+        $offset   = 2 + 2 + 4 + 2 + $header['clientIdLength'];
+
+        // The tagged-field section of the request header v2, empty in every frame this client sends
+        if ($flexible) {
+            ++$offset;
+        }
 
         // The nullable TransactionalId that version 3 put in front of RequiredAcks: -1 is null and has no bytes
-        if ($header['apiVersion'] >= 3) {
+        if ($header['apiVersion'] >= 3 && !$flexible) {
             /** @var array{transactionalIdLength: int} $transactionalId */
             $transactionalId = unpack('ntransactionalIdLength', $frame, $offset);
             $length          = $transactionalId['transactionalIdLength'];
             $offset          += 2 + ($length === 0xFFFF ? 0 : $length);
+        } elseif ($flexible) {
+            [$transactionalIdLength, $read] = self::compactLengthAt($frame, $offset);
+            $offset += $read + $transactionalIdLength;
         }
 
         // requiredAcks, timeout and the number of topics of the request
-        $offset += 2 + 4 + 4;
+        $offset += 2 + 4;
+        $offset += $flexible ? self::compactLengthAt($frame, $offset)[1] : 4;
 
-        /** @var array{topicLength: int} $topic */
-        $topic  = unpack('ntopicLength', $frame, $offset);
-        $offset += 2 + $topic['topicLength'];
+        if ($flexible) {
+            [$topicLength, $read] = self::compactLengthAt($frame, $offset);
+            $offset += $read + $topicLength;
+        } else {
+            /** @var array{topicLength: int} $topic */
+            $topic  = unpack('ntopicLength', $frame, $offset);
+            $offset += 2 + $topic['topicLength'];
+        }
 
         // the number of partitions of the topic and the id of the only one
-        $offset += 4 + 4;
+        $offset += $flexible ? self::compactLengthAt($frame, $offset)[1] : 4;
+        $offset += 4;
+
+        if ($flexible) {
+            [$setSize, $read] = self::compactLengthAt($frame, $offset);
+
+            return substr($frame, $offset + $read, $setSize);
+        }
 
         /** @var array{messageSetSize: int} $partition */
         $partition = unpack('NmessageSetSize', $frame, $offset);
 
         return substr($frame, $offset + 4, $partition['messageSetSize']);
+    }
+
+    /**
+     * Reads a compact length at the given offset of a flexible frame
+     *
+     * A compact string, array or byte array announces `length + 1` as an unsigned varint, with 0 meaning `null`.
+     *
+     * @return array{int, int} the length itself and the number of bytes the varint took
+     */
+    private static function compactLengthAt(string $frame, int $offset): array
+    {
+        $value = 0;
+        $shift = 0;
+        $read  = 0;
+        do {
+            $byte = ord($frame[$offset + $read]);
+            $value |= ($byte & 0x7F) << $shift;
+            $shift += 7;
+            ++$read;
+        } while (($byte & 0x80) !== 0);
+
+        return [max(0, $value - 1), $read];
     }
 
     /**

@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (Kafka 2.3, KIP-392) put that at the head of the frame, see {@see OffsetForLeaderEpochRequest::$replicaId}. A
  * broker serves this version as it serves a follower.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 final class OffsetForLeaderEpochRequestV2 extends OffsetForLeaderEpochRequest
 {

@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see self::partitionClass()}. The versions 3 and 4 changed nothing about the answer at all; version 5 (Kafka
  * 1.0) appended the `LogStartOffset` to every partition entry.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
  */
 class ProduceResponseTopic implements BinarySchemaInterface
 {

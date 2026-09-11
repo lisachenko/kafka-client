@@ -22,7 +22,7 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponseTopicV0;
  * OffsetForLeaderEpoch response, version 2 (key 23, Kafka 2.1)
  *
  * <pre>
- *   OffsetForLeaderEpoch Response (Version: 2) => throttle_time_ms [topics]
+ *   OffsetForLeaderEpoch Response (Version: 4) => throttle_time_ms [topics]
  *     throttle_time_ms => INT32     -- since version 2
  *     topics => topic [partitions]
  *       topic      => STRING
@@ -43,6 +43,11 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponseTopicV0;
  * to replication; from 2.1 on an ordinary consumer sends it to validate its position after a leader change, so the
  * field had to be there.
  *
+ * **Version 3 (Kafka 2.3, KIP-392) changed nothing in the answer** - the `replica_id` it added is a field of the
+ * request - and **version 4 (Kafka 2.8) is the flexible version of KIP-482**, see {@see self::FLEXIBLE_VERSION}:
+ * the response header **v1**, a compact topic name, compact arrays and a tagged-field section behind every
+ * structure, with the same fields as version 3. {@see OffsetForLeaderEpochResponseV3} decodes the plain frame.
+ *
  * The answer has neither a top-level error code nor a throttle time - the api arrived in the same release as
  * KIP-124 but is not one of the fifteen apis it touched, because a follower is not throttled by a client quota.
  * Every partition carries its own code, and a 2.8.2 broker reports:
@@ -58,7 +63,7 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponseTopicV0;
  * answer for an epoch the leader cannot place: `Log.endOffsetForEpoch` @ 0.11.0.3 has no cache entry above the
  * requested epoch, which is what a partition that has only ever been led by the current leader answers.
  *
- * @see docs/protocol/2.8.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v3)" and
+ * @see docs/protocol/2.8.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v4)" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetForLeaderEpochResponse extends AbstractResponse
@@ -66,7 +71,15 @@ class OffsetForLeaderEpochResponse extends AbstractResponse
     /**
      * Version of the OffsetForLeaderEpoch API that this class decodes the answer of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `OffsetForLeaderEpochResponse.json` @ 2.8.2 declares `"flexibleVersions": "4+"`; not a field was added to
+     * the answer, the encoding changed.
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas

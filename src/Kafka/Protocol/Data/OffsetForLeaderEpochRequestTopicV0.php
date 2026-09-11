@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * constant that {@see OffsetForLeaderEpochRequestTopic::partitionClass()} follows: a request of version 0 or 1
  * carries no `current_leader_epoch` per partition.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 final class OffsetForLeaderEpochRequestTopicV0 extends OffsetForLeaderEpochRequestTopic
 {

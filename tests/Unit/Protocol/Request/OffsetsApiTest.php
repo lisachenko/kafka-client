@@ -38,12 +38,14 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV4;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
 
 /**
  * Byte-exact tests for the Offsets (ListOffset) API, versions 0, 1 and 2.
@@ -57,7 +59,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
  *   ListOffsets Response (Version: 2) => throttle_time_ms [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]
@@ -78,20 +80,75 @@ final class OffsetsApiTest extends TestCase
     /**
      * Offsets request v2 asking for the latest offset of "topic-0", client id "test", correlation id 7.
      *
-     *   Size            => 00 00 00 2e (46 bytes)
+     *   Size            => 00 00 00 2f (47 bytes)
      *   ApiKey          => 00 02
-     *   ApiVersion      => 00 05
+     *   ApiVersion      => 00 06 (the FLEXIBLE version of KIP-482)
      *   CorrelationId   => 00 00 00 07
-     *   ClientId        => 00 04 "test"
+     *   ClientId        => 00 04 "test" (an int16 length, never compact), then the tag buffer of the header
      *   ReplicaId       => ff ff ff ff (-1, an ordinary consumer)
      *   IsolationLevel  => 00 (read_uncommitted)
-     *   [TopicName]     => 00 00 00 01, 00 05 "topic"
-     *     [Partition]   => 00 00 00 01
+     *   [TopicName]     => 02 (compact: one entry), 06 "topic" (compact: five bytes)
+     *     [Partition]   => 02 (compact: one entry)
      *       Partition   => 00 00 00 00
      *       CurrentLeaderEpoch => ff ff ff ff (-1, "I do not know the epoch"), since version 4
-     *       Timestamp   => ff ff ff ff ff ff ff ff (-1, the latest offset)
+     *       Timestamp   => ff ff ff ff ff ff ff ff (-1, the latest offset), then the tag buffer of the entry
+     *   and the tag buffers of the topic entry and of the body
      */
-    private const string LATEST_REQUEST_HEX = '00000032'
+    private const string LATEST_REQUEST_HEX = '0000002f'
+        . '0002'
+        . '0006'
+        . '00000007'
+        . '0004' . '74657374'
+        . '00'
+        . 'ffffffff'
+        . '00'
+        . '02'
+        . '06' . '746f706963'
+        . '02'
+        . '00000000' . 'ffffffff' . 'ffffffffffffffff' . '00'
+        . '00'
+        . '00';
+
+    /**
+     * The same question with the isolation level `read_committed`, which asks for the last stable offset
+     */
+    private const string LATEST_COMMITTED_REQUEST_HEX = '0000002f'
+        . '0002'
+        . '0006'
+        . '00000007'
+        . '0004' . '74657374'
+        . '00'
+        . 'ffffffff'
+        . '01'
+        . '02'
+        . '06' . '746f706963'
+        . '02'
+        . '00000000' . 'ffffffff' . 'ffffffffffffffff' . '00'
+        . '00'
+        . '00';
+
+    /**
+     * The same question asking for the earliest available offset: the timestamp is -2 instead of -1
+     */
+    private const string EARLIEST_REQUEST_HEX = '0000002f'
+        . '0002'
+        . '0006'
+        . '00000007'
+        . '0004' . '74657374'
+        . '00'
+        . 'ffffffff'
+        . '00'
+        . '02'
+        . '06' . '746f706963'
+        . '02'
+        . '00000000' . 'ffffffff' . 'fffffffffffffffe' . '00'
+        . '00'
+        . '00';
+
+    /**
+     * The same question as a plain version 5 frame, the last one before the flexible encoding of KIP-482
+     */
+    private const string LATEST_REQUEST_V5_HEX = '00000032'
         . '0002'
         . '0005'
         . '00000007'
@@ -121,7 +178,7 @@ final class OffsetsApiTest extends TestCase
     /**
      * The same request with the isolation level `read_committed`, which asks for the last stable offset
      */
-    private const string LATEST_COMMITTED_REQUEST_HEX = '00000032'
+    private const string LATEST_COMMITTED_REQUEST_V5_HEX = '00000032'
         . '0002'
         . '0005'
         . '00000007'
@@ -150,7 +207,7 @@ final class OffsetsApiTest extends TestCase
     /**
      * The same request asking for the earliest available offset: the timestamp is -2 instead of -1
      */
-    private const string EARLIEST_REQUEST_HEX = '00000032'
+    private const string EARLIEST_REQUEST_V5_HEX = '00000032'
         . '0002'
         . '0005'
         . '00000007'
@@ -187,8 +244,8 @@ final class OffsetsApiTest extends TestCase
         );
 
         self::assertSame(self::LATEST_REQUEST_HEX, bin2hex((string) $request));
-        self::assertSame(50, $request->getMessageSize(), 'the four epoch bytes of KIP-320 per partition');
-        self::assertSame(5, $request->getApiVersion(), 'the client sends the version Kafka 2.2 added');
+        self::assertSame(47, $request->getMessageSize(), 'the compact encoding of KIP-482 is three bytes shorter');
+        self::assertSame(6, $request->getApiVersion(), 'the client sends the version Kafka 2.8 added');
     }
 
     public function testTheVersionsTwoAndThreeSendOneAndTheSameFrame(): void
@@ -232,7 +289,7 @@ final class OffsetsApiTest extends TestCase
         );
 
         self::assertSame(
-            substr_replace(self::LATEST_REQUEST_HEX, '00000007', 2 * 42, 8),
+            substr_replace(self::LATEST_REQUEST_HEX, '00000007', 2 * 36, 8),
             bin2hex((string) $request),
             'a value of the map may be the pair [timestamp, currentLeaderEpoch]'
         );
@@ -257,8 +314,8 @@ final class OffsetsApiTest extends TestCase
         self::assertSame(-1, OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH);
         self::assertSame(4, OffsetsRequestV4::VERSION);
         self::assertSame(4, OffsetsResponseV4::VERSION);
-        self::assertSame(5, OffsetsRequest::VERSION);
-        self::assertSame(5, OffsetsResponse::VERSION);
+        self::assertSame(6, OffsetsRequest::VERSION);
+        self::assertSame(6, OffsetsResponse::VERSION);
     }
 
     public function testVersionFiveIsTheVersionFourFrameAndOneMoreErrorCode(): void
@@ -275,14 +332,15 @@ final class OffsetsApiTest extends TestCase
             'test',
             7,
         ];
-        $five = bin2hex((string) new OffsetsRequest(...$arguments));
+        $five = bin2hex((string) new OffsetsRequestV5(...$arguments));
         $four = bin2hex((string) new OffsetsRequestV4(...$arguments));
 
         self::assertSame(substr($four, 2 * 8), substr($five, 2 * 8), 'the bodies are the same bytes');
         self::assertSame('0004', substr($four, 2 * 6, 4), 'only the api version of the header differs');
         self::assertSame('0005', substr($five, 2 * 6, 4));
-        self::assertSame(OffsetsRequestV4::getScheme(), OffsetsRequest::getScheme());
-        self::assertSame(OffsetsResponseV4::getScheme(), OffsetsResponse::getScheme());
+        self::assertSame(self::LATEST_REQUEST_V5_HEX, $five);
+        self::assertSame(OffsetsRequestV4::getScheme(), OffsetsRequestV5::getScheme());
+        self::assertSame(OffsetsResponseV4::getScheme(), OffsetsResponseV5::getScheme());
         self::assertSame(78, KafkaException::OFFSET_NOT_AVAILABLE);
         self::assertInstanceOf(
             OffsetNotAvailableException::class,
@@ -400,15 +458,17 @@ final class OffsetsApiTest extends TestCase
         );
 
         self::assertSame(
-            '00000042'
-            . '0002' . '0005' . '00000007' . '0004' . '74657374'
+            '00000040'
+            . '0002' . '0006' . '00000007' . '0004' . '74657374' . '00'
             . 'ffffffff'
             . '00'
-            . '00000001'
-            . '0005' . '746f706963'
-            . '00000002'
-            . '00000000' . 'ffffffff' . 'fffffffffffffffe'
-            . '00000003' . 'ffffffff' . '00000151fa7bdc00',
+            . '02'
+            . '06' . '746f706963'
+            . '03'
+            . '00000000' . 'ffffffff' . 'fffffffffffffffe' . '00'
+            . '00000003' . 'ffffffff' . '00000151fa7bdc00' . '00'
+            . '00'
+            . '00',
             bin2hex((string) $request)
         );
     }
@@ -424,6 +484,7 @@ final class OffsetsApiTest extends TestCase
                 'apiVersion',
                 'correlationId',
                 'clientId',
+                'headerTaggedFields',
                 'replicaId',
                 'isolationLevel',
                 'topicPartitions',

@@ -90,7 +90,11 @@ final class MessageFields
             return $value === null ? null : self::of($value);
         }
 
-        $isBytes = $schemeType === BinarySchema::TYPE_BYTEARRAY || $schemeType === BinarySchema::TYPE_VARCHAR_ZIGZAG;
+        // A uuid is 16 RAW bytes (KIP-516) and a vector file is json, which carries no binary: it is written
+        // down as `{"$bytes": "<hex>"}` like every other byte field
+        $isBytes = $schemeType === BinarySchema::TYPE_BYTEARRAY
+            || $schemeType === BinarySchema::TYPE_VARCHAR_ZIGZAG
+            || $schemeType === BinarySchema::TYPE_UUID;
         if ($isBytes && $value !== null) {
             return [self::BYTES_KEY => bin2hex((string) $value)];
         }

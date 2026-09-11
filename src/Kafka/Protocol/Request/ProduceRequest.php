@@ -98,7 +98,12 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * answer: that the client understands the `record_errors` and the `error_message` that a refused batch is
  * answered with, see {@see ProduceResponse}. `ProduceRequest.json` @ 2.8.2 has no field of it either.
  *
- * {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
+ * **Version 9 (Kafka 2.8) is the flexible version of KIP-482**, see {@see self::FLEXIBLE_VERSION}: the same body
+ * once more, written with the request header **v2**, a compact `transactional_id` and topic name, compact arrays,
+ * a **compact record set** and a tagged-field section at the end of the body, of every topic entry and of every
+ * partition entry. This class is that version and {@see ProduceRequestV8} keeps the plain frame.
+ *
+ * {@see ProduceRequestV8}, {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
  * {@see ProduceRequestV2}, {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with
  * them the legacy message sets - available.
  *
@@ -107,7 +112,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -119,7 +124,16 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 8;
+    public const int VERSION = 9;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `ProduceRequest.json` @ 2.8.2 declares `"flexibleVersions": "9+"` and comments "Version 9 enables flexible
+     * versions": not a field was added, the encoding changed. The record set of a partition entry is then a
+     * **compact** byte array - an unsigned varint of `length + 1` in front of the batches instead of an int32.
+     */
+    public const int FLEXIBLE_VERSION = 9;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all
