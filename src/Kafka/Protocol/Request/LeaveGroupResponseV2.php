@@ -14,18 +14,21 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 /**
- * LeaveGroup response, version 1: the throttle time and the error code, the answer of version 2 as well
+ * LeaveGroup response, version 2: the throttle time and the error code of the one member that left
  *
  * <pre>
  *   LeaveGroup Response (Version: 1 and 2) => throttle_time_ms error_code
  * </pre>
  *
- * @see docs/protocol/2.8.md, sections "LeaveGroup API (key 13, v0 to v3)" and "Quotas and throttle time"
+ * Version 3 (Kafka 2.4, KIP-345) appended the member array of the batch it answers, see
+ * {@see LeaveGroupResponse}; below it the error code of the single member *is* the error code of the answer.
+ *
+ * @see docs/protocol/2.8.md, section "The batch leave of KIP-345 (v3)"
  */
-final class LeaveGroupResponseV1 extends LeaveGroupResponse
+final class LeaveGroupResponseV2 extends LeaveGroupResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 }

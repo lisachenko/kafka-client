@@ -15,11 +15,14 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\MemberToRemove;
+use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\FencedInstanceIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
 use Protocol\Kafka\Consumer\KafkaConsumer;
@@ -29,6 +32,8 @@ use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
+use Protocol\Kafka\Protocol\Data\LeaveGroupResponseMember;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
@@ -37,6 +42,8 @@ use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
+use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
@@ -53,12 +60,18 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the error code **82** (`FencedInstanceId`). The same release gave DescribeGroups its version 3, whose
  * `include_authorized_operations` asks the broker which operations the client may perform on each group.
  *
+ * Kafka 2.4 added the half that makes static membership operable: the **batch LeaveGroup v3** of the same KIP,
+ * with which an administrator removes a static instance that is not coming back -
+ * {@see \Protocol\Kafka\Admin\AdminClient::removeMembersFromConsumerGroup()} - and which a member that removes
+ * itself sends as a batch of one.
+ *
  * Every group of this class is named `t3-345-…` and every consumer instance `t3-345-…`, so that the tests can run
  * next to the other suites on the shared container.
  *
  * @see docs/protocol/2.8.md, sections "Static membership (KIP-345)", "The authorized operations of a group (v3,
  *      KIP-430)", "JoinGroup API (key 11, v0 to v5)", "SyncGroup API (key 14, v0 to v3)", "Heartbeat API (key 12,
- *      v0 to v3)", "OffsetCommit API (key 8, v0 to v7)" and "DescribeGroups API (key 15, v0 to v3)"
+ *      v0 to v3)", "OffsetCommit API (key 8, v0 to v7)", "DescribeGroups API (key 15, v0 to v3)" and
+ *      "The batch leave of KIP-345 (v3)"
  */
 #[CoversClass(JoinGroupRequest::class)]
 #[CoversClass(JoinGroupResponse::class)]
@@ -72,6 +85,11 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 #[CoversClass(DescribeGroupResponseMetadata::class)]
 #[CoversClass(ConsumerCoordinator::class)]
 #[CoversClass(KafkaConsumer::class)]
+#[CoversClass(LeaveGroupRequest::class)]
+#[CoversClass(LeaveGroupResponse::class)]
+#[CoversClass(LeaveGroupRequestMember::class)]
+#[CoversClass(LeaveGroupResponseMember::class)]
+#[CoversClass(MemberToRemove::class)]
 final class StaticMembershipApiTest extends IntegrationTestCase
 {
     /**
@@ -158,6 +176,14 @@ final class StaticMembershipApiTest extends IntegrationTestCase
             }
         }
         $this->consumers = [];
+
+        // The topic of the test is not needed afterwards, and a shared container that collects the debris of
+        // thousands of test runs is what makes its controller and its log directories give up
+        try {
+            new AdminClient($this->cluster(), $this->configuration())->deleteTopics([$this->topic]);
+        } catch (KafkaException) {
+            // A broker that can not delete the topic right now must not fail the test that just passed
+        }
 
         parent::tearDown();
     }
@@ -441,6 +467,119 @@ final class StaticMembershipApiTest extends IntegrationTestCase
         }
 
         self::fail('The poll loop of a fenced consumer never reported the error');
+    }
+
+    /**
+     * The batch of KIP-345: every entry is answered on its own, and the top-level code stays 0
+     */
+    public function testTheBatchLeaveAnswersEveryMemberOnItsOwn(): void
+    {
+        $groupId  = self::uniqueGroupName();
+        $instance = self::uniqueInstanceId();
+        $stream   = $this->coordinatorStream($groupId);
+
+        $joined = $this->join($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, $instance, 751);
+        $this->sync($stream, $groupId, $joined, $instance, 752);
+
+        self::assertCount(1, $this->describeGroup($groupId)->members);
+
+        new LeaveGroupRequest(
+            $groupId,
+            [
+                new LeaveGroupRequestMember(LeaveGroupRequestMember::UNKNOWN_MEMBER_ID, $instance),
+                new LeaveGroupRequestMember(LeaveGroupRequestMember::UNKNOWN_MEMBER_ID, $instance . '-nobody'),
+            ],
+            self::CLIENT_ID,
+            753
+        )->writeTo($stream);
+        $answer = LeaveGroupResponse::unpack($stream);
+
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $answer->errorCode,
+            'the top-level code is about the request: a refused member does not fail it'
+        );
+        self::assertCount(2, $answer->members);
+        self::assertSame(KafkaException::NO_ERROR, $answer->members[0]->errorCode, 'the static member was removed');
+        self::assertSame($instance, $answer->members[0]->groupInstanceId);
+        self::assertSame(
+            '',
+            $answer->members[0]->memberId,
+            'the entry echoes the identity that was sent, not the member id the coordinator resolved'
+        );
+        self::assertSame(
+            KafkaException::UNKNOWN_MEMBER_ID,
+            $answer->members[1]->errorCode,
+            'an instance id the group does not have is 25'
+        );
+
+        // The static member is gone at once: the group does not wait out its session timeout
+        $description = $this->describeGroup($groupId);
+
+        self::assertSame(DescribeGroupResponseMetadata::STATE_EMPTY, $description->state);
+        self::assertSame([], $description->members);
+
+        // An empty batch is legal and removes nothing
+        new LeaveGroupRequest($groupId, [], self::CLIENT_ID, 754)->writeTo($stream);
+        $empty = LeaveGroupResponse::unpack($stream);
+
+        self::assertSame(KafkaException::NO_ERROR, $empty->errorCode);
+        self::assertSame([], $empty->members, 'an empty batch is answered with an empty member array');
+    }
+
+    /**
+     * A member that removes itself sends the batch of one that `Client::leaveGroup()` writes
+     */
+    public function testAMemberThatRemovesItselfSendsAOneElementBatch(): void
+    {
+        $groupId  = self::uniqueGroupName();
+        $instance = self::uniqueInstanceId();
+        $stream   = $this->coordinatorStream($groupId);
+
+        $joined = $this->join($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, $instance, 761);
+        $this->sync($stream, $groupId, $joined, $instance, 762);
+
+        $configuration = $this->configuration();
+        $client        = new Client($this->cluster(), $configuration);
+        $coordinator   = $client->getGroupCoordinator($groupId);
+
+        $client->leaveGroup($coordinator, $groupId, $joined->memberId, $instance);
+
+        self::assertSame([], $this->describeGroup($groupId)->members, 'the member removed itself');
+
+        // The same member a second time: the entry of the batch carries 25, and that is what the client reports
+        $this->expectException(UnknownMemberIdException::class);
+
+        $client->leaveGroup($coordinator, $groupId, $joined->memberId, $instance);
+    }
+
+    /**
+     * `AdminClient::removeMembersFromConsumerGroup()` reports every member of the batch instead of throwing
+     */
+    public function testTheAdminClientRemovesMembersAndReportsEachOfThem(): void
+    {
+        $groupId  = self::uniqueGroupName();
+        $instance = self::uniqueInstanceId();
+        $stream   = $this->coordinatorStream($groupId);
+
+        $joined = $this->join($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, $instance, 771);
+        $this->sync($stream, $groupId, $joined, $instance, 772);
+
+        $admin  = new AdminClient($this->cluster(), $this->configuration());
+        $result = $admin->removeMembersFromConsumerGroup($groupId, [
+            MemberToRemove::byInstanceId($instance),
+            $instance . '-nobody',
+            MemberToRemove::byMemberId('t3-345-no-such-member'),
+        ]);
+
+        self::assertSame([$instance, $instance . '-nobody', 't3-345-no-such-member'], array_keys($result));
+        self::assertNull($result[$instance], 'the static member was removed by its instance id alone');
+        self::assertInstanceOf(UnknownMemberIdException::class, $result[$instance . '-nobody']);
+        self::assertInstanceOf(UnknownMemberIdException::class, $result['t3-345-no-such-member']);
+        self::assertSame([], $this->describeGroup($groupId)->members);
+
+        // An empty batch is a legal request and an empty result
+        self::assertSame([], $admin->removeMembersFromConsumerGroup($groupId, []));
     }
 
     /**

@@ -20,6 +20,8 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMemberV0;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
+use Protocol\Kafka\Protocol\Data\LeaveGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequestV0;
@@ -44,9 +46,11 @@ use Protocol\Kafka\Protocol\Request\JoinGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV1;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequestV2;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV0;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV1;
+use Protocol\Kafka\Protocol\Request\LeaveGroupResponseV2;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV0;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequestV1;
@@ -73,7 +77,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponseV2;
  * a 2.x coordinator does parse the metadata of such a group, see the integration suite.
  *
  * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v5)", "SyncGroup API (key 14, v0 to v3)",
- *      "Heartbeat API (key 12, v0 to v3)" and "LeaveGroup API (key 13, v0 to v2)"
+ *      "Heartbeat API (key 12, v0 to v3)" and "LeaveGroup API (key 13, v0 to v3)"
  */
 #[CoversClass(JoinGroupRequest::class)]
 #[CoversClass(JoinGroupRequestV0::class)]
@@ -107,9 +111,13 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponseV2;
 #[CoversClass(LeaveGroupRequest::class)]
 #[CoversClass(LeaveGroupRequestV0::class)]
 #[CoversClass(LeaveGroupRequestV1::class)]
+#[CoversClass(LeaveGroupRequestV2::class)]
+#[CoversClass(LeaveGroupRequestMember::class)]
 #[CoversClass(LeaveGroupResponse::class)]
 #[CoversClass(LeaveGroupResponseV0::class)]
 #[CoversClass(LeaveGroupResponseV1::class)]
+#[CoversClass(LeaveGroupResponseV2::class)]
+#[CoversClass(LeaveGroupResponseMember::class)]
 #[CoversClass(JoinGroupRequestProtocol::class)]
 #[CoversClass(JoinGroupResponseMember::class)]
 #[CoversClass(SyncGroupRequestMember::class)]
@@ -489,17 +497,46 @@ final class GroupMembershipTest extends TestCase
         . '0005' . '6f6e652d31';
 
     /**
-     * LeaveGroup request v2 of the member "one-1".
+     * LeaveGroup request v3 of the member "one-1", which removes itself with a batch of one entry.
      *
-     *   Size          => 00 00 00 1f (31 bytes)
-     *   ApiKey        => 00 0d
-     *   ApiVersion    => 00 02
-     *   CorrelationId => 00 00 00 04
-     *   ClientId      => 00 04 "test"
-     *   GroupId       => 00 08 "my-group"
-     *   MemberId      => 00 05 "one-1"
+     *   Size            => 00 00 00 25 (37 bytes)
+     *   ApiKey          => 00 0d
+     *   ApiVersion      => 00 03
+     *   CorrelationId   => 00 00 00 04
+     *   ClientId        => 00 04 "test"
+     *   GroupId         => 00 08 "my-group"
+     *   Members         => 00 00 00 01
+     *     MemberId        => 00 05 "one-1"
+     *     GroupInstanceId => ff ff (null: a dynamic member)
      */
-    private const string LEAVE_REQUEST_HEX = '0000001f'
+    private const string LEAVE_REQUEST_HEX = '00000025'
+        . '000d'
+        . '0003'
+        . '00000004'
+        . '0004' . '74657374'
+        . '0008' . '6d792d67726f7570'
+        . '00000001'
+        . '0005' . '6f6e652d31'
+        . 'ffff';
+
+    /**
+     * The batch that removes two members at once: the static instance "two", named by its instance id alone, and
+     * the member "one-1" by its member id
+     */
+    private const string LEAVE_REQUEST_BATCH_HEX = '0000002c'
+        . '000d'
+        . '0003'
+        . '00000004'
+        . '0004' . '74657374'
+        . '0008' . '6d792d67726f7570'
+        . '00000002'
+        . '0005' . '6f6e652d31' . 'ffff'
+        . '0000' . '0003' . '74776f';
+
+    /**
+     * The same single member as a version 2 frame, whose `member_id` is the whole body
+     */
+    private const string LEAVE_REQUEST_V2_HEX = '0000001f'
         . '000d'
         . '0002'
         . '00000004'
@@ -1033,7 +1070,41 @@ final class GroupMembershipTest extends TestCase
 
         self::assertSame(self::LEAVE_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::LEAVE_GROUP, $request->getApiKey());
-        self::assertSame(2, $request->getApiVersion(), 'KIP-219 makes the version this client sends 2');
+        self::assertSame(3, $request->getApiVersion(), 'KIP-345 makes the version this client sends 3');
+        self::assertCount(1, $request->getMembers(), 'a member that removes itself is a batch of one');
+    }
+
+    public function testTheVersionThreeRequestRemovesSeveralMembersAtOnce(): void
+    {
+        $request = new LeaveGroupRequest(
+            'my-group',
+            [
+                new LeaveGroupRequestMember('one-1'),
+                new LeaveGroupRequestMember(LeaveGroupRequestMember::UNKNOWN_MEMBER_ID, 'two'),
+            ],
+            'test',
+            4
+        );
+
+        self::assertSame(self::LEAVE_REQUEST_BATCH_HEX, bin2hex((string) $request));
+        self::assertCount(2, $request->getMembers());
+        self::assertSame('two', $request->getMembers()[1]->groupInstanceId, 'the second entry names an instance');
+    }
+
+    public function testTheVersionTwoRequestCarriesTheFirstMemberIdAndNoBatch(): void
+    {
+        $request = new LeaveGroupRequestV2('my-group', 'one-1', 'test', 4);
+
+        self::assertSame(self::LEAVE_REQUEST_V2_HEX, bin2hex((string) $request));
+        self::assertSame(2, $request->getApiVersion());
+        self::assertArrayNotHasKey('members', LeaveGroupRequestV2::getScheme());
+        self::assertArrayHasKey('memberId', LeaveGroupRequestV2::getScheme());
+        self::assertArrayHasKey('members', LeaveGroupRequest::getScheme());
+        self::assertArrayNotHasKey(
+            'memberId',
+            LeaveGroupRequest::getScheme(),
+            'KIP-345 replaced the field, it did not add one'
+        );
     }
 
     public function testLeaveGroupRequestV1SendsTheSameBodyAsVersionTwo(): void
@@ -1043,7 +1114,7 @@ final class GroupMembershipTest extends TestCase
         self::assertSame(self::LEAVE_REQUEST_V1_HEX, bin2hex((string) $request));
         self::assertSame(1, $request->getApiVersion());
         self::assertSame(
-            substr(self::LEAVE_REQUEST_HEX, 16),
+            substr(self::LEAVE_REQUEST_V2_HEX, 16),
             substr(self::LEAVE_REQUEST_V1_HEX, 16),
             'KIP-219 raised the api version of LeaveGroup without adding a field'
         );
@@ -1055,7 +1126,7 @@ final class GroupMembershipTest extends TestCase
 
         self::assertSame(self::LEAVE_REQUEST_V0_HEX, bin2hex((string) $request));
         self::assertSame(
-            substr(self::LEAVE_REQUEST_HEX, 16),
+            substr(self::LEAVE_REQUEST_V2_HEX, 16),
             substr(self::LEAVE_REQUEST_V0_HEX, 16),
             'LEAVE_GROUP_REQUEST_V2 = LEAVE_GROUP_REQUEST_V1 = LEAVE_GROUP_REQUEST_V0'
         );
@@ -1076,12 +1147,40 @@ final class GroupMembershipTest extends TestCase
     {
         $frame = '0000000a' . '00000004' . '00000000' . '0019';
 
-        foreach ([LeaveGroupResponseV1::class, LeaveGroupResponse::class] as $class) {
+        foreach ([LeaveGroupResponseV1::class, LeaveGroupResponseV2::class] as $class) {
             $response = $class::unpack(new StringStream((string) hex2bin($frame)));
 
             self::assertSame(0, $response->throttleTimeMs);
             self::assertSame(25, $response->errorCode);
+            self::assertSame([], $response->members, 'the versions below 3 have no member array at all');
             self::assertSame($frame, bin2hex((string) $response));
         }
+    }
+
+    /**
+     * The version 3 answer carries the error of every member of the batch, and keeps the top-level code at 0
+     */
+    public function testLeaveGroupResponseOfVersionThreeCarriesOneEntryPerMember(): void
+    {
+        $frame = '00000022'
+            . '00000004'
+            . '00000000'
+            . '0000'
+            . '00000002'
+            . '0005' . '6f6e652d31' . 'ffff' . '0000'
+            . '0000' . '0003' . '74776f' . '0019';
+
+        $response = LeaveGroupResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(0, $response->throttleTimeMs);
+        self::assertSame(0, $response->errorCode, 'a member that was refused does not fail the request');
+        self::assertCount(2, $response->members);
+        self::assertSame('one-1', $response->members[0]->memberId);
+        self::assertNull($response->members[0]->groupInstanceId);
+        self::assertSame(0, $response->members[0]->errorCode, 'the dynamic member left');
+        self::assertSame('', $response->members[1]->memberId, 'the second entry was named by its instance alone');
+        self::assertSame('two', $response->members[1]->groupInstanceId);
+        self::assertSame(25, $response->members[1]->errorCode, 'and the group does not have that instance');
+        self::assertSame($frame, bin2hex((string) $response), 'the answer survives the round trip');
     }
 }
