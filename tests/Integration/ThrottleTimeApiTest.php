@@ -49,7 +49,9 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
@@ -68,7 +70,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * field sits where the specification says it does.
  *
  * @see docs/protocol/2.8.md, sections "Quotas and throttle time" and "GroupCoordinator API (key 10, v0 to v2)"
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v2)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(GroupCoordinatorRequest::class)]
@@ -167,6 +169,9 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
         $groupId = self::uniqueGroupName();
         $stream  = $this->coordinatorStream($groupId);
 
+        // Version 4 of the api (KIP-394) refuses a join that carries no member id, and the refusal is a normal
+        // answer of the api: it carries the throttle time of version 4 in front of the error code just as the
+        // successful one does, and the member id the coordinator assigned behind it.
         new JoinGroupRequest(
             $groupId,
             self::SESSION_TIMEOUT_MS,
@@ -177,10 +182,27 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
             self::CLIENT_ID,
             201
         )->writeTo($stream);
+        $refused = JoinGroupResponse::unpack($stream);
+
+        self::assertSame(0, $refused->throttleTimeMs);
+        self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
+        self::assertNotSame(JoinGroupRequest::DEFAULT_MEMBER_ID, $refused->memberId);
+
+        new JoinGroupRequest(
+            $groupId,
+            self::SESSION_TIMEOUT_MS,
+            self::SESSION_TIMEOUT_MS,
+            $refused->memberId,
+            'consumer',
+            ['range' => new Subscription([$topic])->pack()],
+            self::CLIENT_ID,
+            202
+        )->writeTo($stream);
         $join = JoinGroupResponse::unpack($stream);
 
         self::assertSame(0, $join->throttleTimeMs);
         self::assertSame(KafkaException::NO_ERROR, $join->errorCode);
+        self::assertSame($refused->memberId, $join->memberId, 'the assigned id is the id of the member');
         self::assertSame($join->memberId, $join->leaderId, 'the first member of a group is its leader');
         self::assertSame([$join->memberId], array_keys($join->members));
 
@@ -190,7 +212,7 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
             $join->memberId,
             [$join->memberId => new MemberAssignment([$topic => [0, 1, 2]])->pack()],
             self::CLIENT_ID,
-            202
+            203
         )->writeTo($stream);
         $sync = SyncGroupResponse::unpack($stream);
 
@@ -202,13 +224,13 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
             'the assignment survives the round trip behind the new field'
         );
 
-        new HeartbeatRequest($groupId, $join->generationId, $join->memberId, self::CLIENT_ID, 203)->writeTo($stream);
+        new HeartbeatRequest($groupId, $join->generationId, $join->memberId, self::CLIENT_ID, 204)->writeTo($stream);
         $heartbeat = HeartbeatResponse::unpack($stream);
 
         self::assertSame(0, $heartbeat->throttleTimeMs);
         self::assertSame(KafkaException::NO_ERROR, $heartbeat->errorCode);
 
-        new LeaveGroupRequest($groupId, $join->memberId, self::CLIENT_ID, 204)->writeTo($stream);
+        new LeaveGroupRequest($groupId, $join->memberId, self::CLIENT_ID, 205)->writeTo($stream);
         $leave = LeaveGroupResponse::unpack($stream);
 
         self::assertSame(0, $leave->throttleTimeMs);
@@ -360,9 +382,10 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
     {
         // KafkaApis.handleOffsetForLeaderEpochRequest authorizes `ClusterAction on Cluster`, which a broker without
         // an authorizer.class.name grants to everybody, so this broker-to-broker api answers a plain connection.
-        // The partition of this class has never been written to, and the leader-epoch cache of a log is only
-        // written when the first record is appended, so the leader cannot place the epoch and answers -1 - with the
-        // error code 0, which is the "I have no entry for it" of this api rather than a failure.
+        // The partition of this class has never been written to. A 1.1.1 broker answered -1 for the epoch it was
+        // leading an EMPTY log with, because the leader-epoch cache was only written on the first append; a 2.8.2
+        // broker answers the LOG END OFFSET - 0 here - for the epoch it currently leads (KAFKA-7415, the rewrite
+        // of Log.endOffsetForEpoch that KIP-320 needed).
         $topic  = $this->topic();
         $stream = $this->connect();
 
@@ -375,7 +398,48 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
         $partition = $response->topics[$topic]->partitions[0];
         self::assertSame(0, $partition->partition, 'the error code comes BEFORE the partition id in this answer');
         self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
+        self::assertSame(0, $partition->endOffset, 'the log end offset of the epoch the leader currently leads');
+        self::assertSame(
+            0,
+            $partition->leaderEpoch,
+            'version 1 (KIP-279) names the epoch the offset belongs to, which version 0 did not carry'
+        );
+    }
+
+    public function testTheVersionZeroAnswerOfOffsetForLeaderEpochCarriesNoLeaderEpochAtAll(): void
+    {
+        // KIP-279 (Kafka 2.0) inserted `leader_epoch` between the partition id and the end offset of version 1.
+        // A version 0 answer is two bytes shorter per partition and leaves the property at its UNDEFINED_EPOCH.
+        $topic  = $this->topic();
+        $stream = $this->connect();
+
+        new OffsetForLeaderEpochRequestV0([$topic => [0 => 0]], self::CLIENT_ID, 703)->writeTo($stream);
+        $response = OffsetForLeaderEpochResponseV0::unpack($stream);
+
+        $partition = $response->topics[$topic]->partitions[0];
+        self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
+        self::assertSame(0, $partition->endOffset, 'the same offset that version 1 answers');
+        self::assertSame(
+            OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH,
+            $partition->leaderEpoch,
+            'a version 0 answer has no such field, so the DTO keeps its -1'
+        );
+        self::assertSame(-1, OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH);
+    }
+
+    public function testAnEpochTheLeaderNeverHadIsAnsweredWithMinusOneAndTheErrorCodeZero(): void
+    {
+        // Asking for an epoch ABOVE the one the leader is on is not an error and not a 75: `leader_epoch` is the
+        // epoch to look up, not the fencing `current_leader_epoch` that version 2 of this api added.
+        $topic  = $this->topic();
+        $stream = $this->connect();
+
+        new OffsetForLeaderEpochRequest([$topic => [0 => 1]], self::CLIENT_ID, 704)->writeTo($stream);
+        $partition = OffsetForLeaderEpochResponse::unpack($stream)->topics[$topic]->partitions[0];
+
+        self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
         self::assertSame(OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH_OFFSET, $partition->endOffset);
+        self::assertSame(OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH, $partition->leaderEpoch);
     }
 
     public function testOffsetForLeaderEpochOfAPartitionTheClusterDoesNotHostIsReportedPerPartition(): void

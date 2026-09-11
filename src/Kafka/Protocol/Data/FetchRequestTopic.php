@@ -27,14 +27,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The topic entry itself never changed; what a version selects is the shape of its partition entries, which is
  * what the version constant of this DTO picks in {@see self::partitionClass()}, see {@see FetchRequestTopicV0}.
  *
- * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v10)"
  */
 class FetchRequestTopic implements BinarySchemaInterface
 {
     /**
      * Version of the Fetch API that this DTO is packed for
      */
-    public const int VERSION = 5;
+    public const int VERSION = 9;
 
     /**
      * Name of the topic to fetch from
@@ -75,6 +75,10 @@ class FetchRequestTopic implements BinarySchemaInterface
      */
     public static function partitionClass(): string
     {
-        return static::VERSION >= 5 ? FetchRequestTopicPartition::class : FetchRequestTopicPartitionV0::class;
+        return match (true) {
+            static::VERSION >= 9 => FetchRequestTopicPartition::class,
+            static::VERSION >= 5 => FetchRequestTopicPartitionV5::class,
+            default              => FetchRequestTopicPartitionV0::class,
+        };
     }
 }

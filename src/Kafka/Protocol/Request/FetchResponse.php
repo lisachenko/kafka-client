@@ -19,10 +19,10 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 
 /**
- * Fetch response object (key 1), version 7
+ * Fetch response object (key 1), version 10
  *
  * <pre>
- *   FetchResponse (Version: 7) => ThrottleTimeMs ErrorCode SessionId
+ *   FetchResponse (Version: 10) => ThrottleTimeMs ErrorCode SessionId
  *                                 [TopicName [Partition ErrorCode HighwaterMarkOffset
  *                                             LastStableOffset LogStartOffset
  *                                             [AbortedTransactions] RecordSetSize RecordSet]]
@@ -61,19 +61,32 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
  * {@see self::$sessionId}. Every version below 7 leaves both at 0, which is exactly what a version 7 answer to a
  * session-less request reports as well.
  *
+ * **Version 8 (Kafka 2.0, KIP-219) changed the frame no more than 2, 3 and 6 did**: `FetchResponse.json` @ 2.8.2
+ * carries no field of it, its comment is "Starting in version 8, on quota violation, brokers send out responses
+ * before throttling", and {@see FetchResponseV7} decodes the very same bytes. What version 8 states is that the
+ * client understands when a throttled answer arrives: at once, with the delay the broker is about to impose in
+ * {@see self::$throttleTimeMs} and an **empty** topics array, and with the channel muted for that long afterwards.
+ * The client has to wait the time out itself, see {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}.
+ *
+ * **The versions 9 and 10 (Kafka 2.1) changed the answer no more than 8 did**: `FetchResponse.json` @ 2.8.2 has
+ * no field of either, and {@see FetchResponseV9} and {@see FetchResponseV8} decode the very same bytes. What they
+ * state is what the *request* promised - version 9 that the client sends a `current_leader_epoch` and understands
+ * the codes **74** and **75** of KIP-320, version 10 that it understands a **zstd**-compressed record batch, which
+ * a broker refuses to a lower version with **76** `UNSUPPORTED_COMPRESSION_TYPE` per partition.
+ *
  * What the answer of every version has to match is the *version of the request it belongs to*, which is why
- * {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4}, {@see FetchResponseV3},
+ * {@see FetchResponseV9}, {@see FetchResponseV8}, {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4}, {@see FetchResponseV3},
  * {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 7;
+    public const int VERSION = 10;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

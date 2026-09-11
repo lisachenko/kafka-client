@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Unit\Consumer\Fixture;
 
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\CompressionCodec;
@@ -26,6 +27,7 @@ use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
+use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
@@ -70,6 +72,41 @@ final class FakeClient extends Client
      * @var list<array<string, array<int, int>>>
      */
     public array $offsetsCalls = [];
+
+    /**
+     * Answer of the position validation of KIP-320, as topic => partition => end offset of the asked epoch
+     *
+     * A partition that is not listed here is answered with {@see OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH_OFFSET}
+     * (`-1`), which is what a leader answers when its epoch cache has no entry for the epoch it was asked about.
+     *
+     * @var array<string, array<int, int>>
+     */
+    public array $leaderEpochEndOffsets = [];
+
+    /**
+     * Error codes the position validation answers instead of an end offset, as topic => partition => code
+     *
+     * @var array<string, array<int, int>>
+     */
+    public array $leaderEpochErrors = [];
+
+    /**
+     * Requests that offsetsForLeaderEpochs() was called with, in order
+     *
+     * @var list<array<string, array<int, array{int, int}>>>
+     */
+    public array $leaderEpochCalls = [];
+
+    /**
+     * `partition_leader_epoch` the answered record batches of a partition carry, as topic => partition => epoch
+     *
+     * A partition that is listed here is answered with record batches of the message format v2 stamped with that
+     * epoch, the way a broker stamps a batch on append (KIP-101); a partition that is not listed is answered with
+     * the legacy message set of the other tests, which has no epoch at all.
+     *
+     * @var array<string, array<int, int>>
+     */
+    public array $batchLeaderEpochs = [];
 
     /**
      * Log of one partition, as [topic][partition] => list of records with their offsets
@@ -263,7 +300,9 @@ final class FakeClient extends Client
                     (int) $offset,
                     KafkaException::NO_ERROR,
                     $logEndOffset,
-                    $isTooLarge ? MemoryRecords::fromBuffer('') : self::recordsOf(array_values($records)),
+                    $isTooLarge
+                        ? MemoryRecords::fromBuffer('')
+                        : $this->recordsOf(array_values($records), (string) $topic, (int) $partition),
                     $isTooLarge
                 );
             }
@@ -326,12 +365,26 @@ final class FakeClient extends Client
      * `MessageSet::fromRecords()` numbers a produced set from 0, because the broker assigns the real offsets on
      * append; a fetched set has the offsets of the log, so its bytes are built to the specification here.
      *
+     * A partition of {@see self::$batchLeaderEpochs} is written as record batches that carry that leader epoch,
+     * which is what the position validation of KIP-320 reads the epoch of a position out of.
+     *
      * @param list<Record> $records
      */
-    private static function recordsOf(array $records): MemoryRecords
+    private function recordsOf(array $records, string $topic, int $partition): MemoryRecords
     {
+        $leaderEpoch = $this->batchLeaderEpochs[$topic][$partition] ?? null;
+
         $buffer = '';
         foreach ($records as $record) {
+            if ($leaderEpoch !== null) {
+                $buffer .= RecordBatch::fromRecords(
+                    [$record],
+                    CompressionCodec::NONE,
+                    (int) $record->offset,
+                    partitionLeaderEpoch: $leaderEpoch
+                )->toBuffer();
+                continue;
+            }
             if ($record->headers !== []) {
                 $buffer .= RecordBatch::fromRecords([$record], CompressionCodec::NONE, (int) $record->offset)
                     ->toBuffer();
@@ -344,6 +397,44 @@ final class FakeClient extends Client
         }
 
         return MemoryRecords::fromBuffer($buffer);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function offsetsForLeaderEpochs(array $topicPartitionEpochs): array
+    {
+        $this->leaderEpochCalls[] = $topicPartitionEpochs;
+
+        $result = [];
+        $errors = [];
+        foreach ($topicPartitionEpochs as $topic => $partitionEpochs) {
+            foreach ($partitionEpochs as $partitionId => $epochs) {
+                $errorCode = $this->leaderEpochErrors[$topic][$partitionId] ?? KafkaException::NO_ERROR;
+                if ($errorCode !== KafkaException::NO_ERROR) {
+                    $errors[$topic][$partitionId] = KafkaException::fromCode(
+                        $errorCode,
+                        ['topic' => $topic, 'partitionId' => $partitionId]
+                    );
+                    continue;
+                }
+
+                [$leaderEpoch] = is_array($epochs) ? $epochs : [$epochs];
+                $answer                          = new OffsetForLeaderEpochResponsePartition();
+                $answer->errorCode               = KafkaException::NO_ERROR;
+                $answer->partition               = (int) $partitionId;
+                $answer->leaderEpoch             = (int) $leaderEpoch;
+                $answer->endOffset               = $this->leaderEpochEndOffsets[$topic][$partitionId]
+                    ?? OffsetForLeaderEpochResponsePartition::UNDEFINED_EPOCH_OFFSET;
+                $result[$topic][$partitionId]    = $answer;
+            }
+        }
+
+        if ($errors !== []) {
+            throw new TopicPartitionRequestException($result, $errors);
+        }
+
+        return $result;
     }
 
     /**

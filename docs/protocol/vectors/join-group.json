@@ -1,8 +1,8 @@
 {
     "api": "join-group",
     "apiKey": 11,
-    "section": "JoinGroup API (key 11, v0 to v3)",
-    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v3), replayed by tests/Compliance.",
+    "section": "JoinGroup API (key 11, v0 to v4)",
+    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "joingroup.request.v1",
@@ -219,7 +219,7 @@
         {
             "id": "joingroup.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV3",
             "version": 3,
             "source": "broker",
             "description": "JoinGroup request v3 of the first member of a group, the frame of v2 with a higher version field. The member metadata is a real `Subscription` of the `consumer` protocol: a 2.x coordinator parses it, see \"Broker quirks and observations\".",
@@ -248,7 +248,7 @@
         {
             "id": "joingroup.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer v3 to that join: the throttle time, the generation 1, the protocol the coordinator picked and the member that is the leader of the generation, with its metadata in the members array.",
@@ -267,6 +267,111 @@
                         "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
                         "metadata": {
                             "$bytes": "000000000001000974332d6b697032313900000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.request.v4.empty-member-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "JoinGroup request v4 of a client that has no member id yet - the `member_id` is the empty string. This is the request KIP-394 refuses: from version 4 on the coordinator does not add a member it cannot identify to a rebalance.",
+            "hex": "00000066000b00040000019200136b61666b612d636c69656e742d74332d333934001274332d3339342d76342d35333533666263370000271000004e2000000008636f6e73756d657200000001000572616e676500000012000000000001000674332d33393400000000",
+            "fields": {
+                "messageSize": 102,
+                "apiKey": 11,
+                "apiVersion": 4,
+                "correlationId": 402,
+                "clientId": "kafka-client-t3-394",
+                "consumerGroup": "t3-394-v4-5353fbc7",
+                "sessionTimeout": 10000,
+                "rebalanceTimeout": 20000,
+                "memberId": "",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000674332d33393400000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v4.member-id-required",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The refusal: the error code **79** (`MemberIdRequired`) with the generation -1, an empty group protocol, an empty leader id and no members - and the member id the coordinator generated for this client in `member_id`, which the next join has to send. It arrives immediately: no rebalance was started and no member was added.",
+            "hex": "000000500000019200000000004fffffffff0000000000386b61666b612d636c69656e742d74332d3339342d39373262343833622d383463392d343263632d396566302d32346530636135643236393300000000",
+            "fields": {
+                "messageSize": 80,
+                "correlationId": 402,
+                "throttleTimeMs": 0,
+                "errorCode": 79,
+                "generationId": -1,
+                "groupProtocol": "",
+                "leaderId": "",
+                "memberId": "kafka-client-t3-394-972b483b-84c9-42cc-9ef0-24e0ca5d2693",
+                "members": []
+            }
+        },
+        {
+            "id": "joingroup.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The very same request again, with the member id the 79 answer carried. It is byte for byte the frame above except for that field.",
+            "hex": "0000009e000b00040000019300136b61666b612d636c69656e742d74332d333934001274332d3339342d76342d35333533666263370000271000004e2000386b61666b612d636c69656e742d74332d3339342d39373262343833622d383463392d343263632d396566302d3234653063613564323639330008636f6e73756d657200000001000572616e676500000012000000000001000674332d33393400000000",
+            "fields": {
+                "messageSize": 158,
+                "apiKey": 11,
+                "apiVersion": 4,
+                "correlationId": 403,
+                "clientId": "kafka-client-t3-394",
+                "consumerGroup": "t3-394-v4-5353fbc7",
+                "sessionTimeout": 10000,
+                "rebalanceTimeout": 20000,
+                "memberId": "kafka-client-t3-394-972b483b-84c9-42cc-9ef0-24e0ca5d2693",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000674332d33393400000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer to the second join: the generation 1, the protocol the coordinator picked, and the member as the leader of its own group with its metadata in the members array.",
+            "hex": "000000dd0000019300000000000000000001000572616e676500386b61666b612d636c69656e742d74332d3339342d39373262343833622d383463392d343263632d396566302d32346530636135643236393300386b61666b612d636c69656e742d74332d3339342d39373262343833622d383463392d343263632d396566302d3234653063613564323639330000000100386b61666b612d636c69656e742d74332d3339342d39373262343833622d383463392d343263632d396566302d32346530636135643236393300000012000000000001000674332d33393400000000",
+            "fields": {
+                "messageSize": 221,
+                "correlationId": 403,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 1,
+                "groupProtocol": "range",
+                "leaderId": "kafka-client-t3-394-972b483b-84c9-42cc-9ef0-24e0ca5d2693",
+                "memberId": "kafka-client-t3-394-972b483b-84c9-42cc-9ef0-24e0ca5d2693",
+                "members": {
+                    "kafka-client-t3-394-972b483b-84c9-42cc-9ef0-24e0ca5d2693": {
+                        "memberId": "kafka-client-t3-394-972b483b-84c9-42cc-9ef0-24e0ca5d2693",
+                        "metadata": {
+                            "$bytes": "000000000001000674332d33393400000000"
                         }
                     }
                 }

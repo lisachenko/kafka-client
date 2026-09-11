@@ -13,6 +13,13 @@ services:
             ADVERTISED_PORT: 9092
             BROKER_ID: 0
             NUM_PARTITIONS: 3
+        # The suite of the 2.x line creates thousands of partitions over a session, and every partition costs the
+        # broker a few file descriptors: with the 20000 of the image's default the second log directory went offline
+        # with "Too many open files" in the middle of a run. Tests delete their topics, and the limit is raised too.
+        ulimits:
+            nofile:
+                soft: 262144
+                hard: 262144
         ports:
             - "9092:9092"
             - "9093:9093"

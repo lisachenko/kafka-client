@@ -30,6 +30,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter;
+use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\Internals\TransactionState;
 use Protocol\Kafka\Producer\KafkaProducer;
@@ -40,6 +41,7 @@ use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 
 /**
  * Exercises the transactional producer of KIP-98 against a real Kafka 1.1.1 broker.
@@ -181,8 +183,12 @@ final class TransactionalProducerTest extends IntegrationTestCase
         self::assertSame([], $this->read($topic, FetchRequest::READ_COMMITTED), 'so the answer is cut at the LSO');
         self::assertSame(['not committed yet'], $this->read($topic, FetchRequest::READ_UNCOMMITTED));
 
+        // A 2.8.2 broker computes the last stable offset for a read_uncommitted fetch as well - a 1.1.1 broker
+        // answered -1 there - so the answer reports the very same LSO that a read_committed fetch is cut at, while
+        // it still hands out the records above it. The aborted-transactions array is what stayed isolation-bound.
         $uncommitted = $this->partitionOf($topic, FetchRequest::READ_UNCOMMITTED);
-        self::assertSame(-1, $uncommitted->lastStableOffset, 'a read_uncommitted answer carries no last stable offset');
+        self::assertSame(0, $uncommitted->lastStableOffset, 'the real LSO, reported to a read_uncommitted fetch too');
+        self::assertSame($open->lastStableOffset, $uncommitted->lastStableOffset);
         self::assertNull($uncommitted->abortedTransactions);
 
         $manager->commitTransaction();
@@ -418,6 +424,37 @@ final class TransactionalProducerTest extends IntegrationTestCase
         $committed = $this->awaitCommittedOffset($coordinator, $group, $topic);
 
         self::assertSame(7, $committed, 'and it becomes visible with the very commit that made the records visible');
+    }
+
+    /**
+     * The `committed_leader_epoch` of TxnOffsetCommit **v2** (Kafka 2.1, KIP-320) travels with the offset
+     *
+     * The version this client sends carries an epoch per partition, and the epoch comes from the offset value
+     * object the caller hands to `sendOffsetsToTransaction()`. The coordinator **stores** it without checking it:
+     * the epoch of `t8-transactional-epoch-*-0` is 0, and a commit that claims 4242 is answered with the error
+     * code 0 all the same - the codes 74 and 75 belong to the apis that read the epoch back, not to the commit.
+     */
+    public function testAnOffsetOfATransactionCarriesTheLeaderEpochOfKip320(): void
+    {
+        $topic       = $this->topic('epoch');
+        $group       = self::uniqueTopicName('t8-transactional-epoch-group');
+        $manager     = $this->manager($this->transactionalId('epoch'));
+        $coordinator = $this->client->getGroupCoordinator($group);
+
+        $manager->initTransactions();
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$topic => [0 => []]]);
+        $this->client->produce([$topic => [0 => $this->records(['with an epoch'])]], $manager);
+        $manager->sendOffsetsToTransaction([$topic => [0 => new OffsetAndMetadata(9, 'kip-320', 4242)]], $group);
+        $manager->commitTransaction();
+        $this->awaitMarker($topic);
+
+        self::assertSame(
+            9,
+            $this->awaitCommittedOffset($coordinator, $group, $topic),
+            'an epoch the partition never had is stored with the offset instead of being refused'
+        );
+        self::assertSame(2, TxnOffsetCommitRequest::VERSION, 'and the client sends the version that carries it');
     }
 
     public function testAnAbortedTransactionLeavesTheGroupWithTheOffsetsItHadBefore(): void
