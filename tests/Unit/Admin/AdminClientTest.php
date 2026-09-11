@@ -367,7 +367,7 @@ final class AdminClientTest extends TestCase
     public function testControlledShutdownThrowsTheErrorCodeOfTheController(): void
     {
         // A 0.9.0.1 controller answers an unknown broker id with the code 8, where 0.8.2.2 answered -1
-        $broker = $this->scriptBroker(self::vector('controlled-shutdown', 'controlledshutdown.response.v1'));
+        $broker = $this->scriptBroker(self::vector('controlled-shutdown', 'controlledshutdown.response.v3'));
         $admin  = $this->adminClient();
 
         try {
@@ -975,36 +975,70 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a CreateTopics answer of version 2, i.e. the entries of version 1 behind the throttle time
+     * Builds a CreateTopics answer of version **5**, the flexible one the client sends (KIP-482 and KIP-525)
+     *
+     * The frame is the response header v1 - a correlation id and a tag buffer - followed by the throttle time, a
+     * COMPACT array of topic results and the tag buffer of the body. Every result ends in the partition count, the
+     * replication factor, a NULL configuration array and a tag buffer of its own; the tagged
+     * `topic_config_error_code` is left out, exactly as the broker leaves it out when it is 0.
      *
      * @param array<string, array{0: int, 1: string|null}> $topics Error code and message of every topic
      */
     private static function createTopicsResponse(array $topics): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => [$errorCode, $errorMessage]) {
-            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
-            $body .= $errorMessage === null
-                ? pack('n', 0xFFFF)
-                : pack('n', strlen($errorMessage)) . $errorMessage;
+            $body .= self::compactString((string) $topic) . pack('n', $errorCode);
+            $body .= self::compactNullableString($errorMessage);
+            $body .= pack('N', 0xFFFFFFFF) . pack('n', 0xFFFF) . "\x00" . "\x00";
         }
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $body . "\x00");
     }
 
     /**
-     * Builds a DeleteTopics answer of version 1, i.e. the entries of version 0 behind the throttle time
+     * An unsigned varint of KIP-482: the value itself, seven bits per byte, least significant group first
+     */
+    private static function unsignedVarint(int $value): string
+    {
+        $bytes = '';
+        while (($value & ~0x7F) !== 0) {
+            $bytes .= chr(($value & 0x7F) | 0x80);
+            $value >>= 7;
+        }
+
+        return $bytes . chr($value);
+    }
+
+    /**
+     * A string of a flexible version: the length plus one as an unsigned varint, then the bytes
+     */
+    private static function compactString(string $value): string
+    {
+        return self::unsignedVarint(strlen($value) + 1) . $value;
+    }
+
+    /**
+     * The same, with the 0 that means null
+     */
+    private static function compactNullableString(?string $value): string
+    {
+        return $value === null ? "\x00" : self::compactString($value);
+    }
+
+    /**
+     * Builds a DeleteTopics answer of version **4**, the flexible one the client sends (KIP-482)
      *
      * @param array<string, int> $topics Error code of every topic
      */
     private static function deleteTopicsResponse(array $topics): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => $errorCode) {
-            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
+            $body .= self::compactString((string) $topic) . pack('n', $errorCode) . "\x00";
         }
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $body . "\x00");
     }
 
     /**

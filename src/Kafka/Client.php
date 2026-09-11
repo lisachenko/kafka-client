@@ -19,6 +19,7 @@ namespace Protocol\Kafka;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Admin\CreatedTopic;
 use Protocol\Kafka\Admin\ElectionType;
 use Protocol\Kafka\Admin\NewPartitionReassignment;
 use Protocol\Kafka\Admin\NewPartitions;
@@ -109,6 +110,8 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetDeleteRequest;
+use Protocol\Kafka\Protocol\Request\OffsetDeleteResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
@@ -1282,6 +1285,87 @@ class Client
     }
 
     /**
+     * Deletes the committed offsets of some partitions of a group (ApiKey 47, Kafka 2.4, KIP-496)
+     *
+     * KIP-496 added the api for the one thing {@see self::leaveGroup()} and DeleteGroups could not do: make a group
+     * that keeps running forget the committed offset of a single partition. The coordinator writes a tombstone into
+     * `__consumer_offsets` for every partition it deleted, so {@see self::fetchGroupOffsets()} answers -1 for it
+     * afterwards - exactly as if the group had never committed anything for that partition.
+     *
+     * **What the coordinator allows depends on the state of the group.** An `Empty` group - one without a live
+     * member - hands over every partition of the request. A group that is rebalancing or `Stable` and whose members
+     * speak the `consumer` protocol keeps the partitions of the topics its members are **subscribed** to and answers
+     * 86 (GroupSubscribedToTopic) for them, while it deletes the rest. A live group of any other protocol type is
+     * refused as a whole with the top-level 68 (NonEmptyGroup), and a group the coordinator does not know with 69
+     * (GroupIdNotFound).
+     *
+     * **A top-level error carries no partition at all**, which is why it is thrown here: the answer of
+     * `KafkaApis.handleOffsetDeleteRequest` @ 2.8.2 has an empty topic array in that case, so there is nothing to
+     * report per partition. Everything else is per partition and comes back in the result.
+     *
+     * @param Node                          $coordinatorNode Current group coordinator for $groupId
+     * @param string                        $groupId         Name of the group
+     * @param array<string, iterable<int, int>> $topicPartitions Partition indexes per topic; an empty array is a
+     *        legal request that deletes nothing
+     *
+     * @return array<string, array<int, KafkaException|null>> One entry per requested partition, `null` when its
+     *         committed offset is gone and the exception of the error code otherwise
+     *
+     * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\InvalidGroupIdException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     * @throws Common\Errors\GroupNotEmptyException
+     * @throws Common\Errors\GroupIdNotFoundException
+     */
+    public function deleteGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitions): array
+    {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => new OffsetDeleteRequest(
+                $groupId,
+                $topicPartitions,
+                $clientId,
+                $correlationId
+            ),
+            OffsetDeleteResponse::class,
+            static function (OffsetDeleteResponse $response) use ($groupId, $topicPartitions): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    // The group itself is the problem, and the answer names no partition to report it on
+                    throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
+                }
+
+                $result = [];
+                foreach ($topicPartitions as $topic => $partitions) {
+                    foreach ($partitions as $partitionId) {
+                        $answer = $response->topics[$topic]->partitions[$partitionId] ?? null;
+
+                        $result[(string) $topic][(int) $partitionId] = match (true) {
+                            $answer === null => new UnknownErrorException([
+                                'groupId'   => $groupId,
+                                'topic'     => (string) $topic,
+                                'partition' => (int) $partitionId,
+                                'error'     => 'The coordinator sent no result for this partition',
+                            ]),
+                            $answer->errorCode === KafkaException::NO_ERROR => null,
+                            default => KafkaException::fromCode($answer->errorCode, [
+                                'groupId'   => $groupId,
+                                'topic'     => (string) $topic,
+                                'partition' => (int) $partitionId,
+                            ]),
+                        };
+                    }
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
      * Joins the group with the specified protocol and member information (ApiKey 11, Kafka 0.9)
      *
      * A client that has no member id yet passes {@see JoinGroupRequest::DEFAULT_MEMBER_ID}; a member that rejoins
@@ -2290,7 +2374,9 @@ class Client
      * @param int            $timeoutMs    How long the controller waits for the topics to be created
      * @param bool           $validateOnly Validate the request without creating anything
      *
-     * @return array<string, KafkaException|null> Error of every requested topic, null when it was created
+     * @return array<string, CreatedTopic> What the controller answered for every requested topic: its error, and
+     *         from the version 5 of the api the partition count, the replication factor and the configuration the
+     *         new topic ended up with (KIP-525)
      */
     public function createTopics(
         Node $controller,
@@ -2314,11 +2400,15 @@ class Client
             static function (CreateTopicsResponse $response) use ($topics): array {
                 $result = [];
                 foreach ($topics as $newTopic) {
-                    $topicResult             = $response->topics[$newTopic->topic] ?? null;
-                    $result[$newTopic->topic] = self::topicError(
+                    $topicResult              = $response->topics[$newTopic->topic] ?? null;
+                    $result[$newTopic->topic] = CreatedTopic::fromResponseTopic(
                         $newTopic->topic,
-                        $topicResult?->errorCode,
-                        $topicResult?->errorMessage
+                        $topicResult,
+                        self::topicError(
+                            $newTopic->topic,
+                            $topicResult?->errorCode,
+                            $topicResult?->errorMessage
+                        )
                     );
                 }
 

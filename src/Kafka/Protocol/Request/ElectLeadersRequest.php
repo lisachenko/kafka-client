@@ -57,7 +57,10 @@ use Protocol\Kafka\Protocol\Data\ElectLeadersRequestTopicPartitions;
  * `timeout_ms` is how long the controller waits for the elections to finish before it answers; its default in the
  * Java client is 60 seconds, which is what {@see self::DEFAULT_TIMEOUT_MS} carries.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
+ * **Kafka 2.4 added the version 2** (KIP-482) right after the version 1 of KIP-460, and it changed no field: it is
+ * the first **flexible** version of the api. {@see ElectLeadersRequestV1} is the same body in the old encoding.
+ *
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 class ElectLeadersRequest extends AbstractRequest
 {
@@ -69,7 +72,12 @@ class ElectLeadersRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Timeout of the Java client, `ElectLeadersRequest.json` @ 2.8.2: `"default": "60000"`

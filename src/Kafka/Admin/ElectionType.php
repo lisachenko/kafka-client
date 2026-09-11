@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Admin;
  * ElectLeaders and gave its version 1 a leading `election_type` byte (KIP-460), whose values are the two constants
  * below; a version 0 request is read by the broker as {@see self::PREFERRED}.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 final class ElectionType
 {

@@ -876,6 +876,46 @@ class AdminClient
      */
     public function createTopics(array $newTopics, int $timeoutMs = 30000, bool $validateOnly = false): array
     {
+        $result = [];
+        foreach ($this->createTopicsWithResults($newTopics, $timeoutMs, $validateOnly) as $topic => $created) {
+            $result[$topic] = $created->error;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Creates topics and reports **everything** the controller answered for each of them (KIP-525, CreateTopics v5)
+     *
+     * The same request as {@see self::createTopics()}, whose result is the `error` of these entries; what a
+     * {@see CreatedTopic} adds is what Kafka 2.4 put into the answer with the version 5 of the api - the partition
+     * count and the replication factor the topic really got, which is the other half of the -1/-1 of KIP-464
+     * ({@see NewTopic::withBrokerDefaults()}), and the whole configuration of the new topic as a {@see Config}, so
+     * that the DescribeConfigs a caller used to send right afterwards is unnecessary:
+     *
+     * <code>
+     *   $created = $admin->createTopicsWithResults([NewTopic::withBrokerDefaults('events')])['events'];
+     *   $created->numPartitions;                  // what `num.partitions` of the broker said
+     *   $created->config->value('retention.ms');  // and what the topic inherited for it
+     * </code>
+     *
+     * An answer of a broker below Kafka 2.4 carries none of it, and neither does one whose configuration the broker
+     * could not read back: `config` is `null` then and `configErrorCode` says why.
+     *
+     * @param list<NewTopic> $newTopics    Topics to create
+     * @param int            $timeoutMs    How long the controller waits for the topics to exist before it answers
+     * @param bool           $validateOnly Validate the request without creating anything
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws NotControllerException If the cluster has no active controller
+     *
+     * @return array<string, CreatedTopic> One entry per requested topic, keyed by its name
+     */
+    public function createTopicsWithResults(
+        array $newTopics,
+        int $timeoutMs = 30000,
+        bool $validateOnly = false
+    ): array {
         return $this->onController(
             fn(Node $controller): array => $this->client()
                 ->createTopics($controller, $newTopics, $timeoutMs, $validateOnly)
@@ -970,7 +1010,9 @@ class AdminClient
     private function onController(Closure $request): array
     {
         $result = $request($this->findController());
-        foreach ($result as $error) {
+        foreach ($result as $entry) {
+            // A CreateTopics answer is a map of value objects, every other one a map of exceptions
+            $error = $entry instanceof CreatedTopic ? $entry->error : $entry;
             if ($error instanceof NotControllerException) {
                 $this->cluster->reload();
 
@@ -1639,6 +1681,54 @@ class AdminClient
                 'memberId'        => $member->memberId,
                 'groupInstanceId' => $member->groupInstanceId,
             ]);
+    }
+
+    /**
+     * Makes the coordinator forget the committed offsets of some partitions of a group (ApiKey 47, Kafka 2.4)
+     *
+     * The counterpart of `kafka-consumer-groups.sh --delete-offsets`, which KIP-496 gave a protocol of its own in
+     * Kafka 2.4: where {@see self::deleteConsumerGroups()} throws a whole group away, this deletes the committed
+     * offset of single partitions and leaves the group alone. The coordinator writes a tombstone into
+     * `__consumer_offsets` for every partition it deleted, so {@see self::listGroupOffsets()} - and any
+     * consumer of the group that seeks to its committed offset - sees -1 for it afterwards.
+     *
+     * **What the coordinator allows depends on the state of the group**, and only part of it is per partition:
+     *
+     * * an `Empty` group - every member gone or timed out - hands over every partition of the request;
+     * * a live group whose members speak the `consumer` protocol keeps the partitions of the topics its members are
+     *   subscribed to, which come back as a `GroupSubscribedToTopicException` (86), and deletes the rest;
+     * * a live group of any **other** protocol type is refused as a whole with 68 (NonEmptyGroup), which is
+     *   *thrown*, because the answer of such a request carries no partition at all;
+     * * a group the coordinator does not know is 69 (GroupIdNotFound), thrown for the same reason;
+     * * a topic or a partition this broker does not have is per partition again, with the code 3.
+     *
+     * The request goes to the coordinator of the group ({@see self::findCoordinator()}); a broker that does not
+     * coordinate it answers 16 (NotCoordinatorForGroup).
+     *
+     * @param string                    $groupId    Name of the group whose committed offsets are deleted
+     * @param iterable<TopicPartition>  $partitions Partitions to delete the committed offset of
+     *
+     * @throws KafkaException If the group itself refuses the request - 68 for a non-empty group of another protocol
+     *         type, 69 for a group the coordinator does not know, 16 when the coordinator moved
+     *
+     * @return array<string, array<int, KafkaException|null>> One entry per requested partition, indexed by topic and
+     *         partition index: `null` when the committed offset is gone, the exception of its code otherwise
+     */
+    public function deleteConsumerGroupOffsets(string $groupId, iterable $partitions): array
+    {
+        $topicPartitions = [];
+        foreach ($partitions as $topicPartition) {
+            $topicPartitions[$topicPartition->topic][$topicPartition->partition] = $topicPartition->partition;
+        }
+
+        if ($topicPartitions === []) {
+            return [];
+        }
+
+        return $this->client()->deleteGroupOffsets($this->findCoordinator($groupId), $groupId, $topicPartitions);
+    }
+
+    /**
     }
 
     /**
