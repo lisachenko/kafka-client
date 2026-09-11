@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\ConfigSource;
 use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
@@ -135,7 +136,67 @@ final class TopicAdminApiTest extends IntegrationTestCase
         foreach ($metadata->partitions as $partition) {
             self::assertSame([0], array_values($partition->replicas), 'and the default replication factor 1');
         }
-        self::assertSame(4, CreateTopicsRequest::VERSION, 'the version KIP-464 needs, and the one this line sends');
+        self::assertGreaterThanOrEqual(
+            4,
+            CreateTopicsRequest::VERSION,
+            'KIP-464 needs the version 4; this line sends the flexible 5 of KIP-482, which carries the same meaning'
+        );
+    }
+
+    /**
+     * What KIP-525 put into the answer of the **version 5**: the shape of the topic and its whole configuration
+     *
+     * `AdminClient::createTopicsWithResults()` is the same request as `createTopics()` with the entries of the
+     * answer kept instead of only their errors, so that no DescribeConfigs has to follow the creation.
+     */
+    public function testTheAnswerOfVersionFiveCarriesTheShapeAndTheConfigurationOfTheNewTopic(): void
+    {
+        $topic = $this->topicName('kip525');
+
+        $created = $this->admin->createTopicsWithResults([
+            new NewTopic($topic, 2, 1, configs: ['retention.ms' => '3600000']),
+        ])[$topic];
+
+        self::assertNull($created->error, 'the topic was created');
+        self::assertSame($topic, $created->topic);
+        self::assertSame(2, $created->numPartitions, 'the partition count the request asked for');
+        self::assertSame(1, $created->replicationFactor);
+        self::assertSame(0, $created->configErrorCode, 'the broker read the configuration back');
+        self::assertNotNull($created->config, 'and sent it');
+        self::assertSame(
+            '3600000',
+            $created->config->value('retention.ms'),
+            'the option the request set is in the answer with its value'
+        );
+        self::assertSame(
+            ConfigSource::TOPIC_CONFIG,
+            $created->config->get('retention.ms')->source,
+            'and with the source a DescribeConfigs would report for it'
+        );
+        self::assertGreaterThan(
+            10,
+            count($created->config->entries),
+            'every option of the topic is in there, not only the ones the request named'
+        );
+        self::assertNotNull(
+            $created->config->get('cleanup.policy'),
+            'an option the request never mentioned, with the value the topic inherited'
+        );
+        self::assertSame(5, CreateTopicsRequest::VERSION, 'the version KIP-525 needs');
+    }
+
+    /**
+     * The -1/-1 of KIP-464 and the answer of KIP-525 together: the broker says what it chose
+     */
+    public function testTheBrokerDefaultsAreReportedBackByTheAnswerOfVersionFive(): void
+    {
+        $topic = $this->topicName('kip525-defaults');
+
+        $created = $this->admin->createTopicsWithResults([NewTopic::withBrokerDefaults($topic)])[$topic];
+
+        self::assertNull($created->error);
+        self::assertSame(3, $created->numPartitions, 'the `num.partitions=3` of the image, reported back');
+        self::assertSame(1, $created->replicationFactor, 'and the default replication factor');
     }
 
     /**

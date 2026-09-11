@@ -19,6 +19,7 @@ namespace Protocol\Kafka;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Admin\CreatedTopic;
 use Protocol\Kafka\Admin\ElectionType;
 use Protocol\Kafka\Admin\NewPartitionReassignment;
 use Protocol\Kafka\Admin\NewPartitions;
@@ -2274,7 +2275,9 @@ class Client
      * @param int            $timeoutMs    How long the controller waits for the topics to be created
      * @param bool           $validateOnly Validate the request without creating anything
      *
-     * @return array<string, KafkaException|null> Error of every requested topic, null when it was created
+     * @return array<string, CreatedTopic> What the controller answered for every requested topic: its error, and
+     *         from the version 5 of the api the partition count, the replication factor and the configuration the
+     *         new topic ended up with (KIP-525)
      */
     public function createTopics(
         Node $controller,
@@ -2298,11 +2301,15 @@ class Client
             static function (CreateTopicsResponse $response) use ($topics): array {
                 $result = [];
                 foreach ($topics as $newTopic) {
-                    $topicResult             = $response->topics[$newTopic->topic] ?? null;
-                    $result[$newTopic->topic] = self::topicError(
+                    $topicResult              = $response->topics[$newTopic->topic] ?? null;
+                    $result[$newTopic->topic] = CreatedTopic::fromResponseTopic(
                         $newTopic->topic,
-                        $topicResult?->errorCode,
-                        $topicResult?->errorMessage
+                        $topicResult,
+                        self::topicError(
+                            $newTopic->topic,
+                            $topicResult?->errorCode,
+                            $topicResult?->errorMessage
+                        )
                     );
                 }
 

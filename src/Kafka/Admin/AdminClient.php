@@ -876,6 +876,46 @@ class AdminClient
      */
     public function createTopics(array $newTopics, int $timeoutMs = 30000, bool $validateOnly = false): array
     {
+        $result = [];
+        foreach ($this->createTopicsWithResults($newTopics, $timeoutMs, $validateOnly) as $topic => $created) {
+            $result[$topic] = $created->error;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Creates topics and reports **everything** the controller answered for each of them (KIP-525, CreateTopics v5)
+     *
+     * The same request as {@see self::createTopics()}, whose result is the `error` of these entries; what a
+     * {@see CreatedTopic} adds is what Kafka 2.4 put into the answer with the version 5 of the api - the partition
+     * count and the replication factor the topic really got, which is the other half of the -1/-1 of KIP-464
+     * ({@see NewTopic::withBrokerDefaults()}), and the whole configuration of the new topic as a {@see Config}, so
+     * that the DescribeConfigs a caller used to send right afterwards is unnecessary:
+     *
+     * <code>
+     *   $created = $admin->createTopicsWithResults([NewTopic::withBrokerDefaults('events')])['events'];
+     *   $created->numPartitions;                  // what `num.partitions` of the broker said
+     *   $created->config->value('retention.ms');  // and what the topic inherited for it
+     * </code>
+     *
+     * An answer of a broker below Kafka 2.4 carries none of it, and neither does one whose configuration the broker
+     * could not read back: `config` is `null` then and `configErrorCode` says why.
+     *
+     * @param list<NewTopic> $newTopics    Topics to create
+     * @param int            $timeoutMs    How long the controller waits for the topics to exist before it answers
+     * @param bool           $validateOnly Validate the request without creating anything
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws NotControllerException If the cluster has no active controller
+     *
+     * @return array<string, CreatedTopic> One entry per requested topic, keyed by its name
+     */
+    public function createTopicsWithResults(
+        array $newTopics,
+        int $timeoutMs = 30000,
+        bool $validateOnly = false
+    ): array {
         return $this->onController(
             fn(Node $controller): array => $this->client()
                 ->createTopics($controller, $newTopics, $timeoutMs, $validateOnly)
@@ -970,7 +1010,9 @@ class AdminClient
     private function onController(Closure $request): array
     {
         $result = $request($this->findController());
-        foreach ($result as $error) {
+        foreach ($result as $entry) {
+            // A CreateTopics answer is a map of value objects, every other one a map of exceptions
+            $error = $entry instanceof CreatedTopic ? $entry->error : $entry;
             if ($error instanceof NotControllerException) {
                 $this->cluster->reload();
 
