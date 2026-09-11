@@ -1317,7 +1317,7 @@ final class ClientTest extends TestCase
         self::assertSame(FetchMetadata::INITIAL_EPOCH, $metadata->epoch);
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionFour(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionSix(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -1350,9 +1350,9 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(4, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 4');
+        self::assertSame(6, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 6');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(4, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 4');
+        self::assertSame(5, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 5');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -1408,7 +1408,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(4, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
+        self::assertSame(5, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
         self::assertStringEndsWith('ffffffff', bin2hex($frame), 'the topic array of the request is the null one');
     }
 

@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
  * is left at {@see OffsetCommitRequestPartition::BROKER_TIMESTAMP}. Version 2 replaced it with one `retention_time`
  * for the whole request, so this class lowers the version constant and drops that field again.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v4)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v6)"
  */
 final class OffsetCommitRequestV1 extends OffsetCommitRequest
 {
