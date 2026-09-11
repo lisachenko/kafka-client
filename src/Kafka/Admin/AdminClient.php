@@ -45,6 +45,8 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\AlterClientQuotasResponse;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
@@ -57,6 +59,8 @@ use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
@@ -1494,6 +1498,109 @@ class AdminClient
         }
 
         return $this->client()->deleteGroupOffsets($this->findCoordinator($groupId), $groupId, $topicPartitions);
+    }
+
+    /**
+     * Reads the client quotas of the cluster (ApiKey 48, Kafka 2.6, KIP-546)
+     *
+     * Until Kafka 2.6 a client quota could only be read out of **ZooKeeper**, which is why every quota test of the
+     * lines below this one shells into the container; KIP-546 gave it a protocol of its own. The request is served
+     * from the quota cache of whatever broker answers it, so it goes to the first broker that is reachable.
+     *
+     * The filter is a conjunction: an entity has to match **every** component to be answered, and
+     * {@see ClientQuotaFilter::all()} matches everything. The `strict` flag of {@see ClientQuotaFilter::containsOnly()}
+     * decides what happens to entities that carry parts of a type the filter does not name - a quota that is
+     * attached to a `user` *and* a `client-id` is answered by a non-strict `client-id` filter and hidden by a
+     * strict one.
+     *
+     * The answer carries **every** quota of a matching entity, not only the ones the filter was interested in.
+     *
+     * @param ClientQuotaFilter $filter Which entities to describe
+     *
+     * @throws KafkaException If the broker refused the filter, e.g. with 42 (InvalidRequest) for an entity type it
+     *         does not know
+     *
+     * @return array<string, array<string, float>> Quotas per entity, indexed by the string form of
+     *         {@see ClientQuotaEntity} (`client-id=t1-quota`, `user=<default>`) and by the quota name
+     */
+    public function describeClientQuotas(ClientQuotaFilter $filter): array
+    {
+        /** @var DescribeClientQuotasResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeClientQuotasRequest => new DescribeClientQuotasRequest(
+                $filter->toData(),
+                $filter->strict,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeClientQuotasResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The broker refused the quota filter']
+            );
+        }
+
+        $result = [];
+        foreach ($response->entries ?? [] as $entry) {
+            $values = [];
+            foreach ($entry->values as $value) {
+                $values[$value->key] = $value->value;
+            }
+            $result[(string) ClientQuotaEntity::fromData($entry->entity)] = $values;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Sets and removes client quotas (ApiKey 49, Kafka 2.6, KIP-546)
+     *
+     * The other half of KIP-546. One {@see ClientQuotaAlteration} carries one entity and every change asked for
+     * it, a change being a value to set or a quota to remove ({@see ClientQuotaAlterationOp::remove()}); an entity
+     * that is refused does not stop the others, so the result reports **every** entity of the call and throws
+     * nothing - there is no top-level error code in this api at all.
+     *
+     * `$validateOnly` asks the broker to check the request and change nothing, which answers the very same shape.
+     *
+     * A quota that was removed leaves the entity with whatever the `<default>` entity of its type says, and an
+     * entity without a single quota left disappears from {@see self::describeClientQuotas()}.
+     *
+     * @param list<ClientQuotaAlteration> $alterations  Entities and the changes asked for them
+     * @param bool                        $validateOnly Whether the broker only checks the request
+     *
+     * @return array<string, KafkaException|null> Error of every entity of the call, indexed by the string form of
+     *         {@see ClientQuotaEntity}; null when every change of that entity was applied
+     */
+    public function alterClientQuotas(array $alterations, bool $validateOnly = false): array
+    {
+        $entries = array_map(static fn(ClientQuotaAlteration $a) => $a->toData(), array_values($alterations));
+
+        /** @var AlterClientQuotasResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): AlterClientQuotasRequest => new AlterClientQuotasRequest(
+                $entries,
+                $validateOnly,
+                $this->clientId(),
+                $correlationId
+            ),
+            AlterClientQuotasResponse::class
+        );
+
+        $result = [];
+        foreach ($response->entries as $entry) {
+            $entity          = (string) ClientQuotaEntity::fromData($entry->entity);
+            $result[$entity] = $entry->errorCode === KafkaException::NO_ERROR
+                ? null
+                : KafkaException::fromCode(
+                    $entry->errorCode,
+                    ['entity' => $entity] + ($entry->errorMessage !== null ? ['error' => $entry->errorMessage] : [])
+                );
+        }
+
+        return $result;
     }
 
     /**
