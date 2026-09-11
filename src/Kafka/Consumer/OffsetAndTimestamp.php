@@ -35,7 +35,16 @@ final class OffsetAndTimestamp implements \Stringable
      */
     public function __construct(
         public readonly int $offset,
-        public readonly int $timestamp
+        public readonly int $timestamp,
+        /**
+         * Epoch the leader was on when it read this offset, the `leader_epoch` of a ListOffsets v4 answer
+         *
+         * `null` when the answer carried none - every answer below version 4 (Kafka 2.1, KIP-320), and any
+         * lookup the leader could not place - which is the `Optional<Integer> leaderEpoch()` of the Java
+         * `OffsetAndTimestamp`. A consumer that seeks to this offset keeps the epoch next to the position and
+         * sends it back as the `current_leader_epoch` of its next fetch.
+         */
+        public readonly ?int $leaderEpoch = null
     ) {}
 
     public function __toString(): string

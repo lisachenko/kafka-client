@@ -26,31 +26,52 @@ use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV0;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV5;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV9;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
 use Protocol\Kafka\Protocol\Data\FetchResponseAbortedTransaction;
+use Protocol\Kafka\Protocol\Data\FetchResponseCurrentLeader;
+use Protocol\Kafka\Protocol\Data\FetchResponseDivergingEpoch;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartitionV0;
+use Protocol\Kafka\Protocol\Data\FetchResponsePartitionV11;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartitionV4;
+use Protocol\Kafka\Protocol\Data\FetchResponsePartitionV5;
+use Protocol\Kafka\Protocol\Data\FetchResponseSnapshotId;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopicV11;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV0;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
+use Protocol\Kafka\Protocol\Request\FetchRequestV10;
+use Protocol\Kafka\Protocol\Request\FetchRequestV11;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
 use Protocol\Kafka\Protocol\Request\FetchRequestV5;
 use Protocol\Kafka\Protocol\Request\FetchRequestV6;
+use Protocol\Kafka\Protocol\Request\FetchRequestV7;
+use Protocol\Kafka\Protocol\Request\FetchRequestV8;
+use Protocol\Kafka\Protocol\Request\FetchRequestV9;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV0;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
+use Protocol\Kafka\Protocol\Request\FetchResponseV10;
+use Protocol\Kafka\Protocol\Request\FetchResponseV11;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
 use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 use Protocol\Kafka\Protocol\Request\FetchResponseV5;
 use Protocol\Kafka\Protocol\Request\FetchResponseV6;
+use Protocol\Kafka\Protocol\Request\FetchResponseV7;
+use Protocol\Kafka\Protocol\Request\FetchResponseV8;
+use Protocol\Kafka\Protocol\Request\FetchResponseV9;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
  * Byte-exact tests for the Fetch API, versions 0 to 7.
@@ -71,7 +92,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV6;
  *   FetchResponse v7        => ThrottleTimeMs ErrorCode SessionId [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)", "Fetch sessions (v7, KIP-227)" and
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)", "Fetch sessions (v7, KIP-227)" and
  *      "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
@@ -162,14 +183,145 @@ final class FetchApiTest extends TestCase
         . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400';
 
     /**
-     * The same request as a version 7 one: the `SessionId` and the `Epoch` of KIP-227 between the
-     * `IsolationLevel` and the topics, and the `forgotten_topics_data` array behind them.
+     * A Fetch request of the version 12 this client sends, which is the first FLEXIBLE version of the api
+     * (Kafka 2.7, KIP-482): the header is a request header **v2** - the client id is still a plain
+     * `INT16` length plus the bytes, and a tagged-field section closes the header - every string, byte array
+     * and array of the body is COMPACT, every structure ends in a tagged-field section, and the body carries
+     * the `LastFetchedEpoch` of KIP-595 per partition and the tagged `ClusterId` at its end.
      *
-     *   Size           => 00 00 00 6a (106 bytes), ApiVersion => 00 07
-     *   SessionId      => 00 00 00 00 (no session), Epoch => ff ff ff ff (-1, FINAL_EPOCH)
-     *   [ForgottenTopic] => 00 00 00 00 (nothing to forget)
+     *   Size    => 00 00 00 76 (118 bytes), ApiVersion => 00 0c
+     *   ClientId => 00 04 "test", header tag buffer => 00 (no tagged field in the header)
+     *   [Topic]  => 02 (compact array of one entry), Name => 06 "topic" (compact string of five bytes)
+     *   [Partition] => 03 (compact array of two entries)
+     *     Partition => 00 00 00 00, CurrentLeaderEpoch => ff ff ff ff (-1, KIP-320)
+     *     FetchOffset => 00 .. 00, LastFetchedEpoch => ff ff ff ff (-1, KIP-595)
+     *     LogStartOffset => ff .. ff (-1), PartitionMaxBytes => 00 00 04 00, tag buffer => 00
+     *   [ForgottenTopic] => 01 (the empty compact array), RackId => 01 (the empty compact string)
+     *   tag buffer => 00 (no `ClusterId`, the tag 0 of the body)
      */
-    private const string FETCH_REQUEST_HEX = '0000006a'
+    private const string FETCH_REQUEST_HEX = '00000076'
+        . '0001'
+        . '000c'
+        . '00000001'
+        . '0004' . '74657374'
+        . '00'
+        . 'ffffffff'
+        . '00000064'
+        . '00000001'
+        . '00100000'
+        . '00'
+        . '00000000' . 'ffffffff'
+        . '02'
+        . '06' . '746f706963'
+        . '03'
+        . '00000000' . 'ffffffff' . '0000000000000000' . 'ffffffff' . 'ffffffffffffffff' . '00000400' . '00'
+        . '00000001' . 'ffffffff' . '000000000000002a' . 'ffffffff' . 'ffffffffffffffff' . '00000400' . '00'
+        . '00'
+        . '01'
+        . '01'
+        . '00';
+
+    /**
+     * The same question as a version 11 frame, the last plain one: the `SessionId` and the `Epoch` of
+     * KIP-227 between the `IsolationLevel` and the topics, the `forgotten_topics_data` array behind them, the
+     * `CurrentLeaderEpoch` of KIP-320 in front of the fetch offset of every partition, and the `RackId` of
+     * KIP-392 at the very end of the frame.
+     *
+     *   Size           => 00 00 00 74 (116 bytes), ApiVersion => 00 0b
+     *   SessionId      => 00 00 00 00 (no session), Epoch => ff ff ff ff (-1, FINAL_EPOCH)
+     *   CurrentLeaderEpoch => ff ff ff ff (-1, "I do not know the epoch") on both partitions
+     *   [ForgottenTopic] => 00 00 00 00 (nothing to forget)
+     *   RackId         => 00 00 (the empty string, "I am in no rack")
+     */
+    private const string FETCH_REQUEST_V11_HEX = '00000074'
+        . '0001'
+        . '000b'
+        . '00000001'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00000064'
+        . '00000001'
+        . '00100000'
+        . '00'
+        . '00000000' . 'ffffffff'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000002'
+        . '00000000' . 'ffffffff' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+        . '00000001' . 'ffffffff' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
+        . '00000000'
+        . '0000';
+
+    /**
+     * The same question as a version 10 frame, which has no `RackId` at all: the frame of version 9 with another
+     * api version, and the last one a consumer is always served by the leader itself for
+     */
+    private const string FETCH_REQUEST_V10_HEX = '00000072'
+        . '0001'
+        . '000a'
+        . '00000001'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00000064'
+        . '00000001'
+        . '00100000'
+        . '00'
+        . '00000000' . 'ffffffff'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000002'
+        . '00000000' . 'ffffffff' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+        . '00000001' . 'ffffffff' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
+        . '00000000';
+
+    /**
+     * The same question as a version 9 frame: the api version is the only byte that differs from version 10
+     */
+    private const string FETCH_REQUEST_V9_HEX = '00000072'
+        . '0001'
+        . '0009'
+        . '00000001'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00000064'
+        . '00000001'
+        . '00100000'
+        . '00'
+        . '00000000' . 'ffffffff'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000002'
+        . '00000000' . 'ffffffff' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+        . '00000001' . 'ffffffff' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
+        . '00000000';
+
+    /**
+     * The same question as a version 8 frame, whose partition entries carry no `CurrentLeaderEpoch` at all
+     *
+     *   Size => 00 00 00 6a (106 bytes), ApiVersion => 00 08
+     */
+    private const string FETCH_REQUEST_V8_HEX = '0000006a'
+        . '0001'
+        . '0008'
+        . '00000001'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00000064'
+        . '00000001'
+        . '00100000'
+        . '00'
+        . '00000000' . 'ffffffff'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000002'
+        . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+        . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
+        . '00000000';
+
+    /**
+     * The very same frame with the api version 7 in its header, which is what a Kafka 1.1.1 broker was sent
+     */
+    private const string FETCH_REQUEST_V7_HEX = '0000006a'
         . '0001'
         . '0007'
         . '00000001'
@@ -244,7 +396,11 @@ final class FetchApiTest extends TestCase
         $request = new FetchRequest(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
 
         self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
-        self::assertSame(106, $request->getMessageSize());
+        self::assertSame(
+            118,
+            $request->getMessageSize(),
+            'the compact encoding of version 12 pays for the tag buffers with the bytes it saves on the lengths'
+        );
         self::assertSame(FetchRequest::READ_UNCOMMITTED, $request->getIsolationLevel());
         self::assertEquals(
             FetchMetadata::legacy(),
@@ -256,7 +412,7 @@ final class FetchApiTest extends TestCase
 
     public function testVersion7SendsTheSessionIdAndTheEpochBetweenTheIsolationLevelAndTheTopics(): void
     {
-        $request = new FetchRequest(
+        $request = new FetchRequestV7(
             ['topic' => [0 => 0]],
             100,
             1,
@@ -286,6 +442,73 @@ final class FetchApiTest extends TestCase
         self::assertSame(123, $request->getMetadata()->sessionId);
         self::assertSame(4, $request->getMetadata()->epoch);
         self::assertSame(['topic' => [2, 3], 'other' => [0]], $request->getForgottenTopicPartitions());
+    }
+
+    public function testVersion8IsTheVersionSevenFrameWithAnotherApiVersion(): void
+    {
+        $request = new FetchRequestV8(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        // `FetchRequest.json` @ 2.8.2 has no field of version 8 and says "Version 8 is the same as version 7":
+        // what version 8 (Kafka 2.0, KIP-219) states is that the client waits out `throttle_time_ms` itself,
+        // because the broker answers a throttled request first and mutes the channel afterwards
+        self::assertSame(self::FETCH_REQUEST_V7_HEX, substr_replace(self::FETCH_REQUEST_V8_HEX, '0007', 12, 4));
+        self::assertSame(self::FETCH_REQUEST_V8_HEX, bin2hex((string) $request));
+        self::assertSame(8, $request->getApiVersion());
+        self::assertSame(FetchRequestV7::getScheme(), FetchRequestV8::getScheme());
+        self::assertSame(FetchResponseV7::getScheme(), FetchResponseV8::getScheme());
+        self::assertSame(7, FetchRequestV7::VERSION);
+        self::assertSame(7, FetchResponseV7::VERSION);
+    }
+
+    public function testVersion9AddsTheCurrentLeaderEpochToEveryPartitionOfTheRequest(): void
+    {
+        // KIP-320: the epoch sits BETWEEN the partition index and the fetch offset - that is the field order of
+        // `FetchRequest.json` @ 2.8.2, which is the wire order, not "behind the fetch offset" as the KIP reads
+        $request = new FetchRequestV9(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        self::assertSame(self::FETCH_REQUEST_V9_HEX, bin2hex((string) $request));
+        self::assertSame(
+            self::FETCH_REQUEST_V8_HEX,
+            str_replace(['0009', '00000000' . 'ffffffff' . '0000000000000000', '00000001' . 'ffffffff'], ['0008', '00000000' . '0000000000000000', '00000001'], substr_replace(self::FETCH_REQUEST_V9_HEX, '0000006a', 0, 8)),
+            'a version 8 frame is the same question without the four epoch bytes per partition'
+        );
+        self::assertArrayNotHasKey('currentLeaderEpoch', FetchRequestTopicPartitionV5::getScheme());
+        self::assertSame(
+            ['partition', 'currentLeaderEpoch', 'fetchOffset', 'logStartOffset', 'maxBytes'],
+            array_keys(FetchRequestTopicPartitionV9::getScheme())
+        );
+        self::assertSame(-1, FetchRequestTopicPartition::UNKNOWN_LEADER_EPOCH);
+    }
+
+    public function testAPartitionCanBeGivenAsAnOffsetAndEpochPair(): void
+    {
+        // The frozen shape of the optional epoch: a value of the `$topicPartitions` map is either the plain fetch
+        // offset or the pair [offset, currentLeaderEpoch]
+        $request = new FetchRequestV11(['topic' => [0 => [0, 7], 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        // The epoch of the first partition sits at hex offset 124, right behind its partition index
+        self::assertSame(
+            substr_replace(self::FETCH_REQUEST_V11_HEX, '00000007', 124, 8),
+            bin2hex((string) $request),
+            'the epoch of the first partition is 7, the second one keeps the -1 of a plain offset'
+        );
+        self::assertSame([42, -1], FetchRequest::offsetAndEpoch(42));
+        self::assertSame([42, 7], FetchRequest::offsetAndEpoch([42, 7]));
+    }
+
+    public function testVersion10IsTheVersionNineFrameWithAnotherApiVersion(): void
+    {
+        // `FetchRequest.json` @ 2.8.2 has no field of version 10: what it states is that the client understands a
+        // zstd-compressed record batch (KIP-110), which a broker refuses to a lower version with the code 76
+        $request = new FetchRequestV10(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        self::assertSame(self::FETCH_REQUEST_V10_HEX, bin2hex((string) $request));
+        self::assertSame(self::FETCH_REQUEST_V9_HEX, substr_replace(self::FETCH_REQUEST_V10_HEX, '0009', 12, 4));
+        self::assertSame(10, $request->getApiVersion());
+        self::assertSame(FetchRequestV9::getScheme(), FetchRequestV10::getScheme());
+        self::assertSame(FetchResponseV9::getScheme(), FetchResponseV10::getScheme());
+        self::assertSame(10, FetchRequestV10::VERSION);
+        self::assertSame(10, FetchResponseV10::VERSION);
     }
 
     public function testVersion6RequestIsTheVersionFiveFrameWithAnotherApiVersion(): void
@@ -327,9 +550,176 @@ final class FetchApiTest extends TestCase
         self::assertArrayNotHasKey('forgottenTopics', FetchRequestV5::getScheme());
     }
 
+    public function testVersionTwelveIsTheFirstFlexibleVersionOfTheApi(): void
+    {
+        // KIP-482 (Kafka 2.7): the same question as version 11, written with a request header v2, compact strings
+        // and compact arrays, and a tagged-field section behind every structure
+        $request = new FetchRequest(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
+        self::assertSame(12, $request->getApiVersion());
+        self::assertSame(12, FetchRequest::FLEXIBLE_VERSION);
+        self::assertSame(12, FetchResponse::FLEXIBLE_VERSION);
+        self::assertSame(11, FetchRequestV11::VERSION);
+        self::assertSame(11, FetchResponseV11::VERSION);
+        self::assertStringEndsWith(
+            '01' . '01' . '00',
+            bin2hex((string) $request),
+            'the empty forgotten topics, the empty rack and the tag buffer of the body, one byte each'
+        );
+    }
+
+    public function testTheClusterIdOfVersionTwelveIsATaggedFieldOfTheBody(): void
+    {
+        // `FetchRequest.json` @ 2.8.2 declares the `cluster_id` as the tag 0 with the default null: a request that
+        // does not name one writes nothing at all, which is what every request of this client does
+        $named = new FetchRequest(
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            FetchRequest::NO_RACK,
+            'cluster-1'
+        );
+
+        // The tagged-field section that closes the body: one field, the tag 0, ten bytes of it, and those ten
+        // bytes are the compact string "cluster-1" (9 + 1)
+        self::assertSame(
+            substr_replace(substr(self::FETCH_REQUEST_HEX, 0, -2), '00000082', 0, 8)
+            . '01' . '00' . '0a' . '0a' . '636c75737465722d31',
+            bin2hex((string) $named),
+            'the named cluster is the only difference from the frame that leaves the tag out, twelve bytes longer'
+        );
+        self::assertInstanceOf(TaggedField::class, FetchRequest::getScheme()['clusterId']);
+        self::assertSame(0, FetchRequest::getScheme()['clusterId']->tag);
+        self::assertNull(FetchRequest::getScheme()['clusterId']->default);
+        self::assertArrayNotHasKey('clusterId', FetchRequestV11::getScheme());
+    }
+
+    public function testTheLastFetchedEpochOfKip595TravelsBehindTheFetchOffsetOfAPartition(): void
+    {
+        // The client-facing shape of the field: the third element of the triple, next to the plain offset and the
+        // `[offset, currentLeaderEpoch]` pair of version 9
+        $request = new FetchRequest(['topic' => [0 => [0, 3, 7]]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        self::assertSame(
+            '00000055' . '0001' . '000c' . '00000001' . '0004' . '74657374' . '00'
+            . 'ffffffff' . '00000064' . '00000001' . '00100000' . '00' . '00000000' . 'ffffffff'
+            . '02' . '06' . '746f706963' . '02'
+            . '00000000' . '00000003' . '0000000000000000' . '00000007' . 'ffffffffffffffff' . '00000400' . '00'
+            . '00' . '01' . '01' . '00',
+            bin2hex((string) $request),
+            'the current leader epoch 3 in front of the fetch offset, the last fetched epoch 7 behind it'
+        );
+        self::assertSame(-1, FetchRequest::lastFetchedEpochOf(42));
+        self::assertSame(-1, FetchRequest::lastFetchedEpochOf([42, 7]));
+        self::assertSame(7, FetchRequest::lastFetchedEpochOf([42, 3, 7]));
+        self::assertSame(-1, FetchRequestTopicPartition::UNKNOWN_LAST_FETCHED_EPOCH);
+    }
+
+    public function testADivergingEpochIsReadOutOfTheTaggedSectionOfAPartitionEntry(): void
+    {
+        // The bytes of the vector `fetch.response.v12.diverging-epoch`: the answer of a leader whose log does not
+        // match the `last_fetched_epoch` and the fetch offset of the request. The record set is EMPTY, the error
+        // code is 0, and the partition ends in a tagged-field section with the tag 0 alone
+        $frame = '00000055' . '00000322' . '00'
+            . '00000000' . '0000' . '00000000'
+            . '02' . '0e' . '74322d32372d766563746f7273' . '02'
+            . '00000000' . '0000' . '0000000000000001' . '0000000000000001' . '0000000000000000'
+            . '00' . 'ffffffff' . '01'
+            . '01' . '00' . '0d' . '00000000' . '0000000000000001' . '00'
+            . '00' . '00';
+
+        $response  = FetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $partition = $response->topics['t2-27-vectors']->partitions[0];
+
+        self::assertSame(0, $partition->errorCode);
+        self::assertSame('', $partition->messageSet);
+        self::assertInstanceOf(FetchResponseDivergingEpoch::class, $partition->divergingEpoch);
+        self::assertSame(0, $partition->divergingEpoch->epoch);
+        self::assertSame(1, $partition->divergingEpoch->endOffset);
+        self::assertNull($partition->currentLeader, 'the tag 1 belongs to the raft replication of a KRaft quorum');
+        self::assertNull($partition->snapshotId, 'and so does the tag 2 of KIP-630');
+        self::assertSame($frame, bin2hex((string) $response), 'a tagged field that is there travels back out');
+        self::assertSame(-1, FetchResponseDivergingEpoch::UNDEFINED);
+        self::assertSame(-1, FetchResponseCurrentLeader::UNKNOWN);
+        self::assertSame(-1, FetchResponseSnapshotId::UNDEFINED);
+        self::assertSame(
+            ['epoch' => BinarySchema::TYPE_INT32, 'endOffset' => BinarySchema::TYPE_INT64],
+            FetchResponseDivergingEpoch::getScheme()
+        );
+        self::assertSame(
+            ['leaderId' => BinarySchema::TYPE_INT32, 'leaderEpoch' => BinarySchema::TYPE_INT32],
+            FetchResponseCurrentLeader::getScheme()
+        );
+        self::assertSame(
+            ['endOffset' => BinarySchema::TYPE_INT64, 'epoch' => BinarySchema::TYPE_INT32],
+            FetchResponseSnapshotId::getScheme()
+        );
+    }
+
+    public function testVersionElevenAppendsTheRackIdOfTheConsumerAndTheReadReplicaOfTheAnswer(): void
+    {
+        // KIP-392 (Kafka 2.3): the `rack_id` is the LAST field of the request, behind the forgotten topics, and
+        // the `preferred_read_replica` sits between the aborted transactions and the record set of every
+        // partition of the answer - the field order of `FetchRequest.json` and `FetchResponse.json` @ 2.8.2
+        $request = new FetchRequestV11(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+
+        self::assertSame(self::FETCH_REQUEST_V11_HEX, bin2hex((string) $request));
+        self::assertStringEndsWith('00000000' . '0000', bin2hex((string) $request), 'the empty rack of a consumer');
+        self::assertSame(11, $request->getApiVersion());
+        self::assertSame('', FetchRequest::NO_RACK);
+
+        $inRack = new FetchRequestV11(
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            'eu-1a'
+        );
+
+        self::assertStringEndsWith('0005' . bin2hex('eu-1a'), bin2hex((string) $inRack));
+        self::assertSame(
+            strlen((string) $request) + 5,
+            strlen((string) $inRack),
+            'the rack is a plain string at the end of the frame'
+        );
+
+        $scheme = FetchRequestV11::getScheme();
+        self::assertSame('rackId', array_key_last($scheme));
+        self::assertArrayNotHasKey('rackId', FetchRequestV10::getScheme());
+
+        $partition = FetchResponsePartitionV11::getScheme();
+        self::assertSame(
+            ['partition', 'errorCode', 'highWaterMarkOffset', 'lastStableOffset', 'logStartOffset',
+                'abortedTransactions', 'preferredReadReplica', 'messageSet'],
+            array_keys($partition)
+        );
+        self::assertArrayNotHasKey('preferredReadReplica', FetchResponsePartitionV5::getScheme());
+        self::assertSame(-1, FetchResponsePartition::NO_PREFERRED_READ_REPLICA);
+        self::assertSame(11, FetchRequestV11::VERSION);
+        self::assertSame(11, FetchResponseV11::VERSION);
+        self::assertSame(12, FetchRequest::VERSION, 'the client sends the flexible version of Kafka 2.7');
+        self::assertSame(12, FetchResponse::VERSION);
+    }
+
     public function testTheIsolationLevelOfVersionFourIsWrittenBehindTheRequestLevelMaxBytes(): void
     {
-        $request = new FetchRequest(
+        $request = new FetchRequestV11(
             ['topic' => [0 => 0, 1 => 42]],
             100,
             1,
@@ -343,7 +733,7 @@ final class FetchApiTest extends TestCase
 
         // The single byte 01 replaces the 00 of read_uncommitted, and nothing else about the frame changes
         self::assertSame(
-            substr_replace(self::FETCH_REQUEST_HEX, '01', 2 * 34, 2),
+            substr_replace(self::FETCH_REQUEST_V11_HEX, '01', 2 * 34, 2),
             bin2hex((string) $request)
         );
         self::assertSame(1, FetchRequest::READ_COMMITTED);
@@ -399,7 +789,7 @@ final class FetchApiTest extends TestCase
 
     public function testTheRequestLevelMaxBytesDefaultsToTheFiftyMegabytesOfTheJavaConsumer(): void
     {
-        $request = new FetchRequest(['topic' => [0 => 0]], 100, 1, 1024, -1, 'test', 1);
+        $request = new FetchRequestV11(['topic' => [0 => 0]], 100, 1, 1024, -1, 'test', 1);
 
         self::assertSame(52428800, FetchRequest::DEFAULT_MAX_BYTES);
         // 00 03 20 00 00 = the 50 MiB of `fetch.max.bytes` behind MinBytes, then the read_uncommitted byte
@@ -413,13 +803,14 @@ final class FetchApiTest extends TestCase
     {
         // The broker fills the answer of a v3 request in the order of its partitions until MaxBytes are used up,
         // so a consumer that rotates them relies on this order reaching the wire unchanged
-        $request = new FetchRequest(['topic' => [1 => 42, 0 => 0]], 100, 1, 1024, -1, 'test', 1, 1048576);
+        $request = new FetchRequestV11(['topic' => [1 => 42, 0 => 0]], 100, 1, 1024, -1, 'test', 1, 1048576);
 
         self::assertStringEndsWith(
             '00000002'
-            . '00000001' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
-            . '00000000' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
-            . '00000000',
+            . '00000001' . 'ffffffff' . '000000000000002a' . 'ffffffffffffffff' . '00000400'
+            . '00000000' . 'ffffffff' . '0000000000000000' . 'ffffffffffffffff' . '00000400'
+            . '00000000'
+            . '0000',
             bin2hex((string) $request)
         );
     }
@@ -534,10 +925,21 @@ final class FetchApiTest extends TestCase
 
         // The request-level MaxBytes of v3 stands between MinBytes and the topics, the IsolationLevel of v4 behind
         // it, the SessionId and the Epoch of v7 behind that, the LogStartOffset of v5 inside a partition entry and
-        // the forgotten topics of v7 behind the whole topics array
+        // the forgotten topics of v7 behind the whole topics array. Version 12 puts the tagged-field section of
+        // the request header v2 behind the client id and the tagged `ClusterId` of KIP-595 at the very end.
+        self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'headerTaggedFields', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'sessionId', 'epoch', 'topicPartitions', 'forgottenTopics', 'rackId', 'clusterId'],
+            array_keys($scheme)
+        );
+        self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'sessionId', 'epoch', 'topicPartitions', 'forgottenTopics', 'rackId'],
+            array_keys(FetchRequestV11::getScheme()),
+            'a version 11 frame has a plain header and no tagged field at all'
+        );
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'sessionId', 'epoch', 'topicPartitions', 'forgottenTopics'],
-            array_keys($scheme)
+            array_keys(FetchRequestV10::getScheme()),
+            'the rack id of KIP-392 arrived with version 11'
         );
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'topicPartitions'],
@@ -565,14 +967,38 @@ final class FetchApiTest extends TestCase
         );
         self::assertSame(['topic' => FetchRequestTopic::class], $scheme['topicPartitions']);
         self::assertSame(
+            ['topic' => FetchRequestTopicV9::class],
+            FetchRequestV11::getScheme()['topicPartitions'],
+            'below version 12 the partition entries carry no LastFetchedEpoch'
+        );
+        self::assertSame(
+            ['topic' => FetchRequestTopicV5::class],
+            FetchRequestV8::getScheme()['topicPartitions'],
+            'below version 9 the partition entries carry no CurrentLeaderEpoch'
+        );
+        self::assertSame(
             ['topic' => FetchRequestTopicV0::class],
             FetchRequestV4::getScheme()['topicPartitions'],
             'below version 5 the partition entries carry no LogStartOffset'
         );
         self::assertSame(
+            ['partition' => BinarySchema::TYPE_INT32, 'currentLeaderEpoch' => BinarySchema::TYPE_INT32,
+                'fetchOffset' => BinarySchema::TYPE_INT64, 'lastFetchedEpoch' => BinarySchema::TYPE_INT32,
+                'logStartOffset' => BinarySchema::TYPE_INT64, 'maxBytes' => BinarySchema::TYPE_INT32],
+            FetchRequestTopicPartition::getScheme(),
+            'the LastFetchedEpoch of KIP-595 sits between the fetch offset and the log start offset'
+        );
+        self::assertSame(
+            ['partition' => BinarySchema::TYPE_INT32, 'currentLeaderEpoch' => BinarySchema::TYPE_INT32,
+                'fetchOffset' => BinarySchema::TYPE_INT64, 'logStartOffset' => BinarySchema::TYPE_INT64,
+                'maxBytes' => BinarySchema::TYPE_INT32],
+            FetchRequestTopicPartitionV9::getScheme()
+        );
+        self::assertSame(
             ['partition' => BinarySchema::TYPE_INT32, 'fetchOffset' => BinarySchema::TYPE_INT64,
                 'logStartOffset' => BinarySchema::TYPE_INT64, 'maxBytes' => BinarySchema::TYPE_INT32],
-            FetchRequestTopicPartition::getScheme()
+            FetchRequestTopicPartitionV5::getScheme(),
+            'the versions 5 to 8 carry the LogStartOffset of KIP-107 and no leader epoch'
         );
         self::assertSame(
             ['partition' => BinarySchema::TYPE_INT32, 'fetchOffset' => BinarySchema::TYPE_INT64, 'maxBytes' => BinarySchema::TYPE_INT32],
@@ -803,7 +1229,7 @@ final class FetchApiTest extends TestCase
         //   ThrottleTimeMs 0, ErrorCode 0, SessionId 0x2a2a2a2a, one topic with one partition
         $frame = self::responseFrameV7(self::MESSAGE_SET_HEX, 2, 0, 707406378);
 
-        $response = FetchResponse::unpack(new StringStream($frame));
+        $response = FetchResponseV7::unpack(new StringStream($frame));
 
         self::assertSame(0, $response->throttleTimeMs);
         self::assertSame(0, $response->errorCode);
@@ -814,7 +1240,7 @@ final class FetchApiTest extends TestCase
 
     public function testASessionLessVersion7AnswerReportsTheSessionIdZero(): void
     {
-        $response = FetchResponse::unpack(new StringStream(self::responseFrameV7(self::MESSAGE_SET_HEX, 2)));
+        $response = FetchResponseV7::unpack(new StringStream(self::responseFrameV7(self::MESSAGE_SET_HEX, 2)));
 
         self::assertSame(FetchMetadata::INVALID_SESSION_ID, $response->sessionId);
         self::assertSame(0, $response->errorCode);
@@ -828,8 +1254,8 @@ final class FetchApiTest extends TestCase
         $unknownSession = '00000012' . '00000001' . '00000000' . '0046' . '00000000' . '00000000';
         $wrongEpoch     = '00000012' . '00000001' . '00000000' . '0047' . '00000000' . '00000000';
 
-        $notFound = FetchResponse::unpack(new StringStream((string) hex2bin($unknownSession)));
-        $invalid  = FetchResponse::unpack(new StringStream((string) hex2bin($wrongEpoch)));
+        $notFound = FetchResponseV7::unpack(new StringStream((string) hex2bin($unknownSession)));
+        $invalid  = FetchResponseV7::unpack(new StringStream((string) hex2bin($wrongEpoch)));
 
         self::assertSame(70, $notFound->errorCode);
         self::assertSame(0, $notFound->sessionId);
@@ -843,8 +1269,13 @@ final class FetchApiTest extends TestCase
     public function testEveryVersionOfTheResponseReadsThePartitionEntryOfItsOwnVersion(): void
     {
         self::assertSame(
+            ['messageSize', 'correlationId', 'headerTaggedFields', 'throttleTimeMs', 'errorCode', 'sessionId', 'topics'],
+            array_keys(FetchResponse::getScheme()),
+            'a version 12 answer comes in a response header v1, whose tagged-field section follows the correlation id'
+        );
+        self::assertSame(
             ['messageSize', 'correlationId', 'throttleTimeMs', 'errorCode', 'sessionId', 'topics'],
-            array_keys(FetchResponse::getScheme())
+            array_keys(FetchResponseV11::getScheme())
         );
         self::assertSame(
             ['messageSize', 'correlationId', 'throttleTimeMs', 'topics'],
@@ -853,8 +1284,21 @@ final class FetchApiTest extends TestCase
 
         self::assertSame(
             ['partition', 'errorCode', 'highWaterMarkOffset', 'lastStableOffset', 'logStartOffset',
+                'abortedTransactions', 'preferredReadReplica', 'messageSet',
+                'divergingEpoch', 'currentLeader', 'snapshotId'],
+            array_keys(FetchResponsePartition::getScheme()),
+            'the three tagged fields of version 12 are declared behind the record set, in the order of their tag'
+        );
+        self::assertSame(
+            ['partition', 'errorCode', 'highWaterMarkOffset', 'lastStableOffset', 'logStartOffset',
+                'abortedTransactions', 'preferredReadReplica', 'messageSet'],
+            array_keys(FetchResponsePartitionV11::getScheme())
+        );
+        self::assertSame(
+            ['partition', 'errorCode', 'highWaterMarkOffset', 'lastStableOffset', 'logStartOffset',
                 'abortedTransactions', 'messageSet'],
-            array_keys(FetchResponsePartition::getScheme())
+            array_keys(FetchResponsePartitionV5::getScheme()),
+            'the preferred read replica of KIP-392 arrived with version 11'
         );
         self::assertSame(
             ['partition', 'errorCode', 'highWaterMarkOffset', 'lastStableOffset', 'abortedTransactions',
@@ -871,6 +1315,7 @@ final class FetchApiTest extends TestCase
             'the aborted transactions are a nullable array of structures, not a keyed one'
         );
         self::assertSame(['topic' => FetchResponseTopic::class], FetchResponse::getScheme()['topics']);
+        self::assertSame(['topic' => FetchResponseTopicV11::class], FetchResponseV11::getScheme()['topics']);
         self::assertSame(['topic' => FetchResponseTopicV4::class], FetchResponseV4::getScheme()['topics']);
         self::assertSame(['topic' => FetchResponseTopicV0::class], FetchResponseV3::getScheme()['topics']);
         self::assertSame(['topic' => FetchResponseTopicV0::class], FetchResponseV0::getScheme()['topics']);

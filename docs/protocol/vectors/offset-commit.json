@@ -1,8 +1,8 @@
 {
     "api": "offset-commit",
     "apiKey": 8,
-    "section": "OffsetCommit API (key 8, v0 to v3)",
-    "description": "Wire vectors of the OffsetCommit API (key 8, v0 to v3), replayed by tests/Compliance.",
+    "section": "OffsetCommit API (key 8, v0 to v8)",
+    "description": "Wire vectors of the OffsetCommit API (key 8, v0 to v8), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsetcommit.request.v2",
@@ -172,7 +172,7 @@
         {
             "id": "offsetcommit.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV3",
             "version": 3,
             "source": "broker",
             "description": "OffsetCommit request v3, byte for byte the frame of v2 with a higher version field.",
@@ -204,7 +204,7 @@
         {
             "id": "offsetcommit.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer v3: the throttle time in front of the topics of a v2 answer.",
@@ -216,6 +216,294 @@
                 "topics": {
                     "t3-throttle": {
                         "topic": "t3-throttle",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV4",
+            "version": 4,
+            "source": "broker",
+            "description": "OffsetCommit request v4 of a member of the group - its generation and member id, the retention time -1 that asks for `offsets.retention.minutes` of the broker, and one offset. Byte for byte the frame of v2 and v3 with a higher version field; version 5 is the one that removes `retention_time` (KIP-211).",
+            "hex": "0000009b00080004000000cc00166b61666b612d636c69656e742d74332d6b6970323139000f74332d6b69703231392d67726f757000000001003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d316634643563326139333365ffffffffffffffff00000001000974332d6b697032313900000001000000000000000000000015ffff",
+            "fields": {
+                "messageSize": 155,
+                "apiKey": 8,
+                "apiVersion": 4,
+                "correlationId": 204,
+                "clientId": "kafka-client-t3-kip219",
+                "consumerGroup": "t3-kip219-group",
+                "generationId": 1,
+                "memberName": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
+                "retentionTime": -1,
+                "topicPartitions": {
+                    "t3-kip219": {
+                        "topic": "t3-kip219",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 21,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV4",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer v4: the throttle time and one error code per topic-partition, the answer of v3.",
+            "hex": "00000021000000cc0000000000000001000974332d6b697032313900000001000000000000",
+            "fields": {
+                "messageSize": 33,
+                "correlationId": 204,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-kip219": {
+                        "topic": "t3-kip219",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV5",
+            "version": 5,
+            "source": "broker",
+            "description": "OffsetCommit request v5 (Kafka 2.1, KIP-211): the frame of v4 WITHOUT `retention_time`. The client asked for an hour of retention and the version has no field to write it into, so the eight bytes are simply not on the wire and the group id is followed by the generation, the member id and the topics.",
+            "hex": "0000005c000800050000012d00126b61666b612d636c69656e742d74332d3231001374332d32312d766563746f72732d67726f7570ffffffff000000000001000d74332d32312d766563746f727300000001000000000000000000000005ffff",
+            "fields": {
+                "messageSize": 92,
+                "apiKey": 8,
+                "apiVersion": 5,
+                "correlationId": 301,
+                "clientId": "kafka-client-t3-21",
+                "consumerGroup": "t3-21-vectors-group",
+                "generationId": -1,
+                "memberName": "",
+                "topicPartitions": {
+                    "t3-21-vectors": {
+                        "topic": "t3-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 5,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV5",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer v5: the throttle time and one error code per topic-partition, the answer of v3 and v4.",
+            "hex": "000000250000012d0000000000000001000d74332d32312d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 301,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-21-vectors": {
+                        "topic": "t3-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.request.v6",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV6",
+            "version": 6,
+            "source": "broker",
+            "description": "OffsetCommit request v6 (Kafka 2.1, KIP-320): every partition carries a `committed_leader_epoch` between its offset and its metadata. The epoch here is 0, the leader epoch of a partition whose leader was elected once and never moved.",
+            "hex": "00000060000800060000012e00126b61666b612d636c69656e742d74332d3231001374332d32312d766563746f72732d67726f7570ffffffff000000000001000d74332d32312d766563746f72730000000100000000000000000000001500000000ffff",
+            "fields": {
+                "messageSize": 96,
+                "apiKey": 8,
+                "apiVersion": 6,
+                "correlationId": 302,
+                "clientId": "kafka-client-t3-21",
+                "consumerGroup": "t3-21-vectors-group",
+                "generationId": -1,
+                "memberName": "",
+                "topicPartitions": {
+                    "t3-21-vectors": {
+                        "topic": "t3-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 21,
+                                "leaderEpoch": 0,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.response.v6",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV6",
+            "version": 6,
+            "source": "broker",
+            "description": "The answer v6: unchanged since v3, because KIP-320 only added a field to the request.",
+            "hex": "000000250000012e0000000000000001000d74332d32312d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 302,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-21-vectors": {
+                        "topic": "t3-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.request.v7",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequestV7",
+            "version": 7,
+            "source": "broker",
+            "description": "OffsetCommit request v7 (Kafka 2.3, KIP-345): the nullable `group_instance_id` stands between the member id and the topic array, so that the coordinator can tell the commit of a static member from the commit of somebody who took its identity over.",
+            "hex": "0000009e000800070000019400136b61666b612d636c69656e742d74332d333435001474332d3334352d766563746f72732d67726f757000000001002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d643762633631313163636364000a74332d3334352d6f6e6500000001000e74332d3334352d766563746f727300000001000000000000000000000007ffffffffffff",
+            "fields": {
+                "messageSize": 158,
+                "apiKey": 8,
+                "apiVersion": 7,
+                "correlationId": 404,
+                "clientId": "kafka-client-t3-345",
+                "consumerGroup": "t3-345-vectors-group",
+                "generationId": 1,
+                "memberName": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                "groupInstanceId": "t3-345-one",
+                "topicPartitions": {
+                    "t3-345-vectors": {
+                        "topic": "t3-345-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 7,
+                                "leaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.response.v7",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponseV7",
+            "version": 7,
+            "source": "broker",
+            "description": "The answer, unchanged since version 3: the throttle time and one error code per partition.",
+            "hex": "00000026000001940000000000000001000e74332d3334352d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 38,
+                "correlationId": 404,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-345-vectors": {
+                        "topic": "t3-345-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.request.v8",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "OffsetCommit request v8 (KIP-482): the group id, the member id and the `group_instance_id` are compact strings, the topic and partition arrays are compact arrays, and every topic and every partition entry ends in a tag buffer.",
+            "hex": "00000097000800080000038900136b61666b612d636c69656e742d74332d323462001574332d3234622d766563746f72732d67726f7570000000013074332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d6364653636326166613732360b74332d3234622d6f6e65020f74332d3234622d766563746f72730200000000000000000000000bffffffff00000000",
+            "fields": {
+                "messageSize": 151,
+                "apiKey": 8,
+                "apiVersion": 8,
+                "correlationId": 905,
+                "clientId": "kafka-client-t3-24b",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-24b-vectors-group",
+                "generationId": 1,
+                "memberName": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                "groupInstanceId": "t3-24b-one",
+                "topicPartitions": {
+                    "t3-24b-vectors": {
+                        "topic": "t3-24b-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "offset": 11,
+                                "leaderEpoch": -1,
+                                "metadata": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetcommit.response.v8",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetCommitResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer v8: the throttle time and one compact topic array, whose partition entries carry the error code of that partition.",
+            "hex": "00000023000003890000000000020f74332d3234622d766563746f727302000000000000000000",
+            "fields": {
+                "messageSize": 35,
+                "correlationId": 905,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t3-24b-vectors": {
+                        "topic": "t3-24b-vectors",
                         "partitions": [
                             {
                                 "partition": 0,

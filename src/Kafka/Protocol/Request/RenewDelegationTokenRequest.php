@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * RenewDelegationToken, version 0: moves the expiry of a token forward (ApiKey 39, Kafka 1.1, KIP-48)
+ * RenewDelegationToken, version 1: moves the expiry of a token forward (ApiKey 39, Kafka 1.1, KIP-48)
  *
  * <pre>
- *   RenewDelegationToken Request (Version: 0) => hmac renew_time_period
+ *   RenewDelegationToken Request (Version: 0 and 1) => hmac renew_time_period
  *     hmac              => BYTES
  *     renew_time_period => INT64
  * </pre>
@@ -38,7 +38,17 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * Only the **owner** of the token and the principals its `renewers` name may renew it; anybody else is answered
  * with the error code 63 (`DelegationTokenOwnerMismatch`), see `DelegationTokenManager.allowedToRenew`.
  *
- * @see docs/protocol/1.1.md, section "RenewDelegationToken API (key 39, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TOKEN_RENEW_REQUEST_V1 =
+ * TOKEN_RENEW_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see RenewDelegationTokenRequestV0} is the same frame with the version field of Kafka 1.1.
+ *
+ * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
+ * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
+ *
+ * @see docs/protocol/2.8.md, section "RenewDelegationToken API (key 39, v0 to v2)"
  */
 class RenewDelegationTokenRequest extends AbstractRequest
 {
@@ -50,7 +60,12 @@ class RenewDelegationTokenRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Asks for the `delegation.token.expiry.time.ms` of the broker instead of a period of its own

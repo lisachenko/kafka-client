@@ -25,7 +25,9 @@ use Protocol\Kafka\Common\Errors\CorrelationIdMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
+use Protocol\Kafka\Common\Errors\ThrottlingQuotaExceededException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Common\TopicMetadata;
@@ -33,21 +35,29 @@ use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
+use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
+use Protocol\Kafka\Protocol\Data\ProducerState as ProducerStateData;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\AlterClientQuotasResponse;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsRequest;
+use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
@@ -56,6 +66,10 @@ use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClusterRequest;
+use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
@@ -64,10 +78,19 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeProducersRequest;
+use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
+use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsResponse;
+use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
+use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsRequest;
+use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
+use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -80,6 +103,8 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
+use Protocol\Kafka\Protocol\Request\UpdateFeaturesRequest;
+use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
 
 /**
  * Kafka low-level administrative client
@@ -106,6 +131,14 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
 class AdminClient
 {
     /**
+     * Protocol type of a consumer group, the `consumer` of `ConsumerProtocol.PROTOCOL_TYPE` @ 2.8.2
+     *
+     * ListGroups answers **every** group its coordinator holds, whatever protocol it runs;
+     * {@see self::listConsumerGroups()} keeps the ones a consumer of this package could have created.
+     */
+    public const string CONSUMER_PROTOCOL_TYPE = 'consumer';
+
+    /**
      * Client configuration, with the defaults of {@see ClientConfig} filled in
      *
      * @var array<string, mixed>
@@ -129,19 +162,20 @@ class AdminClient
      * The method carries the name it has on the `main` branch. Every broker answers for itself, so a rolling upgrade
      * is visible here as brokers that report different ranges; ask each of them with {@see self::findAllBrokers()}.
      *
-     * A 0.11.0.3 broker reports the keys 0 to 33 - the table of the "API keys" section of the protocol document -
-     * and its answer is authoritative for two things the wire format does not show: ControlledShutdown (key 7) is
-     * reported with `minVersion = 1`, because version 0 uses a header without a client id, and every key above 33
-     * is simply absent instead of being reported with an empty range.
+     * A 2.8.2 broker reports the **56** keys 0 to 51, 56, 57, 60 and 61 - the table of the "API keys" section of
+     * the protocol document, which is the `zkBroker` listener set of the JSON message specifications. Its answer is
+     * authoritative for what the wire format does not show: a key the broker does not serve is simply absent
+     * instead of being reported with an empty range, and the KRaft apis of the controller listener (52-55, 58, 59,
+     * 62-64) never appear on a ZooKeeper-backed broker at all.
      *
-     * The request goes out as version 1 ({@see ApiVersionsRequest}), so the answer carries the trailing
-     * `throttleTimeMs` of KIP-124; only the whole {@see Client::apiVersions()} response exposes it, this method
-     * returns the api table alone.
+     * The request goes out as version 3 ({@see ApiVersionsRequest}), the first flexible version of the protocol, so
+     * the answer carries the trailing `throttleTimeMs` of KIP-124 and the features of KIP-584 as tagged fields;
+     * only the whole {@see Client::apiVersions()} response exposes them, this method returns the api table alone.
      *
      * @param Node $node Broker to ask
      *
      * @throws KafkaException If the broker answered the error code 35 (UnsupportedVersion), i.e. it is older than
-     *                        Kafka 0.11.0 and does not serve version 1 of this api
+     *                        Kafka 2.4 and does not serve version 3 of this api
      *
      * @return array<int, ApiVersionsResponseMetadata> Version range of each api, indexed by the api key
      */
@@ -350,12 +384,12 @@ class AdminClient
      * request that names no topic at all and comes back empty.
      *
      * The version of the request follows the `offsets.storage` option: `kafka` (the default) reads the offsets that
-     * version 2 stored in the `__consumer_offsets` topic and has to be sent to the coordinator of the group, while
+     * version 4 stored in the `__consumer_offsets` topic and has to be sent to the coordinator of the group, while
      * `zookeeper` reads with version 0 from ZooKeeper, which every broker of the cluster can answer - and which has
      * no nullable topic array, so it refuses a null with an
      * {@see \Protocol\Kafka\Common\Errors\UnsupportedVersionException}.
      *
-     * A topic-partition without a committed offset is not an error: version 2 answers it with the offset -1 and the
+     * A topic-partition without a committed offset is not an error: version 4 answers it with the offset -1 and the
      * error code 0, version 0 with the offset -1 and the error code 3 (UnknownTopicOrPartition). Both are returned
      * as they are, any other error code is thrown - including the group-level error code that version 2 appends
      * after the topics, which reports that this broker is not the coordinator of the group (16), that it is still
@@ -415,25 +449,35 @@ class AdminClient
      *
      * A broker only knows the groups it coordinates itself, so this is never the list of the whole cluster - use
      * {@see self::listAllGroups()} for that. The answer holds one entry per group with its protocol type, `consumer`
-     * for the groups of a `KafkaConsumer` and of the Java consumer; an entry says nothing about the state of the
-     * group, {@see self::describeGroup()} does.
+     * for the groups of a `KafkaConsumer` and of the Java consumer, and - since version 4 (KIP-518, Kafka 2.6) -
+     * with the **state** of the group, which had to be asked of {@see self::describeGroup()} before.
+     *
+     * `$states` bounds the answer to the groups in one of the named states, which are the `STATE_*` constants of
+     * {@see DescribeGroupResponseMetadata} and are matched verbatim by the coordinator. An empty list is every
+     * group, and a state no group is in is an empty answer and not an error - so is a name that is not a state at
+     * all, because the coordinator compares strings and never validates them.
      *
      * A group appears here as soon as it has a member and stays until the coordinator forgets it, which happens once
      * the last member is gone and the retention of its committed offsets has expired.
      *
-     * @param Node $node Broker to ask
+     * @param Node         $node   Broker to ask
+     * @param list<string> $states States to list, empty for every group (KIP-518, version 4)
      *
      * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If the coordinator is shutting down
      * @throws \Protocol\Kafka\Common\Errors\GroupLoadInProgressException If it is still reading `__consumer_offsets`
      *
      * @return array<string, ListGroupResponseProtocol> Groups of that broker, indexed by the group id
      */
-    public function listGroups(Node $node): array
+    public function listGroups(Node $node, array $states = []): array
     {
         /** @var ListGroupsResponse $response */
         $response = $this->sendTo(
             $node->getConnection($this->configuration),
-            fn(int $correlationId): ListGroupsRequest => new ListGroupsRequest($this->clientId(), $correlationId),
+            fn(int $correlationId): ListGroupsRequest => new ListGroupsRequest(
+                $this->clientId(),
+                $correlationId,
+                $states
+            ),
             ListGroupsResponse::class,
             ['node' => $node->nodeId]
         );
@@ -454,18 +498,43 @@ class AdminClient
      * an unreachable broker through - a silently incomplete group list is worse than a failed call. Ask the brokers
      * one by one with {@see self::listGroups()} when a partial answer is good enough.
      *
+     * @param list<string> $states States to list, empty for every group (KIP-518, version 4)
+     *
      * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
      *
      * @return array<string, ListGroupResponseProtocol> Groups of the cluster, indexed by the group id
      */
-    public function listAllGroups(): array
+    public function listAllGroups(array $states = []): array
     {
         $groups = [];
         foreach ($this->findAllBrokers() as $node) {
-            $groups += $this->listGroups($node);
+            $groups += $this->listGroups($node, $states);
         }
 
         return $groups;
+    }
+
+    /**
+     * Lists the **consumer** groups of the whole cluster, optionally only those in one of the given states
+     *
+     * This is the `listConsumerGroups()` of the Java admin client, and it differs from {@see self::listAllGroups()}
+     * in one thing: a group of another protocol type - a Kafka Connect worker group, a Streams group of another
+     * kind, anything a client of this package did not create - is left out, because the api lists *every* group of
+     * the coordinator and not only the ones a consumer would recognise. The state of each group comes with the
+     * listing since KIP-518 (Kafka 2.6), so a caller no longer has to describe every group to find the empty ones.
+     *
+     * @param list<string> $states States to list, empty for every consumer group (KIP-518, version 4)
+     *
+     * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
+     *
+     * @return array<string, ListGroupResponseProtocol> Consumer groups of the cluster, indexed by the group id
+     */
+    public function listConsumerGroups(array $states = []): array
+    {
+        return array_filter(
+            $this->listAllGroups($states),
+            static fn(ListGroupResponseProtocol $group): bool => $group->protocolType === self::CONSUMER_PROTOCOL_TYPE
+        );
     }
 
     /**
@@ -483,15 +552,20 @@ class AdminClient
      * {@see DescribeGroupResponseMetadata::STATE_AWAITING_SYNC} is kept only for the lines below.
      *
      * @param string $groupId Name of the group
+     * @param bool   $includeAuthorizedOperations Whether the answer also reports the operations this client may
+     *        perform on the group (KIP-430, version 3), see
+     *        {@see DescribeGroupResponseMetadata::$authorizedOperations}
      *
      * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If the group moved to another coordinator
      *         between the lookup and this request
      * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe the group
      * @throws InvalidGroupIdException If the coordinator answered without an entry for the group
      */
-    public function describeGroup(string $groupId): DescribeGroupResponseMetadata
-    {
-        return $this->describeGroups([$groupId])[$groupId] ?? throw new InvalidGroupIdException(
+    public function describeGroup(
+        string $groupId,
+        bool $includeAuthorizedOperations = false
+    ): DescribeGroupResponseMetadata {
+        return $this->describeGroups([$groupId], $includeAuthorizedOperations)[$groupId] ?? throw new InvalidGroupIdException(
             ['groupId' => $groupId, 'error' => "The coordinator answered with no description of the group {$groupId}"]
         );
     }
@@ -503,14 +577,21 @@ class AdminClient
      * the partitions of `__consumer_offsets` and therefore over its brokers, and a broker answers a group it does not
      * coordinate with the error code 16 (NotCoordinatorForGroup), so a coordinator is looked up for every group.
      *
+     * With `$includeAuthorizedOperations` the version 3 request of KIP-430 (Kafka 2.3) also asks which operations
+     * this very client may perform on each group, which the answer reports as the bit set
+     * {@see DescribeGroupResponseMetadata::$authorizedOperations}; without it that field stays at
+     * {@see DescribeGroupResponseMetadata::OPERATIONS_NOT_REQUESTED}.
+     *
      * @param list<string> $groupIds Names of the groups, duplicates are collapsed
+     * @param bool         $includeAuthorizedOperations Whether the answer reports the authorized operations of every
+     *        group (KIP-430, version 3)
      *
      * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If a group moved to another coordinator
      * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe a group
      *
      * @return array<string, DescribeGroupResponseMetadata> Descriptions, indexed by the group id
      */
-    public function describeGroups(array $groupIds): array
+    public function describeGroups(array $groupIds, bool $includeAuthorizedOperations = false): array
     {
         $coordinators  = [];
         $groupsPerNode = [];
@@ -528,7 +609,8 @@ class AdminClient
                 fn(int $correlationId): DescribeGroupsRequest => new DescribeGroupsRequest(
                     $groups,
                     $this->clientId(),
-                    $correlationId
+                    $correlationId,
+                    $includeAuthorizedOperations
                 ),
                 DescribeGroupsResponse::class,
                 ['node' => $nodeId, 'groups' => $groups]
@@ -561,15 +643,28 @@ class AdminClient
      *         broker id - a 0.10.2.2 broker answers the error code 8 for it, where 0.8.2.2 answered -1, see
      *         {@see ControlledShutdownRequest}
      *
+     * The request goes out as **version 2**, the version Kafka 2.2 added with KIP-380: it carries a `broker_epoch`,
+     * and `$brokerEpoch` is what goes into it. The default is the
+     * {@see ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH} -1, for which the controller skips the staleness
+     * check altogether - only the broker itself knows its own registration epoch, and a controller that is asked
+     * with an epoch **below** the one it has cached answers 77 (StaleBrokerEpoch). Measured on the container: an
+     * unknown broker id with the -1 is the 8 below, while an unknown broker id **with** an epoch is answered -1
+     * (Unknown), because the epoch check looks that broker up in a map it is not in.
+     *
+     * @param int $brokerId    Id of the broker that should hand its partitions over
+     * @param int $brokerEpoch Registration epoch of that broker, -1 to skip the staleness check of KIP-380
+     *
      * @return list<ControlledShutdownResponsePartition> Partitions that still live on the broker, empty when it is
      *                                                   safe to stop it
      */
-    public function controlledShutdown(int $brokerId): array
-    {
+    public function controlledShutdown(
+        int $brokerId,
+        int $brokerEpoch = ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH
+    ): array {
         /** @var ControlledShutdownResponse $response */
         $response = $this->sendAnyNode(
             fn(int $correlationId): ControlledShutdownRequest
-                => new ControlledShutdownRequest($brokerId, $this->clientId(), $correlationId),
+                => new ControlledShutdownRequest($brokerId, $brokerEpoch, $this->clientId(), $correlationId),
             ControlledShutdownResponse::class
         );
 
@@ -578,6 +673,91 @@ class AdminClient
         }
 
         return $response->remainingTopicPartitions;
+    }
+
+    /**
+     * Elects the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183 and KIP-460)
+     *
+     * The api of KIP-183 is what `kafka-preferred-replica-election.sh` had to write into ZooKeeper before: it asks
+     * the **active controller** to move the leadership of a partition to its **preferred replica**, the first
+     * broker of the replica assignment, when that replica is in the ISR. The request is sent to the controller
+     * ({@see self::findController()}) and repeated ONCE against a freshly looked up one when a partition comes
+     * back with 41 (NotController), exactly like {@see self::createTopics()}.
+     *
+     * `$topicPartitions` names the partitions to elect, as `topic => list of partition ids` or as an iterable of
+     * {@see TopicPartition}; **null** asks the controller to look at every partition of the cluster, and the
+     * answer of such a request holds only the partitions that were really elected or really failed - the broker
+     * drops every `ElectionNotNeeded` from it. A named partition that needs no election is reported with **84**.
+     *
+     * **Kafka 2.4 added the `election_type` of KIP-460** with the version 1 of the api, which is what this line
+     * sends: {@see ElectionType::UNCLEAN} makes the first LIVE replica the leader of a partition that has none,
+     * accepting the data loss of the records the old leader had and the new one has not. It is the emergency
+     * button of `kafka-leader-election.sh --election-type unclean`, and the controller only acts on it for a
+     * partition whose leader is gone - a partition that still has a live leader is **84**, exactly as for the
+     * preferred election. The election type is refused client-side when it is not one of the two.
+     *
+     * Every requested partition gets an entry in the result: `null` when it was elected, otherwise the exception of
+     * its error code - 84 ElectionNotNeeded, 3 UnknownTopicOrPartition, 17 InvalidTopic for a topic that is being
+     * deleted, 80 PreferredLeaderNotAvailable when the preferred replica is not in the ISR and 83
+     * EligibleLeadersNotAvailable when an unclean election finds no live replica at all. Nothing is thrown for a
+     * partition that failed, exactly like {@see self::createTopics()}.
+     *
+     * @param int $electionType Kind of election, one of the {@see ElectionType} constants
+     * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Partitions to elect a leader
+     *        for, null for every partition of the cluster
+     * @param int $timeoutMs How long the controller waits for the elections, in milliseconds
+     *
+     * @throws UnsupportedVersionException If the election type is not one of the {@see ElectionType} constants
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws NotControllerException If the cluster has no active controller
+     *
+     * @return array<string, array<int, KafkaException|null>> Error of every requested partition, as topic =>
+     *         partition => error, null for a partition that was elected
+     */
+    public function electLeaders(
+        int $electionType = ElectionType::PREFERRED,
+        ?iterable $topicPartitions = null,
+        int $timeoutMs = ElectLeadersRequest::DEFAULT_TIMEOUT_MS
+    ): array {
+        if (!ElectionType::isKnown($electionType)) {
+            throw new UnsupportedVersionException([
+                'electionType' => ElectionType::nameOf($electionType),
+                'error'        => 'Unknown election type',
+            ]);
+        }
+
+        $partitions = $topicPartitions === null ? null : self::normalizeTopicPartitions($topicPartitions);
+        $request    = fn(Node $controller): array => $this->client()
+            ->electLeaders($controller, $partitions, $timeoutMs, $electionType);
+
+        $result = $request($this->findController());
+        if (self::holdsNotController($result)) {
+            // The controller moved between the lookup and the request, which one more lookup repairs; the answer
+            // of the second attempt is reported as it is, exactly like the one of {@see self::onController()}
+            $this->cluster->reload();
+
+            return $request($this->findController());
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns whether any partition of a nested topic => partition => error map carries a 41 (NotController)
+     *
+     * @param array<string, array<int, KafkaException|null>> $result
+     */
+    private static function holdsNotController(array $result): bool
+    {
+        foreach ($result as $partitions) {
+            foreach ($partitions as $error) {
+                if ($error instanceof NotControllerException) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -756,6 +936,46 @@ class AdminClient
      */
     public function createTopics(array $newTopics, int $timeoutMs = 30000, bool $validateOnly = false): array
     {
+        $result = [];
+        foreach ($this->createTopicsWithResults($newTopics, $timeoutMs, $validateOnly) as $topic => $created) {
+            $result[$topic] = $created->error;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Creates topics and reports **everything** the controller answered for each of them (KIP-525, CreateTopics v5)
+     *
+     * The same request as {@see self::createTopics()}, whose result is the `error` of these entries; what a
+     * {@see CreatedTopic} adds is what Kafka 2.4 put into the answer with the version 5 of the api - the partition
+     * count and the replication factor the topic really got, which is the other half of the -1/-1 of KIP-464
+     * ({@see NewTopic::withBrokerDefaults()}), and the whole configuration of the new topic as a {@see Config}, so
+     * that the DescribeConfigs a caller used to send right afterwards is unnecessary:
+     *
+     * <code>
+     *   $created = $admin->createTopicsWithResults([NewTopic::withBrokerDefaults('events')])['events'];
+     *   $created->numPartitions;                  // what `num.partitions` of the broker said
+     *   $created->config->value('retention.ms');  // and what the topic inherited for it
+     * </code>
+     *
+     * An answer of a broker below Kafka 2.4 carries none of it, and neither does one whose configuration the broker
+     * could not read back: `config` is `null` then and `configErrorCode` says why.
+     *
+     * @param list<NewTopic> $newTopics    Topics to create
+     * @param int            $timeoutMs    How long the controller waits for the topics to exist before it answers
+     * @param bool           $validateOnly Validate the request without creating anything
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws NotControllerException If the cluster has no active controller
+     *
+     * @return array<string, CreatedTopic> One entry per requested topic, keyed by its name
+     */
+    public function createTopicsWithResults(
+        array $newTopics,
+        int $timeoutMs = 30000,
+        bool $validateOnly = false
+    ): array {
         return $this->onController(
             fn(Node $controller): array => $this->client()
                 ->createTopics($controller, $newTopics, $timeoutMs, $validateOnly)
@@ -850,15 +1070,65 @@ class AdminClient
     private function onController(Closure $request): array
     {
         $result = $request($this->findController());
-        foreach ($result as $error) {
+        foreach ($result as $entry) {
+            // A CreateTopics answer is a map of value objects, every other one a map of exceptions
+            $error = $entry instanceof CreatedTopic ? $entry->error : $entry;
             if ($error instanceof NotControllerException) {
                 $this->cluster->reload();
-
-                return $request($this->findController());
+                $result = $request($this->findController());
+                break;
             }
         }
 
+        return $this->retryWhileThrottled($result, $request);
+    }
+
+    /**
+     * Sends the request again while the controller refuses topics with the 89 of KIP-599 (Kafka 2.7)
+     *
+     * Until Kafka 2.7 a broker whose `controller_mutation_rate` quota a client exceeded **held the request back**
+     * for the throttle time and answered it afterwards, which looks to the client like a slow controller. KIP-599
+     * gave the three topic apis a version that says "answer me instead": a client that sends CreateTopics **v6**,
+     * DeleteTopics **v5** or CreatePartitions **v3** is answered at once with the error code **89**
+     * `ThrottlingQuotaExceeded` for the topics the quota refused, plus the `throttle_time_ms` it has to wait, and
+     * it is the client that repeats the request - which is what the Java admin client does until its `retries` or
+     * its timeout are spent (`KafkaAdminClient.maybeRetryThrottled…`).
+     *
+     * The waiting itself is not done here: {@see \Protocol\Kafka\Client::awaitThrottle()} remembers the moment the
+     * throttle of the broker ends and sleeps whatever is left of it before the next request goes to that broker,
+     * which is the promise of KIP-219 this client made in Kafka 2.0.
+     *
+     * @param array<string, CreatedTopic|KafkaException|null> $result  Answer of the first attempt
+     * @param Closure(Node): array<string, CreatedTopic|KafkaException|null> $request The request to repeat
+     *
+     * @return array<string, CreatedTopic|KafkaException|null>
+     */
+    private function retryWhileThrottled(array $result, Closure $request): array
+    {
+        $attemptsLeft = RetryPolicy::fromConfiguration($this->configuration)->getRetries();
+
+        while ($attemptsLeft-- > 0 && self::isThrottled($result)) {
+            $result = $request($this->findController());
+        }
+
         return $result;
+    }
+
+    /**
+     * Tells whether any topic of an answer was refused by the controller mutation quota of KIP-599
+     *
+     * @param array<string, CreatedTopic|KafkaException|null> $result Answer of one attempt
+     */
+    private static function isThrottled(array $result): bool
+    {
+        foreach ($result as $entry) {
+            $error = $entry instanceof CreatedTopic ? $entry->error : $entry;
+            if ($error instanceof ThrottlingQuotaExceededException) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -931,11 +1201,12 @@ class AdminClient
      * `$configNames` filters the options of every resource of the call; `null`, the default, asks for all of them.
      * The value of a **sensitive** option is never sent by the broker and arrives as `null`.
      *
-     * The request goes out as **version 1**, the version Kafka 1.1 added with KIP-226, so every entry of the answer
-     * carries the {@see ConfigSource} its value comes from instead of the bare `is_default` boolean of version 0,
-     * and `$includeSynonyms` asks the broker to list every place it looked for that value
-     * ({@see ConfigEntry::$synonyms}). Without the flag the synonym list of every entry is empty and nothing else
-     * changes. Two consequences of the version raise a caller of the 0.11 line should know about:
+     * The request goes out as **version 2**, the version Kafka 2.0 added (KIP-219); its frame is the version 1 of
+     * KIP-226 (Kafka 1.1) byte for byte, so every entry of the answer carries the {@see ConfigSource} its value
+     * comes from instead of the bare `is_default` boolean of version 0, and `$includeSynonyms` asks the broker to
+     * list every place it looked for that value ({@see ConfigEntry::$synonyms}). Without the flag the synonym list
+     * of every entry is empty and nothing else changes. Two consequences of the version raise a caller of the 0.11
+     * line should know about:
      *
      *  - `isDefault` now means "nobody configured it anywhere", not "the resource did not configure it": an option
      *    whose broker-level synonym stands in the `server.properties` is reported with the source
@@ -950,7 +1221,9 @@ class AdminClient
      *
      * @throws KafkaException If the broker refused one of the resources - 42 (InvalidRequest) for an unknown
      *         resource type or a broker id that is not the one that answers, 17 (InvalidTopic) for an illegal topic
-     *         name; the message the broker sent is in the context of the exception
+     *         name, **3 (UnknownTopicOrPartition) for a topic a 2.8.2 broker does not know**, where a 1.1.1 broker
+     *         answered the log defaults of the broker with the error code 0; the message the broker sent is in the
+     *         context of the exception
      * @throws AllBrokersNotAvailableException If no broker of the cluster answered
      *
      * @return array<string, Config> Configuration of every requested resource, indexed by its resource key
@@ -958,7 +1231,8 @@ class AdminClient
     public function describeConfigs(
         array $resources,
         ?array $configNames = null,
-        bool $includeSynonyms = false
+        bool $includeSynonyms = false,
+        bool $includeDocumentation = false
     ): array {
         $result = [];
         foreach ($this->groupByConfigNode($resources) as [$nodeId, $nodeResources]) {
@@ -970,6 +1244,7 @@ class AdminClient
             $createRequest = fn(int $correlationId): DescribeConfigsRequest => new DescribeConfigsRequest(
                 $entries,
                 $includeSynonyms,
+                $includeDocumentation,
                 $this->clientId(),
                 $correlationId
             );
@@ -1069,6 +1344,91 @@ class AdminClient
 
         $answered = [];
         foreach ($response->resources as $resourceResult) {
+            $key            = ConfigResource::fromWire($resourceResult->resourceType, $resourceResult->resourceName)
+                ->key();
+            $answered[$key] = self::configResourceError($key, $resourceResult->errorCode, $resourceResult->errorMessage);
+        }
+
+        $result = [];
+        foreach (array_keys($configs) as $resourceKey) {
+            // A resource that was altered is answered with `null`, so the map has to be probed with
+            // array_key_exists() and not with `??`, which would turn every success into an unknown error
+            $result[$resourceKey] = array_key_exists($resourceKey, $answered)
+                ? $answered[$resourceKey]
+                : new UnknownErrorException(
+                    ['resource' => $resourceKey, 'error' => 'The broker sent no result for this resource']
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Changes single options of a resource, leaving the ones it does not name alone (ApiKey 44, Kafka 2.3, KIP-339)
+     *
+     * The api that replaces {@see self::alterConfigs()} for everything but a broker too old to serve it. Every entry
+     * of `$configs` maps a resource key ({@see ConfigResource::key()}) to the changes that resource should get, as
+     * {@see AlterConfigOp} objects:
+     *
+     * <code>
+     *   $admin->incrementalAlterConfigs([
+     *       ConfigResource::topic('events')->key() => [
+     *           AlterConfigOp::set('retention.ms', '3600000'),
+     *           AlterConfigOp::append('cleanup.policy', 'compact'),
+     *           AlterConfigOp::delete('segment.bytes'),
+     *       ],
+     *   ]);
+     * </code>
+     *
+     * Where `alterConfigs()` needs a DescribeConfigs first and resets every option the caller forgot to send back,
+     * this one is a patch: an option that is not named keeps its value, whoever set it. The four operations are
+     * {@see AlterConfigOp::SET}, {@see AlterConfigOp::DELETE} - which resets the option to its default and is the
+     * only one whose value may be null - and {@see AlterConfigOp::APPEND} / {@see AlterConfigOp::SUBTRACT}, which
+     * work on a **list** option alone (`cleanup.policy`, `follower.replication.throttled.replicas` …) and are
+     * refused with the error code 42 for anything else.
+     *
+     * The changes of one resource are applied **together**: naming an option twice is 42 with `Error due to
+     * duplicate config keys : …`, and a resource whose changes do not validate is left untouched as a whole.
+     *
+     * The remarks of {@see self::alterConfigs()} about a broker resource hold here as well: `broker:<id>` is served
+     * by that broker alone and has to be altered through an {@see AdminClient} whose cluster answers it,
+     * `broker:` (the empty name) is the cluster-wide default of KIP-226, and only the options of
+     * `DynamicBrokerConfig.AllDynamicConfigs` can be changed at runtime.
+     *
+     * Every requested resource gets an entry in the result, keyed like the argument: `null` when its changes were
+     * applied (or validated, with `$validateOnly`), the exception of its error code otherwise. Nothing is thrown
+     * for a resource that was refused, exactly like {@see self::alterConfigs()}.
+     *
+     * @param array<string, list<AlterConfigOp>> $configs      Changes of every resource, as resource key => changes
+     * @param bool                               $validateOnly Validate the request without changing anything
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return array<string, KafkaException|null> Error of every requested resource, null when it was altered
+     */
+    public function incrementalAlterConfigs(array $configs, bool $validateOnly = false): array
+    {
+        $resources = [];
+        foreach ($configs as $resourceKey => $operations) {
+            $resources[] = IncrementalAlterConfigsRequestResource::fromConfigResource(
+                ConfigResource::fromKey((string) $resourceKey),
+                array_values($operations)
+            );
+        }
+
+        /** @var IncrementalAlterConfigsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): IncrementalAlterConfigsRequest => new IncrementalAlterConfigsRequest(
+                $resources,
+                $validateOnly,
+                $this->clientId(),
+                $correlationId
+            ),
+            IncrementalAlterConfigsResponse::class
+        );
+
+        $answered = [];
+        foreach ($response->responses as $resourceResult) {
             $key            = ConfigResource::fromWire($resourceResult->resourceType, $resourceResult->resourceName)
                 ->key();
             $answered[$key] = self::configResourceError($key, $resourceResult->errorCode, $resourceResult->errorMessage);
@@ -1203,6 +1563,79 @@ class AdminClient
     }
 
     /**
+     * Moves the replicas of partitions to other brokers, or cancels a move (ApiKey 45, Kafka 2.4, KIP-455)
+     *
+     * `org.apache.kafka.clients.admin.Admin.alterPartitionReassignments()` @ 2.8.2, and the api that
+     * `kafka-reassign-partitions.sh --execute` speaks since Kafka 2.4 instead of writing into ZooKeeper.
+     *
+     * Every entry names the **whole** replica set its partition should end up with - as a
+     * {@see NewPartitionReassignment} or as a plain list of broker ids, the first of which becomes the preferred
+     * leader - and `null` cancels a reassignment that is still in progress:
+     *
+     * <code>
+     *   $admin->alterPartitionReassignments([
+     *       'events' => [0 => new NewPartitionReassignment([2, 3]), 1 => null],
+     *   ]);
+     * </code>
+     *
+     * The call returns as soon as the **controller** has registered the new target assignment; the data is copied
+     * afterwards by the replica fetchers, and {@see self::listPartitionReassignments()} says what is still running.
+     * Every requested partition gets an entry in the result: `null` when the controller accepted it, the exception
+     * of its error code otherwise (3 for a topic or partition that does not exist, 39 for an empty replica list or
+     * a broker that is not alive, 85 for a cancellation that had nothing to cancel). Nothing is thrown for a
+     * partition that was refused - one partition of a call says nothing about the others.
+     *
+     * @param array<string, array<int, list<int>|NewPartitionReassignment|null>> $reassignments Target replica set of
+     *        every partition, as `topic => [partition => [broker ids]]`; `null` cancels that partition
+     * @param int                                                               $timeoutMs     How long the
+     *        controller waits for the reassignment to be registered
+     *
+     * @throws KafkaException If the request as a whole was refused by the broker it reached
+     *
+     * @return array<string, array<int, KafkaException|null>> Error of every requested partition, null when accepted
+     */
+    public function alterPartitionReassignments(array $reassignments, int $timeoutMs = 30000): array
+    {
+        try {
+            return $this->client()->alterPartitionReassignments($this->findController(), $reassignments, $timeoutMs);
+        } catch (NotControllerException) {
+            // The controller moved while we were asking: look it up again and send the request once more
+            $this->cluster->reload();
+
+            return $this->client()->alterPartitionReassignments($this->findController(), $reassignments, $timeoutMs);
+        }
+    }
+
+    /**
+     * Reports the partition reassignments the cluster is going through (ApiKey 46, Kafka 2.4, KIP-455)
+     *
+     * `org.apache.kafka.clients.admin.Admin.listPartitionReassignments()` @ 2.8.2, i.e. what
+     * `kafka-reassign-partitions.sh --verify` asks. A partition is in the answer while its reassignment is in
+     * flight and gone from it when the controller is done, so an empty result means "nothing is moving" - a topic
+     * that does not exist is not an error either.
+     *
+     * **`null` asks for every reassignment of the cluster**; on a shared cluster a caller should name its own
+     * partitions, as `['events' => [0, 1]]`.
+     *
+     * @param array<string, list<int>>|null $partitions Partitions to ask for, `null` for the whole cluster
+     * @param int                           $timeoutMs  How long the controller waits before it answers
+     *
+     * @throws KafkaException If the request was refused by the broker it reached
+     *
+     * @return list<PartitionReassignment> Every partition that is being reassigned
+     */
+    public function listPartitionReassignments(?array $partitions = null, int $timeoutMs = 30000): array
+    {
+        try {
+            return $this->client()->listPartitionReassignments($this->findController(), $partitions, $timeoutMs);
+        } catch (NotControllerException) {
+            $this->cluster->reload();
+
+            return $this->client()->listPartitionReassignments($this->findController(), $partitions, $timeoutMs);
+        }
+    }
+
+    /**
      * Makes the coordinator forget consumer groups and their committed offsets (ApiKey 42, Kafka 1.1, KIP-229)
      *
      * The counterpart of `kafka-consumer-groups.sh --delete`, which had to write to ZooKeeper before Kafka 1.1.
@@ -1278,6 +1711,603 @@ class AdminClient
     }
 
     /**
+     * Removes members from a consumer group without waiting for their session timeouts (ApiKey 13 v3, KIP-345)
+     *
+     * The administrative half of static membership: a **static** member does not leave its group when it shuts
+     * down - that is what keeps its partitions across a restart - so an instance that is retired for good has to
+     * be removed by hand, or the group waits a whole `session.timeout.ms` for it and then rebalances anyway.
+     * `kafka-consumer-groups.sh --group G --delete-offsets`-style tooling and the Java
+     * `Admin.removeMembersFromConsumerGroup()` send exactly this request, the **batch** LeaveGroup of version 3.
+     *
+     * A member is named by its `group.instance.id` ({@see MemberToRemove::byInstanceId()}), by its member id
+     * ({@see MemberToRemove::byMemberId()}) or by both; a plain string in `$members` is an **instance id**, as in
+     * the Java client, whose `MemberToRemove` takes nothing else. Every member of the batch gets an entry in the
+     * result, keyed by {@see MemberToRemove::identity()} - `null` when it was removed, the exception of its error
+     * code otherwise - and nothing is thrown for a member that was refused, because one member of a batch says
+     * nothing about the others. 25 (`UnknownMemberId`) is what an instance id the group does not have is answered
+     * with, and 82 (`FencedInstanceId`) a member id that lost its instance to another consumer.
+     *
+     * An **empty batch** is legal: it is sent, and the coordinator answers it with an empty member array, which is
+     * how a caller can probe the group without removing anything.
+     *
+     * @param string                          $groupId Name of the group
+     * @param iterable<MemberToRemove|string> $members Members to remove; a plain string is a `group.instance.id`
+     *
+     * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If the group moved to another coordinator
+     *         between the lookup and this request
+     * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not read the group
+     * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If the group is gone (`Dead`)
+     *
+     * @return array<string, KafkaException|null> Error of every requested member, null when it was removed
+     */
+    public function removeMembersFromConsumerGroup(string $groupId, iterable $members): array
+    {
+        $toRemove = [];
+        foreach ($members as $member) {
+            $toRemove[] = $member instanceof MemberToRemove ? $member : MemberToRemove::byInstanceId($member);
+        }
+
+        $coordinator = $this->findCoordinator($groupId);
+        /** @var LeaveGroupResponse $response */
+        $response = $this->sendTo(
+            $coordinator->getConnection($this->configuration),
+            fn(int $correlationId): LeaveGroupRequest => new LeaveGroupRequest(
+                $groupId,
+                array_map(static fn(MemberToRemove $member): LeaveGroupRequestMember => $member->toRequestMember(), $toRemove),
+                $this->clientId(),
+                $correlationId
+            ),
+            LeaveGroupResponse::class,
+            ['groupId' => $groupId, 'members' => count($toRemove)]
+        );
+
+        // The top-level code is the one of the request as a whole; what happened to each member is in its entry
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
+        }
+
+        $result = [];
+        foreach ($toRemove as $index => $member) {
+            $answer = $response->members[$index] ?? null;
+            $result[$member->identity()] = $answer === null
+                ? new UnknownErrorException(
+                    ['groupId' => $groupId, 'error' => 'The coordinator sent no result for this member']
+                )
+                : self::memberError($groupId, $member, $answer->errorCode);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Turns the error code of one member of a LeaveGroup v3 answer into the exception of the caller
+     */
+    private static function memberError(string $groupId, MemberToRemove $member, int $errorCode): ?KafkaException
+    {
+        return $errorCode === KafkaException::NO_ERROR
+            ? null
+            : KafkaException::fromCode($errorCode, [
+                'groupId'         => $groupId,
+                'memberId'        => $member->memberId,
+                'groupInstanceId' => $member->groupInstanceId,
+            ]);
+    }
+
+    /**
+     * Makes the coordinator forget the committed offsets of some partitions of a group (ApiKey 47, Kafka 2.4)
+     *
+     * The counterpart of `kafka-consumer-groups.sh --delete-offsets`, which KIP-496 gave a protocol of its own in
+     * Kafka 2.4: where {@see self::deleteConsumerGroups()} throws a whole group away, this deletes the committed
+     * offset of single partitions and leaves the group alone. The coordinator writes a tombstone into
+     * `__consumer_offsets` for every partition it deleted, so {@see self::listGroupOffsets()} - and any
+     * consumer of the group that seeks to its committed offset - sees -1 for it afterwards.
+     *
+     * **What the coordinator allows depends on the state of the group**, and only part of it is per partition:
+     *
+     * * an `Empty` group - every member gone or timed out - hands over every partition of the request;
+     * * a live group whose members speak the `consumer` protocol keeps the partitions of the topics its members are
+     *   subscribed to, which come back as a `GroupSubscribedToTopicException` (86), and deletes the rest;
+     * * a live group of any **other** protocol type is refused as a whole with 68 (NonEmptyGroup), which is
+     *   *thrown*, because the answer of such a request carries no partition at all;
+     * * a group the coordinator does not know is 69 (GroupIdNotFound), thrown for the same reason;
+     * * a topic or a partition this broker does not have is per partition again, with the code 3.
+     *
+     * The request goes to the coordinator of the group ({@see self::findCoordinator()}); a broker that does not
+     * coordinate it answers 16 (NotCoordinatorForGroup).
+     *
+     * @param string                    $groupId    Name of the group whose committed offsets are deleted
+     * @param iterable<TopicPartition>  $partitions Partitions to delete the committed offset of
+     *
+     * @throws KafkaException If the group itself refuses the request - 68 for a non-empty group of another protocol
+     *         type, 69 for a group the coordinator does not know, 16 when the coordinator moved
+     *
+     * @return array<string, array<int, KafkaException|null>> One entry per requested partition, indexed by topic and
+     *         partition index: `null` when the committed offset is gone, the exception of its code otherwise
+     */
+    public function deleteConsumerGroupOffsets(string $groupId, iterable $partitions): array
+    {
+        $topicPartitions = [];
+        foreach ($partitions as $topicPartition) {
+            $topicPartitions[$topicPartition->topic][$topicPartition->partition] = $topicPartition->partition;
+        }
+
+        if ($topicPartitions === []) {
+            return [];
+        }
+
+        return $this->client()->deleteGroupOffsets($this->findCoordinator($groupId), $groupId, $topicPartitions);
+    }
+
+    /**
+     * Reads the client quotas of the cluster (ApiKey 48, Kafka 2.6, KIP-546)
+     *
+     * Until Kafka 2.6 a client quota could only be read out of **ZooKeeper**, which is why every quota test of the
+     * lines below this one shells into the container; KIP-546 gave it a protocol of its own. The request is served
+     * from the quota cache of whatever broker answers it, so it goes to the first broker that is reachable.
+     *
+     * The filter is a conjunction: an entity has to match **every** component to be answered, and
+     * {@see ClientQuotaFilter::all()} matches everything. The `strict` flag of {@see ClientQuotaFilter::containsOnly()}
+     * decides what happens to entities that carry parts of a type the filter does not name - a quota that is
+     * attached to a `user` *and* a `client-id` is answered by a non-strict `client-id` filter and hidden by a
+     * strict one.
+     *
+     * The answer carries **every** quota of a matching entity, not only the ones the filter was interested in.
+     *
+     * @param ClientQuotaFilter $filter Which entities to describe
+     *
+     * @throws KafkaException If the broker refused the filter, e.g. with 42 (InvalidRequest) for an entity type it
+     *         does not know
+     *
+     * @return array<string, array<string, float>> Quotas per entity, indexed by the string form of
+     *         {@see ClientQuotaEntity} (`client-id=t1-quota`, `user=<default>`) and by the quota name
+     */
+    public function describeClientQuotas(ClientQuotaFilter $filter): array
+    {
+        /** @var DescribeClientQuotasResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeClientQuotasRequest => new DescribeClientQuotasRequest(
+                $filter->toData(),
+                $filter->strict,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeClientQuotasResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The broker refused the quota filter']
+            );
+        }
+
+        $result = [];
+        foreach ($response->entries ?? [] as $entry) {
+            $values = [];
+            foreach ($entry->values as $value) {
+                $values[$value->key] = $value->value;
+            }
+            $result[(string) ClientQuotaEntity::fromData($entry->entity)] = $values;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Sets and removes client quotas (ApiKey 49, Kafka 2.6, KIP-546)
+     *
+     * The other half of KIP-546. One {@see ClientQuotaAlteration} carries one entity and every change asked for
+     * it, a change being a value to set or a quota to remove ({@see ClientQuotaAlterationOp::remove()}); an entity
+     * that is refused does not stop the others, so the result reports **every** entity of the call and throws
+     * nothing - there is no top-level error code in this api at all.
+     *
+     * `$validateOnly` asks the broker to check the request and change nothing, which answers the very same shape.
+     *
+     * A quota that was removed leaves the entity with whatever the `<default>` entity of its type says, and an
+     * entity without a single quota left disappears from {@see self::describeClientQuotas()}.
+     *
+     * @param list<ClientQuotaAlteration> $alterations  Entities and the changes asked for them
+     * @param bool                        $validateOnly Whether the broker only checks the request
+     *
+     * @return array<string, KafkaException|null> Error of every entity of the call, indexed by the string form of
+     *         {@see ClientQuotaEntity}; null when every change of that entity was applied
+     */
+    public function alterClientQuotas(array $alterations, bool $validateOnly = false): array
+    {
+        $entries = array_map(static fn(ClientQuotaAlteration $a) => $a->toData(), array_values($alterations));
+
+        /** @var AlterClientQuotasResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): AlterClientQuotasRequest => new AlterClientQuotasRequest(
+                $entries,
+                $validateOnly,
+                $this->clientId(),
+                $correlationId
+            ),
+            AlterClientQuotasResponse::class
+        );
+
+        $result = [];
+        foreach ($response->entries as $entry) {
+            $entity          = (string) ClientQuotaEntity::fromData($entry->entity);
+            $result[$entity] = $entry->errorCode === KafkaException::NO_ERROR
+                ? null
+                : KafkaException::fromCode(
+                    $entry->errorCode,
+                    ['entity' => $entity] + ($entry->errorMessage !== null ? ['error' => $entry->errorMessage] : [])
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Which SCRAM credentials the given users have (ApiKey 50, Kafka 2.7, KIP-554)
+     *
+     * KIP-554 gave the SCRAM users of `kafka-configs.sh --entity-type users` a protocol of their own; before Kafka
+     * 2.7 they could only be written into ZooKeeper by hand. **No answer ever carries a password**: a credential is
+     * a salted password, so what can be described is the mechanism and the iteration count.
+     *
+     * `$users` of **null** - and, as the specification says in as many words, the **empty** array as well - asks
+     * for every user of the cluster that has a credential. A user that has none is not silently absent: the broker
+     * answers an entry for them with the user-level code 91 (`ResourceNotFound`), which this method turns into an
+     * absent key of the result, so that a caller can simply look the user up.
+     *
+     * @param list<string>|null $users Users to describe, null or [] for every user that has a credential
+     *
+     * @throws KafkaException If the request as a whole was refused
+     *
+     * @return array<string, UserScramCredentialsDescription> Description per user, only for users that have one
+     */
+    public function describeUserScramCredentials(?array $users = null): array
+    {
+        /** @var DescribeUserScramCredentialsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeUserScramCredentialsRequest => new DescribeUserScramCredentialsRequest(
+                $users,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeUserScramCredentialsResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The broker refused the request']
+            );
+        }
+
+        $result = [];
+        foreach ($response->results as $user => $userResult) {
+            if ($userResult->errorCode !== KafkaException::NO_ERROR) {
+                // 91 ResourceNotFound is what a user without a single credential is answered with
+                continue;
+            }
+
+            $credentials = [];
+            foreach ($userResult->credentialInfos as $info) {
+                $mechanism                       = ScramMechanism::fromType($info->mechanism);
+                $credentials[$mechanism->value] = new ScramCredentialInfo($mechanism, $info->iterations);
+            }
+            $result[(string) $user] = new UserScramCredentialsDescription((string) $user, $credentials);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Writes and removes SCRAM credentials (ApiKey 51, Kafka 2.7, KIP-554)
+     *
+     * The other half of KIP-554. A {@see UserScramCredentialUpsertion} carries the **password**, derives
+     * `Hi(password, salt, iterations)` of RFC 5802 out of it and sends only that, so the broker never sees the
+     * password itself; a {@see UserScramCredentialDeletion} names a user and a mechanism.
+     *
+     * The request carries the two kinds in two arrays and applies the **deletions first**, which is what makes
+     * "replace the credential of this user" a single request. The answer has **no top-level error code** and one
+     * entry per affected *user*, not per change, so this method throws nothing and reports every user of the call.
+     *
+     * @param list<UserScramCredentialAlteration> $alterations Credentials to write and to remove
+     *
+     * @return array<string, KafkaException|null> Error of every affected user, null when their changes were applied
+     */
+    public function alterUserScramCredentials(array $alterations): array
+    {
+        $deletions  = [];
+        $upsertions = [];
+        foreach ($alterations as $alteration) {
+            if ($alteration instanceof UserScramCredentialDeletion) {
+                $deletions[] = $alteration->toData();
+            } elseif ($alteration instanceof UserScramCredentialUpsertion) {
+                $upsertions[] = $alteration->toData();
+            }
+        }
+
+        /** @var AlterUserScramCredentialsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): AlterUserScramCredentialsRequest => new AlterUserScramCredentialsRequest(
+                $deletions,
+                $upsertions,
+                $this->clientId(),
+                $correlationId
+            ),
+            AlterUserScramCredentialsResponse::class
+        );
+
+        $result = [];
+        foreach ($response->results as $user => $userResult) {
+            $result[(string) $user] = $userResult->errorCode === KafkaException::NO_ERROR
+                ? null
+                : KafkaException::fromCode(
+                    $userResult->errorCode,
+                    ['user' => (string) $user]
+                        + ($userResult->errorMessage !== null ? ['error' => $userResult->errorMessage] : [])
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * What the cluster knows about its features (KIP-584, Kafka 2.7)
+     *
+     * **This is not an api of its own.** A feature is a named version range the *cluster* has agreed on, above the
+     * api versions a single broker supports, and it travels in the **tagged fields of an ApiVersions v3 answer** -
+     * so a client that speaks the flexible version already has it. `Admin.describeFeatures()` of the Java client
+     * does the same thing with the same request.
+     *
+     * A ZooKeeper-backed Kafka 2.8.2 cluster finalizes nothing: `supportedFeatures` names what the broker could
+     * agree to, `finalizedFeatures` is empty and the epoch is `0`.
+     *
+     * @return FeatureMetadata The features of the broker that answered
+     */
+    public function describeFeatures(): FeatureMetadata
+    {
+        /** @var ApiVersionsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): ApiVersionsRequest => new ApiVersionsRequest($this->clientId(), $correlationId),
+            ApiVersionsResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['error' => 'The broker refused an ApiVersions v3']);
+        }
+
+        $supported = [];
+        foreach ($response->supportedFeatures as $name => $feature) {
+            $supported[(string) $name] = new SupportedVersionRange($feature->minVersion, $feature->maxVersion);
+        }
+
+        $finalized = [];
+        foreach ($response->finalizedFeatures as $name => $feature) {
+            $finalized[(string) $name] = new FinalizedVersionRange(
+                $feature->minVersionLevel,
+                $feature->maxVersionLevel
+            );
+        }
+
+        return new FeatureMetadata($supported, $finalized, $response->finalizedFeaturesEpoch);
+    }
+
+    /**
+     * Raises or deletes the finalized version level of features of the cluster (ApiKey 57, Kafka 2.7, KIP-584)
+     *
+     * The write half of KIP-584, whose read half is {@see self::describeFeatures()}. It is **controller-only**: a
+     * broker that is not the active controller answers the top-level 41 (`NotController`), so the controller is
+     * looked up and the request repeated once when it moved.
+     *
+     * A `maxVersionLevel` below 1 is not a version but the request to **delete** the finalized feature, and every
+     * lowering - a deletion included - needs `allowDowngrade` ({@see FeatureUpdate::delete()} sets both).
+     *
+     * **On a ZooKeeper-backed 2.8.2 cluster there is nothing to update**: the controller finalizes no feature, so
+     * every update is answered with the per-feature code 96 (`FeatureUpdateFailed`).
+     *
+     * @param list<FeatureUpdate> $updates Changes to ask the controller for; the list may not be empty
+     *
+     * @throws KafkaException If the request as a whole was refused, e.g. with 41 (NotController) or 42 for an
+     *         empty or duplicated update list
+     *
+     * @return array<string, KafkaException|null> Error of every feature of the call, null when it was changed
+     */
+    public function updateFeatures(array $updates, int $timeoutMs = UpdateFeaturesRequest::DEFAULT_TIMEOUT_MS): array
+    {
+        $featureUpdates = [];
+        foreach ($updates as $update) {
+            $featureUpdates[$update->feature] = $update->toData();
+        }
+
+        $send = fn(): AbstractResponse => $this->sendTo(
+            $this->findController()->getConnection($this->configuration),
+            fn(int $correlationId): UpdateFeaturesRequest => new UpdateFeaturesRequest(
+                $featureUpdates,
+                $timeoutMs,
+                $this->clientId(),
+                $correlationId
+            ),
+            UpdateFeaturesResponse::class
+        );
+
+        /** @var UpdateFeaturesResponse $response */
+        $response = $send();
+        if ($response->errorCode === KafkaException::NOT_CONTROLLER) {
+            $this->cluster->reload();
+            /** @var UpdateFeaturesResponse $response */
+            $response = $send();
+        }
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The controller refused the whole request']
+            );
+        }
+
+        $result = [];
+        foreach ($response->results as $feature => $featureResult) {
+            $result[(string) $feature] = $featureResult->errorCode === KafkaException::NO_ERROR
+                ? null
+                : KafkaException::fromCode(
+                    $featureResult->errorCode,
+                    ['feature' => (string) $feature]
+                        + ($featureResult->errorMessage !== null ? ['error' => $featureResult->errorMessage] : [])
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * The cluster id, the controller and the brokers, in one request (ApiKey 60, Kafka 2.8, KIP-700)
+     *
+     * Until Kafka 2.8 those three facts could only be read out of a **Metadata** answer, which is a request about
+     * *topics* that happens to carry them - asking it for the cluster alone means sending an empty topic array and
+     * paying for the topic machinery on the broker. KIP-700 gave them a request of their own, and it is the
+     * smallest request of this protocol: one boolean.
+     *
+     * `$includeAuthorizedOperations` asks for the acl bit field of KIP-430. Without it the answer carries
+     * `Integer.MIN_VALUE`, which {@see ClusterDescription::hasAuthorizedOperations()} reports as "not asked".
+     *
+     * {@see self::describeClusterFromMetadata()} is the same description built from a Metadata answer, for a
+     * broker below Kafka 2.8 - a 2.8.2 broker answers the api key 60 with the error code 35 on every line below
+     * this one, so the choice is the caller's and not this client's.
+     *
+     * @param bool $includeAuthorizedOperations Whether to ask for the acl bit field of the cluster
+     *
+     * @throws KafkaException If the broker refused the request
+     */
+    public function describeCluster(bool $includeAuthorizedOperations = false): ClusterDescription
+    {
+        /** @var DescribeClusterResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeClusterRequest => new DescribeClusterRequest(
+                $includeAuthorizedOperations,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeClusterResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The broker refused to describe the cluster']
+            );
+        }
+
+        $nodes = [];
+        foreach ($response->brokers as $broker) {
+            $node         = new Node();
+            $node->nodeId = $broker->brokerId;
+            $node->host   = $broker->host;
+            $node->port   = $broker->port;
+            $node->rack   = $broker->rack;
+
+            $nodes[$broker->brokerId] = $node;
+        }
+
+        return new ClusterDescription(
+            $response->clusterId,
+            $response->controllerId,
+            $nodes,
+            $response->clusterAuthorizedOperations
+        );
+    }
+
+    /**
+     * The same description, built from a Metadata answer instead of the api key 60
+     *
+     * What every line below this one had to do, and what a client of a broker older than Kafka 2.8 still has to do.
+     * The acl bit field is not part of it: Metadata carries a `cluster_authorized_operations` of its own from
+     * version 8 on, which is not this request.
+     */
+    public function describeClusterFromMetadata(): ClusterDescription
+    {
+        $this->cluster->reload();
+
+        $controller = $this->cluster->controller();
+
+        return new ClusterDescription(
+            (string) $this->cluster->clusterId(),
+            $controller?->nodeId ?? -1,
+            $this->cluster->nodes()
+        );
+    }
+
+    /**
+     * Which producers a partition still remembers (ApiKey 61, Kafka 2.8, KIP-664)
+     *
+     * KIP-664 - *"Provide tooling to detect and abort hanging transactions"* - made the producer state of a log
+     * visible: the producer ids that wrote to the partition, their epoch, the last sequence number and timestamp
+     * the broker saw from each of them, and the first offset of a transaction of theirs that is **still open** in
+     * that partition. Before Kafka 2.8 that state could only be read by dumping the log segments.
+     *
+     * **The state lives in the log, so the request goes to the leader of each partition**; a broker that does not
+     * lead a partition answers it with 3 (UnknownTopicOrPartition), which is why this method groups the partitions
+     * by leader and sends one request per broker.
+     *
+     * @param array<string, list<int>> $topicPartitions Partitions to describe, per topic
+     *
+     * @return array<string, array<int, list<ProducerState>|KafkaException>> Per topic and partition: the producers
+     *         the partition remembers - an empty list when it remembers none - or the exception of its error code
+     */
+    public function describeProducers(array $topicPartitions): array
+    {
+        $perLeader = [];
+        foreach ($topicPartitions as $topic => $partitions) {
+            foreach ($partitions as $partition) {
+                $leader = $this->cluster->leaderFor((string) $topic, (int) $partition);
+                $perLeader[$leader->nodeId][(string) $topic][] = (int) $partition;
+            }
+        }
+
+        $result = [];
+        foreach ($perLeader as $nodeId => $topics) {
+            /** @var DescribeProducersResponse $response */
+            $response = $this->sendToBroker(
+                (int) $nodeId,
+                fn(int $correlationId): DescribeProducersRequest => new DescribeProducersRequest(
+                    $topics,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DescribeProducersResponse::class
+            );
+
+            foreach ($topics as $topic => $partitions) {
+                foreach ($partitions as $partition) {
+                    $answer = $response->topics[$topic]->partitions[$partition] ?? null;
+
+                    $result[$topic][$partition] = match (true) {
+                        $answer === null => new UnknownErrorException([
+                            'topic'     => $topic,
+                            'partition' => $partition,
+                            'error'     => 'The broker sent no result for this partition',
+                        ]),
+                        $answer->errorCode !== KafkaException::NO_ERROR => KafkaException::fromCode(
+                            $answer->errorCode,
+                            ['topic' => $topic, 'partition' => $partition]
+                                + ($answer->errorMessage !== null ? ['error' => $answer->errorMessage] : [])
+                        ),
+                        default => array_values(array_map(
+                            static fn(ProducerStateData $state): ProducerState => new ProducerState(
+                                $state->producerId,
+                                $state->producerEpoch,
+                                $state->lastSequence,
+                                $state->lastTimestamp,
+                                $state->coordinatorEpoch,
+                                $state->currentTxnStartOffset === -1 ? null : $state->currentTxnStartOffset
+                            ),
+                            $answer->activeProducers
+                        )),
+                    };
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Turns the error code of one group of a DeleteGroups answer into the exception of the caller
      */
     private static function groupError(string $groupId, int $errorCode): ?KafkaException
@@ -1307,6 +2337,15 @@ class AdminClient
      *
      * A replica that this broker does not have is not an error and simply produces no entry, and a directory that
      * is offline is reported with the error 56 (KafkaStorageError) in {@see LogDirInfo::$error} and no replica.
+     *
+     * **A 2.8.2 broker names every topic of a directory in the answer, whatever the request asked for.**
+     * `ReplicaManager.describeLogDirs` @ 2.8.2 groups all logs of a directory by topic and applies the filter of
+     * the request to the *partitions* inside those groups alone, so the answer of a request for one partition
+     * carries one {@see LogDirInfo} per topic of the broker - the ones that were not asked for with an empty
+     * replica list. A 1.1.1 broker answered the requested topics alone. The map is handed on as the broker sent
+     * it: a caller reads the replicas it asked for out of it by name and may not assume that it holds nothing
+     * else. The request goes out as **version 1**, the version Kafka 2.0 added (KIP-219), whose frame is the
+     * version 0 of KIP-113.
      *
      * @param list<int>                                              $brokerIds       Brokers to ask, by node id
      * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Replicas to report, null for

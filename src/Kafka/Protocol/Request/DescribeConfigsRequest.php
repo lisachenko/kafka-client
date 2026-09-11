@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 
 /**
- * DescribeConfigs, version 1: reads the configuration of a topic or of a broker (ApiKey 32, Kafka 0.11, KIP-133)
+ * DescribeConfigs, version 2: reads the configuration of a topic or of a broker (ApiKey 32, Kafka 0.11, KIP-133)
  *
  * <pre>
- *   DescribeConfigs Request (Version: 1) => [resources] include_synonyms
+ *   DescribeConfigs Request (Version: 1 and 2) => [resources] include_synonyms
  *     resources => resource_type resource_name [config_names]
  *       resource_type => INT8
  *       resource_name => STRING
@@ -45,7 +45,14 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
  * {@see DescribeConfigsRequestV0} sends the version 0 frame of a 0.11 broker, whose answer has no synonyms and no
  * config source at all.
  *
- * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
+ * **Kafka 2.0 added version 2** and changed nothing about the bytes: `DESCRIBE_CONFIGS_REQUEST_V2 =
+ * DESCRIBE_CONFIGS_REQUEST_V1` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see DescribeConfigsRequestV1} is the same frame with the version field of Kafka 1.1.
+ *
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 class DescribeConfigsRequest extends AbstractRequest
 {
@@ -57,7 +64,12 @@ class DescribeConfigsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 4;
+
+    /**
+     * The version 4 of Kafka 2.8 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Resources to describe, in the order of the request
@@ -72,6 +84,7 @@ class DescribeConfigsRequest extends AbstractRequest
     /**
      * @param list<DescribeConfigsRequestResource> $resources     Resources to describe
      * @param bool                                 $includeSynonyms Ask for the synonyms of every option (version 1)
+     * @param bool                                 $includeDocumentation Ask for the documentation (version 3)
      * @param string                               $clientId      A user specified identifier for the client
      * @param int                                  $correlationId A user-supplied value the broker passes back
      */
@@ -83,6 +96,12 @@ class DescribeConfigsRequest extends AbstractRequest
          * @since Version 1 of protocol
          */
         protected readonly bool $includeSynonyms = false,
+        /**
+         * Whether every entry of the answer should carry the documentation string of its option
+         *
+         * @since Version 3 of protocol
+         */
+        protected readonly bool $includeDocumentation = false,
         string $clientId = '',
         int $correlationId = 0
     ) {
@@ -102,6 +121,9 @@ class DescribeConfigsRequest extends AbstractRequest
         ];
         if (static::VERSION >= 1) {
             $body['includeSynonyms'] = BinarySchema::TYPE_BOOLEAN;
+        }
+        if (static::VERSION >= 3) {
+            $body['includeDocumentation'] = BinarySchema::TYPE_BOOLEAN;
         }
 
         return $header + $body;

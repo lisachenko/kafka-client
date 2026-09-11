@@ -36,8 +36,12 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV3;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -46,7 +50,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The messages are produced with hand-written Produce v0 bytes, so that these tests only depend on the wire format
  * of the spec and not on the state of the other protocol classes.
  *
- * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)" and "Offsets API (key 2, v0 and v1),
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Offsets API (key 2, v0 and v1),
  *      a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequestV1::class)]
@@ -303,6 +307,47 @@ final class FetchOffsetsTest extends IntegrationTestCase
             $partition->offsets,
             'version 0 answers a list: the log end offset and the base offset of the only segment'
         );
+    }
+
+    public function testTheVersionsTwoAndThreeAskTheSameQuestionAndGetTheSameAnswer(): void
+    {
+        // `ListOffsetsRequest.json` and `ListOffsetsResponse.json` @ 2.8.2 both say "Version 3 is the same as
+        // version 2": what version 3 (Kafka 2.0, KIP-219) states is that the client waits out the throttle time
+        // of the answer itself, and it is the version this client sends.
+        $stream = $this->connect();
+        $topic  = $this->createTopic($stream, 't5-offsets-v3');
+        $this->produce($stream, $topic, ['first', 'second']);
+
+        new OffsetsRequestV2(
+            [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            self::CLIENT_ID,
+            24
+        )->writeTo($stream);
+        $versionTwo = OffsetsResponseV2::unpack($stream);
+
+        new OffsetsRequestV3(
+            [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            self::CLIENT_ID,
+            25
+        )->writeTo($stream);
+        $versionThree = OffsetsResponseV3::unpack($stream);
+
+        self::assertSame(3, OffsetsRequestV3::VERSION, 'the version Kafka 2.0 added');
+        self::assertSame(6, OffsetsRequest::VERSION, 'and the client sends the flexible version Kafka 2.8 added');
+        self::assertSame($versionTwo->getMessageSize(), $versionThree->getMessageSize());
+        self::assertSame(0, $versionThree->throttleTimeMs, 'no quota is set for this client id');
+
+        $two   = $versionTwo->topics[$topic]->partitions[self::PARTITION];
+        $three = $versionThree->topics[$topic]->partitions[self::PARTITION];
+        self::assertSame(0, $three->errorCode);
+        self::assertSame($two->offset, $three->offset);
+        self::assertSame(2, $three->offset, 'the log end offset of the two produced records');
+        self::assertSame($two->timestamp, $three->timestamp);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $three->timestamp);
     }
 
     /**

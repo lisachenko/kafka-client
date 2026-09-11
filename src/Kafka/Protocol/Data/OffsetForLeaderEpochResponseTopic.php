@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * One topic of an OffsetForLeaderEpoch answer, version 0 (key 23)
+ * One topic of an OffsetForLeaderEpoch answer, version 1 (key 23)
  *
  * <pre>
  *   OffsetForLeaderEpochResponseTopic => topic [partitions]
@@ -25,10 +25,19 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partitions => OffsetForLeaderEpochResponsePartition
  * </pre>
  *
- * @see docs/protocol/1.1.md, section "OffsetForLeaderEpoch API (key 23, v0)"
+ * The topic entry itself never changed; what the version constant selects is the shape of its partition entries -
+ * a version 0 answer carries no `leader_epoch` ({@see OffsetForLeaderEpochResponseTopicV0}), a version 1 answer
+ * does, see {@see self::partitionClass()}.
+ *
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v4)"
  */
 class OffsetForLeaderEpochResponseTopic implements BinarySchemaInterface
 {
+    /**
+     * Version of the OffsetForLeaderEpoch API that this DTO is unpacked from
+     */
+    public const int VERSION = 1;
+
     /**
      * Name of the topic
      */
@@ -48,7 +57,19 @@ class OffsetForLeaderEpochResponseTopic implements BinarySchemaInterface
     {
         return [
             'topic'      => BinarySchema::TYPE_STRING,
-            'partitions' => ['partition' => OffsetForLeaderEpochResponsePartition::class],
+            'partitions' => ['partition' => static::partitionClass()],
         ];
+    }
+
+    /**
+     * Returns the class of a partition entry for the version of the API that this DTO belongs to
+     *
+     * @return class-string<OffsetForLeaderEpochResponsePartition>
+     */
+    protected static function partitionClass(): string
+    {
+        return static::VERSION >= 1
+            ? OffsetForLeaderEpochResponsePartition::class
+            : OffsetForLeaderEpochResponsePartitionV0::class;
     }
 }

@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * may carry: a client that asked with version 6 or higher receives **56** `KAFKA_STORAGE_ERROR` where a lower one
  * receives 6 `NOT_LEADER_FOR_PARTITION`.
  *
- * @see docs/protocol/1.1.md, section "Fetch API (key 1, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v12)"
  */
 final class FetchResponseV6 extends FetchResponse
 {

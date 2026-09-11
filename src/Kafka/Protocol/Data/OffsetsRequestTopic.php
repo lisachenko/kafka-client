@@ -25,18 +25,20 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     partitions => OffsetsRequestPartition
  * </pre>
  *
- * The topic entry itself is the same in both versions of the request; only the layout of a partition entry changes,
- * so the class of the entries is derived from {@see OffsetsRequestTopic::VERSION}, which
- * {@see OffsetsRequestTopicV0} lowers.
+ * The topic entry itself is the same in every version of the request; only the layout of a partition entry
+ * changes, so the class of the entries is derived from {@see OffsetsRequestTopic::VERSION}, which
+ * {@see OffsetsRequestTopicV1} and {@see OffsetsRequestTopicV0} lower. The **encoding** of the entry is not its
+ * own business: a version 6 request (Kafka 2.8, KIP-482) writes this very scheme with compact types and a
+ * tagged-field section, which the engine derives from the top-level message, see {@see BinarySchema}.
  *
- * @see docs/protocol/1.1.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 class OffsetsRequestTopic implements BinarySchemaInterface
 {
     /**
      * Version of the Offsets API that this DTO is packed for
      */
-    public const int VERSION = 1;
+    public const int VERSION = 4;
 
     /**
      * Name of the topic to list the offsets of
@@ -63,9 +65,21 @@ class OffsetsRequestTopic implements BinarySchemaInterface
         $partitionClass = static::partitionClass();
         $partitions     = [];
         foreach ($partitionTimestamps as $partition => $timestamp) {
-            $partitions[$partition] = $timestamp instanceof OffsetsRequestPartition
-                ? $timestamp
-                : new $partitionClass((int) $partition, $timestamp, $maxNumberOfOffsets);
+            if ($timestamp instanceof OffsetsRequestPartition) {
+                $partitions[$partition] = $timestamp;
+                continue;
+            }
+            // A value may be the plain target timestamp, or the pair [timestamp, currentLeaderEpoch] that
+            // version 4 (Kafka 2.1, KIP-320) puts on the wire
+            [$targetTime, $currentLeaderEpoch] = is_array($timestamp)
+                ? [(int) $timestamp[0], (int) $timestamp[1]]
+                : [(int) $timestamp, OffsetsRequestPartition::UNKNOWN_LEADER_EPOCH];
+            $partitions[$partition] = new $partitionClass(
+                (int) $partition,
+                $targetTime,
+                $maxNumberOfOffsets,
+                $currentLeaderEpoch
+            );
         }
 
         $this->topic      = $topic;
@@ -90,6 +104,10 @@ class OffsetsRequestTopic implements BinarySchemaInterface
      */
     protected static function partitionClass(): string
     {
-        return static::VERSION >= 1 ? OffsetsRequestPartition::class : OffsetsRequestPartitionV0::class;
+        return match (true) {
+            static::VERSION >= 4 => OffsetsRequestPartition::class,
+            static::VERSION >= 1 => OffsetsRequestPartitionV1::class,
+            default              => OffsetsRequestPartitionV0::class,
+        };
     }
 }

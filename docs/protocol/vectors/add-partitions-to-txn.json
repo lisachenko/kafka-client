@@ -1,13 +1,13 @@
 {
     "api": "add-partitions-to-txn",
     "apiKey": 24,
-    "section": "AddPartitionsToTxn API (key 24, v0)",
-    "description": "Wire vectors of the AddPartitionsToTxn API (key 24, v0), replayed by tests/Compliance.",
+    "section": "AddPartitionsToTxn API (key 24, v0 to v3)",
+    "description": "Wire vectors of the AddPartitionsToTxn API (key 24, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "addpartitionstotxn.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequestV0",
             "version": 0,
             "source": "broker",
             "description": "AddPartitionsToTxn request v0: the partition `t8-vectors`-0 is enrolled into the transaction of `t8-vectors-txn`, with the producer id and the epoch that the coordinator handed out. This is the first request of a transaction and the one that starts it on the broker - the protocol has no \"BeginTransaction\" frame.",
@@ -34,7 +34,7 @@
         {
             "id": "addpartitionstotxn.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of the transaction coordinator: one entry per requested partition, the error code 0 for a partition that is now part of the transaction. The array is called `errors` although it also carries the partitions that succeeded, and there is no top-level error code at all.",
@@ -59,7 +59,7 @@
         {
             "id": "addpartitionstotxn.request.v0.fenced",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequestV0",
             "version": 0,
             "source": "broker",
             "description": "The very same request sent again after a second `InitProducerId` for the same transactional id bumped the epoch from 2 to 3: the producer that still holds the epoch 2 is the fenced one.",
@@ -86,7 +86,7 @@
         {
             "id": "addpartitionstotxn.response.v0.fenced",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer to a fenced producer: the error code 47 (InvalidProducerEpoch), reported per partition like every other error of this api. The state of the transactional id is what was checked, not the state of the partition.",
@@ -102,6 +102,164 @@
                             {
                                 "partition": 0,
                                 "errorCode": 47
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "AddPartitionsToTxn request v1, the frame of version 0 with the api version Kafka 2.0 added: one partition enrolled into the open transaction of a transactional id.",
+            "hex": "0000004b00180001000001fd000a74342d766563746f7273001074342d32302d766563746f72732d74780000000000000029000000000001000d74342d32302d766563746f72730000000100000000",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 24,
+                "apiVersion": 1,
+                "correlationId": 509,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-20-vectors-tx",
+                "producerId": 41,
+                "producerEpoch": 0,
+                "topics": {
+                    "t4-20-vectors": {
+                        "topic": "t4-20-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "AddPartitionsToTxn response v1: the error code 0 of the partition that joined the transaction.",
+            "hex": "00000025000001fd0000000000000001000d74342d32302d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 509,
+                "throttleTimeMs": 0,
+                "errors": {
+                    "t4-20-vectors": {
+                        "topic": "t4-20-vectors",
+                        "partitionErrors": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequestV2",
+            "version": 2,
+            "source": "broker",
+            "description": "AddPartitionsToTxn request v2 (Kafka 2.7, KIP-588): the frame of version 1 byte for byte - the api is NOT flexible in this version (`\"flexibleVersions\": \"none\"` at the 2.7.2 tag; it becomes flexible with the version 3 of Kafka 2.8) and the version buys the error code 90 alone.",
+            "hex": "0000004b00180002000003c5000a74342d766563746f7273001074342d32372d766563746f72732d7478000000000000002d000600000001000d74342d32372d766563746f72730000000100000000",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 24,
+                "apiVersion": 2,
+                "correlationId": 965,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-27-vectors-tx",
+                "producerId": 45,
+                "producerEpoch": 6,
+                "topics": {
+                    "t4-27-vectors": {
+                        "topic": "t4-27-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponseV2",
+            "version": 2,
+            "source": "broker",
+            "description": "AddPartitionsToTxn answer v2: the error code 0 of the one partition that joined the transaction.",
+            "hex": "00000025000003c50000000000000001000d74342d32372d766563746f727300000001000000000000",
+            "fields": {
+                "messageSize": 37,
+                "correlationId": 965,
+                "throttleTimeMs": 0,
+                "errors": {
+                    "t4-27-vectors": {
+                        "topic": "t4-27-vectors",
+                        "partitionErrors": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "AddPartitionsToTxn request v3 (Kafka 2.8, KIP-482): the four fields of the version 2 in the **flexible** encoding - `\"flexibleVersions\": \"3+\"` in `AddPartitionsToTxnRequest.json` @ 2.8.2, so this is the first flexible version of the api.",
+            "hex": "000000460018000300000328000a74342d766563746f7273001174342d32382d766563746f72732d747800000000000000990001020e74342d32382d766563746f727302000000000000",
+            "fields": {
+                "messageSize": 70,
+                "apiKey": 24,
+                "apiVersion": 3,
+                "correlationId": 808,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-28-vectors-tx",
+                "producerId": 153,
+                "producerEpoch": 1,
+                "topics": {
+                    "t4-28-vectors": {
+                        "topic": "t4-28-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "addpartitionstotxn.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "AddPartitionsToTxn answer v3: the error code 0 of the one partition that joined the transaction, with a tagged-field section behind the body, the topic and the partition.",
+            "hex": "00000022000003280000000000020e74342d32382d766563746f727302000000000000000000",
+            "fields": {
+                "messageSize": 34,
+                "correlationId": 808,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errors": {
+                    "t4-28-vectors": {
+                        "topic": "t4-28-vectors",
+                        "partitionErrors": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0
                             }
                         ]
                     }

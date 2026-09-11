@@ -24,6 +24,7 @@ use Protocol\Kafka\Common\Errors\DelegationTokenExpiredException;
 use Protocol\Kafka\Common\Errors\DelegationTokenNotFoundException;
 use Protocol\Kafka\Common\Errors\DelegationTokenOwnerMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidPrincipalTypeException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\UnsupportedByAuthenticationException;
 use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
@@ -45,7 +46,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * mapping alone: which request the client builds, what it makes of the answer, and which exception each error
  * code becomes.
  *
- * @see docs/protocol/1.1.md, section "Delegation tokens (KIP-48)"
+ * @see docs/protocol/2.8.md, section "Delegation tokens (KIP-48)"
  * @see \Protocol\Kafka\Tests\Integration\DelegationTokenApiTest for the same calls against a real broker
  */
 #[CoversClass(AdminClient::class)]
@@ -64,9 +65,20 @@ final class DelegationTokenAdminTest extends TestCase
     private const string BROKER_ADDRESS = 'tcp://127.0.0.1:9092';
 
     /**
-     * Token id of the vectors, i.e. the token that `User:kafkatest` created with the renewer `User:admin`
+     * Token id of the version 0 vectors, i.e. the token that `User:kafkatest` created with the renewer `User:admin`
      */
     private const string TOKEN_ID = 'MopLsgz-Q1uJqTR8T9s4aQ';
+
+    /**
+     * Token id of the **version 2** answer, which is the frame the client reads today: a capture of its own, made
+     * on the 2.8.2 container when the api was raised to the flexible v2 of Kafka 2.4
+     */
+    private const string TOKEN_ID_V2 = '72e565j9SJiE6_eIDUUeRA';
+
+    /**
+     * Token id of the **version 2** describe answer, captured with the token apis of Kafka 2.5
+     */
+    private const string DESCRIBED_TOKEN_ID_V2 = 'wG0KYNS6REW0U9AN8r_Bnw';
 
     private ScriptedConnections $brokers;
 
@@ -82,17 +94,17 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testCreateDelegationTokenReturnsTheTokenOfTheAnswerWithTheRenewersOfTheRequest(): void
     {
-        $broker = $this->scriptBroker(self::vector('createdelegationtoken.response.v0'));
+        $broker = $this->scriptBroker(self::vector('createdelegationtoken.response.v2'));
 
         $token = $this->adminClient()->createDelegationToken([KafkaPrincipal::user('admin')], 3600000);
 
-        self::assertSame(self::TOKEN_ID, $token->tokenId());
+        self::assertSame(self::TOKEN_ID_V2, $token->tokenId());
         self::assertSame('User:kafkatest', $token->tokenInformation->ownerAsString());
         self::assertSame(64, strlen($token->hmac), 'the HmacSHA512 of the token id is 64 bytes');
         self::assertStringEndsWith('==', $token->hmacAsBase64String());
-        self::assertSame(1789059673170, $token->tokenInformation->issueTimestamp);
-        self::assertSame(1789063273170, $token->tokenInformation->expiryTimestamp);
-        self::assertSame(1789063273170, $token->tokenInformation->maxTimestamp);
+        self::assertSame(1789141554021, $token->tokenInformation->issueTimestamp);
+        self::assertSame(1789145154021, $token->tokenInformation->expiryTimestamp);
+        self::assertSame(1789145154021, $token->tokenInformation->maxTimestamp);
         self::assertSame(
             ['User:admin'],
             $token->tokenInformation->renewersAsString(),
@@ -115,7 +127,7 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testACreateAnswerWithAnErrorCodeBecomesTheExceptionOfThatCode(): void
     {
-        $this->scriptBroker(self::vector('createdelegationtoken.response.v0.invalid-principal-type'));
+        $this->scriptBroker(self::vector('createdelegationtoken.response.v2.invalid-principal-type'));
 
         $this->expectException(InvalidPrincipalTypeException::class);
 
@@ -124,7 +136,7 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testACreateOnAnUnauthenticatedChannelBecomesTheUnsupportedByAuthenticationException(): void
     {
-        $this->scriptBroker(self::vector('createdelegationtoken.response.v0.not-allowed'));
+        $this->scriptBroker(self::vector('createdelegationtoken.response.v2.not-allowed'));
 
         $this->expectException(UnsupportedByAuthenticationException::class);
 
@@ -133,11 +145,11 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testRenewDelegationTokenReturnsTheNewExpiryTimestamp(): void
     {
-        $broker = $this->scriptBroker(self::vector('renewdelegationtoken.response.v0'));
+        $broker = $this->scriptBroker(self::vector('renewdelegationtoken.response.v2'));
 
         $expiry = $this->adminClient()->renewDelegationToken(self::hmacOfTheVectors(), 600000);
 
-        self::assertSame(1789060273298, $expiry);
+        self::assertSame(1789153754840, $expiry);
 
         self::assertSame(
             [self::requestFrame(new RenewDelegationTokenRequest(
@@ -153,7 +165,7 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testARenewByAPrincipalThatMayNotBecomesTheOwnerMismatchException(): void
     {
-        $this->scriptBroker(self::vector('renewdelegationtoken.response.v0.owner-mismatch'));
+        $this->scriptBroker(self::timestampAnswer(KafkaException::DELEGATION_TOKEN_OWNER_MISMATCH));
 
         $this->expectException(DelegationTokenOwnerMismatchException::class);
 
@@ -162,7 +174,7 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testARenewOfAnExpiredTokenBecomesTheExpiredException(): void
     {
-        $this->scriptBroker(self::vector('renewdelegationtoken.response.v0.expired'));
+        $this->scriptBroker(self::timestampAnswer(KafkaException::DELEGATION_TOKEN_EXPIRED));
 
         $this->expectException(DelegationTokenExpiredException::class);
 
@@ -171,11 +183,11 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testExpireDelegationTokenDefaultsToDeletingTheTokenAtOnce(): void
     {
-        $broker = $this->scriptBroker(self::vector('expiredelegationtoken.response.v0'));
+        $broker = $this->scriptBroker(self::vector('expiredelegationtoken.response.v2'));
 
         $expiry = $this->adminClient()->expireDelegationToken(self::hmacOfTheVectors());
 
-        self::assertSame(1789059673593, $expiry, 'the clock of the broker at the moment it deleted the token');
+        self::assertSame(1789153154952, $expiry, 'the clock of the broker at the moment it deleted the token');
 
         self::assertSame(
             [self::requestFrame(new ExpireDelegationTokenRequest(
@@ -191,7 +203,7 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testExpiringATokenThatIsAlreadyGoneBecomesTheNotFoundException(): void
     {
-        $this->scriptBroker(self::vector('expiredelegationtoken.response.v0.not-found'));
+        $this->scriptBroker(self::timestampAnswer(KafkaException::DELEGATION_TOKEN_NOT_FOUND));
 
         $this->expectException(DelegationTokenNotFoundException::class);
 
@@ -200,20 +212,20 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testDescribeDelegationTokenIndexesTheTokensByTheirId(): void
     {
-        $broker = $this->scriptBroker(self::vector('describedelegationtoken.response.v0'));
+        $broker = $this->scriptBroker(self::vector('describedelegationtoken.response.v2'));
 
-        $tokens = $this->adminClient()->describeDelegationToken([KafkaPrincipal::user('kafkatest')]);
+        $tokens = $this->adminClient()->describeDelegationToken([KafkaPrincipal::user('admin')]);
 
-        self::assertSame([self::TOKEN_ID], array_keys($tokens));
+        self::assertSame([self::DESCRIBED_TOKEN_ID_V2], array_keys($tokens));
 
-        $token = $tokens[self::TOKEN_ID];
-        self::assertSame('User:kafkatest', $token->tokenInformation->ownerAsString());
-        self::assertSame(['User:admin'], $token->tokenInformation->renewersAsString());
-        self::assertSame(self::hmacOfTheVectors(), $token->hmac, 'a described token carries its secret as well');
+        $token = $tokens[self::DESCRIBED_TOKEN_ID_V2];
+        self::assertSame('User:admin', $token->tokenInformation->ownerAsString());
+        self::assertSame(['User:kafkatest'], $token->tokenInformation->renewersAsString());
+        self::assertSame(64, strlen($token->hmac), 'a described token carries its secret as well');
 
         self::assertSame(
             [self::requestFrame(new DescribeDelegationTokenRequest(
-                [KafkaPrincipal::user('kafkatest')],
+                [KafkaPrincipal::user('admin')],
                 't7',
                 $broker->getReceivedCorrelationIds()[0]
             ))],
@@ -223,7 +235,7 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testDescribeDelegationTokenAsksForEveryVisibleTokenByDefault(): void
     {
-        $broker = $this->scriptBroker(self::vector('describedelegationtoken.response.v0'));
+        $broker = $this->scriptBroker(self::vector('describedelegationtoken.response.v2'));
 
         $this->adminClient()->describeDelegationToken();
 
@@ -238,7 +250,7 @@ final class DelegationTokenAdminTest extends TestCase
 
     public function testADescribeOnAnUnauthenticatedChannelBecomesTheUnsupportedByAuthenticationException(): void
     {
-        $this->scriptBroker(self::vector('describedelegationtoken.response.v0.not-allowed'));
+        $this->scriptBroker(self::describeAnswer(KafkaException::DELEGATION_TOKEN_REQUEST_NOT_ALLOWED));
 
         $this->expectException(UnsupportedByAuthenticationException::class);
 
@@ -341,6 +353,40 @@ final class DelegationTokenAdminTest extends TestCase
         }
 
         self::fail('There is no create answer among the delegation token vectors');
+    }
+
+    /**
+     * Builds the flexible answer of RenewDelegationToken and ExpireDelegationToken, whose frame is the same one.
+     *
+     * The error cases of the two apis were captured before Kafka 2.5 raised them to the flexible version 2, and an
+     * answer that carries an error carries the timestamp **-1** and nothing else, so the frame is written here
+     * instead of re-capturing four broker errors that the vectors of the version 0 already document.
+     */
+    private static function timestampAnswer(int $errorCode): string
+    {
+        return ResponseFrame::of(
+            0,
+            "\x00"                                  // the tagged-field section of the response header v1
+            . pack('n', $errorCode)
+            . pack('J', -1)                          // DelegationTokenManager.ErrorTimestamp
+            . pack('N', 0)                           // throttle_time_ms, LAST in these apis
+            . "\x00"                                 // the tagged-field section of the body
+        );
+    }
+
+    /**
+     * Builds the flexible answer of DescribeDelegationToken that carries an error and no token at all
+     */
+    private static function describeAnswer(int $errorCode): string
+    {
+        return ResponseFrame::of(
+            0,
+            "\x00"
+            . pack('n', $errorCode)
+            . "\x01"                                 // an empty compact array is a single byte
+            . pack('N', 0)
+            . "\x00"
+        );
     }
 
     /**

@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV0;
  * ({@see ClusterMetadataResponse}) only has to say whether a broker was advertised. Nothing of what the later
  * versions add - the cluster id, the controller id, the racks - is of any use before the cluster is up.
  *
- * @see docs/protocol/1.1.md, section "Cluster readiness"
+ * @see docs/protocol/2.8.md, section "Cluster readiness"
  */
 final class ClusterReadinessProbe
 {

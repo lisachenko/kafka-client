@@ -26,11 +26,13 @@ namespace Protocol\Kafka\Protocol\Request;
  * lowers the version constant that {@see ApiVersionsResponse::getScheme()} follows. Two frames are read with it:
  *
  * * the answer to an {@see ApiVersionsRequestV0}, which every broker from Kafka 0.10.0 on serves;
- * * the answer to a request of a version the broker does **not** serve, whichever version that was. A 0.11.0.3
- *   broker writes it with `ApiVersionsResponse.unsupportedVersionSend()`, which hard-codes the version `0` - the
- *   error code 35 and an empty api array - so that a client that guessed too high can still read it.
+ * * the answer to a request of a version the broker does **not** serve, whichever version that was. A 2.8.2 broker
+ *   rebuilds such a request as a version 0 one (`RequestContext.parseRequest`) and writes the answer in the version
+ *   0 layout - so that a client that guessed too high can still read it. Since Kafka 2.4 (KIP-511) the array of
+ *   that answer is **not empty**: it carries the single row of the ApiVersions api itself, `18 0 3` on this
+ *   container, where a 1.1.1 broker answered `00 00 00 00`.
  *
- * @see docs/protocol/1.1.md, section "ApiVersions API (key 18, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
  */
 final class ApiVersionsResponseV0 extends ApiVersionsResponse
 {

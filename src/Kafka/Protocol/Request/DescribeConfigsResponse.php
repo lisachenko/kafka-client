@@ -16,12 +16,13 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResource;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResourceV0;
+use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResourceV1;
 
 /**
- * DescribeConfigs response object, version 1 (key 32)
+ * DescribeConfigs response object, version 2 (key 32)
  *
  * <pre>
- *   DescribeConfigs Response (Version: 1) => throttle_time_ms [resources]
+ *   DescribeConfigs Response (Version: 1 and 2) => throttle_time_ms [resources]
  *     throttle_time_ms => INT32
  *     resources        => error_code error_message resource_type resource_name [config_entries]
  *       error_code     => INT16
@@ -50,14 +51,26 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResourceV0;
  * | 31   | ClusterAuthorizationFailed | The client may not read a broker resource                                |
  * | 42   | InvalidRequest             | An unknown resource type, or a broker id that is not the one that answers|
  *
- * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
+ * **Kafka 2.0 added version 2** and changed nothing about the bytes: `DESCRIBE_CONFIGS_RESPONSE_V2 =
+ * DESCRIBE_CONFIGS_RESPONSE_V1` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see DescribeConfigsResponseV1} is the same frame with the version field of Kafka 1.1.
+ *
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 class DescribeConfigsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 4;
+
+    /**
+     * The version 4 of Kafka 2.8 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation
@@ -91,8 +104,10 @@ class DescribeConfigsResponse extends AbstractResponse
      */
     protected static function resourceClass(): string
     {
-        return static::VERSION >= 1
-            ? DescribeConfigsResponseResource::class
-            : DescribeConfigsResponseResourceV0::class;
+        return match (true) {
+            static::VERSION >= 3 => DescribeConfigsResponseResource::class,
+            static::VERSION >= 1 => DescribeConfigsResponseResourceV1::class,
+            default              => DescribeConfigsResponseResourceV0::class,
+        };
     }
 }

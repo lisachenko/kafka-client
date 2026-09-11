@@ -1,4 +1,4 @@
-# Single-node Apache Kafka 1.1.1 used by the integration test suite.
+# Single-node Apache Kafka 2.8.2 used by the integration test suite.
 #
 #   docker compose up -d
 #   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 vendor/bin/phpunit --testsuite integration
@@ -6,13 +6,17 @@
 services:
     kafka:
         build:
-            context: ./docker/kafka-1.1.1
-        container_name: kafka-1-1-1
+            context: ./docker/kafka-2.8.2
+        container_name: kafka-2-8-2
         environment:
             ADVERTISED_HOST: 127.0.0.1
             ADVERTISED_PORT: 9092
             BROKER_ID: 0
             NUM_PARTITIONS: 3
+        # Every partition costs the broker a few file descriptors and the container inherits the daemon's limit
+        # (20000 in the Claude Code sandbox, which refuses a higher `ulimits: nofile`): a session that leaves its
+        # test topics behind takes the second log directory offline with "Too many open files". The tests delete
+        # the topics they create, and the coordinator recreates the container between milestones.
         ports:
             - "9092:9092"
             - "9093:9093"
@@ -24,7 +28,7 @@ services:
             # a 0.8/0.9 broker answers Metadata with an EMPTY broker array until the controller has pushed
             # UpdateMetadata to it, and on a cluster without topics that never happens on its own. Readiness is
             # therefore a client-side concern - see tests/Fixture/ClusterReadinessProbe.php and the "Cluster
-            # readiness" section of docs/protocol/1.1.md.
+            # readiness" section of docs/protocol/2.8.md.
             test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9092'"]
             interval: 5s
             timeout: 5s

@@ -21,43 +21,74 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV0;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponseV0;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponseV1;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV0;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponse;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponseV0;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponseV1;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequestV0;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponseV0;
+use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponseV1;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequestV0;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV0;
+use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV1;
 
 /**
- * Byte-exact tests for the four delegation token APIs of Kafka 1.1 (api keys 38 to 41, all v0, KIP-48).
+ * Byte-exact tests for the four delegation token APIs of KIP-48 (api keys 38 to 41), at the version 1 that
+ * Kafka 2.0 added to all four of them.
  *
  * The frames of the four apis share two properties that no api of the lines below has, and both are pinned here:
  * `throttle_time_ms` is the **last** field of every answer instead of the first one, and every principal on the
  * wire - the owner of a token, the renewers of a request, the owners of a describe request - is the two-string
  * struct {@see KafkaPrincipal}.
  *
- * @see docs/protocol/1.1.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0)",
- *      "RenewDelegationToken API (key 39, v0)", "ExpireDelegationToken API (key 40, v0)" and
- *      "DescribeDelegationToken API (key 41, v0)"
+ * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
+ *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
+ *      "DescribeDelegationToken API (key 41, v0 to v2)"
  */
 #[CoversClass(CreateDelegationTokenRequest::class)]
+#[CoversClass(CreateDelegationTokenRequestV0::class)]
 #[CoversClass(CreateDelegationTokenResponse::class)]
+#[CoversClass(CreateDelegationTokenResponseV0::class)]
 #[CoversClass(RenewDelegationTokenRequest::class)]
+#[CoversClass(RenewDelegationTokenRequestV0::class)]
 #[CoversClass(RenewDelegationTokenResponse::class)]
+#[CoversClass(RenewDelegationTokenResponseV0::class)]
 #[CoversClass(ExpireDelegationTokenRequest::class)]
+#[CoversClass(ExpireDelegationTokenRequestV0::class)]
 #[CoversClass(ExpireDelegationTokenResponse::class)]
+#[CoversClass(ExpireDelegationTokenResponseV0::class)]
 #[CoversClass(DescribeDelegationTokenRequest::class)]
+#[CoversClass(DescribeDelegationTokenRequestV0::class)]
 #[CoversClass(DescribeDelegationTokenResponse::class)]
+#[CoversClass(DescribeDelegationTokenResponseV0::class)]
 #[CoversClass(DescribeDelegationTokenResponseToken::class)]
+#[CoversClass(RenewDelegationTokenRequestV1::class)]
+#[CoversClass(RenewDelegationTokenResponseV1::class)]
+#[CoversClass(ExpireDelegationTokenRequestV1::class)]
+#[CoversClass(ExpireDelegationTokenResponseV1::class)]
+#[CoversClass(DescribeDelegationTokenRequestV1::class)]
+#[CoversClass(DescribeDelegationTokenResponseV1::class)]
 final class DelegationTokenTest extends TestCase
 {
     /**
-     * CreateDelegationToken request v0 with one renewer and a maximum lifetime of one hour.
+     * CreateDelegationToken request v1 with one renewer and a maximum lifetime of one hour.
      *
      *   Size          => 00 00 00 27 (39 bytes)
      *   ApiKey        => 00 26 (38)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 05
      *   ClientId      => 00 04 "test"
      *   Renewers      => 00 00 00 01
@@ -66,7 +97,7 @@ final class DelegationTokenTest extends TestCase
      */
     private const string CREATE_REQUEST_HEX = '00000027'
         . '0026'
-        . '0000'
+        . '0001'
         . '00000005'
         . '0004' . '74657374'
         . '00000001'
@@ -75,11 +106,56 @@ final class DelegationTokenTest extends TestCase
         . '000000000036ee80';
 
     /**
+     * The same request as the **flexible** version 2 of Kafka 2.4, which is what this client sends.
+     *
+     *   Size          => 00 00 00 25 (37 bytes, two less than v1)
+     *   ApiKey        => 00 26, ApiVersion => 00 02
+     *   CorrelationId => 00 00 00 05
+     *   ClientId      => 00 04 "test"   (int16 length even here)
+     *   TAG_BUFFER    => 00             (of the request header v2)
+     *   Renewers      => 02             (compact: one renewer)
+     *     PrincipalType => 05 "User", Name => 06 "admin", TAG_BUFFER => 00
+     *   MaxLifeTime   => 00 00 00 00 00 36 ee 80
+     *   TAG_BUFFER    => 00             (of the body)
+     */
+    private const string CREATE_REQUEST_V2_HEX = '00000025'
+        . '0026'
+        . '0002'
+        . '00000005'
+        . '0004' . '74657374'
+        . '00'
+        . '02'
+        . '05' . '55736572'
+        . '06' . '61646d696e'
+        . '00'
+        . '000000000036ee80'
+        . '00';
+
+    /**
+     * The version 2 answer of the same token: compact strings, a compact hmac and two tag buffers, and the owner
+     * inlined without one, because `PrincipalType` and `PrincipalName` are two fields of the answer and not a
+     * structure of the specification.
+     */
+    private const string CREATE_RESPONSE_V2_HEX = '00000041'
+        . '00000005'
+        . '00'
+        . '0000'
+        . '05' . '55736572'
+        . '0a' . '6b61666b6174657374'
+        . '00000174876e8000'
+        . '0000017487a56e80'
+        . '0000017487a56e80'
+        . '09' . '746f6b656e2d6964'
+        . '05' . 'deadbeef'
+        . '00000000'
+        . '00';
+
+    /**
      * The same request without a renewer and with the default maximum lifetime, i.e. the smallest frame of the api
      */
     private const string CREATE_REQUEST_DEFAULT_HEX = '0000001a'
         . '0026'
-        . '0000'
+        . '0001'
         . '00000005'
         . '0004' . '74657374'
         . '00000000'
@@ -131,7 +207,7 @@ final class DelegationTokenTest extends TestCase
      */
     private const string RENEW_REQUEST_HEX = '0000001e'
         . '0027'
-        . '0000'
+        . '0001'
         . '00000006'
         . '0004' . '74657374'
         . '00000004' . '01020304'
@@ -160,7 +236,7 @@ final class DelegationTokenTest extends TestCase
      */
     private const string EXPIRE_REQUEST_HEX = '0000001e'
         . '0028'
-        . '0000'
+        . '0001'
         . '00000007'
         . '0004' . '74657374'
         . '00000004' . '01020304'
@@ -180,7 +256,7 @@ final class DelegationTokenTest extends TestCase
      */
     private const string DESCRIBE_REQUEST_ALL_HEX = '00000012'
         . '0029'
-        . '0000'
+        . '0001'
         . '00000008'
         . '0004' . '74657374'
         . 'ffffffff';
@@ -190,7 +266,7 @@ final class DelegationTokenTest extends TestCase
      */
     private const string DESCRIBE_REQUEST_NONE_HEX = '00000012'
         . '0029'
-        . '0000'
+        . '0001'
         . '00000008'
         . '0004' . '74657374'
         . '00000000';
@@ -200,7 +276,7 @@ final class DelegationTokenTest extends TestCase
      */
     private const string DESCRIBE_REQUEST_ONE_HEX = '00000023'
         . '0029'
-        . '0000'
+        . '0001'
         . '00000008'
         . '0004' . '74657374'
         . '00000001'
@@ -228,17 +304,30 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheCreateRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new CreateDelegationTokenRequest([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
+        $request = new CreateDelegationTokenRequestV1([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
 
         self::assertSame(self::CREATE_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::CREATE_DELEGATION_TOKEN, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'a 1.1.1 broker only serves version 0');
+        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.0 raised all four apis to version 1 (KIP-219)');
         self::assertSame(39, $request->getMessageSize());
+    }
+
+    /**
+     * Version 2 is the same request in the flexible encoding of Kafka 2.4, and it is the one the client sends
+     */
+    public function testTheCreateRequestOfVersionTwoIsCompact(): void
+    {
+        $request = new CreateDelegationTokenRequest([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
+
+        self::assertSame(self::CREATE_REQUEST_V2_HEX, bin2hex((string) $request));
+        self::assertSame(2, $request->getApiVersion(), 'Kafka 2.4 raised the api to the flexible version 2');
+        self::assertTrue(CreateDelegationTokenRequest::isFlexible());
+        self::assertSame(37, $request->getMessageSize(), 'two bytes shorter than v1: four length prefixes, two tag buffers');
     }
 
     public function testARenewerCanBeGivenAsThePrincipalStringOfTheKafkaTools(): void
     {
-        $fromString = new CreateDelegationTokenRequest(['User:admin'], 3600000, 'test', 5);
+        $fromString = new CreateDelegationTokenRequestV1(['User:admin'], 3600000, 'test', 5);
 
         self::assertSame(self::CREATE_REQUEST_HEX, bin2hex((string) $fromString));
         self::assertEquals([KafkaPrincipal::user('admin')], $fromString->getRenewers());
@@ -246,20 +335,20 @@ final class DelegationTokenTest extends TestCase
 
     public function testACreateRequestWithoutRenewersAsksForTheDefaultLifetimeOfTheBroker(): void
     {
-        $request = new CreateDelegationTokenRequest();
+        $request = new CreateDelegationTokenRequestV1();
 
         self::assertSame(-1, CreateDelegationTokenRequest::DEFAULT_MAX_LIFE_TIME);
         self::assertSame([], $request->getRenewers());
         self::assertSame(-1, $request->getMaxLifeTime());
         self::assertSame(
             self::CREATE_REQUEST_DEFAULT_HEX,
-            bin2hex((string) new CreateDelegationTokenRequest([], -1, 'test', 5))
+            bin2hex((string) new CreateDelegationTokenRequestV1([], -1, 'test', 5))
         );
     }
 
     public function testTheCreateResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = CreateDelegationTokenResponse::unpack(
+        $response = CreateDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::CREATE_RESPONSE_HEX))
         );
 
@@ -277,7 +366,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testAFailedCreateAnswerCarriesTheConnectionPrincipalAndNoToken(): void
     {
-        $response = CreateDelegationTokenResponse::unpack(
+        $response = CreateDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::CREATE_RESPONSE_INVALID_PRINCIPAL_HEX))
         );
 
@@ -292,11 +381,11 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheRenewRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new RenewDelegationTokenRequest("\x01\x02\x03\x04", 600000, 'test', 6);
+        $request = new RenewDelegationTokenRequestV1("\x01\x02\x03\x04", 600000, 'test', 6);
 
         self::assertSame(self::RENEW_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::RENEW_DELEGATION_TOKEN, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(1, $request->getApiVersion());
         self::assertSame("\x01\x02\x03\x04", $request->getHmac());
         self::assertSame(600000, $request->getRenewTimePeriod());
         self::assertSame(-1, RenewDelegationTokenRequest::DEFAULT_RENEW_TIME_PERIOD);
@@ -304,7 +393,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheRenewResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = RenewDelegationTokenResponse::unpack(
+        $response = RenewDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::RENEW_RESPONSE_HEX))
         );
 
@@ -316,7 +405,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testAnErrorOfTheRenewApiCarriesTheTimestampMinusOne(): void
     {
-        $response = RenewDelegationTokenResponse::unpack(
+        $response = RenewDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::RENEW_RESPONSE_MISMATCH_HEX))
         );
 
@@ -326,11 +415,11 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheExpireRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new ExpireDelegationTokenRequest("\x01\x02\x03\x04", -1, 'test', 7);
+        $request = new ExpireDelegationTokenRequestV1("\x01\x02\x03\x04", -1, 'test', 7);
 
         self::assertSame(self::EXPIRE_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::EXPIRE_DELEGATION_TOKEN, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(1, $request->getApiVersion());
         self::assertSame("\x01\x02\x03\x04", $request->getHmac());
         self::assertSame(-1, $request->getExpiryTimePeriod());
         self::assertSame(-1, ExpireDelegationTokenRequest::EXPIRE_IMMEDIATELY);
@@ -338,7 +427,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheExpireResponseHasTheSameFrameAsTheRenewOne(): void
     {
-        $response = ExpireDelegationTokenResponse::unpack(
+        $response = ExpireDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::EXPIRE_RESPONSE_HEX))
         );
 
@@ -355,7 +444,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheDescribeRequestSendsANullArrayForEveryVisibleToken(): void
     {
-        $request = new DescribeDelegationTokenRequest(null, 'test', 8);
+        $request = new DescribeDelegationTokenRequestV1(null, 'test', 8);
 
         self::assertSame(self::DESCRIBE_REQUEST_ALL_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DESCRIBE_DELEGATION_TOKEN, $request->getApiKey());
@@ -367,7 +456,7 @@ final class DelegationTokenTest extends TestCase
     {
         self::assertSame(
             self::DESCRIBE_REQUEST_NONE_HEX,
-            bin2hex((string) new DescribeDelegationTokenRequest([], 'test', 8)),
+            bin2hex((string) new DescribeDelegationTokenRequestV1([], 'test', 8)),
             'an empty array asks for nothing, a null array for everything'
         );
         self::assertNotSame(self::DESCRIBE_REQUEST_NONE_HEX, self::DESCRIBE_REQUEST_ALL_HEX);
@@ -375,7 +464,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheDescribeRequestPacksTheOwnersItIsGiven(): void
     {
-        $request = new DescribeDelegationTokenRequest(['User:kafkatest'], 'test', 8);
+        $request = new DescribeDelegationTokenRequestV1(['User:kafkatest'], 'test', 8);
 
         self::assertSame(self::DESCRIBE_REQUEST_ONE_HEX, bin2hex((string) $request));
         self::assertEquals([KafkaPrincipal::user('kafkatest')], $request->getOwners());
@@ -383,7 +472,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheDescribeResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = DescribeDelegationTokenResponse::unpack(
+        $response = DescribeDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::DESCRIBE_RESPONSE_HEX))
         );
 
@@ -414,11 +503,59 @@ final class DelegationTokenTest extends TestCase
         foreach ($answers as $answer) {
             $fields = array_keys($answer::getScheme());
             self::assertSame('throttleTimeMs', end($fields), "{$answer} does not end with the throttle time");
+            // The response header is two fields below Kafka 2.4 and three from the flexible versions on, where it
+            // ends in a tag buffer of its own, so the body is whatever follows it
+            $body = array_values(array_diff($fields, ['messageSize', 'correlationId', 'headerTaggedFields']));
             self::assertSame(
                 'errorCode',
-                $fields[2],
+                $body[0],
                 "{$answer} does not open with the error code behind the response header"
             );
         }
     }
+
+    /**
+     * The four version 0 frames of Kafka 1.1, which Kafka 2.0 raised to version 1 without changing a byte
+     * (`TOKEN_CREATE_REQUEST_V1 = TOKEN_CREATE_REQUEST_V0` and its three siblings in `Protocol.java` @ 2.0.1)
+     */
+    public function testTheVersionZeroFramesAreTheSameBodiesWithALowerVersionField(): void
+    {
+        $create   = new CreateDelegationTokenRequestV0([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
+        $renew    = new RenewDelegationTokenRequestV0("\x01\x02\x03\x04", 600000, 'test', 6);
+        $expire   = new ExpireDelegationTokenRequestV0("\x01\x02\x03\x04", -1, 'test', 7);
+        $describe = new DescribeDelegationTokenRequestV0(['User:kafkatest'], 'test', 8);
+
+        self::assertSame(substr_replace(self::CREATE_REQUEST_HEX, '0000', 12, 4), bin2hex((string) $create));
+        self::assertSame(substr_replace(self::RENEW_REQUEST_HEX, '0000', 12, 4), bin2hex((string) $renew));
+        self::assertSame(substr_replace(self::EXPIRE_REQUEST_HEX, '0000', 12, 4), bin2hex((string) $expire));
+        self::assertSame(substr_replace(self::DESCRIBE_REQUEST_ONE_HEX, '0000', 12, 4), bin2hex((string) $describe));
+        self::assertSame([0, 0, 0, 0], [
+            $create->getApiVersion(),
+            $renew->getApiVersion(),
+            $expire->getApiVersion(),
+            $describe->getApiVersion(),
+        ]);
+    }
+
+    /**
+     * The four answers of version 0 have the layout of version 1, throttle time last included
+     */
+    public function testTheVersionZeroAnswersAreReadByTheClassesOfTheirOwnVersion(): void
+    {
+        $answers = [
+            CreateDelegationTokenResponseV0::class   => self::CREATE_RESPONSE_HEX,
+            RenewDelegationTokenResponseV0::class    => self::RENEW_RESPONSE_HEX,
+            ExpireDelegationTokenResponseV0::class   => self::EXPIRE_RESPONSE_HEX,
+            DescribeDelegationTokenResponseV0::class => self::DESCRIBE_RESPONSE_HEX,
+        ];
+
+        foreach ($answers as $class => $hex) {
+            $response = $class::unpack(new StringStream((string) hex2bin($hex)));
+
+            self::assertSame($hex, bin2hex((string) $response), "{$class} does not survive a round trip");
+            $fields = array_keys($class::getScheme());
+            self::assertSame('throttleTimeMs', end($fields), "{$class} does not end with the throttle time");
+        }
+    }
+
 }

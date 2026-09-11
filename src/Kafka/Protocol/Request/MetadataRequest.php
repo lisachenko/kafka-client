@@ -19,6 +19,8 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\MetadataRequestTopic;
+use Protocol\Kafka\Protocol\Data\MetadataRequestTopicV9;
 
 /**
  * This API answers the following questions:
@@ -37,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * and the list of replicas that are currently in-sync.
  *
  * <pre>
- *   Metadata Request (Version: 5) => [topics] allow_auto_topic_creation
+ *   Metadata Request (Version: 7) => [topics] allow_auto_topic_creation
  *     topics                    => NULLABLE_ARRAY of STRING
  *     allow_auto_topic_creation => BOOLEAN     -- since version 4
  * </pre>
@@ -69,13 +71,32 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `offline_replicas` array that the ANSWER gained ({@see MetadataResponse}), which is what
  * {@see MetadataRequestV4} lowers the version constant for.
  *
+ * **Version 6 (Kafka 2.0, KIP-219) sends that frame once more** - `MetadataRequest.json` @ 2.8.2 has no field
+ * between version 4 and version 8 - and states that the **client** waits out the `throttle_time_ms` of the answer
+ * itself, because a throttled request is answered first and the channel is muted afterwards, see
+ * {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}. {@see MetadataRequestV5} keeps version 5, which a
+ * 2.8.2 broker throttles in exactly the same way - the version is the promise of the client, not a switch of the
+ * broker.
+ *
+ * **Version 7 (Kafka 2.1, KIP-320) sends that frame once more** and states that the client understands the
+ * `leader_epoch` the ANSWER gained, see {@see MetadataResponse}; {@see MetadataRequestV6} lowers the version
+ * constant for the answer that carries none.
+ *
+ * **Version 8 (Kafka 2.3, KIP-430) appended the two booleans** of the authorized operations, **version 9 (Kafka
+ * 2.4) is the first flexible one** (KIP-482), see {@see self::FLEXIBLE_VERSION}, **version 10 (Kafka 2.8,
+ * KIP-516)** put a `topic_id` into every topic entry of the request and of the answer - and left the server side
+ * of it unimplemented, see {@see MetadataRequestTopic::$topicId} - and **version 11 (Kafka 2.8, KIP-700) took
+ * `include_cluster_authorized_operations` out again**: the cluster-wide question moved to the new DescribeCluster
+ * api (key 60), and the answer of version 11 carries no `cluster_authorized_operations` either. This class is
+ * version 11; a caller that wants that bitfield from the Metadata api asks with {@see MetadataRequestV10}.
+ *
  * The flag is `true` by default here, which is the behaviour of every version below 4 and of
  * {@see \Protocol\Kafka\Common\Cluster}, whose consumers and producers expect a named topic to spring into
  * existence. The administrative side asks with `false`: {@see \Protocol\Kafka\Admin\AdminClient::describeTopics()}
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
  */
 class MetadataRequest extends AbstractRequest
 {
@@ -87,7 +108,17 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 11;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `MetadataRequest.json` @ 2.8.2 declares `"flexibleVersions": "9+"`, so a version 9 request carries the
+     * request header **v2** - the tag buffer behind the client id - every string as a compact one and a
+     * tagged-field section at the end of the body and of every topic entry. Nothing else about the frame
+     * changes: version 9 is the version 8 question in the other encoding.
+     */
+    public const int FLEXIBLE_VERSION = 9;
 
     /**
      * @param list<string>|null $topics                    Topics to fetch the metadata for, null asks for every topic
@@ -105,8 +136,40 @@ class MetadataRequest extends AbstractRequest
          */
         protected bool $allowAutoTopicCreation = true,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Whether the answer should carry the operations this principal is authorized for on the **cluster**.
+         *
+         * The bitfield of KIP-430 (Kafka 2.3), see
+         * {@see MetadataResponse::$clusterAuthorizedOperations} and {@see \Protocol\Kafka\Common\AclOperation}.
+         * `false` - the default of this client, as of the Java `describeCluster` without the option - makes the
+         * broker write `Integer.MIN_VALUE` instead, "you did not ask". The field lives in the versions 8 to 10
+         * only; KIP-700 moved the question to the DescribeCluster api.
+         *
+         * @since Version 8 of protocol
+         */
+        protected bool $includeClusterAuthorizedOperations = false,
+        /**
+         * Whether every topic entry of the answer should carry the operations this principal is authorized for
+         * on **that topic**.
+         *
+         * The same bitfield, per topic, see {@see \Protocol\Kafka\Common\TopicMetadata::$authorizedOperations}.
+         *
+         * @since Version 8 of protocol
+         */
+        protected bool $includeTopicAuthorizedOperations = false
     ) {
+        if (static::VERSION >= 9 && $this->topics !== null) {
+            // A flexible version writes the topics as structures, see {@see MetadataRequestTopic}; the public
+            // shape of this field stays the list of names, which {@see self::getTopics()} hands back
+            $topicClass   = static::topicClass();
+            $this->topics = array_map(
+                static fn(MetadataRequestTopic|string $topic): MetadataRequestTopic
+                    => $topic instanceof MetadataRequestTopic ? $topic : new $topicClass($topic),
+                $this->topics
+            );
+        }
+
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
@@ -120,12 +183,37 @@ class MetadataRequest extends AbstractRequest
             ? [BinarySchema::TYPE_STRING, BinarySchema::FLAG_NULLABLE => true]
             : [BinarySchema::TYPE_STRING];
 
+        // From version 9 - the first flexible one - a topic entry is a STRUCTURE of the specification and gets
+        // the tagged-field section that closes every structure of a flexible version, so the array can not be a
+        // list of bare strings any more, see {@see MetadataRequestTopic}
+        if (static::VERSION >= 9) {
+            $topics = [static::topicClass(), BinarySchema::FLAG_NULLABLE => true];
+        }
+
         $body = ['topics' => $topics];
         if (static::VERSION >= 4) {
             $body['allowAutoTopicCreation'] = BinarySchema::TYPE_BOOLEAN;
         }
+        // The cluster-wide question of KIP-430 lives in the versions 8 to 10 only: `MetadataRequest.json`
+        // @ 2.8.2 declares it as "8-10", because KIP-700 gave it to the DescribeCluster api in version 11
+        if (static::VERSION >= 8 && static::VERSION <= 10) {
+            $body['includeClusterAuthorizedOperations'] = BinarySchema::TYPE_BOOLEAN;
+        }
+        if (static::VERSION >= 8) {
+            $body['includeTopicAuthorizedOperations'] = BinarySchema::TYPE_BOOLEAN;
+        }
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this class sends
+     *
+     * @return class-string<MetadataRequestTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return static::VERSION >= 10 ? MetadataRequestTopic::class : MetadataRequestTopicV9::class;
     }
 
     /**
@@ -135,7 +223,15 @@ class MetadataRequest extends AbstractRequest
      */
     public function getTopics(): ?array
     {
-        return $this->topics;
+        if ($this->topics === null) {
+            return null;
+        }
+
+        return array_map(
+            static fn(MetadataRequestTopic|string $topic): string
+                => $topic instanceof MetadataRequestTopic ? $topic->name : $topic,
+            array_values($this->topics)
+        );
     }
 
     /**

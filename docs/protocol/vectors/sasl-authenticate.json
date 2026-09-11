@@ -1,13 +1,13 @@
 {
     "api": "sasl-authenticate",
     "apiKey": 36,
-    "section": "SaslAuthenticate API (key 36, v0)",
+    "section": "SaslAuthenticate API (key 36, v0 to v2)",
     "description": "Wire vectors of the SaslAuthenticate API (key 36, v0, Kafka 1.0 / KIP-152), the request that carries the SASL tokens after a SaslHandshake v1, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "saslauthenticate.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequestV0",
             "version": 0,
             "source": "broker",
             "description": "SaslAuthenticate request v0 carrying the PLAIN token of the user kafkatest, sent right after a SaslHandshake v1 on the SASL_PLAINTEXT listener. The bytes of the token are the very ones a v0 exchange writes on the socket raw.",
@@ -26,7 +26,7 @@
         {
             "id": "saslauthenticate.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of a completed PLAIN exchange: error code 0, no error message at all (the nullable string -1) and the empty token of PlainSaslServer.evaluateResponse(). There is no throttle_time_ms: the api is one of the four KIP-124 left out.",
@@ -44,7 +44,7 @@
         {
             "id": "saslauthenticate.request.v0.invalid-credentials",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequestV0",
             "version": 0,
             "source": "broker",
             "description": "The same request with a wrong password for an existing user.",
@@ -63,7 +63,7 @@
         {
             "id": "saslauthenticate.response.v0.invalid-credentials",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponseV0",
             "version": 0,
             "source": "broker",
             "description": "What Kafka 1.0 added to the exchange: the error code 58 (SaslAuthenticationFailed) and the message of the broker, where a 0.11 broker closed the connection without a word. An unknown user is answered with exactly the same frame. The broker closes the connection right after it.",
@@ -81,7 +81,7 @@
         {
             "id": "saslauthenticate.response.v0.illegal-state",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponseV0",
             "version": 0,
             "source": "broker",
             "description": "A second SaslAuthenticate request on an authenticated connection reaches KafkaApis instead of the authenticator, which answers the error code 34 (IllegalSaslState) with its message and leaves the connection usable.",
@@ -94,6 +94,84 @@
                 "saslAuthBytes": {
                     "$bytes": ""
                 }
+            }
+        },
+        {
+            "id": "saslauthenticate.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "SaslAuthenticate request v1, the frame of version 0 with the api version Kafka 2.2 added: the PLAIN token of `User:kafkatest` inside an ordinary request, on the SASL_PLAINTEXT listener.",
+            "hex": "000000330024000100000322000a74342d766563746f72730000001b006b61666b6174657374006b61666b61746573742d736563726574",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 36,
+                "apiVersion": 1,
+                "correlationId": 802,
+                "clientId": "t4-vectors",
+                "saslAuthBytes": {
+                    "$bytes": "006b61666b6174657374006b61666b61746573742d736563726574"
+                }
+            }
+        },
+        {
+            "id": "saslauthenticate.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "SaslAuthenticate answer v1 of KIP-368: the empty token of a finished PLAIN exchange and the `session_lifetime_ms` the version added - 0 on a broker whose listener sets no `connections.max.reauth.ms`, which means that the session never has to re-authenticate.",
+            "hex": "000000140000032200000000000000000000000000000000",
+            "fields": {
+                "messageSize": 20,
+                "correlationId": 802,
+                "errorCode": 0,
+                "errorMessage": "",
+                "saslAuthBytes": {
+                    "$bytes": ""
+                },
+                "sessionLifetimeMs": 0
+            }
+        },
+        {
+            "id": "saslauthenticate.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "SaslAuthenticate request v2, the first flexible version of the api (KIP-482): the PLAIN token of the connection in a compact `bytes` field, with the **request header v2** - the SaslHandshake that opened the exchange is the non-flexible v1, because the handshake api never became flexible.",
+            "hex": "0000002a0024000200000394000a74342d766563746f727300140061646d696e0061646d696e2d73656372657400",
+            "fields": {
+                "messageSize": 42,
+                "apiKey": 36,
+                "apiVersion": 2,
+                "correlationId": 916,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "saslAuthBytes": {
+                    "$bytes": "0061646d696e0061646d696e2d736563726574"
+                }
+            }
+        },
+        {
+            "id": "saslauthenticate.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SaslAuthenticateResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "SaslAuthenticate answer v2: the empty token of a finished PLAIN exchange, the `session_lifetime_ms` of KIP-368 and the tag buffers of the flexible encoding.",
+            "hex": "00000012000003940000000101000000000000000000",
+            "fields": {
+                "messageSize": 18,
+                "correlationId": 916,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "errorMessage": "",
+                "saslAuthBytes": {
+                    "$bytes": ""
+                },
+                "sessionLifetimeMs": 0
             }
         }
     ]

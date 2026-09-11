@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
@@ -21,35 +22,52 @@ use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidSessionTimeoutException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\MemberIdRequiredException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
+use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
 use Protocol\Kafka\Consumer\MemberAssignment;
+use Protocol\Kafka\Consumer\RangeAssignor;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\IO\Stream;
+use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 use Protocol\Kafka\Protocol\Data\JoinGroupResponseMember;
 use Protocol\Kafka\Protocol\Data\SyncGroupRequestMember;
 use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\HeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
+use Protocol\Kafka\Protocol\Request\JoinGroupRequestV3;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponseV3;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 
 /**
- * Verifies the four apis of the group membership protocol against a real Kafka 0.9.0.1 broker.
+ * Verifies the four apis of the group membership protocol against a real Kafka 2.8.2 broker.
  *
  * Kafka 0.9 moved the coordination of a group out of ZooKeeper into the coordinator broker, and these tests drive
  * the whole cycle of a generation over raw requests: a member joins, the leader publishes an assignment, the
  * members heartbeat, a second member joins and forces a rebalance, and both leave. The payloads - the metadata of a
- * member and its assignment - are opaque byte arrays to these apis, so arbitrary bytes are used for them here; the
- * `consumer` structures that really go in there belong to another ticket.
+ * member and its assignment - are opaque byte arrays to these **apis**, so arbitrary bytes are used for them here.
  *
- * @see docs/protocol/1.1.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0, v1 and v2)",
- *      "SyncGroup API (key 14, v0 and v1)", "Heartbeat API (key 12, v0 and v1)" and "LeaveGroup API (key 13, v0 and v1)"
+ * They are not opaque to a **2.x coordinator**, though, and that is why the group protocol type of this class is
+ * {@see self::PROTOCOL_TYPE} and not `consumer`: from Kafka 2.3 on `GroupMetadata.computeSubscribedTopics()` parses
+ * the metadata of every member of a group whose protocol type *is* `consumer` as a `ConsumerProtocolSubscription`,
+ * and bytes it cannot parse leave the group in `PreparingRebalance` for good - see "A `consumer` group whose member
+ * metadata is not a Subscription never rebalances" in the "Broker quirks and observations" section of the protocol
+ * document. {@see self::testTheConsumerProtocolPayloadsSurviveTheRoundTripThroughTheseApis} is the one test here
+ * that uses the `consumer` protocol type, and it sends the real structures of that type.
+ *
+ * Every request goes out with the version this line sends, which Kafka 2.0 raised by one for all four apis without
+ * changing a field (KIP-219): JoinGroup v3, SyncGroup v2, Heartbeat v2 and LeaveGroup v2.
+ *
+ * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 to v7)",
+ *      "SyncGroup API (key 14, v0 to v5)", "Heartbeat API (key 12, v0 to v4)" and "LeaveGroup API (key 13, v0 to v4)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(JoinGroupRequest::class)]
@@ -66,9 +84,18 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
 final class GroupMembershipApiTest extends IntegrationTestCase
 {
     /**
-     * Protocol type of the consumer groups, the only one Kafka itself knows about
+     * Protocol type of the groups of this class, which is deliberately **not** `consumer`
+     *
+     * A group whose protocol type is `consumer` has its member metadata parsed by the coordinator itself from
+     * Kafka 2.3 on; a protocol type of its own keeps the arbitrary bytes of these tests genuinely opaque, which is
+     * what the four apis promise. {@see self::CONSUMER_PROTOCOL_TYPE} is used where the real structures are sent.
      */
-    private const string PROTOCOL_TYPE = 'consumer';
+    private const string PROTOCOL_TYPE = 't3-membership';
+
+    /**
+     * The protocol type of a real consumer group, the only one Kafka itself knows about
+     */
+    private const string CONSUMER_PROTOCOL_TYPE = 'consumer';
 
     /**
      * Name of the protocol this test offers; its metadata is opaque to the coordinator
@@ -78,6 +105,15 @@ final class GroupMembershipApiTest extends IntegrationTestCase
     /**
      * Session timeout of every member here: `group.min.session.timeout.ms` of the container is 1000
      */
+    /**
+     * How often the KIP-394 pair - the refused first join and the rejoin with the assigned id - is started over
+     *
+     * The member id of a 79 lives in `group.pendingMembers` for one session timeout only, and the coordinator of
+     * the shared container has been seen dropping it between the two requests while the other suites hammer it;
+     * the rejoin is then answered 25 and the exchange has to begin again with an empty member id.
+     */
+    private const int JOIN_ATTEMPTS = 3;
+
     private const int SESSION_TIMEOUT_MS = 6000;
 
     /**
@@ -102,6 +138,151 @@ final class GroupMembershipApiTest extends IntegrationTestCase
      * The cluster is resolved once: every test of this class talks to the same brokers
      */
     private static ?Cluster $sharedCluster = null;
+
+    /**
+     * KIP-394 (Kafka 2.2, JoinGroup v4): a first join is refused once, with the member id it is to use
+     *
+     * Up to version 3 a join with an empty member id added the member to the group at once. From version 4 on the
+     * coordinator answers **79** (`MemberIdRequired`) with the id it generated and adds nothing; the client sends
+     * the same request again with that id and is then treated like any rejoining member.
+     */
+    public function testAFirstJoinOfVersionFourIsRefusedWithTheMemberIdTheCoordinatorAssigns(): void
+    {
+        $admin = new AdminClient($this->cluster(), $this->configuration());
+
+        // The coordinator's `cleanupGroupMetadata` runs every `offsets.retention.check.interval.ms` (ten minutes
+        // by default) and removes an Empty group that holds no offset - which is exactly what a group with nothing
+        // but a pending member is. It is a rare neighbour of this exchange on the shared container, and the only
+        // answer it can produce is the `Dead` of a group that is gone, so the exchange is simply done again
+        for ($attempt = 1; ; ++$attempt) {
+            $groupId = self::uniqueGroupName();
+            $stream  = $this->coordinatorStream($groupId);
+
+            $refused = $this->rawJoin($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, 'first join', 601);
+
+            self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
+            self::assertSame(-1, $refused->generationId, 'an error answer of a 2.x coordinator carries -1');
+            self::assertNull(
+                $refused->groupProtocol,
+                'KIP-559 made the protocol name nullable in a version 7, where a version 6 carries the empty string'
+            );
+            self::assertNull($refused->protocolType, 'and the protocol type next to it is null for the same answer');
+            self::assertSame('', $refused->leaderId);
+            self::assertSame([], $refused->members);
+            self::assertMatchesRegularExpression(
+                '/^' . preg_quote($this->clientId(), '/') . '-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/',
+                $refused->memberId,
+                'the answer carries the member id the coordinator generated, as "<client id>-<uuid>"'
+            );
+
+            // The group exists, but the pending member is not a member of it: it holds no rebalance up
+            $description = $admin->describeGroup($groupId);
+
+            if ($description->state !== DescribeGroupResponseMetadata::STATE_DEAD || $attempt === 3) {
+                break;
+            }
+        }
+
+        self::assertSame(DescribeGroupResponseMetadata::STATE_EMPTY, $description->state);
+        self::assertSame([], $description->members, 'a pending member does not appear in DescribeGroups');
+
+        // The same request again, with the id it was given, is accepted
+        $joined = $this->rawJoin($stream, $groupId, $refused->memberId, 'first join', 602);
+
+        self::assertSame(KafkaException::NO_ERROR, $joined->errorCode);
+        self::assertSame(1, $joined->generationId, 'the first generation of the group');
+        self::assertSame($refused->memberId, $joined->memberId, 'and the member kept the id it was handed');
+        self::assertSame($joined->memberId, $joined->leaderId);
+        self::assertSame([$joined->memberId], array_keys($joined->members));
+
+        $this->leave($stream, $groupId, $joined->memberId);
+    }
+
+    /**
+     * The version below it still adds an unidentified member to the group at once
+     */
+    public function testAFirstJoinOfVersionThreeIsAddedToTheGroupRightAway(): void
+    {
+        $groupId = self::uniqueGroupName();
+        $stream  = $this->coordinatorStream($groupId);
+
+        new JoinGroupRequestV3(
+            $groupId,
+            self::SESSION_TIMEOUT_MS,
+            self::REBALANCE_TIMEOUT_MS,
+            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            self::PROTOCOL_TYPE,
+            [self::PROTOCOL_NAME => 'a version 3 first join'],
+            $this->clientId(),
+            603
+        )->writeTo($stream);
+        $joined = JoinGroupResponseV3::unpack($stream);
+
+        self::assertSame(KafkaException::NO_ERROR, $joined->errorCode, 'no 79 below version 4');
+        self::assertSame(1, $joined->generationId);
+        self::assertNotSame('', $joined->memberId, 'the coordinator assigned an id and added the member');
+        self::assertSame($joined->memberId, $joined->leaderId);
+
+        $this->leave($stream, $groupId, $joined->memberId);
+    }
+
+    /**
+     * The client answers the 79 itself, so a caller of the consumer never sees it
+     */
+    public function testTheClientCoordinatorJoinsWithTheAssignedMemberIdWithoutAnyHelp(): void
+    {
+        $groupId     = self::uniqueGroupName();
+        $client      = new Client($this->cluster(), $this->configuration());
+        $coordinator = new ConsumerCoordinator($client, $groupId, new RangeAssignor(), 3000);
+
+        $assignment = $coordinator->ensureActiveGroup(['t3-membership-394'], static fn(array $topics): array => []);
+
+        self::assertSame([], $assignment, 'no partitions, because the topic of the subscription has none here');
+        self::assertTrue($coordinator->isMember(), 'the coordinator joined through the 79 of KIP-394');
+        self::assertSame(1, $coordinator->getGenerationId());
+        self::assertStringStartsWith($this->clientId(), $coordinator->getMemberId());
+
+        $coordinator->leaveGroup();
+    }
+
+    /**
+     * The low-level client reports the 79 with the assigned id in the context, and does NOT rejoin by itself
+     */
+    public function testTheLowLevelClientReportsTheAssignedMemberIdInTheExceptionContext(): void
+    {
+        $groupId     = self::uniqueGroupName();
+        $client      = new Client($this->cluster(), $this->configuration());
+        $coordinator = $client->getGroupCoordinator($groupId);
+
+        try {
+            $client->joinGroup(
+                $coordinator,
+                $groupId,
+                JoinGroupRequest::DEFAULT_MEMBER_ID,
+                self::PROTOCOL_TYPE,
+                [self::PROTOCOL_NAME => 'metadata of the client']
+            );
+            self::fail('A first join of version 4 has to be refused with the error code 79');
+        } catch (MemberIdRequiredException $exception) {
+            $assigned = $exception->getContext()['assignedMemberId'] ?? null;
+
+            self::assertIsString($assigned);
+            self::assertStringStartsWith($this->clientId(), $assigned);
+            self::assertSame('', $exception->getContext()['memberId'], 'the id that was SENT was the empty one');
+
+            $joined = $client->joinGroup(
+                $coordinator,
+                $groupId,
+                $assigned,
+                self::PROTOCOL_TYPE,
+                [self::PROTOCOL_NAME => 'metadata of the client']
+            );
+
+            self::assertSame(1, $joined->generationId);
+            self::assertSame($assigned, $joined->memberId);
+            $client->leaveGroup($coordinator, $groupId, $joined->memberId);
+        }
+    }
 
     public function testAFreshGroupAssignsAMemberIdAndMakesTheFirstMemberItsLeader(): void
     {
@@ -157,7 +338,9 @@ final class GroupMembershipApiTest extends IntegrationTestCase
      * generation is incremented and the leader assigns a share to both of them.
      *
      * The JoinGroup of the second member is written but not read until the first member has rejoined, because the
-     * coordinator holds that answer back for exactly that long - which is the blocking behaviour of the api.
+     * coordinator holds that answer back for exactly that long - which is the blocking behaviour of the api. Its
+     * **first** join is a different matter: the 79 of KIP-394 is answered at once and starts no rebalance at all,
+     * so it is sent and read before the blocking one goes out.
      */
     public function testASecondMemberForcesARebalanceThatTheHeartbeatOfTheFirstOneReports(): void
     {
@@ -170,15 +353,29 @@ final class GroupMembershipApiTest extends IntegrationTestCase
 
         // A second connection, so that the join of the second member can be left unanswered while the first one acts
         $secondStream = $this->newCoordinatorStream($groupId);
+        $refused      = $this->rawJoin($secondStream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, 'second', 201);
+
+        self::assertSame(
+            KafkaException::MEMBER_ID_REQUIRED,
+            $refused->errorCode,
+            'the first join of a member is refused at once and leaves the stable group alone'
+        );
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $this->heartbeat($firstStream, $groupId, $first->memberId, $first->generationId)->errorCode,
+            'a pending member starts no rebalance: the group is still stable for the first member'
+        );
+
+        // The real join of the second member, which the coordinator holds until the first one has rejoined
         new JoinGroupRequest(
             $groupId,
             self::SESSION_TIMEOUT_MS,
             self::REBALANCE_TIMEOUT_MS,
-            JoinGroupRequest::DEFAULT_MEMBER_ID,
+            $refused->memberId,
             self::PROTOCOL_TYPE,
             [self::PROTOCOL_NAME => 'second'],
             $this->clientId(),
-            201
+            202
         )->writeTo($secondStream);
 
         $rebalancing = $this->heartbeatUntil($firstStream, $groupId, $first, KafkaException::REBALANCE_IN_PROGRESS);
@@ -252,48 +449,97 @@ final class GroupMembershipApiTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::INVALID_SESSION_TIMEOUT, $response->errorCode);
         self::assertSame(
-            0,
+            -1,
             $response->generationId,
-            'GroupCoordinator.joinError builds an error answer with the generation 0, not with -1'
+            'a 2.x error answer carries the UNKNOWN_GENERATION_ID -1, where a 0.11 or 1.1 broker sent 0'
         );
-        self::assertSame('', $response->groupProtocol);
+        self::assertNull($response->groupProtocol, 'null from version 7 on, the empty string below it (KIP-559)');
         self::assertSame('', $response->leaderId);
         self::assertSame([], $response->members);
     }
 
     /**
-     * The rebalance timeout of version 1 is not validated at all - only the session timeout is
+     * The rebalance timeout is not validated at all - only the session timeout is - but it is no longer harmless
      *
-     * `group.max.session.timeout.ms` of the container is 60000, and `GroupCoordinator.handleJoinGroup` @ 0.10.2.2
+     * `group.max.session.timeout.ms` of the container is 60000, and `GroupCoordinator.handleJoinGroup` @ 2.8.2
      * checks nothing but the session timeout against it: a rebalance timeout far above that bound is accepted, and
-     * so is a rebalance timeout of 0.
+     * so is a rebalance timeout of 0. What Kafka 2.5 added (KAFKA-9752, the pending-sync expiration of KIP-345) is
+     * a **second** use of the field: `onCompleteJoin` schedules a `DelayedSync` with exactly this timeout and
+     * `onExpirePendingSync` drops every member of the fresh generation that has not sent its SyncGroup by then.
+     * With a rebalance timeout of 0 that expiry fires the moment the generation is formed, so the member is gone
+     * before it can do anything with the answer it just received - which is what the LeaveGroup below measures.
      */
-    public function testTheRebalanceTimeoutOfVersionOneIsNotBoundedByTheBroker(): void
+    public function testTheRebalanceTimeoutIsNotBoundedByTheBrokerButIsAlsoTheSyncDeadline(): void
     {
         $groupId = self::uniqueGroupName();
         $stream  = $this->coordinatorStream($groupId);
 
-        foreach ([300000, 0] as $index => $rebalanceTimeoutMs) {
-            new JoinGroupRequest(
-                $groupId,
-                self::SESSION_TIMEOUT_MS,
-                $rebalanceTimeoutMs,
-                JoinGroupRequest::DEFAULT_MEMBER_ID,
-                self::PROTOCOL_TYPE,
-                [self::PROTOCOL_NAME => 'metadata'],
-                $this->clientId(),
-                310 + $index
-            )->writeTo($stream);
-            $response = JoinGroupResponse::unpack($stream);
+        $generous = $this->joinWithRebalanceTimeout($stream, $groupId, 300000, 310);
 
-            self::assertSame(
-                KafkaException::NO_ERROR,
-                $response->errorCode,
-                "a rebalance timeout of {$rebalanceTimeoutMs} ms is accepted, however group.max.session.timeout.ms "
-                . 'is configured'
-            );
-            $this->leave($stream, $groupId, $response->memberId);
-        }
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $generous->errorCode,
+            'a rebalance timeout of 300000 ms is accepted, however group.max.session.timeout.ms is configured'
+        );
+        $this->leave($stream, $groupId, $generous->memberId);
+
+        // The same join with a rebalance timeout of 0: accepted as well, and the member is dropped right away
+        $immediate = self::uniqueGroupName();
+        $zero      = $this->joinWithRebalanceTimeout($stream, $immediate, 0, 311);
+
+        self::assertSame(KafkaException::NO_ERROR, $zero->errorCode, 'a rebalance timeout of 0 is accepted too');
+        self::assertSame(1, $zero->generationId);
+
+        new LeaveGroupRequest($immediate, $zero->memberId, $this->clientId(), 312)->writeTo($stream);
+        $left = LeaveGroupResponse::unpack($stream);
+
+        // From version 3 (KIP-345) the error of a member travels in its entry of the batch answer, and the
+        // top-level code is about the request alone
+        self::assertSame(KafkaException::NO_ERROR, $left->errorCode);
+        self::assertSame(
+            KafkaException::UNKNOWN_MEMBER_ID,
+            $left->members[0]->errorCode,
+            'the pending-sync expiration of the rebalance timeout 0 removed the member before it could sync'
+        );
+    }
+
+    /**
+     * The metadata of a group whose protocol type is not `consumer` is never parsed by the coordinator
+     *
+     * This is the counterpart of the quirk that the class docblock names: a 2.x coordinator parses the member
+     * metadata of a `consumer` group and wedges the group when it cannot, but it only does that for that one
+     * protocol type - `GroupMetadata.computeSubscribedTopics()` @ 2.8.2 matches
+     * `Some(ConsumerProtocol.PROTOCOL_TYPE)` and answers `None` for everything else. Bytes that are not a
+     * `ConsumerProtocolSubscription` - here a NUL byte, an invalid UTF-8 byte and a length prefix that promises far
+     * more data than follows - therefore travel through JoinGroup and SyncGroup untouched.
+     */
+    public function testTheCoordinatorNeverParsesTheMetadataOfANonConsumerProtocolType(): void
+    {
+        $groupId    = self::uniqueGroupName();
+        $stream     = $this->coordinatorStream($groupId);
+        $metadata   = "\x00\xff\x7f\xff\xff\xffnot a subscription";
+        $assignment = "\xff\xff\xff\xff\x00not an assignment";
+
+        $join = $this->join($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, $metadata);
+
+        self::assertSame(1, $join->generationId, 'the group rebalanced although the metadata is not parseable');
+        self::assertSame(
+            [$join->memberId => $metadata],
+            array_map(static fn(JoinGroupResponseMember $member): string => $member->metadata, $join->members)
+        );
+
+        $sync = $this->sync($stream, $groupId, $join->memberId, $join->generationId, [
+            $join->memberId => $assignment,
+        ]);
+
+        self::assertSame($assignment, $sync->memberAssignment);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $this->heartbeat($stream, $groupId, $join->memberId, $join->generationId)->errorCode,
+            'the group is stable, which a `consumer` group with these bytes would never become'
+        );
+
+        $this->leave($stream, $groupId, $join->memberId);
     }
 
     /**
@@ -310,37 +556,29 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         $rebalanceMs   = 3000;
         $firstStream   = $this->coordinatorStream($groupId);
 
-        new JoinGroupRequest(
-            $groupId,
-            $sessionMs,
-            $rebalanceMs,
-            JoinGroupRequest::DEFAULT_MEMBER_ID,
-            self::PROTOCOL_TYPE,
-            [self::PROTOCOL_NAME => 'first'],
-            $this->clientId(),
-            320
-        )->writeTo($firstStream);
-        $first = JoinGroupResponse::unpack($firstStream);
+        $first = $this->joinWithRebalanceTimeout($firstStream, $groupId, $rebalanceMs, 320, 'first', $sessionMs);
         self::assertSame(KafkaException::NO_ERROR, $first->errorCode);
         $this->sync($firstStream, $groupId, $first->memberId, $first->generationId, [
             $first->memberId => 'everything',
         ]);
 
-        // The first member now stops talking; the second one joins and waits for it to rejoin
+        // The first member now stops talking; the second one joins and waits for it to rejoin. The 79 of KIP-394
+        // is answered before the wait starts, so the id is fetched first and the clock starts with the real join
         $secondStream = $this->newCoordinatorStream($groupId);
-        $startedAt    = microtime(true);
-        new JoinGroupRequest(
+        $refused      = $this->rawJoinWith($secondStream, $groupId, '', 'second', $sessionMs, $rebalanceMs, 321);
+        self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
+
+        $startedAt = microtime(true);
+        $second    = $this->rawJoinWith(
+            $secondStream,
             $groupId,
+            $refused->memberId,
+            'second',
             $sessionMs,
             $rebalanceMs,
-            JoinGroupRequest::DEFAULT_MEMBER_ID,
-            self::PROTOCOL_TYPE,
-            [self::PROTOCOL_NAME => 'second'],
-            $this->clientId(),
-            321
-        )->writeTo($secondStream);
-        $second  = JoinGroupResponse::unpack($secondStream);
-        $waitedS = microtime(true) - $startedAt;
+            322
+        );
+        $waitedS   = microtime(true) - $startedAt;
 
         self::assertSame(KafkaException::NO_ERROR, $second->errorCode);
         self::assertSame(2, $second->generationId, 'the rebalance produced the next generation');
@@ -369,8 +607,17 @@ final class GroupMembershipApiTest extends IntegrationTestCase
             ->writeTo($stream);
         $heartbeat = HeartbeatResponse::unpack($stream);
 
-        new SyncGroupRequest($groupId, $join->generationId, 't3-not-a-member', [], $this->clientId(), 402)
-            ->writeTo($stream);
+        new SyncGroupRequest(
+            $groupId,
+            $join->generationId,
+            't3-not-a-member',
+            [],
+            $this->clientId(),
+            402,
+            null,
+            self::PROTOCOL_TYPE,
+            self::PROTOCOL_NAME
+        )->writeTo($stream);
         $sync = SyncGroupResponse::unpack($stream);
 
         new LeaveGroupRequest($groupId, 't3-not-a-member', $this->clientId(), 403)->writeTo($stream);
@@ -379,7 +626,17 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         self::assertSame(KafkaException::UNKNOWN_MEMBER_ID, $heartbeat->errorCode);
         self::assertSame(KafkaException::UNKNOWN_MEMBER_ID, $sync->errorCode);
         self::assertSame('', $sync->memberAssignment, 'an error answer carries an empty assignment');
-        self::assertSame(KafkaException::UNKNOWN_MEMBER_ID, $leave->errorCode);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $leave->errorCode,
+            'the batch of version 3 (KIP-345) answers 0 at the top whatever became of its members'
+        );
+        self::assertSame(
+            KafkaException::UNKNOWN_MEMBER_ID,
+            $leave->members[0]->errorCode,
+            'and the member id the group does not have is refused in its own entry'
+        );
+        self::assertSame('t3-not-a-member', $leave->members[0]->memberId, 'the entry echoes what was sent');
 
         // A member that names a group the coordinator has never seen is refused the same way
         new HeartbeatRequest(self::uniqueGroupName(), 1, 't3-not-a-member', $this->clientId(), 404)
@@ -401,8 +658,17 @@ final class GroupMembershipApiTest extends IntegrationTestCase
             ->writeTo($stream);
         $heartbeat = HeartbeatResponse::unpack($stream);
 
-        new SyncGroupRequest($groupId, $join->generationId + 1, $join->memberId, [], $this->clientId(), 502)
-            ->writeTo($stream);
+        new SyncGroupRequest(
+            $groupId,
+            $join->generationId + 1,
+            $join->memberId,
+            [],
+            $this->clientId(),
+            502,
+            null,
+            self::PROTOCOL_TYPE,
+            self::PROTOCOL_NAME
+        )->writeTo($stream);
         $sync = SyncGroupResponse::unpack($stream);
 
         self::assertSame(KafkaException::ILLEGAL_GENERATION, $heartbeat->errorCode);
@@ -420,13 +686,9 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         $client      = new Client($this->cluster(), $this->configuration());
         $coordinator = $client->getGroupCoordinator($groupId);
 
-        $join = $client->joinGroup(
-            $coordinator,
-            $groupId,
-            JoinGroupRequest::DEFAULT_MEMBER_ID,
-            self::PROTOCOL_TYPE,
-            [self::PROTOCOL_NAME => 'metadata of the client']
-        );
+        $join = $this->joinThroughClient($client, $coordinator, $groupId, [
+            self::PROTOCOL_NAME => 'metadata of the client',
+        ]);
 
         self::assertSame(1, $join->generationId);
         self::assertSame($join->memberId, $join->leaderId);
@@ -468,13 +730,9 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         $groupId     = self::uniqueGroupName();
         $client      = new Client($this->cluster(), $this->configuration());
         $coordinator = $client->getGroupCoordinator($groupId);
-        $join        = $client->joinGroup(
-            $coordinator,
-            $groupId,
-            JoinGroupRequest::DEFAULT_MEMBER_ID,
-            self::PROTOCOL_TYPE,
-            [self::PROTOCOL_NAME => 'metadata']
-        );
+        $join        = $this->joinThroughClient($client, $coordinator, $groupId, [
+            self::PROTOCOL_NAME => 'metadata',
+        ]);
         $client->syncGroup($coordinator, $groupId, $join->memberId, $join->generationId, [
             $join->memberId => 'everything',
         ]);
@@ -504,12 +762,12 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         $coordinator  = $client->getGroupCoordinator($groupId);
         $subscription = new Subscription([$topic]);
 
-        $join = $client->joinGroup(
+        $join = $this->joinThroughClient(
+            $client,
             $coordinator,
             $groupId,
-            JoinGroupRequest::DEFAULT_MEMBER_ID,
-            self::PROTOCOL_TYPE,
-            [self::PROTOCOL_NAME => $subscription->pack()]
+            [self::PROTOCOL_NAME => $subscription->pack()],
+            self::CONSUMER_PROTOCOL_TYPE
         );
 
         self::assertEquals(
@@ -530,10 +788,156 @@ final class GroupMembershipApiTest extends IntegrationTestCase
     }
 
     /**
+     * Joins through the low-level client, answering the 79 of KIP-394 with the member id it carries
+     *
+     * `Client::joinGroup()` is the api and not the state machine: it reports the 79 and leaves the second join to
+     * its caller, which is what `Consumer\Internals\ConsumerCoordinator` does in the client itself.
+     *
+     * **The pair is started over when the rejoin is answered 25.** A member id the coordinator assigned lives in
+     * `group.pendingMembers` for one session timeout, and on the shared container of this line the coordinator has
+     * been seen dropping it between the two requests under the load of the other suites - the second join is then
+     * a join with an id the group no longer has, which is an `UnknownMemberId` and not a defect of the client.
+     *
+     * @param array<string, string> $protocols Metadata of every offered protocol, by protocol name
+     */
+    private function joinThroughClient(
+        Client $client,
+        Node $coordinator,
+        string $groupId,
+        array $protocols,
+        string $protocolType = self::PROTOCOL_TYPE
+    ): JoinGroupResponse {
+        for ($attempt = 1; ; ++$attempt) {
+            try {
+                return $client->joinGroup(
+                    $coordinator,
+                    $groupId,
+                    JoinGroupRequest::DEFAULT_MEMBER_ID,
+                    $protocolType,
+                    $protocols
+                );
+            } catch (MemberIdRequiredException $exception) {
+                try {
+                    return $client->joinGroup(
+                        $coordinator,
+                        $groupId,
+                        (string) $exception->getContext()['assignedMemberId'],
+                        $protocolType,
+                        $protocols
+                    );
+                } catch (UnknownMemberIdException $expired) {
+                    if ($attempt === self::JOIN_ATTEMPTS) {
+                        throw $expired;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Sends a JoinGroup request and asserts that the coordinator accepted it
+     *
+     * A first join - one with an empty member id - is refused once by the version 4 this client sends (KIP-394)
+     * and has to be repeated with the member id the coordinator assigned, which is what this helper does.
      */
     private function join(Stream $stream, string $groupId, string $memberId, string $metadata): JoinGroupResponse
     {
+        for ($attempt = 1; ; ++$attempt) {
+            $response = $this->rawJoin($stream, $groupId, $memberId, $metadata, 101);
+            if ($response->errorCode === KafkaException::MEMBER_ID_REQUIRED) {
+                $response = $this->rawJoin($stream, $groupId, $response->memberId, $metadata, 102);
+            }
+
+            // The coordinator can drop the pending member of the 79 before the rejoin arrives, which answers the
+            // second request 25; the exchange is simply done again, see joinThroughClient()
+            if ($response->errorCode !== KafkaException::UNKNOWN_MEMBER_ID || $attempt === self::JOIN_ATTEMPTS) {
+                break;
+            }
+        }
+
+        self::assertSame(KafkaException::NO_ERROR, $response->errorCode, 'The broker refused the join');
+
+        return $response;
+    }
+
+    /**
+     * Joins with a rebalance timeout of its own, answering the 79 of KIP-394 with the id it carries
+     */
+    private function joinWithRebalanceTimeout(
+        Stream $stream,
+        string $groupId,
+        int $rebalanceTimeoutMs,
+        int $correlationId,
+        string $metadata = 'metadata',
+        int $sessionTimeoutMs = self::SESSION_TIMEOUT_MS
+    ): JoinGroupResponse {
+        for ($attempt = 1; ; ++$attempt) {
+            $response = $this->rawJoinWith(
+                $stream,
+                $groupId,
+                JoinGroupRequest::DEFAULT_MEMBER_ID,
+                $metadata,
+                $sessionTimeoutMs,
+                $rebalanceTimeoutMs,
+                $correlationId
+            );
+            if ($response->errorCode !== KafkaException::MEMBER_ID_REQUIRED) {
+                return $response;
+            }
+
+            $joined = $this->rawJoinWith(
+                $stream,
+                $groupId,
+                $response->memberId,
+                $metadata,
+                $sessionTimeoutMs,
+                $rebalanceTimeoutMs,
+                $correlationId + 1000
+            );
+
+            // A pending member the coordinator dropped before the rejoin is a 25, see joinThroughClient()
+            if ($joined->errorCode !== KafkaException::UNKNOWN_MEMBER_ID || $attempt === self::JOIN_ATTEMPTS) {
+                return $joined;
+            }
+        }
+    }
+
+    /**
+     * Sends one JoinGroup request with timeouts of its own and returns the answer, whatever it says
+     */
+    private function rawJoinWith(
+        Stream $stream,
+        string $groupId,
+        string $memberId,
+        string $metadata,
+        int $sessionTimeoutMs,
+        int $rebalanceTimeoutMs,
+        int $correlationId
+    ): JoinGroupResponse {
+        new JoinGroupRequest(
+            $groupId,
+            $sessionTimeoutMs,
+            $rebalanceTimeoutMs,
+            $memberId,
+            self::PROTOCOL_TYPE,
+            [self::PROTOCOL_NAME => $metadata],
+            $this->clientId(),
+            $correlationId
+        )->writeTo($stream);
+
+        return JoinGroupResponse::unpack($stream);
+    }
+
+    /**
+     * Sends one JoinGroup request of the version this client speaks and returns the answer, whatever it says
+     */
+    private function rawJoin(
+        Stream $stream,
+        string $groupId,
+        string $memberId,
+        string $metadata,
+        int $correlationId
+    ): JoinGroupResponse {
         new JoinGroupRequest(
             $groupId,
             self::SESSION_TIMEOUT_MS,
@@ -542,13 +946,10 @@ final class GroupMembershipApiTest extends IntegrationTestCase
             self::PROTOCOL_TYPE,
             [self::PROTOCOL_NAME => $metadata],
             $this->clientId(),
-            101
+            $correlationId
         )->writeTo($stream);
 
-        $response = JoinGroupResponse::unpack($stream);
-        self::assertSame(KafkaException::NO_ERROR, $response->errorCode, 'The broker refused the join');
-
-        return $response;
+        return JoinGroupResponse::unpack($stream);
     }
 
     /**
@@ -563,8 +964,17 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         int $generationId,
         array $assignments
     ): SyncGroupResponse {
-        new SyncGroupRequest($groupId, $generationId, $memberId, $assignments, $this->clientId(), 102)
-            ->writeTo($stream);
+        new SyncGroupRequest(
+            $groupId,
+            $generationId,
+            $memberId,
+            $assignments,
+            $this->clientId(),
+            102,
+            null,
+            self::PROTOCOL_TYPE,
+            self::PROTOCOL_NAME
+        )->writeTo($stream);
 
         $response = SyncGroupResponse::unpack($stream);
         self::assertSame(KafkaException::NO_ERROR, $response->errorCode, 'The broker refused the sync');
@@ -610,10 +1020,12 @@ final class GroupMembershipApiTest extends IntegrationTestCase
     private function leave(Stream $stream, string $groupId, string $memberId): void
     {
         new LeaveGroupRequest($groupId, $memberId, $this->clientId(), 104)->writeTo($stream);
+        $left = LeaveGroupResponse::unpack($stream);
 
+        self::assertSame(KafkaException::NO_ERROR, $left->errorCode, 'The broker refused the request');
         self::assertSame(
             KafkaException::NO_ERROR,
-            LeaveGroupResponse::unpack($stream)->errorCode,
+            $left->members[0]->errorCode,
             'The broker refused to remove the member'
         );
     }

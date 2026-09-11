@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroup;
 
 /**
- * DeleteGroups response object, version 0 (key 42, Kafka 1.1)
+ * DeleteGroups response object, version 1 (key 42, Kafka 1.1)
  *
  * <pre>
- *   DeleteGroups Response (Version: 0) => throttle_time_ms [group_error_codes]
+ *   DeleteGroups Response (Version: 0 and 1) => throttle_time_ms [group_error_codes]
  *     throttle_time_ms  => INT32
  *     group_error_codes => group_id error_code
  *       group_id   => STRING
@@ -41,14 +41,22 @@ use Protocol\Kafka\Protocol\Data\DeleteGroupsResponseGroup;
  * | 68   | NonEmptyGroup               | The group still has members, so nothing was deleted                      |
  * | 69   | GroupIdNotFound             | The coordinator has never heard of that group                            |
  *
- * @see docs/protocol/1.1.md, section "DeleteGroups API (key 42, v0)"
+ * Version 1 (KIP-219, Kafka 2.0) answers the same bytes, which {@see DeleteGroupsResponseV0} decodes as well.
+ *
+ * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 to v2)"
  */
 class DeleteGroupsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 2;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas

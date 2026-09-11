@@ -14,8 +14,10 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Tests\Unit\IO;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\NetworkException;
+use Protocol\Kafka\Common\Utils\ByteUtils;
 use Protocol\Kafka\IO\AbstractStream;
 use Protocol\Kafka\IO\StringStream;
 
@@ -74,6 +76,68 @@ final class StringStreamTest extends TestCase
 
         $this->expectException(NetworkException::class);
         new StringStream("\xff\xff\xff\xff\xff\x01")->readVarint();
+    }
+
+    /**
+     * The unsigned varints of KIP-482, at every boundary where the encoding grows by a byte
+     *
+     * `ByteUtils.writeUnsignedVarint` @ 2.8.2 writes the value itself, 7 bits per byte, least significant group
+     * first - no zigzag step, unlike the varints of a record batch - so 127 is one byte and 128 is two. The five
+     * boundaries below are where a compact length prefix of the protocol changes its width, and the last one is the
+     * widest an unsigned varint can be: `2^32 - 1` in five bytes.
+     *
+     * @return array<string, array{int, string}>
+     */
+    public static function unsignedVarintProvider(): array
+    {
+        return [
+            'zero'                => [0, '00'],
+            'one'                 => [1, '01'],
+            'the last single byte' => [127, '7f'],
+            'the first two bytes' => [128, '8001'],
+            'the last two bytes'  => [16383, 'ff7f'],
+            'the first three bytes' => [16384, '808001'],
+            'the last four bytes' => [268435455, 'ffffff7f'],
+            'the first five bytes' => [268435456, '8080808001'],
+            'the largest uint32'  => [4294967295, 'ffffffff0f'],
+        ];
+    }
+
+    #[DataProvider('unsignedVarintProvider')]
+    public function testUnsignedVarintsAreWrittenSevenBitsPerByte(int $value, string $hex): void
+    {
+        $stream = new StringStream();
+        $stream->writeUnsignedVarint($value);
+
+        self::assertSame($hex, bin2hex($stream->getBuffer()));
+        self::assertSame(strlen($hex) / 2, ByteUtils::sizeOfUnsignedVarint($value));
+        self::assertSame($value, new StringStream((string) hex2bin($hex))->readUnsignedVarint());
+    }
+
+    /**
+     * The unsigned varint and the varint of a record batch read the same bytes and mean different values
+     */
+    public function testTheUnsignedVarintIsTheRawVarintWithoutTheZigzagStep(): void
+    {
+        $stream = new StringStream("\xac\x02");
+
+        self::assertSame(300, $stream->readUnsignedVarint());
+        self::assertSame(300, new StringStream("\xac\x02")->readVarint(), 'the same bytes, read raw');
+        self::assertSame(
+            150,
+            ByteUtils::decodeZigZag(new StringStream("\xac\x02")->readVarint()),
+            'and 150 once the zigzag step of the record format is applied'
+        );
+    }
+
+    /**
+     * An unsigned varint is at most five bytes wide, like the varint it shares its loop with
+     */
+    public function testAnUnsignedVarintLongerThanFiveBytesIsRejected(): void
+    {
+        $this->expectException(NetworkException::class);
+
+        new StringStream("\xff\xff\xff\xff\xff\x01")->readUnsignedVarint();
     }
 
     public function testReadingPastTheEndOfTheBufferIsAnError(): void

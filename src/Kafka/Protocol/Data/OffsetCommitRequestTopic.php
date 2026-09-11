@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * OffsetCommitRequestTopic DTO, version 2 of the OffsetCommit API
+ * OffsetCommitRequestTopic DTO, version 6 of the OffsetCommit API
  *
  * <pre>
  *   OffsetCommitRequestTopic => topic [partitions]
@@ -28,16 +28,17 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *
  * The topic entry itself is the same in every version of the request; only the layout of a partition entry changes,
  * so the class of the entries is derived from {@see OffsetCommitRequestTopic::VERSION}, which
- * {@see OffsetCommitRequestTopicV1} and {@see OffsetCommitRequestTopicV0} lower.
+ * {@see OffsetCommitRequestTopicV2}, {@see OffsetCommitRequestTopicV1} and {@see OffsetCommitRequestTopicV0}
+ * lower.
  *
- * @see docs/protocol/1.1.md, section "OffsetCommit API (key 8, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
  */
 class OffsetCommitRequestTopic implements BinarySchemaInterface
 {
     /**
      * Version of the OffsetCommit API that this DTO is packed for
      */
-    public const int VERSION = 2;
+    public const int VERSION = 6;
 
     /**
      * Name of the topic
@@ -70,7 +71,9 @@ class OffsetCommitRequestTopic implements BinarySchemaInterface
                 $offset instanceof OffsetAndMetadata => new $partitionClass(
                     (int) $partition,
                     $offset->offset,
-                    $offset->metadata
+                    $offset->metadata,
+                    OffsetCommitRequestPartition::BROKER_TIMESTAMP,
+                    $offset->leaderEpoch ?? OffsetCommitRequestPartition::UNKNOWN_LEADER_EPOCH
                 ),
                 default => new $partitionClass((int) $partition, $offset),
             };
@@ -97,7 +100,8 @@ class OffsetCommitRequestTopic implements BinarySchemaInterface
     protected static function partitionClass(): string
     {
         return match (true) {
-            static::VERSION >= 2  => OffsetCommitRequestPartition::class,
+            static::VERSION >= 6  => OffsetCommitRequestPartition::class,
+            static::VERSION >= 2  => OffsetCommitRequestPartitionV2::class,
             static::VERSION === 1 => OffsetCommitRequestPartitionV1::class,
             default               => OffsetCommitRequestPartitionV0::class,
         };

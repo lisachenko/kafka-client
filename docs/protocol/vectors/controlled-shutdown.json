@@ -1,13 +1,13 @@
 {
     "api": "controlled-shutdown",
     "apiKey": 7,
-    "section": "ControlledShutdown API (key 7, v0 and v1)",
-    "description": "Wire vectors of the ControlledShutdown API (key 7, v0 and v1), replayed by tests/Compliance.",
+    "section": "ControlledShutdown API (key 7, v0 to v3)",
+    "description": "Wire vectors of the ControlledShutdown API (key 7, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "controlledshutdown.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownRequestV1",
             "version": 1,
             "source": "broker",
             "description": "ControlledShutdown request v1, the version Kafka 0.9 added: the first one whose header carries the client id of the common request header.",
@@ -24,7 +24,7 @@
         {
             "id": "controlledshutdown.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownResponseV2",
             "version": 1,
             "source": "broker",
             "description": "ControlledShutdown response for a broker id that the controller does not know: the error code 8 (BrokerNotAvailable) and an empty partition list. Kafka 0.8.2.2 answered -1 (Unknown) here.",
@@ -55,7 +55,7 @@
         {
             "id": "controlledshutdown.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownResponseV2",
             "version": 0,
             "source": "broker",
             "description": "ControlledShutdown response of the version 0 request: the same answer, with the error code 8 that a 0.9.0.1 controller reports for an unknown broker id.",
@@ -63,6 +63,74 @@
             "fields": {
                 "messageSize": 10,
                 "correlationId": 20,
+                "errorCode": 8,
+                "remainingTopicPartitions": []
+            }
+        },
+        {
+            "id": "controlledshutdown.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownRequestV2",
+            "version": 2,
+            "source": "broker",
+            "description": "ControlledShutdown request v2 for a broker id the cluster does not have, with the `broker_epoch` -1 that KIP-380 added: -1 is `AbstractControlRequest.UNKNOWN_BROKER_EPOCH`, the epoch of a client that does not know it, and it is the only epoch this repository ever sends - a shutdown of the real broker id would stop the container the suite runs against.",
+            "hex": "000000200007000200000323000a74342d766563746f727300001092ffffffffffffffff",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 7,
+                "apiVersion": 2,
+                "correlationId": 803,
+                "clientId": "t4-vectors",
+                "brokerId": 4242,
+                "brokerEpoch": -1
+            }
+        },
+        {
+            "id": "controlledshutdown.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownResponseV2",
+            "version": 2,
+            "source": "broker",
+            "description": "ControlledShutdown answer v2: the error code 8 (BrokerNotAvailable) of a broker id that is not in the cluster, and an empty array of remaining partitions.",
+            "hex": "0000000a00000323000800000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 803,
+                "errorCode": 8,
+                "remainingTopicPartitions": []
+            }
+        },
+        {
+            "id": "controlledshutdown.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "ControlledShutdown request v3, the flexible version of KIP-482 - the broker id and the `broker_epoch` of KIP-380 with a tag buffer behind them, and a request header v2 in front. The broker id is the UNKNOWN 4242 as in every frame of this api in this repository: a shutdown of the real broker id would stop the container.",
+            "hex": "00000022000700030000057c000a74342d766563746f72730000001092ffffffffffffffff00",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 7,
+                "apiVersion": 3,
+                "correlationId": 1404,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "brokerId": 4242,
+                "brokerEpoch": -1
+            }
+        },
+        {
+            "id": "controlledshutdown.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ControlledShutdownResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "ControlledShutdown answer v3: the error code 8 (BrokerNotAvailable) and an empty compact array of remaining partitions, both inside the flexible encoding.",
+            "hex": "000000090000057c0000080100",
+            "fields": {
+                "messageSize": 9,
+                "correlationId": 1404,
+                "headerTaggedFields": [],
                 "errorCode": 8,
                 "remainingTopicPartitions": []
             }

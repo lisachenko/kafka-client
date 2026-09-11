@@ -16,20 +16,22 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
 
 /**
- * OffsetFetch response object, version 3 (Kafka 0.11)
+ * OffsetFetch response object, version 7
  *
  * <pre>
- *   OffsetFetch Response (Version: 3) => throttle_time_ms [responses] error_code
+ *   OffsetFetch Response (Version: 5 to 7) => throttle_time_ms [responses] error_code
  *     throttle_time_ms => INT32     -- since version 3
  *     responses => topic [partition_responses]
  *       topic               => STRING
- *       partition_responses => partition offset metadata error_code
- *         partition  => INT32
- *         offset     => INT64
- *         metadata   => NULLABLE_STRING
- *         error_code => INT16
+ *       partition_responses => partition offset leader_epoch metadata error_code
+ *         partition    => INT32
+ *         offset       => INT64
+ *         leader_epoch => INT32            -- since version 5
+ *         metadata     => NULLABLE_STRING
+ *         error_code   => INT16
  *     error_code => INT16           -- since version 2
  * </pre>
  *
@@ -40,21 +42,38 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
  * which had nowhere else to put a group error. The per-partition codes stay what they were.
  *
  * Version 3 (KIP-124, Kafka 0.11) added the leading `throttle_time_ms` and changed nothing else, so this answer
- * carries an error code at each of its two ends: the throttle time, the topics, and then the group error.
+ * carries an error code at each of its two ends: the throttle time, the topics, and then the group error. Version 4
+ * (KIP-219, Kafka 2.0) is the same answer one api version higher, and **version 5 (KIP-320, Kafka 2.1)** inserts
+ * the `committed_leader_epoch` into every partition entry, between the committed offset and the metadata. The
+ * class of a partition follows the version of the topic entry, so {@see OffsetFetchResponseV4} and the versions
+ * below it decode their answers through {@see \Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartitionV0}.
  *
  * The lower versions each have a class of their own: {@see OffsetFetchResponseV2} still reads the group error code,
  * {@see OffsetFetchResponseV1} and {@see OffsetFetchResponseV0} do not have it and report
  * {@see KafkaException::NO_ERROR} here, because the whole answer of those versions is made of per-partition
  * results.
  *
- * @see docs/protocol/1.1.md, sections "OffsetFetch API (key 9, v0 to v3)" and "Quotas and throttle time"
+ * **Versions 6 (KIP-482, Kafka 2.4) and 7 (KIP-447, Kafka 2.5) changed no field of this answer**: the first is
+ * the flexible encoding of the very same layout, and the second is a promise about an error code - a partition of
+ * a version 7 answer can carry the retriable **88** (`UnstableOffsetCommit`) when the request asked for stable
+ * offsets and the last commit of that partition belongs to a transaction that is still open.
+ * {@see OffsetFetchResponseV6} decodes the same bytes one api version lower.
+ *
+ * @see docs/protocol/2.8.md, sections "OffsetFetch API (key 9, v0 to v7)", "Stable offsets and the 88 of KIP-447
+ *      (Kafka 2.5)" and "Quotas and throttle time"
  */
 class OffsetFetchResponse extends AbstractResponse
 {
     /**
      * Version of the OffsetFetch API that this class decodes the answer of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 7;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 6;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
@@ -87,11 +106,21 @@ class OffsetFetchResponse extends AbstractResponse
         if (static::VERSION >= 3) {
             $body['throttleTimeMs'] = BinarySchema::TYPE_INT32;
         }
-        $body['topics'] = ['topic' => OffsetFetchResponseTopic::class];
+        $body['topics'] = ['topic' => static::topicClass()];
         if (static::VERSION >= 2) {
             $body['errorCode'] = BinarySchema::TYPE_INT16;
         }
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this class decodes
+     *
+     * @return class-string<OffsetFetchResponseTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return static::VERSION >= 5 ? OffsetFetchResponseTopic::class : OffsetFetchResponseTopicV0::class;
     }
 }

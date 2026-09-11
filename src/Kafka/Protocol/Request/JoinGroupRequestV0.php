@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * class passes the session timeout on as the rebalance timeout: the value is not written to the wire, but it
  * describes what the broker will do with the request.
  *
- * @see docs/protocol/1.1.md, section "JoinGroup API (key 11, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v7)"
  */
 final class JoinGroupRequestV0 extends JoinGroupRequest
 {

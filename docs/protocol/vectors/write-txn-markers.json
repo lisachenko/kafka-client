@@ -1,13 +1,13 @@
 {
     "api": "write-txn-markers",
     "apiKey": 27,
-    "section": "WriteTxnMarkers API (key 27, v0)",
-    "description": "Wire vectors of the WriteTxnMarkers API (key 27, v0), replayed by tests/Compliance.",
+    "section": "WriteTxnMarkers API (key 27, v0 and v1)",
+    "description": "Wire vectors of the WriteTxnMarkers API (key 27, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "writetxnmarkers.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequestV0",
             "version": 0,
             "source": "broker",
             "description": "WriteTxnMarkers request v0, the broker-to-broker request that a transaction coordinator sends to the leader of every partition of a finished transaction: write a COMMIT marker for the producer id 3 into `t8-vectors-marker`-0, with the coordinator epoch 0 of the `__transaction_state` partition it owns.",
@@ -39,7 +39,7 @@
         {
             "id": "writetxnmarkers.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of the partition leader: one entry per producer id of the request, one error code per partition it wrote the control batch into. **The only answer of Kafka 0.11 that does not begin with a `throttle_time_ms`**, because the api is broker-to-broker and the quotas of KIP-124 only throttle clients.",
@@ -53,6 +53,69 @@
                         "topics": {
                             "t8-vectors-marker": {
                                 "topic": "t8-vectors-marker",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "writetxnmarkers.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "WriteTxnMarkers request v1 (Kafka 2.8, KIP-482): the broker-to-broker frame of the version 0 in the **flexible** encoding, which this version is the first of. No client sends it; the container of this line runs without an authorizer, so it serves the `ClusterAction` for anybody and a real frame can be captured.",
+            "hex": "0000003c001b00010000032b000a74342d766563746f727300020000000000000099000101020e74342d32382d766563746f7273020000000000000000000000",
+            "fields": {
+                "messageSize": 60,
+                "apiKey": 27,
+                "apiVersion": 1,
+                "correlationId": 811,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "transactionMarkers": {
+                    "153": {
+                        "producerId": 153,
+                        "producerEpoch": 1,
+                        "transactionResult": true,
+                        "topics": {
+                            "t4-28-vectors": {
+                                "topic": "t4-28-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        },
+                        "coordinatorEpoch": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "writetxnmarkers.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "WriteTxnMarkers answer v1: one entry per producer id of the request, one error code per partition the control batch was appended to - still the only answer of this protocol without a `throttle_time_ms`, now with the tagged-field sections of the flexible encoding.",
+            "hex": "000000280000032b00020000000000000099020e74342d32382d766563746f72730200000000000000000000",
+            "fields": {
+                "messageSize": 40,
+                "correlationId": 811,
+                "headerTaggedFields": [],
+                "transactionMarkers": {
+                    "153": {
+                        "producerId": 153,
+                        "topics": {
+                            "t4-28-vectors": {
+                                "topic": "t4-28-vectors",
                                 "partitions": [
                                     {
                                         "partition": 0,

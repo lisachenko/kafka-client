@@ -20,8 +20,9 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * One member of a group, as reported by the DescribeGroups API
  *
  * <pre>
- *   DescribeGroupResponseMember => MemberId ClientId ClientHost MemberMetadata MemberAssignment
+ *   DescribeGroupResponseMember => MemberId GroupInstanceId ClientId ClientHost MemberMetadata MemberAssignment
  *     MemberId         => string
+ *     GroupInstanceId  => nullable_string   -- since version 4
  *     ClientId         => string
  *     ClientHost       => string
  *     MemberMetadata   => bytes
@@ -32,14 +33,32 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `consumer` protocol type they hold the `Subscription` the member sent with its JoinGroup request and the
  * `MemberAssignment` the leader published with SyncGroup.
  *
- * @see docs/protocol/1.1.md, section "DescribeGroups API (key 15, v0 and v1)"
+ * **Version 4 of the api (KIP-345, Kafka 2.4) added the `group_instance_id`**, which is what completes static
+ * membership on the administrative side: an operator sees which member id belongs to which *instance*, and that
+ * instance id is what {@see \Protocol\Kafka\Admin\AdminClient::removeMembersFromConsumerGroup()} removes a
+ * member by. It is `null` for a dynamic member, and {@see DescribeGroupResponseMemberV0} is the entry of the
+ * versions 0 to 3, which have no such field.
+ *
+ * @see docs/protocol/2.8.md, section "DescribeGroups API (key 15, v0 to v5)"
  */
 class DescribeGroupResponseMember implements BinarySchemaInterface
 {
     /**
+     * Version of the DescribeGroups API that this DTO decodes an entry of
+     */
+    public const int VERSION = 4;
+
+    /**
      * The memberId assigned by the coordinator
      */
     public string $memberId;
+
+    /**
+     * `group.instance.id` of a static member (KIP-345), null for a dynamic one
+     *
+     * @since Version 4 of protocol
+     */
+    public ?string $groupInstanceId = null;
 
     /**
      * The client id used in the member's latest join group request
@@ -66,12 +85,15 @@ class DescribeGroupResponseMember implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        return [
-            'memberId'         => BinarySchema::TYPE_STRING,
-            'clientId'         => BinarySchema::TYPE_STRING,
-            'clientHost'       => BinarySchema::TYPE_STRING,
-            'memberMetadata'   => BinarySchema::TYPE_BYTEARRAY,
-            'memberAssignment' => BinarySchema::TYPE_BYTEARRAY,
-        ];
+        $scheme = ['memberId' => BinarySchema::TYPE_STRING];
+        if (static::VERSION >= 4) {
+            $scheme['groupInstanceId'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        $scheme['clientId']         = BinarySchema::TYPE_STRING;
+        $scheme['clientHost']       = BinarySchema::TYPE_STRING;
+        $scheme['memberMetadata']   = BinarySchema::TYPE_BYTEARRAY;
+        $scheme['memberAssignment'] = BinarySchema::TYPE_BYTEARRAY;
+
+        return $scheme;
     }
 }

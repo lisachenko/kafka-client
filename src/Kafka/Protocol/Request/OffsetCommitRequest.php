@@ -20,43 +20,74 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
+use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
 
 /**
- * OffsetCommit, version 3: the offsets are stored in the `__consumer_offsets` topic of the cluster.
+ * OffsetCommit, version 7: the offsets are stored in the `__consumer_offsets` topic of the cluster.
  *
  * This api saves out the consumer's position in the stream for one or more partitions. In the scala API this happens
  * when the consumer calls commit() or in the background if "autocommit" is enabled. This is the position the consumer
  * will pick up from if it crashes before its next commit().
  *
  * <pre>
- *   OffsetCommit Request (Version: 2 and 3) => group_id generation_id member_id retention_time [topics]
- *     group_id       => STRING
- *     generation_id  => INT32
- *     member_id      => STRING
- *     retention_time => INT64
- *     topics         => topic [partitions]
+ *   OffsetCommit Request (Version: 7) => group_id generation_id member_id group_instance_id [topics]
+ *     group_id          => STRING
+ *     generation_id     => INT32
+ *     member_id         => STRING
+ *     group_instance_id => NULLABLE_STRING   -- since version 7
+ *     topics            => topic [partitions]
  *       topic      => STRING
- *       partitions => partition offset metadata
- *         partition => INT32
- *         offset    => INT64
- *         metadata  => NULLABLE_STRING
+ *       partitions => partition offset leader_epoch metadata
+ *         partition    => INT32
+ *         offset       => INT64
+ *         leader_epoch => INT32            -- since version 6
+ *         metadata     => NULLABLE_STRING
+ *
+ *   OffsetCommit Request (Version: 2, 3 and 4) => group_id generation_id member_id retention_time [topics]
+ *     retention_time => INT64              -- version 2 to 4 only
  * </pre>
  *
  * Version 2 replaced the per-partition `timestamp` of version 1 with one `retention_time` for the whole request
  * (`OFFSET_COMMIT_REQUEST_V2` in `Protocol.java` @ 0.11.0.3). With {@see self::DEFAULT_RETENTION_TIME} the broker
  * keeps the offsets for `offsets.retention.minutes`, otherwise for the given number of milliseconds counted from
- * the moment it received the commit, see `KafkaApis.handleOffsetCommitRequest`. A 0.11.0.3 broker serves the
- * versions 0 to 3 and closes the connection on anything above.
+ * the moment it received the commit, see `KafkaApis.handleOffsetCommitRequest`. A 2.8.2 broker still honours that
+ * field at the versions 2 to 4 and writes the offset with the `__consumer_offsets` value schema **v1**, the only
+ * one that has an `expire_timestamp`; a commit that leaves it at -1 is written with the value schema **v3**, which
+ * has none at all (KIP-211).
  *
  * Version 3 (KIP-124, Kafka 0.11) left the request alone - `OFFSET_COMMIT_REQUEST_V3 = OFFSET_COMMIT_REQUEST_V2` -
  * and only added the leading `throttle_time_ms` to the answer ({@see OffsetCommitResponse}).
  *
- * The lower versions differ in their scheme, and a scheme is a static property of a class, so each of them has a
- * class of its own that only lowers {@see OffsetCommitRequest::VERSION}: {@see OffsetCommitRequestV2},
- * {@see OffsetCommitRequestV1} and {@see OffsetCommitRequestV0}. Everything else - the fields, the class names and
- * the way the topic-partitions are packed - is shared.
+ * Version 4 (KIP-219, Kafka 2.0) left it alone once more: `OffsetCommitRequest.json` @ 2.8.2 gives every field of
+ * this frame the same `versions` for 2, 3 and 4, and the first change afterwards is the **removal** of
+ * `retention_time` at version 5 (KIP-211, Kafka 2.1). What the higher number means is the throttling contract of
+ * KIP-219: a broker that throttles a version 4 request sends the answer **first** and mutes the channel for the
+ * delay afterwards, so a client that sends this version has to wait out `throttle_time_ms` itself. Version 4 is the
+ * highest **non-flexible** version of the api - versions 5 to 8 belong to the later releases of the 2.x major - and
+ * is what this client sends.
  *
- * @see docs/protocol/1.1.md, section "OffsetCommit API (key 8, v0 to v3)"
+ * The lower versions differ in their scheme, and a scheme is a static property of a class, so each of them has a
+ * class of its own that only lowers {@see OffsetCommitRequest::VERSION}: {@see OffsetCommitRequestV3},
+ * {@see OffsetCommitRequestV2}, {@see OffsetCommitRequestV1} and {@see OffsetCommitRequestV0}. Everything else -
+ * the fields, the class names and the way the topic-partitions are packed - is shared.
+ *
+ * **Version 5 (Kafka 2.1, KIP-211) removes `retention_time` from the frame** - the field has the versions `2-4` in
+ * `OffsetCommitRequest.json` @ 2.8.2, it is not sent as -1 - because the committed offsets of a group expire
+ * `offsets.retention.minutes` after the **group** became empty from that release on, not a fixed time after each
+ * commit. The `$retentionTime` a caller passes is therefore simply not written by the versions 5 and 6.
+ *
+ * **Version 6 (Kafka 2.1, KIP-320) gives every partition a `committed_leader_epoch`**, between the offset and the
+ * metadata: the epoch of the leader the offset was read from, so that a consumer that resumes from it can be told
+ * that the log was truncated behind its back (74 `FencedLeaderEpoch`, 75 `UnknownLeaderEpoch`). A client that does
+ * not know the epoch sends {@see OffsetCommitRequestPartition::UNKNOWN_LEADER_EPOCH}, which is what an
+ * {@see OffsetAndMetadata} without a `leaderEpoch` produces.
+ *
+ * **Version 7 (Kafka 2.3, KIP-345) inserted the nullable `group_instance_id` behind the member id**, so that a
+ * *static* member commits under the identity its `group.instance.id` gives it; the coordinator refuses the commit
+ * of a member whose instance id has been taken over by another consumer with 82 (`FencedInstanceId`). A dynamic
+ * member sends `null` here, which is the frame of {@see OffsetCommitRequestV6} with one more field.
+ *
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {
@@ -88,7 +119,13 @@ class OffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 8;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 8;
 
     /**
      * Offsets to commit, indexed by the topic they belong to.
@@ -109,6 +146,7 @@ class OffsetCommitRequest extends AbstractRequest
      * @param array<string, array<int, int|OffsetAndMetadata|OffsetCommitRequestPartition>> $topicPartitions Offsets
      * @param string $clientId        Unique client identifier
      * @param int    $correlationId   Correlated request id
+     * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345), null for a dynamic one
      */
     public function __construct(
         /**
@@ -135,7 +173,13 @@ class OffsetCommitRequest extends AbstractRequest
         protected readonly int $retentionTime,
         array $topicPartitions,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Unique identifier of this consumer instance, `group.instance.id`, null for a dynamic member.
+         *
+         * @since Version 7 of protocol
+         */
+        protected readonly ?string $groupInstanceId = null
     ) {
         $topicClass            = static::topicClass();
         $packedTopicPartitions = [];
@@ -162,7 +206,10 @@ class OffsetCommitRequest extends AbstractRequest
             $body['generationId'] = BinarySchema::TYPE_INT32;
             $body['memberName']   = BinarySchema::TYPE_STRING;
         }
-        if (static::VERSION >= 2) {
+        if (static::VERSION >= 7) {
+            $body['groupInstanceId'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        if (static::VERSION >= 2 && static::VERSION <= 4) {
             $body['retentionTime'] = BinarySchema::TYPE_INT64;
         }
         $body['topicPartitions'] = ['topic' => static::topicClass()];
@@ -178,7 +225,8 @@ class OffsetCommitRequest extends AbstractRequest
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 2  => OffsetCommitRequestTopic::class,
+            static::VERSION >= 6  => OffsetCommitRequestTopic::class,
+            static::VERSION >= 2  => OffsetCommitRequestTopicV2::class,
             static::VERSION === 1 => OffsetCommitRequestTopicV1::class,
             default               => OffsetCommitRequestTopicV0::class,
         };

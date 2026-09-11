@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponseTopic;
 
 /**
- * AlterReplicaLogDirs response object, version 0 (key 34)
+ * AlterReplicaLogDirs response object, version 1 (key 34)
  *
  * <pre>
- *   AlterReplicaLogDirs Response (Version: 0) => throttle_time_ms [topics]
+ *   AlterReplicaLogDirs Response (Version: 0 and 1) => throttle_time_ms [topics]
  *     throttle_time_ms => INT32
  *     topics           => topic [partitions]
  *       topic      => STRING
@@ -37,14 +37,26 @@ use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponseTopic;
  * 1.1.1 broker reports here are listed on
  * {@see \Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponsePartition}.
  *
- * @see docs/protocol/1.1.md, section "AlterReplicaLogDirs API (key 34, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `ALTER_REPLICA_LOG_DIRS_RESPONSE_V1 =
+ * ALTER_REPLICA_LOG_DIRS_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see AlterReplicaLogDirsResponseV0} is the same frame with the version field of Kafka 1.0.
+ *
+ * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 class AlterReplicaLogDirsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 2;
+
+    /**
+     * The version 2 of Kafka 2.8 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation

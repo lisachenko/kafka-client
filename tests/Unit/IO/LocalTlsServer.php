@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Tests\Unit\IO;
  * somewhere else. A child process is the portable way to arrange that - `pcntl_fork()` is not available on every
  * build and would fork the test runner itself.
  *
- * The server presents the checked-in broker certificate of `docker/kafka-1.1.1/ssl`, so a client that trusts that
+ * The server presents the checked-in broker certificate of `docker/kafka-2.8.2/ssl`, so a client that trusts that
  * certificate sees exactly the handshake it performs against the SSL listener of the test broker.
  */
 final class LocalTlsServer

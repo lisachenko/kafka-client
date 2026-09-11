@@ -38,7 +38,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * The value object is immutable: every transition returns a new instance, as it does in the Java client.
  *
- * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
  */
 final class FetchMetadata
 {

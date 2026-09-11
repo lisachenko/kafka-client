@@ -40,7 +40,12 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *  - `numPartitions` and `replicationFactor` are both {@see NewTopic::NO_NUM_PARTITIONS} / -1 and the assignment
  *    array names the replicas of every partition.
  *
- * @see docs/protocol/1.1.md, section "CreateTopics API (key 19, v0, v1 and v2)"
+ * **Kafka 2.4 added a third way** (KIP-464): both numbers -1 and an EMPTY assignment, which asks the broker for its
+ * own `num.partitions` and `default.replication.factor`. It needs the version 4 of the api - the guard sits in
+ * `CreateTopicsRequest.Builder.build(version)` @ 2.8.2 and in {@see CreateTopicsRequest::__construct()}, because
+ * the BROKER of a lower version does not refuse the bytes, it simply did not resolve the -1 before Kafka 2.4.
+ *
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 class CreateTopicsRequestTopic implements BinarySchemaInterface
 {

@@ -1,11 +1,115 @@
-Wire vectors of the Kafka 1.1.1 protocol
+Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
-machine-readable half of [`../1.1.md`](../1.1.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **314** of them in **36** files, every one of which a **1.1.1** broker speaks: **229** were
-captured by the four lines below this one and are replayed against the classes of this line unchanged, and **85**
-were captured on the `kafka-1-1-1` container of this line. Two of the inherited vectors were **re-captured** rather
-than added — `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker.
+machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
+hex dumps. There are **669** of them in **48** files: **351** were captured on the `kafka-2-8-2` container of the
+**2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
+(14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
+(20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
+19 frames of the leader epochs and the zstd codec in the producer and consumer apis (KIP-320, KIP-110), the 6
+frames of OffsetCommit v5/v6 and OffsetFetch v5 and the 4 of DeleteTopics v3 and TxnOffsetCommit v2, and the 10
+frames of **Kafka 2.2**: the ListOffsets v5 pair (KIP-207), SaslAuthenticate v1, ControlledShutdown v2 and the new
+api ElectLeaders (key 43), whose `elect-leaders.json` is the one file this line added, and the 4 frames of the
+KIP-394 exchange (JoinGroup v4), the 6 frames of the new api IncrementalAlterConfigs (key 44) of **Kafka 2.3**,
+in the new file `incremental-alter-configs.json`, the 12 frames of what Kafka **2.3** added to the group apis
+(static membership, KIP-345, and the authorized operations of KIP-430) and the 7 frames of what it added to the
+producer and consumer apis (Metadata v8 of KIP-430, Fetch v11 and OffsetForLeaderEpoch v3 of KIP-392), the 3 flexible ApiVersions v3 frames of **Kafka 2.4** and the 6 frames
+of its non-flexible admin half - CreateTopics v4 (KIP-464) and ElectLeaders v1 (KIP-460), the 6 frames of the batch
+LeaveGroup v3 of Kafka **2.4**, the 16 frames of its **partition reassignments and first flexible admin bumps**
+(KIP-455, in the two new files `alter-partition-reassignments.json` and `list-partition-reassignments.json`, plus
+InitProducerId v2 and CreateDelegationToken v2), the 5 frames of its Produce v8 (KIP-467, the record errors of
+a refused batch), the 22 frames of the **flexible** versions of the ten group apis (KIP-482), the Metadata v9
+pair of the same release, the first flexible version of an api the consumer sends, and the 5 frames of
+**OffsetDelete** (KIP-496, the new file `offset-delete.json`), the 10 frames of the **flexible** admin versions
+of the same release: CreateTopics v5 - whose answer is the KIP-525 one, with the configuration of the new topic in
+it - DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1 and ControlledShutdown v3; and of **Kafka 2.5**
+the 14 frames the group apis gained - the JoinGroup v7 and SyncGroup v5 pairs of KIP-559 with the two refusals
+that show their nulls, and the six OffsetFetch v7 frames of KIP-447 around the 88 of an offset a transaction has
+not committed yet, and the 21 frames of its transaction, admin and SASL half: the InitProducerId v3 of KIP-360
+with its epoch bump, the TxnOffsetCommit v3 of KIP-447 with the consumer it names, CreatePartitions v2,
+SaslAuthenticate v2 and the token apis v2; and of **Kafka 2.6** the 4 frames of ListGroups v4 (KIP-518), the
+states filter of the request and the group state of every entry of the answer, and the 9 frames of its two
+client-quota apis (KIP-546, the two new files `describe-client-quotas.json` and `alter-client-quotas.json`), and the 6 frames of its DescribeConfigs **v3** (KIP-569) and the 4 frames of its
+DescribeLogDirs **v2**, and the 10 frames of the three apis **Kafka 2.7** added - the two SCRAM credential apis of
+KIP-554 and UpdateFeatures of KIP-584, in the three new files `describe-user-scram-credentials.json`,
+`alter-user-scram-credentials.json` and `update-features.json`, and of the same release the 17 frames of the admin and transaction half: CreateTopics v6, CreatePartitions v3 and DeleteTopics v5 of
+KIP-599, and InitProducerId v4, AddPartitionsToTxn v2, AddOffsetsToTxn v2 and EndTxn v2 of KIP-588, two of them
+carrying the 90 `ProducerFenced` the KIP added, and the 15 frames of **Kafka 2.8**: the two new apis
+DescribeCluster (KIP-700) and DescribeProducers (KIP-664) in the new files `describe-cluster.json` and
+`describe-producers.json`, and the flexible **v1** of the two client-quota apis, which is where those two finally
+become compact, and the 22 frames of the admin and transaction half of the same release: the CreateTopics **v7**
+pair of KIP-516 whose answer carries the id of the new topic, five DeleteTopics **v6** frames of the same KIP - a
+deletion by name, one by that id and the 100 of an id no topic carries - and the first flexible version of
+DescribeConfigs **v4**, AlterConfigs **v2**, AlterReplicaLogDirs **v2**, WriteTxnMarkers **v1**,
+AddPartitionsToTxn **v3**, AddOffsetsToTxn **v3** and EndTxn **v3** (KIP-482) - and of the other 318,
+**229** were
+captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
+**89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
+rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
+and `apiversions.response.v0.unsupported-version`, which gained the api row of KIP-511.
+
+What the group apis of this line have captured so far is the KIP-219 version bump of Kafka 2.0 — OffsetCommit
+v4, OffsetFetch v4, FindCoordinator v2, JoinGroup v3, Heartbeat v2, LeaveGroup v2, SyncGroup v2, DescribeGroups v2,
+ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from one life of the group
+`t3-kip219-group` — the same bump of the four apis the producer and the consumer send, and what **Kafka 2.1**
+(KIP-320, the leader epochs, and KIP-110, the zstd codec) added to those apis and to Produce:
+
+| File | Of it captured here | What was captured on the 2.8.2 broker |
+|---|---|---|
+| `produce.json` | 13 of 37 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond; **Produce v7** (KIP-110), request and answer, and the **76** a v6 is answered when its record set is compressed with zstd; **Produce v8** (KIP-467), the accepted pair, the batch a `cleanup.policy=compact` topic refuses with the record errors that name its key-less records, and the same refusal answered to a version 7 request; **Produce v9** (KIP-482), the flexible pair, whose record set is a compact byte array |
+| `fetch.json` | 22 of 53 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283); **Fetch v9** and **v10** (KIP-320, KIP-110) with the `current_leader_epoch` on the wire, the **75** of an epoch above the leader's, and the three frames of the zstd rule — the **76** of a v9 against a `compression.type=zstd` topic and the same partition served to a v10; **Fetch v11** (KIP-392) with the `rack_id` of the consumer and the `preferred_read_replica` it is answered with; and the four frames of **Fetch v12** (Kafka 2.7), the first flexible version of the api - the plain pair of a consumer fetch and the pair in which the `last_fetched_epoch` of KIP-595 is really asked and answered with the tagged `diverging_epoch` |
+| `offsets.json` | 8 of 22 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header; **v4** (KIP-320), which carries a `current_leader_epoch` in the request and a `leader_epoch` behind every answered offset; and **v5** (KIP-207), the version 4 frames again — what it adds is the error code **78**, which a one-broker container can not produce; and **v6** (KIP-482), the flexible pair |
+| `metadata.json` | 13 of 32 | **Metadata v6** (KIP-219), likewise; **v7** (KIP-320), whose partition entries carry the `leader_epoch` of their leader; and **v8** (KIP-430), with the two booleans that ask for the authorized operations, the bitfields they are answered with and the `Integer.MIN_VALUE` of the same answer when they are off; **v10** and **v11** (KIP-516, KIP-700), the two pairs of the topic ids - the v10 one still carrying the cluster-wide bitfield that v11 has not got |
+| `offset-for-leader-epoch.json` | 9 of 13 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset; and **v2** (KIP-320), the version a consumer sends, with a `current_leader_epoch` in the request, a `throttle_time_ms` at the head of the answer and the **75** of a fenced epoch; and **v4** (KIP-482), the flexible pair |
+
+What Kafka 2.1 added to the two offset apis: OffsetCommit v5 (the frame without
+`retention_time`, KIP-211), OffsetCommit v6 and OffsetFetch v5 (the `committed_leader_epoch` of KIP-320). What
+Kafka 2.2 added to JoinGroup: the four frames of the KIP-394 exchange — a v4 join that carries an empty member id,
+the answer that refuses it with **79** `MEMBER_ID_REQUIRED` and the member id the coordinator assigned, and the
+join that follows with that id. What Kafka 2.3 added: the `group_instance_id` of a static member in JoinGroup v5,
+SyncGroup v3, Heartbeat v3 and OffsetCommit v7 (KIP-345), the heartbeat that is answered **82**
+`FENCED_INSTANCE_ID` once a second consumer has taken that instance id over, and the DescribeGroups v3 pair whose
+request asks for the authorized operations of the group and whose answer reports them (KIP-430). What Kafka **2.5**
+added: the `protocol_type` and `protocol_name` of KIP-559 - in the JoinGroup **v7** answer, where an error answer
+reports both as null, and on both sides of SyncGroup **v5**, where leaving them out is a **23** - and the
+`require_stable` flag of OffsetFetch **v7** (KIP-447) with the **88** it is answered while a transactional offset
+commit of that partition is still open. What **Kafka 2.6** added: the `states_filter` of ListGroups **v4** and the
+`group_state` of every group it answers (KIP-518). What Kafka 2.4
+added: the batch LeaveGroup **v3** of KIP-345 and the **flexible** version of every one of the ten apis (KIP-482) -
+one request/response pair per api, with the compact strings and arrays, the tagged-field section of every
+structure, the request header v2 and the response header v1, plus the plain DescribeGroups v4 whose members carry
+their `group_instance_id`.
+
+What **Kafka 2.1 and 2.2** added to the admin, transaction and SASL apis, captured with the client id `t4-vectors`
+and the topics `t4-21-vectors` and `t4-22-vectors`:
+
+| File | Of it captured here | What was captured on the 2.8.2 broker |
+|---|---|---|
+| `delete-topics.json` | 2 of 9 | **DeleteTopics v3** (Kafka 2.1): the frame of v2, whose version promises that the client understands the error code **73** `TopicDeletionDisabled` |
+| `txn-offset-commit.json` | 2 of 6 | **TxnOffsetCommit v2** (Kafka 2.1, KIP-320): the `committed_leader_epoch` between the offset and the metadata, and the answer of the coordinator that stores it without looking at it |
+| `sasl-authenticate.json` | 2 of 7 | **SaslAuthenticate v1** (Kafka 2.2, KIP-368): the PLAIN token and the answer that now ends in a `session_lifetime_ms` — **0** on a listener without `connections.max.reauth.ms` |
+| `controlled-shutdown.json` | 2 of 6 | **ControlledShutdown v2** (Kafka 2.2, KIP-380): the `broker_epoch` behind the broker id, asked with the **unknown** broker id 4242 and the epoch -1 — a shutdown of the real broker id would stop the shared container |
+| `elect-leaders.json` | 8 of 8, **new file** | **ElectLeaders v0** (Kafka 2.2, KIP-183, added as ElectPreferredLeaders): a named partition whose leader is already the preferred replica (**84** `ElectionNotNeeded`, a code of Kafka 2.4 that reaches a v0 client unchanged) and a partition of a topic the cluster does not have (**3**); plus the **v1** frames of KIP-460 (Kafka 2.4), whose request opens with an `election_type` byte and whose answer carries a top-level error code - a preferred and an **unclean** election of the same healthy partition, both answered 84 |
+| `describe-configs.json` | 4 of 18 | **DescribeConfigs v3** (Kafka 2.6, KIP-569): one option of a topic asked with `include_documentation` - the answer ends in the `config_type` byte (7, LIST) and 329 characters of prose - and the same option without the flag, whose entry still carries the type and a null documentation |
+| `create-topics.json` | 4 of 11 | **CreateTopics v3** (Kafka 2.0, KIP-219) and **v4** (Kafka 2.4, KIP-464): the v4 pair asks for the broker's own `num.partitions` and `default.replication.factor` with -1/-1 and an empty assignment, and the container answers 0 and creates three partitions with one replica each |
+| `incremental-alter-configs.json` | 6 of 6, **new file** | **IncrementalAlterConfigs v0** (Kafka 2.3, KIP-339): the three operations a topic accepts in one resource (SET, APPEND and the DELETE whose value is the null string), an APPEND to an option that is not a list (**42**) and the cluster-wide default broker resource with a static option, asked with `validate_only` (**42**) |
+
+What **Kafka 2.4** added to the admin and transaction surface, captured with the client id `kafka-client-t1-vectors`:
+
+| File | Of it captured here | What was captured on the 2.8.2 broker |
+|---|---|---|
+| `alter-partition-reassignments.json` | 8 of 8, **new file** | **AlterPartitionReassignments v0** (KIP-455), the first *flexible* admin frames this package sends: a reassignment to the replica set a partition already has (the only successful one a one-broker cluster can be asked for), a cancellation with nothing in flight (**85** `NoReassignmentInProgress`, the code Kafka 2.4 added for it), a replica set naming a broker that is not alive (**39**), a topic the cluster does not have (**3**, per partition and never at the top level) and a request whose three partitions carry three different codes. The topic is `t1-reassign-vectors`; no vector ever names a **null** topic array, which would move the partitions of every other suite of the shared container |
+| `list-partition-reassignments.json` | 2 of 2, **new file** | **ListPartitionReassignments v0** (KIP-455): the request for one named partition and the 14-byte answer of a cluster with nothing in flight. A one-broker cluster completes a reassignment before it answers the request that submitted it, so the empty list is the only answer it can produce; the shape of a partition in flight is documented from the sources |
+| `offset-delete.json` | 5 of 5, **new file** | **OffsetDelete v0** (Kafka 2.4, KIP-496), the one api of that release that is **not** flexible: the request and the answer whose top-level error code stands *before* the throttle time, and the three refusals - **86** `GroupSubscribedToTopic` for a topic a live `consumer` group consumes, **68** `NonEmptyGroup` for a live group of another protocol type and **69** `GroupIdNotFound` for a group the coordinator does not know, the last two in 18 bytes that name no partition at all |
+| `describe-client-quotas.json` | 8 of 8, **new file** | **DescribeClientQuotas v0** (Kafka 2.6, KIP-546): the filter for one named `client-id` and the answer that carries its two quotas as **`float64`s** - the only place in this protocol where that type appears - plus the two refusals, **35** for an entity type the broker does not know (with a **null** entry array, where a filter that matched nothing answers an empty one) and **-1** for a match type it does not know. The v0 frames are plain - Kafka 2.6 added the api after KIP-482 and still without the compact encoding - and the **v1** frames of Kafka 2.8 next to them are the same fields in the compact one |
+| `alter-client-quotas.json` | 8 of 8, **new file** | **AlterClientQuotas v0** (Kafka 2.6, KIP-546): two quotas set on the `client-id` entity `t1-quota-vectors` and the answer that reports the entity on its own - this api has no top-level error code - a removal asked with `validate_only` (whose op still carries the eight bytes of double the broker discards) and the **42** of a quota name the broker does not know; plus the three **v1** frames of Kafka 2.8, where the api finally becomes compact |
+| `describe-user-scram-credentials.json` | 3 of 3, **new file** | **DescribeUserScramCredentials v0** (Kafka 2.7, KIP-554), flexible from its v0: the request for one user and the answer that names the mechanism and the iteration count of their credential - and nothing else, because a credential is a salted password and the frame has no field for one - plus the **91** of a user who has none, which is a per-user code while the top level stays 0 |
+| `alter-user-scram-credentials.json` | 5 of 5, **new file** | **AlterUserScramCredentials v0** (Kafka 2.7, KIP-554): the upsertion of a SCRAM-SHA-256 credential with 8192 iterations, whose 32-byte salted password the **client** derived with `hash_pbkdf2()` so that the password never reaches the wire, the answer that reports one result per affected *user*, and the three refusals **93** (too few iterations), **92** (the same user and mechanism twice) and **91** (deleting a credential that is not there) |
+| `update-features.json` | 2 of 2, **new file** | **UpdateFeatures v0** (Kafka 2.7, KIP-584): a request to finalize a feature at the version level 1 and the answer of a ZooKeeper-backed cluster, which finalizes nothing at all - the top-level 0 with the per-feature **42**, *"Could not apply finalized feature update because the provided feature is not supported."* |
+| `describe-cluster.json` | 4 of 4, **new file** | **DescribeCluster v0** (Kafka 2.8, KIP-700): the smallest request of this protocol - one boolean - with and without the acl flag, and the two answers. Without the flag `cluster_authorized_operations` is `Integer.MIN_VALUE`, the default of the specification; with it, **8096** = `CREATE \| ALTER \| DESCRIBE \| CLUSTER_ACTION \| DESCRIBE_CONFIGS \| ALTER_CONFIGS \| IDEMPOTENT_WRITE`, the whole set a broker without an authorizer allows on a CLUSTER resource |
+| `describe-producers.json` | 4 of 4, **new file** | **DescribeProducers v0** (Kafka 2.8, KIP-664): the producer state of a partition an idempotent producer wrote to - the producer id, the epoch, the last sequence number and timestamp, and the `current_txn_start_offset` of **-1** that says no transaction of it is open here - the same partition while a transaction of that producer IS open, whose `coordinator_epoch` is still -1 because the marker and not the batch writes it, and an answer for two empty partitions and one the broker does not have (**3** per partition, this api has no top-level error code) |
+| `init-producer-id.json` | 2 new of 10 | **InitProducerId v2** (KIP-482): the v1 body in the compact encoding - the request header v2, a compact transactional id and a tag buffer at the end of the header and of the body - for the transactional id `t1-24-vectors-tx` |
+| `delegation-tokens.json` | 4 new of 26 | **CreateDelegationToken v2** (KIP-482): the flexible pair for `User:kafkatest` on the SASL_PLAINTEXT listener, the **57** of a renewer whose principal type is not `User` and the **64** of the PLAINTEXT listener, all four with compact strings and bytes. The `owner` of the answer is two *flat* fields of the specification, so it carries no tag buffer of its own - the `InlineStruct` case of the engine |
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
@@ -16,7 +120,7 @@ broker, and everything Kafka 0.11 added - the record batch v2, the throttle time
 Produce v3, Fetch v4/v5, DeleteRecords, DescribeConfigs/AlterConfigs v0, OffsetForLeaderEpoch and the six apis of
 the transaction protocol - on the 0.11.0.3 container of the `0.11.x` line.
 
-What the 1.x line captured on the `kafka-1-1-1` container of `docker-compose.yml`
+What the 1.x line captured on the `kafka-2-8-2` container of `docker-compose.yml`
 --------------------------------------------------------------------------------
 
 The container runs Apache Kafka **1.1.1** with four listeners (PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094,
@@ -25,7 +129,7 @@ of the files below are new on this line; the rest gained the frames of the versi
 
 | File | Of it captured here | What was captured on the 1.1.1 broker |
 |---|---|---|
-| `api-versions.json` | 2 of 5, **re-captured** | The two ApiVersions **answers**. The answer of this api *is* the api-key table of the broker, so it is re-captured on every line: it now carries the **43** keys 0 to 42 of a Kafka 1.1.1 broker (272 and 276 bytes), where the 0.11 capture carried 34 and the 0.10 one 21. The two requests are unchanged — an ApiVersions frame has no body in either version |
+| `api-versions.json` | 2 new of 7, 3 **re-captured** | The **ApiVersions v2** pair (Kafka 2.0, KIP-219; the frame of v1) and the three re-captured answers. The answer of this api *is* the api-key table of the broker, so it is re-captured on every line: it now carries the **56** keys 0-51, 56, 57, 60 and 61 of a Kafka 2.8.2 broker, where the 1.1.1 capture carried 43, the 0.11 one 34 and the 0.10 one 21; the 35 answer of an unknown version carries the row `18 0 3` of KIP-511 instead of an empty array |
 | `sasl-handshake.json` | 6 of 12 | **SaslHandshake v1** (KIP-152): the accepted handshake, a mechanism the broker has not enabled (33), and a second handshake on the same connection (34, with the **empty** mechanism list that 1.1 answers where 1.0.2 still filled it). The v0 frames of the `0.10.x` line are replayed unchanged, now through `SaslHandshakeRequestV0` |
 | `sasl-authenticate.json` | 5 of 5, **new file** | **SaslAuthenticate v0** (key 36): the framed PLAIN token and its empty answer, a wrong password (**58** with the message of the broker) and a second `SaslAuthenticate` on an authenticated connection (**34**, which leaves the connection usable) |
 | `produce.json` | 8 of 24 | **Produce v4** (the v3 body, one api version higher) and **Produce v5** with its `log_start_offset`, captured after a `DeleteRecords` so that the field is really 2; plus the two pairs of the 1.x idempotent producer — a duplicate of the batch **four batches back** (error code 0 and the base offset of the original append: the five-batch window) and the batch after a `DeleteRecords` of the whole partition (**59** `UNKNOWN_PRODUCER_ID` with `log_start_offset = 5`) |
@@ -54,7 +158,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v5)",
+    "section": "Metadata API (key 3, v0 to v11)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

@@ -222,6 +222,50 @@ final class SubscriptionStateTest extends TestCase
         self::assertSame(SubscriptionState::TYPE_NONE, $state->getSubscriptionType());
     }
 
+    public function testAPositionCarriesTheLeaderEpochItWasTakenAt(): void
+    {
+        $state = $this->assignedState([0]);
+
+        self::assertNull($state->positionEpoch(self::TOPIC, 0), 'a fresh assignment knows no epoch');
+        self::assertNull($state->currentLeaderEpoch(self::TOPIC, 0));
+        self::assertFalse($state->needsValidation(self::TOPIC, 0));
+
+        $state->seek(self::TOPIC, 0, 42, 3);
+
+        self::assertSame(42, $state->position(self::TOPIC, 0));
+        self::assertSame(3, $state->positionEpoch(self::TOPIC, 0), 'the epoch of KIP-320 travels with the offset');
+
+        // A seek without an epoch is "I do not know where this offset comes from" and drops the old one
+        $state->seek(self::TOPIC, 0, 50);
+
+        self::assertNull($state->positionEpoch(self::TOPIC, 0));
+    }
+
+    public function testOnlyAMovedLeaderEpochMarksThePositionForValidation(): void
+    {
+        $state = $this->assignedState([0]);
+        $state->seek(self::TOPIC, 0, 42, 3);
+
+        // The first epoch the metadata reports is not a leader change, it is the first thing this client knows
+        $state->setCurrentLeaderEpoch(self::TOPIC, 0, 3);
+        self::assertSame(3, $state->currentLeaderEpoch(self::TOPIC, 0));
+        self::assertFalse($state->needsValidation(self::TOPIC, 0));
+
+        $state->setCurrentLeaderEpoch(self::TOPIC, 0, 3);
+        self::assertFalse($state->needsValidation(self::TOPIC, 0), 'the same epoch again changes nothing');
+
+        $state->setCurrentLeaderEpoch(self::TOPIC, 0, 4);
+        self::assertTrue($state->needsValidation(self::TOPIC, 0), 'a new leader means the position has to be checked');
+
+        $state->completeValidation(self::TOPIC, 0);
+        self::assertFalse($state->needsValidation(self::TOPIC, 0));
+        self::assertSame(4, $state->currentLeaderEpoch(self::TOPIC, 0));
+
+        // An unknown epoch - a Metadata answer below version 7 - never marks anything
+        $state->setCurrentLeaderEpoch(self::TOPIC, 0, null);
+        self::assertFalse($state->needsValidation(self::TOPIC, 0));
+    }
+
     /**
      * @param list<int> $partitions
      */

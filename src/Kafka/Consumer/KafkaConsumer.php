@@ -16,23 +16,29 @@ namespace Protocol\Kafka\Consumer;
 use InvalidArgumentException;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\FencedLeaderEpochException;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\LogTruncationException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\UnknownLeaderEpochException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnstableOffsetCommitException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Serialization\Deserializer;
 use Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter;
 use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
+use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestPartition;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -127,10 +133,19 @@ use Throwable;
  * {@see \Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter} before poll() returns, because a 0.11.0.3
  * broker sends them and only names them. The default is `read_uncommitted`, which shows every record of the log.
  *
- * @see docs/protocol/1.1.md, section "Transactions"
+ * @see docs/protocol/2.8.md, section "Transactions"
  */
 class KafkaConsumer
 {
+    /**
+     * How long an unstable committed offset is waited out before the 88 of KIP-447 is reported to the caller, in ms
+     *
+     * A partition the coordinator holds back is held back for as long as the transaction that wrote its offset
+     * runs, so the bound is that of a transaction and not of a request: the Java producer's `transaction.timeout.ms`
+     * defaults to 60000 and its broker-side maximum, `transaction.max.timeout.ms`, to 900000.
+     */
+    private const int UNSTABLE_OFFSET_TIMEOUT_MS = 60000;
+
     /**
      * The consumer configs
      *
@@ -294,7 +309,9 @@ class KafkaConsumer
      * A consumer that is a member of its group commits with the member id and the generation it holds, which the
      * coordinator refuses once that generation is over (22 IllegalGeneration) or the member was dropped (25
      * UnknownMemberId); a consumer that picked its partitions with {@see assign()} commits as a "simple consumer",
-     * with the empty member id and the generation -1 of a request that belongs to no generation.
+     * with the empty member id and the generation -1 of a request that belongs to no generation. A **static**
+     * member ({@see ConsumerConfig::GROUP_INSTANCE_ID}, KIP-345) also names its instance in the commit, and a
+     * commit of an instance another consumer has taken over is answered 82 (`FencedInstanceId`), which is fatal.
      * `offset.retention.ms` is passed on as the `retention_time` of the v2 request, with -1 asking the broker for
      * its own `offsets.retention.minutes`.
      *
@@ -302,6 +319,37 @@ class KafkaConsumer
      *                                                                                     null for the positions
      *                                                                                     of this consumer
      */
+    /**
+     * Returns who this consumer is inside its group, for a transactional producer that commits its offsets.
+     *
+     * KIP-447, Kafka 2.5: the version 3 of `TxnOffsetCommit` names the consumer whose offsets a transaction
+     * commits - its generation, its member id and its `group.instance.id` - so that the group coordinator can
+     * refuse the commit of a consumer that has been rebalanced away (22 `IllegalGeneration`, 25 `UnknownMemberId`,
+     * 82 `FencedInstanceId`). This is the `KafkaConsumer.groupMetadata()` of the Java client and the argument of
+     * {@see \Protocol\Kafka\Producer\KafkaProducer::sendOffsetsToTransaction()}.
+     *
+     * A consumer that never joined a group - one that picked its partitions with {@see assign()}, or one whose
+     * first poll() is still ahead - answers the generation -1 with the empty member id, which is the "not a member"
+     * commit every version below 3 sent.
+     *
+     * @throws InvalidConfigurationException For a consumer without a `group.id`, which has no metadata at all
+     */
+    public function groupMetadata(): ConsumerGroupMetadata
+    {
+        $groupId = $this->requireGroupId();
+
+        if ($this->groupCoordinator === null) {
+            return new ConsumerGroupMetadata($groupId, groupInstanceId: $this->groupInstanceId());
+        }
+
+        return new ConsumerGroupMetadata(
+            $groupId,
+            $this->groupCoordinator->getGenerationId(),
+            $this->groupCoordinator->getMemberId(),
+            $this->groupInstanceId()
+        );
+    }
+
     public function commitSync(?array $topicPartitionOffsets = null): void
     {
         $topicPartitionOffsets ??= $this->subscriptionState->allConsumed();
@@ -318,7 +366,8 @@ class KafkaConsumer
             $groupCoordinator->getMemberId(),
             $groupCoordinator->getGenerationId(),
             $topicPartitionOffsets,
-            (int) $this->configuration[ConsumerConfig::OFFSET_RETENTION_MS]
+            (int) $this->configuration[ConsumerConfig::OFFSET_RETENTION_MS],
+            $groupCoordinator->getGroupInstanceId()
         );
     }
 
@@ -342,11 +391,7 @@ class KafkaConsumer
             return [];
         }
 
-        return $this->getClient()->fetchGroupOffsets(
-            $this->getCoordinator(),
-            $this->requireGroupId(),
-            self::normalizeAssignment($topicPartitions)
-        );
+        return $this->fetchCommittedOffsets($this->requireGroupId(), self::normalizeAssignment($topicPartitions));
     }
 
     /**
@@ -479,6 +524,14 @@ class KafkaConsumer
         }
 
         $activeTopicPartitionOffsets = $this->inFetchOrder($this->subscriptionState->fetchablePartitions());
+        if ($activeTopicPartitionOffsets === []) {
+            return [];
+        }
+
+        // KIP-320: stamp every position with the leader epoch the metadata reports and, when that epoch is NEW,
+        // ask the new leader where the epoch of the position ended before a single record is read
+        $this->refreshLeaderEpochs($activeTopicPartitionOffsets);
+        $activeTopicPartitionOffsets = $this->validatePositionsIfNeeded($activeTopicPartitionOffsets);
         if ($activeTopicPartitionOffsets === []) {
             return [];
         }
@@ -632,6 +685,10 @@ class KafkaConsumer
      * This is what an application calls when it is done consuming: with `enable.auto.commit` on, the positions of
      * the assignment are committed once more, and a member of a group leaves it, which starts the rebalance that
      * hands its partitions to the other members within milliseconds.
+     *
+     * **A static member ({@see ConsumerConfig::GROUP_INSTANCE_ID}, KIP-345) does not leave**: it commits and stops,
+     * and the coordinator keeps its partitions for `session.timeout.ms` so that the very same instance picks them
+     * up again when it comes back - a restart of such a consumer costs the group no rebalance at all.
      */
     public function close(): void
     {
@@ -704,6 +761,29 @@ class KafkaConsumer
     protected function getCluster(): Cluster
     {
         return $this->cluster ??= Cluster::bootstrap($this->configuration);
+    }
+
+    /**
+     * Returns the newest leader epoch the metadata has reported for a partition, `null` while there is none
+     *
+     * The epoch comes from the `leader_epoch` of a Metadata v7 answer, which {@see Cluster} keeps per partition
+     * and only ever moves forward (KIP-320); this method is the seam a test replaces to script a leader change.
+     */
+    protected function leaderEpochOf(string $topic, int $partition): ?int
+    {
+        return $this->getCluster()->lastSeenLeaderEpoch($topic, $partition);
+    }
+
+    /**
+     * Reloads the cluster metadata, which is what the two leader-epoch errors of KIP-320 are cured with
+     *
+     * 74 `FENCED_LEADER_EPOCH` and 75 `UNKNOWN_LEADER_EPOCH` say that this client's picture of the leadership of a
+     * partition is stale in one direction or the other; the answer is always a fresh Metadata, never a move of a
+     * position. The seam exists so that a test can observe the refresh without a cluster.
+     */
+    protected function refreshMetadata(): void
+    {
+        $this->getCluster()->reload();
     }
 
     /**
@@ -815,10 +895,217 @@ class KafkaConsumer
             foreach ($partitions as $partitionId => $fetchedPartition) {
                 $nextOffset = $fetchedPartition->getNextOffset();
                 if ($nextOffset > $fetchedPartition->fetchOffset) {
-                    $this->subscriptionState->seek((string) $topic, (int) $partitionId, $nextOffset);
+                    // KIP-320: the position and the epoch it belongs to move together. The epoch is the
+                    // `partition_leader_epoch` of the LAST batch that was read, which is what the Java consumer
+                    // keeps in `FetchPosition.offsetEpoch`; a legacy message set carries none and leaves it as it
+                    // was, which is the "I have never seen an epoch of this partition" of a magic 0/1 topic.
+                    $this->subscriptionState->seek(
+                        (string) $topic,
+                        (int) $partitionId,
+                        $nextOffset,
+                        $this->subscriptionState->positionEpoch((string) $topic, (int) $partitionId)
+                    );
+                    $this->subscriptionState->setPositionEpoch(
+                        (string) $topic,
+                        (int) $partitionId,
+                        self::lastBatchLeaderEpochOf($fetchedPartition)
+                    );
                 }
             }
         }
+    }
+
+    /**
+     * Returns the `partition_leader_epoch` of the last record batch of an answer, `null` when there is none
+     *
+     * A batch of the message format v2 carries the epoch its leader was on when it was appended (KIP-101); a
+     * legacy message set has no such field, and a batch a client wrote carries -1 until the broker stamps it.
+     */
+    private static function lastBatchLeaderEpochOf(FetchedPartition $fetchedPartition): ?int
+    {
+        $epoch = null;
+        foreach ($fetchedPartition->getMemoryRecords()->getBatches() as $batch) {
+            if (!$batch instanceof RecordBatch) {
+                continue;
+            }
+            if ($batch->partitionLeaderEpoch !== RecordBatch::NO_PARTITION_LEADER_EPOCH) {
+                $epoch = $batch->partitionLeaderEpoch;
+            }
+        }
+
+        return $epoch;
+    }
+
+    /**
+     * Stamps every fetchable position with the leader epoch the metadata reports for its partition (KIP-320)
+     *
+     * The epoch comes from the `leader_epoch` of a **Metadata v7** answer, which {@see Cluster} keeps per
+     * partition and only ever moves forward - an answer of a broker that has not caught up with the controller is
+     * ignored, see {@see Cluster::updateLastSeenEpochIfNewer()}. A *new* epoch means that the partition has been
+     * led by someone else since the position was taken, which is what marks the position for validation.
+     *
+     * @param array<string, array<int, int>> $activeTopicPartitionOffsets Positions of this poll
+     */
+    private function refreshLeaderEpochs(array $activeTopicPartitionOffsets): void
+    {
+        foreach ($activeTopicPartitionOffsets as $topic => $partitionOffsets) {
+            foreach (array_keys($partitionOffsets) as $partitionId) {
+                $this->subscriptionState->setCurrentLeaderEpoch(
+                    (string) $topic,
+                    (int) $partitionId,
+                    $this->leaderEpochOf((string) $topic, (int) $partitionId)
+                );
+            }
+        }
+    }
+
+    /**
+     * Asks the new leader of every partition whose epoch changed where the epoch of the position ended (KIP-320)
+     *
+     * This is `Fetcher.validateOffsetsIfNeeded` of the Java consumer, and it is the whole point of the leader
+     * epochs. A partition is validated exactly once per leader change, with an **OffsetForLeaderEpoch v2** that
+     * names the epoch of the position (`leader_epoch`) and the epoch the consumer believes the partition is led
+     * with (`current_leader_epoch`). Three answers are possible:
+     *
+     * * `end_offset` **at or above** the position - the position is inside a part of the log the new leader has,
+     *   and the partition is fetched from as it was;
+     * * `end_offset` **below** the position - the log diverged there: the records the consumer was about to read
+     *   never made it into this leadership. With `auto.offset.reset = earliest` or `latest` the position is reset
+     *   to the bound of the log, and with **`none`** a {@see LogTruncationException} reaches the caller;
+     * * an error - **74** `FENCED_LEADER_EPOCH` or **75** `UNKNOWN_LEADER_EPOCH` say that the belief about the
+     *   leadership is stale in one direction or the other, which is cured by a metadata refresh and never by
+     *   moving the position; the partition simply stays unvalidated and is left out of this poll.
+     *
+     * @param array<string, array<int, int>> $activeTopicPartitionOffsets Positions of this poll
+     *
+     * @return array<string, array<int, int>> The positions to fetch from, without the ones that stay unvalidated
+     *
+     * @throws LogTruncationException When the log was truncated and `auto.offset.reset` is `none`
+     */
+    private function validatePositionsIfNeeded(array $activeTopicPartitionOffsets): array
+    {
+        $toValidate = [];
+        foreach ($activeTopicPartitionOffsets as $topic => $partitionOffsets) {
+            foreach (array_keys($partitionOffsets) as $partitionId) {
+                if (!$this->subscriptionState->needsValidation((string) $topic, (int) $partitionId)) {
+                    continue;
+                }
+                $positionEpoch = $this->subscriptionState->positionEpoch((string) $topic, (int) $partitionId);
+                $currentEpoch  = $this->subscriptionState->currentLeaderEpoch((string) $topic, (int) $partitionId);
+                if ($positionEpoch === null) {
+                    // Nothing to validate: the consumer has never read a record batch of this partition
+                    $this->subscriptionState->completeValidation((string) $topic, (int) $partitionId);
+                    continue;
+                }
+                $toValidate[$topic][$partitionId] = [
+                    $positionEpoch,
+                    $currentEpoch ?? OffsetForLeaderEpochRequestPartition::UNKNOWN_LEADER_EPOCH,
+                ];
+            }
+        }
+
+        if ($toValidate === []) {
+            return $activeTopicPartitionOffsets;
+        }
+
+        try {
+            $answers = $this->getClient()->offsetsForLeaderEpochs($toValidate);
+        } catch (TopicPartitionRequestException $exception) {
+            // 74 and 75 are metadata problems, not position problems: refresh and leave the partition for the
+            // next poll. Everything else is reported to the caller.
+            if (!self::isLeaderEpochError($exception)) {
+                throw $exception;
+            }
+            $this->refreshMetadata();
+            $answers = $exception->getPartialResult();
+        }
+
+        $truncated = [];
+        foreach ($answers as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $answer) {
+                $position = $activeTopicPartitionOffsets[$topic][$partitionId] ?? null;
+                $this->subscriptionState->completeValidation((string) $topic, (int) $partitionId);
+                if ($position === null || $answer->endOffset < 0 || $answer->endOffset >= $position) {
+                    continue;
+                }
+                $truncated[$topic][$partitionId] = $answer->endOffset;
+            }
+        }
+
+        foreach ($truncated as $topic => $partitions) {
+            foreach ($partitions as $partitionId => $endOffset) {
+                $this->onLogTruncation((string) $topic, (int) $partitionId, $endOffset);
+            }
+        }
+
+        // Only the partitions that are validated - or that never needed it - are fetched from in this poll
+        $fetchable = [];
+        foreach ($activeTopicPartitionOffsets as $topic => $partitionOffsets) {
+            foreach ($partitionOffsets as $partitionId => $offset) {
+                if ($this->subscriptionState->needsValidation((string) $topic, (int) $partitionId)) {
+                    continue;
+                }
+                $fetchable[$topic][$partitionId] = $this->subscriptionState->position((string) $topic, (int) $partitionId);
+            }
+        }
+
+        return $fetchable;
+    }
+
+    /**
+     * Reacts to a position that the new leader of a partition does not have any more
+     *
+     * `auto.offset.reset` decides: `earliest` and `latest` move the position to the bound of the log, `none`
+     * reports the divergence to the caller, exactly as the Java consumer does.
+     *
+     * @throws LogTruncationException With `auto.offset.reset = none`
+     */
+    private function onLogTruncation(string $topic, int $partition, int $truncationOffset): void
+    {
+        $position = $this->subscriptionState->position($topic, $partition);
+        $strategy = $this->configuration[ConsumerConfig::AUTO_OFFSET_RESET] ?? OffsetResetStrategy::LATEST;
+
+        if ($strategy !== OffsetResetStrategy::EARLIEST && $strategy !== OffsetResetStrategy::LATEST) {
+            throw new LogTruncationException([
+                'error'            => 'The log of the partition was truncated below the position of this consumer',
+                'topic'            => $topic,
+                'partition'        => $partition,
+                'offset'           => $position,
+                'truncationOffset' => $truncationOffset,
+            ]);
+        }
+
+        $timestamp = $strategy === OffsetResetStrategy::EARLIEST ? OffsetsRequest::EARLIEST : OffsetsRequest::LATEST;
+        $reset     = $this->listOffsets([$topic => [$partition]], $timestamp);
+        foreach ($reset as $resetTopic => $partitionOffsets) {
+            foreach ($partitionOffsets as $resetPartition => $offset) {
+                $this->subscriptionState->seek((string) $resetTopic, (int) $resetPartition, (int) $offset);
+            }
+        }
+    }
+
+    /**
+     * Tells whether every failed partition of a request failed with one of the two leader-epoch codes of KIP-320
+     */
+    private static function isLeaderEpochError(TopicPartitionRequestException $exception): bool
+    {
+        $errors = [];
+        foreach ($exception->getExceptions() as $partitionExceptions) {
+            foreach ($partitionExceptions as $partitionException) {
+                $errors[] = $partitionException;
+            }
+        }
+        if ($errors === []) {
+            return false;
+        }
+
+        foreach ($errors as $error) {
+            if (!$error instanceof FencedLeaderEpochException && !$error instanceof UnknownLeaderEpochException) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -1107,11 +1394,7 @@ class KafkaConsumer
                 $committedOffsets[$topic] = array_fill_keys($partitions->partitions, -1);
             }
         } else {
-            $committedOffsets = $this->getClient()->fetchGroupOffsets(
-                $this->getCoordinator(),
-                $this->groupId(),
-                $topicPartitions
-            );
+            $committedOffsets = $this->fetchCommittedOffsets($this->groupId(), $topicPartitions);
         }
 
         foreach ($this->autoResetOffsets($committedOffsets) as $topic => $partitionOffsets) {
@@ -1176,6 +1459,46 @@ class KafkaConsumer
     }
 
     /**
+     * Reads the committed offsets of the group, asking for **stable** ones when this consumer reads committed data
+     *
+     * KIP-447 (Kafka 2.5) gave OffsetFetch v7 the `require_stable` flag, and this consumer sets it exactly when
+     * `isolation.level` is `read_committed`: a read-committed consumer must not start from an offset that a
+     * transaction may still roll back, while a read-uncommitted one is happy with the last commit whatever its
+     * transaction is doing. The coordinator answers a partition it has to hold back with the **retriable** error
+     * code 88 (`UnstableOffsetCommit`), which is waited out here with `retry.backoff.ms` - as the Java consumer
+     * does, where the same code is a retriable failure of the coordinator's offset-fetch future.
+     *
+     * The Java consumer of 2.8 asks for stable offsets on **every** fetch of committed offsets and lets an
+     * internal option decide what an old broker costs; this client asks only where an unstable offset could be
+     * read back as a position, which is the guarantee KIP-447 was written for.
+     *
+     * @param array<string, PartitionsForTopic> $topicPartitions Partitions whose committed offsets are read
+     *
+     * @return array<string, array<int, int>> [topic][partition] => committed offset, or -1
+     */
+    private function fetchCommittedOffsets(string $groupId, array $topicPartitions): array
+    {
+        $requireStable = $this->isReadCommitted();
+        if (!$requireStable) {
+            return $this->getClient()->fetchGroupOffsets($this->getCoordinator(), $groupId, $topicPartitions);
+        }
+
+        $backoffMs = (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100);
+        $deadline  = microtime(true) + self::UNSTABLE_OFFSET_TIMEOUT_MS / 1e3;
+
+        while (true) {
+            try {
+                return $this->getClient()->fetchGroupOffsets($this->getCoordinator(), $groupId, $topicPartitions, true);
+            } catch (UnstableOffsetCommitException $exception) {
+                if (microtime(true) >= $deadline) {
+                    throw $exception;
+                }
+                usleep($backoffMs * 1000);
+            }
+        }
+    }
+
+    /**
      * Returns the membership of the configured consumer group, created on the first use
      */
     private function groupCoordinator(): ConsumerCoordinator
@@ -1186,8 +1509,23 @@ class KafkaConsumer
             $this->assignor,
             (int) $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS],
             (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
-            $this->rebalanceTimeoutMs()
+            $this->rebalanceTimeoutMs(),
+            $this->groupInstanceId()
         );
+    }
+
+    /**
+     * Returns the `group.instance.id` of this consumer, null for a dynamic member (KIP-345, Kafka 2.3)
+     *
+     * An empty string is treated as "not configured": the broker refuses an empty instance id with 42
+     * (InvalidRequest), and a configuration file that carries the option without a value must not turn a dynamic
+     * consumer into a broken static one.
+     */
+    private function groupInstanceId(): ?string
+    {
+        $groupInstanceId = $this->configuration[ConsumerConfig::GROUP_INSTANCE_ID] ?? null;
+
+        return is_string($groupInstanceId) && $groupInstanceId !== '' ? $groupInstanceId : null;
     }
 
     /**

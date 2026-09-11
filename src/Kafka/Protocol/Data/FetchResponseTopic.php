@@ -29,14 +29,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * what the version constant of this DTO picks in {@see self::partitionClass()}, see {@see FetchResponseTopicV4}
  * and {@see FetchResponseTopicV0}.
  *
- * @see docs/protocol/1.1.md, section "Fetch API (key 1, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v12)"
  */
 class FetchResponseTopic implements BinarySchemaInterface
 {
     /**
      * Version of the Fetch API that this DTO is unpacked from
      */
-    public const int VERSION = 5;
+    public const int VERSION = 12;
 
     /**
      * Name of the topic that was fetched from
@@ -69,9 +69,11 @@ class FetchResponseTopic implements BinarySchemaInterface
     protected static function partitionClass(): string
     {
         return match (true) {
-            static::VERSION >= 5 => FetchResponsePartition::class,
-            static::VERSION >= 4 => FetchResponsePartitionV4::class,
-            default              => FetchResponsePartitionV0::class,
+            static::VERSION >= 12 => FetchResponsePartition::class,
+            static::VERSION >= 11 => FetchResponsePartitionV11::class,
+            static::VERSION >= 5  => FetchResponsePartitionV5::class,
+            static::VERSION >= 4  => FetchResponsePartitionV4::class,
+            default               => FetchResponsePartitionV0::class,
         };
     }
 }

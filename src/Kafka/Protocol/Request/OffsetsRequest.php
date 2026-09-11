@@ -18,23 +18,25 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
+use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
 
 /**
- * Offsets API (key 2, v2), a.k.a. ListOffset
+ * Offsets API (key 2, v6), a.k.a. ListOffset
  *
  * This API describes the valid offset range available for a set of topic-partitions. As with the produce and fetch
  * APIs requests must be directed to the broker that is currently the leader for the partitions in question. This can
  * be determined using the metadata API.
  *
  * <pre>
- *   ListOffsets Request (Version: 2) => replica_id isolation_level [topics]
+ *   ListOffsets Request (Version: 6) => replica_id isolation_level [topics]
  *     replica_id      => INT32
  *     isolation_level => INT8       -- since version 2
  *     topics          => topic [partitions]
  *       topic      => STRING
- *       partitions => partition timestamp
- *         partition => INT32
- *         timestamp => INT64
+ *       partitions => partition current_leader_epoch timestamp
+ *         partition            => INT32
+ *         current_leader_epoch => INT32     -- since version 4
+ *         timestamp            => INT64
  * </pre>
  *
  * Kafka 0.10.1 added version 1 with KIP-79, on top of the message timestamps of the format v1: the broker now
@@ -52,12 +54,47 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
  * ask for its end offsets with the same isolation level it fetches with, or it waits for records it will never be
  * shown. {@see OffsetsRequestV1} and {@see OffsetsRequestV0} do not put the field on the wire at all.
  *
+ * **Version 3 (Kafka 2.0, KIP-219) is byte-identical to version 2** in both directions: `ListOffsetsRequest.json`
+ * @ 2.8.2 has no field of it and its comment is "Version 3 is the same as version 2". What it states is that the
+ * **client** honours the `throttle_time_ms` of the answer itself, because a throttled request is answered first
+ * and the channel is muted for the reported time afterwards instead of the answer being held back, see
+ * {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}. {@see OffsetsRequestV2} keeps version 2, which a
+ * 2.8.2 broker throttles in exactly the same way - the version is the promise of the client, not a switch of the
+ * broker.
+ *
+ * **Version 4 (Kafka 2.1, KIP-320) put a `current_leader_epoch` into every partition entry**, between the
+ * partition index and the target timestamp, and a `leader_epoch` into every entry of the answer, see
+ * {@see \Protocol\Kafka\Protocol\Data\OffsetsRequestPartition::$currentLeaderEpoch} and
+ * {@see \Protocol\Kafka\Protocol\Data\OffsetsResponsePartition::$leaderEpoch}. The two halves are what lets a
+ * consumer seek without reading past a leader change: it sends the epoch it believes the partition is led with -
+ * and is answered **74** or **75** when that belief is stale - and it stores the epoch of the offset it got, to
+ * send it back with its next fetch. {@see OffsetsRequestV3} keeps the version that carries neither.
+ *
+ * **Version 5 (Kafka 2.2, KIP-207) sends the very same frame once more** - `ListOffsetsRequest.json` @ 2.8.2:
+ * "Version 5 is the same as version 4" - and what it states is that the client understands **one more error
+ * code** in the answer: **78** `OFFSET_NOT_AVAILABLE`. A leader that was elected moments ago may hold a high
+ * watermark that is still below the start offset of its own epoch, and until it catches up it cannot say where
+ * the end of the log is; `Partition.fetchOffsetForTimestamp` @ 2.8.2 raises the error for a **client** request
+ * (a follower is exempt) that asks for {@see self::LATEST}, or for a timestamp whose answer would lie at or
+ * beyond the last fetchable offset. `KafkaApis.handleListOffsetRequest` @ 2.8.2 then splits on the version:
+ * `if (request.header.apiVersion >= 5)` the code 78 travels, otherwise the partition is answered **5**
+ * `LEADER_NOT_AVAILABLE` - which is what every version up to {@see OffsetsRequestV4} sees, and which is
+ * indistinguishable from "this partition has no leader at all". That distinction is the whole of KIP-207: both
+ * codes are retriable, but 78 says "the leader is there and will know in a moment", so a client retries without
+ * refreshing its metadata first. The frame is the version 4 frame with another number in its header.
+ *
+ * **Version 6 (Kafka 2.8) is the flexible version of KIP-482** and adds no field either, see
+ * {@see self::FLEXIBLE_VERSION}: the same question with the request header **v2**, a compact topic name, compact
+ * arrays and a tagged-field section at the end of the body, of every topic entry and of every partition entry.
+ * {@see OffsetsRequestV5} keeps the plain frame.
+ *
  * The two special values keep their meaning in every version: {@see self::LATEST} (`-1`) asks for the end of the
  * log - the offset the next produced message will get, capped as the isolation level prescribes - and
  * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk. Neither of them reads a message, so
  * their answer carries the timestamp -1.
  *
- * @see docs/protocol/1.1.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v6), a.k.a. ListOffset" and
+ *      "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest
 {
@@ -69,7 +106,15 @@ class OffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 6;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `ListOffsetsRequest.json` @ 2.8.2 declares `"flexibleVersions": "6+"` and its only comment on the version
+     * is "Version 6 enables flexible versions": not a field was added, the encoding changed.
+     */
+    public const int FLEXIBLE_VERSION = 6;
 
     /**
      * Special value for the offset of the next coming message, `ListOffsetRequest.LATEST_TIMESTAMP` @ 0.10.2.2
@@ -188,7 +233,11 @@ class OffsetsRequest extends AbstractRequest
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 1 ? OffsetsRequestTopic::class : OffsetsRequestTopicV0::class;
+        return match (true) {
+            static::VERSION >= 4 => OffsetsRequestTopic::class,
+            static::VERSION >= 1 => OffsetsRequestTopicV1::class,
+            default              => OffsetsRequestTopicV0::class,
+        };
     }
 
     /**

@@ -23,6 +23,12 @@ use Protocol\Kafka\Common\Errors\NetworkException;
 /**
  * Common implementation of the Kafka protocol primitive types on top of pack()/unpack().
  *
+ * The varint primitives share one byte loop: {@see self::readVarint()} and {@see self::readUnsignedVarint()} read
+ * the same groups of 7 bits, and the zigzag step that turns them into a signed value belongs to
+ * {@see \Protocol\Kafka\Common\Utils\ByteUtils}, not here. `readUnsignedVarint()` therefore stops after five
+ * bytes exactly as `readVarint()` does (`ByteUtils.readUnsignedVarint` @ 2.8.2 refuses a sixth one too), which is
+ * the width of every compact length of KIP-482.
+ *
  * A concrete stream only has to implement {@see AbstractStream::read()}, {@see AbstractStream::write()},
  * {@see Stream::isConnected()} and {@see Stream::isEmpty()}.
  */
@@ -92,7 +98,17 @@ abstract class AbstractStream implements Stream
         return $this->readRawVarint(63);
     }
 
+    public function readUnsignedVarint(): int
+    {
+        return $this->readRawVarint(28);
+    }
+
     public function writeVarint(int $value): void
+    {
+        $this->writeRawVarint($value);
+    }
+
+    public function writeUnsignedVarint(int $value): void
     {
         $this->writeRawVarint($value);
     }
@@ -255,6 +271,10 @@ abstract class AbstractStream implements Stream
             'Q' => 8,
             'J' => 8,
             'P' => 8,
+            // IEEE 754 doubles: 'd' is machine order, 'e' little-endian and 'E' the big-endian one of the protocol
+            'd' => 8,
+            'e' => 8,
+            'E' => 8,
         ];
         static $cache = [];
         if (isset($cache[$format])) {

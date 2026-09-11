@@ -23,26 +23,34 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\CreatePartitionsRequestTopic;
 use Protocol\Kafka\Protocol\Data\CreatePartitionsResponseTopic;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsRequestV0;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsRequestV1;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsResponse;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsResponseV0;
+use Protocol\Kafka\Protocol\Request\CreatePartitionsResponseV1;
 
 /**
  * Byte-exact tests for the CreatePartitions API of Kafka 1.0 (api key 37, v0, KIP-195).
  *
- * @see docs/protocol/1.1.md, section "CreatePartitions API (key 37, v0)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v3)"
  */
 #[CoversClass(CreatePartitionsRequest::class)]
+#[CoversClass(CreatePartitionsRequestV0::class)]
 #[CoversClass(CreatePartitionsResponse::class)]
+#[CoversClass(CreatePartitionsResponseV0::class)]
 #[CoversClass(CreatePartitionsRequestTopic::class)]
 #[CoversClass(CreatePartitionsResponseTopic::class)]
 #[CoversClass(NewPartitions::class)]
+#[CoversClass(CreatePartitionsRequestV1::class)]
+#[CoversClass(CreatePartitionsResponseV1::class)]
 final class CreatePartitionsTest extends TestCase
 {
     /**
-     * CreatePartitions request v0 for two topics, one of them with an explicit assignment.
+     * CreatePartitions request v1 for two topics, one of them with an explicit assignment.
      *
      *   Size          => 00 00 00 49 (73 bytes)
      *   ApiKey        => 00 25 (37)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 07
      *   ClientId      => 00 04 "test"
      *   TopicPartitions => 00 00 00 02
@@ -55,7 +63,7 @@ final class CreatePartitionsTest extends TestCase
      */
     private const string REQUEST_HEX = '00000049'
         . '0025'
-        . '0000'
+        . '0001'
         . '00000007'
         . '0004' . '74657374'
         . '00000002'
@@ -86,7 +94,7 @@ final class CreatePartitionsTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new CreatePartitionsRequest(
+        $request = new CreatePartitionsRequestV1(
             [
                 'grow'   => NewPartitions::increaseTo(5),
                 'placed' => NewPartitions::increaseTo(3, [[0], [0, 1]]),
@@ -99,20 +107,20 @@ final class CreatePartitionsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::CREATE_PARTITIONS, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'a 1.1.1 broker only serves version 0');
+        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.0 raised the api to version 1 (KIP-219)');
     }
 
     public function testAPlainCountIsTheSameFrameAsANewPartitionsWithoutAnAssignment(): void
     {
-        $fromInteger = new CreatePartitionsRequest(['grow' => 5], 30000, false, 'test', 7);
-        $fromObject  = new CreatePartitionsRequest(
+        $fromInteger = new CreatePartitionsRequestV1(['grow' => 5], 30000, false, 'test', 7);
+        $fromObject  = new CreatePartitionsRequestV1(
             ['grow' => NewPartitions::increaseTo(5)],
             30000,
             false,
             'test',
             7
         );
-        $fromEntry   = new CreatePartitionsRequest(
+        $fromEntry   = new CreatePartitionsRequestV1(
             ['grow' => new CreatePartitionsRequestTopic('grow', 5)],
             30000,
             false,
@@ -135,7 +143,7 @@ final class CreatePartitionsTest extends TestCase
 
     public function testResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = CreatePartitionsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = CreatePartitionsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(7, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);
@@ -154,15 +162,38 @@ final class CreatePartitionsTest extends TestCase
 
     public function testResponseSurvivesARoundTrip(): void
     {
-        $response = CreatePartitionsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = CreatePartitionsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
     }
 
     public function testRequestSurvivesARoundTrip(): void
     {
-        $request = CreatePartitionsRequest::unpack(new StringStream((string) hex2bin(self::REQUEST_HEX)));
+        $request = CreatePartitionsRequestV1::unpack(new StringStream((string) hex2bin(self::REQUEST_HEX)));
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
     }
+
+    public function testTheVersionZeroFrameIsTheSameBodyWithALowerVersionField(): void
+    {
+        $request = new CreatePartitionsRequestV0(
+            [
+                'grow'   => NewPartitions::increaseTo(5),
+                'placed' => NewPartitions::increaseTo(3, [[0], [0, 1]]),
+            ],
+            30000,
+            false,
+            'test',
+            7
+        );
+
+        // `CREATE_PARTITIONS_REQUEST_V1 = CREATE_PARTITIONS_REQUEST_V0` @ 2.0.1
+        self::assertSame(substr_replace(self::REQUEST_HEX, '0000', 12, 4), bin2hex((string) $request));
+        self::assertSame(0, $request->getApiVersion());
+
+        $response = CreatePartitionsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+
+        self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
+    }
+
 }

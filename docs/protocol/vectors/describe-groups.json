@@ -1,8 +1,8 @@
 {
     "api": "describe-groups",
     "apiKey": 15,
-    "section": "DescribeGroups API (key 15, v0 and v1)",
-    "description": "Wire vectors of the DescribeGroups API (key 15, v0 and v1), replayed by tests/Compliance.",
+    "section": "DescribeGroups API (key 15, v0 to v5)",
+    "description": "Wire vectors of the DescribeGroups API (key 15, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describegroups.request.v0",
@@ -103,7 +103,7 @@
         {
             "id": "describegroups.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "DescribeGroups request v1 for one group, the frame of v0 with a higher version field.",
@@ -122,7 +122,7 @@
         {
             "id": "describegroups.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer v1 for a stable group with one member: the throttle time in front of the groups of a v0 answer.",
@@ -151,6 +151,236 @@
                                 }
                             }
                         }
+                    }
+                }
+            }
+        },
+        {
+            "id": "describegroups.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequestV2",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeGroups request v2 for one group, the frame of v1 with a higher version field; the request only gains a field at v3 (KIP-430).",
+            "hex": "00000035000f0002000000ce00166b61666b612d636c69656e742d74332d6b697032313900000001000f74332d6b69703231392d67726f7570",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 15,
+                "apiVersion": 2,
+                "correlationId": 206,
+                "clientId": "kafka-client-t3-kip219",
+                "groups": [
+                    "t3-kip219-group"
+                ]
+            }
+        },
+        {
+            "id": "describegroups.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponseV2",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2 for the stable group of this capture: its state, the protocol its members agreed on, and the one member with the `Subscription` it joined with and the `MemberAssignment` the leader gave it.",
+            "hex": "000000d8000000ce00000000000000010000000f74332d6b69703231392d67726f75700006537461626c650008636f6e73756d6572000572616e676500000001003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d31663464356332613933336500166b61666b612d636c69656e742d74332d6b6970323139000b2f3137322e31382e302e3100000015000000000001000974332d6b6970323139000000000000001d000000000001000974332d6b6970323139000000010000000000000000",
+            "fields": {
+                "messageSize": 216,
+                "correlationId": 206,
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-kip219-group": {
+                        "errorCode": 0,
+                        "groupId": "t3-kip219-group",
+                        "state": "Stable",
+                        "protocolType": "consumer",
+                        "protocol": "range",
+                        "members": {
+                            "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e": {
+                                "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
+                                "clientId": "kafka-client-t3-kip219",
+                                "clientHost": "/172.18.0.1",
+                                "memberMetadata": {
+                                    "$bytes": "000000000001000974332d6b697032313900000000"
+                                },
+                                "memberAssignment": {
+                                    "$bytes": "000000000001000974332d6b6970323139000000010000000000000000"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "describegroups.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequestV3",
+            "version": 3,
+            "source": "broker",
+            "description": "DescribeGroups request v3 (Kafka 2.3, KIP-430) that **does** ask for the authorized operations: the boolean `include_authorized_operations` is the single byte `01` behind the group array.",
+            "hex": "00000038000f00030000019500136b61666b612d636c69656e742d74332d33343500000001001474332d3334352d766563746f72732d67726f757001",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 15,
+                "apiVersion": 3,
+                "correlationId": 405,
+                "clientId": "kafka-client-t3-345",
+                "groups": [
+                    "t3-345-vectors-group"
+                ],
+                "includeAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "describegroups.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponseV3",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer for the stable group of the static member above. Every group entry ends with the 32-bit `authorized_operations`, here **328** = bits 3, 6 and 8 - READ, DELETE and DESCRIBE of `AclOperation` @ 2.8.2, which is what `AclEntry.supportedOperations(GROUP)` answers on a broker that runs without an authorizer. A request that leaves the flag at `false` is answered `-2147483648` (`Integer.MIN_VALUE`) instead.",
+            "hex": "000000e40000019500000000000000010000001474332d3334352d766563746f72732d67726f75700006537461626c650008636f6e73756d6572000572616e676500000001002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d64376263363131316363636400136b61666b612d636c69656e742d74332d333435000b2f3137322e31382e302e310000001a000000000001000e74332d3334352d766563746f7273000000000000002a000000000001000e74332d3334352d766563746f7273000000030000000000000001000000020000000000000148",
+            "fields": {
+                "messageSize": 228,
+                "correlationId": 405,
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-345-vectors-group": {
+                        "errorCode": 0,
+                        "groupId": "t3-345-vectors-group",
+                        "state": "Stable",
+                        "protocolType": "consumer",
+                        "protocol": "range",
+                        "members": {
+                            "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd": {
+                                "memberId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                                "clientId": "kafka-client-t3-345",
+                                "clientHost": "/172.18.0.1",
+                                "memberMetadata": {
+                                    "$bytes": "000000000001000e74332d3334352d766563746f727300000000"
+                                },
+                                "memberAssignment": {
+                                    "$bytes": "000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000"
+                                }
+                            }
+                        },
+                        "authorizedOperations": 328
+                    }
+                }
+            }
+        },
+        {
+            "id": "describegroups.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "DescribeGroups request v5 (KIP-482): a compact array of compact group ids and the `include_authorized_operations` flag of KIP-430, which is a plain byte in both encodings.",
+            "hex": "00000036000f00050000038b00136b61666b612d636c69656e742d74332d32346200021574332d3234622d766563746f72732d67726f75700100",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 15,
+                "apiVersion": 5,
+                "correlationId": 907,
+                "clientId": "kafka-client-t3-24b",
+                "headerTaggedFields": [],
+                "groups": [
+                    "t3-24b-vectors-group"
+                ],
+                "includeAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "describegroups.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer v5 for a stable group of one **static** member: every string is compact, every member entry carries the `group_instance_id` that version 4 added (KIP-345) and ends in its own tag buffer, and the group entry closes with the `authorized_operations` bit set **328** of KIP-430.",
+            "hex": "000000e00000038b00000000000200001574332d3234622d766563746f72732d67726f757007537461626c6509636f6e73756d65720672616e6765023074332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d6364653636326166613732360b74332d3234622d6f6e65146b61666b612d636c69656e742d74332d3234620c2f3137322e31382e302e311b000000000001000e74332d3234622d766563746f7273000000002b000000000001000e74332d3234622d766563746f7273000000030000000000000001000000020000000000000001480000",
+            "fields": {
+                "messageSize": 224,
+                "correlationId": 907,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-24b-vectors-group": {
+                        "errorCode": 0,
+                        "groupId": "t3-24b-vectors-group",
+                        "state": "Stable",
+                        "protocolType": "consumer",
+                        "protocol": "range",
+                        "members": {
+                            "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726": {
+                                "memberId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                                "groupInstanceId": "t3-24b-one",
+                                "clientId": "kafka-client-t3-24b",
+                                "clientHost": "/172.18.0.1",
+                                "memberMetadata": {
+                                    "$bytes": "000000000001000e74332d3234622d766563746f727300000000"
+                                },
+                                "memberAssignment": {
+                                    "$bytes": "000000000001000e74332d3234622d766563746f72730000000300000000000000010000000200000000"
+                                }
+                            }
+                        },
+                        "authorizedOperations": 328
+                    }
+                }
+            }
+        },
+        {
+            "id": "describegroups.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequestV4",
+            "version": 4,
+            "source": "broker",
+            "description": "DescribeGroups request v4 (Kafka 2.4, KIP-345), the last version with the plain encoding: byte for byte the version 3 request with another version number, because what the version added belongs to the answer.",
+            "hex": "00000038000f00040000038c00136b61666b612d636c69656e742d74332d32346200000001001474332d3234622d766563746f72732d67726f757001",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 15,
+                "apiVersion": 4,
+                "correlationId": 908,
+                "clientId": "kafka-client-t3-24b",
+                "groups": [
+                    "t3-24b-vectors-group"
+                ],
+                "includeAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "describegroups.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponseV4",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer v4: the plain encoding of the version 3 answer with one field more per member, the nullable `group_instance_id` of the static member - this is the version that lets an operator see which member id belongs to which instance.",
+            "hex": "000000f00000038c00000000000000010000001474332d3234622d766563746f72732d67726f75700006537461626c650008636f6e73756d6572000572616e676500000001002f74332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d636465363632616661373236000a74332d3234622d6f6e6500136b61666b612d636c69656e742d74332d323462000b2f3137322e31382e302e310000001a000000000001000e74332d3234622d766563746f7273000000000000002a000000000001000e74332d3234622d766563746f7273000000030000000000000001000000020000000000000148",
+            "fields": {
+                "messageSize": 240,
+                "correlationId": 908,
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-24b-vectors-group": {
+                        "errorCode": 0,
+                        "groupId": "t3-24b-vectors-group",
+                        "state": "Stable",
+                        "protocolType": "consumer",
+                        "protocol": "range",
+                        "members": {
+                            "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726": {
+                                "memberId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                                "groupInstanceId": "t3-24b-one",
+                                "clientId": "kafka-client-t3-24b",
+                                "clientHost": "/172.18.0.1",
+                                "memberMetadata": {
+                                    "$bytes": "000000000001000e74332d3234622d766563746f727300000000"
+                                },
+                                "memberAssignment": {
+                                    "$bytes": "000000000001000e74332d3234622d766563746f72730000000300000000000000010000000200000000"
+                                }
+                            }
+                        },
+                        "authorizedOperations": 328
                     }
                 }
             }

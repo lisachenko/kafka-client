@@ -17,13 +17,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
 /**
- * OffsetCommitRequestPartition DTO, version 2 of the OffsetCommit API
+ * OffsetCommitRequestPartition DTO, version 6 of the OffsetCommit API
  *
  * <pre>
- *   OffsetCommitRequestPartition => partition offset metadata
- *     partition => INT32
- *     offset    => INT64
- *     metadata  => NULLABLE_STRING
+ *   OffsetCommitRequestPartition => partition offset leader_epoch metadata
+ *     partition    => INT32
+ *     offset       => INT64
+ *     leader_epoch => INT32           -- since version 6
+ *     metadata     => NULLABLE_STRING
  * </pre>
  *
  * The per-partition `timestamp` exists in **version 1 only**: version 0 never had it and version 2 replaced it with
@@ -32,14 +33,30 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the layout of version 0 again, and the odd one out lives in {@see OffsetCommitRequestPartitionV1}; the scheme is
  * selected by {@see OffsetCommitRequestPartition::VERSION}.
  *
- * @see docs/protocol/1.1.md, section "OffsetCommit API (key 8, v0 to v3)"
+ * **Version 6 (Kafka 2.1, KIP-320) inserted `committed_leader_epoch` between the offset and the metadata**: the
+ * epoch of the leader the committed offset was read from, so that a consumer which resumes from it can be told
+ * that the log was truncated behind its back. A client that does not know the epoch sends
+ * {@see self::UNKNOWN_LEADER_EPOCH}, which is what `OffsetCommitRequestPartitionV2` - the layout of the versions
+ * 2 to 5 - carries implicitly, because it has no such field at all.
+ *
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
  */
 class OffsetCommitRequestPartition implements BinarySchemaInterface
 {
     /**
      * Version of the OffsetCommit API that this DTO is packed for
      */
-    public const int VERSION = 2;
+    public const int VERSION = 6;
+
+    /**
+     * The `committed_leader_epoch` of a partition whose leader epoch the client does not know
+     *
+     * `RecordBatch.NO_PARTITION_LEADER_EPOCH` in the Java client, and the `default` of the field in
+     * `OffsetCommitRequest.json` @ 2.8.2.
+     *
+     * @since Version 6 of protocol
+     */
+    public const int UNKNOWN_LEADER_EPOCH = -1;
 
     /**
      * Asks the broker to stamp the commit with its own receive time.
@@ -68,6 +85,13 @@ class OffsetCommitRequestPartition implements BinarySchemaInterface
     public int $timestamp;
 
     /**
+     * Epoch of the leader this offset was read from, {@see self::UNKNOWN_LEADER_EPOCH} when it is not known.
+     *
+     * @since Version 6 of protocol
+     */
+    public int $leaderEpoch;
+
+    /**
      * Any associated metadata the client wants to keep.
      */
     public ?string $metadata;
@@ -76,12 +100,14 @@ class OffsetCommitRequestPartition implements BinarySchemaInterface
         int $partition,
         int $offset,
         ?string $metadata = null,
-        int $timestamp = self::BROKER_TIMESTAMP
+        int $timestamp = self::BROKER_TIMESTAMP,
+        int $leaderEpoch = self::UNKNOWN_LEADER_EPOCH
     ) {
-        $this->partition = $partition;
-        $this->offset    = $offset;
-        $this->metadata  = $metadata;
-        $this->timestamp = $timestamp;
+        $this->partition   = $partition;
+        $this->offset      = $offset;
+        $this->metadata    = $metadata;
+        $this->timestamp   = $timestamp;
+        $this->leaderEpoch = $leaderEpoch;
     }
 
     /**
@@ -93,6 +119,9 @@ class OffsetCommitRequestPartition implements BinarySchemaInterface
             'partition' => BinarySchema::TYPE_INT32,
             'offset'    => BinarySchema::TYPE_INT64,
         ];
+        if (static::VERSION >= 6) {
+            $scheme['leaderEpoch'] = BinarySchema::TYPE_INT32;
+        }
         if (static::VERSION === 1) {
             $scheme['timestamp'] = BinarySchema::TYPE_INT64;
         }

@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
 
 /**
- * DescribeLogDirs response object, version 0 (key 35)
+ * DescribeLogDirs response object, version 1 (key 35)
  *
  * <pre>
- *   DescribeLogDirs Response (Version: 0) => throttle_time_ms [log_dirs]
+ *   DescribeLogDirs Response (Version: 0 and 1) => throttle_time_ms [log_dirs]
  *     throttle_time_ms => INT32
  *     log_dirs         => error_code log_dir [topics]
  *       error_code => INT16
@@ -47,14 +47,26 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * answers a client that may not `Describe` the cluster resource with an empty `log_dirs` array instead of an error
  * code, which the Java admin client translates back into 31 (ClusterAuthorizationFailed).
  *
- * @see docs/protocol/1.1.md, section "DescribeLogDirs API (key 35, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `DESCRIBE_LOG_DIRS_RESPONSE_V1 =
+ * DESCRIBE_LOG_DIRS_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see DescribeLogDirsResponseV0} is the same frame with the version field of Kafka 1.0.
+ *
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
  */
 class DescribeLogDirsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 2;
+
+    /**
+     * The version 2 of Kafka 2.6 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation

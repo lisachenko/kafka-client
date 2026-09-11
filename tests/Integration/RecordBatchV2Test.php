@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * {@see RawRecordBatchProbe}; that is also the only way to make the broker write a **control batch** without a
  * transactional producer.
  *
- * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/2.8.md, section "RecordBatch (message format v2)"
  */
 #[CoversClass(RecordBatch::class)]
 #[CoversClass(RecordV2::class)]
@@ -54,6 +54,15 @@ final class RecordBatchV2Test extends IntegrationTestCase
      * Client id that identifies the frames of this test in the logs of the broker
      */
     private const string CLIENT_ID = 'kafka-client-t2-rbv2';
+
+    /**
+     * How far the broker's append time may lie below this process's clock, in milliseconds
+     *
+     * The two are read through different code paths - `microtime()` of PHP and `System.currentTimeMillis()` of
+     * the JVM - so the comparison of a timestamp the broker stamped with a timestamp this process took is only
+     * meaningful with a millisecond of slack.
+     */
+    private const int CLOCK_TOLERANCE_MS = 2;
 
     /**
      * Partition that every test of this class produces to and fetches from
@@ -235,7 +244,12 @@ final class RecordBatchV2Test extends IntegrationTestCase
             $batch->getFirstTimestamp(),
             'the broker leaves the CreateTime of the producer in the first timestamp'
         );
-        self::assertGreaterThanOrEqual($before, $batch->getMaxTimestamp());
+        // The lower bound has a millisecond of slack in each direction: `$before` is the `microtime()` of this
+        // PHP process and the append time is `System.currentTimeMillis()` of the JVM, and the two clocks are read
+        // through different code paths - a rounding of half a millisecond apart is enough to make the broker
+        // stamp a timestamp one below the bound. The upper bound stays exact: an append time *after* the answer
+        // arrived would be a real defect.
+        self::assertGreaterThanOrEqual($before - self::CLOCK_TOLERANCE_MS, $batch->getMaxTimestamp());
         self::assertLessThanOrEqual($after, $batch->getMaxTimestamp());
 
         foreach ($region->getRecords() as $record) {
@@ -390,7 +404,7 @@ final class RecordBatchV2Test extends IntegrationTestCase
         );
     }
 
-    public function testTheLastStableOffsetIsOnlyAnsweredForReadCommitted(): void
+    public function testTheAbortedTransactionsAreOnlyAnsweredForReadCommitted(): void
     {
         $this->produce(
             RecordBatch::fromRecords([new Record('alpha', null, 0, null, self::now(), TimestampType::CREATE_TIME)])
@@ -401,8 +415,10 @@ final class RecordBatchV2Test extends IntegrationTestCase
 
         self::assertSame(0, $uncommitted['errorCode']);
         self::assertSame(1, $uncommitted['highWaterMarkOffset']);
-        self::assertSame(-1, $uncommitted['lastStableOffset'], 'read_uncommitted answers no last stable offset');
-        self::assertNull($uncommitted['abortedTransactions'], 'and a null aborted transaction array');
+        // A 0.11.0.3 and a 1.1.1 broker answered `last_stable_offset = -1` here; a 2.8.2 broker computes the LSO
+        // for both isolation levels, so the field is no longer what tells the two answers apart
+        self::assertSame(1, $uncommitted['lastStableOffset'], 'read_uncommitted answers the real LSO on 2.8.2');
+        self::assertNull($uncommitted['abortedTransactions'], 'but still a null aborted transaction array');
 
         self::assertSame(1, $committed['lastStableOffset']);
         self::assertSame([], $committed['abortedTransactions'], 'read_committed answers an array, empty or not');
@@ -506,7 +522,7 @@ final class RecordBatchV2Test extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
         $command   = [
-            'docker', 'exec', $container === false || $container === '' ? 'kafka-1-1-1' : $container,
+            'docker', 'exec', $container === false || $container === '' ? 'kafka-2-8-2' : $container,
             '/opt/kafka/bin/kafka-topics.sh', '--zookeeper', 'localhost:2181',
             '--create', '--topic', $topic, '--partitions', '1', '--replication-factor', '1',
         ];

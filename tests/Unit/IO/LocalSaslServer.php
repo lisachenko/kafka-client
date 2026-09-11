@@ -274,19 +274,37 @@ final class LocalSaslServer
 
             if ($handshakeVersion >= 1) {
                 // The token arrived as a SaslAuthenticate request; the answer carries its correlation id, an error
-                // code, a nullable error message and the token of the broker
+                // code, a nullable error message, the token of the broker and - from the version 1 of KIP-368 that
+                // the client sends since Kafka 2.2 - the session lifetime, which this broker never bounds. The
+                // version 2 of Kafka 2.5 is the first FLEXIBLE one (KIP-482): its answer opens with the response
+                // header v1 - a correlation id and a tag buffer - the error message is a compact nullable string,
+                // the token a compact byte array, and the body ends in a tag buffer of its own
                 $tokenCorrelationId = bin2hex(substr($token, 8, 4));
+                $tokenVersion       = unpack('nversion', substr($token, 6, 2))['version'];
+                $sessionLifetime    = $tokenVersion >= 1 ? '0000000000000000' : '';
+                $isFlexible         = $tokenVersion >= 2;
+                $headerTags         = $isFlexible ? '00' : '';
+                $bodyTags           = $isFlexible ? '00' : '';
+                $nullMessage        = $isFlexible ? '00' : 'ffff';
+                $emptyToken         = $isFlexible ? '01' : '00000000';
+                $message            = static fn(string $text): string => $isFlexible
+                    ? sprintf('%02x', strlen($text) + 1) . bin2hex($text)
+                    : sprintf('%04x', strlen($text)) . bin2hex($text);
+                $bytes              = static fn(string $raw): string => $isFlexible
+                    ? sprintf('%02x', strlen($raw) + 1) . bin2hex($raw)
+                    : sprintf('%08x', strlen($raw)) . bin2hex($raw);
                 if ($scenario === 'invalid-credentials') {
                     // ErrorCode 58 (0x003a), the message of the broker, and the empty token
-                    $message = 'Authentication failed: Invalid username or password';
-                    $body    = $tokenCorrelationId . '003a' . sprintf('%04x', strlen($message))
-                        . bin2hex($message) . '00000000';
+                    $body = $tokenCorrelationId . $headerTags . '003a'
+                        . $message('Authentication failed: Invalid username or password')
+                        . $emptyToken . $sessionLifetime . $bodyTags;
                     $answer(sprintf('%08x', strlen($body) / 2) . $body);
                     fclose($connection);
                     exit(0);
                 }
-                $body = $tokenCorrelationId . '0000' . 'ffff'
-                    . ($scenario === 'unexpected-token' ? '00000004' . bin2hex('more') : '00000000');
+                $body = $tokenCorrelationId . $headerTags . '0000' . $nullMessage
+                    . ($scenario === 'unexpected-token' ? $bytes('more') : $emptyToken)
+                    . $sessionLifetime . $bodyTags;
                 $answer(sprintf('%08x', strlen($body) / 2) . $body);
             } elseif ($scenario === 'unexpected-token') {
                 $answer('00000004' . bin2hex('more'));

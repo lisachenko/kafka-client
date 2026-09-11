@@ -33,7 +33,7 @@ use function in_array;
  * C0: [t0p0, t0p2, t1p1]
  * C1: [t0p1, t1p0, t1p2]
  *
- * @see docs/protocol/1.1.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/2.8.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 class RoundRobinAssignor extends AbstractPartitionAssignor
 {

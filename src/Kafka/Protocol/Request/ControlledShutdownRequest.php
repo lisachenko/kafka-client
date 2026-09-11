@@ -39,7 +39,17 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * -1 (Unknown), because that release mapped `e.getCause`, which is null for a directly thrown exception. Verified
  * against the broker of this branch.
  *
- * @see docs/protocol/1.1.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * **Kafka 2.2 added the version 2** (KIP-380): a `broker_epoch int64` behind the broker id, the ZooKeeper
+ * registration epoch of the broker that wants to shut down. `KafkaController.doControlledShutdown` @ 2.8.2 refuses
+ * a request whose epoch is **below** the one it has cached for that broker with the error code **77**
+ * `StaleBrokerEpoch` - the shutdown of a broker that has been restarted in the meantime - and skips the check
+ * entirely for {@see self::UNKNOWN_BROKER_EPOCH}. This client sends the -1 unless a caller names an epoch, because
+ * only the broker itself knows its registration epoch.
+ *
+ * **Kafka 2.4 added the version 3** (KIP-482), the same two fields in the flexible encoding.
+ * {@see ControlledShutdownRequestV2} is the frame Kafka 2.2 introduced.
+ *
+ * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 class ControlledShutdownRequest extends AbstractRequest
 {
@@ -51,7 +61,23 @@ class ControlledShutdownRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 3;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 3;
+
+    /**
+     * The broker epoch of a sender that does not know it, which skips the staleness check of KIP-380
+     *
+     * `AbstractControlRequest.UNKNOWN_BROKER_EPOCH` @ 2.8.2, and the `default: -1` of `broker_epoch` in
+     * `ControlledShutdownRequest.json`. `KafkaController.doControlledShutdown` compares the epoch of the request
+     * with the one it has cached for that broker only when the request names one: "broker epoch in the request is
+     * unknown if the controller hasn't been upgraded to use KIP-380 so we will keep the previous behavior and
+     * don't reject the request".
+     */
+    public const int UNKNOWN_BROKER_EPOCH = -1;
 
     /**
      * Identifier of the broker that should be shut down
@@ -59,13 +85,27 @@ class ControlledShutdownRequest extends AbstractRequest
     protected int $brokerId;
 
     /**
+     * ZooKeeper registration epoch of that broker, -1 when the sender does not know it
+     *
+     * @since Version 2 of protocol
+     */
+    protected int $brokerEpoch;
+
+    /**
      * @param int    $brokerId      Identifier of the broker that should be shut down
+     * @param int    $brokerEpoch   Registration epoch of that broker, {@see self::UNKNOWN_BROKER_EPOCH} to skip
+     *                              the staleness check of KIP-380 (version 2)
      * @param string $clientId      A user specified identifier for the client making the request, ignored by v0
      * @param int    $correlationId A user-supplied value that the broker passes back unmodified
      */
-    public function __construct(int $brokerId, string $clientId = '', int $correlationId = 0)
-    {
-        $this->brokerId = $brokerId;
+    public function __construct(
+        int $brokerId,
+        int $brokerEpoch = self::UNKNOWN_BROKER_EPOCH,
+        string $clientId = '',
+        int $correlationId = 0
+    ) {
+        $this->brokerId    = $brokerId;
+        $this->brokerEpoch = $brokerEpoch;
 
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
@@ -73,17 +113,23 @@ class ControlledShutdownRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
+    public static function getHeaderVersion(): int
+    {
+        // Version 0 of this api is the one frame of the protocol whose header carries no client id at all -
+        // `RequestHeader.json` @ 2.8.2 keeps a header version 0 for it and for nothing else
+        return static::VERSION < 1 ? self::HEADER_V0 : parent::getHeaderVersion();
+    }
+
     public static function getScheme(): array
     {
-        $header = parent::getScheme();
-        if (static::VERSION < 1) {
-            // Version 0 does not read a client id for this api key, see the class docblock
-            unset($header['clientId']);
+        // The version 0 header has no client id, which is {@see self::getHeaderVersion()} and not an edit of the
+        // scheme since the flexible-version engine made the header version a property of the message
+        $body = ['brokerId' => BinarySchema::TYPE_INT32];
+        if (static::VERSION >= 2) {
+            $body['brokerEpoch'] = BinarySchema::TYPE_INT64;
         }
 
-        return $header + [
-            'brokerId' => BinarySchema::TYPE_INT32,
-        ];
+        return parent::getScheme() + $body;
     }
 
     /**
@@ -92,5 +138,13 @@ class ControlledShutdownRequest extends AbstractRequest
     public function getBrokerId(): int
     {
         return $this->brokerId;
+    }
+
+    /**
+     * Returns the broker epoch this request carries, -1 when it does not name one
+     */
+    public function getBrokerEpoch(): int
+    {
+        return $this->brokerEpoch;
     }
 }

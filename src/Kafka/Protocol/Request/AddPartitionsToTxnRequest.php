@@ -18,10 +18,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
- * AddPartitionsToTxn, version 0: enrols topic-partitions into the open transaction (ApiKey 24, Kafka 0.11, KIP-98)
+ * AddPartitionsToTxn, version 1: enrols topic-partitions into the open transaction (ApiKey 24, Kafka 0.11, KIP-98)
  *
  * <pre>
- *   AddPartitionsToTxn Request (Version: 0) => transactional_id producer_id producer_epoch [topics]
+ *   AddPartitionsToTxn Request (Version: 0 and 1) => transactional_id producer_id producer_epoch [topics]
  *     transactional_id => STRING
  *     producer_id      => INT64
  *     producer_epoch   => INT16
@@ -48,7 +48,14 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * partition while the previous transaction of the id is still being completed is answered with **51**
  * (`ConcurrentTransactions`), which is retriable after a back-off.
  *
- * @see docs/protocol/1.1.md, section "AddPartitionsToTxn API (key 24, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `ADD_PARTITIONS_TO_TXN_REQUEST_V1 =
+ * ADD_PARTITIONS_TO_TXN_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see AddPartitionsToTxnRequestV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * @see docs/protocol/2.8.md, section "AddPartitionsToTxn API (key 24, v0 to v3)"
  */
 class AddPartitionsToTxnRequest extends AbstractRequest
 {
@@ -60,7 +67,12 @@ class AddPartitionsToTxnRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 3;
+
+    /**
+     * The version 3 of Kafka 2.8 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 3;
 
     /**
      * Partitions to enrol into the transaction, indexed by the topic name

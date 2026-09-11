@@ -23,25 +23,33 @@ use Protocol\Kafka\Protocol\Data\AlterConfigsRequestConfigEntry;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\AlterConfigsResponseResource;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
+use Protocol\Kafka\Protocol\Request\AlterConfigsRequestV0;
+use Protocol\Kafka\Protocol\Request\AlterConfigsRequestV1;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
+use Protocol\Kafka\Protocol\Request\AlterConfigsResponseV0;
+use Protocol\Kafka\Protocol\Request\AlterConfigsResponseV1;
 
 /**
- * Byte-exact tests for the AlterConfigs API of Kafka 0.11 (api key 33, v0).
+ * Byte-exact tests for the AlterConfigs API (api key 33) at the version 1 that Kafka 2.0 added.
  *
- * @see docs/protocol/1.1.md, section "AlterConfigs API (key 33, v0)"
+ * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0 to v2)"
  */
 #[CoversClass(AlterConfigsRequest::class)]
+#[CoversClass(AlterConfigsRequestV1::class)]
+#[CoversClass(AlterConfigsRequestV0::class)]
 #[CoversClass(AlterConfigsResponse::class)]
+#[CoversClass(AlterConfigsResponseV1::class)]
+#[CoversClass(AlterConfigsResponseV0::class)]
 #[CoversClass(AlterConfigsRequestResource::class)]
 #[CoversClass(AlterConfigsRequestConfigEntry::class)]
 #[CoversClass(AlterConfigsResponseResource::class)]
 final class AlterConfigsTest extends TestCase
 {
     /**
-     * AlterConfigs request v0 that replaces the configuration of one topic with two options.
+     * AlterConfigs request v1 that replaces the configuration of one topic with two options.
      *
      *   ApiKey        => 00 21 (33)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 09
      *   ClientId      => 00 04 "test"
      *   Resources     => 00 00 00 01
@@ -52,7 +60,7 @@ final class AlterConfigsTest extends TestCase
      *   ValidateOnly  => 00
      */
     private const string REQUEST_BODY_HEX = '0021'
-        . '0000'
+        . '0001'
         . '00000009'
         . '0004' . '74657374'
         . '00000001'
@@ -79,7 +87,7 @@ final class AlterConfigsTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new AlterConfigsRequest(
+        $request = new AlterConfigsRequestV1(
             [
                 AlterConfigsRequestResource::fromConfigResource(
                     ConfigResource::topic('topic'),
@@ -93,12 +101,12 @@ final class AlterConfigsTest extends TestCase
 
         self::assertSame(self::frame(self::REQUEST_BODY_HEX), bin2hex((string) $request));
         self::assertSame(ApiKeys::ALTER_CONFIGS, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'a 0.11.0.3 broker only serves version 0');
+        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.0 raised the api to version 1 (KIP-219)');
     }
 
     public function testValidateOnlyIsTheTrailingBooleanOfTheRequest(): void
     {
-        $validate = new AlterConfigsRequest(
+        $validate = new AlterConfigsRequestV1(
             [new AlterConfigsRequestResource(ConfigResource::TYPE_TOPIC, 'topic', ['retention.ms' => '1'])],
             true,
             'test',
@@ -112,7 +120,7 @@ final class AlterConfigsTest extends TestCase
     {
         // The schema of 0.11 declares the value nullable; a broker answers such an entry with the error code -1,
         // because `Properties.setProperty` throws on it - see the "AlterConfigs API" section of the document
-        $request = new AlterConfigsRequest(
+        $request = new AlterConfigsRequestV1(
             [new AlterConfigsRequestResource(ConfigResource::TYPE_TOPIC, 'topic', ['retention.ms' => null])],
             false,
             'test',
@@ -124,7 +132,7 @@ final class AlterConfigsTest extends TestCase
 
     public function testResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = AlterConfigsResponse::unpack(new StringStream((string) hex2bin(self::frame(self::RESPONSE_BODY_HEX))));
+        $response = AlterConfigsResponseV1::unpack(new StringStream((string) hex2bin(self::frame(self::RESPONSE_BODY_HEX))));
 
         self::assertSame(9, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);
@@ -145,7 +153,7 @@ final class AlterConfigsTest extends TestCase
     public function testResponseSurvivesARoundTrip(): void
     {
         $frame    = self::frame(self::RESPONSE_BODY_HEX);
-        $response = AlterConfigsResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = AlterConfigsResponseV1::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame($frame, bin2hex((string) $response));
     }
@@ -157,4 +165,32 @@ final class AlterConfigsTest extends TestCase
     {
         return sprintf('%08x', strlen($bodyHex) / 2) . $bodyHex;
     }
+
+    public function testTheVersionZeroFrameIsTheSameBodyWithALowerVersionField(): void
+    {
+        $request = new AlterConfigsRequestV0(
+            [
+                AlterConfigsRequestResource::fromConfigResource(
+                    ConfigResource::topic('topic'),
+                    ['retention.ms' => '1', 'cleanup.policy' => 'compact']
+                ),
+            ],
+            false,
+            'test',
+            9
+        );
+
+        // `ALTER_CONFIGS_REQUEST_V1 = ALTER_CONFIGS_REQUEST_V0` @ 2.0.1: only the api version field is different
+        self::assertSame(
+            self::frame(substr_replace(self::REQUEST_BODY_HEX, '0000', 4, 4)),
+            bin2hex((string) $request)
+        );
+        self::assertSame(0, $request->getApiVersion());
+
+        $frame    = self::frame(self::RESPONSE_BODY_HEX);
+        $response = AlterConfigsResponseV0::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame($frame, bin2hex((string) $response), 'the answer of version 0 has the same layout');
+    }
+
 }

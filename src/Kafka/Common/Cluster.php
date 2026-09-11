@@ -76,6 +76,24 @@ final class Cluster
     private array $topicPartitions = [];
 
     /**
+     * Newest leader epoch this cluster has ever seen for a partition, as topic => partition => epoch (KIP-320)
+     *
+     * `Metadata.updateLastSeenEpochIfNewer` of the Java client keeps the very same map, and for the very same
+     * reason: a Metadata answer may come from **any** broker, and a broker that has not caught up with the
+     * controller yet answers the *previous* leader of a partition. Taking that answer would send the consumer
+     * back to the old leader and, worse, make it fetch with an epoch the new leader has already fenced. The rule
+     * is therefore "a partition entry is only applied when its epoch is at least the newest one seen", and this
+     * map is what "newest one seen" means.
+     *
+     * A partition whose answers carry no epoch at all - every Metadata version below 7 - never enters the map.
+     *
+     * @see self::updateLastSeenEpochIfNewer()
+     *
+     * @var array<string, array<int, int>>
+     */
+    private array $lastSeenLeaderEpochs = [];
+
+    /**
      * Identifier of the cluster, null while the metadata was never fetched or came from a broker without one
      *
      * @since Version 2 of the Metadata API (Kafka 0.10.1)
@@ -128,7 +146,7 @@ final class Cluster
      *
      * @throws AllBrokersNotAvailableException If the cluster did not advertise a single broker in time
      *
-     * @see docs/protocol/1.1.md, section "Cluster readiness"
+     * @see docs/protocol/2.8.md, section "Cluster readiness"
      */
     public static function bootstrap(array $configuration, ?string $topic = null): Cluster
     {
@@ -289,6 +307,77 @@ final class Cluster
     }
 
     /**
+     * Remembers the leader epoch of a partition when it is newer than the one this cluster has seen (KIP-320)
+     *
+     * This is `Metadata.updateLastSeenEpochIfNewer` of the Java client: `true` means "this is news", `false`
+     * means "an answer from a broker that is behind, or the very same epoch again". A partition of a Metadata
+     * answer below version 7 carries {@see PartitionMetadata::UNKNOWN_LEADER_EPOCH} and is never remembered - a
+     * client that can not see epochs can not be fooled by a stale one either.
+     *
+     * @param string $topic     Name of the topic
+     * @param int    $partition Id of the partition
+     * @param int    $epoch     Leader epoch of the answer, -1 when it carried none
+     *
+     * @return bool Whether the epoch was newer than everything seen so far and has been remembered
+     */
+    public function updateLastSeenEpochIfNewer(string $topic, int $partition, int $epoch): bool
+    {
+        if ($epoch === PartitionMetadata::UNKNOWN_LEADER_EPOCH) {
+            return false;
+        }
+
+        $seen = $this->lastSeenLeaderEpochs[$topic][$partition] ?? null;
+        if ($seen !== null && $epoch <= $seen) {
+            return false;
+        }
+
+        $this->lastSeenLeaderEpochs[$topic][$partition] = $epoch;
+
+        return true;
+    }
+
+    /**
+     * Returns the newest leader epoch this cluster has seen for a partition, `null` while it has seen none
+     */
+    public function lastSeenLeaderEpoch(string $topic, int $partition): ?int
+    {
+        return $this->lastSeenLeaderEpochs[$topic][$partition] ?? null;
+    }
+
+    /**
+     * Drops every partition entry of a fresh Metadata answer whose leader epoch is older than the newest seen
+     *
+     * The answer of a broker that has not caught up with the controller names the **previous** leader of a
+     * partition, and applying it would send this client back to a leader that has already been fenced. Such an
+     * entry is replaced with the one the cluster already holds - "keep what you know" - and every other entry is
+     * taken and remembered. An answer without epochs (Metadata below v7) is taken as it is.
+     *
+     * @param array<string, TopicMetadata> $topics Topics of the answer that was just read
+     *
+     * @return array<string, TopicMetadata> The topics to store
+     */
+    private function withoutStaleLeaderEpochs(array $topics): array
+    {
+        foreach ($topics as $topicName => $topicMetadata) {
+            foreach ($topicMetadata->partitions as $partitionId => $partitionMetadata) {
+                $epoch = $partitionMetadata->leaderEpoch;
+                if ($epoch === PartitionMetadata::UNKNOWN_LEADER_EPOCH) {
+                    continue;
+                }
+                if ($this->updateLastSeenEpochIfNewer((string) $topicName, (int) $partitionId, $epoch)) {
+                    continue;
+                }
+                $known = $this->topicPartitions[$topicName]->partitions[$partitionId] ?? null;
+                if ($known !== null) {
+                    $topicMetadata->partitions[$partitionId] = $known;
+                }
+            }
+        }
+
+        return $topics;
+    }
+
+    /**
      * Reloads the metadata from the broker and optionally saves it in the cache.
      *
      * The bootstrap servers are tried in order until one of them answers; a broker that advertises an empty broker
@@ -355,7 +444,7 @@ final class Cluster
 
         $this->fetchedAtMs     = (int) (microtime(true) * 1e3);
         $this->nodes           = $metadata->brokers;
-        $this->topicPartitions = $metadata->topics;
+        $this->topicPartitions = $this->withoutStaleLeaderEpochs($metadata->topics);
         $this->clusterId       = $metadata->clusterId;
         $this->controllerId    = $metadata->controllerId;
 

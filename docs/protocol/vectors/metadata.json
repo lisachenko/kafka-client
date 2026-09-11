@@ -1,8 +1,8 @@
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v5)",
-    "description": "Wire vectors of the Metadata API (key 3, v0 to v5), replayed by tests/Compliance.",
+    "section": "Metadata API (key 3, v0 to v11)",
+    "description": "Wire vectors of the Metadata API (key 3, v0 to v11), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
@@ -639,7 +639,7 @@
         {
             "id": "metadata.request.v5",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV5",
             "version": 5,
             "source": "broker",
             "description": "Metadata v5 for one topic, with allow_auto_topic_creation = false. The frame is the one of version 4, byte for byte; what the version states is that the client understands the offline_replicas of the answer.",
@@ -659,7 +659,7 @@
         {
             "id": "metadata.response.v5",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV5",
             "version": 5,
             "source": "broker",
             "description": "The answer of that request. Every partition entry ends with the offline_replicas array that version 5 added (KIP-112/113), which is empty on the one-broker container: no replica of the topic is on a broker that is down or on a log directory that failed.",
@@ -723,6 +723,487 @@
                         }
                     }
                 }
+            }
+        },
+        {
+            "id": "metadata.request.v6",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV6",
+            "version": 6,
+            "source": "broker",
+            "description": "Metadata request v6 for one named topic, with allow_auto_topic_creation = false. The body is the body of version 4, byte for byte - MetadataRequest.json @ 2.8.2 has no field between version 4 and version 8.",
+            "hex": "0000001d00030006000000180002743200000001000a74322d766563746f727300",
+            "fields": {
+                "messageSize": 29,
+                "apiKey": 3,
+                "apiVersion": 6,
+                "correlationId": 24,
+                "clientId": "t2",
+                "topics": [
+                    "t2-vectors"
+                ],
+                "allowAutoTopicCreation": false
+            }
+        },
+        {
+            "id": "metadata.response.v6",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV6",
+            "version": 6,
+            "source": "broker",
+            "description": "Metadata response v6 of the one-broker container: the throttle time, the single broker with its null rack, the cluster id, the controller id and the topic with its partition, whose offline_replicas array of version 5 is empty. The frame is the one of version 5.",
+            "hex": "000000720000001800000000000000010000000000093132372e302e302e3100002384ffff0016735958533737322d536a794268386f5051617472396700000000000000010000000a74322d766563746f72730000000001000000000000000000000000000100000000000000010000000000000000",
+            "fields": {
+                "messageSize": 114,
+                "correlationId": 24,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "sYXS772-SjyBh8oPQatr9g",
+                "controllerId": 0,
+                "topics": {
+                    "t2-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-vectors",
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v7",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV7",
+            "version": 7,
+            "source": "broker",
+            "description": "Metadata request v7 for one named topic. The body is the body of version 4, byte for byte - MetadataRequest.json @ 2.8.2 has no field between version 4 and version 8 - and what version 7 states is that the client understands the leader_epoch the answer gained.",
+            "hex": "00000020000300070000004b0002743200000001000d74322d32312d766563746f727300",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 3,
+                "apiVersion": 7,
+                "correlationId": 75,
+                "clientId": "t2",
+                "topics": [
+                    "t2-21-vectors"
+                ],
+                "allowAutoTopicCreation": false
+            }
+        },
+        {
+            "id": "metadata.response.v7",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV7",
+            "version": 7,
+            "source": "broker",
+            "description": "The answer of that request: the leader_epoch that version 7 (KIP-320) inserted behind the leader id of every partition. It is 0 on this container, the epoch of a partition that has been led by the same broker since it was created; every leader election raises it by one.",
+            "hex": "000000790000004b00000000000000010000000000093132372e302e302e3100002384ffff0016735958533737322d536a794268386f5051617472396700000000000000010000000d74322d32312d766563746f7273000000000100000000000000000000000000000000000100000000000000010000000000000000",
+            "fields": {
+                "messageSize": 121,
+                "correlationId": 75,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "sYXS772-SjyBh8oPQatr9g",
+                "controllerId": 0,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-21-vectors",
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v8",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV8",
+            "version": 8,
+            "source": "broker",
+            "description": "Metadata request v8 (Kafka 2.3, KIP-430) for one named topic, with both booleans of the version ON: include_cluster_authorized_operations and include_topic_authorized_operations sit behind the allow_auto_topic_creation of version 4, in that order.",
+            "hex": "0000002200030008000001910002743200000001000d74322d32332d766563746f7273000101",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 3,
+                "apiVersion": 8,
+                "correlationId": 401,
+                "clientId": "t2",
+                "topics": [
+                    "t2-23-vectors"
+                ],
+                "allowAutoTopicCreation": false,
+                "includeClusterAuthorizedOperations": true,
+                "includeTopicAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "metadata.response.v8",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV8",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer of that request: every topic entry ends with a topic_authorized_operations bitfield, behind its partitions, and the frame ends with the cluster_authorized_operations. A broker without an authorizer - the container has none - answers the full set of the operations of the resource; the bits are the codes of AclOperation @ 2.8.2.",
+            "hex": "000000810000019100000000000000010000000000093132372e302e302e3100002384ffff00166e53424e77784662517961584c4e717259465670657700000000000000010000000d74322d32332d766563746f727300000000010000000000000000000000000000000000010000000000000001000000000000000000000df800001fa0",
+            "fields": {
+                "messageSize": 129,
+                "correlationId": 401,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "nSBNwxFbQyaXLNqrYFVpew",
+                "controllerId": 0,
+                "topics": {
+                    "t2-23-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-23-vectors",
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": 3576
+                    }
+                },
+                "clusterAuthorizedOperations": 8096
+            }
+        },
+        {
+            "id": "metadata.response.v8.not-requested",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV8",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer of the same version 8 request with both booleans OFF, which is what this client sends by default: the two bitfields are there - they are fields of the version, not of the question - and carry 80 00 00 00, Integer.MIN_VALUE, \"you did not ask\". That is not the empty set, which is the bitfield 0.",
+            "hex": "000000810000019200000000000000010000000000093132372e302e302e3100002384ffff00166e53424e77784662517961584c4e717259465670657700000000000000010000000d74322d32332d766563746f72730000000001000000000000000000000000000000000001000000000000000100000000000000008000000080000000",
+            "fields": {
+                "messageSize": 129,
+                "correlationId": 402,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "nSBNwxFbQyaXLNqrYFVpew",
+                "controllerId": 0,
+                "topics": {
+                    "t2-23-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-23-vectors",
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": -2147483648
+                    }
+                },
+                "clusterAuthorizedOperations": -2147483648
+            }
+        },
+        {
+            "id": "metadata.request.v9",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV9",
+            "version": 9,
+            "source": "broker",
+            "description": "Metadata request v9 (Kafka 2.4), the first FLEXIBLE version of this api (KIP-482): the request header v2 - the client id as a NON-compact string and a tag buffer of its own behind it - a COMPACT topic array (the unsigned varint 02 for one entry), the topic name as a compact string (0b for ten bytes), the three booleans of the versions 4 and 8 and the tagged-field section of the body. The question is the one of version 8, in the other encoding.",
+            "hex": "0000001e00030009000002580002743200020b74322d32342d666c65780000000000",
+            "fields": {
+                "messageSize": 30,
+                "apiKey": 3,
+                "apiVersion": 9,
+                "correlationId": 600,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "name": "t2-24-flex"
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeClusterAuthorizedOperations": false,
+                "includeTopicAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "metadata.response.v9",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV9",
+            "version": 9,
+            "source": "broker",
+            "description": "The answer v9: the response header v1 - the correlation id and a tag buffer - then the throttle time, a compact broker array whose entry ends in its own tag buffer, the compact cluster id, the controller id, a compact topic array whose partitions carry compact replica, isr and offline-replica arrays and a tag buffer each, the two authorized_operations bitfields of KIP-430 with Integer.MIN_VALUE (\"not asked\") and the tagged-field section of the body.",
+            "hex": "0000006d00000258000000000002000000000a3132372e302e302e31000023840000174138623343395155532d2d7a5f2d344f6a7777307051000000000200000b74322d32342d666c65780002000000000000000000000000000002000000000200000000010080000000008000000000",
+            "fields": {
+                "messageSize": 109,
+                "correlationId": 600,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "A8b3C9QUS--z_-4Ojww0pQ",
+                "controllerId": 0,
+                "topics": {
+                    "t2-24-flex": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-24-flex",
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": -2147483648
+                    }
+                },
+                "clusterAuthorizedOperations": -2147483648
+            }
+        },
+        {
+            "id": "metadata.request.v11",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 11,
+            "source": "broker",
+            "description": "Metadata request v11 (Kafka 2.8, KIP-700), the version this client sends: every topic entry carries the topic_id of KIP-516 IN FRONT of its name - the zero uuid, because the server side of naming a topic by its id is not implemented - and the body ends with allow_auto_topic_creation and include_topic_authorized_operations alone: KIP-700 took include_cluster_authorized_operations out and gave the question to the DescribeCluster api.",
+            "hex": "000000300003000b00000386000274320002000000000000000000000000000000000e74322d32382d766563746f727300000000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 3,
+                "apiVersion": 11,
+                "correlationId": 902,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "name": "t2-28-vectors"
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeTopicAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "metadata.response.v11",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 11,
+            "source": "broker",
+            "description": "The answer v11: the topic entry carries the 16 raw bytes of the topic id between its name and its is_internal flag, and the frame ends with the tagged-field section of the body - there is no cluster_authorized_operations behind the topics any more.",
+            "hex": "0000007c00000386000000000002000000000a3132372e302e302e3100002384000017517a53536957324a517132576c5079364664444c5a77000000000200000e74322d32382d766563746f72733d78e5b3473c4f2884495546d833522a00020000000000000000000000000000020000000002000000000100800000000000",
+            "fields": {
+                "messageSize": 124,
+                "correlationId": 902,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "QzSSiW2JQq2WlPy6FdDLZw",
+                "controllerId": 0,
+                "topics": {
+                    "t2-28-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-28-vectors",
+                        "topicId": {
+                            "$bytes": "3d78e5b3473c4f2884495546d833522a"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v10",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV10",
+            "version": 10,
+            "source": "broker",
+            "description": "The same question as a version 10 frame, the last one that carries include_cluster_authorized_operations: both booleans of KIP-430 are asked for here, and the topic entry is the same one of KIP-516.",
+            "hex": "000000310003000a00000387000274320002000000000000000000000000000000000e74322d32382d766563746f72730000010100",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 3,
+                "apiVersion": 10,
+                "correlationId": 903,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "name": "t2-28-vectors"
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeClusterAuthorizedOperations": true,
+                "includeTopicAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "metadata.response.v10",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV10",
+            "version": 10,
+            "source": "broker",
+            "description": "The answer v10: the topic id of KIP-516 in every topic entry, the topic_authorized_operations bitfield behind its partitions and the cluster_authorized_operations at the very end of the frame, in front of the tagged-field section of the body.",
+            "hex": "0000008000000387000000000002000000000a3132372e302e302e3100002384000017517a53536957324a517132576c5079364664444c5a77000000000200000e74322d32382d766563746f72733d78e5b3473c4f2884495546d833522a0002000000000000000000000000000002000000000200000000010000000df80000001fa000",
+            "fields": {
+                "messageSize": 128,
+                "correlationId": 903,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "QzSSiW2JQq2WlPy6FdDLZw",
+                "controllerId": 0,
+                "topics": {
+                    "t2-28-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-28-vectors",
+                        "topicId": {
+                            "$bytes": "3d78e5b3473c4f2884495546d833522a"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": 3576
+                    }
+                },
+                "clusterAuthorizedOperations": 8096
             }
         }
     ]
