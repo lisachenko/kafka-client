@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **622** of them in **46** files: **304** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **644** of them in **46** files: **326** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -34,7 +34,11 @@ DescribeLogDirs **v2**, and the 10 frames of the three apis **Kafka 2.7** added 
 KIP-554 and UpdateFeatures of KIP-584, in the three new files `describe-user-scram-credentials.json`,
 `alter-user-scram-credentials.json` and `update-features.json`, and of the same release the 17 frames of the admin and transaction half: CreateTopics v6, CreatePartitions v3 and DeleteTopics v5 of
 KIP-599, and InitProducerId v4, AddPartitionsToTxn v2, AddOffsetsToTxn v2 and EndTxn v2 of KIP-588, two of them
-carrying the 90 `ProducerFenced` the KIP added - and of the other 318,
+carrying the 90 `ProducerFenced` the KIP added -, and of **Kafka 2.8** the 22 frames of its admin and transaction
+half: the CreateTopics **v7** pair of KIP-516 whose answer carries the id of the new topic, five DeleteTopics
+**v6** frames of the same KIP - a deletion by name, one by that id and the 100 of an id no topic carries - and the
+first flexible version of DescribeConfigs **v4**, AlterConfigs **v2**, AlterReplicaLogDirs **v2**, WriteTxnMarkers
+**v1**, AddPartitionsToTxn **v3**, AddOffsetsToTxn **v3** and EndTxn **v3** (KIP-482) - and of the other 318,
 **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
