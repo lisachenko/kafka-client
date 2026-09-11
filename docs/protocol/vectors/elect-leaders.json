@@ -1,0 +1,110 @@
+{
+    "api": "elect-leaders",
+    "apiKey": 43,
+    "section": "ElectLeaders API (key 43, v0)",
+    "description": "Wire vectors of the ElectLeaders API (key 43, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "electleaders.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ElectLeaders request v0 for one named partition of one topic, with a timeout of 30 seconds - the frame KIP-183 added in Kafka 2.2 as ElectPreferredLeaders, which can only ask for the preferred replica.",
+            "hex": "00000033002b0000000002be000a74342d766563746f727300000001000d74342d32322d766563746f7273000000010000000000007530",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 43,
+                "apiVersion": 0,
+                "correlationId": 702,
+                "clientId": "t4-vectors",
+                "topicPartitions": {
+                    "t4-22-vectors": {
+                        "topic": "t4-22-vectors",
+                        "partitionId": [
+                            0
+                        ]
+                    }
+                },
+                "timeoutMs": 30000
+            }
+        },
+        {
+            "id": "electleaders.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "ElectLeaders answer v0 of the controller for a partition whose leader is already its preferred replica: the error code 84 (ElectionNotNeeded) with the message of the controller, per partition, and no top-level error code at all in this version.",
+            "hex": "00000056000002be0000000000000001000d74342d32322d766563746f727300000001000000000054002f4c656164657220656c656374696f6e206e6f74206e656564656420666f7220746f70696320706172746974696f6e2e",
+            "fields": {
+                "messageSize": 86,
+                "correlationId": 702,
+                "throttleTimeMs": 0,
+                "replicaElectionResults": {
+                    "t4-22-vectors": {
+                        "topic": "t4-22-vectors",
+                        "partitionResult": [
+                            {
+                                "partitionId": 0,
+                                "errorCode": 84,
+                                "errorMessage": "Leader election not needed for topic partition."
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "electleaders.request.v0.unknown-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ElectLeaders request v0 for a partition of a topic the cluster does not have.",
+            "hex": "00000041002b0000000002bf000a74342d766563746f727300000001001b74342d32322d766563746f72732d6e657665722d63726561746564000000010000000000007530",
+            "fields": {
+                "messageSize": 65,
+                "apiKey": 43,
+                "apiVersion": 0,
+                "correlationId": 703,
+                "clientId": "t4-vectors",
+                "topicPartitions": {
+                    "t4-22-vectors-never-created": {
+                        "topic": "t4-22-vectors-never-created",
+                        "partitionId": [
+                            0
+                        ]
+                    }
+                },
+                "timeoutMs": 30000
+            }
+        },
+        {
+            "id": "electleaders.response.v0.unknown-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ElectLeadersResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "ElectLeaders answer v0 for it: the error code 3 (UnknownTopicOrPartition) with the message of the controller, again per partition.",
+            "hex": "00000052000002bf0000000000000001001b74342d32322d766563746f72732d6e657665722d6372656174656400000001000000000003001d54686520706172746974696f6e20646f6573206e6f742065786973742e",
+            "fields": {
+                "messageSize": 82,
+                "correlationId": 703,
+                "throttleTimeMs": 0,
+                "replicaElectionResults": {
+                    "t4-22-vectors-never-created": {
+                        "topic": "t4-22-vectors-never-created",
+                        "partitionResult": [
+                            {
+                                "partitionId": 0,
+                                "errorCode": 3,
+                                "errorMessage": "The partition does not exist."
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}
