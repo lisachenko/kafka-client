@@ -36,8 +36,8 @@ declare(strict_types=1);
  *   KAFKA_SASL_SSL_BOOTSTRAP_SERVERS=127.0.0.1:9095 php examples/delegation-tokens.php   # inside TLS
  *
  * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
- *      "RenewDelegationToken API (key 39, v0 and v1)", "ExpireDelegationToken API (key 40, v0 and v1)" and
- *      "DescribeDelegationToken API (key 41, v0 and v1)"
+ *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
+ *      "DescribeDelegationToken API (key 41, v0 to v2)"
  */
 
 use Protocol\Kafka\Admin\AdminClient;

@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * at version 4 (KIP-518, Kafka 2.6), the `states_filter`. The answer of version 1 is the answer of version 2 and
  * is read with {@see ListGroupsResponseV1}.
  *
- * @see docs/protocol/2.8.md, sections "ListGroups API (key 16, v0 to v3)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "ListGroups API (key 16, v0 to v4)" and "Quotas and throttle time"
  */
 final class ListGroupsRequestV1 extends ListGroupsRequest
 {

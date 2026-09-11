@@ -448,6 +448,48 @@ final class AdminClientTest extends TestCase
         self::assertSame(2, $broker->getRequestCount(), 'one Metadata request and one ListGroups request per broker');
     }
 
+    /**
+     * KIP-518 (Kafka 2.6): the answer carries the state of every group, and the request may bound it to some
+     */
+    public function testListGroupsReportsTheStateOfEveryGroupAndCanBeBoundedToSome(): void
+    {
+        $broker = $this->scriptBroker(
+            self::topicMetadata(),
+            ResponseFrame::listGroups(0, [self::ADMIN_GROUP => ['consumer', 'Empty']])
+        );
+        $admin  = $this->adminClient();
+        $node   = $admin->findAllBrokers()[0];
+
+        $groups = $admin->listGroups($node, [DescribeGroupResponseMetadata::STATE_EMPTY]);
+
+        self::assertSame('Empty', $groups[self::ADMIN_GROUP]->groupState);
+        self::assertSame(
+            self::requestFrame(new ListGroupsRequest('t10', $broker->getReceivedCorrelationIds()[1], ['Empty'])),
+            $broker->getReceivedFrames()[1],
+            'the states of the filter are the only field the request has ever carried'
+        );
+    }
+
+    /**
+     * And `listConsumerGroups()` keeps the groups a consumer could have created, whatever else the broker holds
+     */
+    public function testListConsumerGroupsLeavesOutTheGroupsOfAnotherProtocolType(): void
+    {
+        $this->scriptBroker(
+            self::topicMetadata(),
+            ResponseFrame::listGroups(0, [
+                self::ADMIN_GROUP => ['consumer', 'Stable'],
+                'connect-sink'    => ['connect', 'Stable'],
+                'no-protocol'     => ['', 'Empty'],
+            ])
+        );
+
+        $groups = $this->adminClient()->listConsumerGroups();
+
+        self::assertSame([self::ADMIN_GROUP], array_keys($groups), 'only the consumer group is a consumer group');
+        self::assertSame('Stable', $groups[self::ADMIN_GROUP]->groupState);
+    }
+
     public function testDescribeGroupAsksTheCoordinatorOfTheGroup(): void
     {
         $broker = $this->scriptBroker(
@@ -1042,21 +1084,19 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a CreatePartitions answer of version 0: the throttle time and one entry per topic
+     * Builds a CreatePartitions answer of version **2**, the flexible one the client sends (KIP-482)
      *
      * @param array<string, array{0: int, 1: string|null}> $topics Error code and message of every topic
      */
     private static function createPartitionsResponse(array $topics): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => [$errorCode, $errorMessage]) {
-            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
-            $body .= $errorMessage === null
-                ? pack('n', 0xFFFF)
-                : pack('n', strlen($errorMessage)) . $errorMessage;
+            $body .= self::compactString((string) $topic) . pack('n', $errorCode);
+            $body .= self::compactNullableString($errorMessage) . "\x00";
         }
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $body . "\x00");
     }
 
     /**

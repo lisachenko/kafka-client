@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *  - `is_future` marks the log that an AlterReplicaLogDirs request created and that
  *    `ReplicaAlterLogDirsThread` is filling; it disappears the moment the mover swaps it in as the current log.
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
  */
 class DescribeLogDirsResponsePartition implements BinarySchemaInterface
 {

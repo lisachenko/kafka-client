@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * </pre>
  *
  * The first field the api gains after version 1 is the `group_instance_id` of version 5 (KIP-345, Kafka 2.3),
- * which {@see JoinGroupRequest} sends; this class is the frame without it, and it keeps the behaviour of KIP-394:
+ * which {@see JoinGroupRequestV5} carries; this class is the frame without it, and it keeps the behaviour of KIP-394:
  * a request of this version with an empty member id is answered with the error code 79 (`MemberIdRequired`) and
  * the id the coordinator assigned.
  *

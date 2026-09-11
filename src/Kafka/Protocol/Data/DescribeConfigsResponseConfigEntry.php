@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Protocol\Data;
 
 use Protocol\Kafka\Admin\ConfigResource;
 use Protocol\Kafka\Admin\ConfigSource;
+use Protocol\Kafka\Admin\ConfigType;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
@@ -51,14 +52,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *  - `isSensitive` is true for every option whose `ConfigDef.Type` is `PASSWORD`, and the **value of such an entry
  *    is always null on the wire**, in the entry as well as in every synonym of it.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
  */
 class DescribeConfigsResponseConfigEntry implements BinarySchemaInterface
 {
     /**
      * Version of the DescribeConfigs API that this DTO belongs to
      */
-    public const int VERSION = 1;
+    public const int VERSION = 3;
 
     /**
      * Name of the option, e.g. `retention.ms`
@@ -107,6 +108,28 @@ class DescribeConfigsResponseConfigEntry implements BinarySchemaInterface
     public array $configSynonyms = [];
 
     /**
+     * Data type of the option, one of the {@see ConfigType} constants
+     *
+     * The broker fills it from the `ConfigDef.Type` of the option and does so WHATEVER `include_documentation`
+     * says - only the documentation below is behind that flag. An entry of a version below 3 carries no type byte
+     * at all and keeps the {@see ConfigType::UNKNOWN} of this property, which is the `"default": "0"` of the field.
+     *
+     * @since Version 3 of protocol
+     */
+    public int $configType = ConfigType::UNKNOWN;
+
+    /**
+     * Documentation of the option, `null` unless the request asked for it
+     *
+     * `ConfigHelper` @ 2.8.2 sets it to `logConfig.documentationOf(name)` / `config.documentationOf(name)` when
+     * `include_documentation` is true and to `null` otherwise, so a version 3 answer of a request without the flag
+     * carries the nullable string -1 in every entry.
+     *
+     * @since Version 3 of protocol
+     */
+    public ?string $documentation = null;
+
+    /**
      * Returns where the value of this entry comes from, for both versions of the api
      *
      * A version 0 answer carries `is_default` alone, and `DescribeConfigsResponse(Struct)` @ 1.1.1 derives the
@@ -152,6 +175,10 @@ class DescribeConfigsResponseConfigEntry implements BinarySchemaInterface
         $scheme['isSensitive'] = BinarySchema::TYPE_BOOLEAN;
         if (static::VERSION >= 1) {
             $scheme['configSynonyms'] = [DescribeConfigsResponseConfigSynonym::class];
+        }
+        if (static::VERSION >= 3) {
+            $scheme['configType']    = BinarySchema::TYPE_INT8;
+            $scheme['documentation'] = BinarySchema::TYPE_NULLABLE_STRING;
         }
 
         return $scheme;

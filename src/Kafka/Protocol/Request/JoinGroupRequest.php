@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
 
 /**
- * JoinGroup, version 5: the request with which a client becomes a member of a group
+ * JoinGroup, version 7: the request with which a client becomes a member of a group
  *
  * When new members join an existing group, all previous members are required to rejoin by sending a new join group
  * request. When a member first joins the group, the member id will be empty ({@see self::DEFAULT_MEMBER_ID}); a
@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * empty member id ({@see JoinGroupRequestV3}) is still added to the group at once.
  *
  * <pre>
- *   JoinGroup Request (Version: 1 to 5) => group_id session_timeout rebalance_timeout member_id
+ *   JoinGroup Request (Version: 1 to 7) => group_id session_timeout rebalance_timeout member_id
  *                                           group_instance_id protocol_type [group_protocols]
  *     group_id          => STRING
  *     session_timeout   => INT32
@@ -92,7 +92,12 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * and the rebalance timeout, exactly as in the Java client, whose `request.timeout.ms` defaults to 305000 against a
  * `max.poll.interval.ms` of 300000.
  *
- * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v6)"
+ * **Version 7 (KIP-559, Kafka 2.5) left this half of the api alone** - "Version 7 is the same as version 6" in
+ * `JoinGroupRequest.json` @ 2.8.2 - and changed the **answer**, which carries the `protocol_type` of the group
+ * back and may report a null `protocol_name` ({@see JoinGroupResponse}). {@see JoinGroupRequestV6} sends these
+ * very bytes one api version lower and is answered with {@see JoinGroupResponseV6}.
+ *
+ * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v7)"
  */
 class JoinGroupRequest extends AbstractRequest
 {
@@ -111,7 +116,7 @@ class JoinGroupRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it

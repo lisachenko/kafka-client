@@ -19,18 +19,19 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
- * OffsetFetch, version 5: the offsets that a consumer group committed, read from `__consumer_offsets`
+ * OffsetFetch, version 7: the offsets that a consumer group committed, read from `__consumer_offsets`
  *
  * This API reads back the offsets that were committed for a consumer group with the OffsetCommit API, so it has to
  * be sent to the coordinator of that group.
  *
  * <pre>
- *   OffsetFetch Request (Version: 2 to 5) => group_id [topics]
- *     group_id => STRING
- *     topics   => topic [partitions]     -- NULLABLE since version 2
+ *   OffsetFetch Request (Version: 2 to 7) => group_id [topics] require_stable
+ *     group_id       => STRING
+ *     topics         => topic [partitions]     -- NULLABLE since version 2
  *       topic      => STRING
  *       partitions => partition
  *         partition => INT32
+ *     require_stable => BOOLEAN            -- since version 7
  * </pre>
  *
  * Version 2 (KIP-88, Kafka 0.10.2) made the topic array **nullable**, and that is the only change of the request:
@@ -55,13 +56,22 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * is byte for byte the one of version 2, so {@see OffsetFetchRequestV4} and {@see OffsetFetchRequestV3} send the
  * same body one and two api versions lower and only read their answers with the matching response class.
  *
+ * **Version 7 (KIP-447, Kafka 2.5) appended the boolean `require_stable`** behind the topic array, the first
+ * field the request gained since version 2. A `true` asks the coordinator to answer a partition whose last
+ * offset commit belongs to a transaction that has **not been committed yet** with the retriable error code
+ * **88** (`UnstableOffsetCommit`) instead of that offset, so that a consumer of a read-committed pipeline never
+ * reads an offset the transaction may still roll back. `false` - the default, and the only behaviour of every
+ * version below - answers the offset of the last commit whatever its transaction is doing.
+ * {@see OffsetFetchRequestV6} is the same frame without the flag.
+ *
  * Versions 0 and 1 have no nullable array ({@see OffsetFetchRequestV1}, {@see OffsetFetchRequestV0}) and are
  * identical to each other on the wire: they only differ in where the broker reads the offsets from - ZooKeeper for
  * version 0, the `__consumer_offsets` topic of the cluster for version 1 and above. Asking those versions for all
  * topics is refused here with an {@see UnsupportedVersionException}, exactly as `OffsetFetchRequest.Builder.build()`
  * @ 0.11.0.3 does; sending a `-1` topic array with version 1 makes the broker close the connection.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
+ * @see docs/protocol/2.8.md, sections "OffsetFetch API (key 9, v0 to v7)" and "Stable offsets and the 88 of
+ *      KIP-447 (Kafka 2.5)"
  */
 class OffsetFetchRequest extends AbstractRequest
 {
@@ -73,7 +83,7 @@ class OffsetFetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -99,7 +109,17 @@ class OffsetFetchRequest extends AbstractRequest
         protected readonly string $consumerGroup,
         ?array $topicPartitions,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Whether the coordinator has to hold back an offset whose transaction has not been committed yet.
+         *
+         * `false` - the default and every version below 7 - answers the offset of the last commit, committed or
+         * not; `true` (KIP-447, Kafka 2.5) makes the coordinator answer the partition with the **retriable** error
+         * code 88 (`UnstableOffsetCommit`) instead, until the transaction that wrote the pending offset ends.
+         *
+         * @since Version 7 of protocol
+         */
+        protected readonly bool $requireStable = false
     ) {
         if ($topicPartitions === null) {
             if (static::VERSION < 2) {
@@ -136,9 +156,10 @@ class OffsetFetchRequest extends AbstractRequest
     public static function forAllTopics(
         string $consumerGroup,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        bool $requireStable = false
     ): static {
-        return new static($consumerGroup, null, $clientId, $correlationId);
+        return new static($consumerGroup, null, $clientId, $correlationId, $requireStable);
     }
 
     /**
@@ -152,9 +173,14 @@ class OffsetFetchRequest extends AbstractRequest
             $topicPartitions[BinarySchema::FLAG_NULLABLE] = true;
         }
 
-        return $header + [
+        $body = [
             'consumerGroup'   => BinarySchema::TYPE_STRING,
             'topicPartitions' => $topicPartitions,
         ];
+        if (static::VERSION >= 7) {
+            $body['requireStable'] = BinarySchema::TYPE_BOOLEAN;
+        }
+
+        return $header + $body;
     }
 }
