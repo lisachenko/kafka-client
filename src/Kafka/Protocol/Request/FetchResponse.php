@@ -17,6 +17,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
 
 /**
  * Fetch response object (key 1), version 10
@@ -79,14 +80,14 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
  * {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 10;
+    public const int VERSION = 11;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
@@ -158,9 +159,10 @@ class FetchResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 5 => FetchResponseTopic::class,
-            static::VERSION >= 4 => FetchResponseTopicV4::class,
-            default              => FetchResponseTopicV0::class,
+            static::VERSION >= 11 => FetchResponseTopic::class,
+            static::VERSION >= 5  => FetchResponseTopicV5::class,
+            static::VERSION >= 4  => FetchResponseTopicV4::class,
+            default               => FetchResponseTopicV0::class,
         };
     }
 }

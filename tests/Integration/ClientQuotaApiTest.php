@@ -30,9 +30,7 @@ use Protocol\Kafka\Protocol\Data\ClientQuotaComponentData;
 use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequest;
 use Protocol\Kafka\Protocol\Request\AlterClientQuotasResponse;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequest;
-use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponse;
-use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponseV0;
 use Throwable;
 
 /**
@@ -49,8 +47,8 @@ use Throwable;
  * every principal or client of the shared container that has none of its own, which is the same restraint the
  * reassignment suite shows towards a null topic array.
  *
- * @see docs/protocol/2.8.md, sections "DescribeClientQuotas API (key 48, v0 and v1)" and
- *      "AlterClientQuotas API (key 49, v0 and v1)"
+ * @see docs/protocol/2.8.md, sections "DescribeClientQuotas API (key 48, v0)" and
+ *      "AlterClientQuotas API (key 49, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeClientQuotasRequest::class)]
@@ -136,28 +134,31 @@ final class ClientQuotaApiTest extends IntegrationTestCase
     }
 
     /**
-     * The plain version 0 of Kafka 2.6 reads the very same quota as the flexible version 1
+     * The version Kafka 2.6 added is a plain frame, although the release is well past KIP-482
      */
-    public function testBothVersionsOfTheApiAnswerTheSameQuota(): void
+    public function testTheApiOfKafka26IsNotFlexible(): void
     {
         $clientId = $this->clientId('versions');
         $this->setQuota($clientId, ClientQuotaAlterationOp::KEY_CONSUMER_BYTE_RATE, 2048.0);
 
-        $filter = [
-            ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $clientId)->toData(),
-        ];
+        $filter  = [ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $clientId)->toData()];
+        $request = new DescribeClientQuotasRequest($filter, false, 'kafka-client-t1-quota', 7001);
 
-        $plain    = $this->send(new DescribeClientQuotasRequestV0($filter, false, 'kafka-client-t1-quota', 7001));
-        $flexible = $this->send(new DescribeClientQuotasRequest($filter, false, 'kafka-client-t1-quota', 7002));
+        self::assertFalse(DescribeClientQuotasRequest::isFlexible());
+        self::assertSame(DescribeClientQuotasRequest::HEADER_V1, $request->getHeaderVersion());
+        self::assertStringContainsString(
+            bin2hex(pack('n', strlen('kafka-client-t1-quota')) . 'kafka-client-t1-quota') . '00000001',
+            bin2hex((string) $request),
+            'the int16-prefixed client id is followed by the int32 component count, with no tag buffer between'
+        );
 
-        self::assertInstanceOf(DescribeClientQuotasResponseV0::class, $plain);
-        self::assertInstanceOf(DescribeClientQuotasResponse::class, $flexible);
-        self::assertCount(1, (array) $plain->entries);
-        self::assertCount(1, (array) $flexible->entries);
-        self::assertEquals(
-            $plain->entries[0]->values,
-            $flexible->entries[0]->values,
-            'the plain and the compact encoding of the same quota carry the same values'
+        $response = $this->send($request);
+
+        self::assertCount(1, (array) $response->entries);
+        self::assertSame(
+            ['consumer_byte_rate' => 2048.0],
+            array_map(static fn($value): float => $value->value, $response->entries[0]->values),
+            'and the broker answers the quota that was written'
         );
     }
 
@@ -365,11 +366,10 @@ final class ClientQuotaApiTest extends IntegrationTestCase
     {
         $stream = $this->connect();
         $request->writeTo($stream);
-        $size  = $stream->read('NmessageSize')['messageSize'];
-        $body  = $stream->read("a{$size}data")['data'];
-        $class = $request::VERSION === 0 ? DescribeClientQuotasResponseV0::class : DescribeClientQuotasResponse::class;
+        $size = $stream->read('NmessageSize')['messageSize'];
+        $body = $stream->read("a{$size}data")['data'];
 
-        return $class::unpack(new StringStream(pack('N', $size) . $body));
+        return DescribeClientQuotasResponse::unpack(new StringStream(pack('N', $size) . $body));
     }
 
     /**

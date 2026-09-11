@@ -63,7 +63,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * client and version 1 is the version a 0.8 broker expects.
  *
  * @see docs/protocol/2.8.md, sections "GroupCoordinator API (key 10, v0 to v2)",
- *      "OffsetCommit API (key 8, v0 to v6)" and "OffsetFetch API (key 9, v0 to v5)"
+ *      "OffsetCommit API (key 8, v0 to v7)" and "OffsetFetch API (key 9, v0 to v5)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]

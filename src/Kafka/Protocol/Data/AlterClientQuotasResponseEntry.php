@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * **The error comes before the entity it belongs to**, so an answer is read by walking it and matching the entity
  * against the request; the broker answers one entry per entry of the request, in the order it received them.
  *
- * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0)"
  */
 class AlterClientQuotasResponseEntry implements BinarySchemaInterface
 {

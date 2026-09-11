@@ -23,18 +23,19 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
 
 /**
- * OffsetCommit, version 6: the offsets are stored in the `__consumer_offsets` topic of the cluster.
+ * OffsetCommit, version 7: the offsets are stored in the `__consumer_offsets` topic of the cluster.
  *
  * This api saves out the consumer's position in the stream for one or more partitions. In the scala API this happens
  * when the consumer calls commit() or in the background if "autocommit" is enabled. This is the position the consumer
  * will pick up from if it crashes before its next commit().
  *
  * <pre>
- *   OffsetCommit Request (Version: 6) => group_id generation_id member_id [topics]
- *     group_id       => STRING
- *     generation_id  => INT32
- *     member_id      => STRING
- *     topics         => topic [partitions]
+ *   OffsetCommit Request (Version: 7) => group_id generation_id member_id group_instance_id [topics]
+ *     group_id          => STRING
+ *     generation_id     => INT32
+ *     member_id         => STRING
+ *     group_instance_id => NULLABLE_STRING   -- since version 7
+ *     topics            => topic [partitions]
  *       topic      => STRING
  *       partitions => partition offset leader_epoch metadata
  *         partition    => INT32
@@ -81,7 +82,12 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
  * not know the epoch sends {@see OffsetCommitRequestPartition::UNKNOWN_LEADER_EPOCH}, which is what an
  * {@see OffsetAndMetadata} without a `leaderEpoch` produces.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v6)"
+ * **Version 7 (Kafka 2.3, KIP-345) inserted the nullable `group_instance_id` behind the member id**, so that a
+ * *static* member commits under the identity its `group.instance.id` gives it; the coordinator refuses the commit
+ * of a member whose instance id has been taken over by another consumer with 82 (`FencedInstanceId`). A dynamic
+ * member sends `null` here, which is the frame of {@see OffsetCommitRequestV6} with one more field.
+ *
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v7)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {
@@ -113,7 +119,7 @@ class OffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 
     /**
      * Offsets to commit, indexed by the topic they belong to.
@@ -134,6 +140,7 @@ class OffsetCommitRequest extends AbstractRequest
      * @param array<string, array<int, int|OffsetAndMetadata|OffsetCommitRequestPartition>> $topicPartitions Offsets
      * @param string $clientId        Unique client identifier
      * @param int    $correlationId   Correlated request id
+     * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345), null for a dynamic one
      */
     public function __construct(
         /**
@@ -160,7 +167,13 @@ class OffsetCommitRequest extends AbstractRequest
         protected readonly int $retentionTime,
         array $topicPartitions,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Unique identifier of this consumer instance, `group.instance.id`, null for a dynamic member.
+         *
+         * @since Version 7 of protocol
+         */
+        protected readonly ?string $groupInstanceId = null
     ) {
         $topicClass            = static::topicClass();
         $packedTopicPartitions = [];
@@ -186,6 +199,9 @@ class OffsetCommitRequest extends AbstractRequest
         if (static::VERSION >= 1) {
             $body['generationId'] = BinarySchema::TYPE_INT32;
             $body['memberName']   = BinarySchema::TYPE_STRING;
+        }
+        if (static::VERSION >= 7) {
+            $body['groupInstanceId'] = BinarySchema::TYPE_NULLABLE_STRING;
         }
         if (static::VERSION >= 2 && static::VERSION <= 4) {
             $body['retentionTime'] = BinarySchema::TYPE_INT64;

@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `Value` - the field is written all the same, because the frame has no optional fields. `AlterClientQuotasRequest`
  * @ 2.8.2 writes `Double.NaN` in that case; this client writes `0.0`, which is what the broker reads and discards.
  *
- * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0)"
  */
 class ClientQuotaOpData implements BinarySchemaInterface
 {

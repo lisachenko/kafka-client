@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The entity is an array because a quota can be attached to a combination of `user` and `client-id`; every entry
  * of the answer carries **every** quota of that entity, not only the ones the filter named.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0)"
  */
 class DescribeClientQuotasResponseEntry implements BinarySchemaInterface
 {

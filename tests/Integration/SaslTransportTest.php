@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\IllegalSaslStateException;
@@ -101,9 +102,30 @@ final class SaslTransportTest extends IntegrationTestCase
         }
     }
 
+    /**
+     * Topics this class let the broker create, deleted again after every test
+     *
+     * @var list<string>
+     */
+    private static array $createdTopics = [];
+
     protected function tearDown(): void
     {
         ConnectionFactory::closeAll();
+
+        if (self::$createdTopics !== []) {
+            // The topics of this class are created by `auto.create.topics.enable` behind a metadata request, and
+            // the container is shared with every other suite of this line, so they are removed again here
+            $configuration = [
+                ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+                ClientConfig::CLIENT_ID                 => self::CLIENT_ID,
+                ClientConfig::REQUEST_TIMEOUT_MS        => 10000,
+                ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+            ];
+            new AdminClient(Cluster::bootstrap($configuration), $configuration)
+                ->deleteTopics(self::$createdTopics);
+            self::$createdTopics = [];
+        }
     }
 
     /**
@@ -116,7 +138,8 @@ final class SaslTransportTest extends IntegrationTestCase
     #[DataProvider('saslListeners')]
     public function testProduceAndFetchTravelThroughAnAuthenticatedConnection(string $listener): void
     {
-        $topic = self::uniqueTopicName('t8-sasl');
+        $topic                 = self::uniqueTopicName('t8-sasl');
+        self::$createdTopics[] = $topic;
         new TopicMetadataProbe(fn(): Stream => $this->connectWithSasl($listener), 30.0, self::CLIENT_ID)
             ->awaitTopicWithLeaders($topic);
 
@@ -205,7 +228,8 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     public function testClusterDiscoveredOverSaslKeepsAuthenticating(): void
     {
-        $topic = self::uniqueTopicName('t8-sasl-cluster');
+        $topic                 = self::uniqueTopicName('t8-sasl-cluster');
+        self::$createdTopics[] = $topic;
         new TopicMetadataProbe(
             fn(): Stream => $this->connectWithSasl(SecurityProtocol::SASL_PLAINTEXT),
             30.0,

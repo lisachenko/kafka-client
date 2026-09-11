@@ -26,7 +26,9 @@ use Protocol\Kafka\Consumer\RangeAssignor;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\Request\HeartbeatRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
+use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Tests\Compliance\MessageFields;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
 use Protocol\Kafka\Tests\Fixture\ResponseFrame;
@@ -39,7 +41,12 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * first join is refused with the member id the coordinator assigned, and the coordinator of this client has to
  * send the very same request again with that id, immediately and without counting the refusal as a failure.
  *
- * @see docs/protocol/2.8.md, section "The member id of a first join (v4, KIP-394)"
+ * The second one is **static membership** (KIP-345, Kafka 2.3): a consumer that carries a `group.instance.id`
+ * sends it in every request of the protocol and must not leave its group when it is closed, which is what keeps
+ * its partitions across a restart.
+ *
+ * @see docs/protocol/2.8.md, sections "The member id of a first join (v4, KIP-394)" and
+ *      "Static membership (KIP-345)"
  */
 #[CoversClass(ConsumerCoordinator::class)]
 final class ConsumerCoordinatorTest extends TestCase
@@ -51,6 +58,11 @@ final class ConsumerCoordinatorTest extends TestCase
     private const string TOPIC = 'orders';
 
     private const string MEMBER_ID = 't3-client-2b6f1e2a-0000-4000-8000-000000000001';
+
+    /**
+     * `group.instance.id` of the static member of this class
+     */
+    private const string INSTANCE_ID = 't3-instance-one';
 
     private ScriptedConnections $brokers;
 
@@ -100,7 +112,7 @@ final class ConsumerCoordinatorTest extends TestCase
         $first  = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[1]))));
         $second = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[2]))));
 
-        self::assertSame(4, $first['apiVersion'], 'the client sends JoinGroup v4');
+        self::assertSame(5, $first['apiVersion'], 'the client sends JoinGroup v5');
         self::assertSame(JoinGroupRequest::DEFAULT_MEMBER_ID, $first['memberId']);
         self::assertSame(self::MEMBER_ID, $second['memberId'], 'the second join carries the assigned id');
         self::assertSame(
@@ -163,9 +175,108 @@ final class ConsumerCoordinatorTest extends TestCase
     }
 
     /**
+     * A static member names itself in every request of the protocol, and its first join is not refused
+     */
+    public function testAStaticMemberSendsItsInstanceIdInEveryRequestOfTheProtocol(): void
+    {
+        $assignment   = new MemberAssignment([self::TOPIC => [0]])->pack();
+        $subscription = new Subscription([self::TOPIC])->pack();
+        $coordinator  = new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::joinGroup(0, 0, 1, 'range', self::MEMBER_ID, self::MEMBER_ID, [self::MEMBER_ID => $subscription]),
+            ResponseFrame::syncGroup(0, 0, $assignment),
+            ResponseFrame::heartbeat(0, 0)
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::COORDINATOR_ADDRESS, $coordinator)
+            ->install();
+
+        $membership = $this->coordinator(self::INSTANCE_ID);
+        $membership->ensureActiveGroup([self::TOPIC], static fn(array $topics): array => [self::TOPIC => [0]]);
+
+        self::assertTrue($membership->isStaticMember());
+        self::assertSame(self::INSTANCE_ID, $membership->getGroupInstanceId());
+        self::assertTrue($membership->maybeHeartbeat((int) (microtime(true) * 1e3) + 10000));
+
+        $frames = $coordinator->getReceivedFrames();
+
+        // The lookup, one join - no 79 exchange - the sync and the heartbeat
+        self::assertCount(4, $frames);
+        self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frames[1]));
+
+        $join = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[1]))));
+
+        self::assertSame(self::INSTANCE_ID, $join['groupInstanceId'], 'the join names the instance');
+        self::assertSame(
+            self::INSTANCE_ID,
+            MessageFields::of(SyncGroupRequest::unpack(new StringStream($this->framed($frames[2]))))['groupInstanceId'],
+            'and so does the sync'
+        );
+        self::assertSame(
+            self::INSTANCE_ID,
+            MessageFields::of(HeartbeatRequest::unpack(new StringStream($this->framed($frames[3]))))['groupInstanceId'],
+            'and the heartbeat'
+        );
+    }
+
+    /**
+     * A dynamic member writes the `null` of the field, which is what every consumer below Kafka 2.3 is
+     */
+    public function testADynamicMemberSendsNoInstanceIdAtAll(): void
+    {
+        $subscription = new Subscription([self::TOPIC])->pack();
+        $coordinator  = new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::joinGroup(0, 0, 1, 'range', self::MEMBER_ID, self::MEMBER_ID, [self::MEMBER_ID => $subscription]),
+            ResponseFrame::syncGroup(0, 0, new MemberAssignment([self::TOPIC => [0]])->pack())
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::COORDINATOR_ADDRESS, $coordinator)
+            ->install();
+
+        $membership = $this->coordinator();
+        $membership->ensureActiveGroup([self::TOPIC], static fn(array $topics): array => [self::TOPIC => [0]]);
+
+        self::assertFalse($membership->isStaticMember());
+        self::assertNull($membership->getGroupInstanceId());
+
+        $frames = $coordinator->getReceivedFrames();
+        $join   = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[1]))));
+
+        self::assertNull($join['groupInstanceId']);
+    }
+
+    /**
+     * A static member does not leave its group: the coordinator holds its partitions while it restarts
+     */
+    public function testAStaticMemberSendsNoLeaveGroup(): void
+    {
+        $subscription = new Subscription([self::TOPIC])->pack();
+        $coordinator  = new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::joinGroup(0, 0, 1, 'range', self::MEMBER_ID, self::MEMBER_ID, [self::MEMBER_ID => $subscription]),
+            ResponseFrame::syncGroup(0, 0, new MemberAssignment([self::TOPIC => [0]])->pack())
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::COORDINATOR_ADDRESS, $coordinator)
+            ->install();
+
+        $membership = $this->coordinator(self::INSTANCE_ID);
+        $membership->ensureActiveGroup([self::TOPIC], static fn(array $topics): array => [self::TOPIC => [0]]);
+        $membership->leaveGroup();
+
+        self::assertCount(3, $coordinator->getReceivedFrames(), 'no LeaveGroup was sent');
+        self::assertFalse($membership->isMember(), 'the local membership is forgotten all the same');
+        self::assertTrue($membership->needsRejoin(), 'so that the next poll() joins again under the same instance');
+    }
+
+    /**
      * The membership of a group whose coordinator is the scripted broker
      */
-    private function coordinator(): ConsumerCoordinator
+    private function coordinator(?string $groupInstanceId = null): ConsumerCoordinator
     {
         $configuration = [
             ClientConfig::BOOTSTRAP_SERVERS         => [self::BOOTSTRAP_ADDRESS],
@@ -179,7 +290,7 @@ final class ConsumerCoordinatorTest extends TestCase
 
         $client = new Client(Cluster::bootstrap($configuration), $configuration);
 
-        return new ConsumerCoordinator($client, 't3-group', new RangeAssignor(), 3000, 1);
+        return new ConsumerCoordinator($client, 't3-group', new RangeAssignor(), 3000, 1, null, $groupInstanceId);
     }
 
     /**

@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
  * {@see FetchedPartition::$logStartOffset}.
  *
  * @see \Protocol\Kafka\Client::fetchPartitions()
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Quotas and throttle time"
  */
 final class FetchedPartition
 {
@@ -84,6 +84,17 @@ final class FetchedPartition
         public readonly int $lastStableOffset = FetchResponsePartition::INVALID_LAST_STABLE_OFFSET,
         public readonly int $logStartOffset = FetchResponsePartition::INVALID_LOG_START_OFFSET,
         public readonly ?array $abortedTransactions = null,
+        /**
+         * Replica this partition should be read from next, `-1` for "the leader itself" (KIP-392, Kafka 2.3).
+         *
+         * The leader answers it in every partition entry of a Fetch **v11** and it is the whole client-facing
+         * half of KIP-392: a consumer that named its rack in
+         * {@see \Protocol\Kafka\Consumer\ConsumerConfig::CLIENT_RACK} is told which broker to read this
+         * partition from, and reads from it until an answer names another one.
+         * {@see FetchResponsePartition::NO_PREFERRED_READ_REPLICA} is what a broker without a
+         * `replica.selector.class` - and every answer below version 11 - reports.
+         */
+        public readonly int $preferredReadReplica = FetchResponsePartition::NO_PREFERRED_READ_REPLICA,
     ) {}
 
     /**
