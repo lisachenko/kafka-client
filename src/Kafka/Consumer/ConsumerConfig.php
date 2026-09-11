@@ -48,6 +48,7 @@ final class ConsumerConfig extends GeneralConfig
     private static array $consumerConfiguration = [
         /* Used configs */
         ConsumerConfig::GROUP_ID                      => '',
+        ConsumerConfig::GROUP_INSTANCE_ID             => null,
         ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => 'range',
         // Larger than both timeouts below, as in the Java consumer of 0.10.1 and above: the coordinator answers a
         // JoinGroup only once the whole rebalance is over, which can take a full rebalance timeout
@@ -77,6 +78,24 @@ final class ConsumerConfig extends GeneralConfig
      * subscribe(topic) or the Kafka-based offset management strategy.
      */
     public const string GROUP_ID = 'group.id';
+
+    /**
+     * A unique identifier of the consumer instance provided by the end user (`group.instance.id`, KIP-345)
+     *
+     * A consumer that carries one is a **static** member of its group: the coordinator remembers the member id
+     * behind the instance id, so a consumer that restarts within its session timeout joins the group under the
+     * very same identity and keeps the partitions it had, without a rebalance and without a new generation. A
+     * consumer that leaves it unset (null) is a dynamic member, which is what every consumer of the lines below
+     * Kafka 2.3 is.
+     *
+     * Two live consumers must never share one instance id: the second one to join takes the identity over and
+     * every request of the first is answered 82 (`FencedInstanceId`) from then on, which this client reports as
+     * {@see \Protocol\Kafka\Common\Errors\FencedInstanceIdException} and does not recover from.
+     *
+     * The value travels in the `group_instance_id` of JoinGroup v5, SyncGroup v3, Heartbeat v3 and
+     * OffsetCommit v7 (Kafka 2.3), which are the versions this client sends.
+     */
+    public const string GROUP_INSTANCE_ID = 'group.instance.id';
 
     /**
      * The partition assignment strategy that the client will use to distribute partition ownership amongst consumer

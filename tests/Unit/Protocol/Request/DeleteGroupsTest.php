@@ -24,6 +24,7 @@ use Protocol\Kafka\Protocol\Request\DeleteGroupsRequestV0;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeGroupsRequestV2;
 
 /**
  * Byte-exact tests for the DeleteGroups API of Kafka 1.1 (api key 42, v0, KIP-229).
@@ -108,9 +109,11 @@ final class DeleteGroupsTest extends TestCase
 
     public function testTheFrameIsTheOneOfDescribeGroups(): void
     {
-        // KIP-229 gave the new api the request of DescribeGroups: the group array and nothing else
+        // KIP-229 gave the new api the request of DescribeGroups: the group array and nothing else. The two frames
+        // only parted ways at DescribeGroups v3 (KIP-430), which appended the `include_authorized_operations`
+        // flag to that api alone, so the comparison is against the version 2 of it.
         $delete   = new DeleteGroupsRequest(['group-a'], 'test', 9);
-        $describe = new DescribeGroupsRequest(['group-a'], 'test', 9);
+        $describe = new DescribeGroupsRequestV2(['group-a'], 'test', 9);
 
         self::assertSame(
             substr((string) $describe, 8),
@@ -118,6 +121,11 @@ final class DeleteGroupsTest extends TestCase
             'behind the api key and the version of the header the two frames are the same bytes'
         );
         self::assertSame(strlen((string) $describe), strlen((string) $delete));
+        self::assertSame(
+            strlen((string) $delete) + 1,
+            strlen((string) new DescribeGroupsRequest(['group-a'], 'test', 9)),
+            'the one byte the version 3 of DescribeGroups added is the whole difference'
+        );
     }
 
     public function testAnEmptyGroupArrayIsALegalFrame(): void
