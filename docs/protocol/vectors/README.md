@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **545** of them in **41** files: **227** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **551** of them in **41** files: **233** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -25,8 +25,8 @@ of the same release: CreateTopics v5 - whose answer is the KIP-525 one, with the
 it - DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1 and ControlledShutdown v3; and of **Kafka 2.5**
 the 14 frames the group apis gained - the JoinGroup v7 and SyncGroup v5 pairs of KIP-559 with the two refusals
 that show their nulls, and the six OffsetFetch v7 frames of KIP-447 around the 88 of an offset a transaction has
-not committed yet - and of the other 318,
-**229** were
+not committed yet, and the 6 frames of the DescribeConfigs **v3** of **Kafka 2.6** (KIP-569) - and of the other
+318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
@@ -73,6 +73,7 @@ and the topics `t4-21-vectors` and `t4-22-vectors`:
 | `sasl-authenticate.json` | 2 of 7 | **SaslAuthenticate v1** (Kafka 2.2, KIP-368): the PLAIN token and the answer that now ends in a `session_lifetime_ms` — **0** on a listener without `connections.max.reauth.ms` |
 | `controlled-shutdown.json` | 2 of 6 | **ControlledShutdown v2** (Kafka 2.2, KIP-380): the `broker_epoch` behind the broker id, asked with the **unknown** broker id 4242 and the epoch -1 — a shutdown of the real broker id would stop the shared container |
 | `elect-leaders.json` | 8 of 8, **new file** | **ElectLeaders v0** (Kafka 2.2, KIP-183, added as ElectPreferredLeaders): a named partition whose leader is already the preferred replica (**84** `ElectionNotNeeded`, a code of Kafka 2.4 that reaches a v0 client unchanged) and a partition of a topic the cluster does not have (**3**); plus the **v1** frames of KIP-460 (Kafka 2.4), whose request opens with an `election_type` byte and whose answer carries a top-level error code - a preferred and an **unclean** election of the same healthy partition, both answered 84 |
+| `describe-configs.json` | 4 of 18 | **DescribeConfigs v3** (Kafka 2.6, KIP-569): one option of a topic asked with `include_documentation` - the answer ends in the `config_type` byte (7, LIST) and 329 characters of prose - and the same option without the flag, whose entry still carries the type and a null documentation |
 | `create-topics.json` | 4 of 11 | **CreateTopics v3** (Kafka 2.0, KIP-219) and **v4** (Kafka 2.4, KIP-464): the v4 pair asks for the broker's own `num.partitions` and `default.replication.factor` with -1/-1 and an empty assignment, and the container answers 0 and creates three partitions with one replica each |
 | `incremental-alter-configs.json` | 6 of 6, **new file** | **IncrementalAlterConfigs v0** (Kafka 2.3, KIP-339): the three operations a topic accepts in one resource (SET, APPEND and the DELETE whose value is the null string), an APPEND to an option that is not a list (**42**) and the cluster-wide default broker resource with a static option, asked with `validate_only` (**42**) |
 

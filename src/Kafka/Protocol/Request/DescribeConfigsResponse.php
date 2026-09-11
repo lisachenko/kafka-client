@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResource;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResourceV0;
+use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResourceV1;
 
 /**
  * DescribeConfigs response object, version 2 (key 32)
@@ -57,14 +58,14 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseResourceV0;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DescribeConfigsResponseV1} is the same frame with the version field of Kafka 1.1.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
  */
 class DescribeConfigsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation
@@ -98,8 +99,10 @@ class DescribeConfigsResponse extends AbstractResponse
      */
     protected static function resourceClass(): string
     {
-        return static::VERSION >= 1
-            ? DescribeConfigsResponseResource::class
-            : DescribeConfigsResponseResourceV0::class;
+        return match (true) {
+            static::VERSION >= 3 => DescribeConfigsResponseResource::class,
+            static::VERSION >= 1 => DescribeConfigsResponseResourceV1::class,
+            default              => DescribeConfigsResponseResourceV0::class,
+        };
     }
 }
