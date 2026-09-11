@@ -22,19 +22,23 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV0;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV1;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV2;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV0;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV1;
+use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV2;
 
 /**
  * Byte-exact tests for the InitProducerId API of Kafka 0.11 (api key 22, v0).
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
 #[CoversClass(InitProducerIdRequestV0::class)]
 #[CoversClass(InitProducerIdResponse::class)]
 #[CoversClass(InitProducerIdResponseV0::class)]
+#[CoversClass(InitProducerIdRequestV2::class)]
+#[CoversClass(InitProducerIdResponseV2::class)]
 final class InitProducerIdTest extends TestCase
 {
     /**
@@ -148,18 +152,73 @@ final class InitProducerIdTest extends TestCase
      */
     public function testTheRequestOfVersionTwoIsCompact(): void
     {
-        $request = new InitProducerIdRequest(null, 60000, 'test', 7);
+        $request = new InitProducerIdRequestV2(null, 60000, 'test', 7);
 
         self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
         self::assertSame(2, $request->getApiVersion(), 'Kafka 2.4 raised the api to the flexible version 2');
-        self::assertTrue(InitProducerIdRequest::isFlexible());
+        self::assertTrue(InitProducerIdRequestV2::isFlexible());
         self::assertNull($request->getTransactionalId(), 'the compact null of a string is the single byte 00');
 
-        $response = InitProducerIdResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+        $response = InitProducerIdResponseV2::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
 
         self::assertSame(2000, $response->producerId);
         self::assertSame(3, $response->producerEpoch);
         self::assertSame(self::RESPONSE_V2_HEX, bin2hex((string) $response));
+    }
+
+    /**
+     * KIP-360, Kafka 2.5: the version 3 appends the pair the producer holds, and -1/-1 asks for a new id
+     */
+    public function testTheRequestOfVersionThreeCarriesTheProducerIdAndEpochOfKip360(): void
+    {
+        $fresh = new InitProducerIdRequest('tx-42', 30000, clientId: 'test', correlationId: 8);
+
+        self::assertSame(3, $fresh->getApiVersion(), 'Kafka 2.5 raised the api to the version 3 of KIP-360');
+        self::assertSame(InitProducerIdRequest::NO_PRODUCER_ID, $fresh->getProducerId());
+        self::assertSame(InitProducerIdRequest::NO_PRODUCER_EPOCH, $fresh->getProducerEpoch());
+        self::assertStringEndsWith(
+            '00007530' . 'ffffffffffffffff' . 'ffff' . '00',
+            bin2hex((string) $fresh),
+            'the -1/-1 of a producer that asks for a new id, then the tag buffer of the body'
+        );
+
+        $bump = new InitProducerIdRequest('tx-42', 30000, 361, 10, 'test', 8);
+
+        self::assertSame(361, $bump->getProducerId());
+        self::assertSame(10, $bump->getProducerEpoch());
+        self::assertStringEndsWith(
+            '00007530' . '0000000000000169' . '000a' . '00',
+            bin2hex((string) $bump),
+            'and a bump names the id and the epoch the producer holds'
+        );
+        self::assertSame(
+            bin2hex((string) $bump),
+            bin2hex((string) InitProducerIdRequest::unpack(new StringStream((string) $bump))),
+            'the request survives a decode and encode round trip'
+        );
+    }
+
+    /**
+     * The answer of version 3 is the answer of version 2, and an epoch bump the coordinator refuses is the 47
+     */
+    public function testTheAnswerOfVersionThreeBumpsTheEpochOrRefusesTheBumpWithA47(): void
+    {
+        // Both captured on the container, with the transactional id `t4-25-vectors-tx`
+        $bumped = InitProducerIdResponse::unpack(new StringStream(
+            (string) hex2bin('0000001600000387000000000000000000000000000169000b00')
+        ));
+
+        self::assertSame(KafkaException::NO_ERROR, $bumped->errorCode);
+        self::assertSame(361, $bumped->producerId, 'the same producer id');
+        self::assertSame(11, $bumped->producerEpoch, 'one epoch higher than the request named');
+
+        $fenced = InitProducerIdResponse::unpack(new StringStream(
+            (string) hex2bin('00000016000003880000000000002fffffffffffffffffffff00')
+        ));
+
+        self::assertSame(KafkaException::INVALID_PRODUCER_EPOCH, $fenced->errorCode);
+        self::assertSame(-1, $fenced->producerId);
+        self::assertSame(-1, $fenced->producerEpoch);
     }
 
     public function testTheTransactionTimeoutIsTheJavaDefaultOfOneMinute(): void
@@ -167,7 +226,7 @@ final class InitProducerIdTest extends TestCase
         self::assertSame(60000, InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS);
         self::assertSame(
             InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS,
-            new InitProducerIdRequest()->getTransactionTimeoutMs()
+            new InitProducerIdRequestV2()->getTransactionTimeoutMs()
         );
     }
 
@@ -218,7 +277,7 @@ final class InitProducerIdTest extends TestCase
         self::assertStringNotContainsString('ffff' . '0000ea60', $frame);
 
         // and in the flexible version 2 the empty string is the compact length 1, where null is the length 0
-        $flexible = bin2hex((string) new InitProducerIdRequest('', 60000, 'test', 7));
+        $flexible = bin2hex((string) new InitProducerIdRequestV2('', 60000, 'test', 7));
 
         self::assertStringContainsString('01' . '0000ea60', $flexible);
         self::assertStringNotContainsString('00' . '0000ea60' . '00' . '0000ea60', $flexible);

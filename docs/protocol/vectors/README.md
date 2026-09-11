@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **551** of them in **41** files: **233** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **572** of them in **41** files: **254** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -25,8 +25,11 @@ of the same release: CreateTopics v5 - whose answer is the KIP-525 one, with the
 it - DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1 and ControlledShutdown v3; and of **Kafka 2.5**
 the 14 frames the group apis gained - the JoinGroup v7 and SyncGroup v5 pairs of KIP-559 with the two refusals
 that show their nulls, and the six OffsetFetch v7 frames of KIP-447 around the 88 of an offset a transaction has
-not committed yet, and the 6 frames of the DescribeConfigs **v3** of **Kafka 2.6** (KIP-569) - and of the other
-318, **229** were
+not committed yet, and the 21 frames of its transaction, admin and SASL half: the InitProducerId v3 of KIP-360
+with its epoch bump, the TxnOffsetCommit v3 of KIP-447 with the consumer it names, CreatePartitions v2,
+SaslAuthenticate v2 and the token apis v2, and the 6 frames of the DescribeConfigs **v3** of **Kafka 2.6**
+(KIP-569) - and of the other 318,
+**229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
