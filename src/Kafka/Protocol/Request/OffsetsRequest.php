@@ -18,23 +18,25 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
+use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
 
 /**
- * Offsets API (key 2, v3), a.k.a. ListOffset
+ * Offsets API (key 2, v4), a.k.a. ListOffset
  *
  * This API describes the valid offset range available for a set of topic-partitions. As with the produce and fetch
  * APIs requests must be directed to the broker that is currently the leader for the partitions in question. This can
  * be determined using the metadata API.
  *
  * <pre>
- *   ListOffsets Request (Version: 3) => replica_id isolation_level [topics]
+ *   ListOffsets Request (Version: 4) => replica_id isolation_level [topics]
  *     replica_id      => INT32
  *     isolation_level => INT8       -- since version 2
  *     topics          => topic [partitions]
  *       topic      => STRING
- *       partitions => partition timestamp
- *         partition => INT32
- *         timestamp => INT64
+ *       partitions => partition current_leader_epoch timestamp
+ *         partition            => INT32
+ *         current_leader_epoch => INT32     -- since version 4
+ *         timestamp            => INT64
  * </pre>
  *
  * Kafka 0.10.1 added version 1 with KIP-79, on top of the message timestamps of the format v1: the broker now
@@ -60,12 +62,21 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
  * 2.8.2 broker throttles in exactly the same way - the version is the promise of the client, not a switch of the
  * broker.
  *
+ * **Version 4 (Kafka 2.1, KIP-320) put a `current_leader_epoch` into every partition entry**, between the
+ * partition index and the target timestamp, and a `leader_epoch` into every entry of the answer, see
+ * {@see \Protocol\Kafka\Protocol\Data\OffsetsRequestPartition::$currentLeaderEpoch} and
+ * {@see \Protocol\Kafka\Protocol\Data\OffsetsResponsePartition::$leaderEpoch}. The two halves are what lets a
+ * consumer seek without reading past a leader change: it sends the epoch it believes the partition is led with -
+ * and is answered **74** or **75** when that belief is stale - and it stores the epoch of the offset it got, to
+ * send it back with its next fetch. {@see OffsetsRequestV3} keeps the version that carries neither.
+ *
  * The two special values keep their meaning in every version: {@see self::LATEST} (`-1`) asks for the end of the
  * log - the offset the next produced message will get, capped as the isolation level prescribes - and
  * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk. Neither of them reads a message, so
  * their answer carries the timestamp -1.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v4), a.k.a. ListOffset" and
+ *      "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest
 {
@@ -77,7 +88,7 @@ class OffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * Special value for the offset of the next coming message, `ListOffsetRequest.LATEST_TIMESTAMP` @ 0.10.2.2
@@ -196,7 +207,11 @@ class OffsetsRequest extends AbstractRequest
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 1 ? OffsetsRequestTopic::class : OffsetsRequestTopicV0::class;
+        return match (true) {
+            static::VERSION >= 4 => OffsetsRequestTopic::class,
+            static::VERSION >= 1 => OffsetsRequestTopicV1::class,
+            default              => OffsetsRequestTopicV0::class,
+        };
     }
 
     /**

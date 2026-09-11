@@ -115,6 +115,56 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   request header **v2**, because the broker derives the header version from the version it was asked
   for.
 
+### Kafka 2.1
+
+- **Fetch v9 and v10** (KIP-320, KIP-110) — every partition entry of a v9 request carries a
+  `current_leader_epoch` **between** the partition id and the fetch offset (`FetchRequest.json` @ 2.8.2
+  is the field order, not the prose of the KIP), and v10 states that the client understands a
+  zstd-compressed record batch. The answer is unchanged since v7. `FetchRequest`/`FetchResponse` are the
+  v10 now, `FetchRequestV9`/`FetchRequestV8` and their answers keep the lower ones, and a partition may
+  be given as an `[offset, epoch]` pair everywhere a fetch offset is taken
+  (`Client::fetchPartitions()`, `fetchPartitionsWithSessions()`, `FetchSessionHandlerBuilder::add()`).
+- **ListOffsets v4** (KIP-320) — a `current_leader_epoch` in every partition of the request and a
+  `leader_epoch` **behind** the offset of every partition of the answer, so a listed offset carries the
+  epoch it was resolved in. `OffsetsRequest`/`OffsetsResponse` are the v4, `OffsetsRequestV3` keeps the
+  Kafka 2.0 one, and `OffsetAndTimestamp::$leaderEpoch` hands the epoch to the caller.
+- **Metadata v7** (KIP-320) — a `leader_epoch` between the leader id and the replicas of every
+  partition. `MetadataRequest`/`MetadataResponse` are the v7, `PartitionMetadata`/`TopicMetadata` carry
+  the field and `PartitionMetadataV5`/`TopicMetadataV5` the v5-and-v6 entry.
+- **OffsetForLeaderEpoch v2** (KIP-320) — a `current_leader_epoch` in front of the epoch that is asked
+  about and a `throttle_time_ms` at the head of the answer, the version an ordinary **consumer** sends.
+  `Client::offsetsForLeaderEpochs()` is the new entry point.
+- **Produce v7** (KIP-110) — the v3 body once more, and the version a record set compressed with zstd
+  needs: `ProduceRequest.validateRecords` @ 2.8.2 refuses the codec below it, and a 2.8.2 broker answers
+  the partition with **76** rather than closing the connection. `ProduceRequest`/`ProduceResponse` are
+  the v7, `ProduceRequestV6`/`ProduceResponseV6` the Kafka 2.0 pair.
+- **The zstd codec** (KIP-110) — `CompressionCodec::ZSTD` (the compression type 4 of the message format
+  v2) through **`ext-zstd`**, a suggested dependency of `composer.json`;
+  `ProducerConfig::COMPRESSION_TYPE_ZSTD` is refused with a clear message when the extension is missing,
+  and a zstd batch that a fetch brings in then raises `UnsupportedCompressionTypeException`, the
+  client-side half of the code 76.
+- **KIP-320 in the consumer** — the position of a partition is now an offset **and** the leader epoch it
+  was taken at. `Cluster` remembers the newest `leader_epoch` of every partition and never applies an
+  answer that moves it backwards (`updateLastSeenEpochIfNewer()`, `lastSeenLeaderEpoch()`),
+  `SubscriptionState` keeps the position epoch, the current leader epoch and a validation flag per
+  partition, and every `poll()` stamps its positions with the metadata epoch, validates the partitions
+  whose epoch moved with an OffsetForLeaderEpoch v2 and fetches with the epoch in every partition entry.
+  An `end_offset` below the position is a **log truncation**: `auto.offset.reset` resets the position,
+  and with `none` the new `LogTruncationException` reaches the caller with the offset it stood at and the
+  offset the leader answered. The codes **74** `FENCED_LEADER_EPOCH` and **75** `UNKNOWN_LEADER_EPOCH`
+  refresh the metadata and leave the position alone.
+- **19 wire vectors** captured on the `kafka-2-8-2` container for all of it, with the annotated dumps in
+  the protocol document: the Fetch v9/v10 pairs and the 75 of a fenced epoch, the ListOffsets v4 pair,
+  the Metadata v7 pair, the OffsetForLeaderEpoch v2 pair and its 75, the Produce v7 pair, and the three
+  frames of the zstd rule (the **76** of a Fetch v9 against a `compression.type=zstd` topic, the same
+  partition served to a Fetch v10, and the **76** of a Produce v6 whose record set is zstd).
+- **New sections of [docs/protocol/2.8.md](docs/protocol/2.8.md)**: "The leader epoch (KIP-320)",
+  "Version 10 and the zstd codec (KIP-110)", "KIP-320 in the consumer: leader epochs and truncation
+  detection" and "The zstd codec (Kafka 2.1, KIP-110)", plus four measured broker quirks — the 75 that a
+  one-broker container can produce and the 74 it cannot, the zstd refusal that is decided by the **topic
+  configuration** and not by the records, the 76 of a produce that stays on an open connection, and the
+  epoch 0 of every partition of the container.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

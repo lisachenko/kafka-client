@@ -70,7 +70,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * really answers: the `LogAppendTime` of a partition, which is -1 for a topic that keeps the `CreateTime` of the
  * producer and the clock of the broker for a topic with `message.timestamp.type=LogAppendTime`.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceRequestV4::class)]

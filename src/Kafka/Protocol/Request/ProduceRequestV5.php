@@ -32,7 +32,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see ProduceRequest}: a client that sends version 5 does not get the old behaviour back, it only fails to
  * announce that it understands the new one.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
  */
 final class ProduceRequestV5 extends ProduceRequest
 {

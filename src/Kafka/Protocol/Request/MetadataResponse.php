@@ -23,13 +23,14 @@ use Protocol\Kafka\Common\RestorableTrait;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicMetadataV0;
 use Protocol\Kafka\Common\TopicMetadataV1;
+use Protocol\Kafka\Common\TopicMetadataV5;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * Metadata response object, version 6 (key 3)
+ * Metadata response object, version 7 (key 3)
  *
  * <pre>
- *   Metadata Response (Version: 6) => throttle_time_ms [brokers] cluster_id controller_id [topic_metadata]
+ *   Metadata Response (Version: 7) => throttle_time_ms [brokers] cluster_id controller_id [topic_metadata]
  *     throttle_time_ms => INT32     -- since version 3
  *     brokers => node_id host port rack
  *       node_id => INT32
@@ -42,7 +43,9 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *       topic_error_code => INT16
  *       topic            => STRING
  *       is_internal      => BOOLEAN
- *       partition_metadata => partition_error_code partition_id leader [replicas] [isr] [offline_replicas]
+ *       partition_metadata => partition_error_code partition_id leader leader_epoch [replicas] [isr]
+ *                           [offline_replicas]
+ *         leader_epoch     => INT32           -- since version 7
  *         offline_replicas => ARRAY of INT32  -- since version 5
  * </pre>
  *
@@ -64,6 +67,11 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * same bytes; what version 6 states is that the client understands when a throttled answer arrives, and waits the
  * reported time out itself.
  *
+ * **Version 7 (Kafka 2.1, KIP-320) inserted `leader_epoch` into every partition entry**, behind the leader id, see
+ * {@see \Protocol\Kafka\Common\PartitionMetadata::$leaderEpoch}: the epoch the leader of that partition is
+ * currently on. It is the half of KIP-320 that tells a consumer *that* a leader changed;
+ * {@see MetadataResponseV6} keeps the answer that carries no epoch.
+ *
  * `ControllerId` is the broker id of the active controller, or `-1` (`MetadataResponse.NO_CONTROLLER_ID` @
  * 1.1.1) while the cluster is electing one; it is what {@see \Protocol\Kafka\Admin\AdminClient::findController()}
  * asks for. `ClusterId` is the identifier that a 0.10.1 broker generates once and keeps in ZooKeeper under
@@ -73,7 +81,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v6)" and "Cluster readiness"
+ * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v7)" and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
@@ -82,7 +90,7 @@ class MetadataResponse extends AbstractResponse
     /**
      * Version of the Metadata API that this class unpacks
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 
     /**
      * Broker id that the answer reports while the cluster has no active controller
@@ -169,7 +177,8 @@ class MetadataResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 5 => TopicMetadata::class,
+            static::VERSION >= 7 => TopicMetadata::class,
+            static::VERSION >= 5 => TopicMetadataV5::class,
             static::VERSION >= 1 => TopicMetadataV1::class,
             default              => TopicMetadataV0::class,
         };

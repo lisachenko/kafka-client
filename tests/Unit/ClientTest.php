@@ -219,10 +219,13 @@ final class ClientTest extends TestCase
 
     public function testARetriableErrorIsSentAgainToTheLeaderOfTheRefreshedMetadata(): void
     {
+        // A leader change always raises the leader epoch of the partition, and a Metadata v7 answer that does not
+        // raise it is ignored as stale (KIP-320), so the moved leader arrives with the epoch 1
         $movedLeader = ResponseFrame::metadata(
             0,
             [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
-            [self::TOPIC => [0 => 1, 1 => 1]]
+            [self::TOPIC => [0 => 1, 1 => 1]],
+            leaderEpochs: [self::TOPIC => [0 => 1, 1 => 1]]
         );
         $staleLeader = new BrokerConnection(
             ResponseFrame::produce(0, [self::TOPIC => [0 => [KafkaException::NOT_LEADER_FOR_PARTITION, -1]]])
@@ -577,9 +580,9 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 8, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // ApiKey 1, ApiVersion 10, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
         // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch
-        self::assertStringStartsWith('00010008', $request, 'the Fetch api is spoken in version 8');
+        self::assertStringStartsWith('0001000a', $request, 'the Fetch api is spoken in version 10');
         self::assertStringContainsString(
             '00100000' . '00' . '00000000' . 'ffffffff',
             $request,
@@ -588,9 +591,11 @@ final class ClientTest extends TestCase
         // The partitions travel in the order they were given, which is the order the broker fills the answer in;
         // the -1 in front of every MaxBytes is the LogStartOffset of v5, which only a follower fills in, and the
         // trailing empty array is the `forgotten_topics_data` of version 7
+        // The -1 in front of every fetch offset is the `current_leader_epoch` of Fetch v9 (KIP-320): this client
+        // sends "I do not know the epoch" unless the caller passed one
         self::assertStringEndsWith(
-            '00000001' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
-            . '00000000' . '0000000000000003' . 'ffffffffffffffff' . '00010000'
+            '00000001' . 'ffffffff' . '0000000000000007' . 'ffffffffffffffff' . '00010000'
+            . '00000000' . 'ffffffff' . '0000000000000003' . 'ffffffffffffffff' . '00010000'
             . '00000000',
             $request
         );
@@ -655,7 +660,7 @@ final class ClientTest extends TestCase
         yield 'read_committed'   => ['read_committed', '01'];
     }
 
-    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionSixRecordBatch(): void
+    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionSevenRecordBatch(): void
     {
         $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
         $this->brokers
@@ -667,8 +672,8 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 6, correlation id, client id, then the null transactional id of a plain producer
-        self::assertStringStartsWith('00000006', $frame, 'the Produce api is spoken in version 6');
+        // ApiKey 0, ApiVersion 7, correlation id, client id, then the null transactional id of a plain producer
+        self::assertStringStartsWith('00000007', $frame, 'the Produce api is spoken in version 7');
         self::assertStringContainsString('74372d636c69656e74' . 'ffff', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
@@ -866,10 +871,13 @@ final class ClientTest extends TestCase
 
     public function testTheRetryOfABatchIsTheVerySameFrameAgain(): void
     {
+        // A leader change always raises the leader epoch of the partition, and a Metadata v7 answer that does not
+        // raise it is ignored as stale (KIP-320), so the moved leader arrives with the epoch 1
         $movedLeader = ResponseFrame::metadata(
             0,
             [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
-            [self::TOPIC => [0 => 1, 1 => 1]]
+            [self::TOPIC => [0 => 1, 1 => 1]],
+            leaderEpochs: [self::TOPIC => [0 => 1, 1 => 1]]
         );
         $staleLeader = new BrokerConnection(
             ResponseFrame::initProducerId(0, 0, 2000, 0),
@@ -1192,7 +1200,7 @@ final class ClientTest extends TestCase
         self::assertStringContainsString('00001267' . '00000001', $incremental, 'the session id and the epoch 1');
         self::assertStringEndsWith(
             '00000001' . '00066f7264657273' . '00000001'
-            . '00000000' . '0000000000000001' . 'ffffffffffffffff' . '00010000'
+            . '00000000' . 'ffffffff' . '0000000000000001' . 'ffffffffffffffff' . '00010000'
             . '00000000',
             $incremental,
             'only the partition whose fetch offset moved travels, and nothing is forgotten'

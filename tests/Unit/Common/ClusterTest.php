@@ -32,7 +32,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 /**
  * Tests the cluster metadata against a scripted broker.
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v6)" and "Cluster readiness"
+ * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v7)" and "Cluster readiness"
  */
 #[CoversClass(Cluster::class)]
 #[CoversClass(AllBrokersNotAvailableException::class)]
@@ -374,6 +374,80 @@ final class ClusterTest extends TestCase
         } finally {
             @unlink($cacheFile);
         }
+    }
+
+    public function testTheLeaderEpochOfEveryPartitionOfAMetadataAnswerIsRemembered(): void
+    {
+        $this->script(new BrokerConnection(ResponseFrame::metadata(
+            0,
+            [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
+            ['orders' => [0 => 0, 1 => 1, 2 => 0]],
+            leaderEpochs: ['orders' => [0 => 4, 1 => 7, 2 => 0]]
+        )));
+
+        $cluster = Cluster::bootstrap($this->configuration());
+
+        // The `leader_epoch` of Metadata v7 (KIP-320) is what a consumer sends back as the `current_leader_epoch`
+        self::assertSame(4, $cluster->lastSeenLeaderEpoch('orders', 0));
+        self::assertSame(7, $cluster->lastSeenLeaderEpoch('orders', 1));
+        self::assertSame(0, $cluster->lastSeenLeaderEpoch('orders', 2));
+        self::assertNull($cluster->lastSeenLeaderEpoch('orders', 3), 'a partition nobody answered has no epoch');
+        self::assertNull($cluster->lastSeenLeaderEpoch('other', 0));
+        self::assertSame(4, $cluster->partition('orders', 0)->leaderEpoch);
+    }
+
+    public function testAnEpochIsRememberedOnlyWhileItMovesForward(): void
+    {
+        $this->script(new BrokerConnection($this->clusterMetadata()));
+        $cluster = Cluster::bootstrap($this->configuration());
+
+        self::assertTrue($cluster->updateLastSeenEpochIfNewer('orders', 0, 3), 'the first epoch is always news');
+        self::assertFalse($cluster->updateLastSeenEpochIfNewer('orders', 0, 3), 'the same epoch again is not');
+        self::assertFalse($cluster->updateLastSeenEpochIfNewer('orders', 0, 2), 'and a lower one never is');
+        self::assertSame(3, $cluster->lastSeenLeaderEpoch('orders', 0));
+        self::assertTrue($cluster->updateLastSeenEpochIfNewer('orders', 0, 4));
+        self::assertSame(4, $cluster->lastSeenLeaderEpoch('orders', 0));
+
+        // -1 is "the answer did not say", which is every Metadata answer below version 7
+        self::assertFalse($cluster->updateLastSeenEpochIfNewer('other', 1, -1));
+        self::assertNull($cluster->lastSeenLeaderEpoch('other', 1));
+    }
+
+    public function testAPartitionOfABrokerThatIsBehindTheControllerIsNotApplied(): void
+    {
+        // The first answer names the broker 1 as the leader of the partition 1 in the epoch 7; the second one is
+        // the answer of a broker that has not caught up: the old leader, and an epoch below the one already seen
+        $this->script(
+            new BrokerConnection(ResponseFrame::metadata(
+                0,
+                [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
+                ['orders' => [0 => 0, 1 => 1]],
+                leaderEpochs: ['orders' => [0 => 2, 1 => 7]]
+            )),
+            new BrokerConnection(ResponseFrame::metadata(
+                0,
+                [[0, 'kafka-1', 9092], [1, 'kafka-2', 9093]],
+                ['orders' => [0 => 0, 1 => 0]],
+                leaderEpochs: ['orders' => [0 => 3, 1 => 6]]
+            ))
+        );
+
+        $cluster = Cluster::bootstrap($this->configuration());
+        self::assertSame(1, $cluster->leaderFor('orders', 1)->nodeId);
+
+        $cluster->reload();
+
+        self::assertSame(
+            1,
+            $cluster->leaderFor('orders', 1)->nodeId,
+            'the stale entry of a broker that is behind is dropped, not applied'
+        );
+        self::assertSame(7, $cluster->lastSeenLeaderEpoch('orders', 1));
+        self::assertSame(
+            3,
+            $cluster->lastSeenLeaderEpoch('orders', 0),
+            'the partitions of the same answer whose epoch did move forward are taken'
+        );
     }
 
     /**

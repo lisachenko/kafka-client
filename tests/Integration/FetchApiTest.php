@@ -36,6 +36,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV4;
 use Protocol\Kafka\Protocol\Request\FetchRequestV5;
 use Protocol\Kafka\Protocol\Request\FetchRequestV6;
 use Protocol\Kafka\Protocol\Request\FetchRequestV7;
+use Protocol\Kafka\Protocol\Request\FetchRequestV8;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
@@ -44,6 +45,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV4;
 use Protocol\Kafka\Protocol\Request\FetchResponseV5;
 use Protocol\Kafka\Protocol\Request\FetchResponseV6;
 use Protocol\Kafka\Protocol\Request\FetchResponseV7;
+use Protocol\Kafka\Protocol\Request\FetchResponseV8;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
@@ -61,7 +63,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * ({@see FetchSessionApiTest}) - this one only checks that a version 7 request **without** a session is served
  * like a version 6 one, which is what {@see \Protocol\Kafka\Client::fetchPartitions()} sends.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v8)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV6::class)]
@@ -304,7 +306,7 @@ final class FetchApiTest extends IntegrationTestCase
 
         $stream       = $this->connect();
         $versionSeven = $this->fetch($stream, FetchRequestV7::class, FetchResponseV7::class, 0, 94);
-        $versionEight = $this->fetch($stream, FetchRequest::class, FetchResponse::class, 0, 95);
+        $versionEight = $this->fetch($stream, FetchRequestV8::class, FetchResponseV8::class, 0, 95);
 
         self::assertSame(0, $versionEight->errorCode);
         self::assertSame(['version eight'], self::valuesOf($versionEight));
@@ -315,7 +317,8 @@ final class FetchApiTest extends IntegrationTestCase
             bin2hex((string) $versionSeven->messageSet),
             bin2hex((string) $versionEight->messageSet)
         );
-        self::assertSame(8, FetchRequest::VERSION, 'the client sends the Fetch version Kafka 2.0 added');
+        self::assertSame(8, FetchRequestV8::VERSION, 'the version Kafka 2.0 added');
+        self::assertSame(10, FetchRequest::VERSION, 'and the client sends the version Kafka 2.1 added');
     }
 
     public function testAVersionSevenRequestWithoutASessionIsServedLikeAVersionSixOne(): void

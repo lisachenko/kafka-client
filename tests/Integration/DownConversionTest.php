@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * This class measures both halves against the container: what the conversion does to a magic 2 log, and what a
  * topic with the switch off answers instead.
  *
- * @see docs/protocol/2.8.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v8)"
+ * @see docs/protocol/2.8.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v10)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]

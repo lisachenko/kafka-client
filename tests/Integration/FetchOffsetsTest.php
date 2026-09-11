@@ -35,9 +35,11 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -48,7 +50,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The messages are produced with hand-written Produce v0 bytes, so that these tests only depend on the wire format
  * of the spec and not on the state of the other protocol classes.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v8)" and "Offsets API (key 2, v0 and v1),
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Offsets API (key 2, v0 and v1),
  *      a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequestV1::class)]
@@ -325,16 +327,17 @@ final class FetchOffsetsTest extends IntegrationTestCase
         )->writeTo($stream);
         $versionTwo = OffsetsResponseV2::unpack($stream);
 
-        new OffsetsRequest(
+        new OffsetsRequestV3(
             [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
             -1,
             FetchRequest::READ_UNCOMMITTED,
             self::CLIENT_ID,
             25
         )->writeTo($stream);
-        $versionThree = OffsetsResponse::unpack($stream);
+        $versionThree = OffsetsResponseV3::unpack($stream);
 
-        self::assertSame(3, OffsetsRequest::VERSION, 'the client sends the ListOffsets version Kafka 2.0 added');
+        self::assertSame(3, OffsetsRequestV3::VERSION, 'the version Kafka 2.0 added');
+        self::assertSame(4, OffsetsRequest::VERSION, 'and the client sends the version Kafka 2.1 added');
         self::assertSame($versionTwo->getMessageSize(), $versionThree->getMessageSize());
         self::assertSame(0, $versionThree->throttleTimeMs, 'no quota is set for this client id');
 

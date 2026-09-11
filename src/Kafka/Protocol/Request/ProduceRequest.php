@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API, version 6
+ * The produce API, version 7
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * time of the send the producer is free to fill in that field in any way it likes.
  *
  * <pre>
- *   ProduceRequest (Version: 6) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
+ *   ProduceRequest (Version: 7) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
  *                                                                                   RecordSet]]
  *     TransactionalId => nullable string
  *     RequiredAcks    => int16
@@ -77,16 +77,33 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * what the client promises, not what the broker decides, and a client that sends a lower version simply stalls on
  * the muted channel instead.
  *
- * {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3}, {@see ProduceRequestV2},
- * {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with them the legacy message
- * sets - available.
+ * **Version 7 (Kafka 2.1, KIP-110) sends the same body a fourth time, and it is the version a zstd batch needs.**
+ * `ProduceRequest.json` @ 2.8.2 still has no field above version 3, so the frame is the frame of version 3 with
+ * another number in its header; what the version states is that the record sets of this request may carry the
+ * compression type **4**, zstd. `ProduceRequest.validateRecords` @ 2.8.2 refuses a lower version that does:
+ *
+ * ```java
+ * if (version < 7 && entry.compressionType() == CompressionType.ZSTD) {
+ *     throw new UnsupportedCompressionTypeException("Produce requests with version " + version + " are not allowed to use ZStandard compression");
+ * }
+ * ```
+ *
+ * and the check runs on the **broker** as well, because it parses the request with the same class - measured on
+ * the container, see the section of the document. This is why the client sends version 7 as soon as
+ * {@see \Protocol\Kafka\Producer\ProducerConfig::COMPRESSION_TYPE} may be `zstd`
+ * ({@see \Protocol\Kafka\Common\Record\CompressionCodec::ZSTD}); the answer is unchanged, see
+ * {@see ProduceResponse}.
+ *
+ * {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
+ * {@see ProduceRequestV2}, {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with
+ * them the legacy message sets - available.
  *
  * The broker does **not** check the message format against the api version: it stores whatever it is given in the
  * `message.format.version` of the topic and converts the batch on append. What a version really states is what the
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -98,7 +115,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all

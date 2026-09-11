@@ -59,6 +59,7 @@ use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponsePartition;
@@ -100,6 +101,8 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
@@ -660,7 +663,11 @@ class Client
      *   `read_uncommitted` unless it is configured otherwise, which is what the broker answers a -1 last stable
      *   offset and a `null` aborted-transactions array to.
      *
-     * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
+     * @param array<string, array<int, int|array{int, int}>> $topicPartitionOffsets Offset to start fetching each
+     *        partition at. A value may also be the pair `[offset, currentLeaderEpoch]`, which is the epoch that
+     *        **Fetch v9** (Kafka 2.1, KIP-320) puts on the wire and that fences a consumer whose metadata is out
+     *        of date with 74 or 75; a plain integer means "I do not know the epoch", which is what every call
+     *        written before Kafka 2.1 means.
      * @param int                            $timeout               Timeout in ms to wait for fetching
      *
      * @return array<string, array<int, FetchedPartition>> [topic => [partition => FetchedPartition]]
@@ -726,7 +733,9 @@ class Client
      * carries the **whole** set again: an incremental request that carried the failed partitions alone would tell
      * the broker to forget all the others.
      *
-     * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
+     * @param array<string, array<int, int|array{int, int}>> $topicPartitionOffsets Offset to start fetching each
+     *        partition at, optionally as the pair `[offset, currentLeaderEpoch]` of KIP-320, see
+     *        {@see self::fetchPartitions()}
      * @param int                            $timeout               Timeout in ms to wait for fetching
      *
      * @return array<string, array<int, FetchedPartition>> [topic => [partition => FetchedPartition]], only the
@@ -765,9 +774,12 @@ class Client
                     $builder = $handler->newBuilder();
                     foreach ($nodeTopicRequest as $topic => $partitionOffsets) {
                         foreach ($partitionOffsets as $partitionId => $fetchOffset) {
+                            // The value travels into the session as it was given - a plain offset, or the pair
+                            // [offset, currentLeaderEpoch] of KIP-320 - because the session compares it with the
+                            // one it remembers to decide whether the partition has to be sent again at all
                             $builder->add(
                                 new TopicPartition((string) $topic, (int) $partitionId),
-                                (int) $fetchOffset
+                                is_array($fetchOffset) ? [(int) $fetchOffset[0], (int) $fetchOffset[1]] : (int) $fetchOffset
                             );
                         }
                     }
@@ -898,7 +910,9 @@ class Client
                     );
                     continue;
                 }
-                $fetchOffset = (int) ($topicPartitionOffsets[$topic][$partitionId] ?? 0);
+                // A requested offset may be the pair [offset, currentLeaderEpoch] of KIP-320, see
+                // FetchRequest::offsetAndEpoch(); only the offset itself is of interest here
+                [$fetchOffset] = FetchRequest::offsetAndEpoch($topicPartitionOffsets[$topic][$partitionId] ?? 0);
                 try {
                     // The schema engine hands over the raw bytes of the record set, because the broker is
                     // allowed to cut its last batch short. The record layer looks at the message format of
@@ -945,7 +959,9 @@ class Client
      * {@see self::fetchTopicPartitionOffsetsForTimes()} to receive the timestamp of the message that was found
      * together with its offset.
      *
-     * @param array<string, array<int, int>> $topicPartitionTimestamps Target times of each topic partition
+     * @param array<string, array<int, int|array{int, int}>> $topicPartitionTimestamps Target time of each topic
+     *        partition, optionally as the pair `[timestamp, currentLeaderEpoch]` that version 4 (KIP-320) puts on
+     *        the wire
      *
      * @return array<string, array<int, int>> Array in the form: [topic => [partition => offset]]
      *
@@ -1009,7 +1025,68 @@ class Client
                         // "No message matches that timestamp" is answered with the offset -1 and no error at all
                         $result[$topic][$partitionId] = $partitionMetadata->offset === OffsetsResponsePartition::UNKNOWN_OFFSET
                             ? null
-                            : new OffsetAndTimestamp($partitionMetadata->offset, $partitionMetadata->timestamp);
+                            : new OffsetAndTimestamp(
+                                $partitionMetadata->offset,
+                                $partitionMetadata->timestamp,
+                                $partitionMetadata->leaderEpoch === OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH
+                                    ? null
+                                    : $partitionMetadata->leaderEpoch
+                            );
+                    }
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Asks the leader of every named partition where a leader epoch of its log ended (api key 23, **v2**)
+     *
+     * This is the wire half of the truncation detection of **KIP-320**. A consumer that has seen a *new* leader
+     * epoch for a partition does not know whether the records it was about to read survived the leader change, so
+     * it asks the new leader: "you took over from epoch `e` - which offset does that epoch end at?". An
+     * `end_offset` **below** the consumer's position means that the log diverged there and the position has to be
+     * moved back; an offset at or above it means that the position is still inside a part of the log the new
+     * leader has, and the consumer goes on reading.
+     *
+     * The request goes out as **version 2** (Kafka 2.1), which carries the `current_leader_epoch` that fences it:
+     * a stale belief about the leadership is answered **74** `FENCED_LEADER_EPOCH` and a belief from the future
+     * **75** `UNKNOWN_LEADER_EPOCH`, both of which mean "refresh the metadata and ask again" rather than "move the
+     * position". The api answers an ordinary client just as it answers a follower, because
+     * `KafkaApis.handleOffsetForLeaderEpochRequest` @ 2.8.2 authorizes it with `ClusterAction on Cluster`, which a
+     * broker without an `authorizer.class.name` grants to everybody.
+     *
+     * @param array<string, array<int, int|array{int, int}>> $topicPartitionEpochs Epoch to resolve per partition,
+     *        as topic => partition => epoch, or as the pair `[leaderEpoch, currentLeaderEpoch]`
+     *
+     * @return array<string, array<int, OffsetForLeaderEpochResponsePartition>> The answer of every partition
+     *
+     * @throws TopicPartitionRequestException If a partition was answered with an error code
+     */
+    public function offsetsForLeaderEpochs(array $topicPartitionEpochs): array
+    {
+        return $this->clusterRequest(
+            $topicPartitionEpochs,
+            fn(array $nodeTopicRequest, int $correlationId): OffsetForLeaderEpochRequest
+                => new OffsetForLeaderEpochRequest(
+                    $nodeTopicRequest,
+                    $this->configuration[ClientConfig::CLIENT_ID],
+                    $correlationId
+                ),
+            OffsetForLeaderEpochResponse::class,
+            static function (array $result, OffsetForLeaderEpochResponse $response, array &$errors): array {
+                foreach ($response->topics as $topic => $topicResponse) {
+                    /** @var OffsetForLeaderEpochResponsePartition $partition */
+                    foreach ($topicResponse->partitions as $partitionId => $partition) {
+                        if ($partition->errorCode !== KafkaException::NO_ERROR) {
+                            $errors[$topic][$partitionId] = KafkaException::fromCode(
+                                $partition->errorCode,
+                                ['topic' => $topic, 'partitionId' => $partitionId]
+                            );
+                            continue;
+                        }
+                        $result[$topic][$partitionId] = $partition;
                     }
                 }
 

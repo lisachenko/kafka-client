@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see OffsetsResponsePartition::getScheme()} follows, so the answer arrives in
  * {@see OffsetsResponsePartition::$offsets} while `timestamp` and `offset` keep their unknown values.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v4), a.k.a. ListOffset"
  */
 final class OffsetsResponsePartitionV0 extends OffsetsResponsePartition
 {

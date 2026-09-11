@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * check of the broker (every five minutes), in the middle of the run. What the tests assert is the table of
  * "What the broker answers" in the protocol document.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v4), a.k.a. ListOffset"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]

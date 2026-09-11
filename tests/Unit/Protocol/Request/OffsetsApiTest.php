@@ -20,10 +20,12 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestPartitionV0;
+use Protocol\Kafka\Protocol\Data\OffsetsRequestPartitionV1;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartitionV0;
+use Protocol\Kafka\Protocol\Data\OffsetsResponsePartitionV1;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -31,10 +33,12 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV3;
 
 /**
  * Byte-exact tests for the Offsets (ListOffset) API, versions 0, 1 and 2.
@@ -48,7 +52,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
  *   ListOffsets Response (Version: 2) => throttle_time_ms [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v4), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]
@@ -71,7 +75,7 @@ final class OffsetsApiTest extends TestCase
      *
      *   Size            => 00 00 00 2e (46 bytes)
      *   ApiKey          => 00 02
-     *   ApiVersion      => 00 03
+     *   ApiVersion      => 00 04
      *   CorrelationId   => 00 00 00 07
      *   ClientId        => 00 04 "test"
      *   ReplicaId       => ff ff ff ff (-1, an ordinary consumer)
@@ -79,9 +83,25 @@ final class OffsetsApiTest extends TestCase
      *   [TopicName]     => 00 00 00 01, 00 05 "topic"
      *     [Partition]   => 00 00 00 01
      *       Partition   => 00 00 00 00
+     *       CurrentLeaderEpoch => ff ff ff ff (-1, "I do not know the epoch"), since version 4
      *       Timestamp   => ff ff ff ff ff ff ff ff (-1, the latest offset)
      */
-    private const string LATEST_REQUEST_HEX = '0000002e'
+    private const string LATEST_REQUEST_HEX = '00000032'
+        . '0002'
+        . '0004'
+        . '00000007'
+        . '0004' . '74657374'
+        . 'ffffffff'
+        . '00'
+        . '00000001'
+        . '0005' . '746f706963'
+        . '00000001'
+        . '00000000' . 'ffffffff' . 'ffffffffffffffff';
+
+    /**
+     * The same frame with the api version 3, whose partition entries carry no leader epoch
+     */
+    private const string LATEST_REQUEST_V3_HEX = '0000002e'
         . '0002'
         . '0003'
         . '00000007'
@@ -96,9 +116,9 @@ final class OffsetsApiTest extends TestCase
     /**
      * The same request with the isolation level `read_committed`, which asks for the last stable offset
      */
-    private const string LATEST_COMMITTED_REQUEST_HEX = '0000002e'
+    private const string LATEST_COMMITTED_REQUEST_HEX = '00000032'
         . '0002'
-        . '0003'
+        . '0004'
         . '00000007'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -106,7 +126,7 @@ final class OffsetsApiTest extends TestCase
         . '00000001'
         . '0005' . '746f706963'
         . '00000001'
-        . '00000000' . 'ffffffffffffffff';
+        . '00000000' . 'ffffffff' . 'ffffffffffffffff';
 
     /**
      * The same question as a version 1 frame, which has no isolation level at all
@@ -125,9 +145,9 @@ final class OffsetsApiTest extends TestCase
     /**
      * The same request asking for the earliest available offset: the timestamp is -2 instead of -1
      */
-    private const string EARLIEST_REQUEST_HEX = '0000002e'
+    private const string EARLIEST_REQUEST_HEX = '00000032'
         . '0002'
-        . '0003'
+        . '0004'
         . '00000007'
         . '0004' . '74657374'
         . 'ffffffff'
@@ -135,7 +155,7 @@ final class OffsetsApiTest extends TestCase
         . '00000001'
         . '0005' . '746f706963'
         . '00000001'
-        . '00000000' . 'fffffffffffffffe';
+        . '00000000' . 'ffffffff' . 'fffffffffffffffe';
 
     /**
      * The version 0 request of the same question, which carries the api version 0 and a MaxNumberOfOffsets of 1
@@ -162,8 +182,8 @@ final class OffsetsApiTest extends TestCase
         );
 
         self::assertSame(self::LATEST_REQUEST_HEX, bin2hex((string) $request));
-        self::assertSame(46, $request->getMessageSize(), 'the isolation level of version 2 is one byte');
-        self::assertSame(3, $request->getApiVersion());
+        self::assertSame(50, $request->getMessageSize(), 'the four epoch bytes of KIP-320 per partition');
+        self::assertSame(4, $request->getApiVersion());
     }
 
     public function testTheVersionsTwoAndThreeSendOneAndTheSameFrame(): void
@@ -178,14 +198,60 @@ final class OffsetsApiTest extends TestCase
             'test',
             7
         ));
+        $version3 = bin2hex((string) new OffsetsRequestV3(
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7
+        ));
 
-        self::assertSame(substr_replace(self::LATEST_REQUEST_HEX, '0002', 12, 4), $version2);
-        self::assertSame(OffsetsRequestV2::getScheme(), OffsetsRequest::getScheme());
-        self::assertSame(OffsetsResponseV2::getScheme(), OffsetsResponse::getScheme());
-        self::assertSame(3, OffsetsRequest::VERSION);
-        self::assertSame(3, OffsetsResponse::VERSION);
+        self::assertSame(substr_replace(self::LATEST_REQUEST_V3_HEX, '0002', 12, 4), $version2);
+        self::assertSame(self::LATEST_REQUEST_V3_HEX, $version3);
+        self::assertSame(OffsetsRequestV2::getScheme(), OffsetsRequestV3::getScheme());
+        self::assertSame(OffsetsResponseV2::getScheme(), OffsetsResponseV3::getScheme());
         self::assertSame(2, OffsetsRequestV2::VERSION);
         self::assertSame(2, OffsetsResponseV2::VERSION);
+    }
+
+    public function testVersionFourCarriesTheLeaderEpochOnBothSides(): void
+    {
+        // KIP-320: `current_leader_epoch` sits between the partition index and the target timestamp of a request,
+        // `leader_epoch` behind the offset of an answer - the field order of the JSON, which is the wire order
+        $request = new OffsetsRequest(
+            ['topic' => [0 => [OffsetsRequest::LATEST, 7]]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7
+        );
+
+        self::assertSame(
+            substr_replace(self::LATEST_REQUEST_HEX, '00000007', 2 * 42, 8),
+            bin2hex((string) $request),
+            'a value of the map may be the pair [timestamp, currentLeaderEpoch]'
+        );
+        self::assertSame(
+            ['partition', 'currentLeaderEpoch', 'timestamp'],
+            array_keys(OffsetsRequestPartition::getScheme())
+        );
+        self::assertSame(
+            ['partition', 'timestamp'],
+            array_keys(OffsetsRequestPartitionV1::getScheme()),
+            'the versions 1, 2 and 3 carry no epoch at all'
+        );
+        self::assertSame(
+            ['partition', 'errorCode', 'timestamp', 'offset', 'leaderEpoch'],
+            array_keys(OffsetsResponsePartition::getScheme())
+        );
+        self::assertSame(
+            ['partition', 'errorCode', 'timestamp', 'offset'],
+            array_keys(OffsetsResponsePartitionV1::getScheme())
+        );
+        self::assertSame(-1, OffsetsRequestPartition::UNKNOWN_LEADER_EPOCH);
+        self::assertSame(-1, OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH);
+        self::assertSame(4, OffsetsRequest::VERSION);
+        self::assertSame(4, OffsetsResponse::VERSION);
     }
 
     public function testEarliestOffsetRequestIsPackedAccordingToTheSpec(): void
@@ -293,15 +359,15 @@ final class OffsetsApiTest extends TestCase
         );
 
         self::assertSame(
-            '0000003a'
-            . '0002' . '0003' . '00000007' . '0004' . '74657374'
+            '00000042'
+            . '0002' . '0004' . '00000007' . '0004' . '74657374'
             . 'ffffffff'
             . '00'
             . '00000001'
             . '0005' . '746f706963'
             . '00000002'
-            . '00000000' . 'fffffffffffffffe'
-            . '00000003' . '00000151fa7bdc00',
+            . '00000000' . 'ffffffff' . 'fffffffffffffffe'
+            . '00000003' . 'ffffffff' . '00000151fa7bdc00',
             bin2hex((string) $request)
         );
     }
@@ -326,10 +392,19 @@ final class OffsetsApiTest extends TestCase
         self::assertSame(['topic' => OffsetsRequestTopic::class], $scheme['topicPartitions']);
         self::assertSame(
             [
+                'partition'          => BinarySchema::TYPE_INT32,
+                'currentLeaderEpoch' => BinarySchema::TYPE_INT32,
+                'timestamp'          => BinarySchema::TYPE_INT64,
+            ],
+            OffsetsRequestPartition::getScheme()
+        );
+        self::assertSame(
+            [
                 'partition' => BinarySchema::TYPE_INT32,
                 'timestamp' => BinarySchema::TYPE_INT64,
             ],
-            OffsetsRequestPartition::getScheme()
+            OffsetsRequestPartitionV1::getScheme(),
+            'the versions 1 to 3 ask with the partition index and the target timestamp alone'
         );
         self::assertSame(
             [
@@ -351,12 +426,23 @@ final class OffsetsApiTest extends TestCase
     {
         self::assertSame(
             [
+                'partition'   => BinarySchema::TYPE_INT32,
+                'errorCode'   => BinarySchema::TYPE_INT16,
+                'timestamp'   => BinarySchema::TYPE_INT64,
+                'offset'      => BinarySchema::TYPE_INT64,
+                'leaderEpoch' => BinarySchema::TYPE_INT32,
+            ],
+            OffsetsResponsePartition::getScheme()
+        );
+        self::assertSame(
+            [
                 'partition' => BinarySchema::TYPE_INT32,
                 'errorCode' => BinarySchema::TYPE_INT16,
                 'timestamp' => BinarySchema::TYPE_INT64,
                 'offset'    => BinarySchema::TYPE_INT64,
             ],
-            OffsetsResponsePartition::getScheme()
+            OffsetsResponsePartitionV1::getScheme(),
+            'the leader_epoch of KIP-320 arrived with version 4'
         );
         self::assertSame(
             [

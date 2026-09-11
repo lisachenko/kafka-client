@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * front of the topics, one offset and one timestamp per partition. The two versions differ only in what the
  * client promises about the throttle time of KIP-219, see {@see OffsetsResponse}.
  *
- * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v3), a.k.a. ListOffset" and
+ * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v4), a.k.a. ListOffset" and
  *      "Quotas and throttle time"
  */
 final class OffsetsResponseV2 extends OffsetsResponse

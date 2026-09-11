@@ -2,10 +2,11 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **388** of them in **36** files: **70** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **407** of them in **36** files: **89** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
-(20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps - and of the other 318, **229** were
+(20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus the 19 frames of what Kafka
+**2.1** added to the producer and consumer apis (KIP-320 and KIP-110) - and of the other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
@@ -14,15 +15,16 @@ and `apiversions.response.v0.unsupported-version`, which gained the api row of K
 What this line has captured so far is the KIP-219 version bump of the ten group apis of Kafka 2.0 — OffsetCommit
 v4, OffsetFetch v4, FindCoordinator v2, JoinGroup v3, Heartbeat v2, LeaveGroup v2, SyncGroup v2, DescribeGroups v2,
 ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from one life of the group
-`t3-kip219-group` — and the same bump of the four apis the producer and the consumer send:
+`t3-kip219-group` — the same bump of the four apis the producer and the consumer send, and what **Kafka 2.1**
+(KIP-320, the leader epochs, and KIP-110, the zstd codec) added to those apis and to Produce:
 
 | File | Of it captured here | What was captured on the 2.8.2 broker |
 |---|---|---|
-| `produce.json` | 3 of 27 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond |
-| `fetch.json` | 5 of 38 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; and the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283) |
-| `offsets.json` | 2 of 16 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header |
-| `metadata.json` | 2 of 21 | **Metadata v6** (KIP-219), likewise |
-| `offset-for-leader-epoch.json` | 2 of 6 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset |
+| `produce.json` | 6 of 30 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond; **Produce v7** (KIP-110), request and answer, and the **76** a v6 is answered when its record set is compressed with zstd |
+| `fetch.json` | 14 of 47 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283); **Fetch v9** and **v10** (KIP-320, KIP-110) with the `current_leader_epoch` on the wire, the **75** of an epoch above the leader's, and the three frames of the zstd rule — the **76** of a v9 against a `compression.type=zstd` topic and the same partition served to a v10 |
+| `offsets.json` | 4 of 18 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header, and **v4** (KIP-320), which carries a `current_leader_epoch` in the request and a `leader_epoch` behind every answered offset |
+| `metadata.json` | 4 of 23 | **Metadata v6** (KIP-219), likewise, and **v7** (KIP-320), whose partition entries carry the `leader_epoch` of their leader |
+| `offset-for-leader-epoch.json` | 5 of 9 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset; and **v2** (KIP-320), the version a consumer sends, with a `current_leader_epoch` in the request, a `throttle_time_ms` at the head of the answer and the **75** of a fenced epoch |
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
@@ -71,7 +73,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v6)",
+    "section": "Metadata API (key 3, v0 to v7)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

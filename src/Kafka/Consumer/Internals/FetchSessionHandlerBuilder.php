@@ -48,8 +48,14 @@ final class FetchSessionHandlerBuilder
      *
      * A partition that is added twice keeps the place it had and takes the newer offset, exactly as the
      * `LinkedHashMap` of the Java builder does.
+     *
+     * The fetch offset may be the pair `[offset, currentLeaderEpoch]` that **Fetch v9** (Kafka 2.1, KIP-320) puts
+     * on the wire; the session stores whichever shape it is given and compares it with the one it remembers, so a
+     * partition whose *epoch* changed is sent again even when its offset did not.
+     *
+     * @param int|array{int, int} $fetchOffset
      */
-    public function add(TopicPartition $topicPartition, int $fetchOffset): self
+    public function add(TopicPartition $topicPartition, int|array $fetchOffset): self
     {
         if ($this->next === null) {
             throw new LogicException('The request of this builder has already been built');
