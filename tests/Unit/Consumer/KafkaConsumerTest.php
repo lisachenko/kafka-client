@@ -1167,7 +1167,10 @@ final class KafkaConsumerTest extends TestCase
 
         $consumer->unsubscribe();
 
-        self::assertSame([['groupId' => self::GROUP, 'memberId' => 'member-1']], $client->leaves);
+        self::assertSame(
+            [['groupId' => self::GROUP, 'memberId' => 'member-1', 'instanceId' => null]],
+            $client->leaves
+        );
         self::assertSame([], $consumer->assignment());
         self::assertSame([], $consumer->subscription());
         self::assertSame([], $consumer->poll(10), 'a consumer without a subscription fetches nothing');

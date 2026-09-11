@@ -67,7 +67,7 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  * changing a field (KIP-219): JoinGroup v3, SyncGroup v2, Heartbeat v2 and LeaveGroup v2.
  *
  * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 to v5)",
- *      "SyncGroup API (key 14, v0 to v3)", "Heartbeat API (key 12, v0 to v3)" and "LeaveGroup API (key 13, v0 to v2)"
+ *      "SyncGroup API (key 14, v0 to v3)", "Heartbeat API (key 12, v0 to v3)" and "LeaveGroup API (key 13, v0 to v3)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(JoinGroupRequest::class)]

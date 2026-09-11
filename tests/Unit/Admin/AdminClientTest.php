@@ -16,12 +16,14 @@ namespace Protocol\Kafka\Tests\Unit\Admin;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\MemberToRemove;
 use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
+use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
@@ -32,9 +34,11 @@ use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
@@ -44,6 +48,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
@@ -743,6 +748,61 @@ final class AdminClientTest extends TestCase
         $result = $this->adminClient()->createPartitions(['t7-missing' => 3]);
 
         self::assertInstanceOf(UnknownErrorException::class, $result['t7-missing']);
+    }
+
+    /**
+     * The batch leave of KIP-345: every member is reported on its own, and a refused one throws nothing
+     */
+    public function testRemoveMembersFromConsumerGroupReportsEveryMemberOfTheBatch(): void
+    {
+        $broker = $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            ResponseFrame::leaveGroup(0, KafkaException::NO_ERROR, [
+                ''         => ['t10-instance', KafkaException::NO_ERROR],
+                'member-9' => [null, KafkaException::UNKNOWN_MEMBER_ID],
+            ])
+        );
+
+        $result = $this->adminClient()->removeMembersFromConsumerGroup(self::ADMIN_GROUP, [
+            't10-instance',
+            MemberToRemove::byMemberId('member-9'),
+        ]);
+
+        self::assertSame(['t10-instance', 'member-9'], array_keys($result), 'keyed by the identity of the member');
+        self::assertNull($result['t10-instance'], 'a plain string names a member by its group.instance.id');
+        self::assertInstanceOf(UnknownMemberIdException::class, $result['member-9']);
+        self::assertSame(
+            ['groupId' => self::ADMIN_GROUP, 'memberId' => 'member-9', 'groupInstanceId' => null],
+            $result['member-9']->getContext()
+        );
+        self::assertSame(
+            self::requestFrame(new LeaveGroupRequest(
+                self::ADMIN_GROUP,
+                [
+                    new LeaveGroupRequestMember(LeaveGroupRequestMember::UNKNOWN_MEMBER_ID, 't10-instance'),
+                    new LeaveGroupRequestMember('member-9'),
+                ],
+                't10',
+                $broker->getReceivedCorrelationIds()[1]
+            )),
+            $broker->getReceivedFrames()[1],
+            'one batch request removes both members'
+        );
+    }
+
+    /**
+     * The top-level error code is the one of the request, and that one is thrown
+     */
+    public function testRemoveMembersFromConsumerGroupThrowsTheErrorOfTheRequestItself(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            ResponseFrame::leaveGroup(0, KafkaException::GROUP_AUTHORIZATION_FAILED, [])
+        );
+
+        $this->expectException(GroupAuthorizationFailedException::class);
+
+        $this->adminClient()->removeMembersFromConsumerGroup(self::ADMIN_GROUP, ['t10-instance']);
     }
 
     public function testDeleteConsumerGroupsAsksTheCoordinatorAndReportsEveryGroup(): void

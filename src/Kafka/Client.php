@@ -57,6 +57,7 @@ use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
@@ -1375,35 +1376,52 @@ class Client
      * The group rebalances right away instead of waiting for the session timeout of the member to expire, so this
      * is what a consumer sends when it shuts down in an orderly way.
      *
-     * @param Node   $coordinatorNode Current group coordinator for $groupId
-     * @param string $groupId         Name of the group
-     * @param string $memberId        Name of the group member
+     * **Version 3 (Kafka 2.4, KIP-345) turned the request into a batch**, and a member that removes itself is that
+     * batch with exactly one entry. The error of that member then travels in the member array of the answer while
+     * the top-level error code stays 0, so both are checked here and the member error is reported the way it
+     * always was - 25 (`UnknownMemberId`) for a member the group does not have, 82 (`FencedInstanceId`) for a
+     * static member whose instance id another consumer has taken over. Several members at once are what
+     * {@see \Protocol\Kafka\Admin\AdminClient::removeMembersFromConsumerGroup()} sends.
+     *
+     * @param Node        $coordinatorNode Current group coordinator for $groupId
+     * @param string      $groupId         Name of the group
+     * @param string      $memberId        Name of the group member
+     * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345, version 3), null for a
+     *        dynamic one; naming both makes the coordinator check that the member id belongs to that instance
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\UnknownMemberIdException
+     * @throws Common\Errors\FencedInstanceIdException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function leaveGroup(Node $coordinatorNode, string $groupId, string $memberId): void
-    {
+    public function leaveGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        ?string $groupInstanceId = null
+    ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         $this->groupRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => new LeaveGroupRequest(
                 $groupId,
-                $memberId,
+                [new LeaveGroupRequestMember($memberId, $groupInstanceId)],
                 $clientId,
                 $correlationId
             ),
             LeaveGroupResponse::class,
             static function (LeaveGroupResponse $response) use ($groupId, $memberId): void {
+                $context = ['groupId' => $groupId, 'memberId' => $memberId];
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
-                    throw KafkaException::fromCode(
-                        $response->errorCode,
-                        ['groupId' => $groupId, 'memberId' => $memberId]
-                    );
+                    throw KafkaException::fromCode($response->errorCode, $context);
+                }
+                foreach ($response->members as $member) {
+                    if ($member->errorCode !== KafkaException::NO_ERROR) {
+                        throw KafkaException::fromCode($member->errorCode, $context);
+                    }
                 }
             }
         );

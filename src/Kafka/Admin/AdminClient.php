@@ -38,6 +38,7 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
@@ -68,6 +69,8 @@ use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
+use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -1292,6 +1295,89 @@ class AdminClient
         }
 
         return $result;
+    }
+
+    /**
+     * Removes members from a consumer group without waiting for their session timeouts (ApiKey 13 v3, KIP-345)
+     *
+     * The administrative half of static membership: a **static** member does not leave its group when it shuts
+     * down - that is what keeps its partitions across a restart - so an instance that is retired for good has to
+     * be removed by hand, or the group waits a whole `session.timeout.ms` for it and then rebalances anyway.
+     * `kafka-consumer-groups.sh --group G --delete-offsets`-style tooling and the Java
+     * `Admin.removeMembersFromConsumerGroup()` send exactly this request, the **batch** LeaveGroup of version 3.
+     *
+     * A member is named by its `group.instance.id` ({@see MemberToRemove::byInstanceId()}), by its member id
+     * ({@see MemberToRemove::byMemberId()}) or by both; a plain string in `$members` is an **instance id**, as in
+     * the Java client, whose `MemberToRemove` takes nothing else. Every member of the batch gets an entry in the
+     * result, keyed by {@see MemberToRemove::identity()} - `null` when it was removed, the exception of its error
+     * code otherwise - and nothing is thrown for a member that was refused, because one member of a batch says
+     * nothing about the others. 25 (`UnknownMemberId`) is what an instance id the group does not have is answered
+     * with, and 82 (`FencedInstanceId`) a member id that lost its instance to another consumer.
+     *
+     * An **empty batch** is legal: it is sent, and the coordinator answers it with an empty member array, which is
+     * how a caller can probe the group without removing anything.
+     *
+     * @param string                          $groupId Name of the group
+     * @param iterable<MemberToRemove|string> $members Members to remove; a plain string is a `group.instance.id`
+     *
+     * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If the group moved to another coordinator
+     *         between the lookup and this request
+     * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not read the group
+     * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If the group is gone (`Dead`)
+     *
+     * @return array<string, KafkaException|null> Error of every requested member, null when it was removed
+     */
+    public function removeMembersFromConsumerGroup(string $groupId, iterable $members): array
+    {
+        $toRemove = [];
+        foreach ($members as $member) {
+            $toRemove[] = $member instanceof MemberToRemove ? $member : MemberToRemove::byInstanceId($member);
+        }
+
+        $coordinator = $this->findCoordinator($groupId);
+        /** @var LeaveGroupResponse $response */
+        $response = $this->sendTo(
+            $coordinator->getConnection($this->configuration),
+            fn(int $correlationId): LeaveGroupRequest => new LeaveGroupRequest(
+                $groupId,
+                array_map(static fn(MemberToRemove $member): LeaveGroupRequestMember => $member->toRequestMember(), $toRemove),
+                $this->clientId(),
+                $correlationId
+            ),
+            LeaveGroupResponse::class,
+            ['groupId' => $groupId, 'members' => count($toRemove)]
+        );
+
+        // The top-level code is the one of the request as a whole; what happened to each member is in its entry
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
+        }
+
+        $result = [];
+        foreach ($toRemove as $index => $member) {
+            $answer = $response->members[$index] ?? null;
+            $result[$member->identity()] = $answer === null
+                ? new UnknownErrorException(
+                    ['groupId' => $groupId, 'error' => 'The coordinator sent no result for this member']
+                )
+                : self::memberError($groupId, $member, $answer->errorCode);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Turns the error code of one member of a LeaveGroup v3 answer into the exception of the caller
+     */
+    private static function memberError(string $groupId, MemberToRemove $member, int $errorCode): ?KafkaException
+    {
+        return $errorCode === KafkaException::NO_ERROR
+            ? null
+            : KafkaException::fromCode($errorCode, [
+                'groupId'         => $groupId,
+                'memberId'        => $member->memberId,
+                'groupInstanceId' => $member->groupInstanceId,
+            ]);
     }
 
     /**

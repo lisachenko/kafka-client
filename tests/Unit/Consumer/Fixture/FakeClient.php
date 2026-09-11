@@ -576,9 +576,13 @@ final class FakeClient extends Client
     /**
      * @inheritdoc
      */
-    public function leaveGroup(Node $coordinatorNode, string $groupId, string $memberId): void
-    {
-        $this->leaves[] = ['groupId' => $groupId, 'memberId' => $memberId];
+    public function leaveGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        ?string $groupInstanceId = null
+    ): void {
+        $this->leaves[] = ['groupId' => $groupId, 'memberId' => $memberId, 'instanceId' => $groupInstanceId];
 
         unset($this->groupMembers[$memberId], $this->memberAssignments[$memberId]);
 

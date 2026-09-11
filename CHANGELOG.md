@@ -184,6 +184,27 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   twelve wire vectors of the new frames were captured from the container.
 - **LeaveGroup stays at v2**: the batch leave of KIP-345 is LeaveGroup v3, a Kafka 2.4 api.
 
+### Kafka 2.4
+
+- **LeaveGroup v3, the batch leave of KIP-345** — the request's single `member_id` is **replaced** by a list of
+  member identities (`member_id` plus a nullable `group_instance_id` each), and the answer gains a matching
+  member array behind its error code, one entry per member with an error code of its own. The top-level code is
+  about the request alone and stays **0** even when every member was refused. `LeaveGroupRequest`/`Response` are
+  version 3, `LeaveGroupRequestV2`/`LeaveGroupResponseV2` keep the single-member frame, and
+  `Protocol\Data\LeaveGroupRequestMember`/`LeaveGroupResponseMember` are the entries.
+- **`AdminClient::removeMembersFromConsumerGroup(string $groupId, iterable $members)`** — the api half of it, and
+  the reason the version exists: a static member does not leave on its own, so an instance that is retired for
+  good is removed by hand, **by its `group.instance.id`**. A member is named with `MemberToRemove::byInstanceId()`,
+  `byMemberId()` or `byBoth()` (a plain string is an instance id, as in the Java admin client), and the result maps
+  every member to its error or `null`, without throwing for a member that was refused.
+- `Client::leaveGroup()` sends the one-element batch of a member that removes itself — optionally with its
+  instance id — and reports the error of that entry as it always reported the error code of the answer; a static
+  consumer still sends nothing at all when it is closed.
+- Measured on the container: a static member removed by its instance id is gone **at once** (0), an instance id or
+  member id the group does not have is **25** per entry (and so is every entry of a request against a group that
+  does not exist, with the top-level code 0), a **pending** member of KIP-394 removes itself with **0**, and an
+  empty batch is answered with 0 and an empty member array. Six wire vectors of the exchange were captured.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 
