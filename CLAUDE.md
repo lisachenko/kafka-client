@@ -4,12 +4,13 @@ Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch a
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
 (Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
 (Kafka 0.11.0.3, **complete**) → `1.x` (Kafka **1.1.1**, **complete**) → `main` (the **2.x line**, Kafka
-**2.8.2**, **in development**). From the 1.x line on the lines are **major** lines: one branch per Kafka major
+**2.8.2**, **complete**). From the 1.x line on the lines are **major** lines: one branch per Kafka major
 version, covering every minor release inside it (`1.x` speaks 1.1.1 and with it everything 1.0 and 1.1 added;
 `main` speaks 2.8.2 and with it everything 2.0 to 2.8 added). See `docs/CASCADE.md` and, for each line,
 `docs/handoff/<branch>.md`: every one of those files carries the release notes of its line with the plan it was
-built from below them — `docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/main.md` is the plan of
-the 2.x line and becomes its record when the line is complete. The grammar `main` implements is
+built from below them — `docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/main.md` is the record of
+the 2.x line, with the plan it was built from below the release notes. The next line (Kafka 3.x) starts from
+`main` as it stands and branches this tree off as `2.x` first, as `1.x` was branched off. The grammar `main` implements is
 `docs/protocol/2.8.md`.
 
 **The 2.x line starts from `main` as it stood at the end of 1.x** (the finished 1.x tree was branched off as `1.x`
