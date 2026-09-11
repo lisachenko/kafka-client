@@ -1,12 +1,12 @@
 {
     "api": "incremental-alter-configs",
     "apiKey": 44,
-    "section": "IncrementalAlterConfigs API (key 44, v0)",
+    "section": "IncrementalAlterConfigs API (key 44, v0 and v1)",
     "vectors": [
         {
             "id": "incrementalalterconfigs.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "IncrementalAlterConfigs request v0 with the three operations a topic accepts: SET of `retention.ms`, APPEND of a value to the list option `cleanup.policy`, and DELETE of `segment.bytes`, whose value travels as the null string - the frame KIP-339 added in Kafka 2.3.",
@@ -46,7 +46,7 @@
         {
             "id": "incrementalalterconfigs.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "IncrementalAlterConfigs answer v0 of an applied resource: the error code 0, no error message, and the type and the name of the resource the broker altered.",
@@ -68,7 +68,7 @@
         {
             "id": "incrementalalterconfigs.request.v0.invalid-append",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "IncrementalAlterConfigs request v0 that APPENDs to `retention.ms`, an option whose `ConfigDef.Type` is not LIST.",
@@ -98,7 +98,7 @@
         {
             "id": "incrementalalterconfigs.response.v0.invalid-append",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of the broker for it: the error code 42 (InvalidRequest) with the message of `prepareIncrementalConfigs` @ 2.8.2, per resource - the whole resource is refused, and nothing of it is applied.",
@@ -120,7 +120,7 @@
         {
             "id": "incrementalalterconfigs.request.v0.broker-not-dynamic",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "IncrementalAlterConfigs request v0 for the cluster-wide default broker resource of KIP-226 - the broker resource with the EMPTY name - asking for a **static** option with `validate_only` set, which is the only way this repository asks the shared container to alter a broker.",
@@ -150,7 +150,7 @@
         {
             "id": "incrementalalterconfigs.response.v0.broker-not-dynamic",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of the broker for it: the error code 42 (InvalidRequest) and the message that names the options a broker cannot change at runtime, wrapped in the `Invalid config value for resource …` of the catch block.",
@@ -165,6 +165,60 @@
                         "errorMessage": "Invalid config value for resource ConfigResource(type=BROKER, name=''): Cannot update these configs dynamically: Set(log.dirs)",
                         "resourceType": 4,
                         "resourceName": ""
+                    }
+                ]
+            }
+        },
+        {
+            "id": "incrementalalterconfigs.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "IncrementalAlterConfigs request v1, the flexible version of KIP-482 - the same fields as the version 0 of KIP-339, written with the compact types and the tagged-field sections.",
+            "hex": "00000041002c00010000057a000a74342d766563746f72730002020f74342d3234662d766563746f7273020d726574656e74696f6e2e6d7300083732303030303000000000",
+            "fields": {
+                "messageSize": 65,
+                "apiKey": 44,
+                "apiVersion": 1,
+                "correlationId": 1402,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "resources": [
+                    {
+                        "resourceType": 2,
+                        "resourceName": "t4-24f-vectors",
+                        "configs": [
+                            {
+                                "name": "retention.ms",
+                                "configOperation": 0,
+                                "value": "7200000"
+                            }
+                        ]
+                    }
+                ],
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "incrementalalterconfigs.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\IncrementalAlterConfigsResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer for it, likewise: the frame of the version 0 in the flexible encoding.",
+            "hex": "0000001f0000057a000000000002000000020f74342d3234662d766563746f72730000",
+            "fields": {
+                "messageSize": 31,
+                "correlationId": 1402,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "responses": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "resourceType": 2,
+                        "resourceName": "t4-24f-vectors"
                     }
                 ]
             }

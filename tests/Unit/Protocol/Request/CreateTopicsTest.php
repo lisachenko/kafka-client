@@ -30,11 +30,13 @@ use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV0;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV1;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV2;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV3;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV4;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV0;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV1;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV2;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV3;
+use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV4;
 
 /**
  * Byte-exact tests for the CreateTopics API of Kafka 0.10.1 (api key 19), raised to version 2 by KIP-124
@@ -45,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV3;
  * answer of version 2 and 3 is the answer of version 1 with the leading `ThrottleTimeMs`; the topic
  * entries are the ones of version 1 in every one of them.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v4)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v5)"
  */
 #[CoversClass(CreateTopicsRequest::class)]
 #[CoversClass(CreateTopicsRequestV2::class)]
@@ -63,6 +65,8 @@ use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV3;
 #[CoversClass(CreateTopicsResponseTopic::class)]
 #[CoversClass(CreateTopicsResponseTopicV0::class)]
 #[CoversClass(NewTopic::class)]
+#[CoversClass(CreateTopicsRequestV4::class)]
+#[CoversClass(CreateTopicsResponseV4::class)]
 final class CreateTopicsTest extends TestCase
 {
     /**
@@ -227,7 +231,7 @@ final class CreateTopicsTest extends TestCase
 
     public function testTheClientSendsTheVersionFourOfKafkaTwoFour(): void
     {
-        $request = new CreateTopicsRequest(
+        $request = new CreateTopicsRequestV4(
             [new NewTopic('topic', 2, 1, configs: ['retention.ms' => '3600000'])],
             30000,
             false,
@@ -240,7 +244,7 @@ final class CreateTopicsTest extends TestCase
         self::assertSame(4, $request->getApiVersion());
         self::assertSame(substr_replace(self::REQUEST_V2_HEX, '0004', 12, 4), bin2hex((string) $request));
 
-        $answer = CreateTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+        $answer = CreateTopicsResponseV4::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
 
         self::assertSame(
             self::RESPONSE_V2_HEX,
@@ -279,7 +283,7 @@ final class CreateTopicsTest extends TestCase
         self::assertSame(NewTopic::NO_REPLICATION_FACTOR, $topic->replicationFactor);
         self::assertSame([], $topic->replicasAssignments, 'and no assignment, which is what makes it KIP-464');
 
-        $request = new CreateTopicsRequest([$topic], 30000, false, 'test', 7);
+        $request = new CreateTopicsRequestV4([$topic], 30000, false, 'test', 7);
         $hex     = bin2hex((string) $request);
 
         // topic "topic", num_partitions = -1, replication_factor = -1, an empty assignment array
@@ -418,7 +422,7 @@ final class CreateTopicsTest extends TestCase
 
     public function testResponseOfVersionTwoStartsWithTheThrottleTime(): void
     {
-        $response = CreateTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+        $response = CreateTopicsResponseV4::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
 
         self::assertSame(7, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);
@@ -431,7 +435,7 @@ final class CreateTopicsTest extends TestCase
     {
         $versionZero = CreateTopicsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_V0_HEX)));
         $versionOne  = CreateTopicsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
-        $versionTwo  = CreateTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+        $versionTwo  = CreateTopicsResponseV4::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
 
         self::assertSame(self::RESPONSE_V0_HEX, bin2hex((string) $versionZero));
         self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $versionOne));
