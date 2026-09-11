@@ -214,7 +214,7 @@ integration branch, which is in `main`'s history after the final merge):
 
 | Tag | Kafka | Milestone commit | Merged PRs |
 |---|---|---|---|
-| `2.0.1` | 2.0 | _pending_ | |
+| `2.0.1` | 2.0 | `2afcb2f` (`chore(2.x): Kafka 2.0 complete`) | #117 (T4), #118 (T3), #119 (T1), #122 (T2) |
 | `2.1.1` | 2.1 | _pending_ | |
 | `2.2.2` | 2.2 | _pending_ | |
 | `2.3.1` | 2.3 | _pending_ | |
