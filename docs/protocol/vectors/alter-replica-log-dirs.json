@@ -1,8 +1,8 @@
 {
     "api": "alter-replica-log-dirs",
     "apiKey": 34,
-    "section": "AlterReplicaLogDirs API (key 34, v0 and v1)",
-    "description": "Wire vectors of the AlterReplicaLogDirs API (key 34, v0 and v1), replayed by tests/Compliance.",
+    "section": "AlterReplicaLogDirs API (key 34, v0 to v2)",
+    "description": "Wire vectors of the AlterReplicaLogDirs API (key 34, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "alterreplicalogdirs.request.v0",
@@ -169,7 +169,7 @@
         {
             "id": "alterreplicalogdirs.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "AlterReplicaLogDirs request v1, the frame of version 0 with the api version Kafka 2.0 added: one replica moved to the other log directory of the broker.",
@@ -198,7 +198,7 @@
         {
             "id": "alterreplicalogdirs.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterReplicaLogDirsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "AlterReplicaLogDirs response v1: the error code 0 of the accepted move, which the broker then carries out in the background.",

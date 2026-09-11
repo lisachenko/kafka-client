@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\Request\EndTxnRequest;
  * **52** (`TransactionCoordinatorFenced`), which is how a coordinator that lost its partition is stopped from
  * writing markers behind the back of the one that took it over.
  *
- * @see docs/protocol/2.8.md, section "WriteTxnMarkers API (key 27, v0)"
+ * @see docs/protocol/2.8.md, section "WriteTxnMarkers API (key 27, v0 and v1)"
  */
 class WriteTxnMarkersRequestMarker implements BinarySchemaInterface
 {

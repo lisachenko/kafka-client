@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigEntry;
  *  - `synonyms` are the places the broker looked for the value, the winning one first, and the list is only filled
  *    when the request asked for them ({@see AdminClient::describeConfigs()} with `$includeSynonyms`).
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class ConfigEntry
 {

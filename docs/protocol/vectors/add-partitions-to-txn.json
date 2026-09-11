@@ -1,8 +1,8 @@
 {
     "api": "add-partitions-to-txn",
     "apiKey": 24,
-    "section": "AddPartitionsToTxn API (key 24, v0 to v2)",
-    "description": "Wire vectors of the AddPartitionsToTxn API (key 24, v0 to v2), replayed by tests/Compliance.",
+    "section": "AddPartitionsToTxn API (key 24, v0 to v3)",
+    "description": "Wire vectors of the AddPartitionsToTxn API (key 24, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "addpartitionstotxn.request.v0",
@@ -163,7 +163,7 @@
         {
             "id": "addpartitionstotxn.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequestV2",
             "version": 2,
             "source": "broker",
             "description": "AddPartitionsToTxn request v2 (Kafka 2.7, KIP-588): the frame of version 1 byte for byte - the api is NOT flexible in this version (`\"flexibleVersions\": \"none\"` at the 2.7.2 tag; it becomes flexible with the version 3 of Kafka 2.8) and the version buys the error code 90 alone.",
@@ -190,7 +190,7 @@
         {
             "id": "addpartitionstotxn.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponseV2",
             "version": 2,
             "source": "broker",
             "description": "AddPartitionsToTxn answer v2: the error code 0 of the one partition that joined the transaction.",

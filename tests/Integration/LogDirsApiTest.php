@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
  * Every test moves replicas of a topic it created itself, because the broker is shared with the other suites.
  *
  * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0 to v2)" and
- *      "AlterReplicaLogDirs API (key 34, v0 and v1)"
+ *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeLogDirsRequest::class)]

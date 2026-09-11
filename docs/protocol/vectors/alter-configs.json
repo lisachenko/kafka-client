@@ -1,8 +1,8 @@
 {
     "api": "alter-configs",
     "apiKey": 33,
-    "section": "AlterConfigs API (key 33, v0 and v1)",
-    "description": "Wire vectors of the AlterConfigs API (key 33, v0 and v1), replayed by tests/Compliance.",
+    "section": "AlterConfigs API (key 33, v0 to v2)",
+    "description": "Wire vectors of the AlterConfigs API (key 33, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "alterconfigs.request.v0",
@@ -313,7 +313,7 @@
         {
             "id": "alterconfigs.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsRequestV1",
             "version": 1,
             "source": "broker",
             "description": "AlterConfigs request v1, the frame of version 0 with the api version Kafka 2.0 added: the whole configuration of a topic resource, one option of it.",
@@ -342,7 +342,7 @@
         {
             "id": "alterconfigs.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterConfigsResponseV1",
             "version": 1,
             "source": "broker",
             "description": "AlterConfigs response v1: the error code 0 and a null error message for the resource that was replaced.",

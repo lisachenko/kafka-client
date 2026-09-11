@@ -43,8 +43,8 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 to v2)", "DescribeConfigs API (key 32, v0 to v3)" and
- *      "AlterConfigs API (key 33, v0 and v1)"
+ * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 to v2)", "DescribeConfigs API (key 32, v0 to v4)" and
+ *      "AlterConfigs API (key 33, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Client::class)]
@@ -83,7 +83,20 @@ final class ConfigAdminApiTest extends TestCase
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, new BrokerConnection(
-                self::vector('describe-configs', 'describeconfigs.response.v3.own-option')
+                self::describeConfigsResponse([[
+                    0,
+                    '',
+                    ConfigResource::TYPE_TOPIC,
+                    self::VECTOR_TOPIC,
+                    [
+                        ['segment.bytes', '104857600', false, ConfigSource::TOPIC_CONFIG, false, [
+                            ['segment.bytes', '104857600', ConfigSource::TOPIC_CONFIG],
+                            ['log.segment.bytes', '1073741824', ConfigSource::STATIC_BROKER_CONFIG],
+                            ['log.segment.bytes', '1073741824', ConfigSource::DEFAULT_CONFIG],
+                        ], 3, null],
+                        ['retention.ms', '604800000', false, ConfigSource::DEFAULT_CONFIG, false, [], 5, null],
+                    ],
+                ]])
             ))
             ->install();
 
@@ -105,9 +118,22 @@ final class ConfigAdminApiTest extends TestCase
         );
     }
 
-    public function testTheRequestIsTheVersionThreeOfKafkaTwoSixWithBothFlagsOfKip226AndKip569(): void
+    public function testTheRequestIsTheFlexibleVersionFourWithBothFlagsOfKip226AndKip569(): void
     {
-        $broker = new BrokerConnection(self::vector('describe-configs', 'describeconfigs.response.v3.own-option'));
+        $broker = new BrokerConnection(self::describeConfigsResponse([[
+            0,
+            '',
+            ConfigResource::TYPE_TOPIC,
+            self::VECTOR_TOPIC,
+            [
+                ['segment.bytes', '104857600', false, ConfigSource::TOPIC_CONFIG, false, [
+                    ['segment.bytes', '104857600', ConfigSource::TOPIC_CONFIG],
+                    ['log.segment.bytes', '1073741824', ConfigSource::STATIC_BROKER_CONFIG],
+                    ['log.segment.bytes', '1073741824', ConfigSource::DEFAULT_CONFIG],
+                ], 3, null],
+                ['retention.ms', '604800000', false, ConfigSource::DEFAULT_CONFIG, false, [], 5, null],
+            ],
+        ]]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, $broker)
@@ -119,14 +145,14 @@ final class ConfigAdminApiTest extends TestCase
         $frame = $broker->getReceivedFrames()[0];
         self::assertSame(ApiKeys::DESCRIBE_CONFIGS, unpack('n', substr($frame, 0, 2))[1]);
         self::assertSame(
-            3,
+            4,
             unpack('n', substr($frame, 2, 2))[1],
-            'the api version of the header is the 3 that Kafka 2.6 added (KIP-569)'
+            'the api version of the header is the flexible 4 that Kafka 2.8 added (KIP-482)'
         );
         self::assertSame(
-            "\x01\x00",
-            substr($frame, -2),
-            'and the two flags close the frame: include_synonyms true, include_documentation false'
+            "\x01\x00\x00",
+            substr($frame, -3),
+            'and the two flags of KIP-226 and KIP-569 close the body, before its tagged-field section'
         );
     }
 
@@ -169,7 +195,13 @@ final class ConfigAdminApiTest extends TestCase
             // A resource that was refused carries no config entry at all, so its frame is the same in every
             // version of the api - the v0 vector of the 0.11 line is a valid v3 answer
             ->on(self::SECOND_BROKER, new BrokerConnection(
-                self::vector('describe-configs', 'describeconfigs.response.v0.unknown-broker')
+                self::describeConfigsResponse([[
+                    42,
+                    'Unexpected broker id, expected 0, but received 7',
+                    ConfigResource::TYPE_BROKER,
+                    '7',
+                    [],
+                ]])
             ))
             ->install();
 
@@ -183,7 +215,12 @@ final class ConfigAdminApiTest extends TestCase
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, new BrokerConnection(
-                self::vector('alter-configs', 'alterconfigs.response.v0.unknown-config')
+                self::alterConfigsResponse([[
+                    40,
+                    'Unknown topic config name: not.an.option',
+                    ConfigResource::TYPE_TOPIC,
+                    self::TOPIC,
+                ]])
             ))
             ->install();
 
@@ -199,7 +236,7 @@ final class ConfigAdminApiTest extends TestCase
     {
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
-            ->on(self::FIRST_BROKER, new BrokerConnection(self::vector('alter-configs', 'alterconfigs.response.v0')))
+            ->on(self::FIRST_BROKER, new BrokerConnection(self::alterConfigsResponse([[0, null, ConfigResource::TYPE_TOPIC, self::TOPIC]])))
             ->install();
 
         $result = $this->adminClient()->alterConfigs([
@@ -213,7 +250,7 @@ final class ConfigAdminApiTest extends TestCase
     {
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
-            ->on(self::FIRST_BROKER, new BrokerConnection(self::vector('alter-configs', 'alterconfigs.response.v0')))
+            ->on(self::FIRST_BROKER, new BrokerConnection(self::alterConfigsResponse([[0, null, ConfigResource::TYPE_TOPIC, self::TOPIC]])))
             ->install();
 
         $result = $this->adminClient()->alterConfigs([
@@ -326,20 +363,112 @@ final class ConfigAdminApiTest extends TestCase
     private static function brokerConfigResponse(int $brokerId): string
     {
         $name = (string) $brokerId;
-        $body = pack('N', 0) /* throttle time */ . pack('N', 1);
-        $body .= pack('n', 0) . pack('n', 0xFFFF) . pack('c', ConfigResource::TYPE_BROKER);
-        $body .= pack('n', strlen($name)) . $name;
-        $body .= pack('N', 1) . pack('n', 9) . 'broker.id' . pack('n', strlen($name)) . $name;
-        $body .= pack('C', 1) /* read_only */ . pack('c', ConfigSource::STATIC_BROKER_CONFIG) . pack('C', 0);
-        $body .= pack('N', 2);
-        $body .= pack('n', 9) . 'broker.id' . pack('n', strlen($name)) . $name
-            . pack('c', ConfigSource::STATIC_BROKER_CONFIG);
-        $body .= pack('n', 9) . 'broker.id' . pack('n', 2) . '-1' . pack('c', ConfigSource::DEFAULT_CONFIG);
-        // The two fields KIP-569 appended to every entry with the version 3: the data type of the option and its
-        // documentation, which is the null string for a request that did not ask for it
-        $body .= pack('c', ConfigType::INT) . pack('n', 0xFFFF);
 
-        return ResponseFrame::of(0, $body);
+        return self::describeConfigsResponse([[
+            0,
+            null,
+            ConfigResource::TYPE_BROKER,
+            $name,
+            [[
+                'broker.id',
+                $name,
+                true,                                  // the id of a broker is never dynamic
+                ConfigSource::STATIC_BROKER_CONFIG,
+                false,
+                [
+                    ['broker.id', $name, ConfigSource::STATIC_BROKER_CONFIG],
+                    ['broker.id', '-1', ConfigSource::DEFAULT_CONFIG],
+                ],
+                ConfigType::INT,                       // the two fields KIP-569 appended with the version 3
+                null,
+            ]],
+        ]]);
+    }
+
+    /**
+     * Builds a DescribeConfigs answer of version **4**, the flexible one the client sends since Kafka 2.8
+     *
+     * The frames of the versions 0 to 3 are the wire vectors of this document, replayed by `tests/Compliance`
+     * through their own classes; a scripted broker has to speak the version the client sends, and the version 4
+     * of KIP-482 is that version now.
+     *
+     * @param list<array{0: int, 1: string|null, 2: int, 3: string, 4: list<array{0: string, 1: string|null,
+     *        2: bool, 3: int, 4: bool, 5: list<array{0: string, 1: string|null, 2: int}>, 6: int, 7: string|null}>}>
+     *        $resources Error code, message, type, name and entries of every resource of the answer
+     */
+    private static function describeConfigsResponse(array $resources): string
+    {
+        $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($resources) + 1);
+
+        foreach ($resources as [$errorCode, $errorMessage, $type, $name, $entries]) {
+            $body .= pack('n', $errorCode) . self::compactNullableString($errorMessage)
+                . chr($type) . self::compactString($name)
+                . self::unsignedVarint(count($entries) + 1);
+
+            foreach ($entries as [$entry, $value, $readOnly, $source, $sensitive, $synonyms, $entryType, $doc]) {
+                $body .= self::compactString($entry) . self::compactNullableString($value)
+                    . ($readOnly ? "\x01" : "\x00") . chr($source) . ($sensitive ? "\x01" : "\x00")
+                    . self::unsignedVarint(count($synonyms) + 1);
+
+                foreach ($synonyms as [$synonym, $synonymValue, $synonymSource]) {
+                    $body .= self::compactString($synonym) . self::compactNullableString($synonymValue)
+                        . chr($synonymSource) . "\x00";
+                }
+
+                $body .= chr($entryType) . self::compactNullableString($doc) . "\x00";
+            }
+
+            $body .= "\x00";
+        }
+
+        return ResponseFrame::of(0, $body . "\x00");
+    }
+
+    /**
+     * Builds an AlterConfigs answer of version **2**, the flexible one the client sends since Kafka 2.8
+     *
+     * @param list<array{0: int, 1: string|null, 2: int, 3: string}> $resources Error code, message, type and name
+     */
+    private static function alterConfigsResponse(array $resources): string
+    {
+        $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($resources) + 1);
+
+        foreach ($resources as [$errorCode, $errorMessage, $type, $name]) {
+            $body .= pack('n', $errorCode) . self::compactNullableString($errorMessage)
+                . chr($type) . self::compactString($name) . "\x00";
+        }
+
+        return ResponseFrame::of(0, $body . "\x00");
+    }
+
+    /**
+     * An unsigned varint of KIP-482: the value itself, seven bits per byte, least significant group first
+     */
+    private static function unsignedVarint(int $value): string
+    {
+        $bytes = '';
+        while (($value & ~0x7F) !== 0) {
+            $bytes .= chr(($value & 0x7F) | 0x80);
+            $value >>= 7;
+        }
+
+        return $bytes . chr($value);
+    }
+
+    /**
+     * A string of a flexible version: the length plus one as an unsigned varint, then the bytes
+     */
+    private static function compactString(string $value): string
+    {
+        return self::unsignedVarint(strlen($value) + 1) . $value;
+    }
+
+    /**
+     * The same, with the 0 that means null
+     */
+    private static function compactNullableString(?string $value): string
+    {
+        return $value === null ? "\x00" : self::compactString($value);
     }
 
     /**

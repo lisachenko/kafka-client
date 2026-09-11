@@ -1,13 +1,13 @@
 {
     "api": "write-txn-markers",
     "apiKey": 27,
-    "section": "WriteTxnMarkers API (key 27, v0)",
-    "description": "Wire vectors of the WriteTxnMarkers API (key 27, v0), replayed by tests/Compliance.",
+    "section": "WriteTxnMarkers API (key 27, v0 and v1)",
+    "description": "Wire vectors of the WriteTxnMarkers API (key 27, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "writetxnmarkers.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersRequestV0",
             "version": 0,
             "source": "broker",
             "description": "WriteTxnMarkers request v0, the broker-to-broker request that a transaction coordinator sends to the leader of every partition of a finished transaction: write a COMMIT marker for the producer id 3 into `t8-vectors-marker`-0, with the coordinator epoch 0 of the `__transaction_state` partition it owns.",
@@ -39,7 +39,7 @@
         {
             "id": "writetxnmarkers.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\WriteTxnMarkersResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of the partition leader: one entry per producer id of the request, one error code per partition it wrote the control batch into. **The only answer of Kafka 0.11 that does not begin with a `throttle_time_ms`**, because the api is broker-to-broker and the quotas of KIP-124 only throttle clients.",

@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka 2.7 added with KIP-588 changes no byte of the request. The api is **not** flexible in this version -
  * `"flexibleVersions": "none"` at the 2.7.2 tag - and only became one with the version 3 of Kafka 2.8.
  *
- * @see docs/protocol/2.8.md, section "AddOffsetsToTxn API (key 25, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "AddOffsetsToTxn API (key 25, v0 to v3)"
  */
 final class AddOffsetsToTxnRequestV1 extends AddOffsetsToTxnRequest
 {

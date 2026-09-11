@@ -23,6 +23,7 @@ use Protocol\Kafka\Admin\TopicPartitionReplica;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\KafkaStorageException;
 use Protocol\Kafka\Common\Errors\LogDirNotFoundException;
 use Protocol\Kafka\Common\Errors\ReplicaNotAvailableException;
@@ -41,7 +42,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * and the compliance suite cannot disagree about what a broker says.
  *
  * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0 to v2)" and
- *      "AlterReplicaLogDirs API (key 34, v0 and v1)"
+ *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(LogDirInfo::class)]
@@ -212,7 +213,9 @@ final class LogDirsAdminApiTest extends TestCase
 
     public function testAlterReplicaLogDirsGoesToTheBrokerOfEachReplica(): void
     {
-        $first  = new BrokerConnection(self::vector('alter-replica-log-dirs', 'alterreplicalogdirs.response.v0'));
+        // The v0 vector of this api is replayed by `tests/Compliance` through its own class; the scripted broker
+        // of this test answers the flexible version 2 that the client sends since Kafka 2.8
+        $first  = new BrokerConnection(self::alterResponse([0 => 0]));
         $second = new BrokerConnection(self::alterResponse([1 => 0]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -239,7 +242,8 @@ final class LogDirsAdminApiTest extends TestCase
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, new BrokerConnection(
-                self::vector('alter-replica-log-dirs', 'alterreplicalogdirs.response.v0.unknown-log-dir')
+                // The 57 `LogDirNotFound` of the v0 vector, in the flexible frame the client reads today
+                self::alterResponse([0 => KafkaException::LOG_DIR_NOT_FOUND])
             ))
             ->install();
 
@@ -294,7 +298,11 @@ final class LogDirsAdminApiTest extends TestCase
         ]);
 
         $frame = bin2hex($broker->getReceivedFrames()[0]);
-        self::assertStringContainsString('00000002', $frame, 'the log_dirs array holds two entries');
+        self::assertStringContainsString(
+            '03',
+            $frame,
+            'the log_dirs array holds two entries: the compact count 2 + 1'
+        );
         self::assertStringContainsString(bin2hex(self::SECOND_DIR), $frame);
     }
 
@@ -359,13 +367,16 @@ final class LogDirsAdminApiTest extends TestCase
      */
     private static function alterResponse(array $partitions): string
     {
-        $body = pack('N', 0) /* throttle time */ . pack('N', 1) . pack('n', strlen(self::TOPIC)) . self::TOPIC;
-        $body .= pack('N', count($partitions));
+        // The version 2 of Kafka 2.8 is the first flexible one of this api (KIP-482): the response header v1 with
+        // its tagged-field section, compact strings and arrays, and a tag buffer at the end of every structure
+        $body = "\x00" . pack('N', 0) /* throttle time */ . self::unsignedVarint(2)
+            . self::compactString(self::TOPIC) . self::unsignedVarint(count($partitions) + 1);
         foreach ($partitions as $partitionId => $errorCode) {
-            $body .= pack('N', $partitionId) . pack('n', $errorCode);
+            $body .= pack('N', $partitionId) . pack('n', $errorCode) . "\x00";
         }
+        $body .= "\x00";   // the tag buffer of the topic entry
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $body . "\x00");
     }
 
     /**

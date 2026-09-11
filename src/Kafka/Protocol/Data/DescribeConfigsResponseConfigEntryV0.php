@@ -33,7 +33,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * `is_default = (source == DEFAULT_CONFIG)`, so an option whose broker synonym stands in the `server.properties` is
  * not a default here although the resource itself set nothing - see the section of the document.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class DescribeConfigsResponseConfigEntryV0 extends DescribeConfigsResponseConfigEntry
 {

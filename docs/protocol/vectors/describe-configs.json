@@ -1,8 +1,8 @@
 {
     "api": "describe-configs",
     "apiKey": 32,
-    "section": "DescribeConfigs API (key 32, v0 to v3)",
-    "description": "Wire vectors of the DescribeConfigs API (key 32, v0 to v3), replayed by tests/Compliance.",
+    "section": "DescribeConfigs API (key 32, v0 to v4)",
+    "description": "Wire vectors of the DescribeConfigs API (key 32, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describeconfigs.request.v0.topic",
@@ -534,7 +534,7 @@
         {
             "id": "describeconfigs.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV3",
             "version": 3,
             "source": "broker",
             "description": "DescribeConfigs request v3 for ONE option of a topic, with the `include_documentation` of KIP-569 set - the boolean Kafka 2.6 appended behind `include_synonyms`. A request that names no `configuration_keys` would be answered with the documentation of every option of the resource, which is tens of kilobytes of prose.",
@@ -561,7 +561,7 @@
         {
             "id": "describeconfigs.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV3",
             "version": 3,
             "source": "broker",
             "description": "DescribeConfigs answer v3: the entry ends in the `config_type` byte (7, LIST) and the documentation string of the option, both added by KIP-569 behind the synonyms.",
@@ -595,7 +595,7 @@
         {
             "id": "describeconfigs.request.v3.no-documentation",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV3",
             "version": 3,
             "source": "broker",
             "description": "The same request with `include_documentation = false`, the default.",
@@ -622,7 +622,7 @@
         {
             "id": "describeconfigs.response.v3.no-documentation",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer for it: the `config_type` is filled all the same - the broker sets it unconditionally - and the documentation is the null string.",
@@ -656,7 +656,7 @@
         {
             "id": "describeconfigs.request.v3.own-option",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV3",
             "version": 3,
             "source": "broker",
             "description": "DescribeConfigs request v3 for two named options of a topic that set `segment.bytes` itself, with the synonyms of KIP-226 and WITHOUT the documentation of KIP-569 - the counterpart of the version 1 pair above, and the shape an administrator sends.",
@@ -684,7 +684,7 @@
         {
             "id": "describeconfigs.response.v3.own-option",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer for it: every entry ends in the `config_type` of KIP-569 - 3 (INT) for `segment.bytes`, 5 (LONG) for `retention.ms` - and in the null documentation of a request that did not ask for it. Everything before that is the version 1 frame: the source 1 (TOPIC_CONFIG) and three synonyms of the option the topic owns, and the source 5 (DEFAULT_CONFIG) with an empty synonym array for the one it inherits.",

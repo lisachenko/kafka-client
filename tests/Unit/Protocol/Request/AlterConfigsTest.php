@@ -24,17 +24,21 @@ use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\AlterConfigsResponseResource;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\AlterConfigsRequestV0;
+use Protocol\Kafka\Protocol\Request\AlterConfigsRequestV1;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponse;
 use Protocol\Kafka\Protocol\Request\AlterConfigsResponseV0;
+use Protocol\Kafka\Protocol\Request\AlterConfigsResponseV1;
 
 /**
  * Byte-exact tests for the AlterConfigs API (api key 33) at the version 1 that Kafka 2.0 added.
  *
- * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0 to v2)"
  */
 #[CoversClass(AlterConfigsRequest::class)]
+#[CoversClass(AlterConfigsRequestV1::class)]
 #[CoversClass(AlterConfigsRequestV0::class)]
 #[CoversClass(AlterConfigsResponse::class)]
+#[CoversClass(AlterConfigsResponseV1::class)]
 #[CoversClass(AlterConfigsResponseV0::class)]
 #[CoversClass(AlterConfigsRequestResource::class)]
 #[CoversClass(AlterConfigsRequestConfigEntry::class)]
@@ -83,7 +87,7 @@ final class AlterConfigsTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new AlterConfigsRequest(
+        $request = new AlterConfigsRequestV1(
             [
                 AlterConfigsRequestResource::fromConfigResource(
                     ConfigResource::topic('topic'),
@@ -102,7 +106,7 @@ final class AlterConfigsTest extends TestCase
 
     public function testValidateOnlyIsTheTrailingBooleanOfTheRequest(): void
     {
-        $validate = new AlterConfigsRequest(
+        $validate = new AlterConfigsRequestV1(
             [new AlterConfigsRequestResource(ConfigResource::TYPE_TOPIC, 'topic', ['retention.ms' => '1'])],
             true,
             'test',
@@ -116,7 +120,7 @@ final class AlterConfigsTest extends TestCase
     {
         // The schema of 0.11 declares the value nullable; a broker answers such an entry with the error code -1,
         // because `Properties.setProperty` throws on it - see the "AlterConfigs API" section of the document
-        $request = new AlterConfigsRequest(
+        $request = new AlterConfigsRequestV1(
             [new AlterConfigsRequestResource(ConfigResource::TYPE_TOPIC, 'topic', ['retention.ms' => null])],
             false,
             'test',
@@ -128,7 +132,7 @@ final class AlterConfigsTest extends TestCase
 
     public function testResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = AlterConfigsResponse::unpack(new StringStream((string) hex2bin(self::frame(self::RESPONSE_BODY_HEX))));
+        $response = AlterConfigsResponseV1::unpack(new StringStream((string) hex2bin(self::frame(self::RESPONSE_BODY_HEX))));
 
         self::assertSame(9, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);
@@ -149,7 +153,7 @@ final class AlterConfigsTest extends TestCase
     public function testResponseSurvivesARoundTrip(): void
     {
         $frame    = self::frame(self::RESPONSE_BODY_HEX);
-        $response = AlterConfigsResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = AlterConfigsResponseV1::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame($frame, bin2hex((string) $response));
     }

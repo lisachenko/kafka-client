@@ -1,8 +1,8 @@
 {
     "api": "add-offsets-to-txn",
     "apiKey": 25,
-    "section": "AddOffsetsToTxn API (key 25, v0 to v2)",
-    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0 to v2), replayed by tests/Compliance.",
+    "section": "AddOffsetsToTxn API (key 25, v0 to v3)",
+    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "addoffsetstotxn.request.v0",
@@ -77,7 +77,7 @@
         {
             "id": "addoffsetstotxn.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequestV2",
             "version": 2,
             "source": "broker",
             "description": "AddOffsetsToTxn request v2 (Kafka 2.7, KIP-588): the frame of version 1, with the promise of the error code 90 for a fenced producer.",
@@ -97,7 +97,7 @@
         {
             "id": "addoffsetstotxn.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponseV2",
             "version": 2,
             "source": "broker",
             "description": "AddOffsetsToTxn answer v2: the error code 0 for the whole request.",

@@ -32,10 +32,12 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV1;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV2;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsRequestV3;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV1;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV2;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV3;
 
 /**
  * Byte-exact tests for the DescribeConfigs API (api key 32), version 0 of Kafka 0.11 and version 1 of Kafka 1.1.
@@ -46,12 +48,14 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV2;
  * (`DESCRIBE_CONFIGS_REQUEST_V2 = DESCRIBE_CONFIGS_REQUEST_V1` @ 2.0.1, KIP-219), which is the version the client
  * sends. All three are exercised here, and the derivation of the source from the boolean of a version 0 answer.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 #[CoversClass(DescribeConfigsRequest::class)]
+#[CoversClass(DescribeConfigsRequestV3::class)]
 #[CoversClass(DescribeConfigsRequestV1::class)]
 #[CoversClass(DescribeConfigsRequestV0::class)]
 #[CoversClass(DescribeConfigsResponse::class)]
+#[CoversClass(DescribeConfigsResponseV3::class)]
 #[CoversClass(ConfigType::class)]
 #[CoversClass(DescribeConfigsRequestV2::class)]
 #[CoversClass(DescribeConfigsResponseV1::class)]
@@ -266,7 +270,7 @@ final class DescribeConfigsTest extends TestCase
      */
     public function testTheClientSendsTheVersionThreeOfKafkaTwoSix(): void
     {
-        $request = new DescribeConfigsRequest(
+        $request = new DescribeConfigsRequestV3(
             [new DescribeConfigsRequestResource(
                 ConfigResource::TYPE_TOPIC,
                 't4-26-own',
@@ -291,14 +295,14 @@ final class DescribeConfigsTest extends TestCase
                 'includeSynonyms',
                 'includeDocumentation',
             ],
-            array_keys(DescribeConfigsRequest::getScheme()),
+            array_keys(DescribeConfigsRequestV3::getScheme()),
             'the flag of KIP-569 is the last field of the frame, behind the one of KIP-226'
         );
     }
 
     public function testTheEntryOfVersionThreeEndsInTheTypeAndTheDocumentation(): void
     {
-        $response = DescribeConfigsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V3_HEX)));
+        $response = DescribeConfigsResponseV3::unpack(new StringStream((string) hex2bin(self::RESPONSE_V3_HEX)));
         $entries  = $response->resources[0]->configEntries;
 
         self::assertSame(ConfigType::INT, $entries['segment.bytes']->configType, 'segment.bytes is an INT');
@@ -367,14 +371,14 @@ final class DescribeConfigsTest extends TestCase
 
     public function testANullConfigNameArrayIsTheCountMinusOne(): void
     {
-        $all = new DescribeConfigsRequest(
+        $all = new DescribeConfigsRequestV3(
             [new DescribeConfigsRequestResource(ConfigResource::TYPE_TOPIC, 'topic', null)],
             false,
             false,
             'test',
             7
         );
-        $none = new DescribeConfigsRequest(
+        $none = new DescribeConfigsRequestV3(
             [new DescribeConfigsRequestResource(ConfigResource::TYPE_TOPIC, 'topic', [])],
             false,
             false,

@@ -37,18 +37,21 @@ use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequestV1;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV1;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV2;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV1;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV1;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV2;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV1;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV1;
+use Protocol\Kafka\Protocol\Request\EndTxnResponseV2;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV1;
@@ -58,18 +61,21 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV2;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequest;
+use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequestV0;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
+use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
 
 /**
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
- * @see docs/protocol/2.8.md, sections "AddPartitionsToTxn API (key 24, v0 to v2)", "AddOffsetsToTxn API (key 25, v0 to v2)",
- *      "EndTxn API (key 26, v0 to v2)", "WriteTxnMarkers API (key 27, v0)" and "TxnOffsetCommit API (key 28, v0 to v3)"
+ * @see docs/protocol/2.8.md, sections "AddPartitionsToTxn API (key 24, v0 to v3)", "AddOffsetsToTxn API (key 25, v0 to v3)",
+ *      "EndTxn API (key 26, v0 to v3)", "WriteTxnMarkers API (key 27, v0 and v1)" and "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
 #[CoversClass(AddPartitionsToTxnRequestV1::class)]
 #[CoversClass(AddPartitionsToTxnRequestV0::class)]
 #[CoversClass(AddPartitionsToTxnResponse::class)]
+#[CoversClass(AddPartitionsToTxnResponseV2::class)]
 #[CoversClass(AddPartitionsToTxnResponseV1::class)]
 #[CoversClass(AddPartitionsToTxnResponseV0::class)]
 #[CoversClass(AddPartitionsToTxnResponseTopic::class)]
@@ -78,16 +84,20 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
 #[CoversClass(AddOffsetsToTxnRequestV1::class)]
 #[CoversClass(AddOffsetsToTxnRequestV0::class)]
 #[CoversClass(AddOffsetsToTxnResponse::class)]
+#[CoversClass(AddOffsetsToTxnResponseV2::class)]
 #[CoversClass(AddOffsetsToTxnResponseV1::class)]
 #[CoversClass(AddOffsetsToTxnResponseV0::class)]
 #[CoversClass(EndTxnRequest::class)]
 #[CoversClass(EndTxnRequestV1::class)]
 #[CoversClass(EndTxnRequestV0::class)]
 #[CoversClass(EndTxnResponse::class)]
+#[CoversClass(EndTxnResponseV2::class)]
 #[CoversClass(EndTxnResponseV1::class)]
 #[CoversClass(EndTxnResponseV0::class)]
 #[CoversClass(WriteTxnMarkersRequest::class)]
+#[CoversClass(WriteTxnMarkersRequestV0::class)]
 #[CoversClass(WriteTxnMarkersResponse::class)]
+#[CoversClass(WriteTxnMarkersResponseV0::class)]
 #[CoversClass(WriteTxnMarkersRequestMarker::class)]
 #[CoversClass(WriteTxnMarkersResponseMarker::class)]
 #[CoversClass(WriteTxnMarkersResponseTopic::class)]
@@ -304,7 +314,7 @@ final class TransactionApiTest extends TestCase
 
     public function testAddPartitionsToTxnReportsEveryErrorPerPartitionAndHasNoTopLevelOne(): void
     {
-        $response = AddPartitionsToTxnResponse::unpack(
+        $response = AddPartitionsToTxnResponseV2::unpack(
             new StringStream((string) hex2bin(self::ADD_PARTITIONS_RESPONSE_HEX))
         );
 
@@ -330,7 +340,7 @@ final class TransactionApiTest extends TestCase
 
     public function testAddOffsetsToTxnHasOneErrorCodeForTheWholeRequest(): void
     {
-        $response = AddOffsetsToTxnResponse::unpack(
+        $response = AddOffsetsToTxnResponseV2::unpack(
             new StringStream((string) hex2bin(self::ADD_OFFSETS_RESPONSE_HEX))
         );
 
@@ -358,7 +368,7 @@ final class TransactionApiTest extends TestCase
 
     public function testEndTxnResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = EndTxnResponse::unpack(new StringStream((string) hex2bin(self::END_TXN_RESPONSE_HEX)));
+        $response = EndTxnResponseV2::unpack(new StringStream((string) hex2bin(self::END_TXN_RESPONSE_HEX)));
 
         self::assertSame(0, $response->throttleTimeMs);
         self::assertSame(KafkaException::INVALID_TXN_STATE, $response->errorCode);
@@ -367,7 +377,7 @@ final class TransactionApiTest extends TestCase
 
     public function testWriteTxnMarkersRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new WriteTxnMarkersRequest(
+        $request = new WriteTxnMarkersRequestV0(
             [new WriteTxnMarkersRequestMarker(42, 3, EndTxnRequest::COMMIT, ['topic' => [0]], 7)],
             'test',
             10
@@ -379,12 +389,12 @@ final class TransactionApiTest extends TestCase
 
     public function testTheWriteTxnMarkersAnswerIsTheOnlyOneOf011WithoutAThrottleTime(): void
     {
-        $response = WriteTxnMarkersResponse::unpack(
+        $response = WriteTxnMarkersResponseV0::unpack(
             new StringStream((string) hex2bin(self::WRITE_MARKERS_RESPONSE_HEX))
         );
 
         // `WRITE_TXN_MARKERS_RESPONSE_V0` starts with the array: the api is broker-to-broker and is not throttled
-        self::assertArrayNotHasKey('throttleTimeMs', WriteTxnMarkersResponse::getScheme());
+        self::assertArrayNotHasKey('throttleTimeMs', WriteTxnMarkersResponseV0::getScheme());
         self::assertSame([42], array_keys($response->transactionMarkers), 'markers are keyed by the producer id');
 
         $marker = $response->transactionMarkers[42];

@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersRequestMarker;
  * the unsecured container of this branch the request is served for anybody, which is what makes a wire vector of it
  * possible at all.
  *
- * @see docs/protocol/2.8.md, section "WriteTxnMarkers API (key 27, v0)"
+ * @see docs/protocol/2.8.md, section "WriteTxnMarkers API (key 27, v0 and v1)"
  */
 class WriteTxnMarkersRequest extends AbstractRequest
 {
@@ -57,7 +57,12 @@ class WriteTxnMarkersRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
+
+    /**
+     * The version 1 of Kafka 2.8 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 1;
 
     /**
      * Markers to write, indexed by the producer id they belong to
