@@ -27,7 +27,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * This is the entry of every version below 5; version 5 (Kafka 2.1, KIP-320) inserted the
  * `committed_leader_epoch` between the offset and the metadata, see {@see OffsetFetchResponsePartition}.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v7)"
  */
 final class OffsetFetchResponsePartitionV0 extends OffsetFetchResponsePartition
 {

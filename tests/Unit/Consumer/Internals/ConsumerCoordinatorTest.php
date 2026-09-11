@@ -112,7 +112,7 @@ final class ConsumerCoordinatorTest extends TestCase
         $first  = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[1]))));
         $second = MessageFields::of(JoinGroupRequest::unpack(new StringStream($this->framed($frames[2]))));
 
-        self::assertSame(6, $first['apiVersion'], 'the client sends JoinGroup v6');
+        self::assertSame(7, $first['apiVersion'], 'the client sends JoinGroup v7');
         self::assertSame(JoinGroupRequest::DEFAULT_MEMBER_ID, $first['memberId']);
         self::assertSame(self::MEMBER_ID, $second['memberId'], 'the second join carries the assigned id');
         self::assertSame(
@@ -271,6 +271,37 @@ final class ConsumerCoordinatorTest extends TestCase
         self::assertCount(3, $coordinator->getReceivedFrames(), 'no LeaveGroup was sent');
         self::assertFalse($membership->isMember(), 'the local membership is forgotten all the same');
         self::assertTrue($membership->needsRejoin(), 'so that the next poll() joins again under the same instance');
+    }
+
+    /**
+     * KIP-559 (Kafka 2.5): the SyncGroup of a member echoes the protocol type it joined with and the protocol the
+     * coordinator selected for the generation, which a version 5 may not leave out
+     */
+    public function testTheSyncOfAMemberNamesTheProtocolTypeAndTheProtocolOfTheGeneration(): void
+    {
+        $assignment   = new MemberAssignment([self::TOPIC => [0]])->pack();
+        $subscription = new Subscription([self::TOPIC])->pack();
+        $coordinator  = new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::joinGroup(0, 0, 1, 'range', self::MEMBER_ID, self::MEMBER_ID, [self::MEMBER_ID => $subscription]),
+            ResponseFrame::syncGroup(0, 0, $assignment)
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::COORDINATOR_ADDRESS, $coordinator)
+            ->install();
+
+        $this->coordinator()->ensureActiveGroup([self::TOPIC], static fn(array $topics): array => [self::TOPIC => [0]]);
+
+        $frames = $coordinator->getReceivedFrames();
+
+        self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($frames[2]));
+
+        $sync = MessageFields::of(SyncGroupRequest::unpack(new StringStream($this->framed($frames[2]))));
+
+        self::assertSame(5, $sync['apiVersion'], 'the client sends SyncGroup v5');
+        self::assertSame(ConsumerCoordinator::PROTOCOL_TYPE, $sync['protocolType']);
+        self::assertSame('range', $sync['protocolName'], 'the protocol the JoinGroup answer reported');
     }
 
     /**

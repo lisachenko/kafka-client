@@ -37,6 +37,7 @@ use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
+use Protocol\Kafka\Common\Errors\UnstableOffsetCommitException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Header;
@@ -776,10 +777,13 @@ final class ClientTest extends TestCase
         $frame = $anyBroker->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frame));
-        self::assertSame(2, $this->apiVersionOf($frame), 'Kafka 2.4 raised the api to the flexible version 2');
-        // The compact null of the transactional id, the default transaction timeout of one minute and the tag
-        // buffer that closes the body of every flexible frame
-        self::assertStringEndsWith('00' . '0000ea60' . '00', bin2hex($frame));
+        self::assertSame(3, $this->apiVersionOf($frame), 'Kafka 2.5 raised the api to the version 3 of KIP-360');
+        // The compact null of the transactional id, the default transaction timeout of one minute, the -1/-1 of
+        // KIP-360 that asks for a new producer id and the tag buffer that closes the body of every flexible frame
+        self::assertStringEndsWith(
+            '00' . '0000ea60' . 'ffffffffffffffff' . 'ffff' . '00',
+            bin2hex($frame)
+        );
     }
 
     public function testAProducerIdOfATransactionalIdIsAskedOfItsTransactionCoordinator(): void
@@ -811,8 +815,12 @@ final class ClientTest extends TestCase
         $initFrame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($initFrame));
-        // The compact "tx-1" of the flexible v2, the timeout and the tag buffer of the body
-        self::assertStringEndsWith('05' . '74782d31' . '00007530' . '00', bin2hex($initFrame));
+        // The compact "tx-1" of the flexible frame, the timeout, the -1/-1 of KIP-360 and the tag buffer of the
+        // body
+        self::assertStringEndsWith(
+            '05' . '74782d31' . '00007530' . 'ffffffffffffffff' . 'ffff' . '00',
+            bin2hex($initFrame)
+        );
     }
 
     public function testAnErrorOfTheProducerIdRequestIsReportedAsItsException(): void
@@ -1384,7 +1392,7 @@ final class ClientTest extends TestCase
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
         self::assertSame(8, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 8');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(6, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 6');
+        self::assertSame(7, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 7');
     }
 
     public function testZookeeperOffsetStorageSpeaksVersionZero(): void
@@ -1440,12 +1448,66 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(6, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
+        self::assertSame(7, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
         self::assertStringEndsWith(
             '0000',
             bin2hex($frame),
             'the null topic array of a flexible version is the unsigned varint 0, then the tag buffer'
         );
+    }
+
+    /**
+     * KIP-447 (Kafka 2.5): the `require_stable` flag of version 7 is the last byte before the tag buffer of the body
+     */
+    public function testStableOffsetsAreAskedForWithTheFlagOfVersionSeven(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]]),
+            ResponseFrame::offsetFetch(1, [self::TOPIC => [0 => [0, 21, '']]])
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client();
+        $node   = $client->getGroupCoordinator('t7-group');
+
+        $client->fetchGroupOffsets($node, 't7-group', [self::TOPIC => [0]]);
+        $client->fetchGroupOffsets($node, 't7-group', [self::TOPIC => [0]], true);
+
+        [$plain, $stable] = $coordinator->getReceivedFrames();
+
+        self::assertSame(7, $this->apiVersionOf($plain));
+        self::assertStringEndsWith('0000', bin2hex($plain), 'false, then the tag buffer of the body');
+        self::assertStringEndsWith('0100', bin2hex($stable), 'true, then the tag buffer of the body');
+        self::assertSame(
+            strlen($plain),
+            strlen($stable),
+            'the flag is a byte of the frame in both cases, not an optional field'
+        );
+    }
+
+    /**
+     * And the 88 a coordinator answers a held-back partition with is reported as its exception
+     */
+    public function testAnUnstableCommittedOffsetIsReportedAsTheEightyEight(): void
+    {
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
+            ->on(self::SECOND_LEADER, new BrokerConnection(ResponseFrame::offsetFetch(
+                0,
+                [self::TOPIC => [0 => [KafkaException::UNSTABLE_OFFSET_COMMIT, -1, '']]]
+            )))
+            ->install();
+
+        $client = $this->client();
+        $node   = $client->getGroupCoordinator('t7-group');
+
+        $this->expectException(UnstableOffsetCommitException::class);
+        $client->fetchGroupOffsets($node, 't7-group', [self::TOPIC => [0]], true);
     }
 
     public function testAGroupLevelErrorOfOffsetFetchVersionTwoIsReported(): void
@@ -1515,7 +1577,7 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(6, $this->apiVersionOf($frame), 'JoinGroup v6 is the flexible version of KIP-482');
+        self::assertSame(7, $this->apiVersionOf($frame), 'JoinGroup v7 is the version of KIP-559');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(
@@ -1588,12 +1650,42 @@ final class ClientTest extends TestCase
             't3-group',
             'one-1',
             4,
-            ['one-1' => 'my-share', 'two-2' => 'other-share']
+            ['one-1' => 'my-share', 'two-2' => 'other-share'],
+            null,
+            'consumer',
+            'range'
         );
 
         self::assertSame('my-share', $response->memberAssignment);
         self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($coordinator->getReceivedFrames()[0]));
-        self::assertSame(4, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
+        self::assertSame(5, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
+    }
+
+    /**
+     * KIP-559 made the two protocol fields of a SyncGroup v5 mandatory, so a caller that names neither gets the v4
+     */
+    public function testASyncThatNamesNoProtocolIsSentAsTheVersionFourFrame(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::syncGroupV4(0, 0, 'my-share')
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client();
+        $client->syncGroup($client->getGroupCoordinator('t3-group'), 't3-group', 'one-1', 4);
+
+        $frame = $coordinator->getReceivedFrames()[1];
+
+        self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($frame));
+        self::assertSame(
+            4,
+            $this->apiVersionOf($frame),
+            'a version 5 without the protocol type and name would be refused with 23 before the group is read'
+        );
     }
 
     public function testAHeartbeatAndALeaveAreSentToTheCoordinatorAndReportNothingWhenTheySucceed(): void
@@ -1637,7 +1729,7 @@ final class ClientTest extends TestCase
             ))
             ->on(self::SECOND_LEADER, new BrokerConnection(
                 ResponseFrame::heartbeat(0, KafkaException::REBALANCE_IN_PROGRESS),
-                ResponseFrame::syncGroup(0, KafkaException::ILLEGAL_GENERATION),
+                ResponseFrame::syncGroupV4(0, KafkaException::ILLEGAL_GENERATION),
             ))
             ->install();
 

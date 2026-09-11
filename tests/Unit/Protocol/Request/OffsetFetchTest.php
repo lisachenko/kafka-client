@@ -31,6 +31,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV5;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV1;
@@ -48,7 +49,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV5;
  * the ANSWER again: every partition entry of it carries a `committed_leader_epoch` behind the committed offset.
  * The request of v5 is still the body of v2, and v5 is the version this client sends.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v7)"
  */
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]
@@ -218,7 +219,7 @@ final class OffsetFetchTest extends TestCase
      */
     public function testVersion6IsTheFlexibleEncodingOfTheSameRequest(): void
     {
-        $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1);
+        $request = new OffsetFetchRequestV6('my-group', ['topic' => [0, 1]], 'test', 1);
 
         self::assertSame(
             '0000002a' . '0009' . '0006' . '00000001'
@@ -232,8 +233,48 @@ final class OffsetFetchTest extends TestCase
             . '00',
             bin2hex((string) $request)
         );
-        self::assertSame(6, $request->getApiVersion(), 'KIP-482 makes the version this client sends 6');
-        self::assertTrue(OffsetFetchRequest::isFlexible());
+        self::assertSame(6, $request->getApiVersion(), 'KIP-482 made the version 6 the first flexible one');
+        self::assertTrue(OffsetFetchRequestV6::isFlexible());
+    }
+
+    /**
+     * KIP-447 (Kafka 2.5): the boolean `require_stable` is the one field version 7 appended to that frame
+     */
+    public function testVersion7AppendsTheRequireStableFlagBehindTheTopicArray(): void
+    {
+        $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1, true);
+
+        self::assertSame(
+            '0000002b' . '0009' . '0007' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '09' . '6d792d67726f7570'
+            . '02'
+            . '06' . '746f706963'
+            . '03' . '00000000' . '00000001'
+            . '00'
+            . '01'
+            . '00',
+            bin2hex((string) $request),
+            'the flag is a plain byte between the tag buffer of the topic entry and the one of the body'
+        );
+        self::assertSame(7, $request->getApiVersion(), 'KIP-447 makes the version this client sends 7');
+    }
+
+    /**
+     * The flag defaults to false, which is the behaviour - and the frame, one byte longer - of every version below
+     */
+    public function testTheRequireStableFlagIsFalseByDefault(): void
+    {
+        $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1);
+        $below   = new OffsetFetchRequestV6('my-group', ['topic' => [0, 1]], 'test', 1);
+
+        self::assertStringEndsWith('00' . '00' . '00', bin2hex((string) $request));
+        self::assertSame(
+            strlen((string) $below) + 1,
+            strlen((string) $request),
+            'the version 7 frame is the version 6 frame plus the one byte of the flag'
+        );
     }
 
     /**
@@ -241,7 +282,7 @@ final class OffsetFetchTest extends TestCase
      */
     public function testTheNullTopicArrayOfTheFlexibleVersionIsTheUnsignedVarintZero(): void
     {
-        $request = OffsetFetchRequest::forAllTopics('my-group', 'test', 1);
+        $request = OffsetFetchRequestV6::forAllTopics('my-group', 'test', 1);
 
         self::assertSame(
             '0000001a' . '0009' . '0006' . '00000001'
@@ -252,6 +293,25 @@ final class OffsetFetchTest extends TestCase
             . '00',
             bin2hex((string) $request),
             'a null compact array is the unsigned varint 0, where an empty one is 1'
+        );
+    }
+
+    /**
+     * The same request of version 7, whose `require_stable` stands behind the null array
+     */
+    public function testEveryTopicOfAGroupCanBeAskedForWithStableOffsetsOnly(): void
+    {
+        $request = OffsetFetchRequest::forAllTopics('my-group', 'test', 1, true);
+
+        self::assertSame(
+            '0000001b' . '0009' . '0007' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '09' . '6d792d67726f7570'
+            . '00'
+            . '01'
+            . '00',
+            bin2hex((string) $request)
         );
     }
 
