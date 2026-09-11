@@ -117,7 +117,7 @@ final class SocketStreamSaslTest extends TestCase
 
         // The token is a request of its own from Kafka 1.0 on: ApiKey 36, ApiVersion 0, and the very same bytes
         self::assertSame('0024', substr($token, 8, 4), 'the api key of the SaslAuthenticate request');
-        self::assertSame('0000', substr($token, 12, 4), 'a 1.1.1 broker serves version 0 of it only');
+        self::assertSame('0001', substr($token, 12, 4), 'the version 1 of KIP-368 that Kafka 2.2 added');
         self::assertStringEndsWith(
             '0007' . bin2hex('t8-unit') . '0000001b' . bin2hex("\0" . self::USERNAME . "\0" . self::PASSWORD),
             $token,

@@ -47,7 +47,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * {@see \Protocol\Kafka\Common\Security\SaslToken::ofPlainCredentials()}, and the answer is the empty token of a
  * completed exchange.
  *
- * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0)"
+ * **Kafka 2.2 added the version 1** (KIP-368) and left the request alone: `SASL_AUTHENTICATE_REQUEST_V1 =
+ * SASL_AUTHENTICATE_REQUEST_V0` in `Protocol.java` @ 2.2.2. What the version buys is a field of the ANSWER - the
+ * `session_lifetime_ms` after which the connection has to re-authenticate, see {@see SaslAuthenticateResponse} -
+ * so a client that sends it is a client that is willing to read that field. It is the version
+ * {@see \Protocol\Kafka\IO\SocketStream} sends; {@see SaslAuthenticateRequestV0} is the same frame with the
+ * version field of Kafka 1.0.
+ *
+ * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0 and v1)"
  * @see \Protocol\Kafka\IO\SocketStream::authenticate()
  */
 class SaslAuthenticateRequest extends AbstractRequest
@@ -55,7 +62,7 @@ class SaslAuthenticateRequest extends AbstractRequest
     /**
      * The only version a Kafka 1.1.1 broker serves; a version above it closes the connection without an answer
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     public function __construct(
         /**

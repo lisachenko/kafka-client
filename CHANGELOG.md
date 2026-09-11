@@ -34,12 +34,42 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   the published name of the code 47.
 - **`tools/dev/gate.sh`** — the whole local gate (php -l, cs, phpstan, unit + compliance, integration
   on the four listeners) for any worktree path, JIT off.
+
+### Changed
+
+- **The protocol document is `docs/protocol/2.8.md`**, renamed from `docs/protocol/1.1.md` with every
+  `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the
+  plan of the 2.x line (`docs/handoff/2.0.x.md`) took its place as `docs/handoff/main.md`.
+
+### Kafka 2.0 — Added
+
+The first milestone of the line (PRs #117, #118, #119, #122): what Kafka 2.0 added on the wire —
+almost only the version bumps of KIP-219 — and its one runtime change, the client-side throttle wait.
+
 - **ApiVersions v2** (Kafka 2.0, KIP-219) — the frame of v1, byte for byte, and the promise that the
   client waits out a `throttle_time_ms` itself, because a broker answers a throttled request of a
   bumped version **before** it mutes the channel. `ApiVersionsRequest`/`ApiVersionsResponse` are the
   v2 now and `Client::apiVersions()`/`AdminClient::getApiVersions()` send it; the new
   `ApiVersionsRequestV1`/`ApiVersionsResponseV1` keep the version Kafka 0.11 added, next to the
   existing `…V0`. Two new wire vectors (`apiversions.request.v2`, `apiversions.response.v2`).
+- **The four version bumps of Kafka 2.0 (KIP-219)** — **Produce v6**, **Fetch v8**, **ListOffsets v3**
+  and **Metadata v6**, each with a byte-identical schema and its own class, its own wire vector pair
+  captured from the 2.8.2 broker and its own version-equivalence test: `ProduceRequestV5`/`ProduceResponseV5`,
+  `FetchRequestV7`/`FetchResponseV7`, `OffsetsRequestV2`/`OffsetsResponseV2` and
+  `MetadataRequestV5`/`MetadataResponseV5` keep the versions the 1.x line sent.
+- **KIP-219 in `Client`** — a broker that throttles a request now answers **first** and mutes the
+  channel for the reported `throttle_time_ms`, so the client remembers the moment the throttle of each
+  broker ends and sleeps whatever is left of it before its next request to that broker, exactly as the
+  Java `NetworkClient` does. **`ClientConfig::THROTTLE_WAIT`** (`throttle.wait`, `true` by default)
+  switches the waiting off and leaves the stall on the broker side. Measured against a real client
+  quota in `tests/Integration/QuotaThrottleTest.php`.
+- **OffsetForLeaderEpoch v1 (KIP-279)** — the response partition gained the `leader_epoch` the answered
+  `end_offset` belongs to (`OffsetForLeaderEpochResponsePartition::$leaderEpoch`, `UNDEFINED_EPOCH` = -1);
+  `OffsetForLeaderEpochRequestV0`/`OffsetForLeaderEpochResponseV0` keep version 0, whose answer has no
+  such field.
+- **KIP-283** — `tests/Integration/DownConversionTest.php` measures the down-conversion matrix of a
+  2.8.2 broker and the topic option **`message.downconversion.enable=false`**, which refuses a fetch
+  that would need a conversion with **35** `UNSUPPORTED_VERSION` (not 43) per partition.
 - **Flexible versions (KIP-482, Kafka 2.4) in the schema engine** — the compact types (`compact_string`,
   `compact_bytes`, `compact_[foo]`: an unsigned varint `length + 1`, `0` for `null`), the **unsigned varints**
   themselves (`Stream::readUnsignedVarint()`/`writeUnsignedVarint()`), the **tagged fields** of every structure
@@ -109,7 +139,16 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   **wire vector pair captured from the 2.8.2 container**; `Client`, `KafkaConsumer` and `AdminClient`
   send the new versions.
 
-### Changed
+### Kafka 2.0 — Changed
+
+- **`Client` speaks the Kafka 2.0 versions**: Produce v6 for the message format v2 (v2 stays for the
+  legacy message sets), Fetch v8 (with and without a fetch session), ListOffsets v3 and Metadata v6.
+- **A 2.8.2 broker fills `last_stable_offset` for a `read_uncommitted` fetch too**, where a 1.1.1
+  broker answered -1; only the `aborted_transactions` array still distinguishes the isolation levels.
+- **A legacy message set in a Produce v3 or higher request is answered with 87 `INVALID_RECORD` per
+  partition** instead of costing the connection, as it did on a 1.1.1 broker.
+- **OffsetForLeaderEpoch answers the log end offset for the epoch the leader currently leads**, an
+  empty partition included, where a 1.1.1 broker answered -1 (KAFKA-7415).
 
 - **What a 2.x coordinator does differently**, measured on the container and written down in
   "Broker quirks and observations" of [docs/protocol/2.8.md](docs/protocol/2.8.md): a **`consumer`**
@@ -122,10 +161,6 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   once; an OffsetCommit that leaves `retention_time` at -1 is stored with the `__consumer_offsets`
   value schema **v3**, which has no expiry at all (KIP-211), while an explicit retention still falls
   back to the schema v1 and is still honoured up to version 4 of the api.
-
-- **The protocol document is `docs/protocol/2.8.md`**, renamed from `docs/protocol/1.1.md` with every
-  `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the
-  plan of the 2.x line (`docs/handoff/2.0.x.md`) took its place as `docs/handoff/main.md`.
 - **The "API keys" section of the protocol document is the literal answer of a 2.8.2 broker**: the
   **56** keys 0–51, 56, 57, 60 and 61 with their version range, the first flexible version of every
   api, the Kafka minor that added every version above the 1.1.1 ceiling, and — while the line is
@@ -145,6 +180,100 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   row itself (KIP-511) instead of an empty array, and the request that asks for it has to carry the
   request header **v2**, because the broker derives the header version from the version it was asked
   for.
+
+### Kafka 2.1
+
+The second milestone of the line (PRs #121, #120, #128): the leader epochs of KIP-320 on the wire and in the
+consumer, the zstd codec of KIP-110, KIP-211 and the version bumps that carry them.
+
+- **Fetch v9 and v10** (KIP-320, KIP-110) — every partition entry of a v9 request carries a
+  `current_leader_epoch` **between** the partition id and the fetch offset (`FetchRequest.json` @ 2.8.2
+  is the field order, not the prose of the KIP), and v10 states that the client understands a
+  zstd-compressed record batch. The answer is unchanged since v7. `FetchRequest`/`FetchResponse` are the
+  v10 now, `FetchRequestV9`/`FetchRequestV8` and their answers keep the lower ones, and a partition may
+  be given as an `[offset, epoch]` pair everywhere a fetch offset is taken
+  (`Client::fetchPartitions()`, `fetchPartitionsWithSessions()`, `FetchSessionHandlerBuilder::add()`).
+- **ListOffsets v4** (KIP-320) — a `current_leader_epoch` in every partition of the request and a
+  `leader_epoch` **behind** the offset of every partition of the answer, so a listed offset carries the
+  epoch it was resolved in. `OffsetsRequest`/`OffsetsResponse` are the v4, `OffsetsRequestV3` keeps the
+  Kafka 2.0 one, and `OffsetAndTimestamp::$leaderEpoch` hands the epoch to the caller.
+- **Metadata v7** (KIP-320) — a `leader_epoch` between the leader id and the replicas of every
+  partition. `MetadataRequest`/`MetadataResponse` are the v7, `PartitionMetadata`/`TopicMetadata` carry
+  the field and `PartitionMetadataV5`/`TopicMetadataV5` the v5-and-v6 entry.
+- **OffsetForLeaderEpoch v2** (KIP-320) — a `current_leader_epoch` in front of the epoch that is asked
+  about and a `throttle_time_ms` at the head of the answer, the version an ordinary **consumer** sends.
+  `Client::offsetsForLeaderEpochs()` is the new entry point.
+- **Produce v7** (KIP-110) — the v3 body once more, and the version a record set compressed with zstd
+  needs: `ProduceRequest.validateRecords` @ 2.8.2 refuses the codec below it, and a 2.8.2 broker answers
+  the partition with **76** rather than closing the connection. `ProduceRequest`/`ProduceResponse` are
+  the v7, `ProduceRequestV6`/`ProduceResponseV6` the Kafka 2.0 pair.
+- **The zstd codec** (KIP-110) — `CompressionCodec::ZSTD` (the compression type 4 of the message format
+  v2) through **`ext-zstd`**, a suggested dependency of `composer.json`;
+  `ProducerConfig::COMPRESSION_TYPE_ZSTD` is refused with a clear message when the extension is missing,
+  and a zstd batch that a fetch brings in then raises `UnsupportedCompressionTypeException`, the
+  client-side half of the code 76.
+- **KIP-320 in the consumer** — the position of a partition is now an offset **and** the leader epoch it
+  was taken at. `Cluster` remembers the newest `leader_epoch` of every partition and never applies an
+  answer that moves it backwards (`updateLastSeenEpochIfNewer()`, `lastSeenLeaderEpoch()`),
+  `SubscriptionState` keeps the position epoch, the current leader epoch and a validation flag per
+  partition, and every `poll()` stamps its positions with the metadata epoch, validates the partitions
+  whose epoch moved with an OffsetForLeaderEpoch v2 and fetches with the epoch in every partition entry.
+  An `end_offset` below the position is a **log truncation**: `auto.offset.reset` resets the position,
+  and with `none` the new `LogTruncationException` reaches the caller with the offset it stood at and the
+  offset the leader answered. The codes **74** `FENCED_LEADER_EPOCH` and **75** `UNKNOWN_LEADER_EPOCH`
+  refresh the metadata and leave the position alone.
+- **19 wire vectors** captured on the `kafka-2-8-2` container for all of it, with the annotated dumps in
+  the protocol document: the Fetch v9/v10 pairs and the 75 of a fenced epoch, the ListOffsets v4 pair,
+  the Metadata v7 pair, the OffsetForLeaderEpoch v2 pair and its 75, the Produce v7 pair, and the three
+  frames of the zstd rule (the **76** of a Fetch v9 against a `compression.type=zstd` topic, the same
+  partition served to a Fetch v10, and the **76** of a Produce v6 whose record set is zstd).
+- **New sections of [docs/protocol/2.8.md](docs/protocol/2.8.md)**: "The leader epoch (KIP-320)",
+  "Version 10 and the zstd codec (KIP-110)", "KIP-320 in the consumer: leader epochs and truncation
+  detection" and "The zstd codec (Kafka 2.1, KIP-110)", plus four measured broker quirks — the 75 that a
+  one-broker container can produce and the 74 it cannot, the zstd refusal that is decided by the **topic
+  configuration** and not by the records, the 76 of a produce that stays on an open connection, and the
+  epoch 0 of every partition of the container.
+- **OffsetCommit v5 (KIP-211)** — the version that **removes** `retention_time` from the frame. The
+  committed offsets of a group expire `offsets.retention.minutes` after the **group** became empty
+  from Kafka 2.1 on, so a per-commit retention has no place any more: the field has the versions
+  `2-4` and is not sent as -1. `OffsetCommitRequestV4` is the last version that writes it, and a v5
+  commit is stored with the `__consumer_offsets` value schema v3, which has no expiry at all.
+- **OffsetCommit v6 and OffsetFetch v5 (KIP-320)** — the `committed_leader_epoch` of a committed
+  offset: the epoch of the leader it was read from, so that a consumer that resumes from it can be
+  told that the log was truncated behind its back. It lives on
+  **`Consumer\OffsetAndMetadata::$leaderEpoch`** as a nullable int (`null` is the -1 of "not known",
+  the empty `Optional` of the Java `OffsetAndMetadata.leaderEpoch()`), travels through
+  `Client::commitGroupOffsets()` and comes back on
+  `Protocol\Data\OffsetFetchResponsePartition::$leaderEpoch`, whose `toOffsetAndMetadata()` is the
+  way into the value object. `OffsetCommitRequestV5`/`…V4`, `OffsetFetchRequestV4` and the
+  `…PartitionV0`/`…TopicV0` entries keep the versions below; six more wire vectors were captured
+  from the container, and the broker stores whatever epoch it is given — 74 and 75 are answered by
+  the fetch path, not by the coordinator.
+- **DeleteTopics v3 (Kafka 2.1)** — the frame of v2 with a higher version field; the version is the client's
+  promise that it understands the error code **73** `TopicDeletionDisabled`, which a cluster with
+  `delete.topic.enable=false` answers instead of the 42 a lower version keeps getting.
+  `DeleteTopicsRequestV2`/`DeleteTopicsResponseV2` keep the version Kafka 2.0 added.
+- **TxnOffsetCommit v2 (KIP-320)** — a `committed_leader_epoch` per partition, between the offset and the
+  metadata; it comes from `Consumer\OffsetAndMetadata::$leaderEpoch` and is written as -1 when the client does
+  not know it. `TxnOffsetCommitRequestV1` and the `…PartitionV0`/`…TopicV0` entries keep the versions below.
+  The coordinator stores the epoch without validating it — 74 and 75 belong to the apis that read it back.
+
+
+### Kafka 2.2
+
+- **JoinGroup v4 (KIP-394)** — the version that refuses a **first join**. A request with an empty member id is
+  answered immediately with the error code **79** (`MemberIdRequired`) and the member id the coordinator
+  generated, and the client sends the same request again with that id; the coordinator no longer adds a member it
+  cannot identify to a rebalance, and a client that never comes back leaves the group `Empty` with 0 members
+  instead of holding a rebalance up. `Consumer\Internals\ConsumerCoordinator` does that second join by itself,
+  immediately and without counting the refusal as a failed attempt, exactly as the Java
+  `AbstractCoordinator.handleJoinResponse` does; `Client::joinGroup()` reports the code as a
+  `MemberIdRequiredException` whose context carries the assigned id under **`assignedMemberId`** and leaves the
+  second join to its caller. `JoinGroupRequestV3`/`JoinGroupResponseV3` keep the version below it, and four wire
+  vectors of the exchange were captured from the container.
+- **The error code 81 `GroupMaxSizeReached`** of the same KIP is documented from the broker sources and is not
+  asserted against the container: `group.max.size` defaults to 2147483647 and is not a dynamically updatable
+  broker config in Kafka 2.8, so it cannot be lowered without a restart.
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------

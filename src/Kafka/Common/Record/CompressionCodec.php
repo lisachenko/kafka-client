@@ -13,15 +13,21 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Common\Record;
 
+use function extension_loaded;
+
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
+use Protocol\Kafka\Common\Errors\UnsupportedCompressionTypeException;
 
 /**
  * Compression codecs that the Attributes byte of a {@see Message} can announce.
  *
  * The three lowest bits of the Attributes byte hold the codec; bit 3 is the {@see TimestampType} of message format
- * v1 and every other bit is 0. All four codecs of Kafka 0.10.2.2 are implemented here, gzip through the zlib
- * extension of PHP and snappy and lz4 in pure PHP.
+ * v1 and every other bit is 0. The four codecs of Kafka 0.10.2.2 are implemented here, gzip through the zlib
+ * extension of PHP and snappy and lz4 in pure PHP; **zstd** (Kafka 2.1, KIP-110) is the fifth, and it is the one
+ * codec this package cannot implement itself - there is no pure-PHP zstd - so it travels through **`ext-zstd`**
+ * when that extension is loaded and is refused with an {@see UnsupportedCompressionTypeException} when it is not,
+ * see {@see self::ZSTD}.
  *
  * The framing of a codec is not always the one of its own specification: snappy travels in the blocking format of
  * the xerial library and lz4 in the LZ4 frame format, whose header checksum depends on the message format of the
@@ -51,6 +57,22 @@ final class CompressionCodec
      * The Value of the message is an LZ4 frame (the Kafka flavour of it) wrapping a complete MessageSet
      */
     public const int LZ4 = 3;
+
+    /**
+     * The Value of the message is a zstd frame (RFC 8478) wrapping a complete record batch (Kafka 2.1, KIP-110)
+     *
+     * zstd is the only codec of the protocol that a **version** of two apis states: a Produce request below v7 is
+     * refused a zstd batch and a Fetch request below v10 is refused a zstd partition, both with **76**
+     * `UNSUPPORTED_COMPRESSION_TYPE`, because a broker does **not** down-convert zstd for a client that has not
+     * promised to understand it. It is also the only codec that needs an extension:
+     * {@see self::isSupported()} answers `false` for it without `ext-zstd`, and compressing or decompressing it
+     * then throws an {@see UnsupportedCompressionTypeException} - the class of the broker's code 76, which doubles
+     * as the client-side "this build cannot speak zstd" error, see its docblock.
+     *
+     * It only ever appears in a **record batch of the message format v2**: the legacy message sets were frozen
+     * before Kafka 2.1, and a broker refuses the codec in a magic 0 or 1 message.
+     */
+    public const int ZSTD = 4;
 
     /**
      * Mask of the Attributes bits that hold the codec (bits 0-2)
@@ -83,7 +105,19 @@ final class CompressionCodec
         return $codec === self::NONE
             || $codec === self::GZIP
             || $codec === self::SNAPPY
-            || $codec === self::LZ4;
+            || $codec === self::LZ4
+            || ($codec === self::ZSTD && self::isZstdAvailable());
+    }
+
+    /**
+     * Tells whether this PHP build can compress and decompress zstd, i.e. whether `ext-zstd` is loaded
+     *
+     * There is no pure-PHP implementation of zstd in this package and there is not going to be one: the format is
+     * far too large to reimplement, and the extension is a `pecl install zstd` away. `composer.json` suggests it.
+     */
+    public static function isZstdAvailable(): bool
+    {
+        return extension_loaded('zstd');
     }
 
     /**
@@ -115,6 +149,20 @@ final class CompressionCodec
 
             case self::LZ4:
                 return Lz4::compress($data, $magic);
+
+            case self::ZSTD:
+                if (!self::isZstdAvailable()) {
+                    throw new UnsupportedCompressionTypeException([
+                        'error' => 'The zstd codec of KIP-110 needs the ext-zstd extension, which is not loaded',
+                        'codec' => self::ZSTD,
+                    ]);
+                }
+                $compressed = zstd_compress($data);
+                if ($compressed === false) {
+                    throw new InvalidConfigurationException('Unable to compress the record batch with zstd');
+                }
+
+                return $compressed;
         }
 
         throw new InvalidConfigurationException("Unsupported compression codec {$codec} requested");
@@ -145,6 +193,21 @@ final class CompressionCodec
 
             case self::LZ4:
                 return Lz4::decompress($data);
+
+            case self::ZSTD:
+                if (!self::isZstdAvailable()) {
+                    throw new UnsupportedCompressionTypeException([
+                        'error' => 'The records are zstd-compressed (KIP-110) and ext-zstd is not loaded, so this '
+                            . 'client can not read them',
+                        'codec' => self::ZSTD,
+                    ]);
+                }
+                $decompressed = @zstd_uncompress($data);
+                if ($decompressed === false) {
+                    throw new CorruptMessageException(['error' => 'Unable to decompress the zstd payload']);
+                }
+
+                return $decompressed;
         }
 
         throw new InvalidConfigurationException("Unsupported compression codec {$codec} received");

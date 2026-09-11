@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the length of a cluster id string, so the class of the answer has to match the version of the request that asked
  * for it.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v7)"
  */
 final class MetadataResponseV1 extends MetadataResponse
 {

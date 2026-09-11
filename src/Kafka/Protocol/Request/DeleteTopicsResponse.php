@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
 
 /**
- * DeleteTopics response object, version 2 (key 20)
+ * DeleteTopics response object, version 3 (key 20)
  *
  * <pre>
  *   DeleteTopics Response (Version: 1 and 2) => throttle_time_ms [topic_error_codes]
@@ -47,14 +47,21 @@ use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DeleteTopicsResponseV1} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0, v1 and v2)"
+ *
+ * **Kafka 2.1 added version 3**, whose frame is this one once more: what the version changes is the error CODE a
+ * broker with `delete.topic.enable=false` writes into it - **73** `TOPIC_DELETION_DISABLED` for a version 3
+ * client, the **42** `INVALID_REQUEST` of the lines below for every lower one
+ * (`KafkaApis.handleDeleteTopicsRequest` @ 2.8.2). {@see DeleteTopicsResponseV2} is the same frame with the
+ * version field of Kafka 2.0.
+ *
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v3)"
  */
 class DeleteTopicsResponse extends AbstractResponse
 {
     /**
      * Version of the DeleteTopics API that this class decodes the answer of
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

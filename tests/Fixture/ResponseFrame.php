@@ -54,8 +54,10 @@ final class ResponseFrame
      *     ClusterId         => nullable string
      *     ControllerId      => int32
      *     TopicMetadata     => TopicErrorCode int16 TopicName string IsInternal boolean [PartitionMetadata]
-     *     PartitionMetadata => PartitionErrorCode int16 PartitionId int32 Leader int32 Replicas [int32] Isr [int32]
-     *                          OfflineReplicas [int32]         # since version 5 (KIP-112/113)
+     *     PartitionMetadata => PartitionErrorCode int16 PartitionId int32 Leader int32 LeaderEpoch int32
+     *                          Replicas [int32] Isr [int32] OfflineReplicas [int32]
+     *                          LeaderEpoch     => int32        # since version 7 (KIP-320)
+     *                          OfflineReplicas => [int32]      # since version 5 (KIP-112/113)
      * </pre>
      *
      * Version 4 answers the very same frame as version 3 - what it added, `allow_auto_topic_creation`, is a field
@@ -76,6 +78,9 @@ final class ResponseFrame
      * @param int|null                       $controllerId        Controller of the cluster, -1 while it elects one
      * @param array<string, array<int, list<int>>> $offlineReplicas Offline replicas of a partition, empty by
      *        default as on a one-broker cluster
+     * @param array<string, array<int, int>> $leaderEpochs Leader epoch of a partition, the field version 7
+     *        (Kafka 2.1, KIP-320) added; 0 by default, which is the epoch of a partition that has been led by the
+     *        same broker since it was created
      */
     public static function metadata(
         int $correlationId,
@@ -85,7 +90,8 @@ final class ResponseFrame
         array $partitionErrorCodes = [],
         array $internalTopics = [],
         ?int $controllerId = null,
-        array $offlineReplicas = []
+        array $offlineReplicas = [],
+        array $leaderEpochs = []
     ): string {
         // The throttle time of version 3 opens the body, in front of the brokers
         $body = pack('N', 0) . pack('N', count($brokers));
@@ -107,6 +113,8 @@ final class ResponseFrame
                 $body .= pack('n', $partitionErrorCodes[$topic][$partitionId] ?? 0)
                     . pack('N', $partitionId)
                     . pack('N', $leader)
+                    // The leader epoch of version 7 (Kafka 2.1, KIP-320), behind the leader id
+                    . pack('N', $leaderEpochs[$topic][$partitionId] ?? 0)
                     . self::int32Array($replicas)
                     . self::int32Array($replicas)
                     . self::int32Array($offlineReplicas[$topic][$partitionId] ?? []);
@@ -214,13 +222,15 @@ final class ResponseFrame
      * @param array<string, array<int, array{int, int, int}>> $topics topic => partition =>
      *        [errorCode, timestamp, offset]
      */
-    public static function offsets(int $correlationId, array $topics): string
+    public static function offsets(int $correlationId, array $topics, array $leaderEpochs = []): string
     {
         $body = pack('N', 0) . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $timestamp, $offset]) {
-                $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $timestamp) . pack('J', $offset);
+                $body .= pack('N', $partitionId) . pack('n', $errorCode) . pack('J', $timestamp) . pack('J', $offset)
+                    // The leader epoch of version 4 (Kafka 2.1, KIP-320), behind the offset
+                    . pack('N', $leaderEpochs[$topic][$partitionId] ?? 0xFFFFFFFF);
             }
         }
 
@@ -388,13 +398,15 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetFetch response (api key 9, v3 - the version this client sends)
+     * Builds an OffsetFetch response (api key 9, v5 - the version this client sends)
      *
-     * v0 and v1 share the response format, v2 appended the group-level error code, and v3 (KIP-124) put the
-     * throttle time in front of the topics; the answer therefore carries a number at each of its ends.
+     * v0 and v1 share the response format, v2 appended the group-level error code, v3 (KIP-124) put the throttle
+     * time in front of the topics - the answer therefore carries a number at each of its ends - and v5 (KIP-320)
+     * inserted the `committed_leader_epoch` of every partition between its offset and its metadata.
      *
-     * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
-     *        [errorCode, offset, metadata]
+     * @param array<string, array<int, array{int, int, string}|array{int, int, string, int}>> $topics topic =>
+     *        partition => [errorCode, offset, metadata] with an optional fourth element, the committed leader
+     *        epoch, which defaults to the -1 of an offset that was committed without one
      * @param int|null $groupErrorCode The group-level error code of version 2 and above, null for v0 or v1
      */
     public static function offsetFetch(int $correlationId, array $topics, ?int $groupErrorCode = 0): string
@@ -402,9 +414,11 @@ final class ResponseFrame
         $body = pack('N', 0) . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
-            foreach ($partitions as $partitionId => [$errorCode, $offset, $metadata]) {
+            foreach ($partitions as $partitionId => $partition) {
+                [$errorCode, $offset, $metadata] = $partition;
                 $body .= pack('N', $partitionId)
                     . pack('J', $offset)
+                    . pack('N', $partition[3] ?? -1)
                     . self::string($metadata)
                     . pack('n', $errorCode);
             }

@@ -17,20 +17,22 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
 
 /**
- * Offsets (ListOffset) response object (key 2, v2)
+ * Offsets (ListOffset) response object (key 2, v4)
  *
  * <pre>
- *   ListOffsets Response (Version: 2) => throttle_time_ms [responses]
+ *   ListOffsets Response (Version: 4) => throttle_time_ms [responses]
  *     throttle_time_ms => INT32     -- since version 2
  *     responses => topic [partition_responses]
  *       topic               => STRING
- *       partition_responses => partition error_code timestamp offset
- *         partition  => INT32
- *         error_code => INT16
- *         timestamp  => INT64
- *         offset     => INT64
+ *       partition_responses => partition error_code timestamp offset leader_epoch
+ *         partition    => INT32
+ *         error_code   => INT16
+ *         timestamp    => INT64
+ *         offset       => INT64
+ *         leader_epoch => INT32     -- since version 4
  * </pre>
  *
  * Version 1 answers one offset per partition together with the timestamp of the message it points at; the offset
@@ -46,20 +48,30 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
  * | 42   | InvalidRequest             | The same partition appears twice in one request                           |
  * | 43   | UnsupportedForMessageFormat| A timestamp lookup on a topic whose `message.format.version` is below 0.10 |
  *
+ * **Version 3 (Kafka 2.0, KIP-219) changed nothing about the frame**: `ListOffsetsResponse.json` @ 2.8.2 has no
+ * field of it and {@see OffsetsResponseV2} decodes the very same bytes. What version 3 states is that the client
+ * understands when a throttled answer arrives - first, with the delay it reports, and the channel muted
+ * afterwards, see {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}.
+ *
+ * **Version 4 (Kafka 2.1, KIP-320) appended `leader_epoch` to every partition entry**, the epoch the leader was
+ * on when it read the answered offset, see
+ * {@see \Protocol\Kafka\Protocol\Data\OffsetsResponsePartition::$leaderEpoch}; {@see OffsetsResponseV3} keeps
+ * the frame that ends with the offset.
+ *
  * A target timestamp that no message matches - one above the timestamp of every message of the log, and any
  * timestamp on an empty log - is **not** an error: the broker answers the code 0 with
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
  * and -1 (`KafkaApis.fetchOffsetForTimestamp` @ 0.11.0.3).
  *
- * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset" and
- *      "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v4), a.k.a. ListOffset",
+ *      "Quotas and throttle time" and "The leader epoch (KIP-320)"
  */
 class OffsetsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 4;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
@@ -97,6 +109,10 @@ class OffsetsResponse extends AbstractResponse
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 1 ? OffsetsResponseTopic::class : OffsetsResponseTopicV0::class;
+        return match (true) {
+            static::VERSION >= 4 => OffsetsResponseTopic::class,
+            static::VERSION >= 1 => OffsetsResponseTopicV1::class,
+            default              => OffsetsResponseTopicV0::class,
+        };
     }
 }

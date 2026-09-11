@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `error_code` that version 2 appended is still read here, which is what separates this class from
  * {@see OffsetFetchResponseV1}.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v4)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v5)"
  */
 final class OffsetFetchResponseV2 extends OffsetFetchResponse
 {

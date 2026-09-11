@@ -18,6 +18,8 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\LogTruncationException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
@@ -1371,6 +1373,144 @@ final class KafkaConsumerTest extends TestCase
         }
 
         return $client;
+    }
+
+    public function testAPositionIsNotValidatedWhileTheLeaderEpochOfTheMetadataStandsStill(): void
+    {
+        $client = $this->clientWithLog([0 => 3]);
+        $client->batchLeaderEpochs[self::TOPIC][0] = 4;
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->leaderEpochs[self::TOPIC][0]    = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+
+        $consumer->poll(10);
+        $consumer->poll(10);
+
+        self::assertSame([], $client->leaderEpochCalls, 'an epoch that does not move validates nothing');
+        self::assertSame(3, $consumer->position(self::TOPIC, 0));
+    }
+
+    public function testANewLeaderEpochValidatesThePositionWithTheEpochOfItsLastBatch(): void
+    {
+        $client = $this->clientWithLog([0 => 3]);
+        $client->batchLeaderEpochs[self::TOPIC][0]     = 4;
+        $client->leaderEpochEndOffsets[self::TOPIC][0] = 7;
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->leaderEpochs[self::TOPIC][0]        = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        // A leader election: the metadata of the next poll reports a higher epoch for the partition
+        $consumer->leaderEpochs[self::TOPIC][0] = 5;
+        $consumer->poll(10);
+
+        // The question is "you are on the epoch 5; where did the epoch 4 of my position end?"
+        self::assertSame([[self::TOPIC => [0 => [4, 5]]]], $client->leaderEpochCalls);
+        self::assertSame(3, $consumer->position(self::TOPIC, 0), 'an end offset above the position moves nothing');
+
+        // And it is asked once per leader change, not once per poll
+        $consumer->poll(10);
+        self::assertCount(1, $client->leaderEpochCalls);
+    }
+
+    public function testAPartitionWithoutAnEpochOfItsOwnIsNeverValidated(): void
+    {
+        // The consumer has read no record batch of the partition, so it has no epoch to ask about - which is the
+        // state of every partition whose committed offset was stored below OffsetCommit v6
+        $client = $this->clientWithLog([0 => 0]);
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->leaderEpochs[self::TOPIC][0] = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        $consumer->leaderEpochs[self::TOPIC][0] = 5;
+        $records = $consumer->poll(10);
+
+        self::assertSame([], $client->leaderEpochCalls);
+        self::assertSame([], $records[self::TOPIC][0]);
+    }
+
+    public function testAnEndOffsetBelowThePositionIsALogTruncationAndFollowsTheResetStrategy(): void
+    {
+        $client = $this->clientWithLog([0 => 3], 100);
+        $client->batchLeaderEpochs[self::TOPIC][0]     = 4;
+        // The new leader ends the epoch 4 at 101, while this consumer stands at 103: the records 101 and 102 it
+        // has already read never made it into the new leadership
+        $client->leaderEpochEndOffsets[self::TOPIC][0] = 101;
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->leaderEpochs[self::TOPIC][0] = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        self::assertSame(103, $consumer->position(self::TOPIC, 0));
+
+        $consumer->leaderEpochs[self::TOPIC][0] = 5;
+        $records = $consumer->poll(10)[self::TOPIC][0];
+
+        // Without the truncation the poll would answer nothing - the position stood at the end of the log. The
+        // reset moved it to the start of the log, so the same three records are read again
+        self::assertCount(3, $records);
+        self::assertSame(100, (int) $records[0]->offset);
+        self::assertSame([[self::TOPIC => [0 => [4, 5]]]], $client->leaderEpochCalls);
+    }
+
+    public function testALogTruncationReachesTheCallerWhenNoResetStrategyIsConfigured(): void
+    {
+        $client = $this->clientWithLog([0 => 3], 100);
+        $client->batchLeaderEpochs[self::TOPIC][0]            = 4;
+        $client->leaderEpochEndOffsets[self::TOPIC][0]        = 101;
+        // With `none` the position has to come from somewhere: a committed offset of the group, as it would in
+        // any application that reads with this strategy
+        $client->committedOffsets[self::GROUP][self::TOPIC][0] = 100;
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::NONE,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->leaderEpochs[self::TOPIC][0] = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        $consumer->leaderEpochs[self::TOPIC][0] = 5;
+
+        try {
+            $consumer->poll(10);
+            self::fail('a truncated log with auto.offset.reset = none has to reach the caller');
+        } catch (LogTruncationException $exception) {
+            $context = $exception->getContext();
+            self::assertSame(self::TOPIC, $context['topic']);
+            self::assertSame(0, $context['partition']);
+            self::assertSame(103, $context['offset']);
+            self::assertSame(101, $context['truncationOffset']);
+        }
+    }
+
+    public function testTheTwoLeaderEpochErrorsRefreshTheMetadataAndLeaveThePositionAlone(): void
+    {
+        foreach ([KafkaException::FENCED_LEADER_EPOCH, KafkaException::UNKNOWN_LEADER_EPOCH] as $errorCode) {
+            $client = $this->clientWithLog([0 => 3]);
+            $client->batchLeaderEpochs[self::TOPIC][0] = 4;
+            $client->leaderEpochErrors[self::TOPIC][0] = $errorCode;
+
+            $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+            $consumer->leaderEpochs[self::TOPIC][0]    = 4;
+            $consumer->assign([self::TOPIC => [0]]);
+            $consumer->poll(10);
+
+            $consumer->leaderEpochs[self::TOPIC][0] = 5;
+            $result = $consumer->poll(10);
+
+            self::assertSame(1, $consumer->metadataRefreshes, 'the code ' . $errorCode . ' refreshes the metadata');
+            self::assertSame([], $result, 'the partition is left out of the poll it could not be validated in');
+            self::assertSame(3, $consumer->position(self::TOPIC, 0), 'and its position is not touched');
+        }
     }
 
     private function clientWithLog(array $partitionRecordCounts, int $firstOffset = 0): FakeClient

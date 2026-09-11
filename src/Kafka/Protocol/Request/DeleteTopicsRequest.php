@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * DeleteTopics, version 2: asks the controller to delete one or more topics (ApiKey 20, Kafka 0.11)
+ * DeleteTopics, version 3: asks the controller to delete one or more topics (ApiKey 20, Kafka 0.11)
  *
  * <pre>
  *   DeleteTopics Request (Version: 0, 1 and 2) => [topics] timeout
@@ -52,7 +52,19 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DeleteTopicsRequestV1} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0, v1 and v2)"
+ *
+ * **Kafka 2.1 added version 3** with the very same frame once more (`DELETE_TOPICS_REQUEST_V3 =
+ * DELETE_TOPICS_REQUEST_V2` in `Protocol.java` @ 2.1.1, whose comment says "v3 request is the same that as v2. The
+ * response is different based on the request version. In v3 version a TopicDeletionDisabledException is
+ * returned"). The version is what a client uses to say that it understands the error code **73**
+ * `TOPIC_DELETION_DISABLED`: `KafkaApis.handleDeleteTopicsRequest` @ 2.8.2 answers a cluster whose
+ * `delete.topic.enable` is false with `if (request.context.apiVersion < 3) Errors.INVALID_REQUEST else
+ * Errors.TOPIC_DELETION_DISABLED`, so a version 2 client keeps getting the 42 of the lines below and a version 3
+ * client is told what is really wrong. The option is not dynamic and is `true` on the container of this line, so
+ * the code is documented from the sources rather than measured. {@see DeleteTopicsRequestV2} is the same frame
+ * with the version field of Kafka 2.0.
+ *
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v3)"
  */
 class DeleteTopicsRequest extends AbstractRequest
 {
@@ -64,7 +76,7 @@ class DeleteTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * @param list<string> $topics        Names of the topics to delete
