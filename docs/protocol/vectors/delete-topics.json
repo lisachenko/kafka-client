@@ -1,8 +1,8 @@
 {
     "api": "delete-topics",
     "apiKey": 20,
-    "section": "DeleteTopics API (key 20, v0, v1 and v2)",
-    "description": "Wire vectors of the DeleteTopics API (key 20, v0, v1 and v2), replayed by tests/Compliance.",
+    "section": "DeleteTopics API (key 20, v0 to v3)",
+    "description": "Wire vectors of the DeleteTopics API (key 20, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "deletetopics.request.v0",
@@ -105,7 +105,7 @@
         {
             "id": "deletetopics.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "DeleteTopics request v2, the frame of version 1 with the api version Kafka 2.0 added: the topic of the vectors above, with the 30 second timeout of the controller.",
@@ -125,7 +125,7 @@
         {
             "id": "deletetopics.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "DeleteTopics response v2: the throttle time of version 1 and the error code 0 of the deleted topic.",
@@ -137,6 +137,46 @@
                 "topics": {
                     "t4-20-vectors": {
                         "topic": "t4-20-vectors",
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletetopics.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "DeleteTopics request v3, the frame of version 2 with the api version Kafka 2.1 added: the version says that the client understands the error code 73 of a cluster that forbids topic deletion.",
+            "hex": "0000002b001400030000025f000a74342d766563746f727300000001000d74342d32312d766563746f727300007530",
+            "fields": {
+                "messageSize": 43,
+                "apiKey": 20,
+                "apiVersion": 3,
+                "correlationId": 607,
+                "clientId": "t4-vectors",
+                "topics": [
+                    "t4-21-vectors"
+                ],
+                "timeout": 30000
+            }
+        },
+        {
+            "id": "deletetopics.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "DeleteTopics response v3 of the controller: the throttle time of version 1 and the error code 0 of the topic it deleted - the container runs with `delete.topic.enable=true`, so the 73 the version exists for cannot be produced on it.",
+            "hex": "0000001d0000025f0000000000000001000d74342d32312d766563746f72730000",
+            "fields": {
+                "messageSize": 29,
+                "correlationId": 607,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-21-vectors": {
+                        "topic": "t4-21-vectors",
                         "errorCode": 0
                     }
                 }
