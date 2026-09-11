@@ -47,8 +47,8 @@ use Throwable;
  * every principal or client of the shared container that has none of its own, which is the same restraint the
  * reassignment suite shows towards a null topic array.
  *
- * @see docs/protocol/2.8.md, sections "DescribeClientQuotas API (key 48, v0)" and
- *      "AlterClientQuotas API (key 49, v0)"
+ * @see docs/protocol/2.8.md, sections "DescribeClientQuotas API (key 48, v0 and v1)" and
+ *      "AlterClientQuotas API (key 49, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeClientQuotasRequest::class)]

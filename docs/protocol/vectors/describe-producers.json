@@ -1,0 +1,110 @@
+{
+    "api": "describe-producers",
+    "apiKey": 61,
+    "section": "DescribeProducers API (key 61, v0)",
+    "description": "Wire vectors of the DescribeProducers API (key 61, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describeproducers.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeProducersRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeProducers request v0 (Kafka 2.8, KIP-664) for one partition: a compact topic array, a compact topic name and a compact array of partition indexes, with a tag buffer after the topic and after the body.",
+            "hex": "00000040003d000000001bc000176b61666b612d636c69656e742d74312d766563746f727300021674312d70726f6475636572732d366436613039636102000000000000",
+            "fields": {
+                "messageSize": 64,
+                "apiKey": 61,
+                "apiVersion": 0,
+                "correlationId": 7104,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-producers-6d6a09ca": {
+                        "name": "t1-producers-6d6a09ca",
+                        "partitionIndexes": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describeproducers.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeProducersResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer for a partition an **idempotent** producer has written to: the producer id the broker assigned, the epoch 0, the last sequence number 0 and the timestamp of that write, the coordinator epoch **-1** and `current_txn_start_offset` **-1** - no transaction of this producer is open in the partition. The producer epoch is an `int32` here although it is an `int16` in every other api.",
+            "hex": "0000005100001bc00000000000021674312d70726f6475636572732d366436613039636102000000000000000200000000000001520000000000000000000001a091b5b6acffffffffffffffffffffffff00000000",
+            "fields": {
+                "messageSize": 81,
+                "correlationId": 7104,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-producers-6d6a09ca": {
+                        "name": "t1-producers-6d6a09ca",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "activeProducers": {
+                                    "338": {
+                                        "producerId": 338,
+                                        "producerEpoch": 0,
+                                        "lastSequence": 0,
+                                        "lastTimestamp": 1789151000236,
+                                        "coordinatorEpoch": -1,
+                                        "currentTxnStartOffset": -1
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describeproducers.response.v0.empty",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeProducersResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Three partitions of one request in one answer: two that exist and remember no producer (the code 0 with an **empty** producer array) and one the broker does not have, which is **3** `UnknownTopicOrPartition` - per partition, because this api has no top-level error code.",
+            "hex": "0000003e00001bbf0000000000021674312d70726f6475636572732d3664366130396361040000000000000001000000000100000001000000000700030001000000",
+            "fields": {
+                "messageSize": 62,
+                "correlationId": 7103,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-producers-6d6a09ca": {
+                        "name": "t1-producers-6d6a09ca",
+                        "partitions": {
+                            "0": {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "activeProducers": []
+                            },
+                            "1": {
+                                "partitionIndex": 1,
+                                "errorCode": 0,
+                                "errorMessage": null,
+                                "activeProducers": []
+                            },
+                            "7": {
+                                "partitionIndex": 7,
+                                "errorCode": 3,
+                                "errorMessage": null,
+                                "activeProducers": []
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

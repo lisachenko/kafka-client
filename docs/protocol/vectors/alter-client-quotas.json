@@ -1,13 +1,13 @@
 {
     "api": "alter-client-quotas",
     "apiKey": 49,
-    "section": "AlterClientQuotas API (key 49, v0)",
-    "description": "Wire vectors of the AlterClientQuotas API (key 49, v0), replayed by tests/Compliance.",
+    "section": "AlterClientQuotas API (key 49, v0 and v1)",
+    "description": "Wire vectors of the AlterClientQuotas API (key 49, v0 and v1), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "alterclientquotas.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasRequestV0",
             "version": 0,
             "source": "broker",
             "description": "AlterClientQuotas request v0 that sets two quotas of one `client-id`. Every op carries its `float64` value **and** the `remove` flag, because the frame has no optional fields: a set is the value with `00`, a removal a value the broker ignores with `01`. The last byte is `validate_only`.",
@@ -46,7 +46,7 @@
         {
             "id": "alterclientquotas.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer: one entry for the one entity of the request, the error code 0 and a null message in front of the entity the result belongs to. **There is no top-level error code in this api** - an entity that is refused is refused on its own.",
@@ -72,7 +72,7 @@
         {
             "id": "alterclientquotas.request.v0.validate-only",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasRequestV0",
             "version": 0,
             "source": "broker",
             "description": "A removal asked with `validate_only`: the op carries the eight bytes `00 00 00 00 00 00 00 00` that the broker discards next to the `remove` flag `01`, and the frame ends in the `01` of `validate_only`. The Java client writes `Double.NaN` in that place; this one writes zero, and the broker reads and discards either.",
@@ -106,7 +106,7 @@
         {
             "id": "alterclientquotas.response.v0.validate-only",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer to it, which is exactly the answer the real change would get - the broker checked it and wrote nothing. Measured: the quota was still there afterwards.",
@@ -132,7 +132,7 @@
         {
             "id": "alterclientquotas.response.v0.invalid-key",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponseV0",
             "version": 0,
             "source": "broker",
             "description": "A quota name the broker does not know is **42** (`InvalidRequest`) with the message *\"Invalid configuration key t1_nonsense_rate\"*, per entity and not at the top level.",
@@ -140,6 +140,100 @@
             "fields": {
                 "messageSize": 91,
                 "correlationId": 6106,
+                "throttleTimeMs": 0,
+                "entries": [
+                    {
+                        "errorCode": 42,
+                        "errorMessage": "Invalid configuration key t1_nonsense_rate",
+                        "entity": {
+                            "client-id": {
+                                "entityType": "client-id",
+                                "entityName": "t1-quota-vectors"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "alterclientquotas.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "AlterClientQuotas request **v1** (Kafka 2.8) that sets two quotas of one `client-id`: the compact encoding of the v0 frame, with a tag buffer after every entity, every op, every entry and the body. Every op still carries its `float64` value **and** the `remove` flag.",
+            "hex": "0000007e003100010000177100176b61666b612d636c69656e742d74312d766563746f72730002020a636c69656e742d69641174312d71756f74612d766563746f727300031370726f64756365725f627974655f726174654130000000000000000013726571756573745f70657263656e7461676540290000000000000000000000",
+            "fields": {
+                "messageSize": 126,
+                "apiKey": 49,
+                "apiVersion": 1,
+                "correlationId": 6001,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "entries": [
+                    {
+                        "entity": {
+                            "client-id": {
+                                "entityType": "client-id",
+                                "entityName": "t1-quota-vectors"
+                            }
+                        },
+                        "ops": {
+                            "producer_byte_rate": {
+                                "key": "producer_byte_rate",
+                                "value": 1048576.0,
+                                "remove": false
+                            },
+                            "request_percentage": {
+                                "key": "request_percentage",
+                                "value": 12.5,
+                                "remove": false
+                            }
+                        }
+                    }
+                ],
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "alterclientquotas.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The v1 answer: one entry for the one entity, and still no top-level error code anywhere in this api.",
+            "hex": "0000002c00001771000000000002000000020a636c69656e742d69641174312d71756f74612d766563746f7273000000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 6001,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "entries": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "entity": {
+                            "client-id": {
+                                "entityType": "client-id",
+                                "entityName": "t1-quota-vectors"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "alterclientquotas.response.v1.invalid-key",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The **42** of a quota name the broker does not know, in the flexible encoding.",
+            "hex": "0000005600001777000000000002002a2b496e76616c696420636f6e66696775726174696f6e206b65792074315f6e6f6e73656e73655f72617465020a636c69656e742d69641174312d71756f74612d766563746f7273000000",
+            "fields": {
+                "messageSize": 86,
+                "correlationId": 6007,
+                "headerTaggedFields": [],
                 "throttleTimeMs": 0,
                 "entries": [
                     {

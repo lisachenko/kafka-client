@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\ClientQuotaValueData;
  * `ClientQuotaAlteration.Op` of the Java admin client, whose `value` is a nullable `Double` for exactly the same
  * reason: the api has no separate "unset" operation, it has a `remove` flag next to a value the broker ignores.
  *
- * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0)"
+ * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0 and v1)"
  */
 final class ClientQuotaAlterationOp
 {

@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Admin;
  * answers the quota that is attached to a `user` *and* that `client-id` together. With `true` the answer carries
  * only entities whose set of types is exactly the set the filter named.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
  */
 final class ClientQuotaFilter
 {

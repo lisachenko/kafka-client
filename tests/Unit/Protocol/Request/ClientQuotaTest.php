@@ -29,20 +29,24 @@ use Protocol\Kafka\Protocol\Data\ClientQuotaEntityData;
 use Protocol\Kafka\Protocol\Data\ClientQuotaOpData;
 use Protocol\Kafka\Protocol\Data\ClientQuotaValueData;
 use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequestV0;
 use Protocol\Kafka\Protocol\Request\AlterClientQuotasResponse;
+use Protocol\Kafka\Protocol\Request\AlterClientQuotasResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponseV0;
 
 /**
  * Byte-exact tests for the two client-quota apis of KIP-546 (keys 48 and 49, Kafka 2.6).
  *
  * They are the only apis of this protocol that carry a **`float64`** - eight bytes of an IEEE 754 double in
- * network order - and their version 0 is a **plain** frame although Kafka 2.6 is well past KIP-482:
- * `DescribeClientQuotasRequest.json` @ 2.6.3 and @ 2.7.2 both declare `"flexibleVersions": "none"`, and only Kafka
- * 2.8 adds the flexible version 1.
+ * network order - and the last pair of the line to become compact: their version 0 is a **plain** frame although
+ * Kafka 2.6 is well past KIP-482 (`DescribeClientQuotasRequest.json` @ 2.6.3 and @ 2.7.2 both declare
+ * `"flexibleVersions": "none"`), and only Kafka **2.8** adds the flexible version 1. This client speaks both.
  *
- * @see docs/protocol/2.8.md, sections "DescribeClientQuotas API (key 48, v0)" and
- *      "AlterClientQuotas API (key 49, v0)"
+ * @see docs/protocol/2.8.md, sections "DescribeClientQuotas API (key 48, v0 and v1)" and
+ *      "AlterClientQuotas API (key 49, v0 and v1)"
  */
 #[CoversClass(DescribeClientQuotasRequest::class)]
 #[CoversClass(DescribeClientQuotasResponse::class)]
@@ -95,23 +99,40 @@ final class ClientQuotaTest extends TestCase
         . '00000001' . '0009' . '636c69656e742d6964' . '0006' . '6576656e7473'
         . '00000001' . '0012' . '70726f64756365725f627974655f72617465' . '4090000000000000';
 
-    public function testTheDescribeRequestIsPackedAccordingToTheSpec(): void
+    /**
+     * The very same filter in the flexible version 1 of Kafka 2.8, which is two bytes shorter.
+     */
+    private const string DESCRIBE_REQUEST_V1_HEX = '00000025'
+        . '0030'
+        . '0001'
+        . '00000009'
+        . '0004' . '74657374'
+        . '00'
+        . '02'
+        . '0a' . '636c69656e742d6964'
+        . '00'
+        . '07' . '6576656e7473'
+        . '00'
+        . '00'
+        . '00';
+
+    public function testTheDescribeRequestIsPackedInBothEncodings(): void
     {
         $components = [ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, 'events')->toData()];
-        $request    = new DescribeClientQuotasRequest($components, false, 'test', 9);
 
-        self::assertSame(self::DESCRIBE_REQUEST_V0_HEX, bin2hex((string) $request));
-        self::assertSame(ApiKeys::DESCRIBE_CLIENT_QUOTAS, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion());
+        $plain    = new DescribeClientQuotasRequestV0($components, false, 'test', 9);
+        $flexible = new DescribeClientQuotasRequest($components, false, 'test', 9);
+
+        self::assertSame(self::DESCRIBE_REQUEST_V0_HEX, bin2hex((string) $plain));
+        self::assertSame(self::DESCRIBE_REQUEST_V1_HEX, bin2hex((string) $flexible));
+        self::assertSame(ApiKeys::DESCRIBE_CLIENT_QUOTAS, $flexible->getApiKey());
         self::assertFalse(
-            DescribeClientQuotasRequest::isFlexible(),
+            DescribeClientQuotasRequestV0::isFlexible(),
             'Kafka 2.6 added this api after KIP-482 and still without the compact encoding'
         );
-        self::assertSame(
-            DescribeClientQuotasRequest::HEADER_V1,
-            $request->getHeaderVersion(),
-            'so it carries the plain request header, with no tag buffer behind the client id'
-        );
+        self::assertTrue(DescribeClientQuotasRequest::isFlexible(), 'and Kafka 2.8 finally made it compact');
+        self::assertSame(DescribeClientQuotasRequestV0::HEADER_V1, $plain->getHeaderVersion());
+        self::assertSame(DescribeClientQuotasRequest::HEADER_V2, $flexible->getHeaderVersion());
     }
 
     /**
@@ -138,7 +159,7 @@ final class ClientQuotaTest extends TestCase
 
     public function testTheDescribeAnswerCarriesTheQuotasAsDoubles(): void
     {
-        $response = DescribeClientQuotasResponse::unpack(
+        $response = DescribeClientQuotasResponseV0::unpack(
             new StringStream((string) hex2bin(self::DESCRIBE_RESPONSE_V0_HEX))
         );
 
@@ -191,7 +212,7 @@ final class ClientQuotaTest extends TestCase
         self::assertTrue($op->remove);
         self::assertSame(0.0, $op->value, 'the Java client writes NaN here, this one writes zero');
 
-        $request = new AlterClientQuotasRequest([$alteration->toData()], false, 'test', 9);
+        $request = new AlterClientQuotasRequestV0([$alteration->toData()], false, 'test', 9);
 
         self::assertStringEndsWith(
             '12' . '70726f64756365725f627974655f72617465' . '0000000000000000' . '01' . '00',
@@ -233,7 +254,7 @@ final class ClientQuotaTest extends TestCase
             . '000b' . '4e6f7420616c6c6f776564'
             . '00000001' . '0009' . '636c69656e742d6964' . '0006' . '6576656e7473';
 
-        $response = AlterClientQuotasResponse::unpack(new StringStream((string) hex2bin($hex)));
+        $response = AlterClientQuotasResponseV0::unpack(new StringStream((string) hex2bin($hex)));
 
         self::assertCount(1, $response->entries);
         self::assertSame(KafkaException::INVALID_REQUEST, $response->entries[0]->errorCode);

@@ -22,7 +22,7 @@ use Protocol\Kafka\Protocol\Data\ClientQuotaEntityData;
  * attaches a quota to a combination as readily as to a single name, and a `null` name means the `<default>` entity
  * of that type - the quota that applies to everybody of that type who has none of their own.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
  */
 final class ClientQuotaEntity
 {

@@ -1,0 +1,100 @@
+{
+    "api": "describe-cluster",
+    "apiKey": 60,
+    "section": "DescribeCluster API (key 60, v0)",
+    "description": "Wire vectors of the DescribeCluster API (key 60, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describecluster.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "DescribeCluster request v0 (Kafka 2.8, KIP-700) **without** the acl flag - the smallest request of this protocol: the request header v2 and a single boolean, and the two tag buffers that a flexible frame always carries.",
+            "hex": "00000024003c000000001bbd00176b61666b612d636c69656e742d74312d766563746f7273000000",
+            "fields": {
+                "messageSize": 36,
+                "apiKey": 60,
+                "apiVersion": 0,
+                "correlationId": 7101,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "includeClusterAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "describecluster.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the container: the error code 0, the cluster id, the controller id 0 and the one broker of the cluster with a **null** rack. `cluster_authorized_operations` is `80 00 00 00` - `Integer.MIN_VALUE`, the default of the specification, which is what a request that did not ask for the bit field is answered with and not an error.",
+            "hex": "0000004100001bbd0000000000000000176e53424e77784662517961584c4e71725946567065770000000002000000000a3132372e302e302e310000238400008000000000",
+            "fields": {
+                "messageSize": 65,
+                "correlationId": 7101,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "clusterId": "nSBNwxFbQyaXLNqrYFVpew",
+                "controllerId": 0,
+                "brokers": [
+                    {
+                        "brokerId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterAuthorizedOperations": -2147483648
+            }
+        },
+        {
+            "id": "describecluster.request.v0.with-operations",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same request with `include_cluster_authorized_operations` set: one byte differs.",
+            "hex": "00000024003c000000001bbe00176b61666b612d636c69656e742d74312d766563746f7273000100",
+            "fields": {
+                "messageSize": 36,
+                "apiKey": 60,
+                "apiVersion": 0,
+                "correlationId": 7102,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "includeClusterAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "describecluster.response.v0.with-operations",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeClusterResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "And its answer, whose last field is now **8096** (`00 00 1f a0`, `0b1111110100000`) - the bits 5, 7, 8, 9, 10, 11 and 12 of `AclOperation` @ 2.8.2, i.e. `CREATE`, `ALTER`, `DESCRIBE`, `CLUSTER_ACTION`, `DESCRIBE_CONFIGS`, `ALTER_CONFIGS` and `IDEMPOTENT_WRITE`: the whole set `AclEntry.supportedOperations(CLUSTER)` names, because the container runs without an authorizer and allows everything.",
+            "hex": "0000004100001bbe0000000000000000176e53424e77784662517961584c4e71725946567065770000000002000000000a3132372e302e302e3100002384000000001fa000",
+            "fields": {
+                "messageSize": 65,
+                "correlationId": 7102,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "clusterId": "nSBNwxFbQyaXLNqrYFVpew",
+                "controllerId": 0,
+                "brokers": [
+                    {
+                        "brokerId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterAuthorizedOperations": 8096
+            }
+        }
+    ]
+}
