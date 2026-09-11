@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DescribeConfigsRequestV1} is the same frame with the version field of Kafka 1.1.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
  */
 class DescribeConfigsRequest extends AbstractRequest
 {
@@ -64,7 +64,7 @@ class DescribeConfigsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * Resources to describe, in the order of the request
@@ -79,6 +79,7 @@ class DescribeConfigsRequest extends AbstractRequest
     /**
      * @param list<DescribeConfigsRequestResource> $resources     Resources to describe
      * @param bool                                 $includeSynonyms Ask for the synonyms of every option (version 1)
+     * @param bool                                 $includeDocumentation Ask for the documentation (version 3)
      * @param string                               $clientId      A user specified identifier for the client
      * @param int                                  $correlationId A user-supplied value the broker passes back
      */
@@ -90,6 +91,12 @@ class DescribeConfigsRequest extends AbstractRequest
          * @since Version 1 of protocol
          */
         protected readonly bool $includeSynonyms = false,
+        /**
+         * Whether every entry of the answer should carry the documentation string of its option
+         *
+         * @since Version 3 of protocol
+         */
+        protected readonly bool $includeDocumentation = false,
         string $clientId = '',
         int $correlationId = 0
     ) {
@@ -109,6 +116,9 @@ class DescribeConfigsRequest extends AbstractRequest
         ];
         if (static::VERSION >= 1) {
             $body['includeSynonyms'] = BinarySchema::TYPE_BOOLEAN;
+        }
+        if (static::VERSION >= 3) {
+            $body['includeDocumentation'] = BinarySchema::TYPE_BOOLEAN;
         }
 
         return $header + $body;
