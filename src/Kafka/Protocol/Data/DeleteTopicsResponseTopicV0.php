@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * response and may return a THROTTLING_QUOTA_EXCEEDED error", `DeleteTopicsResponse.json` @ 2.7.2); every version
  * below it ends after the error code, which is what this class only lowers the version constant for.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 final class DeleteTopicsResponseTopicV0 extends DeleteTopicsResponseTopic
 {

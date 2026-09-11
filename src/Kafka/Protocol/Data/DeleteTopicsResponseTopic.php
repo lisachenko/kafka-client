@@ -32,19 +32,33 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * only marked for deletion because the request carried a timeout of 0 with 7 (RequestTimedOut), and every topic of
  * the request with 41 (NotController) when the broker is not the active controller.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 class DeleteTopicsResponseTopic implements BinarySchemaInterface
 {
     /**
      * Version of the entry this class stands for, the one Kafka 2.7 gave an error message
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
-     * Name of the topic that was requested
+     * The `topic_id` of an answer that names the topic by its name alone: 16 zero bytes
+     *
+     * @since Version 6 of protocol
      */
-    public string $topic;
+    public const string NO_TOPIC_ID = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+
+    /**
+     * Name of the topic that was requested, `null` for a topic the request named by its id alone
+     */
+    public ?string $topic;
+
+    /**
+     * Id of the deleted topic as the raw 16 bytes of its UUID (KIP-516), {@see self::NO_TOPIC_ID} below version 6
+     *
+     * @since Version 6 of protocol
+     */
+    public string $topicId = self::NO_TOPIC_ID;
 
     /**
      * Error code of this topic, 0 when it was deleted
@@ -64,9 +78,13 @@ class DeleteTopicsResponseTopic implements BinarySchemaInterface
     public static function getScheme(): array
     {
         $scheme = [
-            'topic'     => BinarySchema::TYPE_STRING,
-            'errorCode' => BinarySchema::TYPE_INT16,
+            // The name became nullable with the version 6, which may name a topic by its id alone
+            'topic' => static::VERSION >= 6 ? BinarySchema::TYPE_NULLABLE_STRING : BinarySchema::TYPE_STRING,
         ];
+        if (static::VERSION >= 6) {
+            $scheme['topicId'] = BinarySchema::TYPE_UUID;
+        }
+        $scheme['errorCode'] = BinarySchema::TYPE_INT16;
         if (static::VERSION >= 5) {
             $scheme['errorMessage'] = BinarySchema::TYPE_NULLABLE_STRING;
         }

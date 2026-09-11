@@ -14,18 +14,18 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 /**
- * CreateTopics answer of version 5, the frame of version 6 with a lower version field
+ * CreateTopics request of version 6, the frame of version 7 with a lower version field
  *
- * The version 6 of KIP-599 adds no field to the answer; what it adds is the error code 89
- * `ThrottlingQuotaExceeded` that a topic entry may carry, and with it the `throttle_time_ms` the client has to wait
- * before it retries that topic.
+ * "Version 7 is the same as version 6" (`CreateTopicsRequest.json` @ 2.8.2): what Kafka 2.8 added with the version
+ * 7 is in the **answer**, which carries the `topic_id` of the new topic (KIP-516). The request of the versions 5, 6
+ * and 7 is one and the same frame.
  *
  * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
-final class CreateTopicsResponseV5 extends CreateTopicsResponse
+final class CreateTopicsRequestV6 extends CreateTopicsRequest
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 }

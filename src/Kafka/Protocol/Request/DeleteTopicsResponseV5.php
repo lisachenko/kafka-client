@@ -14,21 +14,17 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 /**
- * DeleteTopics request of version 0 (Kafka 0.10.1), the frame of version 1 with a lower version field
+ * DeleteTopics answer of version 5, the answer of version 6 without the topic id of KIP-516
  *
- * <pre>
- *   DeleteTopics Request (Version: 0) => [topics] timeout
- * </pre>
- *
- * `DELETE_TOPICS_REQUEST_V1 = DELETE_TOPICS_REQUEST_V0` in `Protocol.java` @ 0.11.0.3: only the answer of version 1
- * is different ({@see DeleteTopicsResponseV0}).
+ * Kafka 2.8 put the **`topic_id`** of the deleted topic into every result with the version 6 and made the name
+ * nullable with it; the version 5 carries the name, the error code and the error message it added itself.
  *
  * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
-final class DeleteTopicsRequestV0 extends DeleteTopicsRequest
+final class DeleteTopicsResponseV5 extends DeleteTopicsResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 5;
 }

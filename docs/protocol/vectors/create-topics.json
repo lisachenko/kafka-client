@@ -1,8 +1,8 @@
 {
     "api": "create-topics",
     "apiKey": 19,
-    "section": "CreateTopics API (key 19, v0 to v6)",
-    "description": "Wire vectors of the CreateTopics API (key 19, v0 to v6), replayed by tests/Compliance.",
+    "section": "CreateTopics API (key 19, v0 to v7)",
+    "description": "Wire vectors of the CreateTopics API (key 19, v0 to v7), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "createtopics.request.v1",
@@ -520,7 +520,7 @@
         {
             "id": "createtopics.request.v6",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequestV6",
             "version": 6,
             "source": "broker",
             "description": "CreateTopics request v6 (Kafka 2.7, KIP-599): the frame of version 5 byte for byte - the version is the promise that the client understands the error code 89 `ThrottlingQuotaExceeded` and repeats the topics it names itself, instead of having its request held back by the controller mutation quota.",
@@ -553,7 +553,7 @@
         {
             "id": "createtopics.response.v6",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponseV6",
             "version": 6,
             "source": "broker",
             "description": "CreateTopics answer v6: the KIP-525 answer of version 5 unchanged, with the configuration of the new topic and an empty tagged section.",

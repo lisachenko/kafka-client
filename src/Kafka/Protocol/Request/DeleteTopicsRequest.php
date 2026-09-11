@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\DeleteTopicsRequestTopic;
 
 /**
  * DeleteTopics, version 3: asks the controller to delete one or more topics (ApiKey 20, Kafka 0.11)
@@ -69,7 +70,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * section. The engine does that from {@see self::FLEXIBLE_VERSION} alone; {@see DeleteTopicsRequestV3} is the same
  * body in the encoding of Kafka 2.1.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 class DeleteTopicsRequest extends AbstractRequest
 {
@@ -81,7 +82,7 @@ class DeleteTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * @inheritdoc
@@ -94,6 +95,15 @@ class DeleteTopicsRequest extends AbstractRequest
      * @param string       $clientId      A user specified identifier for the client making the request
      * @param int          $correlationId A user-supplied value that the broker passes back unmodified
      */
+    /**
+     * The topics of a version 6 request, built from the names above
+     *
+     * @var list<DeleteTopicsRequestTopic>
+     *
+     * @since Version 6 of protocol
+     */
+    protected readonly array $topicStates;
+
     public function __construct(
         /**
          * Names of the topics to delete
@@ -108,6 +118,13 @@ class DeleteTopicsRequest extends AbstractRequest
         string $clientId = '',
         int $correlationId = 0
     ) {
+        // Kafka 2.8 replaced the flat name array by a structure that names a topic by its name OR by its id; a
+        // topic of this client is always a named one, so every entry carries the zero id
+        $this->topicStates = array_values(array_map(
+            static fn(string $topic): DeleteTopicsRequestTopic => new DeleteTopicsRequestTopic($topic),
+            $topics
+        ));
+
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
@@ -118,9 +135,11 @@ class DeleteTopicsRequest extends AbstractRequest
     {
         $header = parent::getScheme();
 
-        return $header + [
-            'topics'  => [BinarySchema::TYPE_STRING],
-            'timeout' => BinarySchema::TYPE_INT32,
-        ];
+        $body = static::VERSION >= 6
+            ? ['topicStates' => [DeleteTopicsRequestTopic::class]]
+            : ['topics' => [BinarySchema::TYPE_STRING]];
+        $body['timeout'] = BinarySchema::TYPE_INT32;
+
+        return $header + $body;
     }
 }

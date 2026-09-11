@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * which is why this class only lowers the version constant: the version 3 of Kafka 2.1 is what a broker below
  * Kafka 2.4 speaks, and it is the version whose number promises that the client understands the error code 73.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 final class DeleteTopicsRequestV3 extends DeleteTopicsRequest
 {

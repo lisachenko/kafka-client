@@ -17,6 +17,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopic;
 use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV1;
+use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV5;
 
 /**
  * CreateTopics response object, version 4 (key 19)
@@ -65,14 +66,14 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV1;
  * the new topic ended up with, plus the tagged field 0 `topic_config_error_code` for the case in which the broker
  * could not read that configuration back. {@see CreateTopicsResponseV4} is the frame of Kafka 2.4 without any of it.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 class CreateTopicsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 
     /**
      * @inheritdoc
@@ -116,7 +117,8 @@ class CreateTopicsResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 5 => CreateTopicsResponseTopic::class,
+            static::VERSION >= 7 => CreateTopicsResponseTopic::class,
+            static::VERSION >= 5 => CreateTopicsResponseTopicV5::class,
             static::VERSION >= 1 => CreateTopicsResponseTopicV1::class,
             default              => CreateTopicsResponseTopicV0::class,
         };

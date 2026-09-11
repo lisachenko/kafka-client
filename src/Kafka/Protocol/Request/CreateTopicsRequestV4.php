@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * tagged-field sections of KIP-482. This class is therefore what a broker below Kafka 2.4 - or one that does not
  * speak the flexible encoding of this api - is sent.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsRequestV4 extends CreateTopicsRequest
 {

@@ -1070,7 +1070,7 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a CreateTopics answer of version **5**, the flexible one the client sends (KIP-482 and KIP-525)
+     * Builds a CreateTopics answer of version **7**, the flexible one the client sends (KIP-482 and KIP-525)
      *
      * The frame is the response header v1 - a correlation id and a tag buffer - followed by the throttle time, a
      * COMPACT array of topic results and the tag buffer of the body. Every result ends in the partition count, the
@@ -1083,7 +1083,8 @@ final class AdminClientTest extends TestCase
     {
         $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => [$errorCode, $errorMessage]) {
-            $body .= self::compactString((string) $topic) . pack('n', $errorCode);
+            // The version 7 of Kafka 2.8 put the topic id of KIP-516 between the name and the error code
+            $body .= self::compactString((string) $topic) . str_repeat("\x00", 16) . pack('n', $errorCode);
             $body .= self::compactNullableString($errorMessage);
             $body .= pack('N', 0xFFFFFFFF) . pack('n', 0xFFFF) . "\x00" . "\x00";
         }
@@ -1122,7 +1123,7 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a DeleteTopics answer of version **5**, the one the client sends since Kafka 2.7 (KIP-599)
+     * Builds a DeleteTopics answer of version **6**, the one the client sends since Kafka 2.8 (KIP-516)
      *
      * @param array<string, int> $topics Error code of every topic
      */
@@ -1132,7 +1133,8 @@ final class AdminClientTest extends TestCase
         foreach ($topics as $topic => $errorCode) {
             // The version 5 of Kafka 2.7 appended an error message to every topic result; the broker sends the
             // compact null of it for a topic it deleted
-            $body .= self::compactString((string) $topic) . pack('n', $errorCode)
+            // The version 6 of Kafka 2.8 put the topic id of KIP-516 between the name and the error code
+            $body .= self::compactString((string) $topic) . str_repeat("\x00", 16) . pack('n', $errorCode)
                 . self::compactNullableString($errorMessage) . "\x00";
         }
 

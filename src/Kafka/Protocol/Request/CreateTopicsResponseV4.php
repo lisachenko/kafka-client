@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * configuration of the new topic arrive with the version 5 of KIP-525, and so does the flexible encoding of
  * KIP-482.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsResponseV4 extends CreateTopicsResponse
 {

@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
 use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopicV5;
 
 /**
  * DeleteTopics response object, version 3 (key 20)
@@ -58,14 +59,14 @@ use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopicV0;
  * **Kafka 2.4 added the version 4** (KIP-482): the same fields in the flexible encoding, with a tagged-field
  * section at the end of the body and of every topic result. {@see DeleteTopicsResponseV3} is the frame of Kafka 2.1.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 class DeleteTopicsResponse extends AbstractResponse
 {
     /**
      * Version of the DeleteTopics API that this class decodes the answer of
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * @inheritdoc
@@ -108,6 +109,10 @@ class DeleteTopicsResponse extends AbstractResponse
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 5 ? DeleteTopicsResponseTopic::class : DeleteTopicsResponseTopicV0::class;
+        return match (true) {
+            static::VERSION >= 6 => DeleteTopicsResponseTopic::class,
+            static::VERSION >= 5 => DeleteTopicsResponseTopicV5::class,
+            default              => DeleteTopicsResponseTopicV0::class,
+        };
     }
 }

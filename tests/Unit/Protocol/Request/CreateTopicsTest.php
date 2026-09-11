@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV4;
  * answer of version 2 and 3 is the answer of version 1 with the leading `ThrottleTimeMs`; the topic
  * entries are the ones of version 1 in every one of them.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 #[CoversClass(CreateTopicsRequest::class)]
 #[CoversClass(CreateTopicsRequestV2::class)]
