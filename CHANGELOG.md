@@ -84,6 +84,11 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   (`PreservesUnknownTaggedFields`) so that a frame of a later broker survives a decode and encode round trip. The
   two exceptions of the protocol are two overrides: ControlledShutdown v0 has no client id in its header, and the
   **ApiVersions answer keeps the response header v0** whatever its version is (KIP-511).
+- **`Protocol\InlineStruct`** in the schema engine — a scheme entry for a nested object the **specification does
+  not have**, whose fields belong to the structure around it (`'owner' => new InlineStruct(KafkaPrincipal::class)`).
+  It changes nothing in a plain version, where a group of fields and a nested structure are the same bytes, but in
+  a flexible one it keeps the group from being given a tagged-field section of its own. The marker belongs to the
+  **field**, not to the class: the same class is a real structure wherever the specification declares one.
 - **ApiVersions v3** (Kafka 2.4, KIP-511 + KIP-482 + KIP-584) — the first flexible frame this client sends: the
   request carries `client_software_name` = `lisachenko-kafka-client` and `client_software_version` = `2.8` as
   compact strings (a broker refuses a name that does not match `[a-zA-Z0-9](?:[a-zA-Z0-9\-.]*[a-zA-Z0-9])?` with
