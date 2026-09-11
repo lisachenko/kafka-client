@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
 
 /**
- * Offset commit response object, version 4
+ * Offset commit response object, version 6
  *
  * <pre>
- *   OffsetCommit Response (Version: 3 and 4) => throttle_time_ms [responses]
+ *   OffsetCommit Response (Version: 3 to 6) => throttle_time_ms [responses]
  *     throttle_time_ms => INT32     -- since version 3
  *     responses => topic [partition_responses]
  *       topic               => STRING
@@ -34,16 +34,17 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
  * Kafka 0.11) put a `throttle_time_ms` in front of it. Version 4 (KIP-219, Kafka 2.0) did not touch the answer
  * either, it only changed *when* a throttled broker sends it. {@see OffsetCommitResponseV3},
  * {@see OffsetCommitResponseV2}, {@see OffsetCommitResponseV1} and {@see OffsetCommitResponseV0} lower the version
- * constant this scheme follows.
+ * constant this scheme follows, and so do {@see OffsetCommitResponseV4} and {@see OffsetCommitResponseV5}: the
+ * answer is one and the same layout from version 3 on, because neither KIP-211 nor KIP-320 touched it.
  *
- * @see docs/protocol/2.8.md, sections "OffsetCommit API (key 8, v0 to v4)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "OffsetCommit API (key 8, v0 to v6)" and "Quotas and throttle time"
  */
 class OffsetCommitResponse extends AbstractResponse
 {
     /**
      * Version of the OffsetCommit API that this class decodes the answer of
      */
-    public const int VERSION = 4;
+    public const int VERSION = 6;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

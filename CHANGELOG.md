@@ -123,6 +123,25 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   request header **v2**, because the broker derives the header version from the version it was asked
   for.
 
+### Kafka 2.1
+
+- **OffsetCommit v5 (KIP-211)** — the version that **removes** `retention_time` from the frame. The
+  committed offsets of a group expire `offsets.retention.minutes` after the **group** became empty
+  from Kafka 2.1 on, so a per-commit retention has no place any more: the field has the versions
+  `2-4` and is not sent as -1. `OffsetCommitRequestV4` is the last version that writes it, and a v5
+  commit is stored with the `__consumer_offsets` value schema v3, which has no expiry at all.
+- **OffsetCommit v6 and OffsetFetch v5 (KIP-320)** — the `committed_leader_epoch` of a committed
+  offset: the epoch of the leader it was read from, so that a consumer that resumes from it can be
+  told that the log was truncated behind its back. It lives on
+  **`Consumer\OffsetAndMetadata::$leaderEpoch`** as a nullable int (`null` is the -1 of "not known",
+  the empty `Optional` of the Java `OffsetAndMetadata.leaderEpoch()`), travels through
+  `Client::commitGroupOffsets()` and comes back on
+  `Protocol\Data\OffsetFetchResponsePartition::$leaderEpoch`, whose `toOffsetAndMetadata()` is the
+  way into the value object. `OffsetCommitRequestV5`/`…V4`, `OffsetFetchRequestV4` and the
+  `…PartitionV0`/`…TopicV0` entries keep the versions below; six more wire vectors were captured
+  from the container, and the broker stores whatever epoch it is given — 74 and 75 are answered by
+  the fetch path, not by the coordinator.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

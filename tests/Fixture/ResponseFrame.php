@@ -388,13 +388,15 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetFetch response (api key 9, v3 - the version this client sends)
+     * Builds an OffsetFetch response (api key 9, v5 - the version this client sends)
      *
-     * v0 and v1 share the response format, v2 appended the group-level error code, and v3 (KIP-124) put the
-     * throttle time in front of the topics; the answer therefore carries a number at each of its ends.
+     * v0 and v1 share the response format, v2 appended the group-level error code, v3 (KIP-124) put the throttle
+     * time in front of the topics - the answer therefore carries a number at each of its ends - and v5 (KIP-320)
+     * inserted the `committed_leader_epoch` of every partition between its offset and its metadata.
      *
-     * @param array<string, array<int, array{int, int, string}>> $topics topic => partition =>
-     *        [errorCode, offset, metadata]
+     * @param array<string, array<int, array{int, int, string}|array{int, int, string, int}>> $topics topic =>
+     *        partition => [errorCode, offset, metadata] with an optional fourth element, the committed leader
+     *        epoch, which defaults to the -1 of an offset that was committed without one
      * @param int|null $groupErrorCode The group-level error code of version 2 and above, null for v0 or v1
      */
     public static function offsetFetch(int $correlationId, array $topics, ?int $groupErrorCode = 0): string
@@ -402,9 +404,11 @@ final class ResponseFrame
         $body = pack('N', 0) . pack('N', count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= self::string((string) $topic) . pack('N', count($partitions));
-            foreach ($partitions as $partitionId => [$errorCode, $offset, $metadata]) {
+            foreach ($partitions as $partitionId => $partition) {
+                [$errorCode, $offset, $metadata] = $partition;
                 $body .= pack('N', $partitionId)
                     . pack('J', $offset)
+                    . pack('N', $partition[3] ?? -1)
                     . self::string($metadata)
                     . pack('n', $errorCode);
             }

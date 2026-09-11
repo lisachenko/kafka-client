@@ -2,16 +2,17 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **388** of them in **36** files: **70** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **394** of them in **36** files: **76** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
-(20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps - and of the other 318, **229** were
+(20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus the 6 frames of what Kafka
+**2.1** added to OffsetCommit and OffsetFetch - and of the other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
 and `apiversions.response.v0.unsupported-version`, which gained the api row of KIP-511.
 
-What this line has captured so far is the KIP-219 version bump of the ten group apis of Kafka 2.0 — OffsetCommit
+What the group apis of this line have captured so far is the KIP-219 version bump of Kafka 2.0 — OffsetCommit
 v4, OffsetFetch v4, FindCoordinator v2, JoinGroup v3, Heartbeat v2, LeaveGroup v2, SyncGroup v2, DescribeGroups v2,
 ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from one life of the group
 `t3-kip219-group` — and the same bump of the four apis the producer and the consumer send:
@@ -23,6 +24,9 @@ ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from on
 | `offsets.json` | 2 of 16 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header |
 | `metadata.json` | 2 of 21 | **Metadata v6** (KIP-219), likewise |
 | `offset-for-leader-epoch.json` | 2 of 6 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset |
+
+What Kafka 2.1 added to the two offset apis: OffsetCommit v5 (the frame without
+`retention_time`, KIP-211), OffsetCommit v6 and OffsetFetch v5 (the `committed_leader_epoch` of KIP-320).
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
