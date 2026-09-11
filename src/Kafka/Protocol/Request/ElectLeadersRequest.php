@@ -19,10 +19,11 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ElectLeadersRequestTopicPartitions;
 
 /**
- * ElectLeaders, version 0: asks the controller to elect the preferred leader of partitions (ApiKey 43, Kafka 2.2)
+ * ElectLeaders, version 1: asks the controller to elect the leader of partitions (ApiKey 43, Kafka 2.2)
  *
  * <pre>
- *   ElectLeaders Request (Version: 0) => [topic_partitions] timeout_ms
+ *   ElectLeaders Request (Version: 0 and 1) => election_type [topic_partitions] timeout_ms
+ *     election_type    => INT8                      -- since version 1: 0 preferred, 1 unclean
  *     topic_partitions => topic [partition_id]      -- NULLABLE: null means every partition of the cluster
  *       topic        => STRING
  *       partition_id => INT32
@@ -32,10 +33,13 @@ use Protocol\Kafka\Protocol\Data\ElectLeadersRequestTopicPartitions;
  * KIP-183 added the api in Kafka 2.2 under the name **ElectPreferredLeaders**: it does through the protocol what
  * `kafka-preferred-replica-election.sh` did by writing the ZooKeeper node `/admin/preferred_replica_election`,
  * i.e. it moves the leadership of a partition back to the **preferred replica** - the first broker of the
- * assignment - when that replica is in the ISR. Kafka 2.4 renamed the api to ElectLeaders and gave its version 1
- * a leading `election_type` byte for the unclean election of KIP-460; version 0 has no such field and can only ask
- * for the preferred one, which is why {@see \Protocol\Kafka\Admin\AdminClient::electLeaders()} refuses
- * {@see ElectionType::UNCLEAN} on this line.
+ * assignment - when that replica is in the ISR.
+ *
+ * **Kafka 2.4 renamed the api to ElectLeaders and added the version 1** (KIP-460), whose request carries a
+ * LEADING `election_type` byte: 0 is the preferred election of KIP-183 and 1 is the **unclean** one, which makes
+ * the first live replica the leader even when no replica is in sync and accepts the data loss that comes with it.
+ * {@see ElectLeadersRequestV0} is the frame without that byte, which can only ever ask for the preferred election;
+ * a request of it is read by the broker as `ElectionType.PREFERRED`.
  *
  * **Only the active controller serves it** (`KafkaApis.handleElectReplicaLeader` @ 2.8.2 requires `zkSupport` and
  * hands the partitions to `ReplicaManager.electLeaders`, which asks the controller); a broker that is not the
@@ -53,7 +57,7 @@ use Protocol\Kafka\Protocol\Data\ElectLeadersRequestTopicPartitions;
  * `timeout_ms` is how long the controller waits for the elections to finish before it answers; its default in the
  * Java client is 60 seconds, which is what {@see self::DEFAULT_TIMEOUT_MS} carries.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
  */
 class ElectLeadersRequest extends AbstractRequest
 {
@@ -65,7 +69,7 @@ class ElectLeadersRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * Timeout of the Java client, `ElectLeadersRequest.json` @ 2.8.2: `"default": "60000"`
@@ -88,6 +92,7 @@ class ElectLeadersRequest extends AbstractRequest
      * @param array<string, list<int>|ElectLeadersRequestTopicPartitions>|null $topicPartitions Partitions to elect
      *        a leader for, as topic => partition ids, or {@see self::ALL_PARTITIONS}
      * @param int    $timeoutMs     How long the controller waits for the elections, in milliseconds
+     * @param int    $electionType  Kind of election, one of the {@see ElectionType} constants (version 1)
      * @param string $clientId      A user specified identifier for the client making the request
      * @param int    $correlationId A user-supplied value that the broker passes back unmodified
      */
@@ -97,6 +102,12 @@ class ElectLeadersRequest extends AbstractRequest
          * Milliseconds the controller waits for the elections to finish before it answers
          */
         protected readonly int $timeoutMs = self::DEFAULT_TIMEOUT_MS,
+        /**
+         * Kind of election the controller should perform, one of the {@see ElectionType} constants
+         *
+         * @since Version 1 of protocol
+         */
+        protected readonly int $electionType = ElectionType::PREFERRED,
         string $clientId = '',
         int $correlationId = 0
     ) {
@@ -121,14 +132,17 @@ class ElectLeadersRequest extends AbstractRequest
     public static function getScheme(): array
     {
         $header = parent::getScheme();
-
-        return $header + [
-            'topicPartitions' => [
-                'topic'                     => ElectLeadersRequestTopicPartitions::class,
-                BinarySchema::FLAG_NULLABLE => true,
-            ],
-            'timeoutMs'       => BinarySchema::TYPE_INT32,
+        $body   = [];
+        if (static::VERSION >= 1) {
+            $body['electionType'] = BinarySchema::TYPE_INT8;
+        }
+        $body['topicPartitions'] = [
+            'topic'                     => ElectLeadersRequestTopicPartitions::class,
+            BinarySchema::FLAG_NULLABLE => true,
         ];
+        $body['timeoutMs']       = BinarySchema::TYPE_INT32;
+
+        return $header + $body;
     }
 
     /**
@@ -147,5 +161,15 @@ class ElectLeadersRequest extends AbstractRequest
     public function getTimeoutMs(): int
     {
         return $this->timeoutMs;
+    }
+
+    /**
+     * Returns the kind of election this request asks for, one of the {@see ElectionType} constants
+     *
+     * A version 0 request has no field for it and is read by the broker as {@see ElectionType::PREFERRED}.
+     */
+    public function getElectionType(): int
+    {
+        return $this->electionType;
     }
 }

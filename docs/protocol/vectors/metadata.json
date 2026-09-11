@@ -1,8 +1,8 @@
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v7)",
-    "description": "Wire vectors of the Metadata API (key 3, v0 to v7), replayed by tests/Compliance.",
+    "section": "Metadata API (key 3, v0 to v8)",
+    "description": "Wire vectors of the Metadata API (key 3, v0 to v8), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
@@ -793,7 +793,7 @@
         {
             "id": "metadata.request.v7",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV7",
             "version": 7,
             "source": "broker",
             "description": "Metadata request v7 for one named topic. The body is the body of version 4, byte for byte - MetadataRequest.json @ 2.8.2 has no field between version 4 and version 8 - and what version 7 states is that the client understands the leader_epoch the answer gained.",
@@ -813,7 +813,7 @@
         {
             "id": "metadata.response.v7",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer of that request: the leader_epoch that version 7 (KIP-320) inserted behind the leader id of every partition. It is 0 on this container, the epoch of a partition that has been led by the same broker since it was created; every leader election raises it by one.",
@@ -854,6 +854,124 @@
                         ]
                     }
                 }
+            }
+        },
+        {
+            "id": "metadata.request.v8",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "Metadata request v8 (Kafka 2.3, KIP-430) for one named topic, with both booleans of the version ON: include_cluster_authorized_operations and include_topic_authorized_operations sit behind the allow_auto_topic_creation of version 4, in that order.",
+            "hex": "0000002200030008000001910002743200000001000d74322d32332d766563746f7273000101",
+            "fields": {
+                "messageSize": 34,
+                "apiKey": 3,
+                "apiVersion": 8,
+                "correlationId": 401,
+                "clientId": "t2",
+                "topics": [
+                    "t2-23-vectors"
+                ],
+                "allowAutoTopicCreation": false,
+                "includeClusterAuthorizedOperations": true,
+                "includeTopicAuthorizedOperations": true
+            }
+        },
+        {
+            "id": "metadata.response.v8",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer of that request: every topic entry ends with a topic_authorized_operations bitfield, behind its partitions, and the frame ends with the cluster_authorized_operations. A broker without an authorizer - the container has none - answers the full set of the operations of the resource; the bits are the codes of AclOperation @ 2.8.2.",
+            "hex": "000000810000019100000000000000010000000000093132372e302e302e3100002384ffff00166e53424e77784662517961584c4e717259465670657700000000000000010000000d74322d32332d766563746f727300000000010000000000000000000000000000000000010000000000000001000000000000000000000df800001fa0",
+            "fields": {
+                "messageSize": 129,
+                "correlationId": 401,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "nSBNwxFbQyaXLNqrYFVpew",
+                "controllerId": 0,
+                "topics": {
+                    "t2-23-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-23-vectors",
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": 3576
+                    }
+                },
+                "clusterAuthorizedOperations": 8096
+            }
+        },
+        {
+            "id": "metadata.response.v8.not-requested",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer of the same version 8 request with both booleans OFF, which is what this client sends by default: the two bitfields are there - they are fields of the version, not of the question - and carry 80 00 00 00, Integer.MIN_VALUE, \"you did not ask\". That is not the empty set, which is the bitfield 0.",
+            "hex": "000000810000019200000000000000010000000000093132372e302e302e3100002384ffff00166e53424e77784662517961584c4e717259465670657700000000000000010000000d74322d32332d766563746f72730000000001000000000000000000000000000000000001000000000000000100000000000000008000000080000000",
+            "fields": {
+                "messageSize": 129,
+                "correlationId": 402,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "nSBNwxFbQyaXLNqrYFVpew",
+                "controllerId": 0,
+                "topics": {
+                    "t2-23-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-23-vectors",
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": -2147483648
+                    }
+                },
+                "clusterAuthorizedOperations": -2147483648
             }
         }
     ]

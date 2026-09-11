@@ -1169,7 +1169,10 @@ final class KafkaConsumerTest extends TestCase
 
         $consumer->unsubscribe();
 
-        self::assertSame([['groupId' => self::GROUP, 'memberId' => 'member-1']], $client->leaves);
+        self::assertSame(
+            [['groupId' => self::GROUP, 'memberId' => 'member-1', 'instanceId' => null]],
+            $client->leaves
+        );
         self::assertSame([], $consumer->assignment());
         self::assertSame([], $consumer->subscription());
         self::assertSame([], $consumer->poll(10), 'a consumer without a subscription fetches nothing');
@@ -1191,6 +1194,54 @@ final class KafkaConsumerTest extends TestCase
         self::assertSame('member-1', $client->commits[0]['memberId']);
         self::assertCount(1, $client->leaves);
         self::assertSame([], $consumer->subscription());
+    }
+
+    /**
+     * A static member (KIP-345) names itself in every request of the protocol and never leaves its group
+     */
+    public function testAStaticConsumerSendsItsInstanceIdAndDoesNotLeaveOnClose(): void
+    {
+        $client                     = $this->clientWithLog([0 => 2]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::GROUP_INSTANCE_ID      => 'one',
+            ConsumerConfig::AUTO_COMMIT_INTERVAL_MS => 60000,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS   => 0,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+        $consumer->poll(10);
+
+        self::assertSame('one', $client->joins[0]['instanceId'], 'the join names the instance');
+        self::assertSame('one', $client->syncs[0]['instanceId'], 'and so does the sync');
+        self::assertSame('one', $client->heartbeats[0]['instanceId'], 'and the heartbeat');
+        self::assertSame('one', $client->commits[0]['instanceId'], 'and the commit');
+
+        $consumer->close();
+
+        self::assertSame([], $client->leaves, 'a static member keeps its partitions while it is away');
+        self::assertSame([self::TOPIC => [0 => 2]], $client->commits[0]['offsets'], 'it still commits on close');
+    }
+
+    /**
+     * An empty `group.instance.id` is not an instance id: the broker answers one with 42 (InvalidRequest)
+     */
+    public function testAnEmptyInstanceIdLeavesTheConsumerDynamic(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::GROUP_INSTANCE_ID  => '',
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+        $consumer->unsubscribe();
+
+        self::assertNull($client->joins[0]['instanceId']);
+        self::assertCount(1, $client->leaves, 'and a dynamic member does leave its group');
     }
 
     public function testAMemberThatLeavesAGroupItIsNotInAnyMoreIsNotAnError(): void
