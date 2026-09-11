@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `{ "name": "CommittedLeaderEpoch", "type": "int32", "versions": "2+", "default": "-1" }` in
  * `TxnOffsetCommitRequest.json` @ 2.8.2. It is the epoch of the leader that produced the record the offset points
  * behind, and the coordinator stores it with the offset so that a later fetch can tell a truncated log from a
- * current one. A client that does not track epochs sends {@see OffsetAndMetadata::NO_LEADER_EPOCH} (-1), which is
+ * current one. A client that does not track epochs sends {@see OffsetAndMetadata::UNKNOWN_LEADER_EPOCH} (-1), which is
  * what this client does until the consumer of a later minor learns them; {@see TxnOffsetCommitRequestPartitionV0}
  * is the entry of the versions 0 and 1, which have no such field.
  *
@@ -66,7 +66,7 @@ class TxnOffsetCommitRequestPartition implements BinarySchemaInterface
      *
      * @since Version 2 of protocol
      */
-    public int $committedLeaderEpoch = OffsetAndMetadata::NO_LEADER_EPOCH;
+    public int $committedLeaderEpoch = OffsetAndMetadata::UNKNOWN_LEADER_EPOCH;
 
     /**
      * Free-form metadata the consumer keeps next to the offset, `null` for none
@@ -77,12 +77,13 @@ class TxnOffsetCommitRequestPartition implements BinarySchemaInterface
         int $partition,
         int|OffsetAndMetadata $offset,
         ?string $metadata = null,
-        int $leaderEpoch = OffsetAndMetadata::NO_LEADER_EPOCH
+        ?int $leaderEpoch = null
     ) {
         $this->partition            = $partition;
         $this->offset               = $offset instanceof OffsetAndMetadata ? $offset->offset : $offset;
         $this->metadata             = $offset instanceof OffsetAndMetadata ? $offset->metadata : $metadata;
-        $this->committedLeaderEpoch = $offset instanceof OffsetAndMetadata ? $offset->leaderEpoch : $leaderEpoch;
+        $epoch                      = $offset instanceof OffsetAndMetadata ? $offset->leaderEpoch : $leaderEpoch;
+        $this->committedLeaderEpoch = $epoch ?? OffsetAndMetadata::UNKNOWN_LEADER_EPOCH;
     }
 
     /**
