@@ -69,17 +69,15 @@ class MetadataRequestTopic implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        $scheme = [];
         // The topic id of KIP-516 sits IN FRONT of the name, which is the field order of the json and therefore
         // the wire order, and the name becomes nullable in the same version
         if (static::VERSION >= 10) {
-            $scheme['topicId'] = BinarySchema::TYPE_UUID;
-            $scheme['name']    = BinarySchema::TYPE_NULLABLE_STRING;
-
-            return $scheme;
+            return [
+                'topicId' => BinarySchema::TYPE_UUID,
+                'name'    => BinarySchema::TYPE_NULLABLE_STRING,
+            ];
         }
-        $scheme['name'] = BinarySchema::TYPE_STRING;
 
-        return $scheme;
+        return ['name' => BinarySchema::TYPE_STRING];
     }
 }
