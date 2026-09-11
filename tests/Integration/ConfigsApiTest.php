@@ -556,22 +556,25 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertSame('broker:', $default->key(), 'the resource type 4 with an empty name');
 
         try {
-            $result = $this->admin->alterConfigs([$default->key() => [self::DYNAMIC_OPTION => '17000']]);
-            self::assertSame([$default->key() => null], $result);
-
-            $configs = $this->admin->describeConfigs([$default], null, true);
-            $entry   = $configs[$default->key()]->get(self::DYNAMIC_OPTION);
-
             // The cluster-wide default resource is the one resource of the broker that a unique name cannot
-            // separate: every suite on the shared container writes into the very same `broker:`. So this asserts
-            // a SUPERSET - the option of this test with its value - instead of the exact key list, and the
-            // cleanup below deletes that one option instead of replacing the whole resource.
-            self::assertArrayHasKey(
-                self::DYNAMIC_OPTION,
-                $configs[$default->key()]->entries,
+            // separate: every suite on the shared container writes into the very same `broker:`, and an
+            // `AlterConfigs` of it replaces the WHOLE resource, so another suite can drop this option between the
+            // write and the read. The write is therefore repeated until the read sees it, the assertion is a
+            // SUPERSET - this option with this value - instead of the exact key list, and the cleanup below
+            // deletes that one option instead of replacing the resource.
+            $entry = null;
+            for ($attempt = 0; $attempt < 5 && $entry === null; $attempt++) {
+                $result = $this->admin->alterConfigs([$default->key() => [self::DYNAMIC_OPTION => '17000']]);
+                self::assertSame([$default->key() => null], $result);
+
+                $configs = $this->admin->describeConfigs([$default], null, true);
+                $entry   = $configs[$default->key()]->get(self::DYNAMIC_OPTION);
+            }
+
+            self::assertNotNull(
+                $entry,
                 'the default resource holds the dynamic default configuration, not the options of a broker'
             );
-            self::assertNotNull($entry);
             self::assertSame('17000', $entry->value);
             self::assertSame(ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG, $entry->source);
 
