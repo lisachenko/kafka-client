@@ -69,7 +69,10 @@ final class RecordErrorsTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
-        self::deleteTopic($this->compacted);
+        // The property is only set once setUp() ran past its skip, i.e. only when there is a broker at all
+        if (isset($this->compacted)) {
+            self::deleteTopic($this->compacted);
+        }
 
         parent::tearDown();
     }
