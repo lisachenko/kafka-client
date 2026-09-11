@@ -21,14 +21,14 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
 
 /**
- * Offsets API (key 2, v4), a.k.a. ListOffset
+ * Offsets API (key 2, v5), a.k.a. ListOffset
  *
  * This API describes the valid offset range available for a set of topic-partitions. As with the produce and fetch
  * APIs requests must be directed to the broker that is currently the leader for the partitions in question. This can
  * be determined using the metadata API.
  *
  * <pre>
- *   ListOffsets Request (Version: 4) => replica_id isolation_level [topics]
+ *   ListOffsets Request (Version: 5) => replica_id isolation_level [topics]
  *     replica_id      => INT32
  *     isolation_level => INT8       -- since version 2
  *     topics          => topic [partitions]
@@ -70,12 +70,25 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * and is answered **74** or **75** when that belief is stale - and it stores the epoch of the offset it got, to
  * send it back with its next fetch. {@see OffsetsRequestV3} keeps the version that carries neither.
  *
+ * **Version 5 (Kafka 2.2, KIP-207) sends the very same frame once more** - `ListOffsetsRequest.json` @ 2.8.2:
+ * "Version 5 is the same as version 4" - and what it states is that the client understands **one more error
+ * code** in the answer: **78** `OFFSET_NOT_AVAILABLE`. A leader that was elected moments ago may hold a high
+ * watermark that is still below the start offset of its own epoch, and until it catches up it cannot say where
+ * the end of the log is; `Partition.fetchOffsetForTimestamp` @ 2.8.2 raises the error for a **client** request
+ * (a follower is exempt) that asks for {@see self::LATEST}, or for a timestamp whose answer would lie at or
+ * beyond the last fetchable offset. `KafkaApis.handleListOffsetRequest` @ 2.8.2 then splits on the version:
+ * `if (request.header.apiVersion >= 5)` the code 78 travels, otherwise the partition is answered **5**
+ * `LEADER_NOT_AVAILABLE` - which is what every version up to {@see OffsetsRequestV4} sees, and which is
+ * indistinguishable from "this partition has no leader at all". That distinction is the whole of KIP-207: both
+ * codes are retriable, but 78 says "the leader is there and will know in a moment", so a client retries without
+ * refreshing its metadata first. The frame is the version 4 frame with another number in its header.
+ *
  * The two special values keep their meaning in every version: {@see self::LATEST} (`-1`) asks for the end of the
  * log - the offset the next produced message will get, capped as the isolation level prescribes - and
  * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk. Neither of them reads a message, so
  * their answer carries the timestamp -1.
  *
- * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v4), a.k.a. ListOffset" and
+ * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v5), a.k.a. ListOffset" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest
@@ -88,7 +101,7 @@ class OffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * Special value for the offset of the next coming message, `ListOffsetRequest.LATEST_TIMESTAMP` @ 0.10.2.2

@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopicV0;
@@ -57,7 +58,7 @@ use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestTopicV0;
  * The epoch a client asks with is the `partition_leader_epoch` that the record batches of the partition carry
  * ({@see \Protocol\Kafka\Common\Record\RecordBatch::$partitionLeaderEpoch}), which is the other half of KIP-101.
  *
- * @see docs/protocol/2.8.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v2)" and
+ * @see docs/protocol/2.8.md, sections "OffsetForLeaderEpoch API (key 23, v0 to v3)" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetForLeaderEpochRequest extends AbstractRequest
@@ -70,7 +71,20 @@ class OffsetForLeaderEpochRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
+
+    /**
+     * `replica_id` of an ordinary consumer, which reads up to the high watermark (KIP-392)
+     */
+    public const int CONSUMER_REPLICA_ID = -1;
+
+    /**
+     * `replica_id` of a debugging client that wants to be served like a replica, the **default** of version 3
+     *
+     * `OffsetForLeaderEpochRequest.json` @ 2.8.2: "the default is -2 which conventionally represents a *debug*
+     * consumer which is allowed to see offsets beyond the high watermark".
+     */
+    public const int DEBUG_REPLICA_ID = -2;
 
     /**
      * Epochs to resolve, indexed by the topic they belong to
@@ -93,7 +107,18 @@ class OffsetForLeaderEpochRequest extends AbstractRequest
     public function __construct(
         array $topics,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Node id of the replica that sends this request, since version 3 (Kafka 2.3, KIP-392).
+         *
+         * A follower names its own broker id here, a consumer {@see self::CONSUMER_REPLICA_ID} (`-1`), and
+         * {@see self::DEBUG_REPLICA_ID} (`-2`) is the default of the field: a client that wants to be served like
+         * a replica, i.e. to see offsets beyond the high watermark. The field arrived with the follower fetching
+         * of KIP-392, because a consumer that reads from a follower validates its position against that follower
+         * and the broker has to know which of the two kinds is asking. Every version below 3 has no field at all
+         * and is served as a follower would be.
+         */
+        protected readonly int $replicaId = self::DEBUG_REPLICA_ID
     ) {
         $topicClass   = static::topicClass();
         $packedTopics = [];
@@ -113,10 +138,13 @@ class OffsetForLeaderEpochRequest extends AbstractRequest
     public static function getScheme(): array
     {
         $header = parent::getScheme();
+        $body   = [];
+        if (static::VERSION >= 3) {
+            $body['replicaId'] = BinarySchema::TYPE_INT32;
+        }
+        $body['topics'] = ['topic' => static::topicClass()];
 
-        return $header + [
-            'topics' => ['topic' => static::topicClass()],
-        ];
+        return $header + $body;
     }
 
     /**

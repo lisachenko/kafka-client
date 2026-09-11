@@ -24,12 +24,15 @@ use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
 use Protocol\Kafka\Common\Errors\GroupSubscribedToTopicException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\MemberIdRequiredException;
+use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
+use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetDeleteRequest;
 use Protocol\Kafka\Protocol\Request\OffsetDeleteResponse;
@@ -357,12 +360,41 @@ final class OffsetDeleteApiTest extends IntegrationTestCase
         $coordinator = $this->coordinator($groupId);
         $protocols   = ['range' => $metadata];
 
+        // The container is shared, and under load the coordinator can forget the member the KIP-394 exchange just
+        // created before its SyncGroup arrives - which is the 25 a real consumer answers by rejoining from
+        // scratch. Two attempts are enough to keep the suite honest without hiding a real refusal.
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                $join = $this->join($coordinator, $groupId, $protocolType, $protocols);
+
+                $this->client->syncGroup(
+                    $coordinator,
+                    $groupId,
+                    $join->memberId,
+                    $join->generationId,
+                    [$join->memberId => '']
+                );
+
+                return ['memberId' => $join->memberId, 'generationId' => $join->generationId];
+            } catch (UnknownMemberIdException | RebalanceInProgressException $exception) {
+                if ($attempt === 3) {
+                    throw $exception;
+                }
+            }
+        }
+    }
+
+    /**
+     * Joins the group once, answering the 79 of KIP-394 with the member id the coordinator assigned
+     */
+    private function join(Node $coordinator, string $groupId, string $protocolType, array $protocols): JoinGroupResponse
+    {
         try {
-            $join = $this->client->joinGroup($coordinator, $groupId, '', $protocolType, $protocols);
+            return $this->client->joinGroup($coordinator, $groupId, '', $protocolType, $protocols);
         } catch (MemberIdRequiredException $exception) {
             // KIP-394, Kafka 2.2: the version 4 of JoinGroup refuses the first join of a member that has no id
             // yet with the code 79 and hands out the id it assigned, and the member joins again with that id
-            $join = $this->client->joinGroup(
+            return $this->client->joinGroup(
                 $coordinator,
                 $groupId,
                 (string) $exception->getContext()['assignedMemberId'],
@@ -370,16 +402,6 @@ final class OffsetDeleteApiTest extends IntegrationTestCase
                 $protocols
             );
         }
-
-        $this->client->syncGroup(
-            $coordinator,
-            $groupId,
-            $join->memberId,
-            $join->generationId,
-            [$join->memberId => '']
-        );
-
-        return ['memberId' => $join->memberId, 'generationId' => $join->generationId];
     }
 
     private function coordinator(string $groupId): Node

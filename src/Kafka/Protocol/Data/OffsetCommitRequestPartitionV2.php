@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * **removes** `retention_time` from the request (KIP-211) without touching the partition. The next change of this
  * entry is the `committed_leader_epoch` of version 6 ({@see OffsetCommitRequestPartition}, KIP-320).
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v7)"
  */
 final class OffsetCommitRequestPartitionV2 extends OffsetCommitRequestPartition
 {

@@ -1,8 +1,8 @@
 {
     "api": "join-group",
     "apiKey": 11,
-    "section": "JoinGroup API (key 11, v0 to v4)",
-    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v4), replayed by tests/Compliance.",
+    "section": "JoinGroup API (key 11, v0 to v5)",
+    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "joingroup.request.v1",
@@ -275,7 +275,7 @@
         {
             "id": "joingroup.request.v4.empty-member-id",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV4",
             "version": 4,
             "source": "broker",
             "description": "JoinGroup request v4 of a client that has no member id yet - the `member_id` is the empty string. This is the request KIP-394 refuses: from version 4 on the coordinator does not add a member it cannot identify to a rebalance.",
@@ -304,7 +304,7 @@
         {
             "id": "joingroup.response.v4.member-id-required",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The refusal: the error code **79** (`MemberIdRequired`) with the generation -1, an empty group protocol, an empty leader id and no members - and the member id the coordinator generated for this client in `member_id`, which the next join has to send. It arrives immediately: no rebalance was started and no member was added.",
@@ -324,7 +324,7 @@
         {
             "id": "joingroup.request.v4",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV4",
             "version": 4,
             "source": "broker",
             "description": "The very same request again, with the member id the 79 answer carried. It is byte for byte the frame above except for that field.",
@@ -353,7 +353,7 @@
         {
             "id": "joingroup.response.v4",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The answer to the second join: the generation 1, the protocol the coordinator picked, and the member as the leader of its own group with its metadata in the members array.",
@@ -372,6 +372,64 @@
                         "memberId": "kafka-client-t3-394-972b483b-84c9-42cc-9ef0-24e0ca5d2693",
                         "metadata": {
                             "$bytes": "000000000001000674332d33393400000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "JoinGroup request v5 of a **static** member (KIP-345): the `group_instance_id` `t3-345-one` stands behind an empty `member_id`. A join that names an instance id is never refused with the 79 of KIP-394 - `requireKnownMemberId` is `version >= 4 && groupInstanceId.isEmpty` in `KafkaApis.handleJoinGroupRequest` @ 2.8.2 - so this one request joins the group.",
+            "hex": "0000007c000b00050000019100136b61666b612d636c69656e742d74332d333435001474332d3334352d766563746f72732d67726f75700000753000004e200000000a74332d3334352d6f6e650008636f6e73756d657200000001000572616e67650000001a000000000001000e74332d3334352d766563746f727300000000",
+            "fields": {
+                "messageSize": 124,
+                "apiKey": 11,
+                "apiVersion": 5,
+                "correlationId": 401,
+                "clientId": "kafka-client-t3-345",
+                "consumerGroup": "t3-345-vectors-group",
+                "sessionTimeout": 30000,
+                "rebalanceTimeout": 20000,
+                "memberId": "",
+                "groupInstanceId": "t3-345-one",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000e74332d3334352d766563746f727300000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer: the generation 1 and the member id the coordinator generated, which for a static member is `<group.instance.id>-<uuid>` and not `<client.id>-<uuid>`. Every entry of the member array carries the `group_instance_id` that version 5 added, here the very instance that joined.",
+            "hex": "000000d60000019100000000000000000001000572616e6765002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d643762633631313163636364002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d64376263363131316363636400000001002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d643762633631313163636364000a74332d3334352d6f6e650000001a000000000001000e74332d3334352d766563746f727300000000",
+            "fields": {
+                "messageSize": 214,
+                "correlationId": 401,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 1,
+                "groupProtocol": "range",
+                "leaderId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                "memberId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                "members": {
+                    "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd": {
+                        "memberId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                        "groupInstanceId": "t3-345-one",
+                        "metadata": {
+                            "$bytes": "000000000001000e74332d3334352d766563746f727300000000"
                         }
                     }
                 }

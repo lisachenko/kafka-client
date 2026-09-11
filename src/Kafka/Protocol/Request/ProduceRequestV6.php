@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `ZSTD` below version 7 with `UnsupportedCompressionTypeException`, the code **76**. Version 7 is what
  * {@see ProduceRequest} sends, see {@see \Protocol\Kafka\Common\Record\CompressionCodec::ZSTD}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
  */
 final class ProduceRequestV6 extends ProduceRequest
 {

@@ -29,8 +29,11 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\RequestTimedOutException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\TopicMetadata;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV0;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV3;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV0;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
@@ -44,7 +47,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
  * controller, so the error code 41 (NotController) can not be produced here - it is exercised with a scripted
  * two-broker cluster in `tests/Unit/Admin/AdminClientTest.php`.
  *
- * @see docs/protocol/2.8.md, sections "CreateTopics API (key 19, v0 to v3)", "DeleteTopics API (key 20, v0 to v3)"
+ * @see docs/protocol/2.8.md, sections "CreateTopics API (key 19, v0 to v4)", "DeleteTopics API (key 20, v0 to v3)"
  *      and "CreatePartitions API (key 37, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
@@ -109,6 +112,54 @@ final class TopicAdminApiTest extends IntegrationTestCase
             self::assertSame([0], array_values($partition->replicas), 'the single broker hosts every partition');
         }
         self::assertContains($topic, $this->admin->listTopics());
+    }
+
+    /**
+     * The -1/-1 of KIP-464: the BROKER chooses the partition count and the replication factor (CreateTopics v4)
+     *
+     * The image sets `num.partitions=3` and no `default.replication.factor`, so the Kafka default 1 applies - a
+     * topic created this way is the same shape as the one above, without the client naming either number.
+     */
+    public function testATopicCanBeCreatedWithThePartitionDefaultsOfTheBroker(): void
+    {
+        $topic = $this->topicName('defaults');
+
+        $result = $this->admin->createTopics([NewTopic::withBrokerDefaults($topic)]);
+
+        self::assertSame([$topic => null], $result, 'the controller resolved the -1 against its own configuration');
+
+        $metadata   = $this->awaitTopic($topic);
+        $partitions = array_keys($metadata->partitions);
+        sort($partitions);
+        self::assertSame([0, 1, 2], $partitions, 'the `num.partitions=3` of the image');
+        foreach ($metadata->partitions as $partition) {
+            self::assertSame([0], array_values($partition->replicas), 'and the default replication factor 1');
+        }
+        self::assertSame(4, CreateTopicsRequest::VERSION, 'the version KIP-464 needs, and the one this line sends');
+    }
+
+    /**
+     * A client that sends a version below 4 refuses the shape itself - the broker of 2.8.2 would not
+     *
+     * `ZkAdminManager.createTopics` @ 2.8.2 resolves the -1 for every api version, so the guard has to be here:
+     * `CreateTopicsRequest.Builder.build(version)` @ 2.8.2 throws for it, because a broker of Kafka 2.3 or below
+     * has no such fallback and would answer the topic with 37 or 38.
+     */
+    public function testTheBrokerDefaultsAreRefusedBeforeAVersionThreeRequestIsEvenSent(): void
+    {
+        $topic = self::uniqueTopicName('t7-topics-never-created');
+
+        try {
+            new CreateTopicsRequestV3([NewTopic::withBrokerDefaults($topic)], 30000, false, 't7-topics', 1);
+            self::fail('a version 3 request cannot carry the broker defaults of KIP-464');
+        } catch (UnsupportedVersionException $exception) {
+            self::assertStringContainsString(
+                'only supported in CreateTopicRequest version 4+',
+                (string) $exception->getContext()['error']
+            );
+        }
+
+        self::assertNotContains($topic, $this->admin->listTopics(), 'and nothing reached the broker');
     }
 
     public function testATopicIsCreatedFromAnExplicitReplicaAssignmentWithTopicLevelOptions(): void

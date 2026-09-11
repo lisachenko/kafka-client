@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
  * {@see \Protocol\Kafka\Protocol\Data\OffsetsRequestPartitionV0} carries it. The `isolation_level` that version 2
  * added is not on the wire here either; a broker treats this version as `read_uncommitted`.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v4), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
  */
 final class OffsetsRequestV0 extends OffsetsRequest
 {
