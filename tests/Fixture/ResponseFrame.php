@@ -725,15 +725,38 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a ListGroups response (api key 16, v1)
+     * Builds a ListGroups response (api key 16, v4 - the version this client sends)
      *
      * <pre>
-     *   ListGroupsResponse => ThrottleTimeMs ErrorCode [GroupId ProtocolType]
+     *   ListGroupsResponse => ThrottleTimeMs ErrorCode [GroupId ProtocolType GroupState]
      * </pre>
+     *
+     * Version 4 (KIP-518, Kafka 2.6) appended the state of the group to every entry; a protocol type given as a
+     * plain string is answered with the state `Stable`, and the pair `[protocolType, state]` names both.
+     *
+     * @param array<string, string|array{string, string}> $groups Protocol type - or protocol type and state - of
+     *        every group the answering broker coordinates, by group id
+     */
+    public static function listGroups(int $correlationId, array $groups, int $errorCode = 0): string
+    {
+        $body = pack('N', 0) . pack('n', $errorCode) . self::compactCount(count($groups));
+        foreach ($groups as $groupId => $group) {
+            [$protocolType, $groupState] = is_array($group) ? $group : [$group, 'Stable'];
+            $body .= self::compactString((string) $groupId)
+                . self::compactString($protocolType)
+                . self::compactString($groupState)
+                . self::tagBuffer();
+        }
+
+        return self::flexible($correlationId, $body);
+    }
+
+    /**
+     * Builds a ListGroups response of version 3, the frame whose entries carry no state (below KIP-518)
      *
      * @param array<string, string> $groups Protocol type of every group the answering broker coordinates, by id
      */
-    public static function listGroups(int $correlationId, array $groups, int $errorCode = 0): string
+    public static function listGroupsV3(int $correlationId, array $groups, int $errorCode = 0): string
     {
         $body = pack('N', 0) . pack('n', $errorCode) . self::compactCount(count($groups));
         foreach ($groups as $groupId => $protocolType) {

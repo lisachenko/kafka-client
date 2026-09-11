@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **545** of them in **41** files: **227** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **549** of them in **41** files: **231** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -25,7 +25,8 @@ of the same release: CreateTopics v5 - whose answer is the KIP-525 one, with the
 it - DeleteTopics v4, ElectLeaders v2, IncrementalAlterConfigs v1 and ControlledShutdown v3; and of **Kafka 2.5**
 the 14 frames the group apis gained - the JoinGroup v7 and SyncGroup v5 pairs of KIP-559 with the two refusals
 that show their nulls, and the six OffsetFetch v7 frames of KIP-447 around the 88 of an offset a transaction has
-not committed yet - and of the other 318,
+not committed yet; and of **Kafka 2.6** the 4 frames of ListGroups v4 (KIP-518), the states filter of the request
+and the group state of every entry of the answer - and of the other 318,
 **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
@@ -57,7 +58,8 @@ request asks for the authorized operations of the group and whose answer reports
 added: the `protocol_type` and `protocol_name` of KIP-559 - in the JoinGroup **v7** answer, where an error answer
 reports both as null, and on both sides of SyncGroup **v5**, where leaving them out is a **23** - and the
 `require_stable` flag of OffsetFetch **v7** (KIP-447) with the **88** it is answered while a transactional offset
-commit of that partition is still open. What Kafka 2.4
+commit of that partition is still open. What **Kafka 2.6** added: the `states_filter` of ListGroups **v4** and the
+`group_state` of every group it answers (KIP-518). What Kafka 2.4
 added: the batch LeaveGroup **v3** of KIP-345 and the **flexible** version of every one of the ten apis (KIP-482) -
 one request/response pair per api, with the compact strings and arrays, the tagged-field section of every
 structure, the request header v2 and the response header v1, plus the plain DescribeGroups v4 whose members carry

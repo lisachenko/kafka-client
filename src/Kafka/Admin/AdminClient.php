@@ -114,6 +114,14 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
 class AdminClient
 {
     /**
+     * Protocol type of a consumer group, the `consumer` of `ConsumerProtocol.PROTOCOL_TYPE` @ 2.8.2
+     *
+     * ListGroups answers **every** group its coordinator holds, whatever protocol it runs;
+     * {@see self::listConsumerGroups()} keeps the ones a consumer of this package could have created.
+     */
+    public const string CONSUMER_PROTOCOL_TYPE = 'consumer';
+
+    /**
      * Client configuration, with the defaults of {@see ClientConfig} filled in
      *
      * @var array<string, mixed>
@@ -424,25 +432,35 @@ class AdminClient
      *
      * A broker only knows the groups it coordinates itself, so this is never the list of the whole cluster - use
      * {@see self::listAllGroups()} for that. The answer holds one entry per group with its protocol type, `consumer`
-     * for the groups of a `KafkaConsumer` and of the Java consumer; an entry says nothing about the state of the
-     * group, {@see self::describeGroup()} does.
+     * for the groups of a `KafkaConsumer` and of the Java consumer, and - since version 4 (KIP-518, Kafka 2.6) -
+     * with the **state** of the group, which had to be asked of {@see self::describeGroup()} before.
+     *
+     * `$states` bounds the answer to the groups in one of the named states, which are the `STATE_*` constants of
+     * {@see DescribeGroupResponseMetadata} and are matched verbatim by the coordinator. An empty list is every
+     * group, and a state no group is in is an empty answer and not an error - so is a name that is not a state at
+     * all, because the coordinator compares strings and never validates them.
      *
      * A group appears here as soon as it has a member and stays until the coordinator forgets it, which happens once
      * the last member is gone and the retention of its committed offsets has expired.
      *
-     * @param Node $node Broker to ask
+     * @param Node         $node   Broker to ask
+     * @param list<string> $states States to list, empty for every group (KIP-518, version 4)
      *
      * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If the coordinator is shutting down
      * @throws \Protocol\Kafka\Common\Errors\GroupLoadInProgressException If it is still reading `__consumer_offsets`
      *
      * @return array<string, ListGroupResponseProtocol> Groups of that broker, indexed by the group id
      */
-    public function listGroups(Node $node): array
+    public function listGroups(Node $node, array $states = []): array
     {
         /** @var ListGroupsResponse $response */
         $response = $this->sendTo(
             $node->getConnection($this->configuration),
-            fn(int $correlationId): ListGroupsRequest => new ListGroupsRequest($this->clientId(), $correlationId),
+            fn(int $correlationId): ListGroupsRequest => new ListGroupsRequest(
+                $this->clientId(),
+                $correlationId,
+                $states
+            ),
             ListGroupsResponse::class,
             ['node' => $node->nodeId]
         );
@@ -463,18 +481,43 @@ class AdminClient
      * an unreachable broker through - a silently incomplete group list is worse than a failed call. Ask the brokers
      * one by one with {@see self::listGroups()} when a partial answer is good enough.
      *
+     * @param list<string> $states States to list, empty for every group (KIP-518, version 4)
+     *
      * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
      *
      * @return array<string, ListGroupResponseProtocol> Groups of the cluster, indexed by the group id
      */
-    public function listAllGroups(): array
+    public function listAllGroups(array $states = []): array
     {
         $groups = [];
         foreach ($this->findAllBrokers() as $node) {
-            $groups += $this->listGroups($node);
+            $groups += $this->listGroups($node, $states);
         }
 
         return $groups;
+    }
+
+    /**
+     * Lists the **consumer** groups of the whole cluster, optionally only those in one of the given states
+     *
+     * This is the `listConsumerGroups()` of the Java admin client, and it differs from {@see self::listAllGroups()}
+     * in one thing: a group of another protocol type - a Kafka Connect worker group, a Streams group of another
+     * kind, anything a client of this package did not create - is left out, because the api lists *every* group of
+     * the coordinator and not only the ones a consumer would recognise. The state of each group comes with the
+     * listing since KIP-518 (Kafka 2.6), so a caller no longer has to describe every group to find the empty ones.
+     *
+     * @param list<string> $states States to list, empty for every consumer group (KIP-518, version 4)
+     *
+     * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
+     *
+     * @return array<string, ListGroupResponseProtocol> Consumer groups of the cluster, indexed by the group id
+     */
+    public function listConsumerGroups(array $states = []): array
+    {
+        return array_filter(
+            $this->listAllGroups($states),
+            static fn(ListGroupResponseProtocol $group): bool => $group->protocolType === self::CONSUMER_PROTOCOL_TYPE
+        );
     }
 
     /**
