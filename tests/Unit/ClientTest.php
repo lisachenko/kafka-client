@@ -777,7 +777,7 @@ final class ClientTest extends TestCase
         $frame = $anyBroker->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $this->apiKeyOf($frame));
-        self::assertSame(3, $this->apiVersionOf($frame), 'Kafka 2.5 raised the api to the version 3 of KIP-360');
+        self::assertSame(4, $this->apiVersionOf($frame), 'Kafka 2.7 raised the api to the version 4 of KIP-588');
         // The compact null of the transactional id, the default transaction timeout of one minute, the -1/-1 of
         // KIP-360 that asks for a new producer id and the tag buffer that closes the body of every flexible frame
         self::assertStringEndsWith(

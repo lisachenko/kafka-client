@@ -55,7 +55,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see AddPartitionsToTxnRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "AddPartitionsToTxn API (key 24, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AddPartitionsToTxn API (key 24, v0 to v2)"
  */
 class AddPartitionsToTxnRequest extends AbstractRequest
 {
@@ -67,7 +67,7 @@ class AddPartitionsToTxnRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Partitions to enrol into the transaction, indexed by the topic name

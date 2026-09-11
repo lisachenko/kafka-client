@@ -221,7 +221,7 @@ integration branch, which is in `main`'s history after the final merge):
 | `2.4.1` | 2.4 | `3e21b50` (`chore(2.x): Kafka 2.4 complete`) | #133 (T1), #127 (T4), #129 (T3), #134 (T1), #136 (T2), #137 (T3), #138 (T2), #139 (T1), #140 (T4) |
 | `2.5.1` | 2.5 | `f85c7df` (`chore(2.x): Kafka 2.5 complete`) | #142 (T3), #143 (T4) |
 | `2.6.3` | 2.6 | `9978b33` (`chore(2.x): Kafka 2.6 complete`) | #144 (T3), #145 (T2), #146 (T1), #147 (T4) |
-| `2.7.2` | 2.7 | _pending_ | |
+| `2.7.2` | 2.7 | `c61f52c` (`chore(2.x): Kafka 2.7 complete`) | #148 (T2), #149 (T1), #150 (T4) |
 | `2.8.2` | 2.8 | _pending_ | |
 
 Every PR: its own `t<n>-<slug>` branch off the integration branch (the same branch continues across the minors,

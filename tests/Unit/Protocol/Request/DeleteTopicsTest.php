@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV3;
  * throttling promise of KIP-219 at version 2, and the **73** `TOPIC_DELETION_DISABLED` of a cluster with
  * `delete.topic.enable=false` at version 3, which a version 2 client is answered with 42 for.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v4)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
  */
 #[CoversClass(DeleteTopicsRequest::class)]
 #[CoversClass(DeleteTopicsRequestV1::class)]

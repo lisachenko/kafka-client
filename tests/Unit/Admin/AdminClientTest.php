@@ -32,6 +32,8 @@ use Protocol\Kafka\Common\Errors\InvalidPartitionsException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
+use Protocol\Kafka\Common\Errors\ThrottlingQuotaExceededException;
+use Protocol\Kafka\Common\Errors\TopicAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
@@ -686,6 +688,57 @@ final class AdminClientTest extends TestCase
         self::assertSame(2, $first->getRequestCount(), 'the request was repeated once and not a third time');
     }
 
+    /**
+     * KIP-599, Kafka 2.7: the 89 is answered at once and the client repeats the request itself
+     */
+    public function testATopicTheControllerMutationQuotaRefusedIsRequestedAgain(): void
+    {
+        [$controller] = $this->scriptCluster(
+            [
+                self::deleteTopicsResponse(['t7-throttled' => KafkaException::THROTTLING_QUOTA_EXCEEDED]),
+                self::deleteTopicsResponse(['t7-throttled' => KafkaException::NO_ERROR]),
+            ],
+            []
+        );
+
+        $result = $this->adminClient([ClientConfig::RETRIES => 3])->deleteTopics(['t7-throttled'], 5000);
+
+        self::assertNull($result['t7-throttled'], 'the second attempt was accepted');
+        self::assertCount(2, $controller->getReceivedFrames(), 'and the client sent the request twice');
+    }
+
+    /**
+     * The retries of the configuration bound it: a broker that keeps refusing is reported, not looped on
+     */
+    public function testATopicThatStaysThrottledIsReportedWithTheErrorOfTheLastAttempt(): void
+    {
+        [$controller] = $this->scriptCluster(
+            array_fill(0, 3, self::deleteTopicsResponse(['t7-throttled' => KafkaException::THROTTLING_QUOTA_EXCEEDED])),
+            []
+        );
+
+        $result = $this->adminClient([ClientConfig::RETRIES => 2])->deleteTopics(['t7-throttled'], 5000);
+
+        self::assertInstanceOf(ThrottlingQuotaExceededException::class, $result['t7-throttled']);
+        self::assertCount(3, $controller->getReceivedFrames(), 'the first attempt and the two retries');
+    }
+
+    public function testTheErrorMessageOfADeletedTopicIsReadFromTheVersionFiveAnswer(): void
+    {
+        $this->scriptCluster(
+            [self::deleteTopicsResponse(
+                ['t7-refused' => KafkaException::TOPIC_AUTHORIZATION_FAILED],
+                'Topic authorization failed.'
+            )],
+            []
+        );
+
+        $error = $this->adminClient()->deleteTopics(['t7-refused'], 5000)['t7-refused'];
+
+        self::assertInstanceOf(TopicAuthorizationFailedException::class, $error);
+        self::assertSame('Topic authorization failed.', $error->getContext()['error'] ?? null);
+    }
+
     public function testDeleteTopicsReportsTheErrorOfEveryTopicOfTheAnswer(): void
     {
         [$controller] = $this->scriptCluster(
@@ -1069,15 +1122,18 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a DeleteTopics answer of version **4**, the flexible one the client sends (KIP-482)
+     * Builds a DeleteTopics answer of version **5**, the one the client sends since Kafka 2.7 (KIP-599)
      *
      * @param array<string, int> $topics Error code of every topic
      */
-    private static function deleteTopicsResponse(array $topics): string
+    private static function deleteTopicsResponse(array $topics, ?string $errorMessage = null): string
     {
         $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => $errorCode) {
-            $body .= self::compactString((string) $topic) . pack('n', $errorCode) . "\x00";
+            // The version 5 of Kafka 2.7 appended an error message to every topic result; the broker sends the
+            // compact null of it for a topic it deleted
+            $body .= self::compactString((string) $topic) . pack('n', $errorCode)
+                . self::compactNullableString($errorMessage) . "\x00";
         }
 
         return ResponseFrame::of(0, $body . "\x00");

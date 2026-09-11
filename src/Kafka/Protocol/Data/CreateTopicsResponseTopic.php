@@ -46,7 +46,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * flexible one of the api, so a tagged field is what a later release adds without another version.
  * {@see CreateTopicsResponseTopicV1} is the entry of the versions 1 to 4.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
  */
 class CreateTopicsResponseTopic implements BinarySchemaInterface
 {

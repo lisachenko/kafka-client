@@ -708,6 +708,64 @@ them. What the release added lives in the group and transaction apis.)*
   (`fetch.request.v12`, `fetch.response.v12` and the `last-fetched-epoch`/`diverging-epoch` pair), the section
   "Epoch validation in the fetch itself (v12, KIP-595)" of the protocol document and the two version 12 grammar
   blocks.
+- **The two SCRAM credential apis of KIP-554 (Kafka 2.7)** — `DescribeUserScramCredentials` (key **50**) and
+  `AlterUserScramCredentials` (key **51**), both flexible from their v0, which end the practice of writing SCRAM
+  users into ZooKeeper by hand. The interesting half happens in the **client**: `Admin\UserScramCredentialUpsertion`
+  takes a *password*, derives `Hi(password, salt, iterations)` of RFC 5802 with
+  `hash_pbkdf2()` and sends only that, so the broker never sees a password and no answer can ever hand one out.
+  `Admin\ScramMechanism` (an enum of the two mechanisms with their hash, key length and the 4096-iteration
+  minimum), `ScramCredentialInfo`, `UserScramCredentialsDescription`, `UserScramCredentialDeletion` and the
+  `UserScramCredentialAlteration` interface carry the Java names;
+  `AdminClient::describeUserScramCredentials(?array $users = null)` and `::alterUserScramCredentials(array)` are
+  the two calls. Eight new wire vectors in `describe-user-scram-credentials.json` and
+  `alter-user-scram-credentials.json`, and the answers measured: **91** `RESOURCE_NOT_FOUND` for a user without a
+  credential and for the deletion of one that is not there, **92** `DUPLICATE_RESOURCE` for the same user and
+  mechanism twice, **93** `UNACCEPTABLE_CREDENTIAL` for an iteration count below the minimum — and the fact that
+  the changes of one user are applied **all-or-nothing**, so one impossible change discards the possible ones of
+  the same user.
+- **UpdateFeatures (key 57, v0, Kafka 2.7, KIP-584)** — `AdminClient::updateFeatures(array $updates, int $timeoutMs =
+  60000)`, sent to the **controller** and repeated once when it moved, with `Admin\FeatureUpdate` (whose `delete()` is
+  the version level below 1 plus the downgrade flag the broker insists on). Its read half is not an api at all but the
+  **tagged fields of the ApiVersions v3 answer**, which `AdminClient::describeFeatures()` reads into
+  `Admin\FeatureMetadata`, `SupportedVersionRange` and `FinalizedVersionRange`. A ZooKeeper-backed 2.8.2 cluster
+  finalizes nothing: it supports no feature, the finalized set is empty, the epoch is `0`, and every update is
+  answered per feature with **42** `INVALID_REQUEST`. An empty update list is not refused at all — the controller
+  iterates an empty collection and answers the top-level 0 with no result. Two new wire vectors in
+  `update-features.json`.
+- **The three topic apis of KIP-599** - **CreateTopics v6**, **DeleteTopics v5** and **CreatePartitions v3** - are
+  the versions the client sends now. Not a field moves in two of them: the version is the client's promise that it
+  understands the error code **89** `ThrottlingQuotaExceeded` and repeats the topics the *controller mutation
+  quota* refused, where a broker used to **hold the request back** until the debt was paid.
+  `AdminClient::onController()` sends the request again while any topic carries the 89, bounded by the `retries`
+  of the configuration; the waiting is the KIP-219 promise of `Client`, which sleeps the rest of the throttle
+  before the next request goes to that broker. Keep-behind classes for every version below.
+- **DeleteTopics v5 also adds a field**: every topic result gains an `error_message` (a compact nullable string)
+  behind its error code, and `Client::deleteTopics()` reads it into the exception of the topic, as CreateTopics
+  has done since Kafka 0.11. `Protocol\Data\DeleteTopicsResponseTopicV0` is the result without it. Measured on
+  the container: a **ZooKeeper** broker leaves the message `null` even for a topic the cluster does not have
+  (error code 3) - `ZkAdminManager.deleteTopics` @ 2.8.2 builds its results from the error code alone.
+- **The four transaction apis of KIP-588** - **InitProducerId v4**, **AddPartitionsToTxn v2**,
+  **AddOffsetsToTxn v2** and **EndTxn v2** - change no byte either: what the version buys is the error code **90**
+  `ProducerFenced` for a producer whose epoch the coordinator has left behind, where the versions below answer the
+  47 `InvalidProducerEpoch`. The KIP splits the two meanings the 47 carried at once ("you were fenced" and "your
+  epoch is one behind, ask for a bump" - the KIP-360 case of Kafka 2.5), and `TransactionManager` treats the 90
+  exactly as the 47: a fatal state for the batch and for every transactional request. **The identifiers keep the
+  published names**: the 47 stays `ProducerFencedException`, the 90 is `TransactionalProducerFencedException` -
+  the Java client swapped those two names, this package does not move a published one.
+- **The three transaction apis are NOT flexible in their version 2.** `"flexibleVersions": "none"` at the 2.7.2
+  tag for AddPartitionsToTxn, AddOffsetsToTxn and EndTxn; the flexible version of each is the **3** that Kafka 2.8
+  adds.
+- Measured on the container with the transactional id `t4-27-vectors-tx`: an InitProducerId **v4** that names an
+  epoch the coordinator really left behind is answered **90** with the id -1 and the epoch -1, while the pair one
+  step behind the current epoch is still taken as the *retry of a bump* and answered 0 with the current pair
+  (`prepareInitProducerIdTransit` @ 2.8.2 treats `expectedEpoch == currentEpoch - 1` as one), and the **EndTxn v2**
+  of a producer that a second incarnation of the same id has fenced is answered **90** as well. The 89 of KIP-599
+  cannot be produced on the shared container - it needs a `controller_mutation_rate` quota - so the retry is
+  covered by the unit tests with a scripted controller.
+- **Seventeen wire vectors**: the CreateTopics v6, CreatePartitions v3 and DeleteTopics v5 pairs (with the answer
+  for a topic the cluster does not have) and the InitProducerId v4, AddPartitionsToTxn v2, AddOffsetsToTxn v2 and
+  EndTxn v2 pairs (with the two frames that carry the 90), captured with the topic `t4-27-vectors` and the group
+  `t4-27-vectors-group`, each with its annotated dump, and the seven headings moved to their new ranges.
 
 ### Kafka 2.8
 

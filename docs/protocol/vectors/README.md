@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **605** of them in **43** files: **287** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **632** of them in **46** files: **314** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -30,7 +30,11 @@ with its epoch bump, the TxnOffsetCommit v3 of KIP-447 with the consumer it name
 SaslAuthenticate v2 and the token apis v2; and of **Kafka 2.6** the 4 frames of ListGroups v4 (KIP-518), the
 states filter of the request and the group state of every entry of the answer, and the 9 frames of its two
 client-quota apis (KIP-546, the two new files `describe-client-quotas.json` and `alter-client-quotas.json`), and the 6 frames of its DescribeConfigs **v3** (KIP-569) and the 4 frames of its
-DescribeLogDirs **v2** - and of the other 318,
+DescribeLogDirs **v2**, and the 10 frames of the three apis **Kafka 2.7** added - the two SCRAM credential apis of
+KIP-554 and UpdateFeatures of KIP-584, in the three new files `describe-user-scram-credentials.json`,
+`alter-user-scram-credentials.json` and `update-features.json`, and of the same release the 17 frames of the admin and transaction half: CreateTopics v6, CreatePartitions v3 and DeleteTopics v5 of
+KIP-599, and InitProducerId v4, AddPartitionsToTxn v2, AddOffsetsToTxn v2 and EndTxn v2 of KIP-588, two of them
+carrying the 90 `ProducerFenced` the KIP added - and of the other 318,
 **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
