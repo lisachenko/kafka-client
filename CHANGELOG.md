@@ -306,6 +306,25 @@ the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLe
   the cluster and **3576** for a topic, which are the *supported* operations of the resource type — plus the
   version paragraphs of the three apis and two more broker quirks.
 
+### Kafka 2.4
+
+- **Produce v8** (KIP-467) — the version that says **which** records of a refused batch were refused. Every
+  partition entry of the answer gains a `record_errors` array of `[batch_index, batch_index_error_message]`
+  pairs and an `error_message`, both behind the `log_start_offset`; the request body is unchanged.
+  `ProduceRequest`/`ProduceResponse` are the v8 now and `Client::produce()` sends it,
+  `ProduceRequestV7`/`ProduceResponseV7` keep the Kafka 2.1 pair and
+  `ProduceResponsePartitionV5`/`ProduceResponseTopicV5` the partition entry of the versions 5 to 7. The new
+  `Protocol\Data\ProduceResponseRecordError` is the Java `BatchIndexAndErrorMessage`, and
+  `ProduceResponsePartition::$recordErrors` (keyed by the batch index) and `$errorMessage` carry the two fields.
+  `Client::produce()` puts both into the context of the exception it raises for the partition, so an application
+  that catches the **87** `InvalidRecordException` reads which record of its batch the broker refused instead of
+  guessing. Measured on the container with a `cleanup.policy=compact` topic and a batch of three records, the
+  second and the third of them without a key: the two are named with their batch indexes 1 and 2 and the
+  message "Compacted topic cannot accept message without key…", the partition carries "One or more records have
+  been rejected", and the very same request as a version 7 one comes back with the 87 and the offsets `-1`
+  alone. Five wire vectors, the section "The record errors of a refused batch (v8, KIP-467)" of the protocol
+  document, a broker quirk, unit tests and the new integration suite `RecordErrorsTest`.
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

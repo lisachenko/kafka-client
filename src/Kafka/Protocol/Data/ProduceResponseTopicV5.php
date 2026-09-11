@@ -14,22 +14,18 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Data;
 
 /**
- * Produce response Topic DTO of the versions 0 and 1
+ * Topic entry of a Produce answer of the versions 5 to 7
  *
- * <pre>
- *   TopicName [Partition ErrorCode Offset]
- *     TopicName => string
- * </pre>
- *
- * The topic entry itself never changed, only the partition entries it holds did, so this class only lowers the
- * version constant that {@see ProduceResponseTopic::partitionClass()} follows.
+ * The topic entry itself never changed; this class exists to pick {@see ProduceResponsePartitionV5} as its
+ * partition entry, i.e. the entry without the record errors that version 8 (Kafka 2.4, KIP-467) added, see
+ * {@see ProduceResponseTopic}.
  *
  * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
  */
-final class ProduceResponseTopicV0 extends ProduceResponseTopic
+final class ProduceResponseTopicV5 extends ProduceResponseTopic
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 5;
 }

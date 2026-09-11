@@ -661,7 +661,7 @@ final class ClientTest extends TestCase
         yield 'read_committed'   => ['read_committed', '01'];
     }
 
-    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionSevenRecordBatch(): void
+    public function testTheProduceRequestOfTheDefaultMessageFormatIsAVersionEightRecordBatch(): void
     {
         $leader = new BrokerConnection(ResponseFrame::produce(0, [self::TOPIC => [0 => [0, 5]]]));
         $this->brokers
@@ -673,8 +673,8 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 7, correlation id, client id, then the null transactional id of a plain producer
-        self::assertStringStartsWith('00000007', $frame, 'the Produce api is spoken in version 7');
+        // ApiKey 0, ApiVersion 8, correlation id, client id, then the null transactional id of a plain producer
+        self::assertStringStartsWith('00000008', $frame, 'the Produce api is spoken in version 8');
         self::assertStringContainsString('74372d636c69656e74' . 'ffff', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));

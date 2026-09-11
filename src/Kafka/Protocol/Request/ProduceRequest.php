@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API, version 7
+ * The produce API, version 8
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * time of the send the producer is free to fill in that field in any way it likes.
  *
  * <pre>
- *   ProduceRequest (Version: 7) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
+ *   ProduceRequest (Version: 8) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
  *                                                                                   RecordSet]]
  *     TransactionalId => nullable string
  *     RequiredAcks    => int16
@@ -94,7 +94,11 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * ({@see \Protocol\Kafka\Common\Record\CompressionCodec::ZSTD}); the answer is unchanged, see
  * {@see ProduceResponse}.
  *
- * {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
+ * **Version 8 (Kafka 2.4, KIP-467) sends the same body a fifth time**, and what it states is again about the
+ * answer: that the client understands the `record_errors` and the `error_message` that a refused batch is
+ * answered with, see {@see ProduceResponse}. `ProduceRequest.json` @ 2.8.2 has no field of it either.
+ *
+ * {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
  * {@see ProduceRequestV2}, {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with
  * them the legacy message sets - available.
  *
@@ -103,7 +107,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -115,7 +119,7 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all

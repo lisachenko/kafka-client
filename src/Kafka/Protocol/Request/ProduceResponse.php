@@ -22,13 +22,19 @@ use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV2;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV5;
 
 /**
- * Produce response object, version 7
+ * Produce response object, version 8
  *
  * <pre>
- *   ProduceResponse (Version: 7) => [TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset]]
+ *   ProduceResponse (Version: 8) => [TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset
+ *                                                [RecordErrors] ErrorMessage]]
  *                                   ThrottleTime
+ *     RecordErrors => BatchIndex BatchIndexErrorMessage
+ *       BatchIndex             => int32
+ *       BatchIndexErrorMessage => nullable string
+ *     ErrorMessage   => nullable string
  *     LogAppendTime  => int64
  *     LogStartOffset => int64
  *     ThrottleTime   => int32
@@ -64,16 +70,26 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV2;
  * 7 either, and {@see ProduceResponseV6} decodes the same bytes. What version 7 states lives entirely in the
  * request - that its record sets may be compressed with zstd, see {@see ProduceRequest}.
  *
+ * **Version 8 (Kafka 2.4, KIP-467) names the records that a refused batch was refused for**: every partition
+ * entry gains a `record_errors` array of `[batch_index, batch_index_error_message]` pairs and an
+ * `error_message`, both behind the `log_start_offset`. A batch that fails validation is answered with one error
+ * code for the **whole partition** - **87** `INVALID_RECORD` for a record without a key on a compacted topic, an
+ * invalid timestamp, a broken checksum - and until this version that was all a producer learned; now it also
+ * learns which records of the batch it was, by their position in the batch. See
+ * {@see \Protocol\Kafka\Protocol\Data\ProduceResponseRecordError} and
+ * {@see ProduceResponsePartition::$recordErrors}; {@see ProduceResponseV7} decodes the frame without the two
+ * fields.
+ *
  * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v8)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
      * Version of the Produce API that this class decodes the answer of
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * Result for each topic of the request, indexed by the topic name
@@ -113,7 +129,8 @@ class ProduceResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 5 => ProduceResponseTopic::class,
+            static::VERSION >= 8 => ProduceResponseTopic::class,
+            static::VERSION >= 5 => ProduceResponseTopicV5::class,
             static::VERSION >= 2 => ProduceResponseTopicV2::class,
             default              => ProduceResponseTopicV0::class,
         };
