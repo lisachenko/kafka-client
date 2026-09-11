@@ -22,8 +22,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV0;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV1;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponseV0;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponseV1;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponse;
@@ -46,7 +48,7 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV0;
  * wire - the owner of a token, the renewers of a request, the owners of a describe request - is the two-string
  * struct {@see KafkaPrincipal}.
  *
- * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 and v1)",
+ * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
  *      "RenewDelegationToken API (key 39, v0 and v1)", "ExpireDelegationToken API (key 40, v0 and v1)" and
  *      "DescribeDelegationToken API (key 41, v0 and v1)"
  */
@@ -90,6 +92,51 @@ final class DelegationTokenTest extends TestCase
         . '0004' . '55736572'
         . '0005' . '61646d696e'
         . '000000000036ee80';
+
+    /**
+     * The same request as the **flexible** version 2 of Kafka 2.4, which is what this client sends.
+     *
+     *   Size          => 00 00 00 25 (37 bytes, two less than v1)
+     *   ApiKey        => 00 26, ApiVersion => 00 02
+     *   CorrelationId => 00 00 00 05
+     *   ClientId      => 00 04 "test"   (int16 length even here)
+     *   TAG_BUFFER    => 00             (of the request header v2)
+     *   Renewers      => 02             (compact: one renewer)
+     *     PrincipalType => 05 "User", Name => 06 "admin", TAG_BUFFER => 00
+     *   MaxLifeTime   => 00 00 00 00 00 36 ee 80
+     *   TAG_BUFFER    => 00             (of the body)
+     */
+    private const string CREATE_REQUEST_V2_HEX = '00000025'
+        . '0026'
+        . '0002'
+        . '00000005'
+        . '0004' . '74657374'
+        . '00'
+        . '02'
+        . '05' . '55736572'
+        . '06' . '61646d696e'
+        . '00'
+        . '000000000036ee80'
+        . '00';
+
+    /**
+     * The version 2 answer of the same token: compact strings, a compact hmac and two tag buffers, and the owner
+     * inlined without one, because `PrincipalType` and `PrincipalName` are two fields of the answer and not a
+     * structure of the specification.
+     */
+    private const string CREATE_RESPONSE_V2_HEX = '00000041'
+        . '00000005'
+        . '00'
+        . '0000'
+        . '05' . '55736572'
+        . '0a' . '6b61666b6174657374'
+        . '00000174876e8000'
+        . '0000017487a56e80'
+        . '0000017487a56e80'
+        . '09' . '746f6b656e2d6964'
+        . '05' . 'deadbeef'
+        . '00000000'
+        . '00';
 
     /**
      * The same request without a renewer and with the default maximum lifetime, i.e. the smallest frame of the api
@@ -245,7 +292,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testTheCreateRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new CreateDelegationTokenRequest([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
+        $request = new CreateDelegationTokenRequestV1([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
 
         self::assertSame(self::CREATE_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::CREATE_DELEGATION_TOKEN, $request->getApiKey());
@@ -253,9 +300,22 @@ final class DelegationTokenTest extends TestCase
         self::assertSame(39, $request->getMessageSize());
     }
 
+    /**
+     * Version 2 is the same request in the flexible encoding of Kafka 2.4, and it is the one the client sends
+     */
+    public function testTheCreateRequestOfVersionTwoIsCompact(): void
+    {
+        $request = new CreateDelegationTokenRequest([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
+
+        self::assertSame(self::CREATE_REQUEST_V2_HEX, bin2hex((string) $request));
+        self::assertSame(2, $request->getApiVersion(), 'Kafka 2.4 raised the api to the flexible version 2');
+        self::assertTrue(CreateDelegationTokenRequest::isFlexible());
+        self::assertSame(37, $request->getMessageSize(), 'two bytes shorter than v1: four length prefixes, two tag buffers');
+    }
+
     public function testARenewerCanBeGivenAsThePrincipalStringOfTheKafkaTools(): void
     {
-        $fromString = new CreateDelegationTokenRequest(['User:admin'], 3600000, 'test', 5);
+        $fromString = new CreateDelegationTokenRequestV1(['User:admin'], 3600000, 'test', 5);
 
         self::assertSame(self::CREATE_REQUEST_HEX, bin2hex((string) $fromString));
         self::assertEquals([KafkaPrincipal::user('admin')], $fromString->getRenewers());
@@ -263,20 +323,20 @@ final class DelegationTokenTest extends TestCase
 
     public function testACreateRequestWithoutRenewersAsksForTheDefaultLifetimeOfTheBroker(): void
     {
-        $request = new CreateDelegationTokenRequest();
+        $request = new CreateDelegationTokenRequestV1();
 
         self::assertSame(-1, CreateDelegationTokenRequest::DEFAULT_MAX_LIFE_TIME);
         self::assertSame([], $request->getRenewers());
         self::assertSame(-1, $request->getMaxLifeTime());
         self::assertSame(
             self::CREATE_REQUEST_DEFAULT_HEX,
-            bin2hex((string) new CreateDelegationTokenRequest([], -1, 'test', 5))
+            bin2hex((string) new CreateDelegationTokenRequestV1([], -1, 'test', 5))
         );
     }
 
     public function testTheCreateResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = CreateDelegationTokenResponse::unpack(
+        $response = CreateDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::CREATE_RESPONSE_HEX))
         );
 
@@ -294,7 +354,7 @@ final class DelegationTokenTest extends TestCase
 
     public function testAFailedCreateAnswerCarriesTheConnectionPrincipalAndNoToken(): void
     {
-        $response = CreateDelegationTokenResponse::unpack(
+        $response = CreateDelegationTokenResponseV1::unpack(
             new StringStream((string) hex2bin(self::CREATE_RESPONSE_INVALID_PRINCIPAL_HEX))
         );
 
@@ -431,9 +491,12 @@ final class DelegationTokenTest extends TestCase
         foreach ($answers as $answer) {
             $fields = array_keys($answer::getScheme());
             self::assertSame('throttleTimeMs', end($fields), "{$answer} does not end with the throttle time");
+            // The response header is two fields below Kafka 2.4 and three from the flexible versions on, where it
+            // ends in a tag buffer of its own, so the body is whatever follows it
+            $body = array_values(array_diff($fields, ['messageSize', 'correlationId', 'headerTaggedFields']));
             self::assertSame(
                 'errorCode',
-                $fields[2],
+                $body[0],
                 "{$answer} does not open with the error code behind the response header"
             );
         }

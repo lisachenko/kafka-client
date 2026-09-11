@@ -54,14 +54,19 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see InitProducerIdResponseV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v2)"
  */
 class InitProducerIdResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation

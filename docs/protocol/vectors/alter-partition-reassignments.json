@@ -1,0 +1,247 @@
+{
+    "api": "alter-partition-reassignments",
+    "apiKey": 45,
+    "section": "AlterPartitionReassignments API (key 45, v0)",
+    "description": "Wire vectors of the AlterPartitionReassignments API (key 45, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "alterpartitionreassignments.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "AlterPartitionReassignments request v0: partition 0 of the topic t1-reassign-vectors to the replica set [0], which is where it already is. The api is flexible from its version 0, so the frame carries the request header v2 and every string, array and structure of it is compact.",
+            "hex": "00000048002d00000000032000176b61666b612d636c69656e742d74312d766563746f7273000000ea60021474312d726561737369676e2d766563746f727302000000000200000000000000",
+            "fields": {
+                "messageSize": 72,
+                "apiKey": 45,
+                "apiVersion": 0,
+                "correlationId": 800,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "topics": {
+                    "t1-reassign-vectors": {
+                        "name": "t1-reassign-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "replicas": [
+                                    0
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The controller accepted the reassignment: the top-level error code 0 with an EMPTY error message (the compact 01, not the null 00) and the partition error code 0 with a NULL message. A reassignment to the replica set a partition already has is accepted and completed at once.",
+            "hex": "0000002c000003200000000000000001021474312d726561737369676e2d766563746f72730200000000000000000000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 800,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "responses": {
+                    "t1-reassign-vectors": {
+                        "name": "t1-reassign-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "errorMessage": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.request.v0.cancel",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The cancellation of the same partition: the replicas array is the compact NULL (00), which is the second meaning of that field.",
+            "hex": "00000044002d00000000032100176b61666b612d636c69656e742d74312d766563746f7273000000ea60021474312d726561737369676e2d766563746f7273020000000000000000",
+            "fields": {
+                "messageSize": 68,
+                "apiKey": 45,
+                "apiVersion": 0,
+                "correlationId": 801,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "topics": {
+                    "t1-reassign-vectors": {
+                        "name": "t1-reassign-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "replicas": null
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.response.v0.no-reassignment-in-progress",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "There was nothing to cancel: the partition carries the error code 85 (NoReassignmentInProgress) and the message \"No partition reassignment is in progress.\", while the top-level error stays 0.",
+            "hex": "00000055000003210000000000000001021474312d726561737369676e2d766563746f7273020000000000552a4e6f20706172746974696f6e20726561737369676e6d656e7420697320696e2070726f67726573732e000000",
+            "fields": {
+                "messageSize": 85,
+                "correlationId": 801,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "responses": {
+                    "t1-reassign-vectors": {
+                        "name": "t1-reassign-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 85,
+                                "errorMessage": "No partition reassignment is in progress."
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.request.v0.unknown-broker",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A reassignment of the same partition to the replica set [0, 7], where the broker 7 does not exist in this cluster.",
+            "hex": "0000004c002d00000000032200176b61666b612d636c69656e742d74312d766563746f7273000000ea60021474312d726561737369676e2d766563746f72730200000000030000000000000007000000",
+            "fields": {
+                "messageSize": 76,
+                "apiKey": 45,
+                "apiVersion": 0,
+                "correlationId": 802,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "topics": {
+                    "t1-reassign-vectors": {
+                        "name": "t1-reassign-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "replicas": [
+                                    0,
+                                    7
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.response.v0.invalid-replica-assignment",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer to it: the partition error code 39 (InvalidReplicaAssignment) and the message of the controller, which names the replica list it was given and the live brokers it knows.",
+            "hex": "00000095000003220000000000000001021474312d726561737369676e2d766563746f7273020000000000276a5265706c6963612061737369676e6d656e74206861732062726f6b657273207468617420617265206e6f7420616c6976652e205265706c696361206c6973743a2041727261794275666665722837292c206c6976652062726f6b6572206c6973743a20536574283029000000",
+            "fields": {
+                "messageSize": 149,
+                "correlationId": 802,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "responses": {
+                    "t1-reassign-vectors": {
+                        "name": "t1-reassign-vectors",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 39,
+                                "errorMessage": "Replica assignment has brokers that are not alive. Replica list: ArrayBuffer(7), live broker list: Set(0)"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.request.v0.unknown-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A reassignment of a topic that does not exist at all.",
+            "hex": "00000048002d00000000032300176b61666b612d636c69656e742d74312d766563746f7273000000ea60021474312d726561737369676e2d6e6f7468696e6702000000000200000000000000",
+            "fields": {
+                "messageSize": 72,
+                "apiKey": 45,
+                "apiVersion": 0,
+                "correlationId": 803,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "topics": {
+                    "t1-reassign-nothing": {
+                        "name": "t1-reassign-nothing",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "replicas": [
+                                    0
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "alterpartitionreassignments.response.v0.unknown-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterPartitionReassignmentsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer to it: the partition error code 3 (UnknownTopicOrPartition) with the message \"The partition does not exist.\" - the api reports an unknown topic per partition, like an unknown partition of a topic that exists.",
+            "hex": "00000049000003230000000000000001021474312d726561737369676e2d6e6f7468696e67020000000000031e54686520706172746974696f6e20646f6573206e6f742065786973742e000000",
+            "fields": {
+                "messageSize": 73,
+                "correlationId": 803,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "responses": {
+                    "t1-reassign-nothing": {
+                        "name": "t1-reassign-nothing",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 3,
+                                "errorMessage": "The partition does not exist."
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}

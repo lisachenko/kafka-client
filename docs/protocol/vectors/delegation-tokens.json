@@ -307,7 +307,7 @@
             "id": "createdelegationtoken.request.v1",
             "kind": "request",
             "apiKey": 38,
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequestV1",
             "version": 1,
             "source": "broker",
             "description": "CreateDelegationToken request v1, the frame of version 0 with the api version Kafka 2.0 added: one renewer and a maximum lifetime of one hour, on the SASL_PLAINTEXT listener.",
@@ -331,7 +331,7 @@
             "id": "createdelegationtoken.response.v1",
             "kind": "response",
             "apiKey": 38,
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponseV1",
             "version": 1,
             "source": "broker",
             "description": "CreateDelegationToken response v1 for the principal of the connection: the token with its id and its hmac, and the `throttle_time_ms` that these four apis carry LAST.",
@@ -487,6 +487,112 @@
                 "correlationId": 517,
                 "errorCode": 0,
                 "expiryTimestamp": 1789135533300,
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "createdelegationtoken.request.v2",
+            "kind": "request",
+            "apiKey": 38,
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "CreateDelegationToken request v2, the flexible version of Kafka 2.4: a compact array of renewers whose two principal strings are compact as well, a tag buffer per structure and the request header v2. Sent over the SASL_PLAINTEXT listener, where the principal of the connection is User:kafkatest.",
+            "hex": "0000003800260002000002bd00176b61666b612d636c69656e742d74312d766563746f7273000205557365720661646d696e00000000000036ee8000",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 38,
+                "apiVersion": 2,
+                "correlationId": 701,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "renewers": [
+                    {
+                        "principalType": "User",
+                        "name": "admin"
+                    }
+                ],
+                "maxLifeTime": 3600000
+            }
+        },
+        {
+            "id": "createdelegationtoken.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The token the broker issued for it. The owner is two compact strings WITHOUT a tag buffer of their own - PrincipalType and PrincipalName are fields of the answer, not a structure of the specification - and the throttle time stays the LAST field, where KIP-124 put it for the four token apis.",
+            "hex": "0000008b000002bd00000005557365720a6b61666b6174657374000001a091259365000001a0915c81e5000001a0915c81e5173732653536356a39534a6945365f654944555565524141ba95d287edc4ff1c2f4092378b1309d8a1b4ba8811d502b2eeb7a1cca5c11ab1b9760dfcee0c5e1f58d744d814c517673f9df78d3133b0e9631f4681a854b2720000000000",
+            "fields": {
+                "messageSize": 139,
+                "correlationId": 701,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "owner": {
+                    "principalType": "User",
+                    "name": "kafkatest"
+                },
+                "issueTimestamp": 1789141554021,
+                "expiryTimestamp": 1789145154021,
+                "maxTimestamp": 1789145154021,
+                "tokenId": "72e565j9SJiE6_eIDUUeRA",
+                "hmac": {
+                    "$bytes": "ba95d287edc4ff1c2f4092378b1309d8a1b4ba8811d502b2eeb7a1cca5c11ab1b9760dfcee0c5e1f58d744d814c517673f9df78d3133b0e9631f4681a854b272"
+                },
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "createdelegationtoken.response.v2.invalid-principal-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer to a v2 request whose renewer is a Group instead of a User: the error code 67 (InvalidPrincipalType), the principal of the connection, -1 for the three timestamps and the compact empty string and byte array for the token id and the hmac.",
+            "hex": "00000035000002bf00004305557365720a6b61666b6174657374ffffffffffffffffffffffffffffffffffffffffffffffff01010000000000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 703,
+                "headerTaggedFields": [],
+                "errorCode": 67,
+                "owner": {
+                    "principalType": "User",
+                    "name": "kafkatest"
+                },
+                "issueTimestamp": -1,
+                "expiryTimestamp": -1,
+                "maxTimestamp": -1,
+                "tokenId": "",
+                "hmac": {
+                    "$bytes": ""
+                },
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "createdelegationtoken.response.v2.not-allowed",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The same request on the PLAINTEXT listener, where the principal is User:ANONYMOUS: the error code 64 (UnsupportedByAuthentication), because a token is only issued over a channel that authenticated a real principal.",
+            "hex": "00000035000002c000004005557365720a414e4f4e594d4f5553ffffffffffffffffffffffffffffffffffffffffffffffff01010000000000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 704,
+                "headerTaggedFields": [],
+                "errorCode": 64,
+                "owner": {
+                    "principalType": "User",
+                    "name": "ANONYMOUS"
+                },
+                "issueTimestamp": -1,
+                "expiryTimestamp": -1,
+                "maxTimestamp": -1,
+                "tokenId": "",
+                "hmac": {
+                    "$bytes": ""
+                },
                 "throttleTimeMs": 0
             }
         }

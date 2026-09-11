@@ -1,8 +1,8 @@
 {
     "api": "init-producer-id",
     "apiKey": 22,
-    "section": "InitProducerId API (key 22, v0 and v1)",
-    "description": "Wire vectors of the InitProducerId API (key 22, v0 and v1), replayed by tests/Compliance.",
+    "section": "InitProducerId API (key 22, v0 to v2)",
+    "description": "Wire vectors of the InitProducerId API (key 22, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "initproducerid.request.v0",
@@ -112,7 +112,7 @@
         {
             "id": "initproducerid.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequestV1",
             "version": 1,
             "source": "broker",
             "description": "InitProducerId request v1, the frame of version 0 with the api version Kafka 2.0 added: the transactional id of a transactional producer and the default transaction timeout of one minute.",
@@ -130,7 +130,7 @@
         {
             "id": "initproducerid.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponseV1",
             "version": 1,
             "source": "broker",
             "description": "InitProducerId response v1 of the transaction coordinator: the producer id of the transactional id and the epoch it was bumped to.",
@@ -142,6 +142,43 @@
                 "errorCode": 0,
                 "producerId": 41,
                 "producerEpoch": 0
+            }
+        },
+        {
+            "id": "initproducerid.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "InitProducerId request v2, the flexible version of Kafka 2.4 and the one this client sends: the request header v2, the transactional id as a compact string and a tag buffer at the end of the header and of the body.",
+            "hex": "0000003800160002000002bc00176b61666b612d636c69656e742d74312d766563746f7273001174312d32342d766563746f72732d74780000ea6000",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 22,
+                "apiVersion": 2,
+                "correlationId": 700,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "transactionalId": "t1-24-vectors-tx",
+                "transactionTimeoutMs": 60000
+            }
+        },
+        {
+            "id": "initproducerid.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer of the transaction coordinator to it: the same four fields as every version of this api, between the tag buffer of the response header v1 and the one of the body. The epoch is 1 because the coordinator had already handed a producer id to this transactional id and bumps the epoch on every InitProducerId of the same id.",
+            "hex": "00000016000002bc000000000000000000000000000409000100",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 700,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "producerId": 1033,
+                "producerEpoch": 1
             }
         }
     ]

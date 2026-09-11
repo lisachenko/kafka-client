@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\InlineStruct;
 
 /**
  * CreateDelegationToken response object, version 1 (key 38)
@@ -69,14 +70,19 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see CreateDelegationTokenResponseV0} is the same frame with the version field of Kafka 1.1.
  *
- * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 to v2)"
  */
 class CreateDelegationTokenResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Timestamp of an answer that carries no token at all, `DelegationTokenManager.ErrorTimestamp`
@@ -132,7 +138,9 @@ class CreateDelegationTokenResponse extends AbstractResponse
 
         return $header + [
             'errorCode'       => BinarySchema::TYPE_INT16,
-            'owner'           => KafkaPrincipal::class,
+            // `PrincipalType` and `PrincipalName` are two ordinary fields of the answer, not a structure of the
+            // specification, so they are inlined here and carry no tagged-field section of their own in v2
+            'owner'           => new InlineStruct(KafkaPrincipal::class),
             'issueTimestamp'  => BinarySchema::TYPE_INT64,
             'expiryTimestamp' => BinarySchema::TYPE_INT64,
             'maxTimestamp'    => BinarySchema::TYPE_INT64,

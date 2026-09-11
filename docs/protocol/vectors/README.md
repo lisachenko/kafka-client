@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **471** of them in **38** files: **153** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **487** of them in **40** files: **169** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -14,8 +14,10 @@ KIP-394 exchange (JoinGroup v4), the 6 frames of the new api IncrementalAlterCon
 in the new file `incremental-alter-configs.json`, the 12 frames of what Kafka **2.3** added to the group apis
 (static membership, KIP-345, and the authorized operations of KIP-430) and the 7 frames of what it added to the
 producer and consumer apis (Metadata v8 of KIP-430, Fetch v11 and OffsetForLeaderEpoch v3 of KIP-392), the 3 flexible ApiVersions v3 frames of **Kafka 2.4** and the 6 frames
-of its non-flexible admin half - CreateTopics v4 (KIP-464) and ElectLeaders v1 (KIP-460), and the 6 frames of the batch
-LeaveGroup v3 of Kafka **2.4** - and of the other 318, **229** were
+of its non-flexible admin half - CreateTopics v4 (KIP-464) and ElectLeaders v1 (KIP-460), the 6 frames of the batch
+LeaveGroup v3 of Kafka **2.4** and the 16 frames of its **partition reassignments and first flexible admin bumps**
+(KIP-455, in the two new files `alter-partition-reassignments.json` and `list-partition-reassignments.json`, plus
+InitProducerId v2 and CreateDelegationToken v2) - and of the other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
 rather than added - `apiversions.response.v0` and `.v1`, whose whole content is the api-key table of the broker,
@@ -56,6 +58,15 @@ and the topics `t4-21-vectors` and `t4-22-vectors`:
 | `elect-leaders.json` | 8 of 8, **new file** | **ElectLeaders v0** (Kafka 2.2, KIP-183, added as ElectPreferredLeaders): a named partition whose leader is already the preferred replica (**84** `ElectionNotNeeded`, a code of Kafka 2.4 that reaches a v0 client unchanged) and a partition of a topic the cluster does not have (**3**); plus the **v1** frames of KIP-460 (Kafka 2.4), whose request opens with an `election_type` byte and whose answer carries a top-level error code - a preferred and an **unclean** election of the same healthy partition, both answered 84 |
 | `create-topics.json` | 4 of 11 | **CreateTopics v3** (Kafka 2.0, KIP-219) and **v4** (Kafka 2.4, KIP-464): the v4 pair asks for the broker's own `num.partitions` and `default.replication.factor` with -1/-1 and an empty assignment, and the container answers 0 and creates three partitions with one replica each |
 | `incremental-alter-configs.json` | 6 of 6, **new file** | **IncrementalAlterConfigs v0** (Kafka 2.3, KIP-339): the three operations a topic accepts in one resource (SET, APPEND and the DELETE whose value is the null string), an APPEND to an option that is not a list (**42**) and the cluster-wide default broker resource with a static option, asked with `validate_only` (**42**) |
+
+What **Kafka 2.4** added to the admin and transaction surface, captured with the client id `kafka-client-t1-vectors`:
+
+| File | Of it captured here | What was captured on the 2.8.2 broker |
+|---|---|---|
+| `alter-partition-reassignments.json` | 8 of 8, **new file** | **AlterPartitionReassignments v0** (KIP-455), the first *flexible* admin frames this package sends: a reassignment to the replica set a partition already has (the only successful one a one-broker cluster can be asked for), a cancellation with nothing in flight (**85** `NoReassignmentInProgress`, the code Kafka 2.4 added for it), a replica set naming a broker that is not alive (**39**), a topic the cluster does not have (**3**, per partition and never at the top level) and a request whose three partitions carry three different codes. The topic is `t1-reassign-vectors`; no vector ever names a **null** topic array, which would move the partitions of every other suite of the shared container |
+| `list-partition-reassignments.json` | 2 of 2, **new file** | **ListPartitionReassignments v0** (KIP-455): the request for one named partition and the 14-byte answer of a cluster with nothing in flight. A one-broker cluster completes a reassignment before it answers the request that submitted it, so the empty list is the only answer it can produce; the shape of a partition in flight is documented from the sources |
+| `init-producer-id.json` | 2 new of 10 | **InitProducerId v2** (KIP-482): the v1 body in the compact encoding - the request header v2, a compact transactional id and a tag buffer at the end of the header and of the body - for the transactional id `t1-24-vectors-tx` |
+| `delegation-tokens.json` | 4 new of 26 | **CreateDelegationToken v2** (KIP-482): the flexible pair for `User:kafkatest` on the SASL_PLAINTEXT listener, the **57** of a renewer whose principal type is not `User` and the **64** of the PLAINTEXT listener, all four with compact strings and bytes. The `owner` of the answer is two *flat* fields of the specification, so it carries no tag buffer of its own - the `InlineStruct` case of the engine |
 
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`

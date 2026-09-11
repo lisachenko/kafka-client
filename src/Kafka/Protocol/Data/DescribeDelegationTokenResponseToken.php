@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Protocol\Data;
 use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\InlineStruct;
 
 /**
  * One token of a DescribeDelegationToken answer, i.e. one entry of the `token_details` array
@@ -88,7 +89,10 @@ class DescribeDelegationTokenResponseToken implements BinarySchemaInterface
     public static function getScheme(): array
     {
         return [
-            'owner'           => KafkaPrincipal::class,
+            // The two principal fields of a `DescribedDelegationToken` are flat fields of the specification, not a
+            // structure of their own, so they are inlined: in the flexible v2 of this api (Kafka 2.5) a structure
+            // would carry a tagged-field section here and the broker sends none
+            'owner'           => new InlineStruct(KafkaPrincipal::class),
             'issueTimestamp'  => BinarySchema::TYPE_INT64,
             'expiryTimestamp' => BinarySchema::TYPE_INT64,
             'maxTimestamp'    => BinarySchema::TYPE_INT64,

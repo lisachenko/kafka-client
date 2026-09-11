@@ -1411,6 +1411,79 @@ class AdminClient
     }
 
     /**
+     * Moves the replicas of partitions to other brokers, or cancels a move (ApiKey 45, Kafka 2.4, KIP-455)
+     *
+     * `org.apache.kafka.clients.admin.Admin.alterPartitionReassignments()` @ 2.8.2, and the api that
+     * `kafka-reassign-partitions.sh --execute` speaks since Kafka 2.4 instead of writing into ZooKeeper.
+     *
+     * Every entry names the **whole** replica set its partition should end up with - as a
+     * {@see NewPartitionReassignment} or as a plain list of broker ids, the first of which becomes the preferred
+     * leader - and `null` cancels a reassignment that is still in progress:
+     *
+     * <code>
+     *   $admin->alterPartitionReassignments([
+     *       'events' => [0 => new NewPartitionReassignment([2, 3]), 1 => null],
+     *   ]);
+     * </code>
+     *
+     * The call returns as soon as the **controller** has registered the new target assignment; the data is copied
+     * afterwards by the replica fetchers, and {@see self::listPartitionReassignments()} says what is still running.
+     * Every requested partition gets an entry in the result: `null` when the controller accepted it, the exception
+     * of its error code otherwise (3 for a topic or partition that does not exist, 39 for an empty replica list or
+     * a broker that is not alive, 85 for a cancellation that had nothing to cancel). Nothing is thrown for a
+     * partition that was refused - one partition of a call says nothing about the others.
+     *
+     * @param array<string, array<int, list<int>|NewPartitionReassignment|null>> $reassignments Target replica set of
+     *        every partition, as `topic => [partition => [broker ids]]`; `null` cancels that partition
+     * @param int                                                               $timeoutMs     How long the
+     *        controller waits for the reassignment to be registered
+     *
+     * @throws KafkaException If the request as a whole was refused by the broker it reached
+     *
+     * @return array<string, array<int, KafkaException|null>> Error of every requested partition, null when accepted
+     */
+    public function alterPartitionReassignments(array $reassignments, int $timeoutMs = 30000): array
+    {
+        try {
+            return $this->client()->alterPartitionReassignments($this->findController(), $reassignments, $timeoutMs);
+        } catch (NotControllerException) {
+            // The controller moved while we were asking: look it up again and send the request once more
+            $this->cluster->reload();
+
+            return $this->client()->alterPartitionReassignments($this->findController(), $reassignments, $timeoutMs);
+        }
+    }
+
+    /**
+     * Reports the partition reassignments the cluster is going through (ApiKey 46, Kafka 2.4, KIP-455)
+     *
+     * `org.apache.kafka.clients.admin.Admin.listPartitionReassignments()` @ 2.8.2, i.e. what
+     * `kafka-reassign-partitions.sh --verify` asks. A partition is in the answer while its reassignment is in
+     * flight and gone from it when the controller is done, so an empty result means "nothing is moving" - a topic
+     * that does not exist is not an error either.
+     *
+     * **`null` asks for every reassignment of the cluster**; on a shared cluster a caller should name its own
+     * partitions, as `['events' => [0, 1]]`.
+     *
+     * @param array<string, list<int>>|null $partitions Partitions to ask for, `null` for the whole cluster
+     * @param int                           $timeoutMs  How long the controller waits before it answers
+     *
+     * @throws KafkaException If the request was refused by the broker it reached
+     *
+     * @return list<PartitionReassignment> Every partition that is being reassigned
+     */
+    public function listPartitionReassignments(?array $partitions = null, int $timeoutMs = 30000): array
+    {
+        try {
+            return $this->client()->listPartitionReassignments($this->findController(), $partitions, $timeoutMs);
+        } catch (NotControllerException) {
+            $this->cluster->reload();
+
+            return $this->client()->listPartitionReassignments($this->findController(), $partitions, $timeoutMs);
+        }
+    }
+
+    /**
      * Makes the coordinator forget consumer groups and their committed offsets (ApiKey 42, Kafka 1.1, KIP-229)
      *
      * The counterpart of `kafka-consumer-groups.sh --delete`, which had to write to ZooKeeper before Kafka 1.1.

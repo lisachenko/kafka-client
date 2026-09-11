@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
  *  * `maxTimestamp` is the hard end of its life, `issueTimestamp` plus the maximum lifetime the create request
  *    asked for, capped by `delegation.token.max.lifetime.ms`; no renewal ever moves the expiry beyond it.
  *
- * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 to v2)"
  */
 final class TokenInformation
 {
