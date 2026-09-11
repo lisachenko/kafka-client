@@ -30,6 +30,17 @@ ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from on
 What Kafka 2.1 added to the two offset apis: OffsetCommit v5 (the frame without
 `retention_time`, KIP-211), OffsetCommit v6 and OffsetFetch v5 (the `committed_leader_epoch` of KIP-320).
 
+What **Kafka 2.1 and 2.2** added to the admin, transaction and SASL apis, captured with the client id `t4-vectors`
+and the topics `t4-21-vectors` and `t4-22-vectors`:
+
+| File | Of it captured here | What was captured on the 2.8.2 broker |
+|---|---|---|
+| `delete-topics.json` | 2 of 9 | **DeleteTopics v3** (Kafka 2.1): the frame of v2, whose version promises that the client understands the error code **73** `TopicDeletionDisabled` |
+| `txn-offset-commit.json` | 2 of 6 | **TxnOffsetCommit v2** (Kafka 2.1, KIP-320): the `committed_leader_epoch` between the offset and the metadata, and the answer of the coordinator that stores it without looking at it |
+| `sasl-authenticate.json` | 2 of 7 | **SaslAuthenticate v1** (Kafka 2.2, KIP-368): the PLAIN token and the answer that now ends in a `session_lifetime_ms` — **0** on a listener without `connections.max.reauth.ms` |
+| `controlled-shutdown.json` | 2 of 6 | **ControlledShutdown v2** (Kafka 2.2, KIP-380): the `broker_epoch` behind the broker id, asked with the **unknown** broker id 4242 and the epoch -1 — a shutdown of the real broker id would stop the shared container |
+| `elect-leaders.json` | 4 of 4, **new file** | **ElectLeaders v0** (Kafka 2.2, KIP-183, added as ElectPreferredLeaders): a named partition whose leader is already the preferred replica (**84** `ElectionNotNeeded`, a code of Kafka 2.4 that reaches a v0 client unchanged) and a partition of a topic the cluster does not have (**3**) |
+
 A vector is captured on the broker of the line that introduced its api version and is not re-captured while the
 frame does not change: the vectors inherited from `0.8.x` were captured on a Kafka 0.8.2.2 broker, those of `0.9.x`
 - Produce v1, Fetch v1, OffsetCommit v2, ControlledShutdown v1, the group membership apis and the consumer protocol

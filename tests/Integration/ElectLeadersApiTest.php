@@ -94,8 +94,16 @@ final class ElectLeadersApiTest extends IntegrationTestCase
 
         $result = $this->admin->electLeaders(ElectionType::PREFERRED, [$topic => [0, 1]]);
 
+        $partitions = array_keys($result[$topic]);
+        sort($partitions);
+
         self::assertSame([$topic], array_keys($result), 'the answer is grouped by topic');
-        self::assertSame([0, 1], array_keys($result[$topic]), 'and every requested partition is in it');
+        self::assertSame(
+            [0, 1],
+            $partitions,
+            'and every requested partition is in it - in the order the controller walked its map, not the one of'
+            . ' the request'
+        );
         foreach ($result[$topic] as $partition => $error) {
             self::assertInstanceOf(
                 ElectionNotNeededException::class,
