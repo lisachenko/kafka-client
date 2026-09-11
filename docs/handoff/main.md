@@ -111,7 +111,7 @@ above every one of them, and the "API keys" section of `docs/protocol/2.8.md` is
 | 35 | DescribeLogDirs | 0 | **0-2** | 2 | v1 2.0, v2 2.6 |
 | 36 | SaslAuthenticate | 0 | **0-2** | 2 | v1 2.2 (KIP-368 session lifetime), v2 2.5 |
 | 37 | CreatePartitions | 0 | **0-3** | 2 | v1 2.0, v2 2.5, v3 2.7 (KIP-599, error 89) |
-| 38-41 | the four delegation token apis | 0 | **0-2** | 2 | v1 2.0, v2 2.5 (38) / 2.4 (39-41 — verify against the tags) |
+| 38-41 | the four delegation token apis | 0 | **0-2** | 2 | v1 2.0; v2 2.4 for CreateDelegationToken (38), 2.5 for Renew/Expire/DescribeDelegationToken (39-41) — verified by T1 against the tags |
 | 42 | DeleteGroups | 0 | **0-2** | 2 | v1 2.0, v2 2.4 |
 | 43 | ElectLeaders | – | **0-2** | 2 | v0 2.2 (ElectPreferredLeaders, KIP-183), v1 2.4 (KIP-460 election type), v2 2.4 |
 | 44 | IncrementalAlterConfigs | – | **0-1** | 1 | v0 2.3 (KIP-339), v1 2.4 |
