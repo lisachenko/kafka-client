@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 4 (Kafka 2.4, KIP-482) is the same answer in the flexible encoding, see {@see SyncGroupResponse}.
  *
  * @see docs/protocol/2.8.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v4)"
+ * @see docs/protocol/2.8.md, section "SyncGroup API (key 14, v0 to v5)"
  */
 final class SyncGroupResponseV3 extends SyncGroupResponse
 {

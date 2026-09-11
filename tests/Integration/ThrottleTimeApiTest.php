@@ -213,7 +213,10 @@ final class ThrottleTimeApiTest extends IntegrationTestCase
             $join->memberId,
             [$join->memberId => new MemberAssignment([$topic => [0, 1, 2]])->pack()],
             self::CLIENT_ID,
-            203
+            203,
+            null,
+            $join->protocolType,
+            $join->groupProtocol
         )->writeTo($stream);
         $sync = SyncGroupResponse::unpack($stream);
 

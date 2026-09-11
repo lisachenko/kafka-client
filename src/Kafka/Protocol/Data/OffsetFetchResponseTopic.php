@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the `committed_leader_epoch` of KIP-320 at version 5, so the class of a partition entry follows
  * {@see OffsetFetchResponseTopic::VERSION}, which {@see OffsetFetchResponseTopicV0} lowers.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v7)"
  */
 class OffsetFetchResponseTopic implements BinarySchemaInterface
 {

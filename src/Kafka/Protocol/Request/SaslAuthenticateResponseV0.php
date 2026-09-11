@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * carries no lifetime at all, which is the "the connection never has to re-authenticate" of every broker below
  * Kafka 2.2.
  *
- * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0 to v2)"
  */
 final class SaslAuthenticateResponseV0 extends SaslAuthenticateResponse
 {
