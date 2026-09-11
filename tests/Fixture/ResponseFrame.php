@@ -157,11 +157,13 @@ final class ResponseFrame
         array $offlineReplicas = [],
         array $leaderEpochs = [],
         array $topicAuthorizedOperations = [],
-        int $clusterAuthorizedOperations = self::NOT_REQUESTED
+        array $topicIds = []
     ): string {
         // Version 9 (Kafka 2.4) is the first FLEXIBLE version of this api (KIP-482): every string and every
         // array announces its length as an unsigned varint of `length + 1`, and every structure - the body, a
-        // broker, a topic, a partition - ends in a tagged-field section. The fields are the ones of version 8.
+        // broker, a topic, a partition - ends in a tagged-field section. Version 10 (Kafka 2.8, KIP-516) put the
+        // `topic_id` of every topic between its name and its `is_internal` flag, and version 11 (KIP-700) took
+        // the `cluster_authorized_operations` off the end of the frame again.
         $body = pack('N', 0) . self::compactArrayLength(count($brokers));
         foreach ($brokers as [$nodeId, $host, $port]) {
             // The rack of the broker, null for a cluster that is not rack aware
@@ -175,6 +177,9 @@ final class ResponseFrame
         $body .= self::compactArrayLength(count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= pack('n', $topicErrorCodes[$topic] ?? 0) . self::compactString((string) $topic);
+            // The topic id of KIP-516: the zero uuid unless the caller named one, which is what a broker
+            // answers for a topic it has no id for
+            $body .= str_pad($topicIds[$topic] ?? '', 16 /* Uuid::SIZE */, "\x00", STR_PAD_LEFT);
             $body .= pack('C', in_array((string) $topic, $internalTopics, true) ? 1 : 0);
             $body .= self::compactArrayLength(count($partitions));
             foreach ($partitions as $partitionId => $leader) {
@@ -195,8 +200,9 @@ final class ResponseFrame
             $body .= pack('N', $topicAuthorizedOperations[$topic] ?? self::NOT_REQUESTED) . self::tagBuffer();
         }
 
-        // And the `cluster_authorized_operations` of the same version, at the very end of the frame
-        $body .= pack('N', $clusterAuthorizedOperations) . self::tagBuffer();
+        // The `cluster_authorized_operations` of version 8 lived at the very end of the frame and is gone from
+        // version 11 on (KIP-700), so the body simply ends in its tagged-field section
+        $body .= self::tagBuffer();
 
         // The response header v1 of a flexible api: the correlation id and a tag buffer of its own
         return self::of($correlationId, self::tagBuffer() . $body);

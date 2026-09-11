@@ -126,7 +126,7 @@ The shape of a file
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v9)",
+    "section": "Metadata API (key 3, v0 to v11)",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",

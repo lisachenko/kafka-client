@@ -20,6 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\MetadataRequestTopic;
+use Protocol\Kafka\Protocol\Data\MetadataRequestTopicV9;
 
 /**
  * This API answers the following questions:
@@ -81,13 +82,21 @@ use Protocol\Kafka\Protocol\Data\MetadataRequestTopic;
  * `leader_epoch` the ANSWER gained, see {@see MetadataResponse}; {@see MetadataRequestV6} lowers the version
  * constant for the answer that carries none.
  *
+ * **Version 8 (Kafka 2.3, KIP-430) appended the two booleans** of the authorized operations, **version 9 (Kafka
+ * 2.4) is the first flexible one** (KIP-482), see {@see self::FLEXIBLE_VERSION}, **version 10 (Kafka 2.8,
+ * KIP-516)** put a `topic_id` into every topic entry of the request and of the answer - and left the server side
+ * of it unimplemented, see {@see MetadataRequestTopic::$topicId} - and **version 11 (Kafka 2.8, KIP-700) took
+ * `include_cluster_authorized_operations` out again**: the cluster-wide question moved to the new DescribeCluster
+ * api (key 60), and the answer of version 11 carries no `cluster_authorized_operations` either. This class is
+ * version 11; a caller that wants that bitfield from the Metadata api asks with {@see MetadataRequestV10}.
+ *
  * The flag is `true` by default here, which is the behaviour of every version below 4 and of
  * {@see \Protocol\Kafka\Common\Cluster}, whose consumers and producers expect a named topic to spring into
  * existence. The administrative side asks with `false`: {@see \Protocol\Kafka\Admin\AdminClient::describeTopics()}
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v9)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
  */
 class MetadataRequest extends AbstractRequest
 {
@@ -99,7 +108,7 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 9;
+    public const int VERSION = 11;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -153,9 +162,10 @@ class MetadataRequest extends AbstractRequest
         if (static::VERSION >= 9 && $this->topics !== null) {
             // A flexible version writes the topics as structures, see {@see MetadataRequestTopic}; the public
             // shape of this field stays the list of names, which {@see self::getTopics()} hands back
+            $topicClass   = static::topicClass();
             $this->topics = array_map(
                 static fn(MetadataRequestTopic|string $topic): MetadataRequestTopic
-                    => $topic instanceof MetadataRequestTopic ? $topic : new MetadataRequestTopic($topic),
+                    => $topic instanceof MetadataRequestTopic ? $topic : new $topicClass($topic),
                 $this->topics
             );
         }
@@ -177,19 +187,33 @@ class MetadataRequest extends AbstractRequest
         // the tagged-field section that closes every structure of a flexible version, so the array can not be a
         // list of bare strings any more, see {@see MetadataRequestTopic}
         if (static::VERSION >= 9) {
-            $topics = [MetadataRequestTopic::class, BinarySchema::FLAG_NULLABLE => true];
+            $topics = [static::topicClass(), BinarySchema::FLAG_NULLABLE => true];
         }
 
         $body = ['topics' => $topics];
         if (static::VERSION >= 4) {
             $body['allowAutoTopicCreation'] = BinarySchema::TYPE_BOOLEAN;
         }
-        if (static::VERSION >= 8) {
+        // The cluster-wide question of KIP-430 lives in the versions 8 to 10 only: `MetadataRequest.json`
+        // @ 2.8.2 declares it as "8-10", because KIP-700 gave it to the DescribeCluster api in version 11
+        if (static::VERSION >= 8 && static::VERSION <= 10) {
             $body['includeClusterAuthorizedOperations'] = BinarySchema::TYPE_BOOLEAN;
-            $body['includeTopicAuthorizedOperations']   = BinarySchema::TYPE_BOOLEAN;
+        }
+        if (static::VERSION >= 8) {
+            $body['includeTopicAuthorizedOperations'] = BinarySchema::TYPE_BOOLEAN;
         }
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this class sends
+     *
+     * @return class-string<MetadataRequestTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return static::VERSION >= 10 ? MetadataRequestTopic::class : MetadataRequestTopicV9::class;
     }
 
     /**

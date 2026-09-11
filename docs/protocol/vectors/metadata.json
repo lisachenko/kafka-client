@@ -1,8 +1,8 @@
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v9)",
-    "description": "Wire vectors of the Metadata API (key 3, v0 to v9), replayed by tests/Compliance.",
+    "section": "Metadata API (key 3, v0 to v11)",
+    "description": "Wire vectors of the Metadata API (key 3, v0 to v11), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
@@ -977,7 +977,7 @@
         {
             "id": "metadata.request.v9",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV9",
             "version": 9,
             "source": "broker",
             "description": "Metadata request v9 (Kafka 2.4), the first FLEXIBLE version of this api (KIP-482): the request header v2 - the client id as a NON-compact string and a tag buffer of its own behind it - a COMPACT topic array (the unsigned varint 02 for one entry), the topic name as a compact string (0b for ten bytes), the three booleans of the versions 4 and 8 and the tagged-field section of the body. The question is the one of version 8, in the other encoding.",
@@ -1002,7 +1002,7 @@
         {
             "id": "metadata.response.v9",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV9",
             "version": 9,
             "source": "broker",
             "description": "The answer v9: the response header v1 - the correlation id and a tag buffer - then the throttle time, a compact broker array whose entry ends in its own tag buffer, the compact cluster id, the controller id, a compact topic array whose partitions carry compact replica, isr and offline-replica arrays and a tag buffer each, the two authorized_operations bitfields of KIP-430 with Integer.MIN_VALUE (\"not asked\") and the tagged-field section of the body.",

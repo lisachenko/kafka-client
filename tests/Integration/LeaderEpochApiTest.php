@@ -62,7 +62,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * container: the value the broker reports, the fencing of an epoch the leader is not on, and the fields the lower
  * version of each api does not have.
  *
- * @see docs/protocol/2.8.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v9)" and
+ * @see docs/protocol/2.8.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v11)" and
  *      "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]

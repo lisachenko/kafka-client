@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * correlation id of the header and a tagged-field section at the end of every structure, see
  * {@see MetadataResponse}.
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v9)" and
+ * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v11)" and
  *      "Flexible versions in the engine (KIP-482)"
  */
 final class MetadataResponseV8 extends MetadataResponse
