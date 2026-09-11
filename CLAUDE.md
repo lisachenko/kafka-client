@@ -3,7 +3,7 @@
 Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch and is developed
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
 (Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
-(Kafka 0.11.0.3, **complete**) → `main` (Kafka **1.1.1**, **complete**). See `docs/CASCADE.md` and,
+(Kafka 0.11.0.3, **complete**) → `1.x` (Kafka **1.1.1**, **complete**) → `main` (Kafka 2.0.1, **next**). See `docs/CASCADE.md` and,
 for each line, `docs/handoff/<branch>.md`: every one of those files carries the release notes of its
 line with the plan it was built from below them — `docs/handoff/main.md` is the record of the 1.x
 line. The grammar `main` implements is `docs/protocol/1.1.md`.
@@ -13,7 +13,7 @@ format is added, almost every api is bumped by one version with a byte-identical
 `OffsetsForLeaderEpochResponse` v1 gains a `leader_epoch`, the three ACL apis gain a
 `resource_pattern_type` (KIP-290) and the error code **72** `LISTENER_NOT_FOUND` is added. What it
 adds api by api, the ticket plan, the environment recipe and the pitfalls of the 1.x session are in
-`docs/handoff/2.0.x.md`; the finished 1.x tree is branched off as `1.x` so that `main` can carry it.
+`docs/handoff/2.0.x.md`; the finished 1.x tree was branched off as `1.x` (at `2ee4866`, the merge of PR #109) so that `main` can carry it.
 
 ## Hard rules (owner's decisions)
 
