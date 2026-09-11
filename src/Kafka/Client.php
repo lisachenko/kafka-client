@@ -78,6 +78,8 @@ use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
+use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
+use Protocol\Kafka\Protocol\Request\ElectLeadersResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
@@ -2106,6 +2108,58 @@ class Client
                         $topicResult?->errorCode,
                         $topicResult?->errorMessage
                     );
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Asks the controller to elect the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183)
+     *
+     * The version 0 of the api can only ask for the **preferred** replica - the `election_type` of KIP-460 is a
+     * field of the version 1 - so this method has no election type at all; {@see Admin\AdminClient::electLeaders()}
+     * is what refuses anything else. `$topicPartitions` is a `topic => list of partition ids` map, or **null** for
+     * every partition of the cluster, and the answer is read into a `topic => partition => error` map with `null`
+     * for every partition that really got a new leader.
+     *
+     * A partition that the controller left out of its answer - which happens for a **null** request, where every
+     * partition that needed no election is dropped - is not in the result either: the caller asked for "whatever
+     * needs electing", and nothing else is reported.
+     *
+     * @param Node                          $controller      Active controller of the cluster
+     * @param array<string, list<int>>|null $topicPartitions Partitions to elect a leader for, null for all of them
+     * @param int                           $timeoutMs       How long the controller waits for the elections
+     *
+     * @return array<string, array<int, KafkaException|null>> Error of every answered partition
+     */
+    public function electLeaders(
+        Node $controller,
+        ?array $topicPartitions,
+        int $timeoutMs = ElectLeadersRequest::DEFAULT_TIMEOUT_MS
+    ): array {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new ElectLeadersRequest(
+                $topicPartitions,
+                $timeoutMs,
+                $clientId,
+                $correlationId
+            ),
+            ElectLeadersResponse::class,
+            static function (ElectLeadersResponse $response): array {
+                $result = [];
+                foreach ($response->replicaElectionResults as $topic => $election) {
+                    foreach ($election->partitionResult as $partition) {
+                        $result[$topic][$partition->partitionId] = self::topicError(
+                            $topic,
+                            $partition->errorCode,
+                            $partition->errorMessage
+                        );
+                    }
                 }
 
                 return $result;

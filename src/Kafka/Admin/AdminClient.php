@@ -26,6 +26,7 @@ use Protocol\Kafka\Common\Errors\InvalidGroupIdException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Common\TopicMetadata;
@@ -64,6 +65,7 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -561,15 +563,28 @@ class AdminClient
      *         broker id - a 0.10.2.2 broker answers the error code 8 for it, where 0.8.2.2 answered -1, see
      *         {@see ControlledShutdownRequest}
      *
+     * The request goes out as **version 2**, the version Kafka 2.2 added with KIP-380: it carries a `broker_epoch`,
+     * and `$brokerEpoch` is what goes into it. The default is the
+     * {@see ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH} -1, for which the controller skips the staleness
+     * check altogether - only the broker itself knows its own registration epoch, and a controller that is asked
+     * with an epoch **below** the one it has cached answers 77 (StaleBrokerEpoch). Measured on the container: an
+     * unknown broker id with the -1 is the 8 below, while an unknown broker id **with** an epoch is answered -1
+     * (Unknown), because the epoch check looks that broker up in a map it is not in.
+     *
+     * @param int $brokerId    Id of the broker that should hand its partitions over
+     * @param int $brokerEpoch Registration epoch of that broker, -1 to skip the staleness check of KIP-380
+     *
      * @return list<ControlledShutdownResponsePartition> Partitions that still live on the broker, empty when it is
      *                                                   safe to stop it
      */
-    public function controlledShutdown(int $brokerId): array
-    {
+    public function controlledShutdown(
+        int $brokerId,
+        int $brokerEpoch = ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH
+    ): array {
         /** @var ControlledShutdownResponse $response */
         $response = $this->sendAnyNode(
             fn(int $correlationId): ControlledShutdownRequest
-                => new ControlledShutdownRequest($brokerId, $this->clientId(), $correlationId),
+                => new ControlledShutdownRequest($brokerId, $brokerEpoch, $this->clientId(), $correlationId),
             ControlledShutdownResponse::class
         );
 
@@ -578,6 +593,88 @@ class AdminClient
         }
 
         return $response->remainingTopicPartitions;
+    }
+
+    /**
+     * Elects the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183)
+     *
+     * The api of KIP-183 is what `kafka-preferred-replica-election.sh` had to write into ZooKeeper before: it asks
+     * the **active controller** to move the leadership of a partition to its **preferred replica**, the first
+     * broker of the replica assignment, when that replica is in the ISR. The request is sent to the controller
+     * ({@see self::findController()}) and repeated ONCE against a freshly looked up one when a partition comes
+     * back with 41 (NotController), exactly like {@see self::createTopics()}.
+     *
+     * `$topicPartitions` names the partitions to elect, as `topic => list of partition ids` or as an iterable of
+     * {@see TopicPartition}; **null** asks the controller to look at every partition of the cluster, and the
+     * answer of such a request holds only the partitions that were really elected or really failed - the broker
+     * drops every `ElectionNotNeeded` from it. A named partition that needs no election is reported with **84**.
+     *
+     * Version 0 of the api can only ask for the preferred replica: the `election_type` byte of
+     * {@see ElectionType::UNCLEAN} is a field of the version 1 that Kafka 2.4 adds, and the Java client of 2.8.2
+     * refuses the combination in the very same way ("API Version 0 only supports PREFERRED election type").
+     *
+     * Every requested partition gets an entry in the result: `null` when it was elected, otherwise the exception of
+     * its error code - 84 ElectionNotNeeded, 3 UnknownTopicOrPartition, 17 InvalidTopic for a topic that is being
+     * deleted, 80 PreferredLeaderNotAvailable when the preferred replica is not in the ISR. Nothing is thrown for
+     * a partition that failed, exactly like {@see self::createTopics()}.
+     *
+     * @param int $electionType Kind of election, one of the {@see ElectionType} constants
+     * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Partitions to elect a leader
+     *        for, null for every partition of the cluster
+     * @param int $timeoutMs How long the controller waits for the elections, in milliseconds
+     *
+     * @throws UnsupportedVersionException If an election type other than PREFERRED is asked of the version 0 this
+     *         line sends
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws NotControllerException If the cluster has no active controller
+     *
+     * @return array<string, array<int, KafkaException|null>> Error of every requested partition, as topic =>
+     *         partition => error, null for a partition that was elected
+     */
+    public function electLeaders(
+        int $electionType = ElectionType::PREFERRED,
+        ?iterable $topicPartitions = null,
+        int $timeoutMs = ElectLeadersRequest::DEFAULT_TIMEOUT_MS
+    ): array {
+        if ($electionType !== ElectionType::PREFERRED) {
+            throw new UnsupportedVersionException([
+                'electionType' => ElectionType::nameOf($electionType),
+                'error'        => 'API Version 0 only supports PREFERRED election type',
+            ]);
+        }
+
+        $partitions = $topicPartitions === null ? null : self::normalizeTopicPartitions($topicPartitions);
+        $request    = fn(Node $controller): array => $this->client()
+            ->electLeaders($controller, $partitions, $timeoutMs);
+
+        $result = $request($this->findController());
+        if (self::holdsNotController($result)) {
+            // The controller moved between the lookup and the request, which one more lookup repairs; the answer
+            // of the second attempt is reported as it is, exactly like the one of {@see self::onController()}
+            $this->cluster->reload();
+
+            return $request($this->findController());
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns whether any partition of a nested topic => partition => error map carries a 41 (NotController)
+     *
+     * @param array<string, array<int, KafkaException|null>> $result
+     */
+    private static function holdsNotController(array $result): bool
+    {
+        foreach ($result as $partitions) {
+            foreach ($partitions as $error) {
+                if ($error instanceof NotControllerException) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
