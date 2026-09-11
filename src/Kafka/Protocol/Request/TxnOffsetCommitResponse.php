@@ -44,14 +44,24 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
  * {@see TxnOffsetCommitResponseV1} the one of Kafka 2.0: the `committed_leader_epoch` that Kafka 2.1 added with
  * version 2 is a field of the REQUEST alone, so the three answers are one and the same frame.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v2)"
+ * **Kafka 2.5 added the version 3** (KIP-447) and gave the answer no field: the generation, the member id and the
+ * group instance id are in the REQUEST, and what the answer gains is three more error codes per partition - 22
+ * `IllegalGeneration`, 25 `UnknownMemberId` and 82 `FencedInstanceId`. The version 3 is the first flexible one of
+ * this api; {@see TxnOffsetCommitResponseV2} is the frame of Kafka 2.1.
+ *
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 class TxnOffsetCommitResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 3;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation

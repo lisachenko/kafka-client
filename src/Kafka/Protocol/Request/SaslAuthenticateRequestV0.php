@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * lowers the version constant of {@see SaslAuthenticateRequest}. A broker of the lines below this one serves the
  * version 0 and nothing else, and it is the version {@see \Protocol\Kafka\IO\SocketStream} sent until Kafka 2.2.
  *
- * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0 to v2)"
  */
 final class SaslAuthenticateRequestV0 extends SaslAuthenticateRequest
 {

@@ -1641,6 +1641,45 @@ final class KafkaConsumerTest extends TestCase
     }
 
     /**
+     * KIP-447, Kafka 2.5: what a transactional producer names in its `TxnOffsetCommit`
+     */
+    public function testTheGroupMetadataOfAConsumerThatNeverJoinedIsTheNotAMemberOne(): void
+    {
+        $metadata = $this->consumer(new FakeClient())->groupMetadata();
+
+        self::assertSame(self::GROUP, $metadata->groupId);
+        self::assertSame(OffsetCommitRequest::DEFAULT_GENERATION_ID, $metadata->generationId);
+        self::assertSame('', $metadata->memberId);
+        self::assertNull($metadata->groupInstanceId);
+    }
+
+    public function testTheGroupMetadataCarriesTheConfiguredInstanceIdOfAStaticMember(): void
+    {
+        $metadata = $this->consumer(new FakeClient(), [ConsumerConfig::GROUP_INSTANCE_ID => 't9-instance'])
+            ->groupMetadata();
+
+        self::assertSame('t9-instance', $metadata->groupInstanceId);
+        self::assertSame(
+            "ConsumerGroupMetadata{groupId=t9-unit-group, generationId=-1, memberId='', "
+            . "groupInstanceId='t9-instance'}",
+            (string) $metadata
+        );
+    }
+
+    public function testAConsumerWithoutAGroupHasNoGroupMetadataAtAll(): void
+    {
+        $consumer = new TestKafkaConsumer(new FakeClient(), [
+            ConsumerConfig::GROUP_ID           => '',
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/group\.id/');
+
+        $consumer->groupMetadata();
+    }
+
+    /**
      * @param array<string, mixed> $configuration Options that override the defaults of this test class
      */
     private function consumer(FakeClient $client, array $configuration = []): TestKafkaConsumer

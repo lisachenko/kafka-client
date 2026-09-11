@@ -1084,21 +1084,19 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a CreatePartitions answer of version 0: the throttle time and one entry per topic
+     * Builds a CreatePartitions answer of version **2**, the flexible one the client sends (KIP-482)
      *
      * @param array<string, array{0: int, 1: string|null}> $topics Error code and message of every topic
      */
     private static function createPartitionsResponse(array $topics): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => [$errorCode, $errorMessage]) {
-            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
-            $body .= $errorMessage === null
-                ? pack('n', 0xFFFF)
-                : pack('n', strlen($errorMessage)) . $errorMessage;
+            $body .= self::compactString((string) $topic) . pack('n', $errorCode);
+            $body .= self::compactNullableString($errorMessage) . "\x00";
         }
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $body . "\x00");
     }
 
     /**

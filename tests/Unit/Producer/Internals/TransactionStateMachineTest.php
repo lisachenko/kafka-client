@@ -24,10 +24,12 @@ use Protocol\Kafka\Common\Errors\NotLeaderForPartitionException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\TopicAuthorizationFailedException;
 use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\Internals\TransactionState;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\ClusterFixture;
 use Protocol\Kafka\Tests\Unit\Producer\Fixture\FakeClient;
 
@@ -83,7 +85,12 @@ final class TransactionStateMachineTest extends TestCase
         self::assertSame(42, $manager->getProducerIdAndEpoch()->producerId);
         self::assertSame(3, $manager->getProducerIdAndEpoch()->epoch);
         self::assertSame(
-            [['transactionalId' => self::TRANSACTIONAL_ID, 'transactionTimeoutMs' => 30000]],
+            [[
+                'transactionalId'      => self::TRANSACTIONAL_ID,
+                'transactionTimeoutMs' => 30000,
+                'producerId'           => InitProducerIdRequest::NO_PRODUCER_ID,
+                'producerEpoch'        => InitProducerIdRequest::NO_PRODUCER_EPOCH,
+            ]],
             $client->initProducerIdCalls
         );
     }
@@ -159,10 +166,18 @@ final class TransactionStateMachineTest extends TestCase
 
         $manager->sendOffsetsToTransaction($offsets, 'my-group');
 
-        self::assertSame(
+        self::assertEquals(
             [
                 ['addOffsetsToTxn', self::TRANSACTIONAL_ID, 'my-group'],
-                ['txnOffsetCommit', self::TRANSACTIONAL_ID, 'my-group', $offsets],
+                [
+                    'txnOffsetCommit',
+                    self::TRANSACTIONAL_ID,
+                    'my-group',
+                    $offsets,
+                    // A bare group id means the "not a member" commit of KIP-447: the generation -1 with an
+                    // empty member id, which every version below 3 of the api sent
+                    ConsumerGroupMetadata::forGroup('my-group'),
+                ],
             ],
             $client->transactionCalls
         );
@@ -431,6 +446,58 @@ final class TransactionStateMachineTest extends TestCase
     /**
      * @param list<ProducerIdAndEpoch> $producerIds
      */
+    /**
+     * KIP-360, Kafka 2.5: the abort of an abortable error asks for a new epoch of the same producer id
+     */
+    public function testAnAbortAfterAnAbortableErrorBumpsTheEpochWithTheVersionThreeRequest(): void
+    {
+        $client  = $this->client([new ProducerIdAndEpoch(42, 3), new ProducerIdAndEpoch(42, 4)]);
+        $manager = new TransactionManager($client, self::TRANSACTIONAL_ID, 30000);
+
+        $manager->initTransactions();
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([self::TOPIC => [0 => ['one']]]);
+        $manager->transitionToAbortableError(new NotLeaderForPartitionException([]));
+
+        $manager->abortTransaction();
+
+        self::assertSame(TransactionState::READY, $manager->currentState());
+        self::assertCount(2, $client->initProducerIdCalls);
+        self::assertSame(
+            [
+                'transactionalId'      => self::TRANSACTIONAL_ID,
+                'transactionTimeoutMs' => 30000,
+                'producerId'           => 42,
+                'producerEpoch'        => 3,
+            ],
+            $client->initProducerIdCalls[1],
+            'the bump names the id and the epoch the producer holds, not the -1/-1 of a new id'
+        );
+        self::assertSame(42, $manager->getProducerIdAndEpoch()->producerId);
+        self::assertSame(4, $manager->getProducerIdAndEpoch()->epoch);
+        self::assertSame(
+            0,
+            $manager->sequenceNumber(new TopicPartition(self::TOPIC, 0)),
+            'and the sequences of the new epoch start at zero again'
+        );
+    }
+
+    /**
+     * An abort that no error caused sends nothing but the EndTxn: there is no sequence state to fence
+     */
+    public function testAnOrdinaryAbortDoesNotBumpTheEpoch(): void
+    {
+        $client  = $this->client([new ProducerIdAndEpoch(42, 3)]);
+        $manager = new TransactionManager($client, self::TRANSACTIONAL_ID, 30000);
+
+        $manager->initTransactions();
+        $manager->beginTransaction();
+        $manager->abortTransaction();
+
+        self::assertCount(1, $client->initProducerIdCalls, 'the id was asked for once, by initTransactions()');
+        self::assertSame(3, $manager->getProducerIdAndEpoch()->epoch);
+    }
+
     private function client(array $producerIds = []): FakeClient
     {
         $client              = new FakeClient(ClusterFixture::withPartitions([self::TOPIC => [0 => 1, 1 => 1]]));
