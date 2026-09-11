@@ -2,14 +2,15 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **429** of them in **37** files: **111** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **431** of them in **37** files: **113** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
 19 frames of the leader epochs and the zstd codec in the producer and consumer apis (KIP-320, KIP-110), the 6
-frames of OffsetCommit v5/v6 and OffsetFetch v5 and the 4 of DeleteTopics v3 and TxnOffsetCommit v2, and the 8
-frames of **Kafka 2.2**: SaslAuthenticate v1, ControlledShutdown v2 and the new api ElectLeaders (key 43), whose
-`elect-leaders.json` is the one file this line added, and the 4 frames of the KIP-394 exchange (JoinGroup v4) - and of
+frames of OffsetCommit v5/v6 and OffsetFetch v5 and the 4 of DeleteTopics v3 and TxnOffsetCommit v2, and the 10
+frames of **Kafka 2.2**: the ListOffsets v5 pair (KIP-207), SaslAuthenticate v1, ControlledShutdown v2 and the new
+api ElectLeaders (key 43), whose `elect-leaders.json` is the one file this line added, and the 4 frames of the
+KIP-394 exchange (JoinGroup v4) - and of
 the other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
@@ -26,7 +27,7 @@ ListGroups v2 and DeleteGroups v1, one request/response pair each, taken from on
 |---|---|---|
 | `produce.json` | 6 of 30 | **Produce v6** (KIP-219), request and answer, plus the throttled answer of a `producer_byte_rate` quota — the frame that shows what KIP-219 changed: `ThrottleTime = 2381` in an answer that arrived after about a millisecond; **Produce v7** (KIP-110), request and answer, and the **76** a v6 is answered when its record set is compressed with zstd |
 | `fetch.json` | 14 of 47 | **Fetch v8** (KIP-219), request and answer; the throttled answer, whose topics array is **empty**; the pair of a Fetch v3 against a topic with `message.downconversion.enable=false`, which is answered **35** `UNSUPPORTED_VERSION` per partition (KIP-283); **Fetch v9** and **v10** (KIP-320, KIP-110) with the `current_leader_epoch` on the wire, the **75** of an epoch above the leader's, and the three frames of the zstd rule — the **76** of a v9 against a `compression.type=zstd` topic and the same partition served to a v10 |
-| `offsets.json` | 4 of 18 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header, and **v4** (KIP-320), which carries a `current_leader_epoch` in the request and a `leader_epoch` behind every answered offset |
+| `offsets.json` | 6 of 20 | **ListOffsets v3** (KIP-219), the version 2 frames with another number in the header; **v4** (KIP-320), which carries a `current_leader_epoch` in the request and a `leader_epoch` behind every answered offset; and **v5** (KIP-207), the version 4 frames again — what it adds is the error code **78**, which a one-broker container can not produce |
 | `metadata.json` | 4 of 23 | **Metadata v6** (KIP-219), likewise, and **v7** (KIP-320), whose partition entries carry the `leader_epoch` of their leader |
 | `offset-for-leader-epoch.json` | 5 of 9 | **OffsetForLeaderEpoch v1** (KIP-279): the `leader_epoch` the answered `end_offset` belongs to, inserted between the partition id and the offset; and **v2** (KIP-320), the version a consumer sends, with a `current_leader_epoch` in the request, a `throttle_time_ms` at the head of the answer and the **75** of a fenced epoch |
 
