@@ -1,8 +1,8 @@
 {
     "api": "create-topics",
     "apiKey": 19,
-    "section": "CreateTopics API (key 19, v0 to v3)",
-    "description": "Wire vectors of the CreateTopics API (key 19, v0 to v3), replayed by tests/Compliance.",
+    "section": "CreateTopics API (key 19, v0 to v4)",
+    "description": "Wire vectors of the CreateTopics API (key 19, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "createtopics.request.v1",
@@ -177,7 +177,7 @@
         {
             "id": "createtopics.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequestV3",
             "version": 3,
             "source": "broker",
             "description": "CreateTopics request v3, the frame of version 2 with the api version Kafka 2.0 added (KIP-219): one topic with one partition, one replica and one topic level option, waiting up to 30 seconds for the controller.",
@@ -209,7 +209,7 @@
         {
             "id": "createtopics.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponseV3",
             "version": 3,
             "source": "broker",
             "description": "CreateTopics response v3 of the controller for a topic it created: the throttle time of version 2, the error code 0 and a null error message.",
@@ -221,6 +221,54 @@
                 "topics": {
                     "t4-20-vectors": {
                         "topic": "t4-20-vectors",
+                        "errorCode": 0,
+                        "errorMessage": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "createtopics.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "CreateTopics request v4, the frame KIP-464 gave a new meaning in Kafka 2.4: `num_partitions` and `replication_factor` are both -1 and the assignment array is EMPTY, which asks the broker for its own `num.partitions` and `default.replication.factor`. The bytes are those of a version 3 request with another version field; what the version 4 buys is that a broker of Kafka 2.3 or below will not silently refuse the -1.",
+            "hex": "0000003a00130004000003e9000a74342d766563746f727300000001000d74342d32342d766563746f7273ffffffffffff00000000000000000000753000",
+            "fields": {
+                "messageSize": 58,
+                "apiKey": 19,
+                "apiVersion": 4,
+                "correlationId": 1001,
+                "clientId": "t4-vectors",
+                "topics": {
+                    "t4-24-vectors": {
+                        "topic": "t4-24-vectors",
+                        "numPartitions": -1,
+                        "replicationFactor": -1,
+                        "replicaAssignment": [],
+                        "configs": []
+                    }
+                },
+                "timeout": 30000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createtopics.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "CreateTopics answer v4 of an accepted topic: the frame of version 2, whose layout none of the versions 3 and 4 changed - the error code 0 and a null error message.",
+            "hex": "0000001f000003e90000000000000001000d74342d32342d766563746f72730000ffff",
+            "fields": {
+                "messageSize": 31,
+                "correlationId": 1001,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-24-vectors": {
+                        "topic": "t4-24-vectors",
                         "errorCode": 0,
                         "errorMessage": null
                     }
