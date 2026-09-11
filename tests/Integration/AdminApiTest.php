@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 /**
  * Exercises the AdminClient against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v2)"
  * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
@@ -164,17 +164,24 @@ final class AdminApiTest extends IntegrationTestCase
         $this->admin->controlledShutdown(self::UNKNOWN_BROKER_ID);
     }
 
-    public function testTheBrokerAnnouncesBothVersionsOfControlledShutdown(): void
+    public function testTheBrokerAnnouncesEveryVersionOfControlledShutdown(): void
     {
         // A 0.9 to 0.11 broker reported `minVersion = 1` for key 7: version 0 uses a request header without a client
         // id, which the Java client of those releases could not build, so the protocol retired it. Kafka 1.0 gave
         // `RequestHeader` a schema of its own for that one frame (`CONTROLLED_SHUTDOWN_V0_SCHEMA`) and moved the api
-        // to the Java schemas altogether, so a 1.1.1 broker announces **v0 and v1** again.
+        // to the Java schemas altogether, so a 1.1.1 broker announced **v0 and v1** again. A 2.8.2 broker serves
+        // two versions more: the **v2** of KIP-380, which Kafka 2.2 added for the `broker_epoch`, and the flexible
+        // **v3** of Kafka 2.4, which this line does not send yet.
         $nodes       = $this->cluster->nodes();
         $apiVersions = $this->admin->getApiVersions(reset($nodes));
 
         self::assertSame(0, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->minVersion);
-        self::assertSame(1, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->maxVersion);
+        self::assertSame(3, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->maxVersion);
+        self::assertSame(
+            2,
+            ControlledShutdownRequest::VERSION,
+            'and the client sends the highest non-flexible one of them'
+        );
     }
 
     public function testBothVersionsOfControlledShutdownAreStillServedByTheBroker(): void
@@ -190,7 +197,12 @@ final class AdminApiTest extends IntegrationTestCase
         new ControlledShutdownRequestV0(self::UNKNOWN_BROKER_ID, 4200)->writeTo($stream);
         $versionZero = ControlledShutdownResponse::unpack($stream);
 
-        new ControlledShutdownRequest(self::UNKNOWN_BROKER_ID, 't10-admin', 4201)->writeTo($stream);
+        new ControlledShutdownRequest(
+            self::UNKNOWN_BROKER_ID,
+            ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
+            't10-admin',
+            4201
+        )->writeTo($stream);
         $versionOne = ControlledShutdownResponse::unpack($stream);
 
         self::assertSame(4200, $versionZero->getCorrelationId());

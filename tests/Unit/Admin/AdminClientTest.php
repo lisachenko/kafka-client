@@ -349,7 +349,12 @@ final class AdminClientTest extends TestCase
 
         // The admin client sends version 1, the version whose header carries the client id
         self::assertSame(
-            [self::requestFrame(new ControlledShutdownRequest(4242, 't10', $broker->getReceivedCorrelationIds()[0]))],
+            [self::requestFrame(new ControlledShutdownRequest(
+                4242,
+                ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
+                't10',
+                $broker->getReceivedCorrelationIds()[0]
+            ))],
             $broker->getReceivedFrames()
         );
     }
