@@ -726,7 +726,7 @@ This branch is the **2.x line** and tracks the **Kafka 2.8.2** wire protocol —
 2.x major, so everything Kafka 2.0 to 2.8 added — and it is built **one Kafka minor at a time**: each
 minor is a gated milestone commit of the branch (the tag points are listed in
 [docs/handoff/main.md](docs/handoff/main.md)), and until the line is complete the table below says
-which versions the current milestone has reached. **Current milestone: Kafka 2.0.** The frozen
+which versions the current milestone has reached. **Current milestone: Kafka 2.1.** The frozen
 protocol snapshots of the lines below live on `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3),
 `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2).
 
@@ -741,18 +741,18 @@ The "main" column lists the versions this client has a class for; the one in **b
 it sends, and "not yet" names the versions the broker serves that a later milestone of the line adds.
 The `1.x` column is where the line started.
 
-| Api key | API | Versions in 2.8.2 | Client-facing | `1.x` | `main` (2.x, Kafka 2.0 milestone) |
+| Api key | API | Versions in 2.8.2 | Client-facing | `1.x` | `main` (2.x, Kafka 2.1 milestone) |
 |---|---|---|---|---|---|
-| 0 | Produce | v0 … v9 | yes | v0 … v4, **v5** | v0 … v5, **v6** (**v2** for `message.format.version` below 0.11.0); v7-v9 not yet |
-| 1 | Fetch | v0 … v12 | yes | v0 … v6, **v7** | v0 … v7, **v8** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer); v9-v12 not yet |
-| 2 | Offsets (ListOffsets) | v0 … v6 | yes | v0, v1, **v2** | v0, v1, v2, **v3**; v4-v6 not yet |
-| 3 | Metadata | v0 … v11 | yes | v0 … v4, **v5** | v0 … v5, **v6**; v7-v11 not yet |
+| 0 | Produce | v0 … v9 | yes | v0 … v4, **v5** | v0 … v6, **v7** (**v2** for `message.format.version` below 0.11.0); v8-v9 not yet |
+| 1 | Fetch | v0 … v12 | yes | v0 … v6, **v7** | v0 … v9, **v10** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer); v11-v12 not yet |
+| 2 | Offsets (ListOffsets) | v0 … v6 | yes | v0, v1, **v2** | v0 … v3, **v4**; v5-v6 not yet |
+| 3 | Metadata | v0 … v11 | yes | v0 … v4, **v5** | v0 … v6, **v7**; v8-v11 not yet |
 | 4 | LeaderAndIsr | v0 … v5 | broker→broker | no | no |
 | 5 | StopReplica | v0 … v3 | broker→broker | no | no |
 | 6 | UpdateMetadata | v0 … v7 | broker→broker | no | no |
 | 7 | ControlledShutdown | v0 … v3 | controller | v0, **v1** | v0, **v1**; v2-v3 not yet |
-| 8 | OffsetCommit | v0 … v8 | yes | v0 … v2, **v3** | v0 … v3, **v4** (**v0** for `offsets.storage = zookeeper`); v5-v8 not yet |
-| 9 | OffsetFetch | v0 … v7 | yes | v0 … v2, **v3** | v0 … v3, **v4** (**v0** for `offsets.storage = zookeeper`); v5-v7 not yet |
+| 8 | OffsetCommit | v0 … v8 | yes | v0 … v2, **v3** | v0 … v5, **v6** (**v0** for `offsets.storage = zookeeper`); v7-v8 not yet |
+| 9 | OffsetFetch | v0 … v7 | yes | v0 … v2, **v3** | v0 … v4, **v5** (**v0** for `offsets.storage = zookeeper`); v6-v7 not yet |
 | 10 | GroupCoordinator (FindCoordinator) | v0 … v3 | yes | v0, **v1** | v0, v1, **v2**; v3 not yet |
 | 11 | JoinGroup | v0 … v7 | yes | v0, v1, **v2** | v0, v1, v2, **v3**; v4-v7 not yet |
 | 12 | Heartbeat | v0 … v4 | yes | v0, **v1** | v0, v1, **v2**; v3-v4 not yet |
@@ -763,15 +763,15 @@ The `1.x` column is where the line started.
 | 17 | SaslHandshake | v0, v1 | yes | v0, **v1** | v0, **v1** |
 | 18 | ApiVersions | v0 … v3 | yes | v0, **v1** | v0, v1, **v2**; v3 not yet |
 | 19 | CreateTopics | v0 … v7 | controller | v0, v1, **v2** | v0, v1, v2, **v3**; v4-v7 not yet |
-| 20 | DeleteTopics | v0 … v6 | controller | v0, **v1** | v0, v1, **v2**; v3-v6 not yet |
+| 20 | DeleteTopics | v0 … v6 | controller | v0, **v1** | v0, v1, v2, **v3**; v4-v6 not yet |
 | 21 | DeleteRecords | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
 | 22 | InitProducerId | v0 … v4 | yes | **v0** | v0, **v1**; v2-v4 not yet |
-| 23 | OffsetForLeaderEpoch | v0 … v4 | broker→broker | **v0** | v0, **v1** (classes and vectors, no client method); v2-v4 not yet |
+| 23 | OffsetForLeaderEpoch | v0 … v4 | broker→broker | **v0** | v0, v1, **v2** (classes, vectors and the consumer's truncation detection); v3-v4 not yet |
 | 24 | AddPartitionsToTxn | v0 … v3 | yes | **v0** | v0, **v1**; v2-v3 not yet |
 | 25 | AddOffsetsToTxn | v0 … v3 | yes | **v0** | v0, **v1**; v2-v3 not yet |
 | 26 | EndTxn | v0 … v3 | yes | **v0** | v0, **v1**; v2-v3 not yet |
 | 27 | WriteTxnMarkers | v0, v1 | broker→broker | **v0** | **v0**; v1 not yet |
-| 28 | TxnOffsetCommit | v0 … v3 | yes | **v0** | v0, **v1**; v2-v3 not yet |
+| 28 | TxnOffsetCommit | v0 … v3 | yes | **v0** | v0, v1, **v2**; v3 not yet |
 | 29 | DescribeAcls | v0, v1, v2 | yes | no | no, see below |
 | 30 | CreateAcls | v0, v1, v2 | yes | no | no, see below |
 | 31 | DeleteAcls | v0, v1, v2 | yes | no | no, see below |
@@ -862,14 +862,16 @@ current milestone):
 | **KIP-219: the client waits out `throttle_time_ms`** (`throttle.wait`) | 2.0 | –  | –       | –        | –        | –     | **yes** |
 | **KIP-279: the `leader_epoch` of an OffsetForLeaderEpoch answer** | 2.0 | – | –       | –        | –        | –     | **yes** |
 | **KIP-283: `message.downconversion.enable`, measured** | 2.0        | –       | –       | –        | –        | –     | **yes** (35 per partition) |
+| **KIP-320: leader epochs in Fetch, ListOffsets, Metadata, OffsetCommit/OffsetFetch, OffsetForLeaderEpoch; truncation detection in the consumer** | 2.1 | – | – | – | – | – | **yes** (`LogTruncationException` with `auto.offset.reset=none`) |
+| **KIP-110: the zstd codec** (`compression.type=zstd`)   | 2.1        | –       | –       | –        | –        | –     | **yes, through `ext-zstd`** (76 without it) |
+| **KIP-211: OffsetCommit v5 without a per-commit retention** | 2.1     | –       | –       | –        | –        | –     | **yes** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) |
 
 What a later minor of Kafka 2.x adds is not on this branch yet — the line is built minor by minor and
-the current milestone is **Kafka 2.0**:
+the current milestone is **Kafka 2.1**:
 
 | Feature                                          | Arrived in | On this branch                        |
 |--------------------------------------------------|------------|---------------------------------------|
-| Leader epochs in Fetch/Offsets/OffsetCommit (KIP-320), zstd (KIP-110) | 2.1 | not yet — the 2.1 milestone |
 | `ElectLeaders`, the second join of KIP-394, `SaslAuthenticate` v1 | 2.2 | not yet — the 2.2 milestone |
 | Static membership (KIP-345), `IncrementalAlterConfigs`, authorized operations (KIP-430) | 2.3 | not yet — the 2.3 milestone |
 | Flexible versions and tagged fields (KIP-482), the reassignment apis, `OffsetDelete` | 2.4 | not yet — the 2.4 milestone |

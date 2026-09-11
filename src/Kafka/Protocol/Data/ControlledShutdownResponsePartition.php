@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * Unlike every other response of the protocol, the entries are a flat list of topic-partition pairs instead of
  * partitions grouped by their topic, so the same topic may appear more than once.
  *
- * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v2)"
  */
 class ControlledShutdownResponsePartition implements BinarySchemaInterface
 {
