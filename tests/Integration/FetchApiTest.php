@@ -63,7 +63,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * ({@see FetchSessionApiTest}) - this one only checks that a version 7 request **without** a session is served
  * like a version 6 one, which is what {@see \Protocol\Kafka\Client::fetchPartitions()} sends.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v11)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV6::class)]
@@ -318,7 +318,7 @@ final class FetchApiTest extends IntegrationTestCase
             bin2hex((string) $versionEight->messageSet)
         );
         self::assertSame(8, FetchRequestV8::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(10, FetchRequest::VERSION, 'and the client sends the version Kafka 2.1 added');
+        self::assertSame(11, FetchRequest::VERSION, 'and the client sends the version Kafka 2.3 added');
     }
 
     public function testAVersionSevenRequestWithoutASessionIsServedLikeAVersionSixOne(): void

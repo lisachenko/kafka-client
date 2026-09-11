@@ -1,8 +1,8 @@
 {
     "api": "fetch",
     "apiKey": 1,
-    "section": "Fetch API (key 1, v0 to v10)",
-    "description": "Wire vectors of the Fetch API (key 1, v0 to v10), replayed by tests/Compliance.",
+    "section": "Fetch API (key 1, v0 to v11)",
+    "description": "Wire vectors of the Fetch API (key 1, v0 to v11), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "fetch.request.v4",
@@ -1381,7 +1381,7 @@
         {
             "id": "fetch.request.v10",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV10",
             "version": 10,
             "source": "broker",
             "description": "Fetch request v10 of one partition from the offset 0 with the current_leader_epoch 0. The body is the body of version 9, byte for byte - FetchRequest.json @ 2.8.2 has no field of version 10 - and what version 10 (Kafka 2.1, KIP-110) states is that the client understands a zstd-compressed record batch. This is the version this client sends.",
@@ -1419,7 +1419,7 @@
         {
             "id": "fetch.response.v10",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV10",
             "version": 10,
             "source": "broker",
             "description": "The answer of that request: the frame of version 7, byte for byte, with the records of the partition.",
@@ -1525,7 +1525,7 @@
         {
             "id": "fetch.response.v10.zstd",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV10",
             "version": 10,
             "source": "broker",
             "description": "The same partition fetched with version 10, which promises the codec: the broker answers the record batch as it lies, with the compression type 4 in its attributes. Reading the records out of it needs ext-zstd; without the extension this client throws an UnsupportedCompressionTypeException, the client-side half of the code 76.",
@@ -1549,6 +1549,80 @@
                                 "abortedTransactions": null,
                                 "messageSet": {
                                     "$bytes": "00000000000000000000005b0000000002121d8234000400000001000001a091287332000001a09128734cffffffffffffffffffffffffffff0000000228b52ffd0058f000001c00000001107a7374642d6f6e65001c00340201107a7374642d74776f00010000"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v11",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 11,
+            "source": "broker",
+            "description": "Fetch request v11 (Kafka 2.3, KIP-392) with a rack_id: the field is the LAST one of the frame, behind the forgotten_topics_data of KIP-227 - the field order of FetchRequest.json @ 2.8.2. The leader of the partition reads it to pick the replica this consumer should read from.",
+            "hex": "000000630001000b0000019f00027432ffffffff000001f400000001032000000000000000ffffffff00000001000d74322d32332d766563746f72730000000100000000000000000000000000000000ffffffffffffffff0010000000000000000565752d3161",
+            "fields": {
+                "messageSize": 99,
+                "apiKey": 1,
+                "apiVersion": 11,
+                "correlationId": 415,
+                "clientId": "t2",
+                "replicaId": -1,
+                "maxWaitTime": 500,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": {
+                    "t2-23-vectors": {
+                        "topic": "t2-23-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 0,
+                                "fetchOffset": 0,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                },
+                "forgottenTopics": [],
+                "rackId": "eu-1a"
+            }
+        },
+        {
+            "id": "fetch.response.v11",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 11,
+            "source": "broker",
+            "description": "The answer of that request: every partition entry carries a preferred_read_replica between its aborted transactions and its record set. It is -1 here, \"read from me\": the container runs without a replica.selector.class, so its leader never hands a reader to a follower, whatever rack the request names.",
+            "hex": "0000009e0000019f0000000000000000000000000001000d74322d32332d766563746f727300000001000000000000000000000000000100000000000000010000000000000000ffffffffffffffff0000004f0000000000000000000000430000000002b4ba2c36000000000000000001a0919e83c3000001a0919e83c3ffffffffffffffffffffffffffff0000000122000000026b147261636b2d76616c756500",
+            "fields": {
+                "messageSize": 158,
+                "correlationId": 415,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": {
+                    "t2-23-vectors": {
+                        "topic": "t2-23-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 1,
+                                "lastStableOffset": 1,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "preferredReadReplica": -1,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000430000000002b4ba2c36000000000000000001a0919e83c3000001a0919e83c3ffffffffffffffffffffffffffff0000000122000000026b147261636b2d76616c756500"
                                 }
                             }
                         ]

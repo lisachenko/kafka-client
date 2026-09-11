@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 2 (Kafka 2.1, KIP-320) changed both sides: the request partition gained a `current_leader_epoch` that
  * fences it, and the answer gained a leading `throttle_time_ms`, see {@see OffsetForLeaderEpochResponse}.
  *
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v3)"
  */
 final class OffsetForLeaderEpochResponseV1 extends OffsetForLeaderEpochResponse
 {
