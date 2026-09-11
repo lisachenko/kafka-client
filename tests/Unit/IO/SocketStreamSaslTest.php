@@ -115,13 +115,15 @@ final class SocketStreamSaslTest extends TestCase
         self::assertSame('0001', substr($handshake, 12, 4), 'the client promises the framed exchange of KIP-152');
         self::assertStringEndsWith('0007' . bin2hex('t8-unit') . '0005' . bin2hex('PLAIN'), $handshake);
 
-        // The token is a request of its own from Kafka 1.0 on: ApiKey 36, ApiVersion 0, and the very same bytes
+        // The token is a request of its own from Kafka 1.0 on: ApiKey 36, and from Kafka 2.5 the FLEXIBLE version
+        // 2 of KIP-482, whose header v2 carries a tag buffer behind the client id and whose token is a compact
+        // byte array - 27 + 1 in a single byte instead of the int32 length of the versions below
         self::assertSame('0024', substr($token, 8, 4), 'the api key of the SaslAuthenticate request');
-        self::assertSame('0001', substr($token, 12, 4), 'the version 1 of KIP-368 that Kafka 2.2 added');
+        self::assertSame('0002', substr($token, 12, 4), 'the flexible version 2 of Kafka 2.5');
         self::assertStringEndsWith(
-            '0007' . bin2hex('t8-unit') . '0000001b' . bin2hex("\0" . self::USERNAME . "\0" . self::PASSWORD),
+            '0007' . bin2hex('t8-unit') . '00' . '1c' . bin2hex("\0" . self::USERNAME . "\0" . self::PASSWORD) . '00',
             $token,
-            'the PLAIN token is the single bytes field of the request'
+            'the PLAIN token is the single compact bytes field of the request, between the two tag buffers'
         );
 
         // ... and the connection is usable for ordinary traffic afterwards
@@ -157,8 +159,10 @@ final class SocketStreamSaslTest extends TestCase
     {
         $this->connectTo(LocalSaslServer::SCENARIO_ACCEPT);
 
+        // The frame of the flexible version 2 ends in the tag buffer of the body, so the token is the slice in
+        // front of that single byte
         $frame = (string) hex2bin($this->server?->receivedFrames()[1] ?? '');
-        $token = substr($frame, -strlen("\0" . self::USERNAME . "\0" . self::PASSWORD));
+        $token = substr($frame, -strlen("\0" . self::USERNAME . "\0" . self::PASSWORD) - 1, -1);
 
         self::assertSame("\0", substr($token, 0, 1), 'the token starts with the empty authorization id');
     }

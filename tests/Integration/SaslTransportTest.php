@@ -57,7 +57,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * afterwards, and every way a broker can refuse - the 58 with a message after a v1 handshake, and the connection
  * that simply goes away after a v0 one.
  *
- * @see docs/protocol/2.8.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 and v1)"
+ * @see docs/protocol/2.8.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 to v2)"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
  */
 #[CoversClass(SocketStream::class)]

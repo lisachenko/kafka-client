@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2: "Regardless of throttling, send the response
  * immediately") instead of holding the answer back for the throttle time.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 final class TxnOffsetCommitRequestV0 extends TxnOffsetCommitRequest
 {
@@ -37,4 +37,37 @@ final class TxnOffsetCommitRequestV0 extends TxnOffsetCommitRequest
      * @inheritdoc
      */
     public const int VERSION = 0;
+
+    /**
+     * @param string $transactionalId `transactional.id` of the producer that owns the transaction
+     * @param string $groupId         Consumer group whose offsets are committed
+     * @param int    $producerId      Producer id the transaction coordinator handed out for that transactional id
+     * @param int    $producerEpoch   Epoch of that producer id
+     * @param array<string, mixed> $topicPartitionOffsets Offsets to commit, as topic => partition => offset
+     * @param string $clientId        A user specified identifier for the client making the request
+     * @param int    $correlationId   A user-supplied value that the broker passes back unmodified
+     */
+    public function __construct(
+        string $transactionalId,
+        string $groupId,
+        int $producerId,
+        int $producerEpoch,
+        array $topicPartitionOffsets = [],
+        string $clientId = '',
+        int $correlationId = 0
+    ) {
+        // The membership of KIP-447 is a field of the version 3 and has no place in this frame, so a commit of
+        // this version is always the "not a member" form the coordinator accepted before Kafka 2.5
+        parent::__construct(
+            $transactionalId,
+            $groupId,
+            $producerId,
+            $producerEpoch,
+            $topicPartitionOffsets,
+            null,
+            $clientId,
+            $correlationId
+        );
+    }
+
 }
