@@ -177,6 +177,14 @@ final class StaticMembershipApiTest extends IntegrationTestCase
         }
         $this->consumers = [];
 
+        // The topic of the test is not needed afterwards, and a shared container that collects the debris of
+        // thousands of test runs is what makes its controller and its log directories give up
+        try {
+            new AdminClient($this->cluster(), $this->configuration())->deleteTopics([$this->topic]);
+        } catch (KafkaException) {
+            // A broker that can not delete the topic right now must not fail the test that just passed
+        }
+
         parent::tearDown();
     }
 
