@@ -1,9 +1,88 @@
-# The 2.x line (Kafka 2.0 to 2.8, verified against 2.8.2) — the plan
+# The 2.x line (Kafka 2.0 to 2.8, verified against 2.8.2) — release notes
 
-**State: in development on `main`.** This file is the plan the 2.x line is built from; when the line is complete it
-becomes its release record, with this plan kept below the release notes, exactly as `docs/handoff/1.x.md` and
-`docs/handoff/0.11.x.md` were written. The line is built on the integration branch `claude/kafka-2-0-line-gr07ns`
-and merged into `main` as one pull request at the end.
+**State: complete.** `main` speaks the Apache Kafka **2.8.2** wire protocol — the last release of the 2.x major, so
+it covers everything Kafka 2.0 to 2.8 added over 1.1.1 — on the `BinarySchema` engine of the lines below, extended
+with the flexible versions of KIP-482. The line was built on the integration branch `claude/kafka-2-0-line-gr07ns`
+(epic [#112](https://github.com/lisachenko/kafka-client/issues/112)), **one Kafka minor at a time**: every minor
+ended in a gated milestone commit, the tag point of the last release of that minor (the table under "Tag points"
+below), and the whole branch was merged into `main` as one pull request. This file is the release record of the
+line; the plan it was built from is kept below, under "The original plan", exactly as `docs/handoff/1.x.md` was
+written.
+
+The grammar is [`docs/protocol/2.8.md`](../protocol/2.8.md), the machine-readable frames are in
+[`docs/protocol/vectors`](../protocol/vectors), and what a client cannot read out of the grammar is in that
+document's "Broker quirks and observations" section. The line above this one (Kafka 3.x) starts from `main` as it
+stands and will branch this tree off as `2.x` first, as `1.x` was branched off at the end of the 1.x line.
+
+## What was built, milestone by milestone
+
+| Milestone | Tag | Merged PRs | What it delivered |
+|---|---|---|---|
+| Kafka 2.0 | `2.0.1` | #117 (T4), #118 (T3), #119 (T1), #122 (T2) | The **KIP-219 bump** of nearly every api (the client waits a throttle out before the next request to that broker, `throttle.wait`), ApiVersions v2, `OffsetsForLeaderEpoch` v1 with the `leader_epoch` of KIP-279, the down-conversion matrix of KIP-283, the `resource_pattern_type` of KIP-290 on the ACL classes, the error code 72 |
+| Kafka 2.1 | `2.1.1` | #121 (T3), #120 (T4), #128 (T2) | The **leader epochs of KIP-320** in Fetch v9/v10, ListOffsets v4, Metadata v7, OffsetForLeaderEpoch v2, OffsetCommit v6, OffsetFetch v5 and TxnOffsetCommit v2, with the consumer's truncation detection (`LogTruncationException`); the **zstd codec** of KIP-110 (Fetch v10, Produce v7, `ext-zstd`); OffsetCommit v5 without `retention_time` (KIP-211); DeleteTopics v3 |
+| Kafka 2.2 | `2.2.2` | #123 (T4), #124 (T3), #130 (T2) | The **KIP-394** first join (JoinGroup v4, the 79 and the rejoin), ListOffsets v5 (KIP-207), SaslAuthenticate v1 with `session_lifetime_ms` (KIP-368), ControlledShutdown v2 (KIP-380), the new api **ElectLeaders (43)** of KIP-183 |
+| Kafka 2.3 | `2.3.1` | #125 (T4), #126 (T3), #132 (T2) | **Static membership** (KIP-345: `group.instance.id`, JoinGroup v5, SyncGroup v3, Heartbeat v3, OffsetCommit v7, the 82), the authorized operations of KIP-430 (Metadata v8, DescribeGroups v3, `Common\AclOperation`), reading from a follower (KIP-392: Fetch v11, OffsetForLeaderEpoch v3), the new api **IncrementalAlterConfigs (44)** of KIP-339 |
+| Kafka 2.4 | `2.4.1` | #133, #127, #129, #134, #136, #137, #138, #139, #140 | The **flexible versions of KIP-482** in the schema engine (compact types, tagged fields, request header v2, response header v1, `InlineStruct`) and in every api 2.4 made flexible (ApiVersions v3, Metadata v9, the ten group apis, five admin apis, InitProducerId v2, CreateDelegationToken v2); the batch LeaveGroup v3 of KIP-345 (`removeMembersFromConsumerGroup()`); CreateTopics v4/v5 (KIP-464, KIP-525, `createTopicsWithResults()`); ElectLeaders v1 (KIP-460); Produce v8 with the record errors of KIP-467; the two **partition-reassignment apis 45 and 46** of KIP-455; **OffsetDelete (47)** of KIP-496 |
+| Kafka 2.5 | `2.5.1` | #142 (T3), #143 (T4) | JoinGroup v7 and SyncGroup v5 of KIP-559; the stable offsets of KIP-447 (OffsetFetch v7, the 88, a `read_committed` consumer); InitProducerId v3 with the **epoch bump of KIP-360**; TxnOffsetCommit v3 with the consumer group metadata of KIP-447 (`sendOffsetsToTransaction()`); CreatePartitions v2, SaslAuthenticate v2 and the delegation-token apis v2 |
+| Kafka 2.6 | `2.6.3` | #144 (T3), #145 (T2), #146 (T1), #147 (T4) | ListGroups v4 with the group states of KIP-518 (`listConsumerGroups()`); DeleteRecords v2; the two **client-quota apis 48 and 49** of KIP-546 (`float64` in the engine); DescribeConfigs v3 with the config type and documentation of KIP-569; DescribeLogDirs v2; and the base test class that deletes every topic an integration suite created |
+| Kafka 2.7 | `2.7.2` | #148 (T2), #149 (T1), #150 (T4) | Fetch v12 with the epoch validation of KIP-595; the **SCRAM credential apis 50 and 51** of KIP-554 (the salted password derived on the client) and **UpdateFeatures (57)** of KIP-584 with `describeFeatures()`; the throttled topic apis of KIP-599 (CreateTopics v6, DeleteTopics v5, CreatePartitions v3, the 89); InitProducerId v4 and the transaction apis v2 with the 90 of KIP-588 |
+| Kafka 2.8 | `2.8.2` | #151 (T1), #152 (T2), #153 (T4) | **DescribeCluster (60)** of KIP-700 and **DescribeProducers (61)** of KIP-664; the flexible v1 of the client-quota apis; Produce v9, ListOffsets v6, OffsetForLeaderEpoch v4; the **topic ids of KIP-516** (`Common\Uuid`, Metadata v10 and v11, CreateTopics v7, DeleteTopics v6, the 100); the first flexible versions of DescribeConfigs, AlterConfigs, AlterReplicaLogDirs, WriteTxnMarkers and the three transaction apis |
+
+The **foundation** of the line, on the integration branch before the first milestone: the broker image
+`docker/kafka-2.8.2/` with the four listeners, two log directories and the delegation-token secret key, the rename
+of the protocol document to `docs/protocol/2.8.md`, the api keys **43-64** and the error codes **72-104** with one
+exception class each, and `tools/dev/gate.sh`. The final documentation pass (one PR per ticket, then this file)
+brought every version sentence of the document and the README to the versions the client sends.
+
+## How it was verified
+
+Everything was measured against a real Apache Kafka **2.8.2** broker (`docker/kafka-2.8.2/`, the container
+`kafka-2-8-2`, `inter.broker.protocol.version` and `log.message.format.version` `2.8-IV1`), never against the
+specification alone, and every milestone commit was gated on a freshly recreated container with no other test run
+on it:
+
+* **2855 unit and compliance tests** at the last milestone, replaying **669 wire vectors** in 48 files
+  ([`docs/protocol/vectors`](../protocol/vectors)) — the **351** frames this line captured on the 2.8.2 container
+  plus the **318** of the five lines below, which a 2.8.2 broker still answers unchanged (the ApiVersions answers
+  re-captured, as on every line). Every vector is replayed in both directions, and `DocumentationSyncTest` holds
+  the annotated dumps of the document and the vector files together.
+* **695 integration tests** over all four listeners — PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL
+  9095 — with unique topic, group and transactional-id names per test class, every suite deleting the topics it
+  created, and **zero skips**.
+* The **api-key table** of the document is the literal ApiVersions answer of the broker: the 56 keys 0-51, 56,
+  57, 60 and 61 of a ZooKeeper-backed 2.8.2 broker. Every client-facing api of the table is implemented at the
+  highest version the broker serves; the ACL apis 29-31 (no authorizer on the container), the broker-to-broker
+  apis and the KRaft-only keys 52-55, 58, 59 and 62-64 are the deliberate omissions, probed but not spoken.
+* The attributions of fields to releases were verified against the message specifications
+  (`clients/src/main/resources/common/message/*.json`) at the tags 2.0.1 to 2.8.2, which corrected the plan
+  twice: the flexible v1 of the client-quota apis is Kafka 2.8, not 2.7, and the transaction apis
+  AddPartitionsToTxn, AddOffsetsToTxn and EndTxn become flexible with their v3 in 2.8, not with their v2 in 2.7.
+
+## What the broker taught the line
+
+* **The KIP-464 version check is client-side**: a 2.8.2 broker resolves the -1/-1 of CreateTopics whatever version
+  asked, so `CreateTopicsRequest` refuses the shape below v4 itself, as the Java builder does.
+* **A structure the plain encoding could not show becomes visible in the flexible one**: the topics of a Metadata
+  request, the assignment of CreatePartitions and the `owner` of a delegation token are structures of the
+  specification that this package wrote as flat fields; the tagged-field section of a flexible version made two of
+  them one byte short (the broker closes the connection) and the third one byte long, which is what the
+  `InlineStruct` marker and the two new DTOs settle.
+* **The SyncGroup v5 protocol pair is mandatory in the broker** (23 before the coordinator reads the group), so
+  `Client::syncGroup()` falls back to the v4 frame for a caller that names no protocol.
+* **DescribeProducers reports the coordinator epoch of the marker, not of the batch**: a producer whose first
+  transaction is open reads -1, and a second open transaction still carries the previous marker's epoch.
+* **A ZooKeeper-backed broker leaves things empty that the specification allows**: the `error_message` of
+  DeleteTopics v5, the finalized features of KIP-584 (every update answered 42), the `current_leader` and
+  `snapshot_id` of Fetch v12, the topic id of a DeleteTopics v6 by name.
+* **The shared container is a shared resource**: the cluster-wide `broker:` configuration resource, the single
+  SASL user, the fetch-session cache and the group reaper cannot be separated by unique names, so the suites that
+  touch them assert supersets, poll a read-back or restart a KIP-394 join pair; and every suite deletes the topics
+  it created, after ~20000 leftover partitions took a log directory offline once.
+
+# The original plan
+
+**State when the plan was written: in development on `main`.** The line was built on the integration branch
+`claude/kafka-2-0-line-gr07ns` and merged into `main` as one pull request at the end.
 
 State at handoff: the **1.x line is complete** — 1737 unit tests, 325 compliance tests replaying the **318** wire
 vectors of the five lines and 549 integration tests against a 1.1.1 container over its four listeners, without a
@@ -209,7 +288,7 @@ with an "implemented on this line" column that grows with the milestones).
 flexible version before T1's 2.4 engine is merged), the section headings another surface references (a heading that
 names versions changes with its owner's minor, together with the `section` field of the vector file and every `@see`).
 
-**Tag points** (filled in as the milestones land; the commit is the `chore(2.x): Kafka 2.N complete` milestone on the
+**Tag points** (the commit is the `chore(2.x): Kafka 2.N complete` milestone on the
 integration branch, which is in `main`'s history after the final merge):
 
 | Tag | Kafka | Milestone commit | Merged PRs |

@@ -11,15 +11,16 @@ protocol — no `ext-rdkafka` required. It ships a Producer, a Consumer and a lo
 client, designed to stay close in spirit to the official Java client's API while feeling
 natural in PHP.
 
-**This branch speaks the Apache Kafka 1.1.1 wire protocol** — the last release of the 1.x line,
-so it covers everything Kafka 1.0.0 and 1.1.0 added, and nothing later. `main` is the top of the
-cascade: the frozen protocol snapshots below it live on `0.11.x` (Kafka 0.11.0.3), `0.10.x`
+**This branch speaks the Apache Kafka 2.8.2 wire protocol** — the last release of the 2.x line, so it
+covers everything Kafka 2.0 to 2.8 added, and nothing later. `main` is the top of the cascade: the frozen
+protocol snapshots below it live on `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
 (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every wire vector those
-lines captured is replayed against the classes of this branch, because a 1.1.1 broker still speaks
-all of it. What the 1.1 protocol cannot do is simply absent, and
-[what that is](#supported-kafka-protocol-versions) is listed below. The grammar this branch
+lines captured is replayed against the classes of this branch, because a 2.8.2 broker still speaks
+all of it. What the 2.8 protocol cannot do, and what this line leaves out by design, is listed under
+[Supported Kafka protocol versions](#supported-kafka-protocol-versions). The grammar this branch
 implements is written down, byte for byte, in [docs/protocol/2.8.md](docs/protocol/2.8.md); what
-the 1.x line delivered, how it was verified and what the line above it starts from is in
+the 2.x line delivered, how it was verified and the tag point of every Kafka minor inside it is in
+[docs/handoff/main.md](docs/handoff/main.md), and the 1.x line's record is
 [docs/handoff/1.x.md](docs/handoff/1.x.md).
 
 Installation
