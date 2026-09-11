@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `include_authorized_operations` of version 3 (KIP-430, Kafka 2.3). The answer is unchanged as well and is read
  * with {@see DescribeGroupsResponseV1}.
  *
- * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v2)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "DescribeGroups API (key 15, v0 to v3)" and "Quotas and throttle time"
  */
 final class DescribeGroupsRequestV1 extends DescribeGroupsRequest
 {

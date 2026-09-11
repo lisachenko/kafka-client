@@ -226,6 +226,9 @@ consumer, the zstd codec of KIP-110, KIP-211 and the version bumps that carry th
 
 ### Kafka 2.2
 
+The third milestone of the line (PRs #123, #124, #130): the second join of KIP-394, the error code 78 of KIP-207,
+the session lifetime of KIP-368, the broker epoch of KIP-380 and the new ElectLeaders api.
+
 - **JoinGroup v4 (KIP-394)** — the version that refuses a **first join**. A request with an empty member id is
   answered immediately with the error code **79** (`MemberIdRequired`) and the member id the coordinator
   generated, and the client sends the same request again with that id; the coordinator no longer adds a member it
@@ -239,6 +242,58 @@ consumer, the zstd codec of KIP-110, KIP-211 and the version bumps that carry th
 - **The error code 81 `GroupMaxSizeReached`** of the same KIP is documented from the broker sources and is not
   asserted against the container: `group.max.size` defaults to 2147483647 and is not a dynamically updatable
   broker config in Kafka 2.8, so it cannot be lowered without a restart.
+- **ListOffsets v5** (KIP-207) — the version 4 frames in both directions (`ListOffsetsRequest.json` @ 2.8.2:
+  "Version 5 is the same as version 4") and **one more error code in the answer**: **78**
+  `OFFSET_NOT_AVAILABLE`. A leader whose high watermark has not caught up with the start offset of the epoch it
+  was just elected in can not say where the end of its log is; `Partition.fetchOffsetForTimestamp` @ 2.8.2 raises
+  the error for a **client** request (a follower is exempt) that asks for the latest offset or for a timestamp
+  beyond the last fetchable one, and `KafkaApis.handleListOffsetRequest` sends it only to a version 5 or higher
+  request — every lower one is answered **5** `LEADER_NOT_AVAILABLE` for the same state. Both codes are
+  retriable, but 78 says the leader is there and will know in a moment, so a client retries the same broker
+  instead of walking the cluster for a leader that was never missing. `OffsetsRequest`/`OffsetsResponse` are the
+  v5 now and `Client::listOffsets()` sends it; `OffsetsRequestV4`/`OffsetsResponseV4` keep the Kafka 2.1 pair.
+  Two wire vectors (`offsets.*.v5.latest`) with their annotated dumps, the section "Offsets API (key 2, v0 to
+  v5), a.k.a. ListOffset" of the protocol document and a broker quirk for the substitution — the one rule of this
+  line that is read from the broker sources rather than measured, because a one-broker container never re-elects
+  a leader.
+- **SaslAuthenticate v1 (KIP-368)** — a `session_lifetime_ms int64` at the end of the **answer**: the time after
+  which the broker stops serving a connection that has not re-authenticated. The SASL path of `SocketStream`
+  sends the v1 and keeps the value on `SaslAuthenticateResponse::$sessionLifetimeMs` and
+  `SocketStream::getSaslSessionLifetimeMs()`; the re-authentication itself is documented from the sources and
+  belongs to the SaslAuthenticate v2 of Kafka 2.5. `SaslAuthenticateRequestV0`/`…ResponseV0` keep Kafka 1.0's frame.
+- **ControlledShutdown v2 (KIP-380)** — a `broker_epoch int64` behind the broker id.
+  `AdminClient::controlledShutdown()` takes it and defaults it to `UNKNOWN_BROKER_EPOCH` (-1), the only epoch
+  the controller does not compare; `ControlledShutdownRequestV1` keeps the version Kafka 0.9 added.
+- **ElectLeaders (key 43) v0 (KIP-183)** — the api that replaced the ZooKeeper node
+  `/admin/preferred_replica_election`, added as `ElectPreferredLeaders`. `AdminClient::electLeaders()` looks the
+  controller up, repeats a 41 once and answers a `KafkaException|null` per partition; `Admin\ElectionType` carries
+  `PREFERRED` and `UNCLEAN`, and the unclean election is refused until the v1 of KIP-460 exists.
+
+### Kafka 2.3
+
+- **Static membership (KIP-345)** — a consumer configured with the new
+  **`ConsumerConfig::GROUP_INSTANCE_ID`** (`group.instance.id`) carries that name in the
+  `group_instance_id` of **JoinGroup v5, SyncGroup v3, Heartbeat v3 and OffsetCommit v7**, which are the
+  versions this client sends now. The coordinator then remembers the member behind the name: a consumer
+  that restarts joins under the same identity, **keeps its partitions and costs the group no rebalance**
+  (measured: the generation does not change and the SyncGroup hands the old assignment back), and a
+  static consumer **does not send LeaveGroup** when it is closed. A second consumer that joins under the
+  same instance id takes the identity over and every request of the first one is answered **82**
+  (`FencedInstanceId`): `FencedInstanceIdException` is fatal and reaches the application out of `poll()`
+  and `commitSync()`. A join that names an instance id is never refused with the 79 of KIP-394.
+- **The authorized operations of a group (KIP-430)** — `DescribeGroupsRequest` v3 carries the boolean
+  `include_authorized_operations` and every group entry of the answer the 32-bit `authorized_operations`
+  bit set, on `DescribeGroupResponseMetadata::$authorizedOperations`; `AdminClient::describeGroup()` and
+  `describeGroups()` take the flag as their last argument, defaulted to `false`. The bits are the codes of
+  `AclOperation`: a 2.8.2 broker without an authorizer answers **328** (READ, DELETE, DESCRIBE) and a
+  request that does not ask is answered `-2147483648`
+  (`DescribeGroupResponseMetadata::OPERATIONS_NOT_REQUESTED`), not the empty bit set.
+- The version below each of the five is kept as its own class — `JoinGroupRequestV4`/`JoinGroupResponseV4`,
+  `SyncGroupRequestV2`/`SyncGroupResponseV2`, `HeartbeatRequestV2`/`HeartbeatResponseV2`,
+  `OffsetCommitRequestV6`/`OffsetCommitResponseV6`, `DescribeGroupsRequestV2`/`DescribeGroupsResponseV2` —
+  together with the DTO versions `JoinGroupResponseMemberV0` and `DescribeGroupResponseMetadataV0`, and
+  twelve wire vectors of the new frames were captured from the container.
+- **LeaveGroup stays at v2**: the batch leave of KIP-345 is LeaveGroup v3, a Kafka 2.4 api.
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------

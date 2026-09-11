@@ -1,8 +1,8 @@
 {
     "api": "sync-group",
     "apiKey": 14,
-    "section": "SyncGroup API (key 14, v0 to v2)",
-    "description": "Wire vectors of the SyncGroup API (key 14, v0 to v2), replayed by tests/Compliance.",
+    "section": "SyncGroup API (key 14, v0 to v3)",
+    "description": "Wire vectors of the SyncGroup API (key 14, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "syncgroup.request.v0",
@@ -133,7 +133,7 @@
         {
             "id": "syncgroup.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequestV2",
             "version": 2,
             "source": "broker",
             "description": "SyncGroup request v2 of the leader, which publishes the assignment of the generation; the frame of v1 with a higher version field.",
@@ -160,7 +160,7 @@
         {
             "id": "syncgroup.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2: the throttle time, the error code and the share of the member that sent the request.",
@@ -172,6 +172,52 @@
                 "errorCode": 0,
                 "memberAssignment": {
                     "$bytes": "000000000001000974332d6b6970323139000000010000000000000000"
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "SyncGroup request v3 of the same static member, which is the leader of its generation and publishes the assignment of all three partitions to itself. The `group_instance_id` of KIP-345 stands behind the member id.",
+            "hex": "000000d7000e00030000019200136b61666b612d636c69656e742d74332d333435001474332d3334352d766563746f72732d67726f757000000001002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d643762633631313163636364000a74332d3334352d6f6e6500000001002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d6437626336313131636363640000002a000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000",
+            "fields": {
+                "messageSize": 215,
+                "apiKey": 14,
+                "apiVersion": 3,
+                "correlationId": 402,
+                "clientId": "kafka-client-t3-345",
+                "consumerGroup": "t3-345-vectors-group",
+                "generationId": 1,
+                "memberId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                "groupInstanceId": "t3-345-one",
+                "groupAssignments": {
+                    "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd": {
+                        "memberId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                        "assignment": {
+                            "$bytes": "000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer, which version 3 left exactly as version 1 made it: the throttle time, the error code and the assignment of this member.",
+            "hex": "00000038000001920000000000000000002a000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000",
+            "fields": {
+                "messageSize": 56,
+                "correlationId": 402,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "memberAssignment": {
+                    "$bytes": "000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000"
                 }
             }
         }

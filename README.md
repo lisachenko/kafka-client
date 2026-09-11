@@ -421,29 +421,30 @@ foreach ($group->members as $memberId => $member) {
 
 | Method                                       | Wire API                | Notes                                                                |
 |----------------------------------------------|-------------------------|----------------------------------------------------------------------|
-| `getApiVersions()`                           | ApiVersions v1          | The version range of every api of **one** broker, indexed by api key; version 1 carries the throttle time |
-| `findAllBrokers()`                           | Metadata v5             | An empty result means "the cluster is not ready yet", see below      |
-| `listTopics()` / `describeTopics()`          | Metadata v5             | Asks with `allow_auto_topic_creation = false`, so an unknown topic is answered 3 and **not** created; `describeTopics([])` asks for every topic (the `null` array of v1); every partition reports its `offlineReplicas` (v5, KIP-112/113) |
-| `findController()`                           | Metadata v5             | The `controller_id` of the answer; the two topic apis below need it   |
-| `createTopics()`                             | CreateTopics v2         | `NewTopic` with partitions/factor or an explicit assignment, plus topic configs; `validateOnly` checks without creating |
-| `deleteTopics()`                             | DeleteTopics v1         | Needs `delete.topic.enable=true` on the broker                        |
-| `listOffsets()`                              | Offsets v2              | Earliest, latest or by message timestamp; **one** offset per partition, sent to the partition leader, with the isolation level `read_uncommitted` |
-| `findCoordinator()`                          | GroupCoordinator v1     | Retries the codes 15 and 14 while the coordinator warms up; version 1 also looks a **transactional id** up (`coordinator_type = 1`) |
-| `listGroupOffsets()`                         | OffsetFetch v3          | Without a partition list it asks for **every** topic the group committed (`null` topics of v2) |
-| `listGroups()` / `listAllGroups()`           | ListGroups v1           | A broker only knows its own groups; `listAllGroups()` merges them all  |
-| `describeGroup()` / `describeGroups()`       | DescribeGroups v1       | Sent to the coordinator of the group; an unknown group answers `Dead`, one whose last member left `Empty` |
-| `controlledShutdown()`                       | ControlledShutdown v1   | Moves every partition leader off a broker — it really does stop it    |
-| `deleteRecords()`                            | DeleteRecords v0        | Moves the **low watermark** of a partition forward (KIP-107); sent to the partition leader, answers a `DeletedRecords` per partition |
-| `describeConfigs()`                          | DescribeConfigs **v1**  | The configuration of a topic or a broker (KIP-133); every entry says which `ConfigSource` its value comes from and, with `$includeSynonyms`, every place the broker looked (KIP-226). A broker resource is only answered by that broker, and a sensitive value comes back `null` |
-| `alterConfigs()`                             | AlterConfigs v0         | **Replaces** the whole configuration of a resource (`Config::ownValues()` is the set to send back); a 1.1 broker takes a **broker** resource too — the dynamic options of KIP-226, per broker or cluster-wide with `ConfigResource::defaultBroker()` — and refuses the ones it cannot change at runtime with 42 |
-| `describeLogDirs()`                          | DescribeLogDirs v0      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories |
-| `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v0  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
-| `createPartitions()`                         | CreatePartitions v0     | Raises the partition count of topics that exist (KIP-195); controller-only like `createTopics()`, and it can only ever grow a topic (37 otherwise) |
-| `deleteConsumerGroups()`                     | DeleteGroups v0         | Makes the coordinator forget groups and their committed offsets (KIP-229); a group with a live member is 68, one the coordinator does not know 69 |
-| `createDelegationToken()`                    | CreateDelegationToken v0   | Issues a token to the principal of the connection (KIP-48); needs an **authenticated** channel, otherwise 64 |
-| `renewDelegationToken()`                     | RenewDelegationToken v0    | Extends a token named by its raw HMAC; only its owner or one of its renewers may, otherwise 63 |
-| `expireDelegationToken()`                    | ExpireDelegationToken v0   | Moves the expiry forward, or **removes** the token when the period is negative |
-| `describeDelegationToken()`                  | DescribeDelegationToken v0 | The tokens of the given owners, `null` for every token the principal may see; the answer carries their HMACs |
+| `getApiVersions()`                           | ApiVersions v2          | The version range of every api of **one** broker, indexed by api key; version 1 carries the throttle time |
+| `findAllBrokers()`                           | Metadata v7             | An empty result means "the cluster is not ready yet", see below      |
+| `listTopics()` / `describeTopics()`          | Metadata v7             | Asks with `allow_auto_topic_creation = false`, so an unknown topic is answered 3 and **not** created; `describeTopics([])` asks for every topic (the `null` array of v1); every partition reports its `offlineReplicas` (v5, KIP-112/113) |
+| `findController()`                           | Metadata v7             | The `controller_id` of the answer; the two topic apis below need it   |
+| `createTopics()`                             | CreateTopics v3         | `NewTopic` with partitions/factor or an explicit assignment, plus topic configs; `validateOnly` checks without creating |
+| `deleteTopics()`                             | DeleteTopics v3         | Needs `delete.topic.enable=true` on the broker                        |
+| `listOffsets()`                              | Offsets v5              | Earliest, latest or by message timestamp; **one** offset per partition, sent to the partition leader, with the isolation level `read_uncommitted` |
+| `findCoordinator()`                          | GroupCoordinator v2     | Retries the codes 15 and 14 while the coordinator warms up; version 1 also looks a **transactional id** up (`coordinator_type = 1`) |
+| `listGroupOffsets()`                         | OffsetFetch v5          | Without a partition list it asks for **every** topic the group committed (`null` topics of v2) |
+| `listGroups()` / `listAllGroups()`           | ListGroups v2           | A broker only knows its own groups; `listAllGroups()` merges them all  |
+| `describeGroup()` / `describeGroups()`       | DescribeGroups v2       | Sent to the coordinator of the group; an unknown group answers `Dead`, one whose last member left `Empty` |
+| `electLeaders()`                             | ElectLeaders v0         | Asks the **controller** to move partitions back to their preferred replica (KIP-183, Kafka 2.2); per-partition results, 84 for a partition that already has the right leader; `ElectionType::UNCLEAN` needs the v1 of KIP-460 |
+| `controlledShutdown()`                       | ControlledShutdown v2   | Moves every partition leader off a broker — it really does stop it; the `broker_epoch` of KIP-380 (Kafka 2.2) defaults to -1, `UNKNOWN_BROKER_EPOCH`, the only epoch that skips the controller's staleness check |
+| `deleteRecords()`                            | DeleteRecords v1        | Moves the **low watermark** of a partition forward (KIP-107); sent to the partition leader, answers a `DeletedRecords` per partition |
+| `describeConfigs()`                          | DescribeConfigs v2      | The configuration of a topic or a broker (KIP-133); every entry says which `ConfigSource` its value comes from and, with `$includeSynonyms`, every place the broker looked (KIP-226). A broker resource is only answered by that broker, and a sensitive value comes back `null` |
+| `alterConfigs()`                             | AlterConfigs v1         | **Replaces** the whole configuration of a resource (`Config::ownValues()` is the set to send back); a 1.1 broker takes a **broker** resource too — the dynamic options of KIP-226, per broker or cluster-wide with `ConfigResource::defaultBroker()` — and refuses the ones it cannot change at runtime with 42 |
+| `describeLogDirs()`                          | DescribeLogDirs v1      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories |
+| `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v1  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
+| `createPartitions()`                         | CreatePartitions v1     | Raises the partition count of topics that exist (KIP-195); controller-only like `createTopics()`, and it can only ever grow a topic (37 otherwise) |
+| `deleteConsumerGroups()`                     | DeleteGroups v1         | Makes the coordinator forget groups and their committed offsets (KIP-229); a group with a live member is 68, one the coordinator does not know 69 |
+| `createDelegationToken()`                    | CreateDelegationToken v1   | Issues a token to the principal of the connection (KIP-48); needs an **authenticated** channel, otherwise 64 |
+| `renewDelegationToken()`                     | RenewDelegationToken v1    | Extends a token named by its raw HMAC; only its owner or one of its renewers may, otherwise 63 |
+| `expireDelegationToken()`                    | ExpireDelegationToken v1   | Moves the expiry forward, or **removes** the token when the period is negative |
+| `describeDelegationToken()`                  | DescribeDelegationToken v1 | The tokens of the given owners, `null` for every token the principal may see; the answer carries their HMACs |
 
 The three topic apis — `createTopics()`, `deleteTopics()` and `createPartitions()` — are served by
 the **controller** alone: `AdminClient` looks it up in the `controller_id` of a Metadata answer, and
@@ -726,7 +727,7 @@ This branch is the **2.x line** and tracks the **Kafka 2.8.2** wire protocol —
 2.x major, so everything Kafka 2.0 to 2.8 added — and it is built **one Kafka minor at a time**: each
 minor is a gated milestone commit of the branch (the tag points are listed in
 [docs/handoff/main.md](docs/handoff/main.md)), and until the line is complete the table below says
-which versions the current milestone has reached. **Current milestone: Kafka 2.1.** The frozen
+which versions the current milestone has reached. **Current milestone: Kafka 2.2.** The frozen
 protocol snapshots of the lines below live on `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3),
 `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2).
 
@@ -741,20 +742,20 @@ The "main" column lists the versions this client has a class for; the one in **b
 it sends, and "not yet" names the versions the broker serves that a later milestone of the line adds.
 The `1.x` column is where the line started.
 
-| Api key | API | Versions in 2.8.2 | Client-facing | `1.x` | `main` (2.x, Kafka 2.1 milestone) |
+| Api key | API | Versions in 2.8.2 | Client-facing | `1.x` | `main` (2.x, Kafka 2.2 milestone) |
 |---|---|---|---|---|---|
 | 0 | Produce | v0 … v9 | yes | v0 … v4, **v5** | v0 … v6, **v7** (**v2** for `message.format.version` below 0.11.0); v8-v9 not yet |
 | 1 | Fetch | v0 … v12 | yes | v0 … v6, **v7** | v0 … v9, **v10** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer); v11-v12 not yet |
-| 2 | Offsets (ListOffsets) | v0 … v6 | yes | v0, v1, **v2** | v0 … v3, **v4**; v5-v6 not yet |
+| 2 | Offsets (ListOffsets) | v0 … v6 | yes | v0, v1, **v2** | v0 … v4, **v5**; v6 not yet |
 | 3 | Metadata | v0 … v11 | yes | v0 … v4, **v5** | v0 … v6, **v7**; v8-v11 not yet |
 | 4 | LeaderAndIsr | v0 … v5 | broker→broker | no | no |
 | 5 | StopReplica | v0 … v3 | broker→broker | no | no |
 | 6 | UpdateMetadata | v0 … v7 | broker→broker | no | no |
-| 7 | ControlledShutdown | v0 … v3 | controller | v0, **v1** | v0, **v1**; v2-v3 not yet |
+| 7 | ControlledShutdown | v0 … v3 | controller | v0, **v1** | v0, v1, **v2**; v3 not yet |
 | 8 | OffsetCommit | v0 … v8 | yes | v0 … v2, **v3** | v0 … v5, **v6** (**v0** for `offsets.storage = zookeeper`); v7-v8 not yet |
 | 9 | OffsetFetch | v0 … v7 | yes | v0 … v2, **v3** | v0 … v4, **v5** (**v0** for `offsets.storage = zookeeper`); v6-v7 not yet |
 | 10 | GroupCoordinator (FindCoordinator) | v0 … v3 | yes | v0, **v1** | v0, v1, **v2**; v3 not yet |
-| 11 | JoinGroup | v0 … v7 | yes | v0, v1, **v2** | v0, v1, v2, **v3**; v4-v7 not yet |
+| 11 | JoinGroup | v0 … v7 | yes | v0, v1, **v2** | v0 … v3, **v4**; v5-v7 not yet |
 | 12 | Heartbeat | v0 … v4 | yes | v0, **v1** | v0, v1, **v2**; v3-v4 not yet |
 | 13 | LeaveGroup | v0 … v4 | yes | v0, **v1** | v0, v1, **v2**; v3-v4 not yet |
 | 14 | SyncGroup | v0 … v5 | yes | v0, **v1** | v0, v1, **v2**; v3-v5 not yet |
@@ -779,14 +780,14 @@ The `1.x` column is where the line started.
 | 33 | AlterConfigs | v0, v1, v2 | yes | **v0** | v0, **v1** (topics and brokers); v2 not yet |
 | 34 | AlterReplicaLogDirs | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
 | 35 | DescribeLogDirs | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
-| 36 | SaslAuthenticate | v0, v1, v2 | yes | **v0** | **v0**; v1-v2 not yet |
+| 36 | SaslAuthenticate | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
 | 37 | CreatePartitions | v0 … v3 | controller | **v0** | v0, **v1**; v2-v3 not yet |
 | 38 | CreateDelegationToken | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
 | 39 | RenewDelegationToken | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
 | 40 | ExpireDelegationToken | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
 | 41 | DescribeDelegationToken | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
 | 42 | DeleteGroups | v0, v1, v2 | yes | **v0** | v0, **v1**; v2 not yet |
-| 43 | ElectLeaders | v0, v1, v2 | controller | – | not yet — Kafka 2.2 |
+| 43 | ElectLeaders | v0, v1, v2 | controller | – | **v0**; v1-v2 not yet |
 | 44 | IncrementalAlterConfigs | v0, v1 | yes | – | not yet — Kafka 2.3 |
 | 45 | AlterPartitionReassignments | v0 | controller | – | not yet — Kafka 2.4 |
 | 46 | ListPartitionReassignments | v0 | controller | – | not yet — Kafka 2.4 |
@@ -865,14 +866,18 @@ current milestone):
 | **KIP-320: leader epochs in Fetch, ListOffsets, Metadata, OffsetCommit/OffsetFetch, OffsetForLeaderEpoch; truncation detection in the consumer** | 2.1 | – | – | – | – | – | **yes** (`LogTruncationException` with `auto.offset.reset=none`) |
 | **KIP-110: the zstd codec** (`compression.type=zstd`)   | 2.1        | –       | –       | –        | –        | –     | **yes, through `ext-zstd`** (76 without it) |
 | **KIP-211: OffsetCommit v5 without a per-commit retention** | 2.1     | –       | –       | –        | –        | –     | **yes** |
+| **KIP-394: the second join** (79 on a first JoinGroup v4 without a member id) | 2.2 | – | – | – | – | – | **yes**, the consumer rejoins by itself |
+| **KIP-207: 78 `OffsetNotAvailable`** of ListOffsets v5   | 2.2        | –       | –       | –        | –        | –     | **yes** (documented from the sources: one broker never lags) |
+| **KIP-368: the SASL session lifetime** of SaslAuthenticate v1 | 2.2   | –       | –       | –        | –        | –     | **reported** (re-authentication is 2.5's) |
+| **KIP-183: `electLeaders()`** (ElectLeaders v0)         | 2.2        | –       | –       | –        | –        | –     | **yes** (preferred elections; unclean from v1) |
+| **KIP-380: the broker epoch** of ControlledShutdown v2  | 2.2        | –       | –       | –        | –        | –     | **yes** (`controlledShutdown()`) |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) |
 
 What a later minor of Kafka 2.x adds is not on this branch yet — the line is built minor by minor and
-the current milestone is **Kafka 2.1**:
+the current milestone is **Kafka 2.2**:
 
 | Feature                                          | Arrived in | On this branch                        |
 |--------------------------------------------------|------------|---------------------------------------|
-| `ElectLeaders`, the second join of KIP-394, `SaslAuthenticate` v1 | 2.2 | not yet — the 2.2 milestone |
 | Static membership (KIP-345), `IncrementalAlterConfigs`, authorized operations (KIP-430) | 2.3 | not yet — the 2.3 milestone |
 | Flexible versions and tagged fields (KIP-482), the reassignment apis, `OffsetDelete` | 2.4 | not yet — the 2.4 milestone |
 | KIP-360, KIP-447, KIP-559, the client quota and SCRAM credential apis, KIP-599, topic ids, `DescribeCluster`, `DescribeProducers` | 2.5 … 2.8 | not yet — the milestones 2.5 to 2.8 |

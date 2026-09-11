@@ -40,7 +40,9 @@ use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequestV1;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
@@ -54,7 +56,8 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * container: the value the broker reports, the fencing of an epoch the leader is not on, and the fields the lower
  * version of each api does not have.
  *
- * @see docs/protocol/2.8.md, sections "The leader epoch (KIP-320)" and "Metadata API (key 3, v0 to v7)"
+ * @see docs/protocol/2.8.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v7)" and
+ *      "Offsets API (key 2, v0 to v5), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
@@ -204,6 +207,48 @@ final class LeaderEpochApiTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::UNKNOWN_LEADER_EPOCH, $fenced->errorCode);
         self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $fenced->offset);
+    }
+
+    public function testListOffsetsVersionFiveIsTheVersionFourFrameWithOneMoreErrorCode(): void
+    {
+        // KIP-207 (Kafka 2.2): "Version 5 is the same as version 4" in the request and "Version 5 adds a new
+        // error code, OFFSET_NOT_AVAILABLE" in the answer. The 78 itself needs a leader whose high watermark
+        // lags behind the start offset of the epoch it was elected in, which a one-broker container never
+        // produces; what can be measured is that the two versions ask and are answered the very same frame
+        $epoch = $this->leaderEpoch();
+
+        $stream = $this->connect();
+        new OffsetsRequestV4(
+            [$this->topic => [0 => [OffsetsRequest::LATEST, $epoch]]],
+            OffsetsRequest::CONSUMER_REPLICA_ID,
+            FetchRequest::READ_UNCOMMITTED,
+            self::CLIENT_ID,
+            970
+        )->writeTo($stream);
+        $four = OffsetsResponseV4::unpack($stream);
+
+        $stream = $this->connect();
+        new OffsetsRequest(
+            [$this->topic => [0 => [OffsetsRequest::LATEST, $epoch]]],
+            OffsetsRequest::CONSUMER_REPLICA_ID,
+            FetchRequest::READ_UNCOMMITTED,
+            self::CLIENT_ID,
+            971
+        )->writeTo($stream);
+        $five = OffsetsResponse::unpack($stream);
+
+        self::assertSame($four->getMessageSize(), $five->getMessageSize());
+        self::assertSame(4, OffsetsRequestV4::VERSION, 'the version Kafka 2.1 added');
+        self::assertSame(5, OffsetsRequest::VERSION, 'and the client sends the version Kafka 2.2 added');
+
+        $partitionFour = $four->topics[$this->topic]->partitions[0];
+        $partitionFive = $five->topics[$this->topic]->partitions[0];
+
+        self::assertSame(KafkaException::NO_ERROR, $partitionFive->errorCode);
+        self::assertSame($partitionFour->offset, $partitionFive->offset);
+        self::assertSame($partitionFour->timestamp, $partitionFive->timestamp);
+        self::assertSame($partitionFour->leaderEpoch, $partitionFive->leaderEpoch);
+        self::assertSame($epoch, $partitionFive->leaderEpoch);
     }
 
     public function testOffsetForLeaderEpochVersionTwoAsksWhereAnEpochEnded(): void
