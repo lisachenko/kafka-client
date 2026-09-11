@@ -34,6 +34,12 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
   the published name of the code 47.
 - **`tools/dev/gate.sh`** — the whole local gate (php -l, cs, phpstan, unit + compliance, integration
   on the four listeners) for any worktree path, JIT off.
+- **ApiVersions v2** (Kafka 2.0, KIP-219) — the frame of v1, byte for byte, and the promise that the
+  client waits out a `throttle_time_ms` itself, because a broker answers a throttled request of a
+  bumped version **before** it mutes the channel. `ApiVersionsRequest`/`ApiVersionsResponse` are the
+  v2 now and `Client::apiVersions()`/`AdminClient::getApiVersions()` send it; the new
+  `ApiVersionsRequestV1`/`ApiVersionsResponseV1` keep the version Kafka 0.11 added, next to the
+  existing `…V0`. Two new wire vectors (`apiversions.request.v2`, `apiversions.response.v2`).
 - **The Kafka 2.0 versions of the ten group apis (KIP-219)** — OffsetCommit **v4**, OffsetFetch
   **v4**, FindCoordinator/GroupCoordinator **v2**, JoinGroup **v3**, Heartbeat **v2**, LeaveGroup
   **v2**, SyncGroup **v2**, DescribeGroups **v2**, ListGroups **v2** and DeleteGroups **v1**. Not
@@ -62,6 +68,25 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
 - **The protocol document is `docs/protocol/2.8.md`**, renamed from `docs/protocol/1.1.md` with every
   `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the
   plan of the 2.x line (`docs/handoff/2.0.x.md`) took its place as `docs/handoff/main.md`.
+- **The "API keys" section of the protocol document is the literal answer of a 2.8.2 broker**: the
+  **56** keys 0–51, 56, 57, 60 and 61 with their version range, the first flexible version of every
+  api, the Kafka minor that added every version above the 1.1.1 ceiling, and — while the line is
+  built minor by minor — which of them this branch already implements.
+  `tests/Integration/ApiVersionProbeTest.php` sends a real frame of every one of the 56 keys at its
+  **maximum** version (with the request header v2 and a compact body for the 34 keys whose maximum is
+  flexible, built by the raw probe fixture) and one frame above every one of them. Three inherited
+  vectors were re-captured on the 2.8.2 container: `apiversions.response.v0`, `.v1` and
+  `.v0.unsupported-version`.
+- **What a 2.8.2 broker does with a frame it cannot serve, re-measured** (documented in "An api the
+  broker does not serve closes the connection"): a version above the table is refused by the
+  generated message class (`UnsupportedVersionException: The OFFSET_COMMIT protocol does not support
+  version 9`), an api key of the **controller** listener with `Received request api key VOTE which is
+  not enabled`, a key above `ApiKeys.java` with `Unexpected api key: 65`, and a flexible body with a
+  wrong compact length or a missing tag buffer with a `BufferUnderflowException` — every one of them
+  with a closed connection. The **35** of an unknown ApiVersions version now carries the ApiVersions
+  row itself (KIP-511) instead of an empty array, and the request that asks for it has to carry the
+  request header **v2**, because the broker derives the header version from the version it was asked
+  for.
 
 ### Kafka 2.1
 
