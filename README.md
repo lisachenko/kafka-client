@@ -915,8 +915,7 @@ current milestone):
 | **KIP-700 / KIP-664: `describeCluster()` and `describeProducers()`** | 2.8 | – | – | – | – | – | **yes** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) |
 
-What a later minor of Kafka 2.x adds is not on this branch yet — the line is built minor by minor and
-the current milestone is **Kafka 2.7**:
+What this line leaves out **by design** — the line is complete at Kafka 2.8, so nothing below is "not yet":
 
 | Feature                                          | Arrived in | On this branch                        |
 |--------------------------------------------------|------------|---------------------------------------|
