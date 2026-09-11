@@ -648,6 +648,17 @@ final class ResponseFrame
     }
 
     /**
+     * Builds a SyncGroup response of version 4, the frame without the two protocol fields of KIP-559
+     *
+     * It is what a coordinator answers a caller of {@see \Protocol\Kafka\Client::syncGroup()} that names no
+     * protocol, because a version 5 without the pair is refused with 23.
+     */
+    public static function syncGroupV4(int $correlationId, int $errorCode, string $assignment = ''): string
+    {
+        return self::flexible($correlationId, pack('N', 0) . pack('n', $errorCode) . self::compactBytes($assignment));
+    }
+
+    /**
      * Builds a Heartbeat response (api key 12, v1): the throttle time and the error code
      */
     public static function heartbeat(int $correlationId, int $errorCode): string

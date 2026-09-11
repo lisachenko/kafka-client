@@ -511,6 +511,11 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   a null type, a null name and an empty assignment **and the membership untouched**, a wrong name or a wrong type
   → 23 as well, the right pair → 0. And an error answer of a JoinGroup **v7** carries `null` in both fields where
   a v6 carries the empty string of `GroupCoordinator.NoProtocol` - measured on the 79 of KIP-394.
+- **`Client::syncGroup()` falls back to the version 4 frame** when the caller names neither field: a version 5
+  without them is refused with 23 before the coordinator reads the group, so a caller that does not know the
+  protocol of the generation - every caller written before this release - keeps sending the version Kafka 2.4
+  added, which carries no such field and which a 2.8.2 broker still serves. The consumer of this package always
+  names both and always sends the version 5.
 - **OffsetFetch v7 (KIP-447)** — the boolean `require_stable` behind the topic array asks the coordinator to hold
   back an offset whose transaction has not been committed yet and to answer that partition with the **retriable**
   error code **88** (`UnstableOffsetCommit`) instead. `OffsetFetchRequest` is the v7 now and takes the flag as its

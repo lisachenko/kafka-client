@@ -1629,12 +1629,42 @@ final class ClientTest extends TestCase
             't3-group',
             'one-1',
             4,
-            ['one-1' => 'my-share', 'two-2' => 'other-share']
+            ['one-1' => 'my-share', 'two-2' => 'other-share'],
+            null,
+            'consumer',
+            'range'
         );
 
         self::assertSame('my-share', $response->memberAssignment);
         self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($coordinator->getReceivedFrames()[0]));
         self::assertSame(5, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
+    }
+
+    /**
+     * KIP-559 made the two protocol fields of a SyncGroup v5 mandatory, so a caller that names neither gets the v4
+     */
+    public function testASyncThatNamesNoProtocolIsSentAsTheVersionFourFrame(): void
+    {
+        $coordinator = new BrokerConnection(
+            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
+            ResponseFrame::syncGroupV4(0, 0, 'my-share')
+        );
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, $coordinator)
+            ->install();
+
+        $client = $this->client();
+        $client->syncGroup($client->getGroupCoordinator('t3-group'), 't3-group', 'one-1', 4);
+
+        $frame = $coordinator->getReceivedFrames()[1];
+
+        self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($frame));
+        self::assertSame(
+            4,
+            $this->apiVersionOf($frame),
+            'a version 5 without the protocol type and name would be refused with 23 before the group is read'
+        );
     }
 
     public function testAHeartbeatAndALeaveAreSentToTheCoordinatorAndReportNothingWhenTheySucceed(): void
@@ -1678,7 +1708,7 @@ final class ClientTest extends TestCase
             ))
             ->on(self::SECOND_LEADER, new BrokerConnection(
                 ResponseFrame::heartbeat(0, KafkaException::REBALANCE_IN_PROGRESS),
-                ResponseFrame::syncGroup(0, KafkaException::ILLEGAL_GENERATION),
+                ResponseFrame::syncGroupV4(0, KafkaException::ILLEGAL_GENERATION),
             ))
             ->install();
 

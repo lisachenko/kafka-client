@@ -153,7 +153,11 @@ final class GroupMembershipApiTest extends IntegrationTestCase
 
             self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
             self::assertSame(-1, $refused->generationId, 'an error answer of a 2.x coordinator carries -1');
-            self::assertSame('', $refused->groupProtocol);
+            self::assertNull(
+                $refused->groupProtocol,
+                'KIP-559 made the protocol name nullable in a version 7, where a version 6 carries the empty string'
+            );
+            self::assertNull($refused->protocolType, 'and the protocol type next to it is null for the same answer');
             self::assertSame('', $refused->leaderId);
             self::assertSame([], $refused->members);
             self::assertMatchesRegularExpression(
@@ -440,7 +444,7 @@ final class GroupMembershipApiTest extends IntegrationTestCase
             $response->generationId,
             'a 2.x error answer carries the UNKNOWN_GENERATION_ID -1, where a 0.11 or 1.1 broker sent 0'
         );
-        self::assertSame('', $response->groupProtocol);
+        self::assertNull($response->groupProtocol, 'null from version 7 on, the empty string below it (KIP-559)');
         self::assertSame('', $response->leaderId);
         self::assertSame([], $response->members);
     }
@@ -594,8 +598,17 @@ final class GroupMembershipApiTest extends IntegrationTestCase
             ->writeTo($stream);
         $heartbeat = HeartbeatResponse::unpack($stream);
 
-        new SyncGroupRequest($groupId, $join->generationId, 't3-not-a-member', [], $this->clientId(), 402)
-            ->writeTo($stream);
+        new SyncGroupRequest(
+            $groupId,
+            $join->generationId,
+            't3-not-a-member',
+            [],
+            $this->clientId(),
+            402,
+            null,
+            self::PROTOCOL_TYPE,
+            self::PROTOCOL_NAME
+        )->writeTo($stream);
         $sync = SyncGroupResponse::unpack($stream);
 
         new LeaveGroupRequest($groupId, 't3-not-a-member', $this->clientId(), 403)->writeTo($stream);
@@ -636,8 +649,17 @@ final class GroupMembershipApiTest extends IntegrationTestCase
             ->writeTo($stream);
         $heartbeat = HeartbeatResponse::unpack($stream);
 
-        new SyncGroupRequest($groupId, $join->generationId + 1, $join->memberId, [], $this->clientId(), 502)
-            ->writeTo($stream);
+        new SyncGroupRequest(
+            $groupId,
+            $join->generationId + 1,
+            $join->memberId,
+            [],
+            $this->clientId(),
+            502,
+            null,
+            self::PROTOCOL_TYPE,
+            self::PROTOCOL_NAME
+        )->writeTo($stream);
         $sync = SyncGroupResponse::unpack($stream);
 
         self::assertSame(KafkaException::ILLEGAL_GENERATION, $heartbeat->errorCode);
@@ -905,8 +927,17 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         int $generationId,
         array $assignments
     ): SyncGroupResponse {
-        new SyncGroupRequest($groupId, $generationId, $memberId, $assignments, $this->clientId(), 102)
-            ->writeTo($stream);
+        new SyncGroupRequest(
+            $groupId,
+            $generationId,
+            $memberId,
+            $assignments,
+            $this->clientId(),
+            102,
+            null,
+            self::PROTOCOL_TYPE,
+            self::PROTOCOL_NAME
+        )->writeTo($stream);
 
         $response = SyncGroupResponse::unpack($stream);
         self::assertSame(KafkaException::NO_ERROR, $response->errorCode, 'The broker refused the sync');

@@ -297,8 +297,17 @@ final class StaticMembershipApiTest extends IntegrationTestCase
             'the heartbeat of the fenced member'
         );
 
-        new SyncGroupRequest($groupId, $first->generationId, $first->memberId, [], self::CLIENT_ID, 725, $instance)
-            ->writeTo($stream);
+        new SyncGroupRequest(
+            $groupId,
+            $first->generationId,
+            $first->memberId,
+            [],
+            self::CLIENT_ID,
+            725,
+            $instance,
+            self::PROTOCOL_TYPE,
+            self::PROTOCOL_NAME
+        )->writeTo($stream);
 
         self::assertSame(KafkaException::FENCED_INSTANCE_ID, SyncGroupResponse::unpack($stream)->errorCode);
 
@@ -624,6 +633,8 @@ final class StaticMembershipApiTest extends IntegrationTestCase
             ? [$member->memberId => new MemberAssignment([$this->topic => [0, 1, 2]])->pack()]
             : [];
 
+        // KIP-559 (SyncGroup v5): a member names the protocol type it joined with and the protocol the
+        // coordinator selected, or the request is refused with 23 before the group is looked at
         new SyncGroupRequest(
             $groupId,
             $member->generationId,
@@ -631,7 +642,9 @@ final class StaticMembershipApiTest extends IntegrationTestCase
             $assignments,
             self::CLIENT_ID,
             $correlationId,
-            $groupInstanceId
+            $groupInstanceId,
+            self::PROTOCOL_TYPE,
+            self::PROTOCOL_NAME
         )->writeTo($stream);
 
         $response = SyncGroupResponse::unpack($stream);
