@@ -41,7 +41,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * broker answered like v1). This class is therefore both the frame of the `0.8.x`/`0.9.x` vectors and a version a
  * 1.x broker serves; on this branch {@see ControlledShutdownRequest} (v1) is what the client sends.
  *
- * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 final class ControlledShutdownRequestV0 extends ControlledShutdownRequest
 {

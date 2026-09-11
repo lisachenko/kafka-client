@@ -25,7 +25,9 @@ use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestAlterableConfig;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsResponseResource;
 use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsRequest;
+use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsRequestV0;
 use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
+use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponseV0;
 
 /**
  * Byte-exact tests for the IncrementalAlterConfigs API of Kafka 2.3 (api key 44, v0, KIP-339).
@@ -34,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
  * and its value, and an option the request does not name keeps the value it has. The frames below were captured on
  * the `kafka-2-8-2` container.
  *
- * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0)"
+ * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 #[CoversClass(IncrementalAlterConfigsRequest::class)]
 #[CoversClass(IncrementalAlterConfigsResponse::class)]
@@ -42,6 +44,8 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
 #[CoversClass(IncrementalAlterConfigsRequestAlterableConfig::class)]
 #[CoversClass(IncrementalAlterConfigsResponseResource::class)]
 #[CoversClass(AlterConfigOp::class)]
+#[CoversClass(IncrementalAlterConfigsRequestV0::class)]
+#[CoversClass(IncrementalAlterConfigsResponseV0::class)]
 final class IncrementalAlterConfigsTest extends TestCase
 {
     /**
@@ -117,7 +121,7 @@ final class IncrementalAlterConfigsTest extends TestCase
 
     public function testTheRequestCarriesAnOperationPerOption(): void
     {
-        $request = new IncrementalAlterConfigsRequest(
+        $request = new IncrementalAlterConfigsRequestV0(
             [
                 IncrementalAlterConfigsRequestResource::fromConfigResource(
                     ConfigResource::topic('t4-23-vectors'),
@@ -163,7 +167,7 @@ final class IncrementalAlterConfigsTest extends TestCase
 
     public function testTheBrokerResourceOfKip226TravelsWithAnEmptyName(): void
     {
-        $request = new IncrementalAlterConfigsRequest(
+        $request = new IncrementalAlterConfigsRequestV0(
             [
                 IncrementalAlterConfigsRequestResource::fromConfigResource(
                     ConfigResource::defaultBroker(),
@@ -180,7 +184,7 @@ final class IncrementalAlterConfigsTest extends TestCase
 
     public function testTheAnswerIsOneResultPerResource(): void
     {
-        $response = IncrementalAlterConfigsResponse::unpack(
+        $response = IncrementalAlterConfigsResponseV0::unpack(
             new StringStream((string) hex2bin(self::RESPONSE_HEX))
         );
 
@@ -195,7 +199,7 @@ final class IncrementalAlterConfigsTest extends TestCase
 
     public function testARefusedResourceCarriesTheMessageOfTheBroker(): void
     {
-        $response = IncrementalAlterConfigsResponse::unpack(
+        $response = IncrementalAlterConfigsResponseV0::unpack(
             new StringStream((string) hex2bin(self::INVALID_APPEND_RESPONSE_HEX))
         );
 

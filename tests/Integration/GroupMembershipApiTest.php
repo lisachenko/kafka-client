@@ -66,8 +66,8 @@ use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
  * Every request goes out with the version this line sends, which Kafka 2.0 raised by one for all four apis without
  * changing a field (KIP-219): JoinGroup v3, SyncGroup v2, Heartbeat v2 and LeaveGroup v2.
  *
- * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 to v5)",
- *      "SyncGroup API (key 14, v0 to v3)", "Heartbeat API (key 12, v0 to v3)" and "LeaveGroup API (key 13, v0 to v3)"
+ * @see docs/protocol/2.8.md, sections "Group membership protocol (keys 11 to 14)", "JoinGroup API (key 11, v0 to v6)",
+ *      "SyncGroup API (key 14, v0 to v4)", "Heartbeat API (key 12, v0 to v4)" and "LeaveGroup API (key 13, v0 to v4)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(JoinGroupRequest::class)]
@@ -139,24 +139,36 @@ final class GroupMembershipApiTest extends IntegrationTestCase
      */
     public function testAFirstJoinOfVersionFourIsRefusedWithTheMemberIdTheCoordinatorAssigns(): void
     {
-        $groupId = self::uniqueGroupName();
-        $stream  = $this->coordinatorStream($groupId);
+        $admin = new AdminClient($this->cluster(), $this->configuration());
 
-        $refused = $this->rawJoin($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, 'first join', 601);
+        // The coordinator's `cleanupGroupMetadata` runs every `offsets.retention.check.interval.ms` (ten minutes
+        // by default) and removes an Empty group that holds no offset - which is exactly what a group with nothing
+        // but a pending member is. It is a rare neighbour of this exchange on the shared container, and the only
+        // answer it can produce is the `Dead` of a group that is gone, so the exchange is simply done again
+        for ($attempt = 1; ; ++$attempt) {
+            $groupId = self::uniqueGroupName();
+            $stream  = $this->coordinatorStream($groupId);
 
-        self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
-        self::assertSame(-1, $refused->generationId, 'an error answer of a 2.x coordinator carries -1');
-        self::assertSame('', $refused->groupProtocol);
-        self::assertSame('', $refused->leaderId);
-        self::assertSame([], $refused->members);
-        self::assertMatchesRegularExpression(
-            '/^' . preg_quote($this->clientId(), '/') . '-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/',
-            $refused->memberId,
-            'the answer carries the member id the coordinator generated, as "<client id>-<uuid>"'
-        );
+            $refused = $this->rawJoin($stream, $groupId, JoinGroupRequest::DEFAULT_MEMBER_ID, 'first join', 601);
 
-        // The group exists, but the pending member is not a member of it: it holds no rebalance up
-        $description = new AdminClient($this->cluster(), $this->configuration())->describeGroup($groupId);
+            self::assertSame(KafkaException::MEMBER_ID_REQUIRED, $refused->errorCode);
+            self::assertSame(-1, $refused->generationId, 'an error answer of a 2.x coordinator carries -1');
+            self::assertSame('', $refused->groupProtocol);
+            self::assertSame('', $refused->leaderId);
+            self::assertSame([], $refused->members);
+            self::assertMatchesRegularExpression(
+                '/^' . preg_quote($this->clientId(), '/') . '-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/',
+                $refused->memberId,
+                'the answer carries the member id the coordinator generated, as "<client id>-<uuid>"'
+            );
+
+            // The group exists, but the pending member is not a member of it: it holds no rebalance up
+            $description = $admin->describeGroup($groupId);
+
+            if ($description->state !== DescribeGroupResponseMetadata::STATE_DEAD || $attempt === 3) {
+                break;
+            }
+        }
 
         self::assertSame(DescribeGroupResponseMetadata::STATE_EMPTY, $description->state);
         self::assertSame([], $description->members, 'a pending member does not appear in DescribeGroups');

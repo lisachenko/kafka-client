@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   LeaveGroup Response (Version: 1 and 2) => throttle_time_ms error_code
  * </pre>
  *
- * @see docs/protocol/2.8.md, sections "LeaveGroup API (key 13, v0 to v3)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "LeaveGroup API (key 13, v0 to v4)" and "Quotas and throttle time"
  */
 final class LeaveGroupResponseV1 extends LeaveGroupResponse
 {

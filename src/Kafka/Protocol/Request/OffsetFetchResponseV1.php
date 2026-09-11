@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the version 2 class ({@see OffsetFetchResponseV2}) would read two bytes past the end of the frame. Every error of
  * these versions is reported per topic-partition, and {@see OffsetFetchResponse::$errorCode} stays 0.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
  */
 final class OffsetFetchResponseV1 extends OffsetFetchResponse
 {

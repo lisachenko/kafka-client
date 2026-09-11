@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\LeaveGroupResponseMember;
  * (`GroupCoordinatorNotAvailable`), 16 (`NotCoordinatorForGroup`), 14 (`GroupLoadInProgress`) - and a request whose
  * members were all refused still carries **0** there, with the member array holding every reason.
  *
- * @see docs/protocol/2.8.md, sections "The batch leave of KIP-345 (v3)", "LeaveGroup API (key 13, v0 to v3)" and
+ * @see docs/protocol/2.8.md, sections "The batch leave of KIP-345 (v3)", "LeaveGroup API (key 13, v0 to v4)" and
  *      "Quotas and throttle time"
  */
 class LeaveGroupResponse extends AbstractResponse
@@ -53,7 +53,13 @@ class LeaveGroupResponse extends AbstractResponse
     /**
      * Version of the LeaveGroup API that this class decodes the answer of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

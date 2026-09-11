@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 2 (KIP-219, Kafka 2.0) added nothing: the next field of the api is the `group_instance_id` of version 3
  * (KIP-345, Kafka 2.3). The answer did not change either and is read with {@see HeartbeatResponseV1}.
  *
- * @see docs/protocol/2.8.md, sections "Heartbeat API (key 12, v0 to v3)" and "Quotas and throttle time"
+ * @see docs/protocol/2.8.md, sections "Heartbeat API (key 12, v0 to v4)" and "Quotas and throttle time"
  */
 final class HeartbeatRequestV1 extends HeartbeatRequest
 {

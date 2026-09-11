@@ -16,6 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopic;
 use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV0;
+use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV1;
 
 /**
  * CreateTopics response object, version 4 (key 19)
@@ -59,14 +60,24 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV0;
  * @ 2.8.2 is about the request, and the next field of the answer - the `topic_configs` of KIP-525 - arrives with
  * the flexible version 5. {@see CreateTopicsResponseV3} is the same frame with the version field of Kafka 2.0.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v4)"
+ * **Kafka 2.4 added the version 5** (KIP-482 and KIP-525): it is the first **flexible** version of the api, and
+ * every topic result of it also carries the partition count, the replication factor and the whole configuration
+ * the new topic ended up with, plus the tagged field 0 `topic_config_error_code` for the case in which the broker
+ * could not read that configuration back. {@see CreateTopicsResponseV4} is the frame of Kafka 2.4 without any of it.
+ *
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v5)"
  */
 class CreateTopicsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 5;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
@@ -104,6 +115,10 @@ class CreateTopicsResponse extends AbstractResponse
      */
     protected static function topicClass(): string
     {
-        return static::VERSION >= 1 ? CreateTopicsResponseTopic::class : CreateTopicsResponseTopicV0::class;
+        return match (true) {
+            static::VERSION >= 5 => CreateTopicsResponseTopic::class,
+            static::VERSION >= 1 => CreateTopicsResponseTopicV1::class,
+            default              => CreateTopicsResponseTopicV0::class,
+        };
     }
 }

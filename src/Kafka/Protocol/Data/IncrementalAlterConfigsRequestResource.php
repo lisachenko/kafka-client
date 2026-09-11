@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * twice is answered with the error code 42 and `Error due to duplicate config keys : retention.ms`, and one whose
  * changes do not validate leaves the whole resource untouched.
  *
- * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0)"
+ * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 class IncrementalAlterConfigsRequestResource implements BinarySchemaInterface
 {

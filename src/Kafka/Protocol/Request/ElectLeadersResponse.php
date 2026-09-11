@@ -44,14 +44,22 @@ use Protocol\Kafka\Protocol\Data\ElectLeadersResponseReplicaElectionResult;
  * gets the partitions that were really elected or really failed alone: the handler drops every
  * `ELECTION_NOT_NEEDED` from such an answer.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
+ * **Kafka 2.4 added the version 2** (KIP-482), the same frame in the flexible encoding.
+ * {@see ElectLeadersResponseV1} is the version that carries the top-level error code without it.
+ *
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 class ElectLeadersResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation
