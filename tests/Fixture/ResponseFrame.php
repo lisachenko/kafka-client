@@ -159,21 +159,24 @@ final class ResponseFrame
         array $topicAuthorizedOperations = [],
         int $clusterAuthorizedOperations = self::NOT_REQUESTED
     ): string {
-        // The throttle time of version 3 opens the body, in front of the brokers
-        $body = pack('N', 0) . pack('N', count($brokers));
+        // Version 9 (Kafka 2.4) is the first FLEXIBLE version of this api (KIP-482): every string and every
+        // array announces its length as an unsigned varint of `length + 1`, and every structure - the body, a
+        // broker, a topic, a partition - ends in a tagged-field section. The fields are the ones of version 8.
+        $body = pack('N', 0) . self::compactArrayLength(count($brokers));
         foreach ($brokers as [$nodeId, $host, $port]) {
             // The rack of the broker, null for a cluster that is not rack aware
-            $body .= pack('N', $nodeId) . self::string($host) . pack('N', $port) . pack('n', 0xFFFF);
+            $body .= pack('N', $nodeId) . self::compactString($host) . pack('N', $port)
+                . self::compactString(null) . self::tagBuffer();
         }
 
-        $body .= self::string(self::CLUSTER_ID);
+        $body .= self::compactString(self::CLUSTER_ID);
         $body .= pack('N', $controllerId ?? $brokers[0][0] ?? -1);
 
-        $body .= pack('N', count($topics));
+        $body .= self::compactArrayLength(count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= pack('n', $topicErrorCodes[$topic] ?? 0) . self::string((string) $topic);
+            $body .= pack('n', $topicErrorCodes[$topic] ?? 0) . self::compactString((string) $topic);
             $body .= pack('C', in_array((string) $topic, $internalTopics, true) ? 1 : 0);
-            $body .= pack('N', count($partitions));
+            $body .= self::compactArrayLength(count($partitions));
             foreach ($partitions as $partitionId => $leader) {
                 $replicas = $leader < 0 ? [] : [$leader];
                 $body .= pack('n', $partitionErrorCodes[$topic][$partitionId] ?? 0)
@@ -181,20 +184,45 @@ final class ResponseFrame
                     . pack('N', $leader)
                     // The leader epoch of version 7 (Kafka 2.1, KIP-320), behind the leader id
                     . pack('N', $leaderEpochs[$topic][$partitionId] ?? 0)
-                    . self::int32Array($replicas)
-                    . self::int32Array($replicas)
-                    . self::int32Array($offlineReplicas[$topic][$partitionId] ?? []);
+                    . self::compactInt32Array($replicas)
+                    . self::compactInt32Array($replicas)
+                    . self::compactInt32Array($offlineReplicas[$topic][$partitionId] ?? [])
+                    . self::tagBuffer();
             }
 
             // The `topic_authorized_operations` bitfield of version 8 (Kafka 2.3, KIP-430), behind the
             // partitions; Integer.MIN_VALUE is what a broker writes when the request did not ask for it
-            $body .= pack('N', $topicAuthorizedOperations[$topic] ?? self::NOT_REQUESTED);
+            $body .= pack('N', $topicAuthorizedOperations[$topic] ?? self::NOT_REQUESTED) . self::tagBuffer();
         }
 
         // And the `cluster_authorized_operations` of the same version, at the very end of the frame
-        $body .= pack('N', $clusterAuthorizedOperations);
+        $body .= pack('N', $clusterAuthorizedOperations) . self::tagBuffer();
 
-        return self::of($correlationId, $body);
+        // The response header v1 of a flexible api: the correlation id and a tag buffer of its own
+        return self::of($correlationId, self::tagBuffer() . $body);
+    }
+
+    /**
+     * Encodes the length prefix of a compact array: the unsigned varint `count + 1`
+     */
+    public static function compactArrayLength(int $count): string
+    {
+        return self::unsignedVarint($count + 1);
+    }
+
+    /**
+     * Encodes an int32 array of a flexible version: a compact length and the values
+     *
+     * @param list<int> $values
+     */
+    public static function compactInt32Array(array $values): string
+    {
+        $bytes = self::compactArrayLength(count($values));
+        foreach ($values as $value) {
+            $bytes .= pack('N', $value);
+        }
+
+        return $bytes;
     }
 
     /**

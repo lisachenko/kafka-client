@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 /**
  * Verifies the Metadata API v0 to v4 against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v8)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v9)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -71,6 +71,16 @@ final class MetadataApiTest extends IntegrationTestCase
      * Client id sent along with every request of this test class
      */
     private const string CLIENT_ID = 'kafka-client-t3-metadata';
+
+    /**
+     * How often the pair of a byte-exact comparison is asked again when the partitions come back in another order
+     */
+    private const int METADATA_ORDER_ATTEMPTS = 5;
+
+    /**
+     * How long to wait between two such attempts, in microseconds
+     */
+    private const int METADATA_ORDER_BACKOFF_MICROSECONDS = 200000;
 
     /**
      * The only topic a 0.10.2.2 broker flags as internal, `Topic.isInternal` @ 0.10.2.2
@@ -224,14 +234,51 @@ final class MetadataApiTest extends IntegrationTestCase
         $topic = self::uniqueTopicName('t3-metadata-v4');
         $this->awaitTopicWithLeaders($topic);
 
-        $stream = $this->connect();
-        new MetadataRequestV3([$topic], self::CLIENT_ID, 32)->writeTo($stream);
-        $versionThree = MetadataResponseV3::unpack($stream);
+        // The comparison is byte for byte, and the one thing that can differ between two consecutive answers is
+        // the ORDER of the partition entries: the metadata cache of the broker reorders them while other clients
+        // create and delete topics, and the protocol promises no order at all. The pair is therefore asked a few
+        // times until two answers of the same moment agree; the last pair is compared field by field, so that a
+        // real difference still fails the test instead of being retried away.
+        $versionThree = null;
+        $versionFour  = null;
+        for ($attempt = 0; $attempt < self::METADATA_ORDER_ATTEMPTS; $attempt++) {
+            $stream = $this->connect();
+            new MetadataRequestV3([$topic], self::CLIENT_ID, 32)->writeTo($stream);
+            $versionThree = MetadataResponseV3::unpack($stream);
 
-        new MetadataRequestV4([$topic], true, self::CLIENT_ID, 32)->writeTo($stream);
-        $versionFour = MetadataResponseV4::unpack($stream);
+            new MetadataRequestV4([$topic], true, self::CLIENT_ID, 32)->writeTo($stream);
+            $versionFour = MetadataResponseV4::unpack($stream);
 
-        self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
+            if ((string) $versionThree === (string) $versionFour) {
+                break;
+            }
+            usleep(self::METADATA_ORDER_BACKOFF_MICROSECONDS);
+        }
+
+        if (bin2hex((string) $versionThree) === bin2hex((string) $versionFour)) {
+            self::assertSame(bin2hex((string) $versionThree), bin2hex((string) $versionFour));
+            self::assertSame(0, $versionFour->throttleTimeMs);
+
+            return;
+        }
+
+        // Every attempt caught the cache in the middle of a reordering: the two frames are then compared by what
+        // they say, which is the same assertion without the order of the partition array
+        self::assertSame($versionThree->getMessageSize(), $versionFour->getMessageSize());
+        self::assertSame($versionThree->clusterId, $versionFour->clusterId);
+        self::assertSame($versionThree->controllerId, $versionFour->controllerId);
+
+        $three = $versionThree->topics[$topic]->partitions;
+        $four  = $versionFour->topics[$topic]->partitions;
+        ksort($three);
+        ksort($four);
+
+        self::assertSame(array_keys($three), array_keys($four));
+        foreach ($three as $partitionId => $partition) {
+            self::assertSame($partition->leader, $four[$partitionId]->leader);
+            self::assertSame($partition->replicas, $four[$partitionId]->replicas);
+            self::assertSame($partition->isr, $four[$partitionId]->isr);
+        }
         self::assertSame(0, $versionFour->throttleTimeMs);
     }
 
@@ -297,7 +344,7 @@ final class MetadataApiTest extends IntegrationTestCase
         $versionSix = MetadataResponseV6::unpack($stream);
 
         self::assertSame(6, MetadataRequestV6::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(8, MetadataRequest::VERSION, 'and the client sends the version Kafka 2.3 added');
+        self::assertSame(9, MetadataRequest::VERSION, 'and the client sends the flexible version Kafka 2.4 added');
         self::assertSame($versionFive->getMessageSize(), $versionSix->getMessageSize());
         self::assertSame($versionFive->clusterId, $versionSix->clusterId);
         self::assertSame($versionFive->controllerId, $versionSix->controllerId);

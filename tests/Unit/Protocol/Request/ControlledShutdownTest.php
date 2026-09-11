@@ -22,7 +22,9 @@ use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV1;
+use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV2;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
+use Protocol\Kafka\Protocol\Request\ControlledShutdownResponseV2;
 
 /**
  * Byte-exact tests of the ControlledShutdown API, versions 0 and 1.
@@ -35,13 +37,15 @@ use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
  * The versions differ in their header alone: version 1, added by Kafka 0.9, carries the client id of the common
  * request header, version 0 has no client id at all.
  *
- * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 #[CoversClass(ControlledShutdownRequest::class)]
 #[CoversClass(ControlledShutdownRequestV0::class)]
 #[CoversClass(ControlledShutdownRequestV1::class)]
 #[CoversClass(ControlledShutdownResponse::class)]
 #[CoversClass(ControlledShutdownResponsePartition::class)]
+#[CoversClass(ControlledShutdownRequestV2::class)]
+#[CoversClass(ControlledShutdownResponseV2::class)]
 final class ControlledShutdownTest extends TestCase
 {
     /**
@@ -50,7 +54,7 @@ final class ControlledShutdownTest extends TestCase
     public function testVersion2RequestCarriesTheBrokerEpochOfKip380(): void
     {
         // Size = 30: ApiKey 7, ApiVersion 2, CorrelationId 21, ClientId "t2-probe", BrokerId 4242, BrokerEpoch -1
-        $request = new ControlledShutdownRequest(4242, ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH, 't2-probe', 21);
+        $request = new ControlledShutdownRequestV2(4242, ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH, 't2-probe', 21);
 
         self::assertSame(
             '0000001e' . '0007' . '0002' . '00000015' . '0008' . bin2hex('t2-probe') . '00001092'
@@ -65,7 +69,8 @@ final class ControlledShutdownTest extends TestCase
         self::assertSame(-1, ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH);
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'brokerId', 'brokerEpoch'],
-            array_keys(ControlledShutdownRequest::getScheme())
+            array_keys(ControlledShutdownRequestV2::getScheme()),
+            'the version 2 frame; the flexible version 3 of KIP-482 adds a tag buffer to the header and the body'
         );
     }
 
@@ -74,7 +79,7 @@ final class ControlledShutdownTest extends TestCase
      */
     public function testABrokerEpochIsTheTrailingInt64OfTheVersionTwoFrame(): void
     {
-        $request = new ControlledShutdownRequest(4242, 7, 't2-probe', 21);
+        $request = new ControlledShutdownRequestV2(4242, 7, 't2-probe', 21);
 
         self::assertStringEndsWith('00001092' . '0000000000000007', bin2hex((string) $request));
         self::assertSame(7, $request->getBrokerEpoch());
@@ -128,7 +133,7 @@ final class ControlledShutdownTest extends TestCase
     public function testResponseWithoutRemainingPartitionsIsDecoded(): void
     {
         // The answer of a 0.9.0.1 broker for a broker id the controller does not know: error 8, no partitions
-        $response = ControlledShutdownResponse::unpack(
+        $response = ControlledShutdownResponseV2::unpack(
             new StringStream((string) hex2bin('0000000a' . '00000014' . '0008' . '00000000'))
         );
 
@@ -144,7 +149,7 @@ final class ControlledShutdownTest extends TestCase
             . '0006' . '6f7264657273' . '00000000'
             . '0006' . '6f7264657273' . '00000002';
 
-        $response = ControlledShutdownResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = ControlledShutdownResponseV2::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(0, $response->errorCode);
         self::assertCount(2, $response->remainingTopicPartitions);

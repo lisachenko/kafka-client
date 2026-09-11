@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Request\ElectLeadersResponse;
  * election with a **null** topic array would elect for every partition of every other suite, and no test of this
  * repository ever sends one (the document describes what it answers, measured once).
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Client::class)]
@@ -176,7 +176,7 @@ final class ElectLeadersApiTest extends IntegrationTestCase
             $result[$topic][0],
             'the partition still has a live leader, so neither election type has anything to do'
         );
-        self::assertSame(1, ElectLeadersRequest::VERSION, 'the version this line sends');
+        self::assertSame(2, ElectLeadersRequest::VERSION, 'the flexible version of KIP-482, which this line sends');
     }
 
     /**

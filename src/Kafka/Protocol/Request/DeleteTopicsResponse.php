@@ -54,14 +54,22 @@ use Protocol\Kafka\Protocol\Data\DeleteTopicsResponseTopic;
  * (`KafkaApis.handleDeleteTopicsRequest` @ 2.8.2). {@see DeleteTopicsResponseV2} is the same frame with the
  * version field of Kafka 2.0.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v3)"
+ * **Kafka 2.4 added the version 4** (KIP-482): the same fields in the flexible encoding, with a tagged-field
+ * section at the end of the body and of every topic result. {@see DeleteTopicsResponseV3} is the frame of Kafka 2.1.
+ *
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v4)"
  */
 class DeleteTopicsResponse extends AbstractResponse
 {
     /**
      * Version of the DeleteTopics API that this class decodes the answer of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.
