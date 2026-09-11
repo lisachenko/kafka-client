@@ -28,9 +28,12 @@ use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\Data\ClientQuotaComponentData;
 use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequestV0;
 use Protocol\Kafka\Protocol\Request\AlterClientQuotasResponse;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequest;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponseV0;
 use Throwable;
 
 /**
@@ -47,8 +50,8 @@ use Throwable;
  * every principal or client of the shared container that has none of its own, which is the same restraint the
  * reassignment suite shows towards a null topic array.
  *
- * @see docs/protocol/2.8.md, sections "DescribeClientQuotas API (key 48, v0)" and
- *      "AlterClientQuotas API (key 49, v0)"
+ * @see docs/protocol/2.8.md, sections "DescribeClientQuotas API (key 48, v0 and v1)" and
+ *      "AlterClientQuotas API (key 49, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeClientQuotasRequest::class)]
@@ -142,17 +145,18 @@ final class ClientQuotaApiTest extends IntegrationTestCase
         $this->setQuota($clientId, ClientQuotaAlterationOp::KEY_CONSUMER_BYTE_RATE, 2048.0);
 
         $filter  = [ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $clientId)->toData()];
-        $request = new DescribeClientQuotasRequest($filter, false, 'kafka-client-t1-quota', 7001);
+        $request = new DescribeClientQuotasRequestV0($filter, false, 'kafka-client-t1-quota', 7001);
 
-        self::assertFalse(DescribeClientQuotasRequest::isFlexible());
-        self::assertSame(DescribeClientQuotasRequest::HEADER_V1, $request->getHeaderVersion());
+        self::assertSame(0, DescribeClientQuotasRequestV0::VERSION);
+        self::assertFalse(DescribeClientQuotasRequestV0::isFlexible());
+        self::assertSame(DescribeClientQuotasRequestV0::HEADER_V1, $request->getHeaderVersion());
         self::assertStringContainsString(
             bin2hex(pack('n', strlen('kafka-client-t1-quota')) . 'kafka-client-t1-quota') . '00000001',
             bin2hex((string) $request),
             'the int16-prefixed client id is followed by the int32 component count, with no tag buffer between'
         );
 
-        $response = $this->send($request);
+        $response = $this->send($request, DescribeClientQuotasResponseV0::class);
 
         self::assertCount(1, (array) $response->entries);
         self::assertSame(
@@ -160,6 +164,64 @@ final class ClientQuotaApiTest extends IntegrationTestCase
             array_map(static fn($value): float => $value->value, $response->entries[0]->values),
             'and the broker answers the quota that was written'
         );
+    }
+
+    /**
+     * The version Kafka **2.8** added is the same fields in the compact encoding, and it is what this client sends
+     *
+     * `DescribeClientQuotas.json` @ 2.8.2 says `"validVersions": "0-1"` and `"flexibleVersions": "1+"`, where the
+     * same file @ 2.6.3 and @ 2.7.2 says `"flexibleVersions": "none"` - these two apis are the last pair of the
+     * line to become compact, two releases after the encoding arrived. Nothing is added: the v1 frame is shorter
+     * than the v0 one and carries the same answer.
+     */
+    public function testTheVersionOfKafka28IsTheSameFilterInTheCompactEncoding(): void
+    {
+        $clientId = $this->clientId('flexible');
+        $this->setQuota($clientId, ClientQuotaAlterationOp::KEY_CONSUMER_BYTE_RATE, 4096.0);
+
+        $filter = [ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $clientId)->toData()];
+        $plain  = new DescribeClientQuotasRequestV0($filter, false, 'kafka-client-t1-quota', 7011);
+        $compact = new DescribeClientQuotasRequest($filter, false, 'kafka-client-t1-quota', 7011);
+
+        self::assertSame(1, DescribeClientQuotasRequest::VERSION, 'the base class is the version this client sends');
+        self::assertTrue(DescribeClientQuotasRequest::isFlexible());
+        self::assertSame(DescribeClientQuotasRequest::HEADER_V2, $compact->getHeaderVersion());
+        self::assertLessThan(
+            strlen((string) $plain),
+            strlen((string) $compact),
+            'the compact lengths and the two tag buffers together are shorter than the four-byte lengths'
+        );
+
+        $response = $this->send($compact);
+
+        self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
+        self::assertCount(1, (array) $response->entries);
+        self::assertSame(
+            ['consumer_byte_rate' => 4096.0],
+            array_map(static fn($value): float => $value->value, $response->entries[0]->values),
+            'a float64 is eight bytes in both encodings, so the value is byte for byte the one the v0 answer holds'
+        );
+        self::assertSame(
+            '',
+            $response->errorMessage,
+            'the flexible answer carries the compact EMPTY string on success, where the plain one carries the null'
+        );
+    }
+
+    /**
+     * The whole admin path of this client speaks the v1, because the base classes are the v1
+     */
+    public function testTheAdminCallsSpeakTheFlexibleVersion(): void
+    {
+        $clientId = $this->clientId('admin-flexible');
+
+        self::assertTrue(AlterClientQuotasRequest::isFlexible());
+        self::assertSame(1, AlterClientQuotasRequest::VERSION);
+        self::assertSame(0, AlterClientQuotasRequestV0::VERSION);
+
+        $this->setQuota($clientId, ClientQuotaAlterationOp::KEY_PRODUCER_BYTE_RATE, 8192.0);
+
+        self::assertSame(['producer_byte_rate' => 8192.0], $this->quotasOf($clientId));
     }
 
     /**
@@ -362,14 +424,16 @@ final class ClientQuotaApiTest extends IntegrationTestCase
     /**
      * Sends one request to the first broker and reads the answer that belongs to it
      */
-    private function send(DescribeClientQuotasRequest $request): DescribeClientQuotasResponse
-    {
+    private function send(
+        DescribeClientQuotasRequest $request,
+        string $responseClass = DescribeClientQuotasResponse::class
+    ): DescribeClientQuotasResponse {
         $stream = $this->connect();
         $request->writeTo($stream);
         $size = $stream->read('NmessageSize')['messageSize'];
         $body = $stream->read("a{$size}data")['data'];
 
-        return DescribeClientQuotasResponse::unpack(new StringStream(pack('N', $size) . $body));
+        return $responseClass::unpack(new StringStream(pack('N', $size) . $body));
     }
 
     /**

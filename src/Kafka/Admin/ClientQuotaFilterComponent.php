@@ -20,7 +20,7 @@ use Protocol\Kafka\Protocol\Data\ClientQuotaComponentData;
  *
  * `ClientQuotaFilterComponent` of the Java admin client, with its three factory methods.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
  */
 final class ClientQuotaFilterComponent
 {

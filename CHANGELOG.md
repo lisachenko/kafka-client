@@ -767,6 +767,42 @@ them. What the release added lives in the group and transaction apis.)*
   EndTxn v2 pairs (with the two frames that carry the 90), captured with the topic `t4-27-vectors` and the group
   `t4-27-vectors-group`, each with its annotated dump, and the seven headings moved to their new ranges.
 
+### Kafka 2.8
+
+- **DescribeCluster (key 60, v0, KIP-700)** — the cluster id, the controller and the brokers, asked for without
+  naming a topic. Until this release a client that wanted those three had to send a request about *topics* with an
+  empty topic array, which is what `AdminClient::describeClusterFromMetadata()` still does for a broker below 2.8;
+  `AdminClient::describeCluster(bool $includeAuthorizedOperations = false)` sends the new api and answers
+  `Admin\ClusterDescription`. The request is the **smallest of this protocol** - one boolean - and the flag is the
+  only thing in it: without it `cluster_authorized_operations` is `Integer.MIN_VALUE`
+  (`ClusterDescription::OPERATIONS_NOT_REQUESTED`), the default of the specification and not an error; with it the
+  container answers **8096**, the seven `AclOperation` bits `AclEntry.supportedOperations(CLUSTER)` names, because
+  it runs without an authorizer. Four wire vectors in the new `describe-cluster.json`.
+- **DescribeProducers (key 61, v0, KIP-664)** — the first api of this protocol that reads out the
+  `ProducerStateManager` of a partition, the table that makes the idempotent producer of KIP-98 work; before it,
+  the only way to see which producer ids a partition remembered was `DumpLogSegments` on the broker's disk.
+  `AdminClient::describeProducers(array $topicPartitions)` groups the partitions **by their leader** - the state
+  lives in the log, so no other broker can answer for one - and reports `Admin\ProducerState` per partition, or
+  the exception of that partition, because the api has no top-level error code. A partition the broker does not
+  lead is **3**, and a partition that remembers no producer is the code 0 with an empty list.
+- Measured on the container, and the surprise of the api: the two transaction fields of a producer state move on
+  different beats. `current_txn_start_offset` is the base offset of the first batch of an open transaction and is
+  cleared by its marker, but the `coordinator_epoch` next to it is written **by the marker**, so a producer whose
+  very first transaction is still open is reported with the -1 of a producer that has none, and one whose second
+  transaction is open still carries the epoch the previous marker wrote. An abort marker clears the first offset
+  exactly as a commit marker does. `producer_epoch` is an `int32` in this api although it is an `int16` in every
+  other one. Four wire vectors in the new `describe-producers.json`.
+- **The flexible v1 of the two client-quota apis** — `DescribeClientQuotas` (48) and `AlterClientQuotas` (49) are
+  the last pair of this line to become compact, two releases after the encoding arrived:
+  `DescribeClientQuotas.json` @ 2.8.2 says `"validVersions": "0-1"` and `"flexibleVersions": "1+"`, where the same
+  file @ 2.6.3 and @ 2.7.2 says `"flexibleVersions": "none"`. No field is added, so the base classes are the v1
+  and `DescribeClientQuotasRequestV0`/`ResponseV0` and `AlterClientQuotasRequestV0`/`ResponseV0` keep the plain
+  frame a 2.6 or 2.7 broker serves. The `float64` quota value is the same eight bytes in both encodings; what does
+  differ is the `error_message` of a successful DescribeClientQuotas answer, which is the compact **empty** string
+  in the v1 and the **null** string in the v0. Seven new wire vectors next to the plain ones in the two existing
+  files.
+
+
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------
 

@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\AlterClientQuotasResponseEntry;
 
 /**
- * AlterClientQuotas response object, version 0 (key 49, Kafka 2.6, KIP-546)
+ * AlterClientQuotas response object, version 1 (key 49, Kafka 2.6, KIP-546)
  *
  * <pre>
- *   AlterClientQuotas Response (Version: 0) => throttle_time_ms [entries]
+ *   AlterClientQuotas Response (Version: 0 and 1) => throttle_time_ms [entries]
  *     throttle_time_ms => INT32
  *     entries          => error_code error_message entity
  *       error_code    => INT16
@@ -34,14 +34,19 @@ use Protocol\Kafka\Protocol\Data\AlterClientQuotasResponseEntry;
  * is out of range - and **41** (NotController) for a request that reached a broker which does not write the quota
  * store of the cluster.
  *
- * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0)"
+ * @see docs/protocol/2.8.md, section "AlterClientQuotas API (key 49, v0 and v1)"
  */
 class AlterClientQuotasResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 1;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas

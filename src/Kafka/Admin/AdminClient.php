@@ -47,6 +47,7 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
+use Protocol\Kafka\Protocol\Data\ProducerState as ProducerStateData;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\AlterClientQuotasRequest;
@@ -67,6 +68,8 @@ use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequest;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClusterRequest;
+use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
@@ -75,6 +78,8 @@ use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeProducersRequest;
+use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
 use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
@@ -2146,6 +2151,157 @@ class AdminClient
                     ['feature' => (string) $feature]
                         + ($featureResult->errorMessage !== null ? ['error' => $featureResult->errorMessage] : [])
                 );
+        }
+
+        return $result;
+    }
+
+    /**
+     * The cluster id, the controller and the brokers, in one request (ApiKey 60, Kafka 2.8, KIP-700)
+     *
+     * Until Kafka 2.8 those three facts could only be read out of a **Metadata** answer, which is a request about
+     * *topics* that happens to carry them - asking it for the cluster alone means sending an empty topic array and
+     * paying for the topic machinery on the broker. KIP-700 gave them a request of their own, and it is the
+     * smallest request of this protocol: one boolean.
+     *
+     * `$includeAuthorizedOperations` asks for the acl bit field of KIP-430. Without it the answer carries
+     * `Integer.MIN_VALUE`, which {@see ClusterDescription::hasAuthorizedOperations()} reports as "not asked".
+     *
+     * {@see self::describeClusterFromMetadata()} is the same description built from a Metadata answer, for a
+     * broker below Kafka 2.8 - a 2.8.2 broker answers the api key 60 with the error code 35 on every line below
+     * this one, so the choice is the caller's and not this client's.
+     *
+     * @param bool $includeAuthorizedOperations Whether to ask for the acl bit field of the cluster
+     *
+     * @throws KafkaException If the broker refused the request
+     */
+    public function describeCluster(bool $includeAuthorizedOperations = false): ClusterDescription
+    {
+        /** @var DescribeClusterResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeClusterRequest => new DescribeClusterRequest(
+                $includeAuthorizedOperations,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeClusterResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The broker refused to describe the cluster']
+            );
+        }
+
+        $nodes = [];
+        foreach ($response->brokers as $broker) {
+            $node         = new Node();
+            $node->nodeId = $broker->brokerId;
+            $node->host   = $broker->host;
+            $node->port   = $broker->port;
+            $node->rack   = $broker->rack;
+
+            $nodes[$broker->brokerId] = $node;
+        }
+
+        return new ClusterDescription(
+            $response->clusterId,
+            $response->controllerId,
+            $nodes,
+            $response->clusterAuthorizedOperations
+        );
+    }
+
+    /**
+     * The same description, built from a Metadata answer instead of the api key 60
+     *
+     * What every line below this one had to do, and what a client of a broker older than Kafka 2.8 still has to do.
+     * The acl bit field is not part of it: Metadata carries a `cluster_authorized_operations` of its own from
+     * version 8 on, which is not this request.
+     */
+    public function describeClusterFromMetadata(): ClusterDescription
+    {
+        $this->cluster->reload();
+
+        $controller = $this->cluster->controller();
+
+        return new ClusterDescription(
+            (string) $this->cluster->clusterId(),
+            $controller?->nodeId ?? -1,
+            $this->cluster->nodes()
+        );
+    }
+
+    /**
+     * Which producers a partition still remembers (ApiKey 61, Kafka 2.8, KIP-664)
+     *
+     * KIP-664 - *"Provide tooling to detect and abort hanging transactions"* - made the producer state of a log
+     * visible: the producer ids that wrote to the partition, their epoch, the last sequence number and timestamp
+     * the broker saw from each of them, and the first offset of a transaction of theirs that is **still open** in
+     * that partition. Before Kafka 2.8 that state could only be read by dumping the log segments.
+     *
+     * **The state lives in the log, so the request goes to the leader of each partition**; a broker that does not
+     * lead a partition answers it with 3 (UnknownTopicOrPartition), which is why this method groups the partitions
+     * by leader and sends one request per broker.
+     *
+     * @param array<string, list<int>> $topicPartitions Partitions to describe, per topic
+     *
+     * @return array<string, array<int, list<ProducerState>|KafkaException>> Per topic and partition: the producers
+     *         the partition remembers - an empty list when it remembers none - or the exception of its error code
+     */
+    public function describeProducers(array $topicPartitions): array
+    {
+        $perLeader = [];
+        foreach ($topicPartitions as $topic => $partitions) {
+            foreach ($partitions as $partition) {
+                $leader = $this->cluster->leaderFor((string) $topic, (int) $partition);
+                $perLeader[$leader->nodeId][(string) $topic][] = (int) $partition;
+            }
+        }
+
+        $result = [];
+        foreach ($perLeader as $nodeId => $topics) {
+            /** @var DescribeProducersResponse $response */
+            $response = $this->sendToBroker(
+                (int) $nodeId,
+                fn(int $correlationId): DescribeProducersRequest => new DescribeProducersRequest(
+                    $topics,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DescribeProducersResponse::class
+            );
+
+            foreach ($topics as $topic => $partitions) {
+                foreach ($partitions as $partition) {
+                    $answer = $response->topics[$topic]->partitions[$partition] ?? null;
+
+                    $result[$topic][$partition] = match (true) {
+                        $answer === null => new UnknownErrorException([
+                            'topic'     => $topic,
+                            'partition' => $partition,
+                            'error'     => 'The broker sent no result for this partition',
+                        ]),
+                        $answer->errorCode !== KafkaException::NO_ERROR => KafkaException::fromCode(
+                            $answer->errorCode,
+                            ['topic' => $topic, 'partition' => $partition]
+                                + ($answer->errorMessage !== null ? ['error' => $answer->errorMessage] : [])
+                        ),
+                        default => array_values(array_map(
+                            static fn(ProducerStateData $state): ProducerState => new ProducerState(
+                                $state->producerId,
+                                $state->producerEpoch,
+                                $state->lastSequence,
+                                $state->lastTimestamp,
+                                $state->coordinatorEpoch,
+                                $state->currentTxnStartOffset === -1 ? null : $state->currentTxnStartOffset
+                            ),
+                            $answer->activeProducers
+                        )),
+                    };
+                }
+            }
         }
 
         return $result;

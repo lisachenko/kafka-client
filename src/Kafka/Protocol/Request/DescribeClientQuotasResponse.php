@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeClientQuotasResponseEntry;
 
 /**
- * DescribeClientQuotas response object, version 0 (key 48, Kafka 2.6, KIP-546)
+ * DescribeClientQuotas response object, version 1 (key 48, Kafka 2.6, KIP-546)
  *
  * <pre>
- *   DescribeClientQuotas Response (Version: 0) => throttle_time_ms error_code error_message [entries]
+ *   DescribeClientQuotas Response (Version: 0 and 1) => throttle_time_ms error_code error_message [entries]
  *     throttle_time_ms => INT32
  *     error_code       => INT16
  *     error_message    => NULLABLE_STRING
@@ -38,14 +38,19 @@ use Protocol\Kafka\Protocol\Data\DescribeClientQuotasResponseEntry;
  * sense of - an unknown entity type, an unknown match type, a duplicated entity type - and **35**
  * (UnsupportedVersionException) when a request reaches a broker that has no quota cache to answer from.
  *
- * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0)"
+ * @see docs/protocol/2.8.md, section "DescribeClientQuotas API (key 48, v0 and v1)"
  */
 class DescribeClientQuotasResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 1;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas
