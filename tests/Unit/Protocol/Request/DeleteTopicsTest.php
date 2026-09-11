@@ -23,10 +23,12 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequestV0;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequestV1;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequestV2;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsRequestV3;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV0;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV1;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV2;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV3;
 
 /**
  * Byte-exact tests for the DeleteTopics API of Kafka 0.10.1 (api key 20), raised to version 1 by KIP-124 and
@@ -39,7 +41,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV2;
  * throttling promise of KIP-219 at version 2, and the **73** `TOPIC_DELETION_DISABLED` of a cluster with
  * `delete.topic.enable=false` at version 3, which a version 2 client is answered with 42 for.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v4)"
  */
 #[CoversClass(DeleteTopicsRequest::class)]
 #[CoversClass(DeleteTopicsRequestV1::class)]
@@ -50,6 +52,8 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponseV2;
 #[CoversClass(DeleteTopicsResponseV2::class)]
 #[CoversClass(DeleteTopicsResponseV0::class)]
 #[CoversClass(DeleteTopicsResponseTopic::class)]
+#[CoversClass(DeleteTopicsRequestV3::class)]
+#[CoversClass(DeleteTopicsResponseV3::class)]
 final class DeleteTopicsTest extends TestCase
 {
     /**
@@ -142,7 +146,7 @@ final class DeleteTopicsTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new DeleteTopicsRequest(['topic', 'other'], 30000, 'test', 3);
+        $request = new DeleteTopicsRequestV3(['topic', 'other'], 30000, 'test', 3);
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DELETE_TOPICS, $request->getApiKey());
@@ -184,7 +188,7 @@ final class DeleteTopicsTest extends TestCase
         self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $response));
         self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $twoAgain));
         self::assertSame(
-            array_keys(DeleteTopicsResponse::getScheme()),
+            array_keys(DeleteTopicsResponseV3::getScheme()),
             array_keys(DeleteTopicsResponseV1::getScheme()),
             'the answers of the versions 1, 2 and 3 have one and the same layout'
         );
@@ -193,15 +197,15 @@ final class DeleteTopicsTest extends TestCase
     public function testTheTopicsAreAPlainStringArrayAndNotAStructure(): void
     {
         // The array holds the names themselves, so the frame of two topics is exactly two length-prefixed strings
-        $one = new DeleteTopicsRequest(['topic'], 30000, 'test', 3);
-        $two = new DeleteTopicsRequest(['topic', 'other'], 30000, 'test', 3);
+        $one = new DeleteTopicsRequestV3(['topic'], 30000, 'test', 3);
+        $two = new DeleteTopicsRequestV3(['topic', 'other'], 30000, 'test', 3);
 
         self::assertSame(strlen((string) $one) + 7, strlen((string) $two), '00 05 plus five characters');
     }
 
     public function testTheControllerProbeNamesATopicThatCanNotExist(): void
     {
-        $probe = new DeleteTopicsRequest(['#kafka-client-controller-probe#'], 0, 'test', 4);
+        $probe = new DeleteTopicsRequestV3(['#kafka-client-controller-probe#'], 0, 'test', 4);
 
         self::assertSame(self::PROBE_REQUEST_HEX, bin2hex((string) $probe));
     }
@@ -239,7 +243,7 @@ final class DeleteTopicsTest extends TestCase
 
     public function testTheVersionOneAnswerStartsWithTheThrottleTime(): void
     {
-        $response = DeleteTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $response = DeleteTopicsResponseV3::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
 
         self::assertSame(3, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);

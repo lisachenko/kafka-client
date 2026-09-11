@@ -64,7 +64,12 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * the code is documented from the sources rather than measured. {@see DeleteTopicsRequestV2} is the same frame
  * with the version field of Kafka 2.0.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v3)"
+ * **Kafka 2.4 added the version 4** (KIP-482) and changed no field at all: it is the **first flexible version** of
+ * this api, so every string and every array of it is written compactly and every structure ends in a tagged-field
+ * section. The engine does that from {@see self::FLEXIBLE_VERSION} alone; {@see DeleteTopicsRequestV3} is the same
+ * body in the encoding of Kafka 2.1.
+ *
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v4)"
  */
 class DeleteTopicsRequest extends AbstractRequest
 {
@@ -76,7 +81,12 @@ class DeleteTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * @param list<string> $topics        Names of the topics to delete

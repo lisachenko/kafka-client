@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-219 changed is the MOMENT it arrives - a throttled client of version 2 is answered first and muted
  * afterwards, and waits `throttle_time_ms` out itself.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v4)"
  */
 final class DeleteTopicsResponseV1 extends DeleteTopicsResponse
 {

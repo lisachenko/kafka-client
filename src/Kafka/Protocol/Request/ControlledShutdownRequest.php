@@ -46,7 +46,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * entirely for {@see self::UNKNOWN_BROKER_EPOCH}. This client sends the -1 unless a caller names an epoch, because
  * only the broker itself knows its registration epoch.
  *
- * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v2)"
+ * **Kafka 2.4 added the version 3** (KIP-482), the same two fields in the flexible encoding.
+ * {@see ControlledShutdownRequestV2} is the frame Kafka 2.2 introduced.
+ *
+ * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v3)"
  */
 class ControlledShutdownRequest extends AbstractRequest
 {
@@ -58,7 +61,12 @@ class ControlledShutdownRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 3;
 
     /**
      * The broker epoch of a sender that does not know it, which skips the staleness check of KIP-380
