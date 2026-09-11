@@ -1,0 +1,162 @@
+{
+    "api": "alter-client-quotas",
+    "apiKey": 49,
+    "section": "AlterClientQuotas API (key 49, v0 and v1)",
+    "description": "Wire vectors of the AlterClientQuotas API (key 49, v0 and v1), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "alterclientquotas.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "AlterClientQuotas request v1 that sets two quotas of one `client-id`, the flexible version of Kafka 2.8. Every op carries its `float64` value **and** the `remove` flag, because the frame has no optional fields: a set is the value with `00`, a removal a value the broker ignores with `01`.",
+            "hex": "0000007e003100010000177100176b61666b612d636c69656e742d74312d766563746f72730002020a636c69656e742d69641174312d71756f74612d766563746f727300031370726f64756365725f627974655f726174654130000000000000000013726571756573745f70657263656e7461676540290000000000000000000000",
+            "fields": {
+                "messageSize": 126,
+                "apiKey": 49,
+                "apiVersion": 1,
+                "correlationId": 6001,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "entries": [
+                    {
+                        "entity": {
+                            "client-id": {
+                                "entityType": "client-id",
+                                "entityName": "t1-quota-vectors"
+                            }
+                        },
+                        "ops": {
+                            "producer_byte_rate": {
+                                "key": "producer_byte_rate",
+                                "value": 1048576.0,
+                                "remove": false
+                            },
+                            "request_percentage": {
+                                "key": "request_percentage",
+                                "value": 12.5,
+                                "remove": false
+                            }
+                        }
+                    }
+                ],
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "alterclientquotas.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer: one entry for the one entity of the request, the error code 0 and a null message in front of the entity the result belongs to. **There is no top-level error code in this api** - an entity that is refused is refused on its own.",
+            "hex": "0000002c00001771000000000002000000020a636c69656e742d69641174312d71756f74612d766563746f7273000000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 6001,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "entries": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "entity": {
+                            "client-id": {
+                                "entityType": "client-id",
+                                "entityName": "t1-quota-vectors"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "alterclientquotas.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "The plain version 0 of Kafka 2.6, here removing a quota with `validate_only` set: the op carries the value `00 00 00 00 00 00 00 00` that the broker discards and the `remove` flag `01`, and the last byte of the frame is the `01` of `validate_only`.",
+            "hex": "00000068003100000000177400176b61666b612d636c69656e742d74312d766563746f727300000001000000010009636c69656e742d6964001074312d71756f74612d766563746f7273000000010012726571756573745f70657263656e7461676500000000000000000101",
+            "fields": {
+                "messageSize": 104,
+                "apiKey": 49,
+                "apiVersion": 0,
+                "correlationId": 6004,
+                "clientId": "kafka-client-t1-vectors",
+                "entries": [
+                    {
+                        "entity": {
+                            "client-id": {
+                                "entityType": "client-id",
+                                "entityName": "t1-quota-vectors"
+                            }
+                        },
+                        "ops": {
+                            "request_percentage": {
+                                "key": "request_percentage",
+                                "value": 0.0,
+                                "remove": true
+                            }
+                        }
+                    }
+                ],
+                "validateOnly": true
+            }
+        },
+        {
+            "id": "alterclientquotas.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer to a validate-only request, which is exactly the answer the real change would get - the broker checked it and wrote nothing.",
+            "hex": "000000310000177400000000000000010000ffff000000010009636c69656e742d6964001074312d71756f74612d766563746f7273",
+            "fields": {
+                "messageSize": 49,
+                "correlationId": 6004,
+                "throttleTimeMs": 0,
+                "entries": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "entity": {
+                            "client-id": {
+                                "entityType": "client-id",
+                                "entityName": "t1-quota-vectors"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "alterclientquotas.response.v1.invalid-key",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AlterClientQuotasResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "A quota name the broker does not know is **42** (`InvalidRequest`) with the message *\"Invalid configuration key t1_nonsense_rate\"*, per entity and not at the top level.",
+            "hex": "0000005600001777000000000002002a2b496e76616c696420636f6e66696775726174696f6e206b65792074315f6e6f6e73656e73655f72617465020a636c69656e742d69641174312d71756f74612d766563746f7273000000",
+            "fields": {
+                "messageSize": 86,
+                "correlationId": 6007,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "entries": [
+                    {
+                        "errorCode": 42,
+                        "errorMessage": "Invalid configuration key t1_nonsense_rate",
+                        "entity": {
+                            "client-id": {
+                                "entityType": "client-id",
+                                "entityName": "t1-quota-vectors"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+}
