@@ -450,7 +450,7 @@ foreach ($group->members as $memberId => $member) {
 | `createTopicsWithResults()`                  | CreateTopics v7 | The same creation, answered with what the broker made of it (KIP-525, Kafka 2.4): `CreatedTopic` with the partition count, the replication factor and every configuration entry of the new topic; `NewTopic::withBrokerDefaults()` asks for `num.partitions` and `default.replication.factor` (KIP-464) |
 | `alterPartitionReassignments()`              | AlterPartitionReassignments v0 | Moves the replicas of partitions to other brokers, or cancels a move with `null` (KIP-455, Kafka 2.4); sent to the **controller**, one error per partition |
 | `listPartitionReassignments()`               | ListPartitionReassignments v0 | The reassignments in flight, with the target, adding and removing replica lists of each partition (KIP-455) |
-| `removeMembersFromConsumerGroup()`           | LeaveGroup v3 | Removes members of a group by hand, a static one by its `group.instance.id` (KIP-345, Kafka 2.4); one error per member, `MemberToRemove::byInstanceId()`/`byMemberId()` |
+| `removeMembersFromConsumerGroup()`           | LeaveGroup v4 | Removes members of a group by hand, a static one by its `group.instance.id` (KIP-345, Kafka 2.4); one error per member, `MemberToRemove::byInstanceId()`/`byMemberId()` |
 | `deleteConsumerGroupOffsets()`               | OffsetDelete v0 | Deletes the committed offsets of single partitions of a group (KIP-496, Kafka 2.4); an `Empty` group hands over everything, a live consumer group answers 86 for the topics it consumes, another protocol type 68 and an unknown group 69 |
 | `describeLogDirs()`                          | DescribeLogDirs v2      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories |
 | `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v2  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
@@ -581,12 +581,13 @@ For publishing from web requests, enabling persistent connections together with 
 cache file keeps producing as fast as possible.
 
 One more option matters on this branch: `offsets.storage` selects where the offsets of a
-consumer group live. `kafka` (the default) commits with OffsetCommit **v3** and fetches with
-OffsetFetch **v3**, both sent to the coordinator of the group and stored in the
-`__consumer_offsets` topic — the commit carries the member id and generation of a group member
-and the `offset.retention.ms` of the consumer as its `RetentionTime` (`-1` keeps the retention of
-the broker), the fetch is the one that can ask for *every* topic the group committed, and the two
-versions Kafka 0.11 added carry nothing but the `throttle_time_ms` of KIP-124;
+consumer group live. `kafka` (the default) commits with OffsetCommit **v8** and fetches with
+OffsetFetch **v7**, both sent to the coordinator of the group and stored in the
+`__consumer_offsets` topic — the commit carries the member id, the generation and the
+`group.instance.id` of a group member and the leader epoch of every offset, but **no**
+`RetentionTime` any more (KIP-211 took the field out at version 5, so `offsets.retention.minutes`
+of the broker alone decides), and the fetch is the one that can ask for *every* topic the group
+committed and the one that can insist on **stable** offsets (KIP-447);
 `zookeeper` uses version 0 of both apis, which stores the offsets in ZooKeeper the way Kafka 0.8.1
 did and which any broker of the cluster answers. A consumer that joins a group (`subscribe()`)
 should keep `kafka`: a v0 commit carries no membership, so the coordinator could not refuse the
@@ -617,7 +618,7 @@ marked **(0.10)**.
 | `retries` / `retry.backoff.ms` | 2 / 100 | retry budget for the codes 3, 5, 6 and a dropped connection |
 | `reconnect.backoff.ms` | 50 | pause before a reconnect |
 | `receive.buffer.bytes` / `send.buffer.bytes` | 32768 / 131072 | socket buffers |
-| `offsets.storage` | `kafka` | `kafka` (OffsetCommit v3 / OffsetFetch v3) or `zookeeper` (v0 of both) |
+| `offsets.storage` | `kafka` | `kafka` (OffsetCommit v8 / OffsetFetch v7) or `zookeeper` (v0 of both) |
 | `metadata.cache.file`, `stream.async.connect`, `stream.persistent.connection` | – / false / false | the PHP-specific options above |
 
 **Consumer** (`Consumer\ConsumerConfig`)
@@ -636,7 +637,7 @@ marked **(0.10)**.
 | `max.partition.fetch.bytes` | 65536 | per-partition bound; from Fetch v3 on the first partition is served whole even if it exceeds both |
 | `auto.offset.reset` | `latest` | `latest` or `earliest`, used when a partition has no committed offset |
 | `enable.auto.commit` / `auto.commit.interval.ms` | true / 0 | commit from `poll()`; 0 means "after every poll" |
-| `offset.retention.ms` | -1 | `RetentionTime` of an OffsetCommit v2; -1 keeps the retention of the broker |
+| `offset.retention.ms` | -1 | `RetentionTime` of an OffsetCommit up to v4; **KIP-211 removed the field in v5**, so the broker's `offsets.retention.minutes` alone decides and the version this client sends ignores the option |
 | `exclude.internal.topics` | true | hides `__consumer_offsets` from `Cluster::topics()` |
 | `check.crcs` | true | verify the CRC of every message |
 | `key.deserializer` / `value.deserializer` | – | class names; a poll then returns `ConsumerRecord`s |
