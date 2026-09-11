@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The topic entry never changed; this class only lowers the version constant that selects the partition class, so
  * that an answer below version 5 is read without the `committed_leader_epoch` of KIP-320.
  *
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v7)"
  */
 final class OffsetFetchResponseTopicV0 extends OffsetFetchResponseTopic
 {

@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\AlterConfigOp;
 use Protocol\Kafka\Admin\Config;
 use Protocol\Kafka\Admin\ConfigEntry;
 use Protocol\Kafka\Admin\ConfigResource;
@@ -554,11 +555,16 @@ final class ConfigsApiTest extends IntegrationTestCase
             $configs = $this->admin->describeConfigs([$default], null, true);
             $entry   = $configs[$default->key()]->get(self::DYNAMIC_OPTION);
 
-            self::assertSame(
-                [self::DYNAMIC_OPTION],
-                array_keys($configs[$default->key()]->entries),
-                'the default resource holds the dynamic default configuration alone, not the options of a broker'
+            // The cluster-wide default resource is the one resource of the broker that a unique name cannot
+            // separate: every suite on the shared container writes into the very same `broker:`. So this asserts
+            // a SUPERSET - the option of this test with its value - instead of the exact key list, and the
+            // cleanup below deletes that one option instead of replacing the whole resource.
+            self::assertArrayHasKey(
+                self::DYNAMIC_OPTION,
+                $configs[$default->key()]->entries,
+                'the default resource holds the dynamic default configuration, not the options of a broker'
             );
+            self::assertNotNull($entry);
             self::assertSame('17000', $entry->value);
             self::assertSame(ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG, $entry->source);
 
@@ -567,7 +573,11 @@ final class ConfigsApiTest extends IntegrationTestCase
             self::assertSame('17000', $ofTheBroker->value, 'every broker of the cluster picks the default up');
             self::assertSame(ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG, $ofTheBroker->source);
         } finally {
-            $this->admin->alterConfigs([$default->key() => []]);
+            // IncrementalAlterConfigs (KIP-339) removes this one option and leaves every other option of the
+            // shared default resource alone, where an AlterConfigs of an empty map would wipe all of them
+            $this->admin->incrementalAlterConfigs(
+                [$default->key() => [AlterConfigOp::delete(self::DYNAMIC_OPTION)]]
+            );
             $this->restoreTheDynamicOption($broker);
         }
     }

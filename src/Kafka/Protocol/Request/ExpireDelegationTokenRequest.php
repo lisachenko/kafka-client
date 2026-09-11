@@ -44,7 +44,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see ExpireDelegationTokenRequestV0} is the same frame with the version field of Kafka 1.1.
  *
- * @see docs/protocol/2.8.md, section "ExpireDelegationToken API (key 40, v0 and v1)"
+ * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
+ * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
+ *
+ * @see docs/protocol/2.8.md, section "ExpireDelegationToken API (key 40, v0 to v2)"
  */
 class ExpireDelegationTokenRequest extends AbstractRequest
 {
@@ -56,7 +59,12 @@ class ExpireDelegationTokenRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Deletes the token instead of moving its expiry, i.e. any negative period

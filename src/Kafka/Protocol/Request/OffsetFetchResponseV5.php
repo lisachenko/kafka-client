@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 6 (Kafka 2.4, KIP-482) is the same answer in the flexible encoding, see {@see OffsetFetchResponse}.
  *
  * @see docs/protocol/2.8.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetFetch API (key 9, v0 to v7)"
  */
 final class OffsetFetchResponseV5 extends OffsetFetchResponse
 {

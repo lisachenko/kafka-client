@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2: "Regardless of throttling, send the response
  * immediately") instead of holding the answer back for the throttle time.
  *
- * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v2)"
  */
 final class CreatePartitionsRequestV0 extends CreatePartitionsRequest
 {
