@@ -31,7 +31,7 @@ declare(strict_types=1);
  *   php examples/idempotent-producer.php my-topic
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/idempotent-producer.php
  *
- * @see docs/protocol/2.8.md, sections "The idempotent producer" and "InitProducerId API (key 22, v0 to v3)"
+ * @see docs/protocol/2.8.md, sections "The idempotent producer" and "InitProducerId API (key 22, v0 to v4)"
  */
 
 use Protocol\Kafka\Client;

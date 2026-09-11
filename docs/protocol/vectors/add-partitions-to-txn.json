@@ -1,8 +1,8 @@
 {
     "api": "add-partitions-to-txn",
     "apiKey": 24,
-    "section": "AddPartitionsToTxn API (key 24, v0 and v1)",
-    "description": "Wire vectors of the AddPartitionsToTxn API (key 24, v0 and v1), replayed by tests/Compliance.",
+    "section": "AddPartitionsToTxn API (key 24, v0 to v2)",
+    "description": "Wire vectors of the AddPartitionsToTxn API (key 24, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "addpartitionstotxn.request.v0",
@@ -111,7 +111,7 @@
         {
             "id": "addpartitionstotxn.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnRequestV1",
             "version": 1,
             "source": "broker",
             "description": "AddPartitionsToTxn request v1, the frame of version 0 with the api version Kafka 2.0 added: one partition enrolled into the open transaction of a transactional id.",
@@ -138,7 +138,7 @@
         {
             "id": "addpartitionstotxn.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddPartitionsToTxnResponseV1",
             "version": 1,
             "source": "broker",
             "description": "AddPartitionsToTxn response v1: the error code 0 of the partition that joined the transaction.",

@@ -1,8 +1,8 @@
 {
     "api": "delete-topics",
     "apiKey": 20,
-    "section": "DeleteTopics API (key 20, v0 to v4)",
-    "description": "Wire vectors of the DeleteTopics API (key 20, v0 to v4), replayed by tests/Compliance.",
+    "section": "DeleteTopics API (key 20, v0 to v5)",
+    "description": "Wire vectors of the DeleteTopics API (key 20, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "deletetopics.request.v0",
@@ -185,7 +185,7 @@
         {
             "id": "deletetopics.request.v4",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsRequestV4",
             "version": 4,
             "source": "broker",
             "description": "DeleteTopics request v4, the flexible version of KIP-482: the topic names are a compact array of compact strings and the body ends in a tag buffer. No field changed since the version 0.",
@@ -206,7 +206,7 @@
         {
             "id": "deletetopics.response.v4",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteTopicsResponseV4",
             "version": 4,
             "source": "broker",
             "description": "DeleteTopics answer v4: one result per topic in the flexible encoding.",

@@ -1,8 +1,8 @@
 {
     "api": "add-offsets-to-txn",
     "apiKey": 25,
-    "section": "AddOffsetsToTxn API (key 25, v0 and v1)",
-    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0 and v1), replayed by tests/Compliance.",
+    "section": "AddOffsetsToTxn API (key 25, v0 to v2)",
+    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "addoffsetstotxn.request.v0",
@@ -42,7 +42,7 @@
         {
             "id": "addoffsetstotxn.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequestV1",
             "version": 1,
             "source": "broker",
             "description": "AddOffsetsToTxn request v1, the frame of version 0 with the api version Kafka 2.0 added: the partition of `__consumer_offsets` that holds the group is enrolled into the transaction.",
@@ -62,7 +62,7 @@
         {
             "id": "addoffsetstotxn.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponseV1",
             "version": 1,
             "source": "broker",
             "description": "AddOffsetsToTxn response v1: one error code for the whole request, 0 here.",

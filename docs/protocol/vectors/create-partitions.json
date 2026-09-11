@@ -1,8 +1,8 @@
 {
     "api": "create-partitions",
     "apiKey": 37,
-    "section": "CreatePartitions API (key 37, v0 to v2)",
-    "description": "Wire vectors of the CreatePartitions API (key 37, v0 to v2), replayed by tests/Compliance.",
+    "section": "CreatePartitions API (key 37, v0 to v3)",
+    "description": "Wire vectors of the CreatePartitions API (key 37, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "createpartitions.request.v0",
@@ -248,7 +248,7 @@
         {
             "id": "createpartitions.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "CreatePartitions request v2, the first **flexible** version of the api (KIP-482): the same fields as version 1 in the compact encoding, with the tag buffer of the header, of every topic, of the assignment array and of the body. The topic grows from one partition to two, without a replica assignment of its own.",
@@ -274,7 +274,7 @@
         {
             "id": "createpartitions.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "CreatePartitions answer v2: the error code 0 and a null error message for the one topic, and the tag buffers of the flexible encoding.",
@@ -296,7 +296,7 @@
         {
             "id": "createpartitions.request.v2.assignment",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "CreatePartitions request v2 with a replica ASSIGNMENT: the one added partition is placed on the broker 0 by hand. `CreatePartitionsAssignment` is a structure with the single field `broker_ids`, so the flexible version closes every entry of the array with a tagged-field section of its own - a frame without it is one byte short and the broker closes the connection without an answer.",
@@ -328,7 +328,7 @@
         {
             "id": "createpartitions.response.v2.assignment",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreatePartitionsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "CreatePartitions answer v2 of an accepted assignment: the error code 0 and a null error message.",

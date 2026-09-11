@@ -56,7 +56,7 @@ use Protocol\Kafka\Protocol\Data\CreatePartitionsRequestTopic;
  * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
  * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
  *
- * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v3)"
  */
 class CreatePartitionsRequest extends AbstractRequest
 {
@@ -68,7 +68,7 @@ class CreatePartitionsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * @inheritdoc

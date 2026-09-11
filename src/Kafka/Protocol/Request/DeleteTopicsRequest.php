@@ -69,7 +69,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * section. The engine does that from {@see self::FLEXIBLE_VERSION} alone; {@see DeleteTopicsRequestV3} is the same
  * body in the encoding of Kafka 2.1.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v4)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
  */
 class DeleteTopicsRequest extends AbstractRequest
 {
@@ -81,7 +81,7 @@ class DeleteTopicsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * @inheritdoc

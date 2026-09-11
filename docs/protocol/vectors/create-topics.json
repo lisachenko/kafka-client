@@ -1,8 +1,8 @@
 {
     "api": "create-topics",
     "apiKey": 19,
-    "section": "CreateTopics API (key 19, v0 to v5)",
-    "description": "Wire vectors of the CreateTopics API (key 19, v0 to v5), replayed by tests/Compliance.",
+    "section": "CreateTopics API (key 19, v0 to v6)",
+    "description": "Wire vectors of the CreateTopics API (key 19, v0 to v6), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "createtopics.request.v1",
@@ -278,7 +278,7 @@
         {
             "id": "createtopics.request.v5",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequestV5",
             "version": 5,
             "source": "broker",
             "description": "CreateTopics request v5, the first FLEXIBLE version of the api (KIP-482): every string and every array of the frame is compact, the request header carries a tag buffer of its own and every structure of the body ends in one. Not a field was added to the request.",
@@ -311,7 +311,7 @@
         {
             "id": "createtopics.response.v5",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponseV5",
             "version": 5,
             "source": "broker",
             "description": "CreateTopics answer v5, which KIP-525 made worth asking for: the topic result carries the partition count, the replication factor and the WHOLE configuration the new topic ended up with, so that no DescribeConfigs has to follow, and the tagged field 0 `topic_config_error_code` stays absent because the broker could read that configuration back.",

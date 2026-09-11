@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV2;
 /**
  * Byte-exact tests for the InitProducerId API of Kafka 0.11 (api key 22, v0).
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v4)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
 #[CoversClass(InitProducerIdRequestV0::class)]
@@ -173,7 +173,7 @@ final class InitProducerIdTest extends TestCase
     {
         $fresh = new InitProducerIdRequest('tx-42', 30000, clientId: 'test', correlationId: 8);
 
-        self::assertSame(3, $fresh->getApiVersion(), 'Kafka 2.5 raised the api to the version 3 of KIP-360');
+        self::assertSame(4, $fresh->getApiVersion(), 'Kafka 2.7 raised the api to the version 4 of KIP-588');
         self::assertSame(InitProducerIdRequest::NO_PRODUCER_ID, $fresh->getProducerId());
         self::assertSame(InitProducerIdRequest::NO_PRODUCER_EPOCH, $fresh->getProducerEpoch());
         self::assertStringEndsWith(

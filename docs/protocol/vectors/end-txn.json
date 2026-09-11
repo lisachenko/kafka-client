@@ -1,8 +1,8 @@
 {
     "api": "end-txn",
     "apiKey": 26,
-    "section": "EndTxn API (key 26, v0 and v1)",
-    "description": "Wire vectors of the EndTxn API (key 26, v0 and v1), replayed by tests/Compliance.",
+    "section": "EndTxn API (key 26, v0 to v2)",
+    "description": "Wire vectors of the EndTxn API (key 26, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "endtxn.request.v0",
@@ -112,7 +112,7 @@
         {
             "id": "endtxn.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequestV1",
             "version": 1,
             "source": "broker",
             "description": "EndTxn request v1, the frame of version 0 with the api version Kafka 2.0 added: the commit of the transaction the three requests above built.",
@@ -132,7 +132,7 @@
         {
             "id": "endtxn.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV1",
             "version": 1,
             "source": "broker",
             "description": "EndTxn response v1: the error code 0, which says that the coordinator has written the outcome, not that the markers are in the partitions.",

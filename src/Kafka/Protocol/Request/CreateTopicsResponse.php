@@ -65,14 +65,14 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV1;
  * the new topic ended up with, plus the tagged field 0 `topic_config_error_code` for the case in which the broker
  * could not read that configuration back. {@see CreateTopicsResponseV4} is the frame of Kafka 2.4 without any of it.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
  */
 class CreateTopicsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * @inheritdoc

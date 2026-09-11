@@ -1069,7 +1069,7 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a DeleteTopics answer of version **4**, the flexible one the client sends (KIP-482)
+     * Builds a DeleteTopics answer of version **5**, the one the client sends since Kafka 2.7 (KIP-599)
      *
      * @param array<string, int> $topics Error code of every topic
      */
@@ -1077,7 +1077,9 @@ final class AdminClientTest extends TestCase
     {
         $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => $errorCode) {
-            $body .= self::compactString((string) $topic) . pack('n', $errorCode) . "\x00";
+            // The version 5 of Kafka 2.7 appended an error message to every topic result; the broker sends the
+            // compact null of it for a topic it deleted
+            $body .= self::compactString((string) $topic) . pack('n', $errorCode) . "\x00" . "\x00";
         }
 
         return ResponseFrame::of(0, $body . "\x00");

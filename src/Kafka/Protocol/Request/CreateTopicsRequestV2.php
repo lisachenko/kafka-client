@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2: "Regardless of throttling, send the response
  * immediately") instead of holding the answer back for the throttle time.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
  */
 final class CreateTopicsRequestV2 extends CreateTopicsRequest
 {
