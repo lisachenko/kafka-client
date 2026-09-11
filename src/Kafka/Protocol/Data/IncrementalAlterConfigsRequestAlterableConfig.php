@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * other operation with a null value and answers the whole resource with the error code 42 and the message
  * `Null value not supported for : SET:retention.ms`.
  *
- * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0)"
+ * @see docs/protocol/2.8.md, section "IncrementalAlterConfigs API (key 44, v0 and v1)"
  */
 class IncrementalAlterConfigsRequestAlterableConfig implements BinarySchemaInterface
 {

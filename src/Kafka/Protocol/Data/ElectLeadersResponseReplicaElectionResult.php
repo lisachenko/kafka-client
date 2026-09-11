@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * by topic - `adjustedResults.groupBy { case (tp, _) => tp.topic }` in `KafkaApis.handleElectReplicaLeader` - so
  * the order of the topics is the order of that map and not the order of the request.
  *
- * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ElectLeaders API (key 43, v0 to v2)"
  */
 class ElectLeadersResponseReplicaElectionResult implements BinarySchemaInterface
 {
