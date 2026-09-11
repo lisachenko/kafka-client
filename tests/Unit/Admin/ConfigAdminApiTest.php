@@ -42,7 +42,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 and v1)", "DescribeConfigs API (key 32, v0, v1 and v2)" and
+ * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 to v2)", "DescribeConfigs API (key 32, v0, v1 and v2)" and
  *      "AlterConfigs API (key 33, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
@@ -290,13 +290,19 @@ final class ConfigAdminApiTest extends TestCase
      */
     private static function deleteRecordsResponse(array $partitions): string
     {
-        $body = pack('N', 0) /* throttle time */ . pack('N', 1) . pack('n', strlen(self::TOPIC)) . self::TOPIC;
-        $body .= pack('N', count($partitions));
+        // Version 2 (Kafka 2.6) is the first FLEXIBLE version of this api (KIP-482): every string and array
+        // announces its length as the unsigned varint `length + 1`, the answer carries the response header v1
+        // and every structure ends in a tagged-field section, which is `00` while nothing is tagged
+        $tagBuffer = "\x00";
+        $body      = pack('N', 0) /* throttle time */ . chr(1 + 1)
+            . chr(strlen(self::TOPIC) + 1) . self::TOPIC
+            . chr(count($partitions) + 1);
         foreach ($partitions as $partitionId => [$lowWatermark, $errorCode]) {
-            $body .= pack('N', $partitionId) . pack('J', $lowWatermark) . pack('n', $errorCode);
+            $body .= pack('N', $partitionId) . pack('J', $lowWatermark) . pack('n', $errorCode) . $tagBuffer;
         }
+        $body .= $tagBuffer /* the topic entry */ . $tagBuffer /* the body */;
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $tagBuffer . $body);
     }
 
     /**

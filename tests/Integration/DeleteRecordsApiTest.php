@@ -28,13 +28,16 @@ use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsRequestPartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsRequestTopic;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponseTopic;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsRequestV1;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsResponseV1;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
@@ -45,7 +48,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * have to agree with: an Offsets request with `EARLIEST`, the `log_start_offset` of a Fetch v5 answer, and the
  * error a Fetch below it gets.
  *
- * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Client::class)]
@@ -180,6 +183,42 @@ final class DeleteRecordsApiTest extends IntegrationTestCase
         } catch (TopicPartitionRequestException $exception) {
             self::assertInstanceOf(InvalidTopicException::class, $exception->getExceptions()[$topic][0]);
         }
+    }
+
+    public function testVersionTwoAsksTheSameQuestionInTheFlexibleEncoding(): void
+    {
+        // KIP-482 (Kafka 2.6): version 2 is the first flexible version of this api and adds no field. The two
+        // versions are asked the same question about the same partition, one after the other, and answered the
+        // same low water mark - the second deletion is a no-op, because the first one already moved it
+        $topic = $this->topicWithRecords('flexible');
+
+        $stream = $this->connect();
+        new DeleteRecordsRequestV1([$topic => [0 => 2]], 30000, 't5-records', 4250)->writeTo($stream);
+        $plain = DeleteRecordsResponseV1::unpack($stream);
+
+        $stream = $this->connect();
+        $request = new DeleteRecordsRequest([$topic => [0 => 2]], 30000, 't5-records', 4251);
+        $request->writeTo($stream);
+        $flexible = DeleteRecordsResponse::unpack($stream);
+
+        self::assertSame(2, DeleteRecordsRequest::VERSION, 'the client sends the flexible version');
+        self::assertTrue(DeleteRecordsRequest::isFlexible());
+        self::assertFalse(DeleteRecordsRequestV1::isFlexible());
+
+        $plainPartition    = $plain->topics[$topic]->partitions[0];
+        $flexiblePartition = $flexible->topics[$topic]->partitions[0];
+
+        self::assertSame(KafkaException::NO_ERROR, $flexiblePartition->errorCode);
+        self::assertSame($plainPartition->lowWatermark, $flexiblePartition->lowWatermark);
+        self::assertSame(2, $flexiblePartition->lowWatermark);
+
+        // The compact lengths and the tag buffers make the flexible frames the shorter ones, and the answer
+        // survives a round trip through the engine
+        self::assertLessThan($plain->getMessageSize(), $flexible->getMessageSize());
+        self::assertSame(
+            bin2hex((string) $flexible),
+            bin2hex((string) DeleteRecordsResponse::unpack(new StringStream((string) $flexible)))
+        );
     }
 
     public function testTheBrokerAnswersAnUnknownTopicWithThreeAndCreatesNothing(): void

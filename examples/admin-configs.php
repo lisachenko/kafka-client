@@ -38,7 +38,7 @@ declare(strict_types=1);
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/admin-configs.php
  *
  * @see docs/protocol/2.8.md, sections "DescribeConfigs API (key 32, v0, v1 and v2)", "AlterConfigs API (key 33, v0 and v1)" and
- *      "DeleteRecords API (key 21, v0 and v1)"
+ *      "DeleteRecords API (key 21, v0 to v2)"
  */
 
 use Protocol\Kafka\Admin\AdminClient;
