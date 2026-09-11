@@ -489,15 +489,20 @@ class AdminClient
      * {@see DescribeGroupResponseMetadata::STATE_AWAITING_SYNC} is kept only for the lines below.
      *
      * @param string $groupId Name of the group
+     * @param bool   $includeAuthorizedOperations Whether the answer also reports the operations this client may
+     *        perform on the group (KIP-430, version 3), see
+     *        {@see DescribeGroupResponseMetadata::$authorizedOperations}
      *
      * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If the group moved to another coordinator
      *         between the lookup and this request
      * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe the group
      * @throws InvalidGroupIdException If the coordinator answered without an entry for the group
      */
-    public function describeGroup(string $groupId): DescribeGroupResponseMetadata
-    {
-        return $this->describeGroups([$groupId])[$groupId] ?? throw new InvalidGroupIdException(
+    public function describeGroup(
+        string $groupId,
+        bool $includeAuthorizedOperations = false
+    ): DescribeGroupResponseMetadata {
+        return $this->describeGroups([$groupId], $includeAuthorizedOperations)[$groupId] ?? throw new InvalidGroupIdException(
             ['groupId' => $groupId, 'error' => "The coordinator answered with no description of the group {$groupId}"]
         );
     }
@@ -509,14 +514,21 @@ class AdminClient
      * the partitions of `__consumer_offsets` and therefore over its brokers, and a broker answers a group it does not
      * coordinate with the error code 16 (NotCoordinatorForGroup), so a coordinator is looked up for every group.
      *
+     * With `$includeAuthorizedOperations` the version 3 request of KIP-430 (Kafka 2.3) also asks which operations
+     * this very client may perform on each group, which the answer reports as the bit set
+     * {@see DescribeGroupResponseMetadata::$authorizedOperations}; without it that field stays at
+     * {@see DescribeGroupResponseMetadata::OPERATIONS_NOT_REQUESTED}.
+     *
      * @param list<string> $groupIds Names of the groups, duplicates are collapsed
+     * @param bool         $includeAuthorizedOperations Whether the answer reports the authorized operations of every
+     *        group (KIP-430, version 3)
      *
      * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If a group moved to another coordinator
      * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe a group
      *
      * @return array<string, DescribeGroupResponseMetadata> Descriptions, indexed by the group id
      */
-    public function describeGroups(array $groupIds): array
+    public function describeGroups(array $groupIds, bool $includeAuthorizedOperations = false): array
     {
         $coordinators  = [];
         $groupsPerNode = [];
@@ -534,7 +546,8 @@ class AdminClient
                 fn(int $correlationId): DescribeGroupsRequest => new DescribeGroupsRequest(
                     $groups,
                     $this->clientId(),
-                    $correlationId
+                    $correlationId,
+                    $includeAuthorizedOperations
                 ),
                 DescribeGroupsResponse::class,
                 ['node' => $nodeId, 'groups' => $groups]

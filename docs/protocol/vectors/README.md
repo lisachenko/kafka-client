@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **437** of them in **38** files: **119** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **449** of them in **38** files: **131** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -11,7 +11,8 @@ frames of OffsetCommit v5/v6 and OffsetFetch v5 and the 4 of DeleteTopics v3 and
 frames of **Kafka 2.2**: the ListOffsets v5 pair (KIP-207), SaslAuthenticate v1, ControlledShutdown v2 and the new
 api ElectLeaders (key 43), whose `elect-leaders.json` is the one file this line added, and the 4 frames of the
 KIP-394 exchange (JoinGroup v4), and the 6 frames of the new api IncrementalAlterConfigs (key 44) of **Kafka 2.3**,
-in the new file `incremental-alter-configs.json` - and of
+in the new file `incremental-alter-configs.json`, and the 12 frames of what Kafka **2.3** added to the group apis
+(static membership, KIP-345, and the authorized operations of KIP-430) - and of
 the other 318, **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**
@@ -36,7 +37,10 @@ What Kafka 2.1 added to the two offset apis: OffsetCommit v5 (the frame without
 `retention_time`, KIP-211), OffsetCommit v6 and OffsetFetch v5 (the `committed_leader_epoch` of KIP-320). What
 Kafka 2.2 added to JoinGroup: the four frames of the KIP-394 exchange — a v4 join that carries an empty member id,
 the answer that refuses it with **79** `MEMBER_ID_REQUIRED` and the member id the coordinator assigned, and the
-join that follows with that id.
+join that follows with that id. What Kafka 2.3 added: the `group_instance_id` of a static member in JoinGroup v5,
+SyncGroup v3, Heartbeat v3 and OffsetCommit v7 (KIP-345), the heartbeat that is answered **82**
+`FENCED_INSTANCE_ID` once a second consumer has taken that instance id over, and the DescribeGroups v3 pair whose
+request asks for the authorized operations of the group and whose answer reports them (KIP-430).
 
 What **Kafka 2.1 and 2.2** added to the admin, transaction and SASL apis, captured with the client id `t4-vectors`
 and the topics `t4-21-vectors` and `t4-22-vectors`:

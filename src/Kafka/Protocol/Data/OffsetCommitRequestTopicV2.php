@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * solely to lower the version constant that selects the partition class -
  * {@see OffsetCommitRequestPartitionV2}, the entry without the leader epoch of version 6.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v7)"
  */
 final class OffsetCommitRequestTopicV2 extends OffsetCommitRequestTopic
 {

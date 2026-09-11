@@ -1359,7 +1359,7 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(6, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 6');
+        self::assertSame(7, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 7');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
         self::assertSame(5, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 5');
     }
@@ -1488,7 +1488,7 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(4, $this->apiVersionOf($frame), 'JoinGroup v4 is the KIP-394 version of the v1 frame');
+        self::assertSame(5, $this->apiVersionOf($frame), 'JoinGroup v5 is the KIP-345 version of the v1 frame');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(
@@ -1566,7 +1566,7 @@ final class ClientTest extends TestCase
 
         self::assertSame('my-share', $response->memberAssignment);
         self::assertSame(ApiKeys::SYNC_GROUP, $this->apiKeyOf($coordinator->getReceivedFrames()[0]));
-        self::assertSame(2, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
+        self::assertSame(3, $this->apiVersionOf($coordinator->getReceivedFrames()[0]));
     }
 
     public function testAHeartbeatAndALeaveAreSentToTheCoordinatorAndReportNothingWhenTheySucceed(): void

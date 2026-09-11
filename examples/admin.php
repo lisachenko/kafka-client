@@ -24,7 +24,7 @@
  *   php examples/admin.php [topic] [groupId]
  *
  * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v7)", "ListGroups API (key 16, v0 to v2)",
- *      "DescribeGroups API (key 15, v0 to v2)" and "DeleteGroups API (key 42, v0 and v1)"
+ *      "DescribeGroups API (key 15, v0 to v3)" and "DeleteGroups API (key 42, v0 and v1)"
  */
 
 declare(strict_types=1);
