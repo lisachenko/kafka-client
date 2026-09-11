@@ -27,8 +27,9 @@ use ReflectionProperty;
  *
  * The walk follows the scheme of the message, so the result contains exactly the fields the wire format has, in the
  * order the wire format has them, with nested objects as nested maps and arrays as arrays. Raw byte fields - the
- * message set of the Produce and Fetch apis, and the varint-prefixed key, value and header of a record of the
- * message format v2 - become `{"$bytes": "<hex>"}`, because JSON cannot carry binary.
+ * message set of the Produce and Fetch apis, the varint-prefixed key, value and header of a record of the
+ * message format v2, and the 16 bytes of a `uuid` - become `{"$bytes": "<hex>"}`, because JSON cannot carry
+ * binary.
  *
  * The two descriptors of the flexible encoding are unwrapped on the way: a {@see TaggedField} is documented as the
  * value of its own type - a vector shows what the tagged field carries, not that it is tagged - and an

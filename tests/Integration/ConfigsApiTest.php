@@ -66,7 +66,7 @@ use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV2;
  * touch `log.cleaner.backoff.ms` alone - a log-cleaner back-off nothing here depends on - and put the documented
  * default back in a `finally`, explicitly and not by removing the entry, see the quirk in the AlterConfigs section.
  *
- * @see docs/protocol/2.8.md, sections "DescribeConfigs API (key 32, v0 to v3)" and "AlterConfigs API (key 33, v0 and v1)"
+ * @see docs/protocol/2.8.md, sections "DescribeConfigs API (key 32, v0 to v4)" and "AlterConfigs API (key 33, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(Config::class)]
@@ -128,6 +128,14 @@ final class ConfigsApiTest extends IntegrationTestCase
      * cleaner sleeps between two runs.
      */
     private const string DYNAMIC_OPTION = 'log.cleaner.backoff.ms';
+
+    /**
+     * How long a dynamic broker option may take to reach the broker that answers, in seconds
+     *
+     * `AlterConfigs` writes the option into ZooKeeper and the broker applies it when its watch fires, so a
+     * `DescribeConfigs` that overtakes that watch still answers the previous value.
+     */
+    private const float DYNAMIC_OPTION_TIMEOUT = 5.0;
 
     private const string DYNAMIC_OPTION_DEFAULT = '15000';
 
@@ -523,10 +531,22 @@ final class ConfigsApiTest extends IntegrationTestCase
                 'a 0.11 broker refused every broker resource with 42 and "AlterConfigs is only supported for topics"'
             );
 
-            $entry = $this->admin->describeConfigs([$resource], [self::DYNAMIC_OPTION], true)[$resource->key()]
-                ->get(self::DYNAMIC_OPTION);
+            // A dynamic broker option travels through the ZooKeeper watch of the broker, so the read-back can
+            // lag the accepted write by a moment on a loaded or freshly started container: the describe is
+            // repeated for a few hundred milliseconds before the assertion decides
+            $entry    = null;
+            $deadline = microtime(true) + self::DYNAMIC_OPTION_TIMEOUT;
+            do {
+                $entry = $this->admin->describeConfigs([$resource], [self::DYNAMIC_OPTION], true)[$resource->key()]
+                    ->get(self::DYNAMIC_OPTION);
+                if ($entry?->value === '16000') {
+                    break;
+                }
+                usleep(50000);
+            } while (microtime(true) < $deadline);
 
-            self::assertSame('16000', $entry->value, 'the new value is live right away');
+            self::assertNotNull($entry);
+            self::assertSame('16000', $entry->value, 'the new value is live once the broker applied it');
             self::assertSame(ConfigSource::DYNAMIC_BROKER_CONFIG, $entry->source);
             self::assertFalse($entry->isDefault);
             self::assertFalse($entry->isReadOnly);
@@ -766,7 +786,11 @@ final class ConfigsApiTest extends IntegrationTestCase
 
         self::assertSame(ConfigType::LIST, $plain->get('cleanup.policy')->type, 'the type is unconditional');
         self::assertNull($plain->get('cleanup.policy')->documentation, 'the documentation is not');
-        self::assertSame(3, DescribeConfigsRequest::VERSION, 'the version this line sends');
+        self::assertGreaterThanOrEqual(
+            3,
+            DescribeConfigsRequest::VERSION,
+            'the documentation arrived with the version 3 and every version above it carries it'
+        );
     }
 
     /**

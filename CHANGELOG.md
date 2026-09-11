@@ -830,6 +830,50 @@ them. What the release added lives in the group and transaction apis.)*
   grammar blocks of the four apis, the api-table rows 0, 2, 3 and 23, and the new integration suite
   `TopicIdsApiTest` - which also pins the point of KIP-516: a topic that is deleted and created again under the
   same name comes back with **another** id.
+- **The topic ids of KIP-516 — CreateTopics v7 and DeleteTopics v6.** Every topic of a Kafka 2.8 cluster has an
+  id that outlives its name: a topic that is deleted and created again under the same name is a different topic,
+  and the id is what says so. The **answer** of CreateTopics v7 carries it between the name and the error code
+  (`uuid`, 16 raw bytes that no length prefix precedes, so the compact encoding does not touch them) and
+  `Admin\CreatedTopic::$topicId` hands it to the caller; the request of the version 7 is the frame of the
+  version 6 byte for byte. `Protocol\BinarySchema::TYPE_UUID` is the new scheme type,
+  `CreateTopicsResponseTopic::NO_TOPIC_ID` the `Uuid.ZERO_UUID` of a refused topic, and
+  `CreateTopicsResponseTopicV5` the entry of the versions 5 and 6.
+- **DeleteTopics v6 rebuilds the request**: the flat `[]TopicNames` of every version below becomes a
+  `[]DeleteTopicState` (`Protocol\Data\DeleteTopicsRequestTopic`), a structure that names a topic **by its name** -
+  with the zero id - **or by its id**, with a null name; the answer gains the `topic_id` and its name becomes
+  nullable with it. `AdminClient::deleteTopics()` keeps taking names, and a caller that holds an id - from
+  `CreatedTopic::$topicId` - hands `DeleteTopicsRequest` a `DeleteTopicsRequestTopic(null, $id)` instead.
+  `DeleteTopicsRequestV5`, `DeleteTopicsResponseV5` and `DeleteTopicsResponseTopicV5` keep the flat frame of
+  Kafka 2.7.
+- **The error code 100** `UnknownTopicId` (`Common\Errors\UnknownTopicIdException`) gets its first sender here: an
+  id no topic of the cluster carries is answered with it, where a *name* the cluster does not know is still the 3
+  `UnknownTopicOrPartition`.
+- **The seven first flexible versions of KIP-482 on this surface** — **DescribeConfigs v4**, **AlterConfigs v2**,
+  **AlterReplicaLogDirs v2**, **WriteTxnMarkers v1**, **AddPartitionsToTxn v3**, **AddOffsetsToTxn v3** and
+  **EndTxn v3**. Not one field moves in any of them: the request carries the header **v2** and the answer the
+  header **v1**, every string and every array is compact, and every structure ends in a tagged-field section. The
+  three transaction apis are the ones whose version 2 of Kafka 2.7 was still plain
+  (`"flexibleVersions": "none"` at the 2.7.2 tag). Fourteen keep-behind classes hold the plain frames
+  (`DescribeConfigsRequestV3`, `AlterConfigsRequestV1`, `AlterReplicaLogDirsRequestV1`, `WriteTxnMarkersRequestV0`,
+  `AddPartitionsToTxnRequestV2`, `AddOffsetsToTxnRequestV2`, `EndTxnRequestV2` and their answers).
+- **Measured on the container** with the topics `t4-28-vectors` and `t4-28-vectors-byid` and the transactional id
+  `t4-28-vectors-tx`: a CreateTopics v7 answers a **real** id for a topic it created and the **zero** id for one
+  it refused with 36 `TopicExists`; a DeleteTopics v6 **by name** is answered with the zero id, because
+  `KafkaApis.handleDeleteTopicsRequest` @ 2.8.2 echoes the id of the *request* and looks up only the name of an
+  id; a deletion **by id** is answered with the name the controller resolved; an unknown id is the **100**; and an
+  entry that carries a name **and** a non-zero id fails the **whole** request with **42** `InvalidRequest`
+  ("Topic name and topic ID can not both be specified."), leaving the other topics of that request untouched.
+  The WriteTxnMarkers v1 frame is a real one as well - the container runs without an authorizer, so it serves the
+  `ClusterAction` for anybody and the COMMIT marker was really appended.
+- **Two engine details the topic ids needed**: an array that the scheme keys by a field - the topic results of
+  DeleteTopics are keyed by their name - **appends** an entry whose key field is null instead of keying it by
+  null, which is the only place of the protocol where a keyed name can be missing; and `Tests\Compliance`
+  documents a `uuid` like every other raw byte field, as `{"$bytes": "<hex>"}`.
+- **Twenty-two wire vectors**: the CreateTopics v7 pair with the answer of a refused topic, five DeleteTopics v6
+  frames (by name, by id, and the 100 of an id no topic carries) and the flexible pairs of DescribeConfigs v4,
+  AlterConfigs v2, AlterReplicaLogDirs v2, WriteTxnMarkers v1, AddPartitionsToTxn v3, AddOffsetsToTxn v3 and
+  EndTxn v3, each with its annotated dump; the two DeleteTopics subsections of the document move into the
+  DeleteTopics section, where they belong.
 
 1.x — the 1.x line (Kafka 1.1.1)
 --------------------------------

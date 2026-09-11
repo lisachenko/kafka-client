@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * (`AlterReplicaLogDirsRequest.toStruct` groups by directory first and by topic second), which is the shape of
  * this DTO.
  *
- * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 class AlterReplicaLogDirsRequestTopic implements BinarySchemaInterface
 {

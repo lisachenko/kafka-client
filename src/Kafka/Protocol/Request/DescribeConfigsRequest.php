@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DescribeConfigsRequestV1} is the same frame with the version field of Kafka 1.1.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 class DescribeConfigsRequest extends AbstractRequest
 {
@@ -64,7 +64,12 @@ class DescribeConfigsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
+
+    /**
+     * The version 4 of Kafka 2.8 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 4;
 
     /**
      * Resources to describe, in the order of the request

@@ -1,8 +1,8 @@
 {
     "api": "end-txn",
     "apiKey": 26,
-    "section": "EndTxn API (key 26, v0 to v2)",
-    "description": "Wire vectors of the EndTxn API (key 26, v0 to v2), replayed by tests/Compliance.",
+    "section": "EndTxn API (key 26, v0 to v3)",
+    "description": "Wire vectors of the EndTxn API (key 26, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "endtxn.request.v0",
@@ -147,7 +147,7 @@
         {
             "id": "endtxn.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequestV2",
             "version": 2,
             "source": "broker",
             "description": "EndTxn request v2 (Kafka 2.7, KIP-588) that ABORTS: the frame of version 1, with the promise of the error code 90.",
@@ -167,7 +167,7 @@
         {
             "id": "endtxn.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV2",
             "version": 2,
             "source": "broker",
             "description": "EndTxn answer v2: the error code 0 - the coordinator took the decision and writes the markers afterwards.",
@@ -182,7 +182,7 @@
         {
             "id": "endtxn.response.v2.fenced",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV2",
             "version": 2,
             "source": "broker",
             "description": "EndTxn answer v2 to a producer that a later incarnation of the same transactional id has fenced: the error code **90** `ProducerFenced` of KIP-588, where the versions 0 and 1 are answered the 47.",
@@ -192,6 +192,43 @@
                 "correlationId": 969,
                 "throttleTimeMs": 0,
                 "errorCode": 90
+            }
+        },
+        {
+            "id": "endtxn.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "EndTxn request v3 (Kafka 2.8, KIP-482) that COMMITS: the four fields of the version 2 in the flexible encoding, the first flexible version of this api.",
+            "hex": "00000032001a00030000032a000a74342d766563746f7273001174342d32382d766563746f72732d7478000000000000009900010100",
+            "fields": {
+                "messageSize": 50,
+                "apiKey": 26,
+                "apiVersion": 3,
+                "correlationId": 810,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-28-vectors-tx",
+                "producerId": 153,
+                "producerEpoch": 1,
+                "transactionResult": true
+            }
+        },
+        {
+            "id": "endtxn.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "EndTxn answer v3: the error code 0 - the coordinator took the decision and writes the markers of the partitions afterwards, with WriteTxnMarkers.",
+            "hex": "0000000c0000032a0000000000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 810,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0
             }
         }
     ]

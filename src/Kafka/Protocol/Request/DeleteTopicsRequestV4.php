@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * **answer** - it gains an `error_message` per topic - and the promise of KIP-599 that the client understands the
  * error code **89** `ThrottlingQuotaExceeded` and retries after the `throttle_time_ms` of the answer.
  *
- * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "DeleteTopics API (key 20, v0 to v6)"
  */
 final class DeleteTopicsRequestV4 extends DeleteTopicsRequest
 {

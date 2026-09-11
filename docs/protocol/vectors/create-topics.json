@@ -1,8 +1,8 @@
 {
     "api": "create-topics",
     "apiKey": 19,
-    "section": "CreateTopics API (key 19, v0 to v6)",
-    "description": "Wire vectors of the CreateTopics API (key 19, v0 to v6), replayed by tests/Compliance.",
+    "section": "CreateTopics API (key 19, v0 to v7)",
+    "description": "Wire vectors of the CreateTopics API (key 19, v0 to v7), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "createtopics.request.v1",
@@ -520,7 +520,7 @@
         {
             "id": "createtopics.request.v6",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequestV6",
             "version": 6,
             "source": "broker",
             "description": "CreateTopics request v6 (Kafka 2.7, KIP-599): the frame of version 5 byte for byte - the version is the promise that the client understands the error code 89 `ThrottlingQuotaExceeded` and repeats the topics it names itself, instead of having its request held back by the controller mutation quota.",
@@ -553,7 +553,7 @@
         {
             "id": "createtopics.response.v6",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponseV6",
             "version": 6,
             "source": "broker",
             "description": "CreateTopics answer v6: the KIP-525 answer of version 5 unchanged, with the configuration of the new topic and an empty tagged section.",
@@ -754,6 +754,280 @@
                                 "isSensitive": false
                             }
                         },
+                        "topicConfigErrorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "createtopics.request.v7",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsRequest",
+            "version": 7,
+            "source": "broker",
+            "description": "CreateTopics request v7 (Kafka 2.8): the frame of version 6 byte for byte - \"Version 7 is the same as version 6\" in `CreateTopicsRequest.json` @ 2.8.2 - sent to learn the `topic_id` the answer of this version carries.",
+            "hex": "000000490013000700000321000a74342d766563746f727300020e74342d32382d766563746f727300000001000101020d726574656e74696f6e2e6d7308333630303030300000000027100000",
+            "fields": {
+                "messageSize": 73,
+                "apiKey": 19,
+                "apiVersion": 7,
+                "correlationId": 801,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-28-vectors": {
+                        "topic": "t4-28-vectors",
+                        "numPartitions": 1,
+                        "replicationFactor": 1,
+                        "replicaAssignment": [],
+                        "configs": {
+                            "retention.ms": {
+                                "configKey": "retention.ms",
+                                "configValue": "3600000"
+                            }
+                        }
+                    }
+                },
+                "timeout": 10000,
+                "validateOnly": false
+            }
+        },
+        {
+            "id": "createtopics.response.v7",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "version": 7,
+            "source": "broker",
+            "description": "CreateTopics answer v7: the KIP-525 answer of the versions 5 and 6 with the **topic id** of KIP-516 between the name and the error code, the 16 raw bytes of the UUID the controller gave the new topic.",
+            "hex": "00000398000003210000000000020e74342d32382d766563746f7273eace607e37414be187d2a7c9b1cbb4ce0000000000000100011b11636f6d7072657373696f6e2e747970650970726f647563657200050000266c65616465722e7265706c69636174696f6e2e7468726f74746c65642e7265706c696361730100050000146d696e2e696e73796e632e7265706c696361730231000500001e6d6573736167652e646f776e636f6e76657273696f6e2e656e61626c65057472756500050000127365676d656e742e6a69747465722e6d730230000500000f636c65616e75702e706f6c6963790764656c6574650005000009666c7573682e6d7314393232333337323033363835343737353830370005000028666f6c6c6f7765722e7265706c69636174696f6e2e7468726f74746c65642e7265706c6963617301000500000e7365676d656e742e62797465730b31303733373431383234000400000d726574656e74696f6e2e6d730833363030303030000100000f666c7573682e6d65737361676573143932323333373230333638353437373538303700050000176d6573736167652e666f726d61742e76657273696f6e08322e382d49563100040000166d61782e636f6d70616374696f6e2e6c61672e6d731439323233333732303336383534373735383037000500001566696c652e64656c6574652e64656c61792e6d7306363030303000050000126d61782e6d6573736167652e6279746573083130343835383800050000166d696e2e636f6d70616374696f6e2e6c61672e6d73023000050000176d6573736167652e74696d657374616d702e747970650b43726561746554696d65000500000c707265616c6c6f636174650666616c73650005000015696e6465782e696e74657276616c2e62797465730534303936000500001a6d696e2e636c65616e61626c652e64697274792e726174696f04302e35000500001f756e636c65616e2e6c65616465722e656c656374696f6e2e656e61626c650666616c73650005000010726574656e74696f6e2e6279746573032d31000500001464656c6574652e726574656e74696f6e2e6d73093836343030303030000500000b7365676d656e742e6d730a36303438303030303000050000246d6573736167652e74696d657374616d702e646966666572656e63652e6d61782e6d73143932323333373230333638353437373538303700050000147365676d656e742e696e6465782e6279746573093130343835373630000500000000",
+            "fields": {
+                "messageSize": 920,
+                "correlationId": 801,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-28-vectors": {
+                        "topic": "t4-28-vectors",
+                        "topicId": {
+                            "$bytes": "eace607e37414be187d2a7c9b1cbb4ce"
+                        },
+                        "errorCode": 0,
+                        "errorMessage": null,
+                        "numPartitions": 1,
+                        "replicationFactor": 1,
+                        "configs": {
+                            "compression.type": {
+                                "name": "compression.type",
+                                "value": "producer",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "leader.replication.throttled.replicas": {
+                                "name": "leader.replication.throttled.replicas",
+                                "value": "",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "min.insync.replicas": {
+                                "name": "min.insync.replicas",
+                                "value": "1",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "message.downconversion.enable": {
+                                "name": "message.downconversion.enable",
+                                "value": "true",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "segment.jitter.ms": {
+                                "name": "segment.jitter.ms",
+                                "value": "0",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "cleanup.policy": {
+                                "name": "cleanup.policy",
+                                "value": "delete",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "flush.ms": {
+                                "name": "flush.ms",
+                                "value": "9223372036854775807",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "follower.replication.throttled.replicas": {
+                                "name": "follower.replication.throttled.replicas",
+                                "value": "",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "segment.bytes": {
+                                "name": "segment.bytes",
+                                "value": "1073741824",
+                                "readOnly": false,
+                                "configSource": 4,
+                                "isSensitive": false
+                            },
+                            "retention.ms": {
+                                "name": "retention.ms",
+                                "value": "3600000",
+                                "readOnly": false,
+                                "configSource": 1,
+                                "isSensitive": false
+                            },
+                            "flush.messages": {
+                                "name": "flush.messages",
+                                "value": "9223372036854775807",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "message.format.version": {
+                                "name": "message.format.version",
+                                "value": "2.8-IV1",
+                                "readOnly": false,
+                                "configSource": 4,
+                                "isSensitive": false
+                            },
+                            "max.compaction.lag.ms": {
+                                "name": "max.compaction.lag.ms",
+                                "value": "9223372036854775807",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "file.delete.delay.ms": {
+                                "name": "file.delete.delay.ms",
+                                "value": "60000",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "max.message.bytes": {
+                                "name": "max.message.bytes",
+                                "value": "1048588",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "min.compaction.lag.ms": {
+                                "name": "min.compaction.lag.ms",
+                                "value": "0",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "message.timestamp.type": {
+                                "name": "message.timestamp.type",
+                                "value": "CreateTime",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "preallocate": {
+                                "name": "preallocate",
+                                "value": "false",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "index.interval.bytes": {
+                                "name": "index.interval.bytes",
+                                "value": "4096",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "min.cleanable.dirty.ratio": {
+                                "name": "min.cleanable.dirty.ratio",
+                                "value": "0.5",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "unclean.leader.election.enable": {
+                                "name": "unclean.leader.election.enable",
+                                "value": "false",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "retention.bytes": {
+                                "name": "retention.bytes",
+                                "value": "-1",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "delete.retention.ms": {
+                                "name": "delete.retention.ms",
+                                "value": "86400000",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "segment.ms": {
+                                "name": "segment.ms",
+                                "value": "604800000",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "message.timestamp.difference.max.ms": {
+                                "name": "message.timestamp.difference.max.ms",
+                                "value": "9223372036854775807",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            },
+                            "segment.index.bytes": {
+                                "name": "segment.index.bytes",
+                                "value": "10485760",
+                                "readOnly": false,
+                                "configSource": 5,
+                                "isSensitive": false
+                            }
+                        },
+                        "topicConfigErrorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "createtopics.response.v7.topic-exists",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateTopicsResponse",
+            "version": 7,
+            "source": "broker",
+            "description": "CreateTopics answer v7 for a topic that exists already: the error code 36 `TopicExists`, and with it the **zero** topic id - the controller only fills the id of a topic it really created, `Uuid.ZERO_UUID` is what every refused entry carries.",
+            "hex": "00000059000003220000000000020e74342d32382d766563746f727300000000000000000000000000000000002426546f706963202774342d32382d766563746f72732720616c7265616479206578697374732effffffffffff010000",
+            "fields": {
+                "messageSize": 89,
+                "correlationId": 802,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t4-28-vectors": {
+                        "topic": "t4-28-vectors",
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "errorCode": 36,
+                        "errorMessage": "Topic 't4-28-vectors' already exists.",
+                        "numPartitions": -1,
+                        "replicationFactor": -1,
+                        "configs": [],
                         "topicConfigErrorCode": 0
                     }
                 }

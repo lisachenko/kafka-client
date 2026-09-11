@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * put the `config_type` and the `documentation` of the version 3 behind the synonyms, and nothing below it carries
  * them.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class DescribeConfigsResponseV2 extends DescribeConfigsResponse
 {

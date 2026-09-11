@@ -33,7 +33,7 @@ use Protocol\Kafka\Admin\NewTopic;
  * what a client sends to a broker below Kafka 2.4, with both numbers named or with an assignment of its own
  * ({@see NewTopic::withReplicaAssignment()}).
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsRequestV3 extends CreateTopicsRequest
 {

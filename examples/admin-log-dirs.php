@@ -36,7 +36,7 @@ declare(strict_types=1);
  *   KAFKA_BOOTSTRAP_SERVERS=127.0.0.1:9092 php examples/admin-log-dirs.php
  *
  * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0 to v2)" and
- *      "AlterReplicaLogDirs API (key 34, v0 and v1)"
+ *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 
 use Protocol\Kafka\Admin\AdminClient;

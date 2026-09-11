@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The error is per resource - one bad resource of a request does not spoil the others - and it carries the
  * `error_message` of the exception the broker caught, which is the only place that says WHY a resource was refused.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 class DescribeConfigsResponseResource implements BinarySchemaInterface
 {

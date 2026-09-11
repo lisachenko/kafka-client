@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * KIP-219 changed is the MOMENT it arrives - a throttled client of version 3 is answered first and muted
  * afterwards, and waits `throttle_time_ms` out itself.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsResponseV2 extends CreateTopicsResponse
 {

@@ -24,17 +24,21 @@ use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponsePartition;
 use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponseTopic;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequestV0;
+use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequestV1;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponseV0;
+use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponseV1;
 
 /**
  * Byte-exact tests for the AlterReplicaLogDirs API of Kafka 1.0 (api key 34, v0, KIP-113).
  *
- * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AlterReplicaLogDirsRequest::class)]
+#[CoversClass(AlterReplicaLogDirsRequestV1::class)]
 #[CoversClass(AlterReplicaLogDirsRequestV0::class)]
 #[CoversClass(AlterReplicaLogDirsResponse::class)]
+#[CoversClass(AlterReplicaLogDirsResponseV1::class)]
 #[CoversClass(AlterReplicaLogDirsResponseV0::class)]
 #[CoversClass(AlterReplicaLogDirsRequestLogDir::class)]
 #[CoversClass(AlterReplicaLogDirsRequestTopic::class)]
@@ -90,7 +94,7 @@ final class AlterReplicaLogDirsTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new AlterReplicaLogDirsRequest(['/disk2' => ['topic' => [0, 1]]], 'test', 5);
+        $request = new AlterReplicaLogDirsRequestV1(['/disk2' => ['topic' => [0, 1]]], 'test', 5);
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::ALTER_REPLICA_LOG_DIRS, $request->getApiKey());
@@ -100,7 +104,7 @@ final class AlterReplicaLogDirsTest extends TestCase
 
     public function testAlreadyBuiltEntriesAreTakenAsTheyAre(): void
     {
-        $built = new AlterReplicaLogDirsRequest(
+        $built = new AlterReplicaLogDirsRequestV1(
             [
                 '/disk2' => new AlterReplicaLogDirsRequestLogDir('/disk2', [
                     'topic' => new AlterReplicaLogDirsRequestTopic('topic', [0, 1]),
@@ -117,7 +121,7 @@ final class AlterReplicaLogDirsTest extends TestCase
     {
         // `AlterReplicaLogDirsRequest.toStruct` @ 1.1.1 inverts the `Map<TopicPartition, String>` of the caller,
         // so two replicas that go to two directories are two entries of the top-level array
-        $request = new AlterReplicaLogDirsRequest(
+        $request = new AlterReplicaLogDirsRequestV1(
             ['/disk1' => ['topic' => [0]], '/disk2' => ['topic' => [1]]],
             'test',
             5
@@ -130,14 +134,14 @@ final class AlterReplicaLogDirsTest extends TestCase
 
     public function testTheRequestSurvivesADecodeAndEncodeRoundTrip(): void
     {
-        $decoded = AlterReplicaLogDirsRequest::unpack(new StringStream((string) hex2bin(self::REQUEST_HEX)));
+        $decoded = AlterReplicaLogDirsRequestV1::unpack(new StringStream((string) hex2bin(self::REQUEST_HEX)));
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $decoded));
     }
 
     public function testResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = AlterReplicaLogDirsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = AlterReplicaLogDirsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(5, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);
@@ -155,7 +159,7 @@ final class AlterReplicaLogDirsTest extends TestCase
 
     public function testTheResponseSurvivesADecodeAndEncodeRoundTrip(): void
     {
-        $decoded = AlterReplicaLogDirsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $decoded = AlterReplicaLogDirsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(self::RESPONSE_HEX, bin2hex((string) $decoded));
     }

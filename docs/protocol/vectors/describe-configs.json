@@ -1,8 +1,8 @@
 {
     "api": "describe-configs",
     "apiKey": 32,
-    "section": "DescribeConfigs API (key 32, v0 to v3)",
-    "description": "Wire vectors of the DescribeConfigs API (key 32, v0 to v3), replayed by tests/Compliance.",
+    "section": "DescribeConfigs API (key 32, v0 to v4)",
+    "description": "Wire vectors of the DescribeConfigs API (key 32, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describeconfigs.request.v0.topic",
@@ -534,7 +534,7 @@
         {
             "id": "describeconfigs.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV3",
             "version": 3,
             "source": "broker",
             "description": "DescribeConfigs request v3 for ONE option of a topic, with the `include_documentation` of KIP-569 set - the boolean Kafka 2.6 appended behind `include_synonyms`. A request that names no `configuration_keys` would be answered with the documentation of every option of the resource, which is tens of kilobytes of prose.",
@@ -561,7 +561,7 @@
         {
             "id": "describeconfigs.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV3",
             "version": 3,
             "source": "broker",
             "description": "DescribeConfigs answer v3: the entry ends in the `config_type` byte (7, LIST) and the documentation string of the option, both added by KIP-569 behind the synonyms.",
@@ -595,7 +595,7 @@
         {
             "id": "describeconfigs.request.v3.no-documentation",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV3",
             "version": 3,
             "source": "broker",
             "description": "The same request with `include_documentation = false`, the default.",
@@ -622,7 +622,7 @@
         {
             "id": "describeconfigs.response.v3.no-documentation",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer for it: the `config_type` is filled all the same - the broker sets it unconditionally - and the documentation is the null string.",
@@ -656,7 +656,7 @@
         {
             "id": "describeconfigs.request.v3.own-option",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequestV3",
             "version": 3,
             "source": "broker",
             "description": "DescribeConfigs request v3 for two named options of a topic that set `segment.bytes` itself, with the synonyms of KIP-226 and WITHOUT the documentation of KIP-569 - the counterpart of the version 1 pair above, and the shape an administrator sends.",
@@ -684,7 +684,7 @@
         {
             "id": "describeconfigs.response.v3.own-option",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer for it: every entry ends in the `config_type` of KIP-569 - 3 (INT) for `segment.bytes`, 5 (LONG) for `retention.ms` - and in the null documentation of a request that did not ask for it. Everything before that is the version 1 frame: the source 1 (TOPIC_CONFIG) and three synonyms of the option the topic owns, and the source 5 (DEFAULT_CONFIG) with an empty synonym array for the one it inherits.",
@@ -735,6 +735,75 @@
                                 "configSynonyms": [],
                                 "configType": 5,
                                 "documentation": null
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeconfigs.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "DescribeConfigs request v4 (Kafka 2.8, KIP-482): the fields of the version 3 - one named option of a topic resource, with the synonyms of KIP-226 and the documentation of KIP-569 - in the **flexible** encoding, which this version is the first of.",
+            "hex": "000000370020000400000323000a74342d766563746f72730002020e74342d32382d766563746f7273020d726574656e74696f6e2e6d7300010100",
+            "fields": {
+                "messageSize": 55,
+                "apiKey": 32,
+                "apiVersion": 4,
+                "correlationId": 803,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "resources": [
+                    {
+                        "resourceType": 2,
+                        "resourceName": "t4-28-vectors",
+                        "configNames": [
+                            "retention.ms"
+                        ]
+                    }
+                ],
+                "includeSynonyms": true,
+                "includeDocumentation": true
+            }
+        },
+        {
+            "id": "describeconfigs.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeConfigsResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "DescribeConfigs answer v4: the value of the option with its source, its synonyms, the config type of KIP-569 and the documentation string, every string compact and every structure closed by a tagged-field section.",
+            "hex": "0000016700000323000000000002000001020e74342d32382d766563746f7273020d726574656e74696f6e2e6d730833363030303030000100020d726574656e74696f6e2e6d73083336303030303001000595025468697320636f6e66696775726174696f6e20636f6e74726f6c7320746865206d6178696d756d2074696d652077652077696c6c2072657461696e2061206c6f67206265666f72652077652077696c6c2064697363617264206f6c64206c6f67207365676d656e747320746f206672656520757020737061636520696620776520617265207573696e6720746865202264656c6574652220726574656e74696f6e20706f6c6963792e205468697320726570726573656e747320616e20534c41206f6e20686f7720736f6f6e20636f6e73756d657273206d757374207265616420746865697220646174612e2049662073657420746f202d312c206e6f2074696d65206c696d6974206973206170706c6965642e000000",
+            "fields": {
+                "messageSize": 359,
+                "correlationId": 803,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "resources": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": "",
+                        "resourceType": 2,
+                        "resourceName": "t4-28-vectors",
+                        "configEntries": {
+                            "retention.ms": {
+                                "configName": "retention.ms",
+                                "configValue": "3600000",
+                                "readOnly": false,
+                                "configSource": 1,
+                                "isSensitive": false,
+                                "configSynonyms": [
+                                    {
+                                        "configName": "retention.ms",
+                                        "configValue": "3600000",
+                                        "configSource": 1
+                                    }
+                                ],
+                                "configType": 5,
+                                "documentation": "This configuration controls the maximum time we will retain a log before we will discard old log segments to free up space if we are using the \"delete\" retention policy. This represents an SLA on how soon consumers must read their data. If set to -1, no time limit is applied."
                             }
                         }
                     }

@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see EndTxnRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0 to v2)"
+ * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0 to v3)"
  */
 class EndTxnRequest extends AbstractRequest
 {
@@ -75,7 +75,12 @@ class EndTxnRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
+
+    /**
+     * The version 3 of Kafka 2.8 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 3;
 
     /**
      * @param string $transactionalId   `transactional.id` of the producer that owns the transaction

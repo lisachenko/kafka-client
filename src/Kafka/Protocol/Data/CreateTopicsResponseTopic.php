@@ -46,14 +46,18 @@ use Protocol\Kafka\Protocol\TaggedField;
  * flexible one of the api, so a tagged field is what a later release adds without another version.
  * {@see CreateTopicsResponseTopicV1} is the entry of the versions 1 to 4.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
+ * **Kafka 2.8 added the `topic_id` with the version 7** (KIP-516): the 16 raw bytes of the UUID the controller
+ * gave the topic, between its name and the error code, and sixteen zero bytes for a topic it refused.
+ * {@see CreateTopicsResponseTopicV5} is the entry of the versions 5 and 6.
+ *
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 class CreateTopicsResponseTopic implements BinarySchemaInterface
 {
     /**
      * Version of the CreateTopics API that this DTO is unpacked from
      */
-    public const int VERSION = 5;
+    public const int VERSION = 7;
 
     /**
      * Value of `num_partitions` and `replication_factor` when the broker did not report them
@@ -64,9 +68,26 @@ class CreateTopicsResponseTopic implements BinarySchemaInterface
     public const int UNKNOWN = -1;
 
     /**
+     * The `topic_id` of a topic the broker did not create, i.e. 16 zero bytes (`Uuid.ZERO_UUID` @ 2.8.2)
+     *
+     * @since Version 7 of protocol
+     */
+    public const string NO_TOPIC_ID = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
+
+    /**
      * Name of the topic that was requested
      */
     public string $topic;
+
+    /**
+     * The unique id of the created topic as the raw 16 bytes of its UUID (KIP-516)
+     *
+     * {@see self::NO_TOPIC_ID} - sixteen zero bytes - for a topic the broker refused, and for every version
+     * below 7, which has no such field at all.
+     *
+     * @since Version 7 of protocol
+     */
+    public string $topicId = self::NO_TOPIC_ID;
 
     /**
      * Error code of this topic, 0 when it was created
@@ -116,10 +137,12 @@ class CreateTopicsResponseTopic implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        $scheme = [
-            'topic'     => BinarySchema::TYPE_STRING,
-            'errorCode' => BinarySchema::TYPE_INT16,
-        ];
+        $scheme = ['topic' => BinarySchema::TYPE_STRING];
+        if (static::VERSION >= 7) {
+            // KIP-516 put the id of the new topic between its name and the error code
+            $scheme['topicId'] = BinarySchema::TYPE_UUID;
+        }
+        $scheme['errorCode'] = BinarySchema::TYPE_INT16;
         if (static::VERSION >= 1) {
             $scheme['errorMessage'] = BinarySchema::TYPE_NULLABLE_STRING;
         }

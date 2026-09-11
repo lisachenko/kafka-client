@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigSynonym;
  * are the broker options `log.retention.ms`, `log.retention.minutes` and `log.retention.hours` (in that order), so
  * the list is what says WHY an option has the value it has.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class ConfigSynonym
 {

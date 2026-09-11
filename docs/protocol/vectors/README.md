@@ -2,7 +2,7 @@ Wire vectors of the Kafka 2.8.2 protocol
 ========================================
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **647** of them in **48** files: **329** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **669** of them in **48** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the
@@ -37,7 +37,11 @@ KIP-599, and InitProducerId v4, AddPartitionsToTxn v2, AddOffsetsToTxn v2 and En
 carrying the 90 `ProducerFenced` the KIP added, and the 15 frames of **Kafka 2.8**: the two new apis
 DescribeCluster (KIP-700) and DescribeProducers (KIP-664) in the new files `describe-cluster.json` and
 `describe-producers.json`, and the flexible **v1** of the two client-quota apis, which is where those two finally
-become compact - and of the other 318,
+become compact, and the 22 frames of the admin and transaction half of the same release: the CreateTopics **v7**
+pair of KIP-516 whose answer carries the id of the new topic, five DeleteTopics **v6** frames of the same KIP - a
+deletion by name, one by that id and the 100 of an id no topic carries - and the first flexible version of
+DescribeConfigs **v4**, AlterConfigs **v2**, AlterReplicaLogDirs **v2**, WriteTxnMarkers **v1**,
+AddPartitionsToTxn **v3**, AddOffsetsToTxn **v3** and EndTxn **v3** (KIP-482) - and of the other 318,
 **229** were
 captured by the four lines below the 1.x one and are replayed against the classes of this line unchanged, while
 **89** were captured on the 1.1.1 broker of the 1.x line. Three of the inherited vectors were **re-captured**

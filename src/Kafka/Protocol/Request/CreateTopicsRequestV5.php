@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * names after the `throttle_time_ms` of the answer; a broker answers a client that sent the version 5 with the
  * old behaviour instead - it holds the request in the quota queue and answers it late.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsRequestV5 extends CreateTopicsRequest
 {

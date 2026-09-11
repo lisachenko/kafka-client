@@ -37,14 +37,19 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseMarker;
  * An empty request is answered with an empty array, which is what the api probe of this branch sends to check that
  * the key is served at all.
  *
- * @see docs/protocol/2.8.md, section "WriteTxnMarkers API (key 27, v0)"
+ * @see docs/protocol/2.8.md, section "WriteTxnMarkers API (key 27, v0 and v1)"
  */
 class WriteTxnMarkersResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
+
+    /**
+     * The version 1 of Kafka 2.8 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 1;
 
     /**
      * Result of every marker of the request, indexed by the producer id it belongs to

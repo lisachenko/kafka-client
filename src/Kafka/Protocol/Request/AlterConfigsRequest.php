@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see AlterConfigsRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AlterConfigs API (key 33, v0 to v2)"
  */
 class AlterConfigsRequest extends AbstractRequest
 {
@@ -66,7 +66,12 @@ class AlterConfigsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
+
+    /**
+     * The version 2 of Kafka 2.8 is the first flexible one of this api (KIP-482)
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Resources to alter, in the order of the request

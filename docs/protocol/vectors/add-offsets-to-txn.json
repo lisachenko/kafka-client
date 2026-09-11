@@ -1,8 +1,8 @@
 {
     "api": "add-offsets-to-txn",
     "apiKey": 25,
-    "section": "AddOffsetsToTxn API (key 25, v0 to v2)",
-    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0 to v2), replayed by tests/Compliance.",
+    "section": "AddOffsetsToTxn API (key 25, v0 to v3)",
+    "description": "Wire vectors of the AddOffsetsToTxn API (key 25, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "addoffsetstotxn.request.v0",
@@ -77,7 +77,7 @@
         {
             "id": "addoffsetstotxn.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequestV2",
             "version": 2,
             "source": "broker",
             "description": "AddOffsetsToTxn request v2 (Kafka 2.7, KIP-588): the frame of version 1, with the promise of the error code 90 for a fenced producer.",
@@ -97,7 +97,7 @@
         {
             "id": "addoffsetstotxn.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponseV2",
             "version": 2,
             "source": "broker",
             "description": "AddOffsetsToTxn answer v2: the error code 0 for the whole request.",
@@ -105,6 +105,43 @@
             "fields": {
                 "messageSize": 10,
                 "correlationId": 966,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "addoffsetstotxn.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "AddOffsetsToTxn request v3 (Kafka 2.8, KIP-482): the four fields of the version 2 in the flexible encoding, the first flexible version of this api.",
+            "hex": "000000450019000300000329000a74342d766563746f7273001174342d32382d766563746f72732d7478000000000000009900011474342d32382d766563746f72732d67726f757000",
+            "fields": {
+                "messageSize": 69,
+                "apiKey": 25,
+                "apiVersion": 3,
+                "correlationId": 809,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-28-vectors-tx",
+                "producerId": 153,
+                "producerEpoch": 1,
+                "groupId": "t4-28-vectors-group"
+            }
+        },
+        {
+            "id": "addoffsetstotxn.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\AddOffsetsToTxnResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "AddOffsetsToTxn answer v3: the error code 0 for the whole request, behind the throttle time and before the tagged-field section of the body.",
+            "hex": "0000000c000003290000000000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 809,
+                "headerTaggedFields": [],
                 "throttleTimeMs": 0,
                 "errorCode": 0
             }

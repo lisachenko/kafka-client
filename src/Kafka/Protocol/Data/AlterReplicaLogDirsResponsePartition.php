@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * | 57   | LogDirNotFound      | The path is not one of the directories of `log.dirs`, or it is relative       |
  * | 31   | ClusterAuthorizationFailed | The client may not `Alter` the cluster resource                        |
  *
- * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 class AlterReplicaLogDirsResponsePartition implements BinarySchemaInterface
 {

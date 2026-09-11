@@ -52,7 +52,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *  - `isSensitive` is true for every option whose `ConfigDef.Type` is `PASSWORD`, and the **value of such an entry
  *    is always null on the wire**, in the entry as well as in every synonym of it.
  *
- * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 class DescribeConfigsResponseConfigEntry implements BinarySchemaInterface
 {
