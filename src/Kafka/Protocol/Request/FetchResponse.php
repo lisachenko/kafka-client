@@ -19,10 +19,10 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 
 /**
- * Fetch response object (key 1), version 8
+ * Fetch response object (key 1), version 10
  *
  * <pre>
- *   FetchResponse (Version: 8) => ThrottleTimeMs ErrorCode SessionId
+ *   FetchResponse (Version: 10) => ThrottleTimeMs ErrorCode SessionId
  *                                 [TopicName [Partition ErrorCode HighwaterMarkOffset
  *                                             LastStableOffset LogStartOffset
  *                                             [AbortedTransactions] RecordSetSize RecordSet]]
@@ -68,19 +68,25 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
  * {@see self::$throttleTimeMs} and an **empty** topics array, and with the channel muted for that long afterwards.
  * The client has to wait the time out itself, see {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}.
  *
+ * **The versions 9 and 10 (Kafka 2.1) changed the answer no more than 8 did**: `FetchResponse.json` @ 2.8.2 has
+ * no field of either, and {@see FetchResponseV9} and {@see FetchResponseV8} decode the very same bytes. What they
+ * state is what the *request* promised - version 9 that the client sends a `current_leader_epoch` and understands
+ * the codes **74** and **75** of KIP-320, version 10 that it understands a **zstd**-compressed record batch, which
+ * a broker refuses to a lower version with **76** `UNSUPPORTED_COMPRESSION_TYPE` per partition.
+ *
  * What the answer of every version has to match is the *version of the request it belongs to*, which is why
- * {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4}, {@see FetchResponseV3},
+ * {@see FetchResponseV9}, {@see FetchResponseV8}, {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4}, {@see FetchResponseV3},
  * {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v8)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v10)" and "Fetch sessions (v7, KIP-227)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 8;
+    public const int VERSION = 10;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas.

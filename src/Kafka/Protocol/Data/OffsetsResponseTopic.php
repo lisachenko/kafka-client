@@ -28,14 +28,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * so the class of the entries is derived from {@see OffsetsResponseTopic::VERSION}, which
  * {@see OffsetsResponseTopicV0} lowers.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v4), a.k.a. ListOffset"
  */
 class OffsetsResponseTopic implements BinarySchemaInterface
 {
     /**
      * Version of the Offsets API that this DTO is unpacked from
      */
-    public const int VERSION = 1;
+    public const int VERSION = 4;
 
     /**
      * Name of the topic that the offsets were requested for
@@ -67,6 +67,10 @@ class OffsetsResponseTopic implements BinarySchemaInterface
      */
     protected static function partitionClass(): string
     {
-        return static::VERSION >= 1 ? OffsetsResponsePartition::class : OffsetsResponsePartitionV0::class;
+        return match (true) {
+            static::VERSION >= 4 => OffsetsResponsePartition::class,
+            static::VERSION >= 1 => OffsetsResponsePartitionV1::class,
+            default              => OffsetsResponsePartitionV0::class,
+        };
     }
 }

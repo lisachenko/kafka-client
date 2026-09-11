@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * the error codes the broker may put into it: a client that asked with version 4 or higher receives **56**
  * `KAFKA_STORAGE_ERROR` where a lower one receives 6 `NOT_LEADER_FOR_PARTITION`.
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
  */
 final class ProduceResponseV4 extends ProduceResponse
 {

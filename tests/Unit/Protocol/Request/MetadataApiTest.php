@@ -19,9 +19,11 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\NodeV0;
 use Protocol\Kafka\Common\PartitionMetadata;
 use Protocol\Kafka\Common\PartitionMetadataV0;
+use Protocol\Kafka\Common\PartitionMetadataV5;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicMetadataV0;
 use Protocol\Kafka\Common\TopicMetadataV1;
+use Protocol\Kafka\Common\TopicMetadataV5;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
@@ -31,6 +33,7 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV4;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV5;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV6;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
@@ -38,6 +41,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponseV2;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV4;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV5;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV6;
 
 /**
  * Byte-exact tests of the Metadata API, versions 0 to 5.
@@ -56,7 +60,7 @@ use Protocol\Kafka\Protocol\Request\MetadataResponseV5;
  *                          [OfflineReplicas [int32]]      # since version 5
  * </pre>
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v7)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -163,11 +167,11 @@ final class MetadataApiTest extends TestCase
 
     public function testRequestWithoutTopicsAsksForEveryTopic(): void
     {
-        //   Size => 19, ApiKey 3, ApiVersion 6, CorrelationId 1, ClientId "test", [TopicName] => null, allow => 01
+        //   Size => 19, ApiKey 3, ApiVersion 7, CorrelationId 1, ClientId "test", [TopicName] => null, allow => 01
         $request = new MetadataRequest(null, true, 'test', 1);
 
         self::assertSame(
-            '00000013' . '0003' . '0006' . '00000001' . '0004' . '74657374' . 'ffffffff' . '01',
+            '00000013' . '0003' . '0007' . '00000001' . '0004' . '74657374' . 'ffffffff' . '01',
             bin2hex((string) $request)
         );
         self::assertNull($request->getTopics(), 'a null topic array is the "every topic" of version 1 and above');
@@ -179,7 +183,7 @@ final class MetadataApiTest extends TestCase
         $request = new MetadataRequest([], true, 'test', 1);
 
         self::assertSame(
-            '00000013' . '0003' . '0006' . '00000001' . '0004' . '74657374' . '00000000' . '01',
+            '00000013' . '0003' . '0007' . '00000001' . '0004' . '74657374' . '00000000' . '01',
             bin2hex((string) $request)
         );
         self::assertSame([], $request->getTopics());
@@ -191,7 +195,7 @@ final class MetadataApiTest extends TestCase
         $request = new MetadataRequest(['orders', 'payments'], true, 'php-kafka', 7);
 
         self::assertSame(
-            '0000002a' . '0003' . '0006' . '00000007' . '0009' . '7068702d6b61666b61'
+            '0000002a' . '0003' . '0007' . '00000007' . '0009' . '7068702d6b61666b61'
             . '00000002' . '0006' . '6f7264657273' . '0008' . '7061796d656e7473' . '01',
             bin2hex((string) $request)
         );
@@ -223,29 +227,58 @@ final class MetadataApiTest extends TestCase
         self::assertSame(3, new MetadataRequestV3()->getApiVersion());
         self::assertSame(4, new MetadataRequestV4()->getApiVersion());
         self::assertSame(5, new MetadataRequestV5()->getApiVersion());
-        self::assertSame(6, new MetadataRequest()->getApiVersion());
+        self::assertSame(6, new MetadataRequestV6()->getApiVersion());
+        self::assertSame(7, new MetadataRequest()->getApiVersion());
         self::assertArrayNotHasKey('allowAutoTopicCreation', MetadataRequestV3::getScheme());
         self::assertArrayHasKey('allowAutoTopicCreation', MetadataRequest::getScheme());
     }
 
-    public function testTheVersionsFourToSixSendOneAndTheSameFrame(): void
+    public function testTheVersionsFourToSevenSendOneAndTheSameFrame(): void
     {
         // `MetadataRequest.json` @ 2.8.2 has no field between version 4 and version 8: version 5 (Kafka 1.0)
         // states that the client understands the `offline_replicas` array of the ANSWER and version 6 (Kafka 2.0,
         // KIP-219) that it waits out `throttle_time_ms` itself - only the api version of the header says so
         $version4 = bin2hex((string) new MetadataRequestV4(['orders'], true, 'test', 3));
         $version5 = bin2hex((string) new MetadataRequestV5(['orders'], true, 'test', 3));
-        $version6 = bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3));
+        $version6 = bin2hex((string) new MetadataRequestV6(['orders'], true, 'test', 3));
+        $version7 = bin2hex((string) new MetadataRequest(['orders'], true, 'test', 3));
 
         self::assertSame('0004', substr($version4, 12, 4), 'the api version sits behind Size and ApiKey');
         self::assertSame('0005', substr($version5, 12, 4));
         self::assertSame('0006', substr($version6, 12, 4));
+        self::assertSame('0007', substr($version7, 12, 4));
         self::assertSame(substr_replace($version4, '0005', 12, 4), $version5);
         self::assertSame(substr_replace($version4, '0006', 12, 4), $version6);
+        self::assertSame(substr_replace($version4, '0007', 12, 4), $version7);
         self::assertSame(MetadataRequestV4::getScheme(), MetadataRequest::getScheme());
-        self::assertSame(MetadataResponseV5::getScheme(), MetadataResponse::getScheme());
-        self::assertSame(6, MetadataRequest::VERSION);
-        self::assertSame(6, MetadataResponse::VERSION);
+        self::assertSame(MetadataResponseV5::getScheme(), MetadataResponseV6::getScheme());
+        self::assertSame(7, MetadataRequest::VERSION);
+        self::assertSame(7, MetadataResponse::VERSION);
+    }
+
+    public function testVersionSevenInsertsTheLeaderEpochBehindTheLeaderOfEveryPartition(): void
+    {
+        // KIP-320: the field order of `MetadataResponse.json` @ 2.8.2 is the wire order, and it puts
+        // `LeaderEpoch` between `LeaderId` and `ReplicaNodes`
+        self::assertSame(
+            ['partitionErrorCode', 'partitionId', 'leader', 'leaderEpoch', 'replicas', 'isr', 'offlineReplicas'],
+            array_keys(PartitionMetadata::getScheme())
+        );
+        self::assertSame(
+            ['partitionErrorCode', 'partitionId', 'leader', 'replicas', 'isr', 'offlineReplicas'],
+            array_keys(PartitionMetadataV5::getScheme()),
+            'the versions 5 and 6 carry the offline replicas and no epoch'
+        );
+        self::assertSame(
+            ['partitionErrorCode', 'partitionId', 'leader', 'replicas', 'isr'],
+            array_keys(PartitionMetadataV0::getScheme())
+        );
+        self::assertSame(-1, PartitionMetadata::UNKNOWN_LEADER_EPOCH);
+        self::assertSame(
+            ['topic' => TopicMetadataV5::class],
+            MetadataResponseV6::getScheme()['topics'],
+            'a version 6 answer packs the partition entries that carry no epoch'
+        );
     }
 
     public function testRequestTopicsAreNotNullableInVersionZero(): void
@@ -412,7 +445,7 @@ final class MetadataApiTest extends TestCase
         //   replica on the broker 1, which is down or whose log directory failed (KIP-112/113)
         $frame = self::OFFLINE_REPLICAS_RESPONSE_V5_HEX;
 
-        $response  = MetadataResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response  = MetadataResponseV5::unpack(new StringStream((string) hex2bin($frame)));
         $partition = $response->topics['orders']->partitions[0];
 
         self::assertSame([0, 1], $partition->replicas);

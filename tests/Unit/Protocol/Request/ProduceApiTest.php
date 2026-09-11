@@ -32,6 +32,7 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV5;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV6;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
@@ -39,6 +40,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV5;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV6;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 
 /**
@@ -66,7 +68,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
  * The message sets are built by {@see SpecMessageSet} directly from the specification and the record batch is a
  * captured one, so that the request classes are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/2.8.md, sections "Produce API (key 0, v0 to v6)", "MessageSet and Message" and
+ * @see docs/protocol/2.8.md, sections "Produce API (key 0, v0 to v7)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 #[CoversClass(ProduceRequest::class)]
@@ -141,9 +143,14 @@ final class ProduceApiTest extends TestCase
     private const string REQUEST_HEADER_V5_HEX = '0000004d' . '0000' . '0005' . '00000005' . '0004' . '74657374';
 
     /**
-     * Header of the same request at version 6, the version this client sends for the message format v2 (Kafka 2.0)
+     * Header of the same request at version 6, the version the Kafka 2.0 part of this line sent
      */
     private const string REQUEST_HEADER_V6_HEX = '0000004d' . '0000' . '0006' . '00000005' . '0004' . '74657374';
+
+    /**
+     * Header of the same request at version 7, the version this client sends for the message format v2 (Kafka 2.1)
+     */
+    private const string REQUEST_HEADER_V7_HEX = '0000004d' . '0000' . '0007' . '00000005' . '0004' . '74657374';
 
     /**
      * The same header with the api version 1 in it, the only byte a version 1 request differs in
@@ -300,13 +307,14 @@ final class ProduceApiTest extends TestCase
         self::assertNull($request->getTransactionalId());
     }
 
-    public function testTheVersionsThreeToSixSendOneAndTheSameBody(): void
+    public function testTheVersionsThreeToSevenSendOneAndTheSameBody(): void
     {
         $versions = [
             3 => ProduceRequestV3::class,
             4 => ProduceRequestV4::class,
             5 => ProduceRequestV5::class,
-            6 => ProduceRequest::class,
+            6 => ProduceRequestV6::class,
+            7 => ProduceRequest::class,
         ];
         $frames   = [];
         foreach ($versions as $version => $requestClass) {
@@ -320,31 +328,36 @@ final class ProduceApiTest extends TestCase
             $frames[$version] = bin2hex((string) $request);
         }
 
-        // `ProduceRequest.json` @ 2.8.2 carries no field above version 3, so the four bodies are the same bytes:
+        // `ProduceRequest.json` @ 2.8.2 carries no field above version 3, so the five bodies are the same bytes:
         // what the later versions state is that the client understands the error code 56 (v4), the LogStartOffset
-        // of the answer (v5) and the throttling of KIP-219 (v6, Kafka 2.0) - only the api version of the header
-        // ever differs
+        // of the answer (v5), the throttling of KIP-219 (v6, Kafka 2.0) and the zstd codec of KIP-110 (v7, Kafka
+        // 2.1) - only the api version of the header ever differs
         $body = 'ffff' . '0001' . self::REQUEST_BODY_HEX;
         self::assertSame(self::REQUEST_HEADER_V3_HEX . $body, $frames[3]);
         self::assertSame(self::REQUEST_HEADER_V4_HEX . $body, $frames[4]);
         self::assertSame(self::REQUEST_HEADER_V5_HEX . $body, $frames[5]);
         self::assertSame(self::REQUEST_HEADER_V6_HEX . $body, $frames[6]);
+        self::assertSame(self::REQUEST_HEADER_V7_HEX . $body, $frames[7]);
         self::assertSame(ProduceRequestV3::getScheme(), ProduceRequest::getScheme());
-        self::assertSame(6, ProduceRequest::VERSION, 'the client sends version 6 for the message format v2');
+        self::assertSame(7, ProduceRequest::VERSION, 'the client sends version 7, the one a zstd batch needs');
+        self::assertSame(6, ProduceRequestV6::VERSION);
         self::assertSame(5, ProduceRequestV5::VERSION);
     }
 
-    public function testTheAnswerOfAVersionSixRequestIsTheVersionFiveFrame(): void
+    public function testTheAnswerOfAVersionSixOrSevenRequestIsTheVersionFiveFrame(): void
     {
-        // KIP-219 changed when a throttled answer arrives, not what it holds: `ProduceResponse.json` @ 2.8.2 has
-        // no field of version 6, so the two classes read the very same bytes into the very same values
+        // KIP-219 changed when a throttled answer arrives, not what it holds, and KIP-110 changed only what the
+        // request may carry: `ProduceResponse.json` @ 2.8.2 has no field of version 6 or 7, so the three classes
+        // read the very same bytes into the very same values
+        self::assertSame(ProduceResponseV5::getScheme(), ProduceResponseV6::getScheme());
         self::assertSame(ProduceResponseV5::getScheme(), ProduceResponse::getScheme());
         self::assertSame(
             ProduceResponseV5::getScheme()['topics'],
             ProduceResponse::getScheme()['topics'],
-            'the topic entry of a version 6 answer is the one of version 5'
+            'the topic entry of a version 7 answer is the one of version 5'
         );
-        self::assertSame(6, ProduceResponse::VERSION);
+        self::assertSame(7, ProduceResponse::VERSION);
+        self::assertSame(6, ProduceResponseV6::VERSION);
         self::assertSame(5, ProduceResponseV5::VERSION);
     }
 

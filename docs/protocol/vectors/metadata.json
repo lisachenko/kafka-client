@@ -1,8 +1,8 @@
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v6)",
-    "description": "Wire vectors of the Metadata API (key 3, v0 to v6), replayed by tests/Compliance.",
+    "section": "Metadata API (key 3, v0 to v7)",
+    "description": "Wire vectors of the Metadata API (key 3, v0 to v7), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
@@ -728,7 +728,7 @@
         {
             "id": "metadata.request.v6",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV6",
             "version": 6,
             "source": "broker",
             "description": "Metadata request v6 for one named topic, with allow_auto_topic_creation = false. The body is the body of version 4, byte for byte - MetadataRequest.json @ 2.8.2 has no field between version 4 and version 8.",
@@ -748,7 +748,7 @@
         {
             "id": "metadata.response.v6",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV6",
             "version": 6,
             "source": "broker",
             "description": "Metadata response v6 of the one-broker container: the throttle time, the single broker with its null rack, the cluster id, the controller id and the topic with its partition, whose offline_replicas array of version 5 is empty. The frame is the one of version 5.",
@@ -777,6 +777,72 @@
                                 "partitionErrorCode": 0,
                                 "partitionId": 0,
                                 "leader": 0,
+                                "replicas": [
+                                    0
+                                ],
+                                "isr": [
+                                    0
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v7",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 7,
+            "source": "broker",
+            "description": "Metadata request v7 for one named topic. The body is the body of version 4, byte for byte - MetadataRequest.json @ 2.8.2 has no field between version 4 and version 8 - and what version 7 states is that the client understands the leader_epoch the answer gained.",
+            "hex": "00000020000300070000004b0002743200000001000d74322d32312d766563746f727300",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 3,
+                "apiVersion": 7,
+                "correlationId": 75,
+                "clientId": "t2",
+                "topics": [
+                    "t2-21-vectors"
+                ],
+                "allowAutoTopicCreation": false
+            }
+        },
+        {
+            "id": "metadata.response.v7",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 7,
+            "source": "broker",
+            "description": "The answer of that request: the leader_epoch that version 7 (KIP-320) inserted behind the leader id of every partition. It is 0 on this container, the epoch of a partition that has been led by the same broker since it was created; every leader election raises it by one.",
+            "hex": "000000790000004b00000000000000010000000000093132372e302e302e3100002384ffff0016735958533737322d536a794268386f5051617472396700000000000000010000000d74322d32312d766563746f7273000000000100000000000000000000000000000000000100000000000000010000000000000000",
+            "fields": {
+                "messageSize": 121,
+                "correlationId": 75,
+                "throttleTimeMs": 0,
+                "brokers": [
+                    {
+                        "nodeId": 0,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                ],
+                "clusterId": "sYXS772-SjyBh8oPQatr9g",
+                "controllerId": 0,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-21-vectors",
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 0,
+                                "leaderEpoch": 0,
                                 "replicas": [
                                     0
                                 ],

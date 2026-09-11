@@ -70,7 +70,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * field sits where the specification says it does.
  *
  * @see docs/protocol/2.8.md, sections "Quotas and throttle time" and "GroupCoordinator API (key 10, v0 to v2)"
- * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "OffsetForLeaderEpoch API (key 23, v0 to v2)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(GroupCoordinatorRequest::class)]

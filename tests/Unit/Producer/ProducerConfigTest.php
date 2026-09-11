@@ -89,8 +89,22 @@ final class ProducerConfigTest extends TestCase
     public function testAnUnsupportedCompressionTypeIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);
-        // zstd is the codec of Kafka 2.1 and the message format v2, not of this protocol line
-        $this->expectExceptionMessage('none, gzip, snappy, lz4');
+        $this->expectExceptionMessage('none, gzip, snappy, lz4, zstd');
+
+        ProducerConfig::compressionCodec('brotli');
+    }
+
+    public function testTheZstdCompressionTypeIsRefusedWithoutTheExtension(): void
+    {
+        // zstd (Kafka 2.1, KIP-110) is the one codec this package can not implement itself: `ext-zstd` or nothing
+        if (CompressionCodec::isZstdAvailable()) {
+            self::assertSame(CompressionCodec::ZSTD, ProducerConfig::compressionCodec('zstd'));
+
+            return;
+        }
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('needs the ext-zstd extension');
 
         ProducerConfig::compressionCodec('zstd');
     }

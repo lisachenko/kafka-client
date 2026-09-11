@@ -29,14 +29,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * so the class of the entries is derived from {@see OffsetsRequestTopic::VERSION}, which
  * {@see OffsetsRequestTopicV0} lowers.
  *
- * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v3), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v4), a.k.a. ListOffset"
  */
 class OffsetsRequestTopic implements BinarySchemaInterface
 {
     /**
      * Version of the Offsets API that this DTO is packed for
      */
-    public const int VERSION = 1;
+    public const int VERSION = 4;
 
     /**
      * Name of the topic to list the offsets of
@@ -63,9 +63,21 @@ class OffsetsRequestTopic implements BinarySchemaInterface
         $partitionClass = static::partitionClass();
         $partitions     = [];
         foreach ($partitionTimestamps as $partition => $timestamp) {
-            $partitions[$partition] = $timestamp instanceof OffsetsRequestPartition
-                ? $timestamp
-                : new $partitionClass((int) $partition, $timestamp, $maxNumberOfOffsets);
+            if ($timestamp instanceof OffsetsRequestPartition) {
+                $partitions[$partition] = $timestamp;
+                continue;
+            }
+            // A value may be the plain target timestamp, or the pair [timestamp, currentLeaderEpoch] that
+            // version 4 (Kafka 2.1, KIP-320) puts on the wire
+            [$targetTime, $currentLeaderEpoch] = is_array($timestamp)
+                ? [(int) $timestamp[0], (int) $timestamp[1]]
+                : [(int) $timestamp, OffsetsRequestPartition::UNKNOWN_LEADER_EPOCH];
+            $partitions[$partition] = new $partitionClass(
+                (int) $partition,
+                $targetTime,
+                $maxNumberOfOffsets,
+                $currentLeaderEpoch
+            );
         }
 
         $this->topic      = $topic;
@@ -90,6 +102,10 @@ class OffsetsRequestTopic implements BinarySchemaInterface
      */
     protected static function partitionClass(): string
     {
-        return static::VERSION >= 1 ? OffsetsRequestPartition::class : OffsetsRequestPartitionV0::class;
+        return match (true) {
+            static::VERSION >= 4 => OffsetsRequestPartition::class,
+            static::VERSION >= 1 => OffsetsRequestPartitionV1::class,
+            default              => OffsetsRequestPartitionV0::class,
+        };
     }
 }

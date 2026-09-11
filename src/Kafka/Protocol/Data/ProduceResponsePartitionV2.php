@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * constant that {@see ProduceResponsePartition::getScheme()} follows; `$logStartOffset` keeps its default of -1,
  * "the answer did not say".
  *
- * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
  */
 final class ProduceResponsePartitionV2 extends ProduceResponsePartition
 {

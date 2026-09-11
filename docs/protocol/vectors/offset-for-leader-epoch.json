@@ -1,8 +1,8 @@
 {
     "api": "offset-for-leader-epoch",
     "apiKey": 23,
-    "section": "OffsetForLeaderEpoch API (key 23, v0 and v1)",
-    "description": "Wire vectors of the OffsetForLeaderEpoch API (key 23, v0 and v1), replayed by tests/Compliance.",
+    "section": "OffsetForLeaderEpoch API (key 23, v0 to v2)",
+    "description": "Wire vectors of the OffsetForLeaderEpoch API (key 23, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsetforleaderepoch.request.v0",
@@ -111,7 +111,7 @@
         {
             "id": "offsetforleaderepoch.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochRequestV1",
             "version": 1,
             "source": "broker",
             "description": "OffsetForLeaderEpoch request v1 asking where the epoch 0 of one partition ends. The body is the body of version 0, byte for byte - OffsetForLeaderEpochRequest.json @ 2.8.2 says \"Version 1 is the same as version 0\" - because KIP-279 only changed the answer.",
@@ -138,7 +138,7 @@
         {
             "id": "offsetforleaderepoch.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochResponseV1",
             "version": 1,
             "source": "broker",
             "description": "OffsetForLeaderEpoch answer v1 of the leader: the leader_epoch that KIP-279 inserted between the partition id and the end offset, so that the asking replica can tell which epoch the offset really belongs to.",
@@ -155,6 +155,88 @@
                                 "partition": 0,
                                 "leaderEpoch": 0,
                                 "endOffset": 2
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetforleaderepoch.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "OffsetForLeaderEpoch request v2 asking where the epoch 0 of one partition ends, with the current_leader_epoch 0 that version 2 (KIP-320) inserted in front of it. This is the frame a consumer sends to validate its position after a leader change.",
+            "hex": "0000002f001700020000004c0002743200000001000d74322d32312d766563746f727300000001000000000000000000000000",
+            "fields": {
+                "messageSize": 47,
+                "apiKey": 23,
+                "apiVersion": 2,
+                "correlationId": 76,
+                "clientId": "t2",
+                "topics": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 0,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetforleaderepoch.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer of that request: the throttle_time_ms that version 2 put at the head of the frame - the api finally became one a client quota applies to, because from Kafka 2.1 on an ordinary consumer sends it - then the leader_epoch of version 1 and the end offset of the epoch.",
+            "hex": "000000310000004c0000000000000001000d74322d32312d766563746f727300000001000000000000000000000000000000000002",
+            "fields": {
+                "messageSize": 49,
+                "correlationId": 76,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "errorCode": 0,
+                                "partition": 0,
+                                "leaderEpoch": 0,
+                                "endOffset": 2
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetforleaderepoch.response.v2.unknown-leader-epoch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetForLeaderEpochResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer to the same question with the current_leader_epoch 1, one above the epoch the partition is really led with: the error code 75 UNKNOWN_LEADER_EPOCH, with the undefined epoch and offset -1. This is the fencing version 2 added; 74 FENCED_LEADER_EPOCH is the other direction and needs a re-election.",
+            "hex": "000000310000004d0000000000000001000d74322d32312d766563746f727300000001004b00000000ffffffffffffffffffffffff",
+            "fields": {
+                "messageSize": 49,
+                "correlationId": 77,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "errorCode": 75,
+                                "partition": 0,
+                                "leaderEpoch": -1,
+                                "endOffset": -1
                             }
                         ]
                     }

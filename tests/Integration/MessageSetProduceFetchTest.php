@@ -204,7 +204,7 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     {
         $stream = $this->connect();
         // A message set of the formats v0 and v1 may only travel in a request below version 3, see
-        // docs/protocol/2.8.md, section "Produce API (key 0, v0 to v6)"
+        // docs/protocol/2.8.md, section "Produce API (key 0, v0 to v7)"
         new ProduceRequestV2(
             [$this->topic => [self::PARTITION => $messageSet]],
             1,

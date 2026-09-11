@@ -31,6 +31,7 @@ use Protocol\Kafka\Protocol\Request\MetadataRequestV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV3;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV4;
 use Protocol\Kafka\Protocol\Request\MetadataRequestV5;
+use Protocol\Kafka\Protocol\Request\MetadataRequestV6;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV0;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV1;
@@ -38,12 +39,13 @@ use Protocol\Kafka\Protocol\Request\MetadataResponseV2;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV3;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV4;
 use Protocol\Kafka\Protocol\Request\MetadataResponseV5;
+use Protocol\Kafka\Protocol\Request\MetadataResponseV6;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
  * Verifies the Metadata API v0 to v4 against a real Kafka 0.11.0.3 broker.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v6)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v7)"
  */
 #[CoversClass(MetadataRequest::class)]
 #[CoversClass(MetadataRequestV0::class)]
@@ -291,10 +293,11 @@ final class MetadataApiTest extends IntegrationTestCase
         new MetadataRequestV5([$topic], true, self::CLIENT_ID, 46)->writeTo($stream);
         $versionFive = MetadataResponseV5::unpack($stream);
 
-        new MetadataRequest([$topic], true, self::CLIENT_ID, 47)->writeTo($stream);
-        $versionSix = MetadataResponse::unpack($stream);
+        new MetadataRequestV6([$topic], true, self::CLIENT_ID, 47)->writeTo($stream);
+        $versionSix = MetadataResponseV6::unpack($stream);
 
-        self::assertSame(6, MetadataRequest::VERSION);
+        self::assertSame(6, MetadataRequestV6::VERSION, 'the version Kafka 2.0 added');
+        self::assertSame(7, MetadataRequest::VERSION, 'and the client sends the version Kafka 2.1 added');
         self::assertSame($versionFive->getMessageSize(), $versionSix->getMessageSize());
         self::assertSame($versionFive->clusterId, $versionSix->clusterId);
         self::assertSame($versionFive->controllerId, $versionSix->controllerId);

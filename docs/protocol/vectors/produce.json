@@ -1,8 +1,8 @@
 {
     "api": "produce",
     "apiKey": 0,
-    "section": "Produce API (key 0, v0 to v6)",
-    "description": "Wire vectors of the Produce API (key 0, v0 to v6), replayed by tests/Compliance.",
+    "section": "Produce API (key 0, v0 to v7)",
+    "description": "Wire vectors of the Produce API (key 0, v0 to v7), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "produce.request.v3",
@@ -706,7 +706,7 @@
         {
             "id": "produce.request.v6",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV6",
             "version": 6,
             "source": "broker",
             "description": "Produce request v6 with RequiredAcks = 1, the null TransactionalId of a producer that is not in a transaction and a record batch of the message format v2 with two records. The body is the body of version 3, byte for byte - ProduceRequest.json @ 2.8.2 has no field above version 3 - and what version 6 (Kafka 2.0, KIP-219) states is that the client waits out the throttle time of the answer itself.",
@@ -738,7 +738,7 @@
         {
             "id": "produce.response.v6",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV6",
             "version": 6,
             "source": "broker",
             "description": "Produce response v6 of an unthrottled append: the frame of version 5, byte for byte, with the base offset the batch was appended at, the LogAppendTime -1 of a CreateTime topic, the log start offset of version 5 and the ThrottleTime 0 of a client without a quota.",
@@ -766,7 +766,7 @@
         {
             "id": "produce.response.v6.throttled",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV6",
             "version": 6,
             "source": "broker",
             "description": "The answer of a Produce v6 request that a producer_byte_rate quota of 1024 bytes per second throttled: the batch was appended - the error code is 0 and the base offset is real - and the ThrottleTime behind the topics array is the 2381 ms the broker is about to mute the channel for. The answer itself arrived about 1 ms after the request was written: KIP-219 (Kafka 2.0) makes a broker answer a request of these versions first and delay afterwards, where a version 5 request would have waited the whole 2381 ms before its answer arrived.",
@@ -789,6 +789,94 @@
                     }
                 },
                 "throttleTime": 2381
+            }
+        },
+        {
+            "id": "produce.request.v7",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 7,
+            "source": "broker",
+            "description": "Produce request v7 (Kafka 2.1, KIP-110) of one record batch: the frame of version 3, byte for byte - ProduceRequest.json @ 2.8.2 has no field above version 3 - with another number in its header. What version 7 states is that the record sets of the request may carry the compression type 4, zstd; a lower version that does is refused with the error code 76.",
+            "hex": "0000008700000007000000d200027432ffff0001000005dc00000001000d74322d32312d766563746f7273000000010000000000000054000000000000000000000048ffffffff027b86e0df000000000000000001a091328bd2000001a091328bd2ffffffffffffffffffffffffffff000000012c000000046b371c7a7374642d6572612d76616c756500",
+            "fields": {
+                "messageSize": 135,
+                "apiKey": 0,
+                "apiVersion": 7,
+                "correlationId": 210,
+                "clientId": "t2",
+                "transactionalId": null,
+                "requiredAcks": 1,
+                "timeout": 1500,
+                "topicMessages": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000048ffffffff027b86e0df000000000000000001a091328bd2000001a091328bd2ffffffffffffffffffffffffffff000000012c000000046b371c7a7374642d6572612d76616c756500"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v7",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 7,
+            "source": "broker",
+            "description": "The answer v7: the frame of version 5, unchanged - ProduceResponse.json @ 2.8.2 has no field above version 5 - with the base offset, the log append time -1 of a CreateTime topic, the log start offset and the throttle time.",
+            "hex": "0000003d000000d200000001000d74322d32312d766563746f7273000000010000000000000000000000000003ffffffffffffffff000000000000000000000000",
+            "fields": {
+                "messageSize": 61,
+                "correlationId": 210,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 3,
+                                "logAppendTime": -1,
+                                "logStartOffset": 0
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
+            }
+        },
+        {
+            "id": "produce.response.v6.zstd",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV6",
+            "version": 6,
+            "source": "broker",
+            "description": "The answer of a 2.8.2 broker to a Produce v6 whose record set is compressed with zstd: the error code 76 UNSUPPORTED_COMPRESSION_TYPE for the partition, with the offset -1. ProduceRequest.validateRecords @ 2.8.2 refuses the codec below version 7 while it parses the request, and the broker answers the partition with the code instead of closing the connection.",
+            "hex": "0000003d000000e200000001000d74322d32312d766563746f72730000000100000000004cffffffffffffffffffffffffffffffffffffffffffffffff00000000",
+            "fields": {
+                "messageSize": 61,
+                "correlationId": 226,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 76,
+                                "baseOffset": -1,
+                                "logAppendTime": -1,
+                                "logStartOffset": -1
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0
             }
         }
     ]
