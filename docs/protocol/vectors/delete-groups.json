@@ -1,13 +1,13 @@
 {
     "api": "delete-groups",
     "apiKey": 42,
-    "section": "DeleteGroups API (key 42, v0)",
-    "description": "Wire vectors of the DeleteGroups API (key 42, v0), replayed by tests/Compliance.",
+    "section": "DeleteGroups API (key 42, v0 to v2)",
+    "description": "Wire vectors of the DeleteGroups API (key 42, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "deletegroups.request.v0.non-empty",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DeleteGroups request v0 for a group that has a live member: the whole request is the group array.",
@@ -26,7 +26,7 @@
         {
             "id": "deletegroups.response.v0.non-empty",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The refusal of the coordinator: the error code 68 (NonEmptyGroup), which KIP-229 added for exactly this - the committed offsets of a group whose consumers are running are never thrown away.",
@@ -46,7 +46,7 @@
         {
             "id": "deletegroups.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DeleteGroups request v0 for two groups: one that exists and has no member left, and one the coordinator has never heard of. Both are coordinated by the same broker of the container, so they travel in one frame.",
@@ -66,7 +66,7 @@
         {
             "id": "deletegroups.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer: the throttle time and one entry per group - the error code 0 for the group that was deleted, with its committed offsets, and 69 (GroupIdNotFound) for the one that never existed. The order of the entries is the order the coordinator walked its map, not the order of the request.",
@@ -90,7 +90,7 @@
         {
             "id": "deletegroups.request.v0.empty-group",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DeleteGroups request v0 for the group whose only member has just left it.",
@@ -109,7 +109,7 @@
         {
             "id": "deletegroups.response.v0.empty-group",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer: the error code 0. A group in the state `Empty` - every member gone, offsets still there - is what the api deletes; describing it afterwards answers the state `Dead`, and deleting it once more answers 69.",
@@ -121,6 +121,86 @@
                 "groups": {
                     "t4-configs-member-group": {
                         "groupId": "t4-configs-member-group",
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletegroups.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "DeleteGroups request v1 for the group whose only member has just left it, the frame of v0 with a higher version field.",
+            "hex": "00000035002a0001000000d100166b61666b612d636c69656e742d74332d6b697032313900000001000f74332d6b69703231392d67726f7570",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 42,
+                "apiVersion": 1,
+                "correlationId": 209,
+                "clientId": "kafka-client-t3-kip219",
+                "groups": [
+                    "t3-kip219-group"
+                ]
+            }
+        },
+        {
+            "id": "deletegroups.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "The answer v1: the throttle time and the error code 0 for the group, whose committed offsets are gone with it.",
+            "hex": "0000001f000000d10000000000000001000f74332d6b69703231392d67726f75700000",
+            "fields": {
+                "messageSize": 31,
+                "correlationId": 209,
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-kip219-group": {
+                        "groupId": "t3-kip219-group",
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "deletegroups.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DeleteGroups request v2 (KIP-482): a compact array of compact group ids and two tag buffers.",
+            "hex": "00000035002a00020000038f00136b61666b612d636c69656e742d74332d32346200021574332d3234622d766563746f72732d67726f757000",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 42,
+                "apiVersion": 2,
+                "correlationId": 911,
+                "clientId": "kafka-client-t3-24b",
+                "headerTaggedFields": [],
+                "groups": [
+                    "t3-24b-vectors-group"
+                ]
+            }
+        },
+        {
+            "id": "deletegroups.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DeleteGroupsResponse",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2 of the group that was deleted: the throttle time and one compact entry per group, the error code 0 for the group whose last member had just left.",
+            "hex": "000000230000038f0000000000021574332d3234622d766563746f72732d67726f757000000000",
+            "fields": {
+                "messageSize": 35,
+                "correlationId": 911,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-24b-vectors-group": {
+                        "groupId": "t3-24b-vectors-group",
                         "errorCode": 0
                     }
                 }

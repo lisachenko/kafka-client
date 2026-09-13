@@ -18,12 +18,15 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\IllegalGenerationException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\LogTruncationException;
 use Protocol\Kafka\Common\Errors\OffsetOutOfRangeException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
 use Protocol\Kafka\Common\Errors\RecordTooLargeException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnstableOffsetCommitException;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\TimestampType;
 use Protocol\Kafka\Common\Serialization\StringDeserializer;
@@ -1167,7 +1170,10 @@ final class KafkaConsumerTest extends TestCase
 
         $consumer->unsubscribe();
 
-        self::assertSame([['groupId' => self::GROUP, 'memberId' => 'member-1']], $client->leaves);
+        self::assertSame(
+            [['groupId' => self::GROUP, 'memberId' => 'member-1', 'instanceId' => null]],
+            $client->leaves
+        );
         self::assertSame([], $consumer->assignment());
         self::assertSame([], $consumer->subscription());
         self::assertSame([], $consumer->poll(10), 'a consumer without a subscription fetches nothing');
@@ -1189,6 +1195,54 @@ final class KafkaConsumerTest extends TestCase
         self::assertSame('member-1', $client->commits[0]['memberId']);
         self::assertCount(1, $client->leaves);
         self::assertSame([], $consumer->subscription());
+    }
+
+    /**
+     * A static member (KIP-345) names itself in every request of the protocol and never leaves its group
+     */
+    public function testAStaticConsumerSendsItsInstanceIdAndDoesNotLeaveOnClose(): void
+    {
+        $client                     = $this->clientWithLog([0 => 2]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::GROUP_INSTANCE_ID      => 'one',
+            ConsumerConfig::AUTO_COMMIT_INTERVAL_MS => 60000,
+            ConsumerConfig::HEARTBEAT_INTERVAL_MS   => 0,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+        $consumer->poll(10);
+
+        self::assertSame('one', $client->joins[0]['instanceId'], 'the join names the instance');
+        self::assertSame('one', $client->syncs[0]['instanceId'], 'and so does the sync');
+        self::assertSame('one', $client->heartbeats[0]['instanceId'], 'and the heartbeat');
+        self::assertSame('one', $client->commits[0]['instanceId'], 'and the commit');
+
+        $consumer->close();
+
+        self::assertSame([], $client->leaves, 'a static member keeps its partitions while it is away');
+        self::assertSame([self::TOPIC => [0 => 2]], $client->commits[0]['offsets'], 'it still commits on close');
+    }
+
+    /**
+     * An empty `group.instance.id` is not an instance id: the broker answers one with 42 (InvalidRequest)
+     */
+    public function testAnEmptyInstanceIdLeavesTheConsumerDynamic(): void
+    {
+        $client                     = $this->clientWithLog([0 => 1]);
+        $client->partitionsPerTopic = [self::TOPIC => [0]];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::GROUP_INSTANCE_ID  => '',
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->subscribe([self::TOPIC]);
+        $consumer->poll(10);
+        $consumer->unsubscribe();
+
+        self::assertNull($client->joins[0]['instanceId']);
+        self::assertCount(1, $client->leaves, 'and a dynamic member does leave its group');
     }
 
     public function testAMemberThatLeavesAGroupItIsNotInAnyMoreIsNotAnError(): void
@@ -1373,6 +1427,144 @@ final class KafkaConsumerTest extends TestCase
         return $client;
     }
 
+    public function testAPositionIsNotValidatedWhileTheLeaderEpochOfTheMetadataStandsStill(): void
+    {
+        $client = $this->clientWithLog([0 => 3]);
+        $client->batchLeaderEpochs[self::TOPIC][0] = 4;
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->leaderEpochs[self::TOPIC][0]    = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+
+        $consumer->poll(10);
+        $consumer->poll(10);
+
+        self::assertSame([], $client->leaderEpochCalls, 'an epoch that does not move validates nothing');
+        self::assertSame(3, $consumer->position(self::TOPIC, 0));
+    }
+
+    public function testANewLeaderEpochValidatesThePositionWithTheEpochOfItsLastBatch(): void
+    {
+        $client = $this->clientWithLog([0 => 3]);
+        $client->batchLeaderEpochs[self::TOPIC][0]     = 4;
+        $client->leaderEpochEndOffsets[self::TOPIC][0] = 7;
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->leaderEpochs[self::TOPIC][0]        = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        // A leader election: the metadata of the next poll reports a higher epoch for the partition
+        $consumer->leaderEpochs[self::TOPIC][0] = 5;
+        $consumer->poll(10);
+
+        // The question is "you are on the epoch 5; where did the epoch 4 of my position end?"
+        self::assertSame([[self::TOPIC => [0 => [4, 5]]]], $client->leaderEpochCalls);
+        self::assertSame(3, $consumer->position(self::TOPIC, 0), 'an end offset above the position moves nothing');
+
+        // And it is asked once per leader change, not once per poll
+        $consumer->poll(10);
+        self::assertCount(1, $client->leaderEpochCalls);
+    }
+
+    public function testAPartitionWithoutAnEpochOfItsOwnIsNeverValidated(): void
+    {
+        // The consumer has read no record batch of the partition, so it has no epoch to ask about - which is the
+        // state of every partition whose committed offset was stored below OffsetCommit v6
+        $client = $this->clientWithLog([0 => 0]);
+
+        $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+        $consumer->leaderEpochs[self::TOPIC][0] = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        $consumer->leaderEpochs[self::TOPIC][0] = 5;
+        $records = $consumer->poll(10);
+
+        self::assertSame([], $client->leaderEpochCalls);
+        self::assertSame([], $records[self::TOPIC][0]);
+    }
+
+    public function testAnEndOffsetBelowThePositionIsALogTruncationAndFollowsTheResetStrategy(): void
+    {
+        $client = $this->clientWithLog([0 => 3], 100);
+        $client->batchLeaderEpochs[self::TOPIC][0]     = 4;
+        // The new leader ends the epoch 4 at 101, while this consumer stands at 103: the records 101 and 102 it
+        // has already read never made it into the new leadership
+        $client->leaderEpochEndOffsets[self::TOPIC][0] = 101;
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::EARLIEST,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->leaderEpochs[self::TOPIC][0] = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        self::assertSame(103, $consumer->position(self::TOPIC, 0));
+
+        $consumer->leaderEpochs[self::TOPIC][0] = 5;
+        $records = $consumer->poll(10)[self::TOPIC][0];
+
+        // Without the truncation the poll would answer nothing - the position stood at the end of the log. The
+        // reset moved it to the start of the log, so the same three records are read again
+        self::assertCount(3, $records);
+        self::assertSame(100, (int) $records[0]->offset);
+        self::assertSame([[self::TOPIC => [0 => [4, 5]]]], $client->leaderEpochCalls);
+    }
+
+    public function testALogTruncationReachesTheCallerWhenNoResetStrategyIsConfigured(): void
+    {
+        $client = $this->clientWithLog([0 => 3], 100);
+        $client->batchLeaderEpochs[self::TOPIC][0]            = 4;
+        $client->leaderEpochEndOffsets[self::TOPIC][0]        = 101;
+        // With `none` the position has to come from somewhere: a committed offset of the group, as it would in
+        // any application that reads with this strategy
+        $client->committedOffsets[self::GROUP][self::TOPIC][0] = 100;
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::AUTO_OFFSET_RESET  => OffsetResetStrategy::NONE,
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+        $consumer->leaderEpochs[self::TOPIC][0] = 4;
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->poll(10);
+
+        $consumer->leaderEpochs[self::TOPIC][0] = 5;
+
+        try {
+            $consumer->poll(10);
+            self::fail('a truncated log with auto.offset.reset = none has to reach the caller');
+        } catch (LogTruncationException $exception) {
+            $context = $exception->getContext();
+            self::assertSame(self::TOPIC, $context['topic']);
+            self::assertSame(0, $context['partition']);
+            self::assertSame(103, $context['offset']);
+            self::assertSame(101, $context['truncationOffset']);
+        }
+    }
+
+    public function testTheTwoLeaderEpochErrorsRefreshTheMetadataAndLeaveThePositionAlone(): void
+    {
+        foreach ([KafkaException::FENCED_LEADER_EPOCH, KafkaException::UNKNOWN_LEADER_EPOCH] as $errorCode) {
+            $client = $this->clientWithLog([0 => 3]);
+            $client->batchLeaderEpochs[self::TOPIC][0] = 4;
+            $client->leaderEpochErrors[self::TOPIC][0] = $errorCode;
+
+            $consumer = $this->consumer($client, [ConsumerConfig::ENABLE_AUTO_COMMIT => false]);
+            $consumer->leaderEpochs[self::TOPIC][0]    = 4;
+            $consumer->assign([self::TOPIC => [0]]);
+            $consumer->poll(10);
+
+            $consumer->leaderEpochs[self::TOPIC][0] = 5;
+            $result = $consumer->poll(10);
+
+            self::assertSame(1, $consumer->metadataRefreshes, 'the code ' . $errorCode . ' refreshes the metadata');
+            self::assertSame([], $result, 'the partition is left out of the poll it could not be validated in');
+            self::assertSame(3, $consumer->position(self::TOPIC, 0), 'and its position is not touched');
+        }
+    }
+
     private function clientWithLog(array $partitionRecordCounts, int $firstOffset = 0): FakeClient
     {
         $client = new FakeClient();
@@ -1386,6 +1578,105 @@ final class KafkaConsumerTest extends TestCase
         }
 
         return $client;
+    }
+
+    /**
+     * KIP-447 (Kafka 2.5): a read-committed consumer may only start from an offset no transaction can still change
+     */
+    public function testAReadCommittedConsumerAsksForStableOffsetsOnly(): void
+    {
+        $client = $this->clientWithLog([0 => 5]);
+        $client->committedOffsets[self::GROUP][self::TOPIC][0] = 3;
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ISOLATION_LEVEL => ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED,
+        ]);
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->committed([self::TOPIC => [0]]);
+
+        self::assertNotSame([], $client->offsetFetches);
+        foreach ($client->offsetFetches as $fetch) {
+            self::assertTrue($fetch['requireStable'], 'every committed-offset read of this consumer is a stable one');
+        }
+    }
+
+    /**
+     * A read-uncommitted consumer sends the flag off, which is the behaviour of every version below 7
+     */
+    public function testAReadUncommittedConsumerDoesNotAskForStableOffsets(): void
+    {
+        $client = $this->clientWithLog([0 => 5]);
+        $client->committedOffsets[self::GROUP][self::TOPIC][0] = 3;
+
+        $consumer = $this->consumer($client);
+        $consumer->assign([self::TOPIC => [0]]);
+        $consumer->committed([self::TOPIC => [0]]);
+
+        self::assertNotSame([], $client->offsetFetches);
+        foreach ($client->offsetFetches as $fetch) {
+            self::assertFalse($fetch['requireStable'], 'read_uncommitted is the default and asks for no such thing');
+        }
+    }
+
+    /**
+     * The 88 of a held-back partition is retriable: the consumer waits `retry.backoff.ms` and asks again
+     */
+    public function testTheEightyEightOfAnUnstableOffsetIsWaitedOut(): void
+    {
+        $client = $this->clientWithLog([0 => 5]);
+        $client->committedOffsets[self::GROUP][self::TOPIC][0] = 3;
+        $client->unstableOffsetFetches = [
+            new UnstableOffsetCommitException(['groupId' => self::GROUP]),
+            new UnstableOffsetCommitException(['groupId' => self::GROUP]),
+        ];
+
+        $consumer = $this->consumer($client, [
+            ConsumerConfig::ISOLATION_LEVEL  => ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED,
+            ConsumerConfig::RETRY_BACKOFF_MS => 1,
+        ]);
+        $consumer->assign([self::TOPIC => [0]]);
+
+        self::assertSame(3, $consumer->position(self::TOPIC, 0), 'the offset of the third attempt');
+        self::assertCount(3, $client->offsetFetches, 'two refusals and the answer');
+    }
+
+    /**
+     * KIP-447, Kafka 2.5: what a transactional producer names in its `TxnOffsetCommit`
+     */
+    public function testTheGroupMetadataOfAConsumerThatNeverJoinedIsTheNotAMemberOne(): void
+    {
+        $metadata = $this->consumer(new FakeClient())->groupMetadata();
+
+        self::assertSame(self::GROUP, $metadata->groupId);
+        self::assertSame(OffsetCommitRequest::DEFAULT_GENERATION_ID, $metadata->generationId);
+        self::assertSame('', $metadata->memberId);
+        self::assertNull($metadata->groupInstanceId);
+    }
+
+    public function testTheGroupMetadataCarriesTheConfiguredInstanceIdOfAStaticMember(): void
+    {
+        $metadata = $this->consumer(new FakeClient(), [ConsumerConfig::GROUP_INSTANCE_ID => 't9-instance'])
+            ->groupMetadata();
+
+        self::assertSame('t9-instance', $metadata->groupInstanceId);
+        self::assertSame(
+            "ConsumerGroupMetadata{groupId=t9-unit-group, generationId=-1, memberId='', "
+            . "groupInstanceId='t9-instance'}",
+            (string) $metadata
+        );
+    }
+
+    public function testAConsumerWithoutAGroupHasNoGroupMetadataAtAll(): void
+    {
+        $consumer = new TestKafkaConsumer(new FakeClient(), [
+            ConsumerConfig::GROUP_ID           => '',
+            ConsumerConfig::ENABLE_AUTO_COMMIT => false,
+        ]);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/group\.id/');
+
+        $consumer->groupMetadata();
     }
 
     /**

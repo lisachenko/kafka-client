@@ -19,10 +19,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\CreatePartitionsRequestTopic;
 
 /**
- * CreatePartitions, version 0: raises the partition count of existing topics (ApiKey 37, Kafka 1.0, KIP-195)
+ * CreatePartitions, version 1: raises the partition count of existing topics (ApiKey 37, Kafka 1.0, KIP-195)
  *
  * <pre>
- *   CreatePartitions Request (Version: 0) => [topic_partitions] timeout validate_only
+ *   CreatePartitions Request (Version: 0 and 1) => [topic_partitions] timeout validate_only
  *     topic_partitions => topic count assignment
  *       topic      => STRING
  *       count      => INT32
@@ -46,7 +46,17 @@ use Protocol\Kafka\Protocol\Data\CreatePartitionsRequestTopic;
  * in the answer; a topic that appears TWICE in one request is answered with 42 (InvalidRequest) - the Java class
  * tracks the duplicates itself, see `CreatePartitionsRequest.duplicates`.
  *
- * @see docs/protocol/1.1.md, section "CreatePartitions API (key 37, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `CREATE_PARTITIONS_REQUEST_V1 =
+ * CREATE_PARTITIONS_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see CreatePartitionsRequestV0} is the same frame with the version field of Kafka 1.0.
+ *
+ * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
+ * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
+ *
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v3)"
  */
 class CreatePartitionsRequest extends AbstractRequest
 {
@@ -58,7 +68,12 @@ class CreatePartitionsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 3;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Topics whose partition count should grow, indexed by their name

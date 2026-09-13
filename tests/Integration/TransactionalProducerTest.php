@@ -21,15 +21,20 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\InvalidTxnStateException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\NetworkException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
+use Protocol\Kafka\Common\Errors\TransactionalProducerFencedException;
+use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\FetchedPartition;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\ControlRecordType;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter;
+use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\Internals\TransactionState;
 use Protocol\Kafka\Producer\KafkaProducer;
@@ -40,6 +45,7 @@ use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 
 /**
  * Exercises the transactional producer of KIP-98 against a real Kafka 1.1.1 broker.
@@ -54,7 +60,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * unchanged at v0 and so is `TransactionCoordinator` - with a single addition of the 1.x line: the **59**
  * `UnknownProducerId` of a producer whose records were deleted under it does not end its transaction.
  *
- * @see docs/protocol/1.1.md, section "Transactions"
+ * @see docs/protocol/2.8.md, section "Transactions"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(TransactionManager::class)]
@@ -181,8 +187,12 @@ final class TransactionalProducerTest extends IntegrationTestCase
         self::assertSame([], $this->read($topic, FetchRequest::READ_COMMITTED), 'so the answer is cut at the LSO');
         self::assertSame(['not committed yet'], $this->read($topic, FetchRequest::READ_UNCOMMITTED));
 
+        // A 2.8.2 broker computes the last stable offset for a read_uncommitted fetch as well - a 1.1.1 broker
+        // answered -1 there - so the answer reports the very same LSO that a read_committed fetch is cut at, while
+        // it still hands out the records above it. The aborted-transactions array is what stayed isolation-bound.
         $uncommitted = $this->partitionOf($topic, FetchRequest::READ_UNCOMMITTED);
-        self::assertSame(-1, $uncommitted->lastStableOffset, 'a read_uncommitted answer carries no last stable offset');
+        self::assertSame(0, $uncommitted->lastStableOffset, 'the real LSO, reported to a read_uncommitted fetch too');
+        self::assertSame($open->lastStableOffset, $uncommitted->lastStableOffset);
         self::assertNull($uncommitted->abortedTransactions);
 
         $manager->commitTransaction();
@@ -243,8 +253,10 @@ final class TransactionalProducerTest extends IntegrationTestCase
         try {
             $first->commitTransaction();
             self::fail('the fenced producer must not be able to commit');
-        } catch (ProducerFencedException) {
-            // 47 InvalidProducerEpoch, the fencing of KIP-98
+        } catch (TransactionalProducerFencedException) {
+            // The **90** `ProducerFenced` that KIP-588 (Kafka 2.7) gave the version 2 of EndTxn. Every version
+            // below it is answered the 47 `InvalidProducerEpoch` for the very same producer, which is
+            // `ProducerFencedException` here - the published name of the 47.
         }
 
         self::assertSame(TransactionState::FATAL_ERROR, $first->currentState(), 'and it never recovers');
@@ -321,7 +333,8 @@ final class TransactionalProducerTest extends IntegrationTestCase
         // A second incarnation bumps the epoch; the stale one is answered 47 per partition, not at the top level
         $this->manager($transactionalId)->initTransactions();
 
-        $this->expectException(ProducerFencedException::class);
+        // AddPartitionsToTxn v2 (KIP-588) answers a fenced producer the 90, where its version 1 answered the 47
+        $this->expectException(TransactionalProducerFencedException::class);
 
         $this->client->addPartitionsToTxn(
             $this->client->getTransactionCoordinator($transactionalId),
@@ -329,6 +342,99 @@ final class TransactionalProducerTest extends IntegrationTestCase
             $stale,
             [$topic => [0]]
         );
+    }
+
+    /**
+     * KIP-360, Kafka 2.5: an abortable error no longer ends a transactional producer
+     */
+    public function testAnAbortableErrorBumpsTheEpochAndTheProducerGoesOn(): void
+    {
+        $topic           = $this->topic('epoch-bump');
+        $transactionalId = $this->transactionalId('epoch-bump');
+        $manager         = $this->manager($transactionalId);
+
+        $manager->initTransactions();
+        $before = $manager->getProducerIdAndEpoch();
+
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$topic => [0 => []]]);
+        $this->client->produce([$topic => [0 => $this->records(['lost'])]], $manager);
+
+        // What a Produce answer that can not be retried does to the producer
+        $manager->transitionToAbortableError(
+            new NetworkException(['test' => 'an abortable error, as a Produce answer that can not be retried'])
+        );
+        self::assertTrue($manager->hasAbortableError());
+
+        $manager->abortTransaction();
+
+        $after = $manager->getProducerIdAndEpoch();
+        self::assertSame($before->producerId, $after->producerId, 'the producer keeps its identity');
+        self::assertSame($before->epoch + 1, $after->epoch, 'and the abort bumped its epoch by exactly one');
+        self::assertSame(TransactionState::READY, $manager->currentState());
+
+        // The very same producer writes the next transaction under the new epoch
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$topic => [0 => []]]);
+        $this->client->produce([$topic => [0 => $this->records(['kept'])]], $manager);
+        $manager->commitTransaction();
+
+        $this->awaitMarker($topic, 2);
+
+        self::assertSame(['kept'], $this->read($topic, FetchRequest::READ_COMMITTED));
+        self::assertSame(['lost', 'kept'], $this->read($topic, FetchRequest::READ_UNCOMMITTED));
+    }
+
+    /**
+     * KIP-447, Kafka 2.5: the commit of a consumer the group does not have is refused per partition
+     */
+    public function testATransactionalOffsetCommitNamesTheConsumerOfTheGroup(): void
+    {
+        $topic           = $this->topic('group-metadata');
+        $group           = self::uniqueTopicName('t8-transactional-metadata-group');
+        $transactionalId = $this->transactionalId('group-metadata');
+        $manager         = $this->manager($transactionalId);
+        $coordinator     = $this->client->getGroupCoordinator($group);
+
+        $manager->initTransactions();
+        $manager->beginTransaction();
+        $idAndEpoch = $manager->getProducerIdAndEpoch();
+        $this->client->addOffsetsToTxn($coordinator, $transactionalId, $idAndEpoch, $group);
+
+        // The generation -1 with the empty member id is the commit of a producer that is not a member at all,
+        // which is what every version below 3 of the api sent
+        $this->client->txnOffsetCommit(
+            $coordinator,
+            $transactionalId,
+            $group,
+            $idAndEpoch,
+            [$topic => [0 => new OffsetAndMetadata(7)]],
+            ConsumerGroupMetadata::forGroup($group)
+        );
+
+        // A member id the group does not have is refused per partition: the code 25 of KIP-447
+        $exception = null;
+
+        try {
+            $this->client->txnOffsetCommit(
+                $coordinator,
+                $transactionalId,
+                $group,
+                $idAndEpoch,
+                [$topic => [0 => new OffsetAndMetadata(9)]],
+                new ConsumerGroupMetadata($group, 0, 'nobody-of-this-group')
+            );
+        } catch (UnknownMemberIdException $error) {
+            $exception = $error;
+        }
+
+        self::assertInstanceOf(
+            UnknownMemberIdException::class,
+            $exception,
+            'the coordinator checks the member id of the version 3 request'
+        );
+
+        $manager->abortTransaction();
     }
 
     public function testTheProducerWritesAWholeTransactionThroughItsPublicApi(): void
@@ -420,6 +526,41 @@ final class TransactionalProducerTest extends IntegrationTestCase
         self::assertSame(7, $committed, 'and it becomes visible with the very commit that made the records visible');
     }
 
+    /**
+     * The `committed_leader_epoch` of TxnOffsetCommit **v2** (Kafka 2.1, KIP-320) travels with the offset
+     *
+     * The version this client sends carries an epoch per partition, and the epoch comes from the offset value
+     * object the caller hands to `sendOffsetsToTransaction()`. The coordinator **stores** it without checking it:
+     * the epoch of `t8-transactional-epoch-*-0` is 0, and a commit that claims 4242 is answered with the error
+     * code 0 all the same - the codes 74 and 75 belong to the apis that read the epoch back, not to the commit.
+     */
+    public function testAnOffsetOfATransactionCarriesTheLeaderEpochOfKip320(): void
+    {
+        $topic       = $this->topic('epoch');
+        $group       = self::uniqueTopicName('t8-transactional-epoch-group');
+        $manager     = $this->manager($this->transactionalId('epoch'));
+        $coordinator = $this->client->getGroupCoordinator($group);
+
+        $manager->initTransactions();
+        $manager->beginTransaction();
+        $manager->maybeAddPartitionsToTransaction([$topic => [0 => []]]);
+        $this->client->produce([$topic => [0 => $this->records(['with an epoch'])]], $manager);
+        $manager->sendOffsetsToTransaction([$topic => [0 => new OffsetAndMetadata(9, 'kip-320', 4242)]], $group);
+        $manager->commitTransaction();
+        $this->awaitMarker($topic);
+
+        self::assertSame(
+            9,
+            $this->awaitCommittedOffset($coordinator, $group, $topic),
+            'an epoch the partition never had is stored with the offset instead of being refused'
+        );
+        self::assertGreaterThanOrEqual(
+            2,
+            TxnOffsetCommitRequest::VERSION,
+            'and the client sends a version that carries it - the field arrived with the version 2 of Kafka 2.1'
+        );
+    }
+
     public function testAnAbortedTransactionLeavesTheGroupWithTheOffsetsItHadBefore(): void
     {
         $topic           = $this->topic('offsets-abort');
@@ -471,8 +612,8 @@ final class TransactionalProducerTest extends IntegrationTestCase
         try {
             $manager->commitTransaction();
             self::fail('the producer of an expired transaction must not be able to commit it');
-        } catch (ProducerFencedException) {
-            // 47 InvalidProducerEpoch
+        } catch (TransactionalProducerFencedException) {
+            // The 90 `ProducerFenced` of the EndTxn v2 that KIP-588 added; a version 1 request is answered 47
         }
     }
 

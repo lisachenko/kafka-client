@@ -15,15 +15,21 @@ namespace Protocol\Kafka\Protocol\Data;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * The result of creating one topic, version 1 of the CreateTopics API
+ * The result of creating one topic, version 5 of the CreateTopics API
  *
  * <pre>
  *   CreateTopicsResponseTopic => Topic ErrorCode ErrorMessage
- *     Topic        => string
- *     ErrorCode    => int16
- *     ErrorMessage => nullable string
+ *                                 NumPartitions ReplicationFactor [Configs]   -- since version 5
+ *                                 [TopicConfigErrorCode]                      -- tagged field 0, since version 5
+ *     Topic             => string
+ *     ErrorCode         => int16
+ *     ErrorMessage      => nullable string
+ *     NumPartitions     => int32              -- since version 5, -1 when the broker does not know it
+ *     ReplicationFactor => int16              -- since version 5, -1 when the broker does not know it
+ *     Configs           => name value read_only config_source is_sensitive   -- NULLABLE array, since version 5
  * </pre>
  *
  * `TOPIC_ERROR` in `Protocol.java` @ 0.10.2.2, which "improves on TOPIC_ERROR_CODE by adding an error_message to
@@ -33,19 +39,55 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * codes that `KafkaApis.handleCreateTopicsRequest` produces without an exception (41 NotController and 31
  * ClusterAuthorizationFailed).
  *
- * @see docs/protocol/1.1.md, section "CreateTopics API (key 19, v0, v1 and v2)"
+ * **Kafka 2.4 added the three fields of KIP-525 with the version 5**: the partition count and the replication
+ * factor the topic really got - which is what a client that sent the -1/-1 of KIP-464 wants to know - and the
+ * whole configuration of the new topic, so that no DescribeConfigs has to follow. The array is nullable, and the
+ * reason it is null travels in the **tagged** field 0 `topic_config_error_code`: the version 5 is the first
+ * flexible one of the api, so a tagged field is what a later release adds without another version.
+ * {@see CreateTopicsResponseTopicV1} is the entry of the versions 1 to 4.
+ *
+ * **Kafka 2.8 added the `topic_id` with the version 7** (KIP-516): the 16 raw bytes of the UUID the controller
+ * gave the topic, between its name and the error code, and sixteen zero bytes for a topic it refused.
+ * {@see CreateTopicsResponseTopicV5} is the entry of the versions 5 and 6.
+ *
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 class CreateTopicsResponseTopic implements BinarySchemaInterface
 {
     /**
      * Version of the CreateTopics API that this DTO is unpacked from
      */
-    public const int VERSION = 1;
+    public const int VERSION = 7;
+
+    /**
+     * Value of `num_partitions` and `replication_factor` when the broker did not report them
+     *
+     * The `"default": "-1"` of both fields in `CreateTopicsResponse.json` @ 2.8.2, which an answer of a version
+     * below 5 carries as well, because it has no such field at all.
+     */
+    public const int UNKNOWN = -1;
+
+    /**
+     * The `topic_id` of a topic the broker did not create, i.e. 16 zero bytes (`Uuid.ZERO_UUID` @ 2.8.2)
+     *
+     * @since Version 7 of protocol
+     */
+    public const string NO_TOPIC_ID = "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00";
 
     /**
      * Name of the topic that was requested
      */
     public string $topic;
+
+    /**
+     * The unique id of the created topic as the raw 16 bytes of its UUID (KIP-516)
+     *
+     * {@see self::NO_TOPIC_ID} - sixteen zero bytes - for a topic the broker refused, and for every version
+     * below 7, which has no such field at all.
+     *
+     * @since Version 7 of protocol
+     */
+    public string $topicId = self::NO_TOPIC_ID;
 
     /**
      * Error code of this topic, 0 when it was created
@@ -60,16 +102,58 @@ class CreateTopicsResponseTopic implements BinarySchemaInterface
     public ?string $errorMessage = null;
 
     /**
+     * Number of partitions the topic was created with, {@see self::UNKNOWN} when the broker did not say
+     *
+     * @since Version 5 of protocol
+     */
+    public int $numPartitions = self::UNKNOWN;
+
+    /**
+     * Replication factor of every partition of the topic, {@see self::UNKNOWN} when the broker did not say
+     *
+     * @since Version 5 of protocol
+     */
+    public int $replicationFactor = self::UNKNOWN;
+
+    /**
+     * Configuration the new topic ended up with, indexed by the option name; **null** when the broker could not
+     * read it back, in which case {@see self::$topicConfigErrorCode} says why
+     *
+     * @since Version 5 of protocol
+     *
+     * @var array<string, CreateTopicsResponseTopicConfig>|null
+     */
+    public ?array $configs = null;
+
+    /**
+     * Why the configuration above is null, as the **tagged** field 0 of the entry reports it
+     *
+     * @since Version 5 of protocol
+     */
+    public int $topicConfigErrorCode = 0;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
-        $scheme = [
-            'topic'     => BinarySchema::TYPE_STRING,
-            'errorCode' => BinarySchema::TYPE_INT16,
-        ];
+        $scheme = ['topic' => BinarySchema::TYPE_STRING];
+        if (static::VERSION >= 7) {
+            // KIP-516 put the id of the new topic between its name and the error code
+            $scheme['topicId'] = BinarySchema::TYPE_UUID;
+        }
+        $scheme['errorCode'] = BinarySchema::TYPE_INT16;
         if (static::VERSION >= 1) {
             $scheme['errorMessage'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        if (static::VERSION >= 5) {
+            $scheme['numPartitions']     = BinarySchema::TYPE_INT32;
+            $scheme['replicationFactor'] = BinarySchema::TYPE_INT16;
+            $scheme['configs']           = [
+                'name'                      => CreateTopicsResponseTopicConfig::class,
+                BinarySchema::FLAG_NULLABLE => true,
+            ];
+            $scheme['topicConfigErrorCode'] = new TaggedField(0, BinarySchema::TYPE_INT16, 0);
         }
 
         return $scheme;

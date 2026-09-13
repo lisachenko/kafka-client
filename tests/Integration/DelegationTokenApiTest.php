@@ -51,9 +51,9 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
  * lifetime is a single millisecond: a token that is past its expiry can no longer be expired through the protocol
  * at all (the broker answers 66 for that too), and only the broker's own sweeper removes it.
  *
- * @see docs/protocol/1.1.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0)",
- *      "RenewDelegationToken API (key 39, v0)", "ExpireDelegationToken API (key 40, v0)" and
- *      "DescribeDelegationToken API (key 41, v0)"
+ * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
+ *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
+ *      "DescribeDelegationToken API (key 41, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DelegationToken::class)]
@@ -76,7 +76,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t7-tokens';
 
     /**
-     * The two users of `docker/kafka-1.1.1/jaas.conf`
+     * The two users of `docker/kafka-2.8.2/jaas.conf`
      */
     private const string OWNER_USER = 'kafkatest';
 
@@ -329,22 +329,26 @@ final class DelegationTokenApiTest extends IntegrationTestCase
 
     public function testARenewerWhoseTypeIsNotUserIsRefusedAndNoTokenIsCreated(): void
     {
-        $admin  = $this->adminClient();
-        $before = $admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]);
+        $admin   = $this->adminClient();
+        $renewer = new KafkaPrincipal('Group', 'analytics');
 
         try {
-            $admin->createDelegationToken([new KafkaPrincipal('Group', 'analytics')], self::MAX_LIFETIME_MS);
+            $admin->createDelegationToken([$renewer], self::MAX_LIFETIME_MS);
             self::fail('a renewer that is not a User has to be refused');
         } catch (InvalidPrincipalTypeException) {
             self::assertTrue(true);
         }
 
-        $after = $admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]);
-        self::assertSame(
-            [],
-            array_values(array_diff(array_keys($after), array_keys($before))),
-            'the request is refused before a token is issued'
-        );
+        // Every suite of this line authenticates as the same `User:kafkatest`, so the tokens of the owner are a
+        // shared resource: a token another suite issued between the two describes of this test is visible here.
+        // What the refusal really promises is that no token of this owner carries the renewer it named.
+        foreach ($admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]) as $tokenId => $token) {
+            self::assertNotContains(
+                (string) $renewer,
+                $token->tokenInformation->renewersAsString(),
+                "the refused request issued the token {$tokenId} after all"
+            );
+        }
     }
 
     public function testAnEmptyOwnerArrayAsksForNothingAndIsNotTheSameAsANullOne(): void

@@ -18,6 +18,8 @@ use function is_string;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\InlineStruct;
+use Protocol\Kafka\Protocol\TaggedField;
 use ReflectionProperty;
 
 /**
@@ -25,8 +27,14 @@ use ReflectionProperty;
  *
  * The walk follows the scheme of the message, so the result contains exactly the fields the wire format has, in the
  * order the wire format has them, with nested objects as nested maps and arrays as arrays. Raw byte fields - the
- * message set of the Produce and Fetch apis, and the varint-prefixed key, value and header of a record of the
- * message format v2 - become `{"$bytes": "<hex>"}`, because JSON cannot carry binary.
+ * message set of the Produce and Fetch apis, the varint-prefixed key, value and header of a record of the
+ * message format v2, and the 16 bytes of a `uuid` - become `{"$bytes": "<hex>"}`, because JSON cannot carry
+ * binary.
+ *
+ * The two descriptors of the flexible encoding are unwrapped on the way: a {@see TaggedField} is documented as the
+ * value of its own type - a vector shows what the tagged field carries, not that it is tagged - and an
+ * {@see InlineStruct} as the nested map its object is. The tag buffer of a header is a field of the scheme like any
+ * other and shows up as the (usually empty) map of the tags that were read.
  */
 final class MessageFields
 {
@@ -55,6 +63,15 @@ final class MessageFields
      */
     private static function valueOf(mixed $schemeType, mixed $value): mixed
     {
+        // A tagged field of a flexible version is an ordinary value behind its descriptor, and a nested object that
+        // the specification does not have is an ordinary nested object
+        if ($schemeType instanceof TaggedField) {
+            return self::valueOf($schemeType->type, $value);
+        }
+        if ($schemeType instanceof InlineStruct) {
+            return self::of($value);
+        }
+
         if (is_array($schemeType)) {
             if ($value === null) {
                 return null;
@@ -68,11 +85,17 @@ final class MessageFields
             return $result;
         }
 
+        // A nested structure that is not there at all - a tagged field of a flexible version that the writer left
+        // out, which is what its default "nothing to report" looks like after decoding - stays null
         if (is_string($schemeType)) {
-            return self::of($value);
+            return $value === null ? null : self::of($value);
         }
 
-        $isBytes = $schemeType === BinarySchema::TYPE_BYTEARRAY || $schemeType === BinarySchema::TYPE_VARCHAR_ZIGZAG;
+        // A uuid is 16 RAW bytes (KIP-516) and a vector file is json, which carries no binary: it is written
+        // down as `{"$bytes": "<hex>"}` like every other byte field
+        $isBytes = $schemeType === BinarySchema::TYPE_BYTEARRAY
+            || $schemeType === BinarySchema::TYPE_VARCHAR_ZIGZAG
+            || $schemeType === BinarySchema::TYPE_UUID;
         if ($isBytes && $value !== null) {
             return [self::BYTES_KEY => bin2hex((string) $value)];
         }

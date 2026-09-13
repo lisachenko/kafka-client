@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
  * Byte-exact tests for the SaslHandshake API (key 17, v0 of Kafka 0.10.0 / KIP-43 and v1 of Kafka 1.0 / KIP-152)
  * and for the token frames that follow a v0 handshake.
  *
- * @see docs/protocol/1.1.md, section "SaslHandshake API (key 17, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "SaslHandshake API (key 17, v0 and v1)"
  */
 #[CoversClass(SaslHandshakeRequest::class)]
 #[CoversClass(SaslHandshakeRequestV0::class)]

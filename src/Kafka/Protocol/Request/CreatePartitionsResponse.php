@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\CreatePartitionsResponseTopic;
 
 /**
- * CreatePartitions response object, version 0 (key 37, Kafka 1.0)
+ * CreatePartitions response object, version 1 (key 37, Kafka 1.0)
  *
  * <pre>
- *   CreatePartitions Response (Version: 0) => throttle_time_ms [topic_errors]
+ *   CreatePartitions Response (Version: 0 and 1) => throttle_time_ms [topic_errors]
  *     throttle_time_ms => INT32
  *     topic_errors => topic error_code error_message
  *       topic         => STRING
@@ -42,14 +42,29 @@ use Protocol\Kafka\Protocol\Data\CreatePartitionsResponseTopic;
  * | 42   | InvalidRequest           | The topic appears twice in the request, or a partition reassignment is running |
  * | 44   | PolicyViolation          | A `create.topic.policy.class.name` on the broker refused the new count       |
  *
- * @see docs/protocol/1.1.md, section "CreatePartitions API (key 37, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `CREATE_PARTITIONS_RESPONSE_V1 =
+ * CREATE_PARTITIONS_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see CreatePartitionsResponseV0} is the same frame with the version field of Kafka 1.0.
+ *
+ * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
+ * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
+ *
+ * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v3)"
  */
 class CreatePartitionsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 3;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation, zero without quotas

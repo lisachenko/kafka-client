@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * log are unwrapped into one message per record, which loses the headers and the producer state of every one of
  * them, and a `LogAppendTime` batch is rebuilt with that append time stamped on every single message.
  *
- * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)" and "RecordBatch (message format v2)"
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)" and "RecordBatch (message format v2)"
  */
 final class FetchRequestV3 extends FetchRequest
 {

@@ -1,13 +1,13 @@
 {
     "api": "describe-log-dirs",
     "apiKey": 35,
-    "section": "DescribeLogDirs API (key 35, v0)",
-    "description": "Wire vectors of the DescribeLogDirs API (key 35, v0), replayed by tests/Compliance.",
+    "section": "DescribeLogDirs API (key 35, v0 to v2)",
+    "description": "Wire vectors of the DescribeLogDirs API (key 35, v0 to v2), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describelogdirs.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeLogDirs request v0 that asks for one partition of one topic, so that the answer names only the directory that holds it.",
@@ -31,7 +31,7 @@
         {
             "id": "describelogdirs.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeLogDirs response v0 of the two-directory container: both log directories are reported, one of them holding the requested replica with its size and an offset lag of 0, the other one with an empty topic array.",
@@ -69,7 +69,7 @@
         {
             "id": "describelogdirs.request.v0.all-partitions",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeLogDirs request v0 with a null topic array, which asks for every replica of every log directory of the broker; its answer is not captured, because it carries every partition of the container.",
@@ -86,7 +86,7 @@
         {
             "id": "describelogdirs.request.v0.no-partitions",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeLogDirs request v0 with an empty topic array, which asks for no replica at all.",
@@ -103,7 +103,7 @@
         {
             "id": "describelogdirs.response.v0.no-partitions",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeLogDirs response v0 to an empty topic array: the two log directories of the container, both online and both with an empty topic array.",
@@ -129,7 +129,7 @@
         {
             "id": "describelogdirs.response.v0.future",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV0",
             "version": 0,
             "source": "broker",
             "description": "DescribeLogDirs response v0 while a replica move runs: the partition is reported twice, as the current log of the source directory (`is_future = false`, `offset_lag = 0`) and as the future log of the destination, whose `offset_lag` is the number of records the mover still has to copy.",
@@ -174,6 +174,168 @@
                         }
                     }
                 }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "DescribeLogDirs request v1, the frame of version 0 with the api version Kafka 2.0 added: one named partition of one topic.",
+            "hex": "0000002f00230001000001fa000a74342d766563746f727300000001000d74342d32302d766563746f72730000000100000000",
+            "fields": {
+                "messageSize": 47,
+                "apiKey": 35,
+                "apiVersion": 1,
+                "correlationId": 506,
+                "clientId": "t4-vectors",
+                "topics": {
+                    "t4-20-vectors": {
+                        "topic": "t4-20-vectors",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV1",
+            "version": 1,
+            "source": "constructed",
+            "description": "DescribeLogDirs response v1 for one named partition: the two log directories of the container, the one that holds the replica with its size and its offset lag, the other one with an empty topic array. This is the ONE vector of this line that is not a captured frame: a 2.8.2 broker groups **every** log of a directory by topic and only filters the partitions inside those groups (`ReplicaManager.describeLogDirs` @ 2.8.2), so the answer of the shared container named a hundred topics of other test suites with empty partition arrays. The frame below is that answer with the foreign topics removed and re-encoded by the client.",
+            "hex": "00000064000001fa00000000000000020000000f2f746d702f6b61666b612d6c6f677300000000000000112f746d702f6b61666b612d6c6f67732d3200000001000d74342d32302d766563746f72730000000100000000000000000000006d000000000000000000",
+            "fields": {
+                "messageSize": 100,
+                "correlationId": 506,
+                "throttleTimeMs": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": []
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": {
+                            "t4-20-vectors": {
+                                "topic": "t4-20-vectors",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "size": 109,
+                                        "offsetLag": 0,
+                                        "isFuture": false
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeLogDirs request v2, the first **flexible** version of the api (KIP-482, Kafka 2.6): the same two fields in the compact encoding, with the request header v2 and a tagged-field section at the end of the header, of the topic entry and of the body. One named partition of one topic.",
+            "hex": "0000002b00230002000003b7000a74342d766563746f727300020e74342d32362d6c6f676469727302000000000000",
+            "fields": {
+                "messageSize": 43,
+                "apiKey": 35,
+                "apiVersion": 2,
+                "correlationId": 951,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-26-logdirs": {
+                        "topic": "t4-26-logdirs",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 2,
+            "source": "constructed",
+            "description": "DescribeLogDirs answer v2 for one named partition: both log directories of the container, the one that holds the replica with its size and its offset lag and the other one with an empty topic array, every structure closed by its tagged-field section. Like its version 1 counterpart this is a **constructed** frame: a 2.8.2 broker groups every topic of a log directory into the answer, whatever the request asked for (11 493 bytes and 406 topics when it was captured), so the topics of the other suites were removed from it.",
+            "hex": "0000005b000003b70000000000030000102f746d702f6b61666b612d6c6f6773020e74342d32362d6c6f6764697273020000000000000000000000000000000000000000000000000000122f746d702f6b61666b612d6c6f67732d32010000",
+            "fields": {
+                "messageSize": 91,
+                "correlationId": 951,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": {
+                            "t4-26-logdirs": {
+                                "topic": "t4-26-logdirs",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "size": 0,
+                                        "offsetLag": 0,
+                                        "isFuture": false
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v2.no-partitions",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeLogDirs request v2 with an EMPTY topic array, which asks for no replica at all: the cheapest way to ask which directories a broker has. The empty compact array is the single byte `01`, where the version 1 wrote the four bytes `00 00 00 00`.",
+            "hex": "0000001700230002000003b8000a74342d766563746f7273000100",
+            "fields": {
+                "messageSize": 23,
+                "apiKey": 35,
+                "apiVersion": 2,
+                "correlationId": 952,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": []
+            }
+        },
+        {
+            "id": "describelogdirs.request.v2.all-partitions",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 2,
+            "source": "broker",
+            "description": "DescribeLogDirs request v2 with a NULL topic array, which asks for every replica of every directory - the request the Java admin client always sends. The compact null is the single byte `00`, so the whole frame is 15 bytes; its answer names every topic of the container and is not a vector of this document.",
+            "hex": "0000001700230002000003b9000a74342d766563746f7273000000",
+            "fields": {
+                "messageSize": 23,
+                "apiKey": 35,
+                "apiVersion": 2,
+                "correlationId": 953,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "topics": null
             }
         }
     ]

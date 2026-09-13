@@ -52,7 +52,7 @@ use RuntimeException;
  * The session state that these tests look at is the {@see FetchSessionHandler} of the client, which
  * {@see SessionAwareConsumer} exposes; everything else is the consumer of the package.
  *
- * @see docs/protocol/1.1.md, section "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, section "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchSessionHandler::class)]
 #[CoversClass(FetchSessionHandlerBuilder::class)]

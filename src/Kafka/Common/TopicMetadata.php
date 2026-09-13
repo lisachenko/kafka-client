@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * entries, which is what {@see self::partitionClass()} picks: version 5 of the api (Kafka 1.0, KIP-112/113)
  * appended `OfflineReplicas` to them, the versions 1 to 4 ({@see TopicMetadataV1}) do not carry it.
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
  */
 class TopicMetadata implements BinarySchemaInterface
 {
@@ -48,7 +48,7 @@ class TopicMetadata implements BinarySchemaInterface
     /**
      * Version of the Metadata API that this entry is unpacked from
      */
-    public const int VERSION = 5;
+    public const int VERSION = 10;
 
     /**
      * The error code for the given topic.
@@ -62,6 +62,19 @@ class TopicMetadata implements BinarySchemaInterface
      * The name of the topic
      */
     public string $topic = '';
+
+    /**
+     * Id of the topic, the 16 raw bytes of the `uuid` of KIP-516 (Kafka 2.8).
+     *
+     * An id is given to a topic when it is created and it does **not** survive a delete: a topic that is deleted
+     * and created again under the same name gets a new one, which is the whole point of KIP-516 - a broker that
+     * missed the deletion can tell the two apart, while the name alone cannot. {@see Uuid} formats the bytes the
+     * way a broker and `kafka-topics.sh --describe` print them, and {@see Uuid::ZERO} is both "this answer has
+     * no id for the topic" and what every version below 10 leaves here.
+     *
+     * @since Version 10 of protocol (Kafka 2.8, KIP-516)
+     */
+    public string $topicId = Uuid::ZERO;
 
     /**
      * Whether the topic is considered a Kafka internal topic, null when the answer was a version 0 one.
@@ -78,6 +91,18 @@ class TopicMetadata implements BinarySchemaInterface
     public array $partitions = [];
 
     /**
+     * Operations the principal of this connection is authorized for on this topic, as the bitfield of KIP-430.
+     *
+     * {@see AclOperation} is both halves of the field: the codes and the two helpers that pack and unpack the
+     * bitfield. {@see AclOperation::NOT_REQUESTED} (`Integer.MIN_VALUE`) is what a broker writes when the request
+     * did not set `include_topic_authorized_operations`, and what every answer below version 8 leaves here - "you
+     * did not ask", which is not the same as the bitfield 0, "you may do nothing".
+     *
+     * @since Version 8 of protocol (Kafka 2.3, KIP-430)
+     */
+    public int $authorizedOperations = AclOperation::NOT_REQUESTED;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -86,12 +111,20 @@ class TopicMetadata implements BinarySchemaInterface
             'topicErrorCode' => BinarySchema::TYPE_INT16,
             'topic'          => BinarySchema::TYPE_STRING,
         ];
+        // The topic id of KIP-516 sits between the name and `is_internal`, which is the field order of
+        // `MetadataResponse.json` @ 2.8.2 and therefore the wire order
+        if (static::VERSION >= 10) {
+            $scheme['topicId'] = BinarySchema::TYPE_UUID;
+        }
         if (static::VERSION >= 1) {
             $scheme['isInternal'] = BinarySchema::TYPE_BOOLEAN;
         }
         // A broker does not promise any ordering for the partitions, so they are indexed by their id: the
         // cluster looks a partition up by number, see Cluster::partition() and Cluster::leaderFor()
         $scheme['partitions'] = ['partitionId' => static::partitionClass()];
+        if (static::VERSION >= 8) {
+            $scheme['authorizedOperations'] = BinarySchema::TYPE_INT32;
+        }
 
         return $scheme;
     }
@@ -103,6 +136,10 @@ class TopicMetadata implements BinarySchemaInterface
      */
     protected static function partitionClass(): string
     {
-        return static::VERSION >= 5 ? PartitionMetadata::class : PartitionMetadataV0::class;
+        return match (true) {
+            static::VERSION >= 7 => PartitionMetadata::class,
+            static::VERSION >= 5 => PartitionMetadataV5::class,
+            default              => PartitionMetadataV0::class,
+        };
     }
 }

@@ -16,12 +16,14 @@ namespace Protocol\Kafka\Tests\Unit\Admin;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\MemberToRemove;
 use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
+use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
 use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
@@ -30,11 +32,15 @@ use Protocol\Kafka\Common\Errors\InvalidPartitionsException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\NotControllerException;
 use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
+use Protocol\Kafka\Common\Errors\ThrottlingQuotaExceededException;
+use Protocol\Kafka\Common\Errors\TopicAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
+use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
@@ -44,6 +50,7 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeGroupsRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
+use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
@@ -62,7 +69,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * disagree about what a broker says. The scripted connection echoes the correlation id of each request the way a
  * broker does, which is what the client validates the answer against.
  *
- * @see docs/protocol/1.1.md, section "Wire vectors"
+ * @see docs/protocol/2.8.md, section "Wire vectors"
  */
 #[CoversClass(AdminClient::class)]
 final class AdminClientTest extends TestCase
@@ -93,20 +100,45 @@ final class AdminClientTest extends TestCase
     private const string UNKNOWN_GROUP = 't4-vectors-unknown-group';
 
     /**
-     * ListGroups answer v1 of a coordinator that is still reading `__consumer_offsets`: error code 14, no groups
+     * ListGroups answer v3 of a coordinator that is still reading `__consumer_offsets`: error code 14, no groups
+     *
+     * The answer is flexible (KIP-482): the response header v1 carries a tag buffer, the group array is compact -
+     * `01` is the empty one - and the body ends in a tagged-field section of its own.
      */
-    private const string LOADING_GROUPS_RESPONSE = '0000000e' . '00000000' . '00000000' . '000e' . '00000000';
+    private const string LOADING_GROUPS_RESPONSE = '0000000d'
+        . '00000000'
+        . '00'
+        . '00000000'
+        . '000e'
+        . '01'
+        . '00';
 
     /**
      * DescribeGroups answer v1 of a broker that is not the coordinator of `t4-vectors-group`: group error 16
      */
-    private const string NOT_COORDINATOR_RESPONSE = '0000002a' . '00000000' . '00000000' . '00000001'
-        . '0010' . '0010' . '74342d766563746f72732d67726f7570' . '0000' . '0000' . '0000' . '00000000';
+    private const string NOT_COORDINATOR_RESPONSE = '00000027'
+        . '00000000'
+        . '00'
+        . '00000000'
+        . '02'
+        . '0010'
+        . '11' . '74342d766563746f72732d67726f7570'
+        . '01' . '01' . '01'
+        . '01'
+        // `authorized_operations` of the version 3 entry (KIP-430): Integer.MIN_VALUE, not asked for
+        . '80000000'
+        . '00'
+        . '00';
 
     /**
      * DescribeGroups answer without an entry for the group that was asked about
      */
-    private const string EMPTY_GROUPS_RESPONSE = '0000000c' . '00000000' . '00000000' . '00000000';
+    private const string EMPTY_GROUPS_RESPONSE = '0000000b'
+        . '00000000'
+        . '00'
+        . '00000000'
+        . '01'
+        . '00';
 
     /**
      * Address the cluster is bootstrapped from
@@ -243,7 +275,7 @@ final class AdminClientTest extends TestCase
     public function testListGroupOffsetsAsksTheCoordinatorAndReturnsTheCommittedOffsets(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]])
         );
 
@@ -273,7 +305,7 @@ final class AdminClientTest extends TestCase
     public function testListGroupOffsetsAsksForEveryTopicOfTheGroupWithoutPartitions(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]])
         );
 
@@ -294,7 +326,7 @@ final class AdminClientTest extends TestCase
     public function testListGroupOffsetsReportsTheGroupLevelErrorOfVersionTwo(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             ResponseFrame::offsetFetch(0, [], KafkaException::NOT_COORDINATOR_FOR_GROUP)
         );
 
@@ -325,7 +357,7 @@ final class AdminClientTest extends TestCase
 
     public function testFindCoordinatorResolvesTheNodeOfTheCluster(): void
     {
-        $this->scriptBroker(self::vector('group-coordinator', 'groupcoordinator.response.v1'));
+        $this->scriptBroker(self::vector('group-coordinator', 'groupcoordinator.response.v3'));
 
         $coordinator = $this->adminClient()->findCoordinator(self::GROUP);
 
@@ -337,7 +369,7 @@ final class AdminClientTest extends TestCase
     public function testControlledShutdownThrowsTheErrorCodeOfTheController(): void
     {
         // A 0.9.0.1 controller answers an unknown broker id with the code 8, where 0.8.2.2 answered -1
-        $broker = $this->scriptBroker(self::vector('controlled-shutdown', 'controlledshutdown.response.v1'));
+        $broker = $this->scriptBroker(self::vector('controlled-shutdown', 'controlledshutdown.response.v3'));
         $admin  = $this->adminClient();
 
         try {
@@ -349,7 +381,12 @@ final class AdminClientTest extends TestCase
 
         // The admin client sends version 1, the version whose header carries the client id
         self::assertSame(
-            [self::requestFrame(new ControlledShutdownRequest(4242, 't10', $broker->getReceivedCorrelationIds()[0]))],
+            [self::requestFrame(new ControlledShutdownRequest(
+                4242,
+                ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
+                't10',
+                $broker->getReceivedCorrelationIds()[0]
+            ))],
             $broker->getReceivedFrames()
         );
     }
@@ -413,10 +450,52 @@ final class AdminClientTest extends TestCase
         self::assertSame(2, $broker->getRequestCount(), 'one Metadata request and one ListGroups request per broker');
     }
 
+    /**
+     * KIP-518 (Kafka 2.6): the answer carries the state of every group, and the request may bound it to some
+     */
+    public function testListGroupsReportsTheStateOfEveryGroupAndCanBeBoundedToSome(): void
+    {
+        $broker = $this->scriptBroker(
+            self::topicMetadata(),
+            ResponseFrame::listGroups(0, [self::ADMIN_GROUP => ['consumer', 'Empty']])
+        );
+        $admin  = $this->adminClient();
+        $node   = $admin->findAllBrokers()[0];
+
+        $groups = $admin->listGroups($node, [DescribeGroupResponseMetadata::STATE_EMPTY]);
+
+        self::assertSame('Empty', $groups[self::ADMIN_GROUP]->groupState);
+        self::assertSame(
+            self::requestFrame(new ListGroupsRequest('t10', $broker->getReceivedCorrelationIds()[1], ['Empty'])),
+            $broker->getReceivedFrames()[1],
+            'the states of the filter are the only field the request has ever carried'
+        );
+    }
+
+    /**
+     * And `listConsumerGroups()` keeps the groups a consumer could have created, whatever else the broker holds
+     */
+    public function testListConsumerGroupsLeavesOutTheGroupsOfAnotherProtocolType(): void
+    {
+        $this->scriptBroker(
+            self::topicMetadata(),
+            ResponseFrame::listGroups(0, [
+                self::ADMIN_GROUP => ['consumer', 'Stable'],
+                'connect-sink'    => ['connect', 'Stable'],
+                'no-protocol'     => ['', 'Empty'],
+            ])
+        );
+
+        $groups = $this->adminClient()->listConsumerGroups();
+
+        self::assertSame([self::ADMIN_GROUP], array_keys($groups), 'only the consumer group is a consumer group');
+        self::assertSame('Stable', $groups[self::ADMIN_GROUP]->groupState);
+    }
+
     public function testDescribeGroupAsksTheCoordinatorOfTheGroup(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             self::stableGroup(self::ADMIN_GROUP)
         );
 
@@ -447,7 +526,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupReportsAnUnknownGroupAsDead(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             ResponseFrame::describeGroups(0, [self::UNKNOWN_GROUP => [0, 'Dead', '', '', []]])
         );
 
@@ -461,7 +540,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupThrowsTheErrorCodeOfTheGroup(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             (string) hex2bin(self::NOT_COORDINATOR_RESPONSE)
         );
 
@@ -473,7 +552,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupThrowsWhenTheAnswerHasNoEntryForTheGroup(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             (string) hex2bin(self::EMPTY_GROUPS_RESPONSE)
         );
 
@@ -485,7 +564,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupsAsksTheGroupsOfOneCoordinatorWithASingleRequest(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             self::stableGroup(self::ADMIN_GROUP)
         );
 
@@ -607,6 +686,57 @@ final class AdminClientTest extends TestCase
 
         self::assertInstanceOf(NotControllerException::class, $result['t7-moved']);
         self::assertSame(2, $first->getRequestCount(), 'the request was repeated once and not a third time');
+    }
+
+    /**
+     * KIP-599, Kafka 2.7: the 89 is answered at once and the client repeats the request itself
+     */
+    public function testATopicTheControllerMutationQuotaRefusedIsRequestedAgain(): void
+    {
+        [$controller] = $this->scriptCluster(
+            [
+                self::deleteTopicsResponse(['t7-throttled' => KafkaException::THROTTLING_QUOTA_EXCEEDED]),
+                self::deleteTopicsResponse(['t7-throttled' => KafkaException::NO_ERROR]),
+            ],
+            []
+        );
+
+        $result = $this->adminClient([ClientConfig::RETRIES => 3])->deleteTopics(['t7-throttled'], 5000);
+
+        self::assertNull($result['t7-throttled'], 'the second attempt was accepted');
+        self::assertCount(2, $controller->getReceivedFrames(), 'and the client sent the request twice');
+    }
+
+    /**
+     * The retries of the configuration bound it: a broker that keeps refusing is reported, not looped on
+     */
+    public function testATopicThatStaysThrottledIsReportedWithTheErrorOfTheLastAttempt(): void
+    {
+        [$controller] = $this->scriptCluster(
+            array_fill(0, 3, self::deleteTopicsResponse(['t7-throttled' => KafkaException::THROTTLING_QUOTA_EXCEEDED])),
+            []
+        );
+
+        $result = $this->adminClient([ClientConfig::RETRIES => 2])->deleteTopics(['t7-throttled'], 5000);
+
+        self::assertInstanceOf(ThrottlingQuotaExceededException::class, $result['t7-throttled']);
+        self::assertCount(3, $controller->getReceivedFrames(), 'the first attempt and the two retries');
+    }
+
+    public function testTheErrorMessageOfADeletedTopicIsReadFromTheVersionFiveAnswer(): void
+    {
+        $this->scriptCluster(
+            [self::deleteTopicsResponse(
+                ['t7-refused' => KafkaException::TOPIC_AUTHORIZATION_FAILED],
+                'Topic authorization failed.'
+            )],
+            []
+        );
+
+        $error = $this->adminClient()->deleteTopics(['t7-refused'], 5000)['t7-refused'];
+
+        self::assertInstanceOf(TopicAuthorizationFailedException::class, $error);
+        self::assertSame('Topic authorization failed.', $error->getContext()['error'] ?? null);
     }
 
     public function testDeleteTopicsReportsTheErrorOfEveryTopicOfTheAnswer(): void
@@ -743,12 +873,67 @@ final class AdminClientTest extends TestCase
         self::assertInstanceOf(UnknownErrorException::class, $result['t7-missing']);
     }
 
+    /**
+     * The batch leave of KIP-345: every member is reported on its own, and a refused one throws nothing
+     */
+    public function testRemoveMembersFromConsumerGroupReportsEveryMemberOfTheBatch(): void
+    {
+        $broker = $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::leaveGroup(0, KafkaException::NO_ERROR, [
+                ''         => ['t10-instance', KafkaException::NO_ERROR],
+                'member-9' => [null, KafkaException::UNKNOWN_MEMBER_ID],
+            ])
+        );
+
+        $result = $this->adminClient()->removeMembersFromConsumerGroup(self::ADMIN_GROUP, [
+            't10-instance',
+            MemberToRemove::byMemberId('member-9'),
+        ]);
+
+        self::assertSame(['t10-instance', 'member-9'], array_keys($result), 'keyed by the identity of the member');
+        self::assertNull($result['t10-instance'], 'a plain string names a member by its group.instance.id');
+        self::assertInstanceOf(UnknownMemberIdException::class, $result['member-9']);
+        self::assertSame(
+            ['groupId' => self::ADMIN_GROUP, 'memberId' => 'member-9', 'groupInstanceId' => null],
+            $result['member-9']->getContext()
+        );
+        self::assertSame(
+            self::requestFrame(new LeaveGroupRequest(
+                self::ADMIN_GROUP,
+                [
+                    new LeaveGroupRequestMember(LeaveGroupRequestMember::UNKNOWN_MEMBER_ID, 't10-instance'),
+                    new LeaveGroupRequestMember('member-9'),
+                ],
+                't10',
+                $broker->getReceivedCorrelationIds()[1]
+            )),
+            $broker->getReceivedFrames()[1],
+            'one batch request removes both members'
+        );
+    }
+
+    /**
+     * The top-level error code is the one of the request, and that one is thrown
+     */
+    public function testRemoveMembersFromConsumerGroupThrowsTheErrorOfTheRequestItself(): void
+    {
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::leaveGroup(0, KafkaException::GROUP_AUTHORIZATION_FAILED, [])
+        );
+
+        $this->expectException(GroupAuthorizationFailedException::class);
+
+        $this->adminClient()->removeMembersFromConsumerGroup(self::ADMIN_GROUP, ['t10-instance']);
+    }
+
     public function testDeleteConsumerGroupsAsksTheCoordinatorAndReportsEveryGroup(): void
     {
         // A coordinator is looked up for every group of the call, and the groups that share one travel together
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             self::deleteGroupsResponse([
                 self::ADMIN_GROUP   => KafkaException::NO_ERROR,
                 self::UNKNOWN_GROUP => KafkaException::GROUP_ID_NOT_FOUND,
@@ -786,7 +971,7 @@ final class AdminClientTest extends TestCase
     public function testDeleteConsumerGroupsReportsAGroupThatStillHasMembers(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             self::deleteGroupsResponse([self::ADMIN_GROUP => KafkaException::NON_EMPTY_GROUP])
         );
 
@@ -803,7 +988,7 @@ final class AdminClientTest extends TestCase
     public function testDeleteConsumerGroupsLooksACoordinatorUpOnlyOncePerGroup(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             self::deleteGroupsResponse([self::ADMIN_GROUP => KafkaException::NO_ERROR])
         );
 
@@ -816,7 +1001,7 @@ final class AdminClientTest extends TestCase
     public function testAGroupTheCoordinatorDidNotAnswerForIsAnUnknownError(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v1'),
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
             self::deleteGroupsResponse([])
         );
 
@@ -885,69 +1070,109 @@ final class AdminClientTest extends TestCase
     }
 
     /**
-     * Builds a CreateTopics answer of version 2, i.e. the entries of version 1 behind the throttle time
+     * Builds a CreateTopics answer of version **7**, the flexible one the client sends (KIP-482 and KIP-525)
+     *
+     * The frame is the response header v1 - a correlation id and a tag buffer - followed by the throttle time, a
+     * COMPACT array of topic results and the tag buffer of the body. Every result ends in the partition count, the
+     * replication factor, a NULL configuration array and a tag buffer of its own; the tagged
+     * `topic_config_error_code` is left out, exactly as the broker leaves it out when it is 0.
      *
      * @param array<string, array{0: int, 1: string|null}> $topics Error code and message of every topic
      */
     private static function createTopicsResponse(array $topics): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => [$errorCode, $errorMessage]) {
-            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
-            $body .= $errorMessage === null
-                ? pack('n', 0xFFFF)
-                : pack('n', strlen($errorMessage)) . $errorMessage;
+            // The version 7 of Kafka 2.8 put the topic id of KIP-516 between the name and the error code
+            $body .= self::compactString((string) $topic) . str_repeat("\x00", 16) . pack('n', $errorCode);
+            $body .= self::compactNullableString($errorMessage);
+            $body .= pack('N', 0xFFFFFFFF) . pack('n', 0xFFFF) . "\x00" . "\x00";
         }
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $body . "\x00");
     }
 
     /**
-     * Builds a DeleteTopics answer of version 1, i.e. the entries of version 0 behind the throttle time
+     * An unsigned varint of KIP-482: the value itself, seven bits per byte, least significant group first
+     */
+    private static function unsignedVarint(int $value): string
+    {
+        $bytes = '';
+        while (($value & ~0x7F) !== 0) {
+            $bytes .= chr(($value & 0x7F) | 0x80);
+            $value >>= 7;
+        }
+
+        return $bytes . chr($value);
+    }
+
+    /**
+     * A string of a flexible version: the length plus one as an unsigned varint, then the bytes
+     */
+    private static function compactString(string $value): string
+    {
+        return self::unsignedVarint(strlen($value) + 1) . $value;
+    }
+
+    /**
+     * The same, with the 0 that means null
+     */
+    private static function compactNullableString(?string $value): string
+    {
+        return $value === null ? "\x00" : self::compactString($value);
+    }
+
+    /**
+     * Builds a DeleteTopics answer of version **6**, the one the client sends since Kafka 2.8 (KIP-516)
      *
      * @param array<string, int> $topics Error code of every topic
      */
-    private static function deleteTopicsResponse(array $topics): string
+    private static function deleteTopicsResponse(array $topics, ?string $errorMessage = null): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => $errorCode) {
-            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
+            // The version 5 of Kafka 2.7 appended an error message to every topic result; the broker sends the
+            // compact null of it for a topic it deleted
+            // The version 6 of Kafka 2.8 put the topic id of KIP-516 between the name and the error code
+            $body .= self::compactString((string) $topic) . str_repeat("\x00", 16) . pack('n', $errorCode)
+                . self::compactNullableString($errorMessage) . "\x00";
         }
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $body . "\x00");
     }
 
     /**
-     * Builds a CreatePartitions answer of version 0: the throttle time and one entry per topic
+     * Builds a CreatePartitions answer of version **2**, the flexible one the client sends (KIP-482)
      *
      * @param array<string, array{0: int, 1: string|null}> $topics Error code and message of every topic
      */
     private static function createPartitionsResponse(array $topics): string
     {
-        $body = pack('N', 0) . pack('N', count($topics));
+        $body = "\x00" . pack('N', 0) . self::unsignedVarint(count($topics) + 1);
         foreach ($topics as $topic => [$errorCode, $errorMessage]) {
-            $body .= pack('n', strlen((string) $topic)) . $topic . pack('n', $errorCode);
-            $body .= $errorMessage === null
-                ? pack('n', 0xFFFF)
-                : pack('n', strlen($errorMessage)) . $errorMessage;
+            $body .= self::compactString((string) $topic) . pack('n', $errorCode);
+            $body .= self::compactNullableString($errorMessage) . "\x00";
         }
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $body . "\x00");
     }
 
     /**
-     * Builds a DeleteGroups answer of version 0: the throttle time and one entry per group
+     * Builds a DeleteGroups answer of version 2, the flexible one this client sends (KIP-482): the throttle time
+     * and one compact entry per group, every structure closed by its tagged-field section
      *
      * @param array<string, int> $groups Error code of every group
      */
     private static function deleteGroupsResponse(array $groups): string
     {
-        $body = pack('N', 0) . pack('N', count($groups));
+        $body = pack('N', 0) . ResponseFrame::compactCount(count($groups));
         foreach ($groups as $groupId => $errorCode) {
-            $body .= pack('n', strlen((string) $groupId)) . $groupId . pack('n', $errorCode);
+            $body .= ResponseFrame::compactString((string) $groupId)
+                . pack('n', $errorCode)
+                . ResponseFrame::tagBuffer();
         }
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::flexible(0, $body);
     }
 
     /**

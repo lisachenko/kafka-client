@@ -1,0 +1,57 @@
+{
+    "api": "update-features",
+    "apiKey": 57,
+    "section": "UpdateFeatures API (key 57, v0)",
+    "description": "Wire vectors of the UpdateFeatures API (key 57, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "updatefeatures.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "UpdateFeatures request v0 that asks the controller to finalize the feature `t1-nonsense` at the version level 1 without allowing a downgrade. Flexible from the version 0; the `timeout_ms` of 60000 opens the body.",
+            "hex": "00000038003900000000239300176b61666b612d636c69656e742d74312d766563746f7273000000ea60020c74312d6e6f6e73656e73650001000000",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 57,
+                "apiVersion": 0,
+                "correlationId": 9107,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "featureUpdates": {
+                    "t1-nonsense": {
+                        "feature": "t1-nonsense",
+                        "maxVersionLevel": 1,
+                        "allowDowngrade": false
+                    }
+                }
+            }
+        },
+        {
+            "id": "updatefeatures.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\UpdateFeaturesResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the container: the top-level code **0** - the controller did look at the request - and the per-feature code **42** (`InvalidRequest`) with *\"Could not apply finalized feature update because the provided feature is not supported.\"* A ZooKeeper-backed Kafka 2.8.2 broker supports **no feature at all**, so this is the answer to every feature name, not only to a nonsensical one.",
+            "hex": "00000075000023930000000000000000020c74312d6e6f6e73656e7365002a58436f756c64206e6f74206170706c792066696e616c697a65642066656174757265207570646174652062656361757365207468652070726f76696465642066656174757265206973206e6f7420737570706f727465642e0000",
+            "fields": {
+                "messageSize": 117,
+                "correlationId": 9107,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "results": {
+                    "t1-nonsense": {
+                        "feature": "t1-nonsense",
+                        "errorCode": 42,
+                        "errorMessage": "Could not apply finalized feature update because the provided feature is not supported."
+                    }
+                }
+            }
+        }
+    ]
+}

@@ -20,15 +20,25 @@ use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV0;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV1;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV2;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
+use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV0;
+use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV1;
+use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV2;
 
 /**
  * Byte-exact tests for the InitProducerId API of Kafka 0.11 (api key 22, v0).
  *
- * @see docs/protocol/1.1.md, section "InitProducerId API (key 22, v0)"
+ * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v4)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
+#[CoversClass(InitProducerIdRequestV0::class)]
 #[CoversClass(InitProducerIdResponse::class)]
+#[CoversClass(InitProducerIdResponseV0::class)]
+#[CoversClass(InitProducerIdRequestV2::class)]
+#[CoversClass(InitProducerIdResponseV2::class)]
 final class InitProducerIdTest extends TestCase
 {
     /**
@@ -36,7 +46,7 @@ final class InitProducerIdTest extends TestCase
      *
      *   Size                 => 00 00 00 14 (20 bytes)
      *   ApiKey               => 00 16 (22)
-     *   ApiVersion           => 00 00
+     *   ApiVersion           => 00 01
      *   CorrelationId        => 00 00 00 07
      *   ClientId             => 00 04 "test"
      *   TransactionalId      => ff ff (null)
@@ -44,7 +54,7 @@ final class InitProducerIdTest extends TestCase
      */
     private const string REQUEST_HEX = '00000014'
         . '0016'
-        . '0000'
+        . '0001'
         . '00000007'
         . '0004' . '74657374'
         . 'ffff'
@@ -59,7 +69,7 @@ final class InitProducerIdTest extends TestCase
      */
     private const string TRANSACTIONAL_REQUEST_HEX = '00000019'
         . '0016'
-        . '0000'
+        . '0001'
         . '00000008'
         . '0004' . '74657374'
         . '0005' . '74782d3432'
@@ -92,15 +102,123 @@ final class InitProducerIdTest extends TestCase
         . 'ffffffffffffffff'
         . 'ffff';
 
+    /**
+     * The same request as the **flexible** version 2 of Kafka 2.4, which is what this client sends.
+     *
+     *   Size                 => 00 00 00 15 (21 bytes)
+     *   ApiVersion           => 00 02
+     *   ClientId             => 00 04 "test"   (int16 length even here)
+     *   TAG_BUFFER           => 00             (of the request header v2)
+     *   TransactionalId      => 00             (the compact null, one byte instead of two)
+     *   TransactionTimeoutMs => 00 00 ea 60
+     *   TAG_BUFFER           => 00             (of the body)
+     */
+    private const string REQUEST_V2_HEX = '00000015'
+        . '0016'
+        . '0002'
+        . '00000007'
+        . '0004' . '74657374'
+        . '00'
+        . '00'
+        . '0000ea60'
+        . '00';
+
+    /**
+     * The version 2 answer: the same four fields between the tag buffer of the response header v1 and the one of
+     * the body - not one of them is a string or an array, so the compact encoding costs two bytes and saves none.
+     */
+    private const string RESPONSE_V2_HEX = '00000016'
+        . '00000007'
+        . '00'
+        . '00000000'
+        . '0000'
+        . '00000000000007d0'
+        . '0003'
+        . '00';
+
     public function testTheRequestOfAnIdempotentProducerCarriesANullTransactionalId(): void
     {
-        $request = new InitProducerIdRequest(null, 60000, 'test', 7);
+        $request = new InitProducerIdRequestV1(null, 60000, 'test', 7);
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::INIT_PRODUCER_ID, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion());
+        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.0 raised the api to version 1 (KIP-219)');
         self::assertNull($request->getTransactionalId());
         self::assertSame(60000, $request->getTransactionTimeoutMs());
+    }
+
+    /**
+     * Version 2 is the same two fields in the flexible encoding of Kafka 2.4, and it is what the client sends
+     */
+    public function testTheRequestOfVersionTwoIsCompact(): void
+    {
+        $request = new InitProducerIdRequestV2(null, 60000, 'test', 7);
+
+        self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
+        self::assertSame(2, $request->getApiVersion(), 'Kafka 2.4 raised the api to the flexible version 2');
+        self::assertTrue(InitProducerIdRequestV2::isFlexible());
+        self::assertNull($request->getTransactionalId(), 'the compact null of a string is the single byte 00');
+
+        $response = InitProducerIdResponseV2::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+
+        self::assertSame(2000, $response->producerId);
+        self::assertSame(3, $response->producerEpoch);
+        self::assertSame(self::RESPONSE_V2_HEX, bin2hex((string) $response));
+    }
+
+    /**
+     * KIP-360, Kafka 2.5: the version 3 appends the pair the producer holds, and -1/-1 asks for a new id
+     */
+    public function testTheRequestOfVersionThreeCarriesTheProducerIdAndEpochOfKip360(): void
+    {
+        $fresh = new InitProducerIdRequest('tx-42', 30000, clientId: 'test', correlationId: 8);
+
+        self::assertSame(4, $fresh->getApiVersion(), 'Kafka 2.7 raised the api to the version 4 of KIP-588');
+        self::assertSame(InitProducerIdRequest::NO_PRODUCER_ID, $fresh->getProducerId());
+        self::assertSame(InitProducerIdRequest::NO_PRODUCER_EPOCH, $fresh->getProducerEpoch());
+        self::assertStringEndsWith(
+            '00007530' . 'ffffffffffffffff' . 'ffff' . '00',
+            bin2hex((string) $fresh),
+            'the -1/-1 of a producer that asks for a new id, then the tag buffer of the body'
+        );
+
+        $bump = new InitProducerIdRequest('tx-42', 30000, 361, 10, 'test', 8);
+
+        self::assertSame(361, $bump->getProducerId());
+        self::assertSame(10, $bump->getProducerEpoch());
+        self::assertStringEndsWith(
+            '00007530' . '0000000000000169' . '000a' . '00',
+            bin2hex((string) $bump),
+            'and a bump names the id and the epoch the producer holds'
+        );
+        self::assertSame(
+            bin2hex((string) $bump),
+            bin2hex((string) InitProducerIdRequest::unpack(new StringStream((string) $bump))),
+            'the request survives a decode and encode round trip'
+        );
+    }
+
+    /**
+     * The answer of version 3 is the answer of version 2, and an epoch bump the coordinator refuses is the 47
+     */
+    public function testTheAnswerOfVersionThreeBumpsTheEpochOrRefusesTheBumpWithA47(): void
+    {
+        // Both captured on the container, with the transactional id `t4-25-vectors-tx`
+        $bumped = InitProducerIdResponse::unpack(new StringStream(
+            (string) hex2bin('0000001600000387000000000000000000000000000169000b00')
+        ));
+
+        self::assertSame(KafkaException::NO_ERROR, $bumped->errorCode);
+        self::assertSame(361, $bumped->producerId, 'the same producer id');
+        self::assertSame(11, $bumped->producerEpoch, 'one epoch higher than the request named');
+
+        $fenced = InitProducerIdResponse::unpack(new StringStream(
+            (string) hex2bin('00000016000003880000000000002fffffffffffffffffffff00')
+        ));
+
+        self::assertSame(KafkaException::INVALID_PRODUCER_EPOCH, $fenced->errorCode);
+        self::assertSame(-1, $fenced->producerId);
+        self::assertSame(-1, $fenced->producerEpoch);
     }
 
     public function testTheTransactionTimeoutIsTheJavaDefaultOfOneMinute(): void
@@ -108,13 +226,13 @@ final class InitProducerIdTest extends TestCase
         self::assertSame(60000, InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS);
         self::assertSame(
             InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS,
-            new InitProducerIdRequest()->getTransactionTimeoutMs()
+            new InitProducerIdRequestV2()->getTransactionTimeoutMs()
         );
     }
 
     public function testTheRequestOfATransactionalProducerCarriesItsId(): void
     {
-        $request = new InitProducerIdRequest('tx-42', 30000, 'test', 8);
+        $request = new InitProducerIdRequestV1('tx-42', 30000, 'test', 8);
 
         self::assertSame(self::TRANSACTIONAL_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame('tx-42', $request->getTransactionalId());
@@ -122,7 +240,7 @@ final class InitProducerIdTest extends TestCase
 
     public function testTheRequestIsReadBackFieldByField(): void
     {
-        $request = InitProducerIdRequest::unpack(new StringStream((string) hex2bin(self::TRANSACTIONAL_REQUEST_HEX)));
+        $request = InitProducerIdRequestV1::unpack(new StringStream((string) hex2bin(self::TRANSACTIONAL_REQUEST_HEX)));
 
         self::assertSame('tx-42', $request->getTransactionalId());
         self::assertSame(30000, $request->getTransactionTimeoutMs());
@@ -131,7 +249,7 @@ final class InitProducerIdTest extends TestCase
 
     public function testTheAnswerCarriesTheProducerIdAndTheEpoch(): void
     {
-        $response = InitProducerIdResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = InitProducerIdResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(0, $response->throttleTimeMs);
         self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
@@ -142,7 +260,7 @@ final class InitProducerIdTest extends TestCase
 
     public function testAnAnswerWithAnErrorCarriesNoProducerStateAtAll(): void
     {
-        $response = InitProducerIdResponse::unpack(new StringStream((string) hex2bin(self::ERROR_RESPONSE_HEX)));
+        $response = InitProducerIdResponseV1::unpack(new StringStream((string) hex2bin(self::ERROR_RESPONSE_HEX)));
 
         self::assertSame(KafkaException::INVALID_TRANSACTION_TIMEOUT, $response->errorCode);
         self::assertSame(RecordBatch::NO_PRODUCER_ID, $response->producerId);
@@ -153,9 +271,29 @@ final class InitProducerIdTest extends TestCase
     public function testTheEmptyStringIsATransactionalIdAndNotANullOne(): void
     {
         // The broker answers it with the error code 42, but only because it is a real, empty string on the wire
-        $frame = bin2hex((string) new InitProducerIdRequest('', 60000, 'test', 7));
+        $frame = bin2hex((string) new InitProducerIdRequestV1('', 60000, 'test', 7));
 
         self::assertStringContainsString('0000' . '0000ea60', $frame);
         self::assertStringNotContainsString('ffff' . '0000ea60', $frame);
+
+        // and in the flexible version 2 the empty string is the compact length 1, where null is the length 0
+        $flexible = bin2hex((string) new InitProducerIdRequestV2('', 60000, 'test', 7));
+
+        self::assertStringContainsString('01' . '0000ea60', $flexible);
+        self::assertStringNotContainsString('00' . '0000ea60' . '00' . '0000ea60', $flexible);
     }
+
+    public function testTheVersionZeroFrameIsTheSameBodyWithALowerVersionField(): void
+    {
+        $request = new InitProducerIdRequestV0(null, 60000, 'test', 7);
+
+        // `INIT_PRODUCER_ID_REQUEST_V1 = INIT_PRODUCER_ID_REQUEST_V0` @ 2.0.1
+        self::assertSame(substr_replace(self::REQUEST_HEX, '0000', 12, 4), bin2hex((string) $request));
+        self::assertSame(0, $request->getApiVersion());
+
+        $response = InitProducerIdResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+
+        self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
+    }
+
 }

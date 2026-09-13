@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
  * token are implemented and verified against a real broker; what the token is then handed to has to be a client
  * that speaks SCRAM.
  *
- * @see docs/protocol/1.1.md, section "Delegation tokens (KIP-48)"
+ * @see docs/protocol/2.8.md, section "Delegation tokens (KIP-48)"
  */
 final class DelegationToken
 {

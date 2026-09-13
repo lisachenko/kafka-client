@@ -21,12 +21,16 @@ use Protocol\Kafka\Protocol\AbstractProtocolMessage;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV2;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Tests\Fixture\ClusterMetadataResponse;
 
 /**
- * Verifies the request/response framing against a real Kafka 0.10.2.2 broker.
+ * Verifies the request/response framing against a real Kafka 2.8.2 broker.
  *
  * A Metadata request is the cheapest round trip that any broker of the cluster answers. The framing itself has not
  * changed since 0.8.2.2 - a size-prefixed request, a size-prefixed response, correlation ids echoed back in order;
@@ -41,6 +45,8 @@ use Protocol\Kafka\Tests\Fixture\ClusterMetadataResponse;
 #[CoversClass(AbstractProtocolMessage::class)]
 #[CoversClass(AbstractRequest::class)]
 #[CoversClass(AbstractResponse::class)]
+#[CoversClass(ApiVersionsRequest::class)]
+#[CoversClass(ApiVersionsResponse::class)]
 #[CoversClass(BinarySchema::class)]
 #[CoversClass(SocketStream::class)]
 final class ProtocolFramingTest extends IntegrationTestCase
@@ -106,14 +112,77 @@ final class ProtocolFramingTest extends IntegrationTestCase
     }
 
     /**
+     * The flexible encoding of KIP-482 end to end, through the schema engine and a real socket
+     *
+     * ApiVersions v3 is the first flexible frame this client sends, and it exercises every piece of the encoding at
+     * once: a **request header v2** whose `client_id` stays plain and whose tag buffer is empty, two **compact**
+     * strings of KIP-511 in the body, a body tag buffer of its own - and, coming back, a **compact array** of 56
+     * entries that each end in a tag buffer, a tagged field (the finalized-features epoch of KIP-584) and the one
+     * response header the flexible versions did *not* change, because this api keeps the header v0.
+     *
+     * The two encodings live on the same connection: the v2 request that follows is written plainly on the socket
+     * the v3 request was written compactly on, and the broker answers both.
+     */
+    public function testAFlexibleFrameIsWrittenAndReadByTheSchemaEngine(): void
+    {
+        $stream  = $this->connect();
+        $request = new ApiVersionsRequest('kafka-client-t1', 4246);
+        $request->writeTo($stream);
+
+        $response = ApiVersionsResponse::unpack($stream);
+
+        self::assertTrue(ApiVersionsRequest::isFlexible(), 'the client sends the flexible v3');
+        self::assertSame(4246, $response->getCorrelationId());
+        self::assertSame(0, $response->errorCode, 'the broker accepted the compact body and the two KIP-511 strings');
+        self::assertCount(56, $response->apiVersions, 'the compact array of the api table');
+        self::assertSame(3, $response->maxVersionOf(18));
+        self::assertSame(
+            0,
+            $response->finalizedFeaturesEpoch,
+            'the one tagged field a ZooKeeper-backed 2.8.2 broker answers (KIP-584)'
+        );
+        self::assertSame([], $response->supportedFeatures);
+        self::assertSame([], $response->finalizedFeatures);
+
+        // The plain encoding still works, on the very same connection
+        new ApiVersionsRequestV2('kafka-client-t1', 4247)->writeTo($stream);
+        $versionTwo = ApiVersionsResponseV2::unpack($stream);
+
+        self::assertSame(4247, $versionTwo->getCorrelationId());
+        self::assertSame(array_keys($response->apiVersions), array_keys($versionTwo->apiVersions));
+    }
+
+    /**
+     * The bytes of a flexible request are the bytes the broker accepted, and it re-encodes to itself
+     */
+    public function testTheFlexibleRequestIsTheFrameTheBrokerAccepted(): void
+    {
+        $request = new ApiVersionsRequest('kafka-client-t1', 4248);
+        $frame   = (string) $request;
+
+        // 4 size + 8 header + 2+15 client id + 1 header tag buffer + 24 name + 4 version + 1 body tag buffer
+        self::assertSame(59, strlen($frame));
+        self::assertSame('0012' . '0003', bin2hex(substr($frame, 4, 4)));
+        self::assertSame('000f', bin2hex(substr($frame, 12, 2)), 'the client id keeps its int16 length');
+        self::assertSame('00', bin2hex(substr($frame, 29, 1)), 'the tag buffer of the request header v2');
+        self::assertSame('18', bin2hex(substr($frame, 30, 1)), 'a compact string of 23 bytes announces 24');
+        self::assertSame('00', bin2hex(substr($frame, -1)), 'and the body ends in its own tag buffer');
+
+        $stream = $this->connect();
+        $stream->writeBuffer($frame);
+
+        self::assertSame(4248, ApiVersionsResponse::unpack($stream)->getCorrelationId());
+    }
+
+    /**
      * A frame the broker cannot parse ends the connection, and the client sees it as a dropped stream
      *
-     * The frame is a Metadata request with the version 5, which Kafka 1.0 has and 0.11.0.3 does not - a 0.11.0.3
-     * broker serves Metadata up to v4. It is built by hand, because the point is to send something the request
-     * classes of this branch deliberately cannot build. `RequestChannel.Request` @ 0.11.0.3 throws an
-     * `InvalidRequestException` for it and `SocketServer.processCompletedReceives` closes the channel, so the read
-     * of the response runs into the end of the stream instead of into a timeout - the 0.9.0.1 behaviour this
-     * replaces.
+     * The frame is a Metadata request of the version 5 whose body stops after the topic array: a 2.8.2 broker
+     * serves that version, but `allow_auto_topic_creation` is missing, so the parser runs past the end of the
+     * buffer. It is built by hand, because the point is to send something the request classes of this branch
+     * deliberately cannot build. `RequestContext.parseRequest` @ 2.8.2 throws an `InvalidRequestException` for it
+     * and `SocketServer.processCompletedReceives` closes the channel, so the read of the response runs into the end
+     * of the stream instead of into a timeout - the 0.9.0.1 behaviour this replaces.
      */
     public function testAFrameTheBrokerCannotParseClosesTheConnection(): void
     {

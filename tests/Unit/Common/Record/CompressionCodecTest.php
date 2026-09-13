@@ -18,6 +18,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\Errors\CorruptMessageException;
 use Protocol\Kafka\Common\Errors\InvalidConfigurationException;
+use Protocol\Kafka\Common\Errors\UnsupportedCompressionTypeException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Lz4;
 use Protocol\Kafka\Common\Record\Message;
@@ -131,15 +132,60 @@ final class CompressionCodecTest extends TestCase
 
     public function testCompressingWithAnUnknownCodecIsAConfigurationError(): void
     {
+        // 4 is zstd since Kafka 2.1, so the first codec the protocol has no name for is 5
         $this->expectException(InvalidConfigurationException::class);
 
-        CompressionCodec::compress(4, 'payload');
+        CompressionCodec::compress(5, 'payload');
     }
 
     public function testDecompressingAnUnknownCodecIsAConfigurationError(): void
     {
         $this->expectException(InvalidConfigurationException::class);
 
-        CompressionCodec::decompress(4, 'payload');
+        CompressionCodec::decompress(5, 'payload');
+    }
+
+    public function testTheZstdCodecIsTheCompressionTypeFourOfKip110(): void
+    {
+        self::assertSame(4, CompressionCodec::ZSTD);
+        self::assertSame(CompressionCodec::ZSTD, CompressionCodec::fromAttributes(0b0000_0100));
+        self::assertSame(
+            CompressionCodec::isZstdAvailable(),
+            CompressionCodec::isSupported(CompressionCodec::ZSTD),
+            'the codec is supported exactly when ext-zstd is loaded; there is no pure-PHP zstd'
+        );
+        self::assertSame(extension_loaded('zstd'), CompressionCodec::isZstdAvailable());
+    }
+
+    public function testZstdRoundTripsThroughTheExtensionOrIsRefusedWithoutIt(): void
+    {
+        $payload = str_repeat('a record batch of the message format v2, compressed with zstd. ', 20);
+
+        if (!CompressionCodec::isZstdAvailable()) {
+            // The client-side half of the error code 76: this build can not speak the codec of that partition
+            $this->expectException(UnsupportedCompressionTypeException::class);
+            $this->expectExceptionMessage('ext-zstd');
+
+            CompressionCodec::compress(CompressionCodec::ZSTD, $payload);
+
+            return;
+        }
+
+        $compressed = CompressionCodec::compress(CompressionCodec::ZSTD, $payload);
+
+        self::assertNotSame($payload, $compressed);
+        self::assertSame($payload, CompressionCodec::decompress(CompressionCodec::ZSTD, $compressed));
+    }
+
+    public function testDecompressingZstdWithoutTheExtensionIsTheClientSideCodeSeventySix(): void
+    {
+        if (CompressionCodec::isZstdAvailable()) {
+            self::markTestSkipped('ext-zstd is loaded, so this build can read a zstd batch');
+        }
+
+        $this->expectException(UnsupportedCompressionTypeException::class);
+        $this->expectExceptionMessage('ext-zstd is not loaded');
+
+        CompressionCodec::decompress(CompressionCodec::ZSTD, 'whatever the broker sent');
     }
 }

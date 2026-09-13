@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * DeleteGroups, version 0: makes the coordinator forget consumer groups (ApiKey 42, Kafka 1.1, KIP-229)
+ * DeleteGroups, version 1: makes the coordinator forget consumer groups (ApiKey 42, Kafka 1.1, KIP-229)
  *
  * <pre>
- *   DeleteGroups Request (Version: 0) => [groups]
+ *   DeleteGroups Request (Version: 0 and 1) => [groups]
  *     groups => STRING
  * </pre>
  *
@@ -35,10 +35,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `Empty` or a `Dead` group is deleted, anything else is answered with 68 (NonEmptyGroup) - the committed offsets
  * of a group whose consumers are still running are never thrown away by accident.
  *
+ * Version 1 (KIP-219, Kafka 2.0) left the frame alone - `DeleteGroupsRequest.json` @ 2.8.2 has the single field
+ * `GroupsNames` at `0+` - and only moved the api into the throttling contract of KIP-219;
+ * {@see DeleteGroupsRequestV0} sends the same bytes one api version lower.
+ *
  * The Java admin client calls the call `deleteConsumerGroups()`, which is the name
  * {@see \Protocol\Kafka\Admin\AdminClient::deleteConsumerGroups()} carries.
  *
- * @see docs/protocol/1.1.md, section "DeleteGroups API (key 42, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 to v2)"
  */
 class DeleteGroupsRequest extends AbstractRequest
 {
@@ -50,7 +54,13 @@ class DeleteGroupsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 2;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * @param list<string> $groups        Groups to delete, an empty list is answered with an empty result

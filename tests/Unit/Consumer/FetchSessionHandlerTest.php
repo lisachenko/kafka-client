@@ -36,7 +36,7 @@ use Protocol\Kafka\Tests\Fixture\ResponseFrame;
  * carries one `MaxBytes` for every partition and a `LogStartOffset` that only a follower fills in, so the Java
  * `PartitionData` triple has exactly one value that a consumer moves.
  *
- * @see docs/protocol/1.1.md, section "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, section "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchSessionHandler::class)]
 #[CoversClass(FetchSessionHandlerBuilder::class)]

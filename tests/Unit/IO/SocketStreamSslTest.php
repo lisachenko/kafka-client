@@ -27,11 +27,11 @@ use Protocol\Kafka\IO\SocketStream;
 /**
  * Tests the TLS transport of the socket stream against a local TLS server.
  *
- * The certificate is the one the test broker presents on its SSL listener (`docker/kafka-1.1.1/ssl`), so the
+ * The certificate is the one the test broker presents on its SSL listener (`docker/kafka-2.8.2/ssl`), so the
  * handshake performed here is the very same one the integration suite performs against Kafka.
  *
  * @see \Protocol\Kafka\Tests\Integration\SslTransportTest for the same handshake against a real broker
- * @see docs/protocol/1.1.md, section "Transport security (SSL)"
+ * @see docs/protocol/2.8.md, section "Transport security (SSL)"
  */
 #[CoversClass(SocketStream::class)]
 #[CoversClass(AbstractStream::class)]
@@ -62,7 +62,7 @@ final class SocketStreamSslTest extends TestCase
             self::markTestSkipped('The openssl extension is required for the SSL transport');
         }
         if (!is_readable(self::certificateFile()) || !is_readable(self::keyFile())) {
-            self::markTestSkipped('The test certificate of docker/kafka-1.1.1/ssl is not available');
+            self::markTestSkipped('The test certificate of docker/kafka-2.8.2/ssl is not available');
         }
     }
 
@@ -236,12 +236,12 @@ final class SocketStreamSslTest extends TestCase
      */
     private static function certificateFile(): string
     {
-        return dirname(__DIR__, 3) . '/docker/kafka-1.1.1/ssl/broker.crt';
+        return dirname(__DIR__, 3) . '/docker/kafka-2.8.2/ssl/broker.crt';
     }
 
     private static function keyFile(): string
     {
-        return dirname(__DIR__, 3) . '/docker/kafka-1.1.1/ssl/broker.key';
+        return dirname(__DIR__, 3) . '/docker/kafka-2.8.2/ssl/broker.key';
     }
 
     /**

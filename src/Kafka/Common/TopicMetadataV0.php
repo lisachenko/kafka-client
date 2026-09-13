@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Common;
  * {@see TopicMetadata::getScheme()} follows; the `isInternal` property of the parent stays null for it, which is
  * "the answer did not say", not "the topic is not internal".
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
  */
 final class TopicMetadataV0 extends TopicMetadata
 {

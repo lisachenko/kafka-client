@@ -16,10 +16,10 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * RenewDelegationToken response object, version 0 (key 39)
+ * RenewDelegationToken response object, version 1 (key 39)
  *
  * <pre>
- *   RenewDelegationToken Response (Version: 0) => error_code expiry_timestamp throttle_time_ms
+ *   RenewDelegationToken Response (Version: 0 and 1) => error_code expiry_timestamp throttle_time_ms
  *     error_code       => INT16
  *     expiry_timestamp => INT64
  *     throttle_time_ms => INT32
@@ -43,14 +43,29 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * | 64   | DelegationTokenRequestNotAllowed| The connection authenticated nobody, or authenticated with a token |
  * | 66   | DelegationTokenExpired          | The token is past its expiry or its maximum lifetime             |
  *
- * @see docs/protocol/1.1.md, section "RenewDelegationToken API (key 39, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TOKEN_RENEW_RESPONSE_V1 =
+ * TOKEN_RENEW_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see RenewDelegationTokenResponseV0} is the same frame with the version field of Kafka 1.1.
+ *
+ * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
+ * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
+ *
+ * @see docs/protocol/2.8.md, section "RenewDelegationToken API (key 39, v0 to v2)"
  */
 class RenewDelegationTokenResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Error code of the request, 0 when the token was renewed

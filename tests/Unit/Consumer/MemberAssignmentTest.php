@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * The reference bytes are the `member_assignment` values that a Kafka 0.9.0.1 broker relayed for the members of a
  * group of `kafka-console-consumer.sh --new-consumer` processes, read back with a raw DescribeGroups v0 frame.
  *
- * @see docs/protocol/1.1.md, section "Consumer group protocol (protocol_type = consumer)"
+ * @see docs/protocol/2.8.md, section "Consumer group protocol (protocol_type = consumer)"
  */
 #[CoversClass(MemberAssignment::class)]
 final class MemberAssignmentTest extends TestCase

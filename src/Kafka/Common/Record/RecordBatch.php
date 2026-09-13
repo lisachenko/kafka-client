@@ -70,7 +70,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * reproduce a captured batch byte for byte: re-compressing a block with another implementation of gzip, snappy or
  * lz4 would give different - equally valid - bytes.
  *
- * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/2.8.md, section "RecordBatch (message format v2)"
  * @see org/apache/kafka/common/record/DefaultRecordBatch.java @ 0.11.0.3
  */
 class RecordBatch implements BinarySchemaInterface, \Countable, \Stringable

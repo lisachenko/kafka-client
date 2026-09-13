@@ -166,6 +166,18 @@ final class ProducerConfig extends GeneralConfig
     public const string COMPRESSION_TYPE_LZ4 = 'lz4';
 
     /**
+     * The batch is compressed with zstd (RFC 8478), the codec Kafka 2.1 added with KIP-110
+     *
+     * Two things are different about this codec. It needs **`ext-zstd`**: there is no pure-PHP zstd, so a
+     * producer configured with it on a build without the extension is refused with an
+     * {@see \Protocol\Kafka\Common\Errors\UnsupportedCompressionTypeException} the moment it compresses a
+     * batch. And it can only be *read* by a client that says so: a Fetch below version 10 of a partition whose
+     * records are zstd-compressed is answered **76** `UNSUPPORTED_COMPRESSION_TYPE`, because a broker does not
+     * down-convert zstd - so a zstd topic is invisible to every consumer below Kafka 2.1.
+     */
+    public const string COMPRESSION_TYPE_ZSTD = 'zstd';
+
+    /**
      * The message format this producer writes, named after the Kafka release that introduced it.
      *
      * It is the client-side counterpart of the `message.format.version` of a topic: a 0.11 broker stores what it
@@ -180,7 +192,7 @@ final class ProducerConfig extends GeneralConfig
      * headers, for the producer id and the sequence numbers of an idempotent producer and for a transactional id.
      * A batch of the formats v0 and v1 is sent as Produce v2 and its headers are dropped.
      *
-     * @see docs/protocol/1.1.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
+     * @see docs/protocol/2.8.md, sections "MessageSet and Message" and "RecordBatch (message format v2)"
      */
     public const string MESSAGE_FORMAT_VERSION = 'message.format.version';
 
@@ -249,7 +261,7 @@ final class ProducerConfig extends GeneralConfig
      * broker. This client is synchronous - {@see KafkaProducer::flush()} writes one produce request and reads its
      * answer before the next one - so it has no such option and satisfies the requirement by construction.
      *
-     * @see docs/protocol/1.1.md, section "The idempotent producer"
+     * @see docs/protocol/2.8.md, section "The idempotent producer"
      */
     public const string ENABLE_IDEMPOTENCE = 'enable.idempotence';
 
@@ -285,7 +297,7 @@ final class ProducerConfig extends GeneralConfig
      * a transactional id - a broker answers it with the error code 42 - and is refused here as a configuration
      * error.
      *
-     * @see docs/protocol/1.1.md, section "Transactions"
+     * @see docs/protocol/2.8.md, section "Transactions"
      */
     public const string TRANSACTIONAL_ID = 'transactional.id';
 
@@ -314,6 +326,7 @@ final class ProducerConfig extends GeneralConfig
         self::COMPRESSION_TYPE_GZIP   => CompressionCodec::GZIP,
         self::COMPRESSION_TYPE_SNAPPY => CompressionCodec::SNAPPY,
         self::COMPRESSION_TYPE_LZ4    => CompressionCodec::LZ4,
+        self::COMPRESSION_TYPE_ZSTD   => CompressionCodec::ZSTD,
     ];
 
     /**
@@ -467,6 +480,12 @@ final class ProducerConfig extends GeneralConfig
         }
 
         $normalizedType = strtolower(trim($compressionType));
+        if ($normalizedType === self::COMPRESSION_TYPE_ZSTD && !CompressionCodec::isZstdAvailable()) {
+            throw new InvalidConfigurationException(
+                'The compression type "zstd" (Kafka 2.1, KIP-110) needs the ext-zstd extension, which is not '
+                . 'loaded; there is no pure-PHP implementation of the codec'
+            );
+        }
         if (!isset(self::COMPRESSION_CODECS[$normalizedType])) {
             $supportedTypes = implode(', ', array_keys(self::COMPRESSION_CODECS));
 

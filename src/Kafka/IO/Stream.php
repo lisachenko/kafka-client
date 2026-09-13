@@ -21,8 +21,10 @@ namespace Protocol\Kafka\IO;
 /**
  * Binary stream that the protocol schema engine reads from and writes to.
  *
- * The method set mirrors the one of the `main` branch, minus the varint primitives: variable-length integers only
- * exist in the 0.11 record format and have no representation in the 0.8 protocol.
+ * The method set mirrors the one of the `main` branch. Variable-length integers come in two flavours here: the
+ * **zigzag** varints of the record format of Kafka 0.11 ({@see self::readVarint()}, {@see self::readVarlong()}) and
+ * the **unsigned** varints that Kafka 2.4 gave the protocol itself with the compact types and the tagged fields of
+ * KIP-482 ({@see self::readUnsignedVarint()}).
  *
  * @see \Protocol\Kafka\Protocol\BinarySchema
  */
@@ -68,6 +70,17 @@ interface Stream
     public function readVarlong(): int;
 
     /**
+     * Reads an **unsigned varint** of at most 5 bytes: the length prefix of every compact type and the counter of
+     * every tagged-field section of a flexible version (KIP-482, `ByteUtils.readUnsignedVarint` @ 2.8.2)
+     *
+     * The bytes are the ones {@see self::readVarint()} reads - 7 bits per byte, least significant group first, the
+     * high bit set on every byte but the last - and the difference is what they mean: an unsigned varint carries
+     * the value itself, where the varints of a record batch carry it zigzag-encoded. The two names are kept apart
+     * because a caller that mixes them up produces bytes a broker silently drops the connection over.
+     */
+    public function readUnsignedVarint(): int;
+
+    /**
      * Writes a non-nullable string to the stream: int16 length prefix followed by the content
      */
     public function writeString(string $string): void;
@@ -86,6 +99,15 @@ interface Stream
      * Writes an unsigned 64-bit value as a raw varint of up to 10 bytes
      */
     public function writeVarlong(int $value): void;
+
+    /**
+     * Writes an **unsigned varint** of at most 5 bytes (KIP-482, `ByteUtils.writeUnsignedVarint` @ 2.8.2)
+     *
+     * The counterpart of {@see self::readUnsignedVarint()}: the compact length of a string, byte array or array
+     * (`length + 1`, `0` for `null`), the number of tagged fields of a structure, and the tag and the size of each
+     * of them.
+     */
+    public function writeUnsignedVarint(int $value): void;
 
     /**
      * Writes the raw buffer into the stream as-is

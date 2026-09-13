@@ -23,7 +23,8 @@
         "rector/rector": "^2.0"
     },
     "suggest": {
-        "ext-openssl": "to enable SSL socket stream support"
+        "ext-openssl": "to enable SSL socket stream support",
+        "ext-zstd": "to read and write the zstd compression codec of Kafka 2.1 (KIP-110)"
     },
     "minimum-stability": "stable",
     "prefer-stable": true,

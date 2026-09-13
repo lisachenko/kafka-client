@@ -17,6 +17,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\CreateTopicsRequestConfig;
@@ -27,22 +28,35 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopicV0;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV0;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV1;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV2;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV3;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV4;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV0;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV1;
+use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV2;
+use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV3;
+use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV4;
 
 /**
- * Byte-exact tests for the CreateTopics API of Kafka 0.10.1 (api key 19), raised to version 2 by KIP-124.
+ * Byte-exact tests for the CreateTopics API of Kafka 0.10.1 (api key 19), raised to version 2 by KIP-124
+ * and to version 3 by Kafka 2.0 (KIP-219).
  *
- * The request of version 2 is the request of version 1 - `CREATE_TOPICS_REQUEST_V2 = CREATE_TOPICS_REQUEST_V1` -
- * and the answer only gained the leading `ThrottleTimeMs`; the topic entries are the ones of version 1.
+ * The request of the versions 1, 2 and 3 is one and the same body - `CREATE_TOPICS_REQUEST_V2 =
+ * CREATE_TOPICS_REQUEST_V1` and `CREATE_TOPICS_REQUEST_V3 = CREATE_TOPICS_REQUEST_V2` @ 2.0.1 - and the
+ * answer of version 2 and 3 is the answer of version 1 with the leading `ThrottleTimeMs`; the topic
+ * entries are the ones of version 1 in every one of them.
  *
- * @see docs/protocol/1.1.md, section "CreateTopics API (key 19, v0, v1 and v2)"
+ * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 #[CoversClass(CreateTopicsRequest::class)]
+#[CoversClass(CreateTopicsRequestV2::class)]
+#[CoversClass(CreateTopicsRequestV3::class)]
 #[CoversClass(CreateTopicsRequestV0::class)]
 #[CoversClass(CreateTopicsRequestV1::class)]
 #[CoversClass(CreateTopicsResponse::class)]
+#[CoversClass(CreateTopicsResponseV2::class)]
+#[CoversClass(CreateTopicsResponseV3::class)]
 #[CoversClass(CreateTopicsResponseV0::class)]
 #[CoversClass(CreateTopicsResponseV1::class)]
 #[CoversClass(CreateTopicsRequestTopic::class)]
@@ -51,6 +65,8 @@ use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV1;
 #[CoversClass(CreateTopicsResponseTopic::class)]
 #[CoversClass(CreateTopicsResponseTopicV0::class)]
 #[CoversClass(NewTopic::class)]
+#[CoversClass(CreateTopicsRequestV4::class)]
+#[CoversClass(CreateTopicsResponseV4::class)]
 final class CreateTopicsTest extends TestCase
 {
     /**
@@ -200,7 +216,7 @@ final class CreateTopicsTest extends TestCase
 
     public function testRequestOfVersionTwoIsPackedAccordingToTheSpec(): void
     {
-        $request = new CreateTopicsRequest(
+        $request = new CreateTopicsRequestV2(
             [new NewTopic('topic', 2, 1, configs: ['retention.ms' => '3600000'])],
             30000,
             false,
@@ -211,6 +227,105 @@ final class CreateTopicsTest extends TestCase
         self::assertSame(self::REQUEST_V2_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::CREATE_TOPICS, $request->getApiKey());
         self::assertSame(2, $request->getApiVersion());
+    }
+
+    public function testTheClientSendsTheVersionFourOfKafkaTwoFour(): void
+    {
+        $request = new CreateTopicsRequestV4(
+            [new NewTopic('topic', 2, 1, configs: ['retention.ms' => '3600000'])],
+            30000,
+            false,
+            'test',
+            7
+        );
+
+        // The layout of `CreateTopicsRequest.json` @ 2.8.2 is the same for the versions 1 to 4: Kafka 2.0 raised
+        // the api for KIP-219 and Kafka 2.4 for KIP-464, and neither of them touched a byte of the frame
+        self::assertSame(4, $request->getApiVersion());
+        self::assertSame(substr_replace(self::REQUEST_V2_HEX, '0004', 12, 4), bin2hex((string) $request));
+
+        $answer = CreateTopicsResponseV4::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+
+        self::assertSame(
+            self::RESPONSE_V2_HEX,
+            bin2hex((string) $answer),
+            'the answer of version 4 has the layout of version 2 as well'
+        );
+    }
+
+    public function testTheVersionThreeOfKafkaTwoZeroSendsTheSameBytes(): void
+    {
+        $request = new CreateTopicsRequestV3(
+            [new NewTopic('topic', 2, 1, configs: ['retention.ms' => '3600000'])],
+            30000,
+            false,
+            'test',
+            7
+        );
+
+        // `CREATE_TOPICS_REQUEST_V3 = CREATE_TOPICS_REQUEST_V2` @ 2.0.1: only the api version field is different
+        self::assertSame(3, $request->getApiVersion());
+        self::assertSame(substr_replace(self::REQUEST_V2_HEX, '0003', 12, 4), bin2hex((string) $request));
+
+        $answer = CreateTopicsResponseV3::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+
+        self::assertSame(self::RESPONSE_V2_HEX, bin2hex((string) $answer));
+    }
+
+    /**
+     * The -1/-1 of KIP-464: a topic whose partition count and replication factor the BROKER chooses
+     */
+    public function testTheBrokerDefaultsOfKip464TravelAsMinusOneWithoutAnAssignment(): void
+    {
+        $topic = NewTopic::withBrokerDefaults('topic', ['retention.ms' => '3600000']);
+
+        self::assertSame(NewTopic::NO_NUM_PARTITIONS, $topic->numPartitions);
+        self::assertSame(NewTopic::NO_REPLICATION_FACTOR, $topic->replicationFactor);
+        self::assertSame([], $topic->replicasAssignments, 'and no assignment, which is what makes it KIP-464');
+
+        $request = new CreateTopicsRequestV4([$topic], 30000, false, 'test', 7);
+        $hex     = bin2hex((string) $request);
+
+        // topic "topic", num_partitions = -1, replication_factor = -1, an empty assignment array
+        self::assertStringContainsString(
+            '0005' . '746f706963' . 'ffffffff' . 'ffff' . '00000000',
+            $hex,
+            'both numbers are -1 and the assignment array is empty'
+        );
+        self::assertSame(4, $request->getApiVersion(), 'the version a broker accepts that shape from');
+    }
+
+    /**
+     * The very guard of `CreateTopicsRequest.Builder.build(version)` @ 2.8.2 - the broker has none
+     */
+    public function testTheBrokerDefaultsAreRefusedByEveryVersionBelowFour(): void
+    {
+        try {
+            new CreateTopicsRequestV3([NewTopic::withBrokerDefaults('topic')], 30000, false, 'test', 7);
+            self::fail('a version below 4 cannot carry the broker defaults of KIP-464');
+        } catch (UnsupportedVersionException $exception) {
+            self::assertSame('topic', $exception->getContext()['topics']);
+            self::assertStringContainsString(
+                'only supported in CreateTopicRequest version 4+',
+                (string) $exception->getContext()['error'],
+                'the message of the Java client'
+            );
+        }
+    }
+
+    /**
+     * A topic that names its replicas is not "using the defaults", whatever the -1 of the two numbers says
+     */
+    public function testAnExplicitAssignmentKeepsTheMinusOneLegalInEveryVersion(): void
+    {
+        $request = new CreateTopicsRequestV0(
+            [NewTopic::withReplicaAssignment('topic', [0 => [0]])],
+            30000,
+            'test',
+            7
+        );
+
+        self::assertSame(0, $request->getApiVersion(), 'the -1 of an assigned topic is the one of Kafka 0.10');
     }
 
     public function testRequestOfVersionOneSendsTheSameBodyAsVersionTwo(): void
@@ -225,15 +340,15 @@ final class CreateTopicsTest extends TestCase
 
         self::assertSame(1, $request->getApiVersion());
         self::assertSame(
-            substr(self::REQUEST_V2_HEX, 16),
-            substr(bin2hex((string) $request), 16),
+            substr_replace(self::REQUEST_V2_HEX, '0001', 12, 4),
+            bin2hex((string) $request),
             'CREATE_TOPICS_REQUEST_V2 = CREATE_TOPICS_REQUEST_V1'
         );
     }
 
     public function testAnExplicitReplicaAssignmentLeavesThePartitionsAndTheFactorUnset(): void
     {
-        $request = new CreateTopicsRequest(
+        $request = new CreateTopicsRequestV2(
             [NewTopic::withReplicaAssignment('topic', [0 => [2, 1, 2]])],
             30000,
             true,
@@ -266,7 +381,7 @@ final class CreateTopicsTest extends TestCase
 
     public function testAnAlreadyBuiltTopicEntryIsAcceptedAsItIs(): void
     {
-        $request = new CreateTopicsRequest(
+        $request = new CreateTopicsRequestV2(
             [new CreateTopicsRequestTopic('topic', 2, 1, [], ['retention.ms' => '3600000'])],
             30000,
             false,
@@ -307,7 +422,7 @@ final class CreateTopicsTest extends TestCase
 
     public function testResponseOfVersionTwoStartsWithTheThrottleTime(): void
     {
-        $response = CreateTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+        $response = CreateTopicsResponseV4::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
 
         self::assertSame(7, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);
@@ -320,7 +435,7 @@ final class CreateTopicsTest extends TestCase
     {
         $versionZero = CreateTopicsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_V0_HEX)));
         $versionOne  = CreateTopicsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
-        $versionTwo  = CreateTopicsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+        $versionTwo  = CreateTopicsResponseV4::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
 
         self::assertSame(self::RESPONSE_V0_HEX, bin2hex((string) $versionZero));
         self::assertSame(self::RESPONSE_V1_HEX, bin2hex((string) $versionOne));
@@ -331,7 +446,7 @@ final class CreateTopicsTest extends TestCase
     {
         // The wire format is an array, so a broker has to guard against duplicates itself and answers them with the
         // error code 42; this client can not produce such a frame, because it keys its topics by name
-        $request = new CreateTopicsRequest(
+        $request = new CreateTopicsRequestV2(
             [new NewTopic('topic', 1, 1), new NewTopic('topic', 2, 1, configs: ['retention.ms' => '3600000'])],
             30000,
             false,

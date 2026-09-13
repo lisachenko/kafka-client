@@ -22,7 +22,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 /**
  * The header of a record: two varint-prefixed byte arrays, the first of which is never null (KIP-82)
  *
- * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/2.8.md, section "RecordBatch (message format v2)"
  */
 #[CoversClass(Header::class)]
 final class HeaderTest extends TestCase

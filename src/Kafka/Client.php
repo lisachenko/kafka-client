@@ -19,8 +19,12 @@ namespace Protocol\Kafka;
 
 use Closure;
 use Exception;
+use Protocol\Kafka\Admin\CreatedTopic;
+use Protocol\Kafka\Admin\ElectionType;
+use Protocol\Kafka\Admin\NewPartitionReassignment;
 use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
+use Protocol\Kafka\Admin\PartitionReassignment;
 use Protocol\Kafka\Admin\RecordsToDelete;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
@@ -43,6 +47,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\Internals\FetchSessionHandler;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
@@ -57,10 +62,13 @@ use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
+use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
+use Protocol\Kafka\Protocol\Data\ProduceResponseRecordError;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
@@ -68,6 +76,8 @@ use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
+use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsRequest;
+use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
@@ -78,6 +88,8 @@ use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
+use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
+use Protocol\Kafka\Protocol\Request\ElectLeadersResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
@@ -92,14 +104,21 @@ use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
+use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsRequest;
+use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetDeleteRequest;
+use Protocol\Kafka\Protocol\Request\OffsetDeleteResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
+use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
@@ -107,23 +126,42 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
+use Protocol\Kafka\Protocol\Request\SyncGroupRequestV4;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
+use Protocol\Kafka\Protocol\Request\SyncGroupResponseV4;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Throwable;
 
 /**
- * Low-level client for the Kafka 0.11.0.3 protocol.
+ * Low-level client for the Kafka protocol.
  *
- * Every api is sent with the highest version a 0.11.0.3 broker serves: Produce v3, which carries a record batch of
- * the message format v2 and the transactional id of its producer and whose answer reports the `LogAppendTime` and
- * the `LogStartOffset` of every partition, Fetch v5, which asks for the log as it lies, bounds the whole answer
- * with `fetch.max.bytes` and states the isolation level of the consumer, OffsetCommit v3 with its `retention_time`,
- * and OffsetCommit v0 when the offsets are stored in ZooKeeper. The apis that KIP-124 raised go out with the
- * version whose answer carries a `throttle_time_ms` - Metadata v4, Offsets v2, OffsetFetch v3, GroupCoordinator v1
- * and the group membership apis one version up. The lower version classes of those apis stay usable directly, for a
- * client that has to talk to an older broker - and `message.format.version` lowers the Produce request to v2 by
- * itself, because a message set of the formats v0 and v1 has no place in a version 3 request.
+ * Every api is sent with the highest version this line implements for it. **Kafka 2.0 raised every request-response
+ * api by one** without changing a single byte of its frame (KIP-219): Produce goes out as **v6**, Fetch as **v8**,
+ * Offsets (ListOffsets) as **v3** and Metadata as **v6**, where the 1.x line sent v5, v7, v2 and v5, and the group
+ * apis one version up as well - GroupCoordinator **v2** and the membership apis. Kafka 2.1 to 2.3 then raised six
+ * of those: OffsetCommit goes out as **v7**, with the `group_instance_id` of KIP-345, the `committed_leader_epoch`
+ * of KIP-320 and without the `retention_time` that KIP-211 removed, OffsetFetch as **v5**, whose answer carries
+ * that epoch back, JoinGroup as **v5**, whose first join is refused once with the member id the coordinator
+ * assigns (KIP-394) unless it names a `group.instance.id` (KIP-345), SyncGroup and Heartbeat as **v3**, which
+ * carry that instance id as well, and DescribeGroups as **v3**, which can ask for the operations the client may
+ * perform on a group (KIP-430); GroupCoordinator, LeaveGroup, ListGroups and DeleteGroups stay at their KIP-219
+ * versions. What those versions promise is what {@see self::awaitThrottle()} does - see the runtime note below.
+ * Everything else is unchanged: Produce carries a record batch of the message format v2 and the transactional id of
+ * its producer and its answer reports the `LogAppendTime` and the `LogStartOffset` of every partition, Fetch asks
+ * for the log as it lies, bounds the whole answer with `fetch.max.bytes`, states the isolation level of the
+ * consumer and can open an incremental fetch session, and OffsetCommit v0 is used when the offsets are stored in
+ * ZooKeeper. The lower version classes of every api stay usable directly,
+ * for a client that has to talk to an older broker - and `message.format.version` lowers the Produce request to v2
+ * by itself, because a message set of the formats v0 and v1 has no place in a version 3 or higher request.
+ *
+ * **The one runtime change of Kafka 2.0 (KIP-219).** A broker that throttles a request answers it *first* and
+ * **mutes the channel** for the `throttle_time_ms` it reports, instead of holding the answer back for that long -
+ * and a 2.8.2 broker does that for every api version, the bumped ones only being how a client *states* that it
+ * knows. This client therefore remembers the moment the throttle of each broker ends and sleeps whatever is left
+ * of it before its next request to that broker, exactly as the Java `NetworkClient` does;
+ * {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT} switches the waiting off and leaves the stall on
+ * the broker side, where it makes the next throttle longer.
  *
  * Every request that addresses topic-partitions is split by their current leader and sent to all of those brokers
  * at once; the answers are collected with `stream_select()` as they arrive. A topic-partition whose leader answered
@@ -132,7 +170,7 @@ use Throwable;
  * still broken afterwards is reported as a {@see TopicPartitionRequestException} that carries both the partial
  * result of the partitions that did succeed and the error of each partition that did not.
  *
- * @see docs/protocol/1.1.md
+ * @see docs/protocol/2.8.md
  */
 class Client
 {
@@ -160,6 +198,18 @@ class Client
      */
     private array $fetchSessionHandlers = [];
 
+    /**
+     * Moment at which the throttle of a broker ends, as a UNIX timestamp with microseconds, by node id (KIP-219)
+     *
+     * An entry is written whenever an answer of that broker reported a `throttle_time_ms` above zero and is spent
+     * - and removed - by the next request this client sends to the same broker, see {@see self::awaitThrottle()}.
+     *
+     * @see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT
+     *
+     * @var array<int, float>
+     */
+    private array $throttledUntil = [];
+
     public function __construct(
         /**
          * Cluster configuration
@@ -175,24 +225,30 @@ class Client
      * Asks one broker which api keys and versions it serves (ApiKey 18, Kafka 0.10.0 and later)
      *
      * This is the answer to "what does the broker on the other side speak": the 0.8 and 0.9 lines of this client had
-     * to probe it by sending a request of every key and version, because the api did not exist yet. A 0.11.0.3
-     * broker reports the 34 keys 0 to 33 with the version ranges of the api-key table of the protocol document, and
-     * answers before any authentication has happened on a SASL listener.
+     * to probe it by sending a request of every key and version, because the api did not exist yet. A 2.8.2 broker
+     * reports the **56** keys 0 to 51, 56, 57, 60 and 61 with the version ranges of the api-key table of the
+     * protocol document, and answers before any authentication has happened on a SASL listener.
      *
-     * The request goes out as **version 1**, the version Kafka 0.11 added: its frame is the one of version 0 - the
-     * header and nothing else - and the answer gains a trailing `throttleTimeMs`, which is 0 without a
-     * `request_percentage` quota.
+     * The request goes out as **version 3**, the first flexible version of the protocol (Kafka 2.4): its frame
+     * carries the request header v2 with a tag buffer and the compact `client_software_name` and
+     * `client_software_version` of KIP-511 - `lisachenko-kafka-client` and the Kafka line this branch speaks - and
+     * its answer is compact as well, with the features of KIP-584 as tagged fields behind the `throttleTimeMs`
+     * that version 1 added. The version 2 below it is the KIP-219 bump of Kafka 2.0, which says that this client
+     * honours a throttle time itself because a broker answers a throttled request of a bumped version **before** it
+     * mutes the channel; version 3 inherits that promise.
      *
      * The client itself does **not** negotiate with the answer - like the `0.9.x` line it sends the fixed versions
      * that a broker of its own Kafka release serves - so this is an api for callers that want to know what they are
      * talking to, and the material a later line can build a negotiation on.
      *
      * The request is the one frame of the protocol whose *unsupported version* is answered instead of costing the
-     * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion) with an
-     * empty api array. That answer always arrives in the **version 0** layout, without the throttle time, so a peer
-     * older than Kafka 0.11 has to be asked with a {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0} and
-     * read with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0}; this line speaks to a 0.11.0.3
-     * broker, which serves both versions.
+     * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion), since
+     * Kafka 2.4 with the single api row of ApiVersions itself (KIP-511) and before it with an empty array. That
+     * answer always arrives in the **version 0** layout, without the throttle time, so a peer older than Kafka 2.4
+     * has to be asked with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2},
+     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1} or
+     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0} and read with the response class of the same
+     * version; this line speaks to a 2.8.2 broker, which serves v0 to v3.
      *
      * @param Node $node Broker to ask; every broker of a cluster answers for itself
      *
@@ -214,16 +270,19 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as **Produce v5** for the message format v2 (`message.format.version=0.11.0`, `1.0` or
-     * `1.1`, the default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which a version
-     * 3 request has no place for. Every accepted partition carries three values the broker reported next to its
-     * base offset: the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured
+     * The request goes out as **Produce v6** for the message format v2 (`message.format.version=0.11.0` and every
+     * value above it, the default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which
+     * a version 3 request has no place for. Version 6 (Kafka 2.0, KIP-219) is the version 5 frame with another
+     * number in its header; what it changes is that a throttled answer arrives immediately and the channel is
+     * muted afterwards, which {@see self::awaitThrottle()} waits out.
+     *
+     * Every accepted partition carries three values the broker reported next to its base offset: the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured
      * with `message.timestamp.type=LogAppendTime`, the `logStartOffset` of the partition, which version 5 (Kafka
      * 1.0) appended to the answer and which a producer needs to tell a spurious `OutOfOrderSequence` from a real
      * one, and the `throttleTimeMs` of the answer it arrived in, which is 0 without a `producer_byte_rate` quota.
-     * The versions 3 and 4 added no field to the answer at all - `PRODUCE_RESPONSE_V4` is `PRODUCE_RESPONSE_V3` is
-     * `PRODUCE_RESPONSE_V2` @ 1.1.1 - so the version this client sends is the first one that reports the log start
-     * offset.
+     * The versions 3, 4 and 6 added no field to the answer at all - `ProduceResponse.json` @ 2.8.2 has none of
+     * them - so version 5 is the first one that reports the log start offset, and the version this client sends
+     * carries the very same partition entry.
      *
      * An idempotent or transactional producer hands over its {@see TransactionManager}, which is the whole
      * difference between "at least once" and "exactly once, in order": the batch of every topic-partition is then
@@ -410,8 +469,16 @@ class Client
      * by default) the answer is the error code 50 (InvalidTransactionTimeout), while a `null` transactional id is
      * answered with a producer id whatever the value is.
      *
+     * **Kafka 2.5 added the pair of KIP-360** to the request, and with it a second meaning: a transactional
+     * producer that hands its own `$producerId` and `$producerEpoch` over asks the coordinator to **bump** that
+     * epoch instead of handing out a new id. The answer is the same id with `epoch + 1`, everything that still
+     * writes under the old epoch is fenced, and a producer that hit an abortable error can carry on with it
+     * instead of being finished. The -1/-1 of `InitProducerIdRequest::NO_PRODUCER_ID` is the old "give me an id".
+     *
      * @param string|null $transactionalId      Transactional id of the producer, `null` for an idempotent one
      * @param int         $transactionTimeoutMs `transaction.timeout.ms` of the producer, ignored without an id
+     * @param int         $producerId           Producer id whose epoch should be bumped (KIP-360), or -1
+     * @param int         $producerEpoch        Epoch that belongs to it, or -1
      *
      * @throws Common\Errors\InvalidTxnTimeoutException For a timeout above `transaction.max.timeout.ms`
      * @throws Common\Errors\InvalidRequestException    For the empty string as a transactional id
@@ -419,7 +486,9 @@ class Client
      */
     public function initProducerId(
         ?string $transactionalId = null,
-        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS
+        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS,
+        int $producerId = InitProducerIdRequest::NO_PRODUCER_ID,
+        int $producerEpoch = InitProducerIdRequest::NO_PRODUCER_EPOCH
     ): ProducerIdAndEpoch {
         // A producer id without a transactional id is not coordinated by anything, so any broker may answer it
         $node = $transactionalId === null
@@ -431,6 +500,8 @@ class Client
             fn(int $correlationId): InitProducerIdRequest => new InitProducerIdRequest(
                 $transactionalId,
                 $transactionTimeoutMs,
+                $producerId,
+                $producerEpoch,
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),
@@ -503,7 +574,7 @@ class Client
             );
         }
 
-        // The wire format carries one opaque record set per topic-partition, see docs/protocol/1.1.md
+        // The wire format carries one opaque record set per topic-partition, see docs/protocol/2.8.md
         $topicPartitionRecordSets = [];
         foreach ($topicPartitionMessages as $topic => $partitionMessages) {
             foreach ($partitionMessages as $partition => $messages) {
@@ -519,9 +590,10 @@ class Client
             }
         }
 
-        // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the highest
-        // version that has no place for a transactional id; the message format v2 goes out as Produce v5, the
-        // first version whose answer reports the log start offset of every partition
+        // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the
+        // highest version that has no place for a transactional id; the message format v2 goes out as Produce v6,
+        // the version Kafka 2.0 bumped the api to (KIP-219), whose answer is the version 5 frame - the first one
+        // that reports the log start offset of every partition
         $requestClass  = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceRequest::class : ProduceRequestV2::class;
         $createRequest = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
             => new $requestClass(
@@ -556,13 +628,28 @@ class Client
                             // what a producer does about a 59 (UnknownProducerId): the field is the only way to
                             // tell the head of the log being deleted under a producer from a real out-of-order
                             // sequence, see TransactionManager::canRetryBatch()
+                            $context = [
+                                'topic'          => $topic,
+                                'partitionId'    => $partitionId,
+                                'logStartOffset' => $partitionInfo->logStartOffset,
+                            ];
+                            // The record errors of KIP-467 (Produce v8): which records of the sent batch the
+                            // broker refused, and why. They travel into the exception, because "the batch was
+                            // refused" without them is what every version below 8 already said
+                            if ($partitionInfo->errorMessage !== null) {
+                                $context['errorMessage'] = $partitionInfo->errorMessage;
+                            }
+                            if ($partitionInfo->recordErrors !== []) {
+                                $context['recordErrors'] = array_map(
+                                    static fn(ProduceResponseRecordError $recordError): ?string
+                                        => $recordError->batchIndexErrorMessage,
+                                    $partitionInfo->recordErrors
+                                );
+                            }
+
                             $errors[$topic][$partitionId] = KafkaException::fromCode(
                                 $partitionInfo->errorCode,
-                                [
-                                    'topic'          => $topic,
-                                    'partitionId'    => $partitionId,
-                                    'logStartOffset' => $partitionInfo->logStartOffset,
-                                ]
+                                $context
                             );
                             continue;
                         }
@@ -631,7 +718,11 @@ class Client
      *   `read_uncommitted` unless it is configured otherwise, which is what the broker answers a -1 last stable
      *   offset and a `null` aborted-transactions array to.
      *
-     * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
+     * @param array<string, array<int, int|array{int, int}>> $topicPartitionOffsets Offset to start fetching each
+     *        partition at. A value may also be the pair `[offset, currentLeaderEpoch]`, which is the epoch that
+     *        **Fetch v9** (Kafka 2.1, KIP-320) puts on the wire and that fences a consumer whose metadata is out
+     *        of date with 74 or 75; a plain integer means "I do not know the epoch", which is what every call
+     *        written before Kafka 2.1 means.
      * @param int                            $timeout               Timeout in ms to wait for fetching
      *
      * @return array<string, array<int, FetchedPartition>> [topic => [partition => FetchedPartition]]
@@ -697,7 +788,9 @@ class Client
      * carries the **whole** set again: an incremental request that carried the failed partitions alone would tell
      * the broker to forget all the others.
      *
-     * @param array<string, array<int, int>> $topicPartitionOffsets Offsets to start fetching each partition at
+     * @param array<string, array<int, int|array{int, int}>> $topicPartitionOffsets Offset to start fetching each
+     *        partition at, optionally as the pair `[offset, currentLeaderEpoch]` of KIP-320, see
+     *        {@see self::fetchPartitions()}
      * @param int                            $timeout               Timeout in ms to wait for fetching
      *
      * @return array<string, array<int, FetchedPartition>> [topic => [partition => FetchedPartition]], only the
@@ -736,9 +829,12 @@ class Client
                     $builder = $handler->newBuilder();
                     foreach ($nodeTopicRequest as $topic => $partitionOffsets) {
                         foreach ($partitionOffsets as $partitionId => $fetchOffset) {
+                            // The value travels into the session as it was given - a plain offset, or the pair
+                            // [offset, currentLeaderEpoch] of KIP-320 - because the session compares it with the
+                            // one it remembers to decide whether the partition has to be sent again at all
                             $builder->add(
                                 new TopicPartition((string) $topic, (int) $partitionId),
-                                (int) $fetchOffset
+                                is_array($fetchOffset) ? [(int) $fetchOffset[0], (int) $fetchOffset[1]] : (int) $fetchOffset
                             );
                         }
                     }
@@ -869,7 +965,9 @@ class Client
                     );
                     continue;
                 }
-                $fetchOffset = (int) ($topicPartitionOffsets[$topic][$partitionId] ?? 0);
+                // A requested offset may be the pair [offset, currentLeaderEpoch] of KIP-320, see
+                // FetchRequest::offsetAndEpoch(); only the offset itself is of interest here
+                [$fetchOffset] = FetchRequest::offsetAndEpoch($topicPartitionOffsets[$topic][$partitionId] ?? 0);
                 try {
                     // The schema engine hands over the raw bytes of the record set, because the broker is
                     // allowed to cut its last batch short. The record layer looks at the message format of
@@ -894,7 +992,9 @@ class Client
                     $response->throttleTimeMs,
                     $responsePartition->lastStableOffset,
                     $responsePartition->logStartOffset,
-                    $responsePartition->abortedTransactions
+                    $responsePartition->abortedTransactions,
+                    $responsePartition->preferredReadReplica,
+                    $responsePartition->divergingEpoch
                 );
             }
         }
@@ -916,7 +1016,9 @@ class Client
      * {@see self::fetchTopicPartitionOffsetsForTimes()} to receive the timestamp of the message that was found
      * together with its offset.
      *
-     * @param array<string, array<int, int>> $topicPartitionTimestamps Target times of each topic partition
+     * @param array<string, array<int, int|array{int, int}>> $topicPartitionTimestamps Target time of each topic
+     *        partition, optionally as the pair `[timestamp, currentLeaderEpoch]` that version 4 (KIP-320) puts on
+     *        the wire
      *
      * @return array<string, array<int, int>> Array in the form: [topic => [partition => offset]]
      *
@@ -980,7 +1082,68 @@ class Client
                         // "No message matches that timestamp" is answered with the offset -1 and no error at all
                         $result[$topic][$partitionId] = $partitionMetadata->offset === OffsetsResponsePartition::UNKNOWN_OFFSET
                             ? null
-                            : new OffsetAndTimestamp($partitionMetadata->offset, $partitionMetadata->timestamp);
+                            : new OffsetAndTimestamp(
+                                $partitionMetadata->offset,
+                                $partitionMetadata->timestamp,
+                                $partitionMetadata->leaderEpoch === OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH
+                                    ? null
+                                    : $partitionMetadata->leaderEpoch
+                            );
+                    }
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Asks the leader of every named partition where a leader epoch of its log ended (api key 23, **v2**)
+     *
+     * This is the wire half of the truncation detection of **KIP-320**. A consumer that has seen a *new* leader
+     * epoch for a partition does not know whether the records it was about to read survived the leader change, so
+     * it asks the new leader: "you took over from epoch `e` - which offset does that epoch end at?". An
+     * `end_offset` **below** the consumer's position means that the log diverged there and the position has to be
+     * moved back; an offset at or above it means that the position is still inside a part of the log the new
+     * leader has, and the consumer goes on reading.
+     *
+     * The request goes out as **version 2** (Kafka 2.1), which carries the `current_leader_epoch` that fences it:
+     * a stale belief about the leadership is answered **74** `FENCED_LEADER_EPOCH` and a belief from the future
+     * **75** `UNKNOWN_LEADER_EPOCH`, both of which mean "refresh the metadata and ask again" rather than "move the
+     * position". The api answers an ordinary client just as it answers a follower, because
+     * `KafkaApis.handleOffsetForLeaderEpochRequest` @ 2.8.2 authorizes it with `ClusterAction on Cluster`, which a
+     * broker without an `authorizer.class.name` grants to everybody.
+     *
+     * @param array<string, array<int, int|array{int, int}>> $topicPartitionEpochs Epoch to resolve per partition,
+     *        as topic => partition => epoch, or as the pair `[leaderEpoch, currentLeaderEpoch]`
+     *
+     * @return array<string, array<int, OffsetForLeaderEpochResponsePartition>> The answer of every partition
+     *
+     * @throws TopicPartitionRequestException If a partition was answered with an error code
+     */
+    public function offsetsForLeaderEpochs(array $topicPartitionEpochs): array
+    {
+        return $this->clusterRequest(
+            $topicPartitionEpochs,
+            fn(array $nodeTopicRequest, int $correlationId): OffsetForLeaderEpochRequest
+                => new OffsetForLeaderEpochRequest(
+                    $nodeTopicRequest,
+                    $this->configuration[ClientConfig::CLIENT_ID],
+                    $correlationId
+                ),
+            OffsetForLeaderEpochResponse::class,
+            static function (array $result, OffsetForLeaderEpochResponse $response, array &$errors): array {
+                foreach ($response->topics as $topic => $topicResponse) {
+                    /** @var OffsetForLeaderEpochResponsePartition $partition */
+                    foreach ($topicResponse->partitions as $partitionId => $partition) {
+                        if ($partition->errorCode !== KafkaException::NO_ERROR) {
+                            $errors[$topic][$partitionId] = KafkaException::fromCode(
+                                $partition->errorCode,
+                                ['topic' => $topic, 'partitionId' => $partitionId]
+                            );
+                            continue;
+                        }
+                        $result[$topic][$partitionId] = $partition;
                     }
                 }
 
@@ -992,15 +1155,19 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option: version 3 stores the offsets in the
+     * The version of the request follows the `offsets.storage` option: version 6 stores the offsets in the
      * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group, version 0 stores
      * them in ZooKeeper and is answered by any broker. An offset may be given as a plain integer or as an
-     * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch.
+     * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch - and whose
+     * `leaderEpoch` travels in the `committed_leader_epoch` of the v6 partition entry (KIP-320, Kafka 2.1); a
+     * plain integer, or an {@see OffsetAndMetadata} without an epoch, commits
+     * {@see \Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition::UNKNOWN_LEADER_EPOCH}.
      *
-     * `$retentionTimeMs` is the `retention_time` field of the v2 request, which v3 sends unchanged: with
-     * {@see OffsetCommitRequest::DEFAULT_RETENTION_TIME} the broker keeps the offsets for `offsets.retention.minutes`
-     * counted from its receive time, any other value replaces that retention for this commit. The ZooKeeper version
-     * has no such field and ignores it. A client that is not a member of a group commits with
+     * **`$retentionTimeMs` no longer reaches the wire.** It is the `retention_time` field of the versions 2 to 4,
+     * and KIP-211 (Kafka 2.1) removed it from version 5 on, because the committed offsets of a group expire
+     * `offsets.retention.minutes` after the **group** became empty from that release on. Pass it to
+     * {@see OffsetCommitRequestV4} directly to reach a broker that still reads it; the ZooKeeper version never had
+     * the field either. A client that is not a member of a group commits with
      * {@see OffsetCommitRequest::DEFAULT_GENERATION_ID} and {@see OffsetCommitRequest::DEFAULT_MEMBER_NAME}; a member
      * of a group has to pass the generation and the member id the coordinator assigned to it, otherwise the
      * coordinator answers with 22 (IllegalGeneration) or 25 (UnknownMemberId).
@@ -1012,6 +1179,8 @@ class Client
      * @param int                                              $generationId          Generation of the group
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
      * @param int                                              $retentionTimeMs       How long the broker keeps them
+     * @param string|null                                      $groupInstanceId       `group.instance.id` of a
+     *        static member (KIP-345, version 7), null for a dynamic one
      *
      * @throws Common\Errors\OffsetMetadataTooLargeException
      * @throws Common\Errors\GroupLoadInProgressException
@@ -1024,7 +1193,8 @@ class Client
         string $memberId,
         int $generationId,
         array $topicPartitionOffsets,
-        int $retentionTimeMs
+        int $retentionTimeMs,
+        ?string $groupInstanceId = null
     ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
@@ -1038,7 +1208,8 @@ class Client
                     $retentionTimeMs,
                     $topicPartitionOffsets,
                     $clientId,
-                    $correlationId
+                    $correlationId,
+                    $groupInstanceId
                 )
                 : new OffsetCommitRequestV0($groupId, $topicPartitionOffsets, $clientId, $correlationId),
             // The version 3 answer opens with the throttle time of KIP-124, which a version 0 one does not have
@@ -1063,7 +1234,7 @@ class Client
      * Fetches the offsets for topic partition for the concrete consumer group
      *
      * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}
-     * - `kafka` reads them out of `__consumer_offsets` with the version 2 of the api, `zookeeper` with the version 0.
+     * - `kafka` reads them out of `__consumer_offsets` with the version 4 of the api, `zookeeper` with the version 0.
      * A topic-partition that has never been committed comes back with the offset -1: as the error code 0 from the
      * `__consumer_offsets` topic (v1 and v2), and as the error code 3 from ZooKeeper (v0).
      *
@@ -1076,6 +1247,9 @@ class Client
      * @param string                              $groupId         Name of the group
      * @param array<string, array<int, int>>|null $topicPartitions List of topic => partitions for fetching
      *        information, or null for every topic of the group
+     * @param bool                                $requireStable   Whether the coordinator has to hold back an
+     *        offset whose transaction has not been committed yet and answer that partition with the retriable 88
+     *        instead (KIP-447, version 7); false answers the offset of the last commit, pending or not
      *
      * @return array<string, array<int, int>> Committed offsets in the form [topic => [partition => offset]]
      *
@@ -1086,14 +1260,18 @@ class Client
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function fetchGroupOffsets(Node $coordinatorNode, string $groupId, ?array $topicPartitions): array
-    {
+    public function fetchGroupOffsets(
+        Node $coordinatorNode,
+        string $groupId,
+        ?array $topicPartitions,
+        bool $requireStable = false
+    ): array {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         return $this->coordinatorRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
-                ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId)
+                ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId, $requireStable)
                 : new OffsetFetchRequestV0($groupId, $topicPartitions, $clientId, $correlationId),
             $this->isOffsetStorageKafka() ? OffsetFetchResponse::class : OffsetFetchResponseV0::class,
             static function (OffsetFetchResponse $response) use ($groupId): array {
@@ -1123,13 +1301,100 @@ class Client
     }
 
     /**
+     * Deletes the committed offsets of some partitions of a group (ApiKey 47, Kafka 2.4, KIP-496)
+     *
+     * KIP-496 added the api for the one thing {@see self::leaveGroup()} and DeleteGroups could not do: make a group
+     * that keeps running forget the committed offset of a single partition. The coordinator writes a tombstone into
+     * `__consumer_offsets` for every partition it deleted, so {@see self::fetchGroupOffsets()} answers -1 for it
+     * afterwards - exactly as if the group had never committed anything for that partition.
+     *
+     * **What the coordinator allows depends on the state of the group.** An `Empty` group - one without a live
+     * member - hands over every partition of the request. A group that is rebalancing or `Stable` and whose members
+     * speak the `consumer` protocol keeps the partitions of the topics its members are **subscribed** to and answers
+     * 86 (GroupSubscribedToTopic) for them, while it deletes the rest. A live group of any other protocol type is
+     * refused as a whole with the top-level 68 (NonEmptyGroup), and a group the coordinator does not know with 69
+     * (GroupIdNotFound).
+     *
+     * **A top-level error carries no partition at all**, which is why it is thrown here: the answer of
+     * `KafkaApis.handleOffsetDeleteRequest` @ 2.8.2 has an empty topic array in that case, so there is nothing to
+     * report per partition. Everything else is per partition and comes back in the result.
+     *
+     * @param Node                          $coordinatorNode Current group coordinator for $groupId
+     * @param string                        $groupId         Name of the group
+     * @param array<string, iterable<int, int>> $topicPartitions Partition indexes per topic; an empty array is a
+     *        legal request that deletes nothing
+     *
+     * @return array<string, array<int, KafkaException|null>> One entry per requested partition, `null` when its
+     *         committed offset is gone and the exception of the error code otherwise
+     *
+     * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\InvalidGroupIdException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     * @throws Common\Errors\GroupNotEmptyException
+     * @throws Common\Errors\GroupIdNotFoundException
+     */
+    public function deleteGroupOffsets(Node $coordinatorNode, string $groupId, array $topicPartitions): array
+    {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => new OffsetDeleteRequest(
+                $groupId,
+                $topicPartitions,
+                $clientId,
+                $correlationId
+            ),
+            OffsetDeleteResponse::class,
+            static function (OffsetDeleteResponse $response) use ($groupId, $topicPartitions): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    // The group itself is the problem, and the answer names no partition to report it on
+                    throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
+                }
+
+                $result = [];
+                foreach ($topicPartitions as $topic => $partitions) {
+                    foreach ($partitions as $partitionId) {
+                        $answer = $response->topics[$topic]->partitions[$partitionId] ?? null;
+
+                        $result[(string) $topic][(int) $partitionId] = match (true) {
+                            $answer === null => new UnknownErrorException([
+                                'groupId'   => $groupId,
+                                'topic'     => (string) $topic,
+                                'partition' => (int) $partitionId,
+                                'error'     => 'The coordinator sent no result for this partition',
+                            ]),
+                            $answer->errorCode === KafkaException::NO_ERROR => null,
+                            default => KafkaException::fromCode($answer->errorCode, [
+                                'groupId'   => $groupId,
+                                'topic'     => (string) $topic,
+                                'partition' => (int) $partitionId,
+                            ]),
+                        };
+                    }
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
      * Joins the group with the specified protocol and member information (ApiKey 11, Kafka 0.9)
      *
-     * A client that has no member id yet passes {@see JoinGroupRequest::DEFAULT_MEMBER_ID} and receives the id the
-     * coordinator assigned to it; a member that rejoins has to pass the id of the previous generation. The answer
-     * names the generation, the protocol the coordinator picked out of `$groupProtocols` and the leader of the
-     * group - the member whose id equals the `leaderId` of the answer is the one that computes the assignment and
-     * publishes it with {@see self::syncGroup()}; only that member receives the `members` array.
+     * A client that has no member id yet passes {@see JoinGroupRequest::DEFAULT_MEMBER_ID}; a member that rejoins
+     * has to pass the id of the previous generation. The answer names the generation, the protocol the coordinator
+     * picked out of `$groupProtocols` and the leader of the group - the member whose id equals the `leaderId` of
+     * the answer is the one that computes the assignment and publishes it with {@see self::syncGroup()}; only that
+     * member receives the `members` array.
+     *
+     * **A first join is refused once** (KIP-394, Kafka 2.2): the version 4 request this client sends is answered
+     * with the error code 79 and the member id the coordinator assigned, which is reported as a
+     * {@see Common\Errors\MemberIdRequiredException} whose context carries that id under `assignedMemberId`. The
+     * caller sends the very same request again with it - {@see \Protocol\Kafka\Consumer\Internals\ConsumerCoordinator}
+     * does it immediately and without a backoff, as the Java `AbstractCoordinator.handleJoinResponse` does.
      *
      * **The coordinator holds this request until the rebalance is over**, i.e. until every known member of the
      * group has rejoined or has run out of time. How much time each of them gets is the `rebalance_timeout` of the
@@ -1146,6 +1411,8 @@ class Client
      *        bytes to this api - a `consumer` member sends its `Subscription` here
      * @param int|null              $rebalanceTimeoutMs How long the coordinator may wait for this member to rejoin a
      *        rebalance, null for the configured `max.poll.interval.ms`
+     * @param string|null           $groupInstanceId   `group.instance.id` of a static member (KIP-345, version 5),
+     *        null for a dynamic one
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -1162,7 +1429,8 @@ class Client
         string $memberId,
         string $protocolType,
         array $groupProtocols,
-        ?int $rebalanceTimeoutMs = null
+        ?int $rebalanceTimeoutMs = null,
+        ?string $groupInstanceId = null
     ): JoinGroupResponse {
         $clientId         = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
         $sessionTimeout   = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
@@ -1180,15 +1448,21 @@ class Client
                 $protocolType,
                 $groupProtocols,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $groupInstanceId
             ),
             JoinGroupResponse::class,
             static function (JoinGroupResponse $response) use ($groupId, $memberId, $protocolType): JoinGroupResponse {
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
-                    throw KafkaException::fromCode(
-                        $response->errorCode,
-                        ['groupId' => $groupId, 'memberId' => $memberId, 'protocolType' => $protocolType]
-                    );
+                    // The 79 of KIP-394 is the one error answer that carries something the caller needs: the
+                    // member id the coordinator assigned, which the next join has to send. It travels in the
+                    // context under `assignedMemberId`, next to the (empty) id this request was sent with.
+                    $context = ['groupId' => $groupId, 'memberId' => $memberId, 'protocolType' => $protocolType];
+                    if ($response->errorCode === KafkaException::MEMBER_ID_REQUIRED) {
+                        $context['assignedMemberId'] = $response->memberId;
+                    }
+
+                    throw KafkaException::fromCode($response->errorCode, $context);
                 }
 
                 return $response;
@@ -1203,12 +1477,23 @@ class Client
      * assignment for each member; every other member passes an empty array and receives its own share in the
      * answer, which the coordinator holds back until the leader has sent the assignment.
      *
+     * **The version follows the two arguments of KIP-559.** A caller that names the `protocol_type` and the
+     * `protocol_name` of its generation sends the **version 5** and is answered with the same pair; a caller that
+     * names neither sends the **version 4**, because a version 5 without them is refused with 23
+     * (`InconsistentGroupProtocol`) before the coordinator looks at the group at all.
+     *
      * @param Node                  $coordinatorNode  Current group coordinator for $groupId
      * @param string                $groupId          Name of the group
      * @param string                $memberId         Name of the group member
      * @param int                   $generationId     Current generation of the group
      * @param array<string, string> $groupAssignments Assignment of every member, by member id, sent by the leader
      *        only; opaque bytes to this api - a `consumer` leader sends a `MemberAssignment` per member
+     * @param string|null           $groupInstanceId  `group.instance.id` of a static member (KIP-345, version 3),
+     *        null for a dynamic one
+     * @param string|null           $protocolType     The `protocol_type` the member joined with, `consumer` for a
+     *        consumer group (KIP-559, version 5); leaving it null sends the version 4 frame instead
+     * @param string|null           $protocolName     The protocol of the generation, as the JoinGroup answer
+     *        reported it (KIP-559, version 5); leaving it null sends the version 4 frame instead
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -1216,6 +1501,7 @@ class Client
      * @throws Common\Errors\IllegalGenerationException
      * @throws Common\Errors\UnknownMemberIdException
      * @throws Common\Errors\RebalanceInProgressException
+     * @throws Common\Errors\InconsistentGroupProtocolException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
     public function syncGroup(
@@ -1223,21 +1509,36 @@ class Client
         string $groupId,
         string $memberId,
         int $generationId,
-        array $groupAssignments = []
+        array $groupAssignments = [],
+        ?string $groupInstanceId = null,
+        ?string $protocolType = null,
+        ?string $protocolName = null
     ): SyncGroupResponse {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
+        // KIP-559 made the two fields mandatory in a version 5, not optional: a request that leaves either of them
+        // null is answered 23 before the coordinator is asked anything. A caller that does not know the protocol of
+        // the generation therefore gets the version 4 frame, which has no such field and which a 2.8.2 broker
+        // serves unchanged - the same "fall back to the version that can carry what you asked for" the Java
+        // `OffsetFetchRequest.Builder` does for the `require_stable` of KIP-447
+        $namesProtocol = $protocolType !== null && $protocolName !== null;
+        $requestClass  = $namesProtocol ? SyncGroupRequest::class : SyncGroupRequestV4::class;
+        $responseClass = $namesProtocol ? SyncGroupResponse::class : SyncGroupResponseV4::class;
+
         return $this->groupRequest(
             $coordinatorNode,
-            fn(int $correlationId): AbstractRequest => new SyncGroupRequest(
+            fn(int $correlationId): AbstractRequest => new $requestClass(
                 $groupId,
                 $generationId,
                 $memberId,
                 $groupAssignments,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $groupInstanceId,
+                $protocolType,
+                $protocolName
             ),
-            SyncGroupResponse::class,
+            $responseClass,
             static function (SyncGroupResponse $response) use ($groupId, $memberId, $generationId): SyncGroupResponse {
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
                     throw KafkaException::fromCode(
@@ -1263,16 +1564,25 @@ class Client
      * @param string $groupId         Name of the group
      * @param string $memberId        Name of the group member
      * @param int    $generationId    Current generation of the group
+     * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345, version 3), null for a
+     *        dynamic one; a heartbeat that names an instance id another consumer has taken over is answered 82
+     *        ({@see Common\Errors\FencedInstanceIdException}), which is fatal for this member
      *
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\IllegalGenerationException
      * @throws Common\Errors\UnknownMemberIdException
      * @throws Common\Errors\RebalanceInProgressException
+     * @throws Common\Errors\FencedInstanceIdException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function heartbeat(Node $coordinatorNode, string $groupId, string $memberId, int $generationId): void
-    {
+    public function heartbeat(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $generationId,
+        ?string $groupInstanceId = null
+    ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         $this->groupRequest(
@@ -1282,7 +1592,8 @@ class Client
                 $generationId,
                 $memberId,
                 $clientId,
-                $correlationId
+                $correlationId,
+                $groupInstanceId
             ),
             HeartbeatResponse::class,
             static function (HeartbeatResponse $response) use ($groupId, $memberId, $generationId): void {
@@ -1302,35 +1613,52 @@ class Client
      * The group rebalances right away instead of waiting for the session timeout of the member to expire, so this
      * is what a consumer sends when it shuts down in an orderly way.
      *
-     * @param Node   $coordinatorNode Current group coordinator for $groupId
-     * @param string $groupId         Name of the group
-     * @param string $memberId        Name of the group member
+     * **Version 3 (Kafka 2.4, KIP-345) turned the request into a batch**, and a member that removes itself is that
+     * batch with exactly one entry. The error of that member then travels in the member array of the answer while
+     * the top-level error code stays 0, so both are checked here and the member error is reported the way it
+     * always was - 25 (`UnknownMemberId`) for a member the group does not have, 82 (`FencedInstanceId`) for a
+     * static member whose instance id another consumer has taken over. Several members at once are what
+     * {@see \Protocol\Kafka\Admin\AdminClient::removeMembersFromConsumerGroup()} sends.
+     *
+     * @param Node        $coordinatorNode Current group coordinator for $groupId
+     * @param string      $groupId         Name of the group
+     * @param string      $memberId        Name of the group member
+     * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345, version 3), null for a
+     *        dynamic one; naming both makes the coordinator check that the member id belongs to that instance
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
      * @throws Common\Errors\NotCoordinatorForGroupException
      * @throws Common\Errors\UnknownMemberIdException
+     * @throws Common\Errors\FencedInstanceIdException
      * @throws Common\Errors\GroupAuthorizationFailedException
      */
-    public function leaveGroup(Node $coordinatorNode, string $groupId, string $memberId): void
-    {
+    public function leaveGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        ?string $groupInstanceId = null
+    ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
         $this->groupRequest(
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => new LeaveGroupRequest(
                 $groupId,
-                $memberId,
+                [new LeaveGroupRequestMember($memberId, $groupInstanceId)],
                 $clientId,
                 $correlationId
             ),
             LeaveGroupResponse::class,
             static function (LeaveGroupResponse $response) use ($groupId, $memberId): void {
+                $context = ['groupId' => $groupId, 'memberId' => $memberId];
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
-                    throw KafkaException::fromCode(
-                        $response->errorCode,
-                        ['groupId' => $groupId, 'memberId' => $memberId]
-                    );
+                    throw KafkaException::fromCode($response->errorCode, $context);
+                }
+                foreach ($response->members as $member) {
+                    if ($member->errorCode !== KafkaException::NO_ERROR) {
+                        throw KafkaException::fromCode($member->errorCode, $context);
+                    }
                 }
             }
         );
@@ -1527,7 +1855,7 @@ class Client
     }
 
     /**
-     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v3) instead of ZooKeeper (v0)
+     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v4) instead of ZooKeeper (v0)
      */
     private function isOffsetStorageKafka(): bool
     {
@@ -1565,6 +1893,8 @@ class Client
             $stream        = $coordinatorNode->getConnection($this->configuration);
             $correlationId = AbstractRequest::nextCorrelationId();
 
+            // KIP-219: the channel of a broker that throttled the last answer is muted, see self::awaitThrottle()
+            $this->awaitThrottle($coordinatorNode->nodeId);
             $createRequest($correlationId)->writeTo($stream);
 
             try {
@@ -1579,6 +1909,7 @@ class Client
 
                 throw $exception;
             }
+            $this->recordThrottleTime($coordinatorNode->nodeId, $response);
 
             return $readResponse($response);
         });
@@ -1654,6 +1985,9 @@ class Client
 
         foreach ($messageSetsByNode as $nodeId => $nodeTopicPartitionMessageSets) {
             $stream = $this->connectionTo($nodeId);
+            // An acks = 0 request is never answered, so it can never learn of a throttle itself - but a throttle
+            // that an earlier answer of this broker reported still mutes the channel, and is waited out here
+            $this->awaitThrottle($nodeId);
             $createRequest($nodeTopicPartitionMessageSets, AbstractRequest::nextCorrelationId())->writeTo($stream);
         }
     }
@@ -1773,6 +2107,9 @@ class Client
                 $correlationId = AbstractRequest::nextCorrelationId();
                 $request       = $nodeRequest($nodeTopicPartitions, $correlationId, $nodeId);
                 $stream        = $this->connectionTo($nodeId);
+                // KIP-219: a broker that throttled the last answer has muted this channel, so the request is
+                // held back until the reported delay has passed instead of being written into the mute
+                $this->awaitThrottle($nodeId);
                 if ($stream instanceof SocketStream) {
                     // Opened before the request is written, so that the answers of every leader can be awaited at
                     // once with stream_select() instead of one after another
@@ -1805,6 +2142,7 @@ class Client
                     $correlationIds[$nodeId],
                     ['node' => $nodeId]
                 );
+                $this->recordThrottleTime($nodeId, $responses[$nodeId]);
             } catch (CorrelationIdMismatchException $exception) {
                 // The stream position of a desynchronized connection is unknown, it must not be used again
                 ConnectionFactory::closeStream($stream);
@@ -1865,6 +2203,99 @@ class Client
         }
 
         return $result;
+    }
+
+    /**
+     * Waits out whatever is left of the throttle a broker imposed on this client, before the next request to it.
+     *
+     * This is the client half of **KIP-219** (Kafka 2.0), which the versions Produce v6, Fetch v8, Offsets v3 and
+     * Metadata v6 announce: a broker that throttles a request answers it **immediately**, with the delay it is
+     * about to impose in `throttle_time_ms`, and mutes the channel for that long afterwards, where a broker below
+     * Kafka 2.0 simply held the answer back for the same time. A client that writes its next request right away
+     * therefore does not get served any earlier - it writes into a muted connection, waits out the mute anyway and
+     * makes the next throttle longer - which is why this method sleeps the remaining time first, exactly as the
+     * Java `NetworkClient` does.
+     *
+     * What is remembered is the **deadline**, not the value: a caller that spent the throttle time doing
+     * something else does not wait for it twice, and the entry is spent by the first request that follows the
+     * throttled answer. {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT} switches the waiting off,
+     * which leaves the stall on the broker side, as every line of this package below 2.0 had it.
+     *
+     * The metadata refresh of {@see Cluster} does not pass through here: it opens its own connection to any
+     * broker of the bootstrap list and is not part of this client's per-node bookkeeping.
+     *
+     * @param int $nodeId Broker the next request goes to
+     */
+    private function awaitThrottle(int $nodeId): void
+    {
+        $deadline = $this->throttledUntil[$nodeId] ?? null;
+        if ($deadline === null) {
+            return;
+        }
+
+        unset($this->throttledUntil[$nodeId]);
+        // Rounded to whole microseconds, which is the resolution of usleep(): the product of two floats is off
+        // by a few nanoseconds and would otherwise turn a 400 ms throttle into 400001 microseconds of sleep
+        $remainingMicroseconds = (int) round(($deadline - $this->currentTime()) * 1000000);
+        if ($remainingMicroseconds > 0) {
+            $this->sleepFor($remainingMicroseconds);
+        }
+    }
+
+    /**
+     * Remembers when the throttle that an answer reports ends, so that the next request to that broker waits.
+     *
+     * Nothing is remembered when the answer carries no throttle time, when it reports zero - the answer of every
+     * broker without a quota - or when {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT} is off.
+     *
+     * @param int              $nodeId   Broker that sent the answer
+     * @param AbstractResponse $response Answer that was just read
+     */
+    private function recordThrottleTime(int $nodeId, AbstractResponse $response): void
+    {
+        if (!($this->configuration[ClientConfig::THROTTLE_WAIT] ?? true)) {
+            return;
+        }
+
+        $throttleTimeMs = self::throttleTimeOf($response);
+        if ($throttleTimeMs > 0) {
+            $this->throttledUntil[$nodeId] = $this->currentTime() + $throttleTimeMs / 1000;
+        }
+    }
+
+    /**
+     * Reads the `throttle_time_ms` of any answer, whatever the property of its class is called.
+     *
+     * The field has two names in this package, because the apis spell it differently on the wire and the classes
+     * follow the spec: the Produce answer reports `ThrottleTime` **behind** its topics array
+     * ({@see ProduceResponse::$throttleTime}), every other api carries `throttle_time_ms` in front of its body
+     * ({@see FetchResponse::$throttleTimeMs}). An answer of a version that predates KIP-124 has neither.
+     */
+    private static function throttleTimeOf(AbstractResponse $response): int
+    {
+        foreach (['throttleTimeMs', 'throttleTime'] as $property) {
+            if (property_exists($response, $property)) {
+                return (int) $response->$property;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Returns the current time as a UNIX timestamp with microseconds; a test double replaces the clock here
+     */
+    protected function currentTime(): float
+    {
+        return microtime(true);
+    }
+
+    /**
+     * Sleeps for the given number of microseconds; a test double replaces the sleep here
+     */
+    protected function sleepFor(int $microseconds): void
+    {
+        usleep($microseconds);
     }
 
     /**
@@ -1973,7 +2404,9 @@ class Client
      * @param int            $timeoutMs    How long the controller waits for the topics to be created
      * @param bool           $validateOnly Validate the request without creating anything
      *
-     * @return array<string, KafkaException|null> Error of every requested topic, null when it was created
+     * @return array<string, CreatedTopic> What the controller answered for every requested topic: its error, and
+     *         from the version 5 of the api the partition count, the replication factor and the configuration the
+     *         new topic ended up with (KIP-525)
      */
     public function createTopics(
         Node $controller,
@@ -1997,11 +2430,15 @@ class Client
             static function (CreateTopicsResponse $response) use ($topics): array {
                 $result = [];
                 foreach ($topics as $newTopic) {
-                    $topicResult             = $response->topics[$newTopic->topic] ?? null;
-                    $result[$newTopic->topic] = self::topicError(
+                    $topicResult              = $response->topics[$newTopic->topic] ?? null;
+                    $result[$newTopic->topic] = CreatedTopic::fromResponseTopic(
                         $newTopic->topic,
-                        $topicResult?->errorCode,
-                        $topicResult?->errorMessage
+                        $topicResult,
+                        self::topicError(
+                            $newTopic->topic,
+                            $topicResult?->errorCode,
+                            $topicResult?->errorMessage
+                        )
                     );
                 }
 
@@ -2046,7 +2483,13 @@ class Client
             static function (DeleteTopicsResponse $response) use ($topicNames): array {
                 $result = [];
                 foreach ($topicNames as $topic) {
-                    $result[$topic] = self::topicError($topic, $response->topics[$topic]->errorCode ?? null);
+                    $topicResult    = $response->topics[$topic] ?? null;
+                    // The `error_message` of a refused topic is what Kafka 2.7 added with the version 5
+                    $result[$topic] = self::topicError(
+                        $topic,
+                        $topicResult?->errorCode,
+                        $topicResult?->errorMessage
+                    );
                 }
 
                 return $result;
@@ -2114,6 +2557,206 @@ class Client
     }
 
     /**
+     * Asks the controller to elect the leader of the given partitions (ApiKey 43, Kafka 2.2, KIP-183/KIP-460)
+     *
+     * `$electionType` is the `election_type` byte Kafka 2.4 added with the **version 1** of the api (KIP-460):
+     * {@see Admin\ElectionType::PREFERRED} moves the leadership back to the first replica of the assignment, and
+     * {@see Admin\ElectionType::UNCLEAN} makes the first LIVE replica the leader even when none of them is in
+     * sync. `$topicPartitions` is a `topic => list of partition ids` map, or **null** for every partition of the
+     * cluster, and the answer is read into a `topic => partition => error` map with `null` for every partition
+     * that really got a new leader.
+     *
+     * A partition that the controller left out of its answer - which happens for a **null** request, where every
+     * partition that needed no election is dropped - is not in the result either: the caller asked for "whatever
+     * needs electing", and nothing else is reported. The **top-level** error code of the version 1 answer is the
+     * one case this method throws for: it is the 31 of a client the authorizer refused, which names no partition
+     * at all.
+     *
+     * @param Node                          $controller      Active controller of the cluster
+     * @param array<string, list<int>>|null $topicPartitions Partitions to elect a leader for, null for all of them
+     * @param int                           $timeoutMs       How long the controller waits for the elections
+     * @param int                           $electionType    Kind of election, an {@see Admin\ElectionType} constant
+     *
+     * @throws KafkaException If the answer carries a top-level error code (version 1 and above)
+     *
+     * @return array<string, array<int, KafkaException|null>> Error of every answered partition
+     */
+    public function electLeaders(
+        Node $controller,
+        ?array $topicPartitions,
+        int $timeoutMs = ElectLeadersRequest::DEFAULT_TIMEOUT_MS,
+        int $electionType = ElectionType::PREFERRED
+    ): array {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new ElectLeadersRequest(
+                $topicPartitions,
+                $timeoutMs,
+                $electionType,
+                $clientId,
+                $correlationId
+            ),
+            ElectLeadersResponse::class,
+            static function (ElectLeadersResponse $response): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['error' => 'The request as a whole was refused by the broker']
+                    );
+                }
+
+                $result = [];
+                foreach ($response->replicaElectionResults as $topic => $election) {
+                    foreach ($election->partitionResult as $partition) {
+                        $result[$topic][$partition->partitionId] = self::topicError(
+                            $topic,
+                            $partition->errorCode,
+                            $partition->errorMessage
+                        );
+                    }
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Asks the controller to move the replicas of partitions to other brokers (ApiKey 45, Kafka 2.4, KIP-455)
+     *
+     * The api that took the last piece of `kafka-reassign-partitions.sh` away from ZooKeeper: before Kafka 2.4 a
+     * reassignment was a JSON document written into the `/admin/reassign_partitions` znode, one at a time for the
+     * whole cluster and impossible to cancel. Like CreateTopics it is served by the **active controller** alone -
+     * `$controller` has to be the node that {@see \Protocol\Kafka\Admin\AdminClient::findController()} returned -
+     * and a broker that is not (or is no longer) the controller answers the TOP-LEVEL error code 41
+     * (NotController), which is thrown here, because it says nothing about the individual partitions.
+     *
+     * Every entry of `$reassignments` names the **whole** replica set its partition should end up with, as a
+     * {@see NewPartitionReassignment} or as a plain list of broker ids - the first one is the preferred leader -
+     * and `null` **cancels** a reassignment that is still in progress. The answer is one error per requested
+     * partition, and a partition with the error code 0 is one the controller *accepted*: the data is moved
+     * afterwards by the replica fetchers and watched with {@see self::listPartitionReassignments()}.
+     *
+     * The codes a 2.8.2 broker answers per partition are 3 (UnknownTopicOrPartition) for a topic or a partition it
+     * does not have, 39 (InvalidReplicaAssignment) for an empty replica list or a broker that is not alive, and 85
+     * (NoReassignmentInProgress) for a cancellation that had nothing to cancel.
+     *
+     * @param Node                                                              $controller    Active controller
+     * @param array<string, array<int, list<int>|NewPartitionReassignment|null>> $reassignments Target replica set of
+     *        every partition, as `topic => [partition => [broker ids]]`; `null` cancels that partition
+     * @param int                                                               $timeoutMs     How long the
+     *        controller waits for the reassignment to be registered
+     *
+     * @throws KafkaException If the request as a whole was refused, e.g. with 41 (NotController)
+     *
+     * @return array<string, array<int, KafkaException|null>> Error of every requested partition, null when accepted
+     */
+    public function alterPartitionReassignments(
+        Node $controller,
+        array $reassignments,
+        int $timeoutMs = AlterPartitionReassignmentsRequest::DEFAULT_TIMEOUT_MS
+    ): array {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new AlterPartitionReassignmentsRequest(
+                $reassignments,
+                $timeoutMs,
+                $clientId,
+                $correlationId
+            ),
+            AlterPartitionReassignmentsResponse::class,
+            static function (AlterPartitionReassignmentsResponse $response) use ($reassignments): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['error' => $response->errorMessage ?? 'The controller refused the whole request']
+                    );
+                }
+
+                $result = [];
+                foreach ($reassignments as $topic => $partitions) {
+                    foreach (array_keys($partitions) as $partition) {
+                        $answer = $response->responses[$topic]->partitions[$partition] ?? null;
+                        $result[(string) $topic][(int) $partition] = self::partitionError(
+                            (string) $topic,
+                            (int) $partition,
+                            $answer?->errorCode,
+                            $answer?->errorMessage
+                        );
+                    }
+                }
+
+                return $result;
+            }
+        );
+    }
+
+    /**
+     * Asks the controller which partitions are being reassigned right now (ApiKey 46, Kafka 2.4, KIP-455)
+     *
+     * The other half of KIP-455, and the replacement of `kafka-reassign-partitions.sh --verify`: a partition is in
+     * the answer while its reassignment is in flight and disappears from it when the controller is done. A topic or
+     * a partition that does not exist is not an error here - it is simply absent, because the answer is what is
+     * going on and not what was asked for - and the only error code is the top-level one, which is thrown.
+     *
+     * **`null` asks for every reassignment of the cluster**, an empty array for none of them; on a shared cluster a
+     * caller should name its own partitions.
+     *
+     * @param Node                          $controller Active controller of the cluster
+     * @param array<string, list<int>>|null $partitions Partitions to ask for, `null` for the whole cluster
+     * @param int                           $timeoutMs  How long the controller waits before it answers
+     *
+     * @throws KafkaException If the request was refused, e.g. with 41 (NotController)
+     *
+     * @return list<PartitionReassignment> Every partition that is being reassigned, in the order of the answer
+     */
+    public function listPartitionReassignments(
+        Node $controller,
+        ?array $partitions = null,
+        int $timeoutMs = ListPartitionReassignmentsRequest::DEFAULT_TIMEOUT_MS
+    ): array {
+        $clientId = (string) $this->configuration[ClientConfig::CLIENT_ID];
+
+        return $this->controllerRequest(
+            $controller,
+            fn(int $correlationId): AbstractRequest => new ListPartitionReassignmentsRequest(
+                $partitions,
+                $timeoutMs,
+                $clientId,
+                $correlationId
+            ),
+            ListPartitionReassignmentsResponse::class,
+            static function (ListPartitionReassignmentsResponse $response): array {
+                if ($response->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $response->errorCode,
+                        ['error' => $response->errorMessage ?? 'The controller refused the request']
+                    );
+                }
+
+                $reassignments = [];
+                foreach ($response->topics as $topic => $topicReassignment) {
+                    foreach ($topicReassignment->partitions as $partition) {
+                        $reassignments[] = new PartitionReassignment(
+                            (string) $topic,
+                            $partition->partitionIndex,
+                            $partition->replicas,
+                            $partition->addingReplicas,
+                            $partition->removingReplicas
+                        );
+                    }
+                }
+
+                return $reassignments;
+            }
+        );
+    }
+
+    /**
      * Sends one request of the topic administration apis to the active controller and hands its answer to a reader.
      *
      * The transport is the one of {@see self::coordinatorRequest()} - a single request to one named broker, with a
@@ -2137,6 +2780,37 @@ class Client
         Closure $readResponse
     ): mixed {
         return $this->coordinatorRequest($controller, $createRequest, $responseClass, $readResponse);
+    }
+
+    /**
+     * Turns the error code of one partition of a reassignment answer into the exception of the caller
+     *
+     * A partition the controller did not report on at all is an answer this client can not interpret, so it becomes
+     * an {@see UnknownErrorException} instead of a silent success.
+     */
+    private static function partitionError(
+        string $topic,
+        int $partition,
+        ?int $errorCode,
+        ?string $errorMessage = null
+    ): ?KafkaException {
+        if ($errorCode === null) {
+            return new UnknownErrorException([
+                'topic'     => $topic,
+                'partition' => $partition,
+                'error'     => 'The controller sent no result for this partition',
+            ]);
+        }
+        if ($errorCode === KafkaException::NO_ERROR) {
+            return null;
+        }
+
+        $context = ['topic' => $topic, 'partition' => $partition];
+        if ($errorMessage !== null && $errorMessage !== '') {
+            $context['error'] = $errorMessage;
+        }
+
+        return KafkaException::fromCode($errorCode, $context);
     }
 
     /**
@@ -2392,6 +3066,8 @@ class Client
      * @param string             $groupId            Consumer group whose offsets are committed
      * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit
+     * @param ConsumerGroupMetadata|null $groupMetadata Who the consumer is inside the group (KIP-447, version 3);
+     *        `null` is the "not a member" commit of every version below 3
      *
      * @throws KafkaException The error code of the first partition that was refused
      */
@@ -2400,7 +3076,8 @@ class Client
         string $transactionalId,
         string $groupId,
         ProducerIdAndEpoch $producerIdAndEpoch,
-        array $topicPartitionOffsets
+        array $topicPartitionOffsets,
+        ?ConsumerGroupMetadata $groupMetadata = null
     ): void {
         $this->coordinatorRequest(
             $coordinatorNode,
@@ -2410,6 +3087,7 @@ class Client
                 $producerIdAndEpoch->producerId,
                 $producerIdAndEpoch->epoch,
                 $topicPartitionOffsets,
+                $groupMetadata,
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),

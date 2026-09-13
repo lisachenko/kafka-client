@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
  *
  * Each vector is a frame that a Kafka broker really sent or really accepted - 0.10.2.2 for everything the 0.10 line
  * added, 0.9.0.1 and 0.8.2.2 for the api versions whose frames the later lines do not change - stored as hex in
- * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/1.1.md`. For every one of them
+ * `docs/protocol/vectors/*.json` and shown as an annotated dump in `docs/protocol/2.8.md`. For every one of them
  * this suite checks four things:
  *
  * 1. the frame decodes into the class that the vector names;
@@ -328,7 +328,103 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function electLeadersVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function incrementalAlterConfigsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function delegationTokensVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function alterPartitionReassignmentsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function listPartitionReassignmentsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function offsetDeleteVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeClientQuotasVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function alterClientQuotasVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeUserScramCredentialsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function alterUserScramCredentialsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function updateFeaturesVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeClusterVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeProducersVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
     }
@@ -758,6 +854,24 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('electLeadersVectors')]
+    public function testElectLeadersApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('incrementalAlterConfigsVectors')]
+    public function testIncrementalAlterConfigsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
      * The four delegation token apis of KIP-48 share one vector file, so every request vector of it carries the api
      * key of its own api and the file itself declares none.
      *
@@ -765,6 +879,96 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('delegationTokensVectors')]
     public function testDelegationTokenApis(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('alterPartitionReassignmentsVectors')]
+    public function testAlterPartitionReassignmentsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('listPartitionReassignmentsVectors')]
+    public function testListPartitionReassignmentsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('offsetDeleteVectors')]
+    public function testOffsetDeleteApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeClientQuotasVectors')]
+    public function testDescribeClientQuotasApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('alterClientQuotasVectors')]
+    public function testAlterClientQuotasApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeUserScramCredentialsVectors')]
+    public function testDescribeUserScramCredentialsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('alterUserScramCredentialsVectors')]
+    public function testAlterUserScramCredentialsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('updateFeaturesVectors')]
+    public function testUpdateFeaturesApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeClusterVectors')]
+    public function testDescribeClusterApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeProducersVectors')]
+    public function testDescribeProducersApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

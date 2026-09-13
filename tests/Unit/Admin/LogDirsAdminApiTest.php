@@ -23,6 +23,7 @@ use Protocol\Kafka\Admin\TopicPartitionReplica;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\KafkaStorageException;
 use Protocol\Kafka\Common\Errors\LogDirNotFoundException;
 use Protocol\Kafka\Common\Errors\ReplicaNotAvailableException;
@@ -40,8 +41,8 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
  * The canned answers are the documented wire vectors of `docs/protocol/vectors` wherever one fits, so this suite
  * and the compliance suite cannot disagree about what a broker says.
  *
- * @see docs/protocol/1.1.md, sections "DescribeLogDirs API (key 35, v0)" and
- *      "AlterReplicaLogDirs API (key 34, v0)"
+ * @see docs/protocol/2.8.md, sections "DescribeLogDirs API (key 35, v0 to v2)" and
+ *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(LogDirInfo::class)]
@@ -77,8 +78,14 @@ final class LogDirsAdminApiTest extends TestCase
     {
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
-            ->on(self::FIRST_BROKER, new BrokerConnection(self::vector('describe-log-dirs', 'describelogdirs.response.v0')))
-            ->on(self::SECOND_BROKER, new BrokerConnection(self::vector('describe-log-dirs', 'describelogdirs.response.v0.no-partitions')))
+            ->on(self::FIRST_BROKER, new BrokerConnection(self::describeLogDirsResponse([
+                [0, self::FIRST_DIR, []],
+                [0, self::SECOND_DIR, [self::TOPIC => [[0, 8203970, 0, false]]]],
+            ])))
+            ->on(self::SECOND_BROKER, new BrokerConnection(self::describeLogDirsResponse([
+                [0, self::FIRST_DIR, []],
+                [0, self::SECOND_DIR, []],
+            ])))
             ->install();
 
         $result = $this->adminClient()->describeLogDirs([0, 1], [self::TOPIC => [0]]);
@@ -101,7 +108,10 @@ final class LogDirsAdminApiTest extends TestCase
     {
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
-            ->on(self::FIRST_BROKER, new BrokerConnection(self::vector('describe-log-dirs', 'describelogdirs.response.v0.future')))
+            ->on(self::FIRST_BROKER, new BrokerConnection(self::describeLogDirsResponse([
+                [0, self::FIRST_DIR, [self::TOPIC => [[0, 4096, 1000, true]]]],
+                [0, self::SECOND_DIR, [self::TOPIC => [[0, 8203970, 0, false]]]],
+            ])))
             ->install();
 
         $directories = $this->adminClient()->describeLogDirs([0], [self::TOPIC => [0]])[0];
@@ -119,7 +129,10 @@ final class LogDirsAdminApiTest extends TestCase
 
     public function testDescribeLogDirsSendsANullTopicArrayWhenNoPartitionIsNamed(): void
     {
-        $broker = new BrokerConnection(self::vector('describe-log-dirs', 'describelogdirs.response.v0.no-partitions'));
+        $broker = new BrokerConnection(self::describeLogDirsResponse([
+            [0, self::FIRST_DIR, []],
+            [0, self::SECOND_DIR, []],
+        ]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, $broker)
@@ -127,13 +140,17 @@ final class LogDirsAdminApiTest extends TestCase
 
         $this->adminClient()->describeLogDirs([0]);
 
-        // The frame ends with the -1 of the nullable array: "every replica of every log directory"
-        self::assertStringEndsWith('ffffffff', bin2hex($broker->getReceivedFrames()[0]));
+        // The compact null of the flexible version 2, then the tag buffer of the body: "every replica of every
+        // log directory" is two bytes instead of the `ff ff ff ff` of the versions below
+        self::assertStringEndsWith('0000', bin2hex($broker->getReceivedFrames()[0]));
     }
 
     public function testDescribeLogDirsSendsAnEmptyTopicArrayForAnEmptySelection(): void
     {
-        $broker = new BrokerConnection(self::vector('describe-log-dirs', 'describelogdirs.response.v0.no-partitions'));
+        $broker = new BrokerConnection(self::describeLogDirsResponse([
+            [0, self::FIRST_DIR, []],
+            [0, self::SECOND_DIR, []],
+        ]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, $broker)
@@ -141,12 +158,19 @@ final class LogDirsAdminApiTest extends TestCase
 
         $this->adminClient()->describeLogDirs([0], []);
 
-        self::assertStringEndsWith('00000000', bin2hex($broker->getReceivedFrames()[0]), 'no replica at all');
+        self::assertStringEndsWith(
+            '0100',
+            bin2hex($broker->getReceivedFrames()[0]),
+            'the empty compact array, then the tag buffer of the body: no replica at all'
+        );
     }
 
     public function testDescribeLogDirsAcceptsTopicPartitionObjects(): void
     {
-        $broker = new BrokerConnection(self::vector('describe-log-dirs', 'describelogdirs.response.v0'));
+        $broker = new BrokerConnection(self::describeLogDirsResponse([
+            [0, self::FIRST_DIR, []],
+            [0, self::SECOND_DIR, [self::TOPIC => [[0, 8203970, 0, false]]]],
+        ]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, $broker)
@@ -189,7 +213,9 @@ final class LogDirsAdminApiTest extends TestCase
 
     public function testAlterReplicaLogDirsGoesToTheBrokerOfEachReplica(): void
     {
-        $first  = new BrokerConnection(self::vector('alter-replica-log-dirs', 'alterreplicalogdirs.response.v0'));
+        // The v0 vector of this api is replayed by `tests/Compliance` through its own class; the scripted broker
+        // of this test answers the flexible version 2 that the client sends since Kafka 2.8
+        $first  = new BrokerConnection(self::alterResponse([0 => 0]));
         $second = new BrokerConnection(self::alterResponse([1 => 0]));
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -216,7 +242,8 @@ final class LogDirsAdminApiTest extends TestCase
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_BROKER, new BrokerConnection(
-                self::vector('alter-replica-log-dirs', 'alterreplicalogdirs.response.v0.unknown-log-dir')
+                // The 57 `LogDirNotFound` of the v0 vector, in the flexible frame the client reads today
+                self::alterResponse([0 => KafkaException::LOG_DIR_NOT_FOUND])
             ))
             ->install();
 
@@ -271,7 +298,11 @@ final class LogDirsAdminApiTest extends TestCase
         ]);
 
         $frame = bin2hex($broker->getReceivedFrames()[0]);
-        self::assertStringContainsString('00000002', $frame, 'the log_dirs array holds two entries');
+        self::assertStringContainsString(
+            '03',
+            $frame,
+            'the log_dirs array holds two entries: the compact count 2 + 1'
+        );
         self::assertStringContainsString(bin2hex(self::SECOND_DIR), $frame);
     }
 
@@ -336,13 +367,16 @@ final class LogDirsAdminApiTest extends TestCase
      */
     private static function alterResponse(array $partitions): string
     {
-        $body = pack('N', 0) /* throttle time */ . pack('N', 1) . pack('n', strlen(self::TOPIC)) . self::TOPIC;
-        $body .= pack('N', count($partitions));
+        // The version 2 of Kafka 2.8 is the first flexible one of this api (KIP-482): the response header v1 with
+        // its tagged-field section, compact strings and arrays, and a tag buffer at the end of every structure
+        $body = "\x00" . pack('N', 0) /* throttle time */ . self::unsignedVarint(2)
+            . self::compactString(self::TOPIC) . self::unsignedVarint(count($partitions) + 1);
         foreach ($partitions as $partitionId => $errorCode) {
-            $body .= pack('N', $partitionId) . pack('n', $errorCode);
+            $body .= pack('N', $partitionId) . pack('n', $errorCode) . "\x00";
         }
+        $body .= "\x00";   // the tag buffer of the topic entry
 
-        return ResponseFrame::of(0, $body);
+        return ResponseFrame::of(0, $body . "\x00");
     }
 
     /**
@@ -350,10 +384,63 @@ final class LogDirsAdminApiTest extends TestCase
      */
     private static function offlineDirectoryResponse(): string
     {
-        $body = pack('N', 0) /* throttle time */ . pack('N', 1);
-        $body .= pack('n', 56) . pack('n', strlen(self::FIRST_DIR)) . self::FIRST_DIR . pack('N', 0);
+        return self::describeLogDirsResponse([[56, self::FIRST_DIR, []]]);
+    }
 
-        return ResponseFrame::of(0, $body);
+    /**
+     * Builds a DescribeLogDirs answer of version **2**, the flexible one the client sends since Kafka 2.6
+     *
+     * The answer of the versions 0 and 1 is the same fields in the plain encoding; the wire vectors of those
+     * versions are replayed by `tests/Compliance` through their own classes, while the scripted broker of these
+     * tests has to speak the version the client sends.
+     *
+     * @param list<array{0: int, 1: string, 2: array<string, list<array{0: int, 1: int, 2: int, 3: bool}>>}> $dirs
+     *        Error code, path and replicas - by topic, each `[partition, size, offsetLag, isFuture]` - per directory
+     */
+    private static function describeLogDirsResponse(array $dirs): string
+    {
+        $body = pack('N', 0)                       // throttle_time_ms
+            . self::unsignedVarint(count($dirs) + 1);
+
+        foreach ($dirs as [$errorCode, $logDir, $topics]) {
+            $body .= pack('n', $errorCode) . self::compactString($logDir)
+                . self::unsignedVarint(count($topics) + 1);
+
+            foreach ($topics as $topic => $partitions) {
+                $body .= self::compactString((string) $topic) . self::unsignedVarint(count($partitions) + 1);
+                foreach ($partitions as [$partition, $size, $offsetLag, $isFuture]) {
+                    $body .= pack('N', $partition) . pack('J', $size) . pack('J', $offsetLag)
+                        . ($isFuture ? "\x01" : "\x00") . "\x00";
+                }
+                $body .= "\x00";                    // the tag buffer of the topic
+            }
+            $body .= "\x00";                        // the tag buffer of the directory
+        }
+
+        // The response header v1 carries a tagged-field section of its own, the body ends in one
+        return ResponseFrame::of(0, "\x00" . $body . "\x00");
+    }
+
+    /**
+     * An unsigned varint of KIP-482: the value itself, seven bits per byte, least significant group first
+     */
+    private static function unsignedVarint(int $value): string
+    {
+        $bytes = '';
+        while (($value & ~0x7F) !== 0) {
+            $bytes .= chr(($value & 0x7F) | 0x80);
+            $value >>= 7;
+        }
+
+        return $bytes . chr($value);
+    }
+
+    /**
+     * A string of a flexible version: the length plus one as an unsigned varint, then the bytes
+     */
+    private static function compactString(string $value): string
+    {
+        return self::unsignedVarint(strlen($value) + 1) . $value;
     }
 
     /**

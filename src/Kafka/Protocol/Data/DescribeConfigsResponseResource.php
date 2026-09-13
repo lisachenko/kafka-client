@@ -35,14 +35,14 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * The error is per resource - one bad resource of a request does not spoil the others - and it carries the
  * `error_message` of the exception the broker caught, which is the only place that says WHY a resource was refused.
  *
- * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 class DescribeConfigsResponseResource implements BinarySchemaInterface
 {
     /**
      * Version of the DescribeConfigs API that this DTO is unpacked from
      */
-    public const int VERSION = 1;
+    public const int VERSION = 3;
 
     /**
      * Error code of this resource, 0 when its configuration follows
@@ -92,8 +92,10 @@ class DescribeConfigsResponseResource implements BinarySchemaInterface
      */
     protected static function entryClass(): string
     {
-        return static::VERSION >= 1
-            ? DescribeConfigsResponseConfigEntry::class
-            : DescribeConfigsResponseConfigEntryV0::class;
+        return match (true) {
+            static::VERSION >= 3 => DescribeConfigsResponseConfigEntry::class,
+            static::VERSION >= 1 => DescribeConfigsResponseConfigEntryV1::class,
+            default              => DescribeConfigsResponseConfigEntryV0::class,
+        };
     }
 }

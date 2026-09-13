@@ -68,7 +68,7 @@ jobs:
         with:
           php-version: '8.4'
       - run: composer install --prefer-dist --no-progress
-      - name: Start Kafka 1.1.1
+      - name: Start Kafka 2.8.2
         run: docker compose up -d --wait
       - name: Run the integration suite
         env:

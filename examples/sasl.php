@@ -29,7 +29,7 @@ declare(strict_types=1);
  * and the password are plain options here.
  *
  * The broker of this repository advertises PLAINTEXT on 9092, SSL on 9093, SASL_PLAINTEXT on 9094 and SASL_SSL on
- * 9095, with the users of `docker/kafka-1.1.1/jaas.conf`:
+ * 9095, with the users of `docker/kafka-2.8.2/jaas.conf`:
  *
  *   docker compose up -d
  *   php examples/sasl.php                                             # SASL_PLAINTEXT on 9094
@@ -78,7 +78,7 @@ $securityProtocol       = $saslSslBootstrapServer !== ''
     : SecurityProtocol::SASL_PLAINTEXT;
 $brokerAddress          = 'tcp://' . trim(explode(',', $saslBootstrapServer)[0]);
 $topic                  = $argv[1] ?? 'kafka-client-example-sasl';
-$certificate            = dirname(__DIR__) . '/docker/kafka-1.1.1/ssl/broker.crt';
+$certificate            = dirname(__DIR__) . '/docker/kafka-2.8.2/ssl/broker.crt';
 
 if ($securityProtocol === SecurityProtocol::SASL_SSL && !extension_loaded('openssl')) {
     echo "The openssl extension is required for security.protocol = SASL_SSL\n";

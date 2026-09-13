@@ -26,14 +26,16 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0;
+use Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV2;
 use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
+use Protocol\Kafka\Protocol\Request\ControlledShutdownResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
- * Exercises the AdminClient against a real Kafka 0.11.0.3 broker.
+ * Exercises the AdminClient against a real Kafka 2.8.2 broker.
  *
- * @see docs/protocol/1.1.md, section "ControlledShutdown API (key 7, v0 and v1)"
- * @see docs/protocol/1.1.md, section "ApiVersions API (key 18, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "ControlledShutdown API (key 7, v0 to v3)"
+ * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ApiVersionsRequest::class)]
@@ -65,6 +67,29 @@ final class AdminApiTest extends IntegrationTestCase
 
         $this->cluster = Cluster::bootstrap($this->configuration());
         $this->admin   = new AdminClient($this->cluster, $this->configuration());
+    }
+
+    /**
+     * Removes the one topic of this class again: the container is shared and outlives the suite
+     *
+     * The topic is created once for the whole class, so it is deleted once as well - a topic per test would be
+     * one leader election per test on a container that already carries the topics of every other suite.
+     */
+    public static function tearDownAfterClass(): void
+    {
+        if (self::$topic === null) {
+            return;
+        }
+
+        $configuration = [
+            ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+            ClientConfig::CLIENT_ID                 => 't10-admin',
+            ClientConfig::REQUEST_TIMEOUT_MS        => 10000,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+        ];
+        new AdminClient(Cluster::bootstrap($configuration), $configuration)->deleteTopics([self::$topic]);
+
+        self::$topic = null;
     }
 
     public function testFindAllBrokersReturnsTheLiveBrokersOfTheCluster(): void
@@ -164,42 +189,67 @@ final class AdminApiTest extends IntegrationTestCase
         $this->admin->controlledShutdown(self::UNKNOWN_BROKER_ID);
     }
 
-    public function testTheBrokerAnnouncesBothVersionsOfControlledShutdown(): void
+    public function testTheBrokerAnnouncesEveryVersionOfControlledShutdown(): void
     {
         // A 0.9 to 0.11 broker reported `minVersion = 1` for key 7: version 0 uses a request header without a client
         // id, which the Java client of those releases could not build, so the protocol retired it. Kafka 1.0 gave
         // `RequestHeader` a schema of its own for that one frame (`CONTROLLED_SHUTDOWN_V0_SCHEMA`) and moved the api
-        // to the Java schemas altogether, so a 1.1.1 broker announces **v0 and v1** again.
+        // to the Java schemas altogether, so a 1.1.1 broker announced **v0 and v1** again. A 2.8.2 broker serves
+        // two versions more: the **v2** of KIP-380, which Kafka 2.2 added for the `broker_epoch`, and the flexible
+        // **v3** of Kafka 2.4, which is the one this client sends now.
         $nodes       = $this->cluster->nodes();
         $apiVersions = $this->admin->getApiVersions(reset($nodes));
 
         self::assertSame(0, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->minVersion);
-        self::assertSame(1, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->maxVersion);
+        self::assertSame(3, $apiVersions[ApiKeys::CONTROLLED_SHUTDOWN]->maxVersion);
+        self::assertSame(
+            3,
+            ControlledShutdownRequest::VERSION,
+            'and the client sends the highest of them, the flexible one of KIP-482'
+        );
     }
 
-    public function testBothVersionsOfControlledShutdownAreStillServedByTheBroker(): void
+    public function testEveryVersionOfControlledShutdownIsStillServedByTheBroker(): void
     {
         // Both announced versions really are answered. Up to 0.11 this test proved something else: key 7 was the
         // last api a broker parsed with its Scala class, which never validated the version, so v0 was answered
         // although the table did not contain it - and so was any version above 1. On this line the api is an
-        // ordinary Java-schema api and v2 closes the connection like every other unknown version
-        // (`ApiVersionProbeTest::testControlledShutdownAboveItsMaximumVersionClosesTheConnection`). The AdminClient
-        // sends v1; v0 is kept for the 0.8/0.9 lines and their vectors.
+        // ordinary Java-schema api and the first version above its table closes the connection like every other
+        // unknown version (`ApiVersionProbeTest::testTheBrokerClosesTheConnectionForAVersionAboveTheTable`). The
+        // AdminClient sends v3, the flexible one; v0 is kept for the 0.8/0.9 lines and their vectors.
         $stream = $this->connect();
 
         new ControlledShutdownRequestV0(self::UNKNOWN_BROKER_ID, 4200)->writeTo($stream);
-        $versionZero = ControlledShutdownResponse::unpack($stream);
+        $versionZero = ControlledShutdownResponseV2::unpack($stream);
 
-        new ControlledShutdownRequest(self::UNKNOWN_BROKER_ID, 't10-admin', 4201)->writeTo($stream);
-        $versionOne = ControlledShutdownResponse::unpack($stream);
+        new ControlledShutdownRequestV2(
+            self::UNKNOWN_BROKER_ID,
+            ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
+            't10-admin',
+            4201
+        )->writeTo($stream);
+        $versionTwo = ControlledShutdownResponseV2::unpack($stream);
+
+        new ControlledShutdownRequest(
+            self::UNKNOWN_BROKER_ID,
+            ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
+            't10-admin',
+            4202
+        )->writeTo($stream);
+        $versionThree = ControlledShutdownResponse::unpack($stream);
 
         self::assertSame(4200, $versionZero->getCorrelationId());
         self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionZero->errorCode);
         self::assertSame([], $versionZero->remainingTopicPartitions);
 
-        self::assertSame(4201, $versionOne->getCorrelationId());
-        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionOne->errorCode);
-        self::assertSame([], $versionOne->remainingTopicPartitions);
+        self::assertSame(4201, $versionTwo->getCorrelationId());
+        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionTwo->errorCode);
+        self::assertSame([], $versionTwo->remainingTopicPartitions);
+
+        // The flexible version of KIP-482: the same two values, in the smallest frame of the whole protocol
+        self::assertSame(4202, $versionThree->getCorrelationId());
+        self::assertSame(KafkaException::BROKER_NOT_AVAILABLE, $versionThree->errorCode);
+        self::assertSame([], $versionThree->remainingTopicPartitions);
     }
 
     /**

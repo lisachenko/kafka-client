@@ -1,13 +1,13 @@
 {
     "api": "end-txn",
     "apiKey": 26,
-    "section": "EndTxn API (key 26, v0)",
-    "description": "Wire vectors of the EndTxn API (key 26, v0), replayed by tests/Compliance.",
+    "section": "EndTxn API (key 26, v0 to v3)",
+    "description": "Wire vectors of the EndTxn API (key 26, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "endtxn.request.v0",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequestV0",
             "version": 0,
             "source": "broker",
             "description": "EndTxn request v0 with `transaction_result = 1`: commit the transaction of `t8-vectors-txn`. The single boolean byte is the whole difference between a commit and an abort.",
@@ -27,7 +27,7 @@
         {
             "id": "endtxn.response.v0",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer of the transaction coordinator to a commit: the error code 0 means that the coordinator has written its decision into `__transaction_state`, not that the control batches are in the partitions - those are written afterwards, with a WriteTxnMarkers request per partition leader.",
@@ -42,7 +42,7 @@
         {
             "id": "endtxn.request.v0.abort",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequestV0",
             "version": 0,
             "source": "broker",
             "description": "EndTxn request v0 with `transaction_result = 0`: abort the transaction of `t8-vectors-abort-txn`. The records that were already written stay in the log and are marked with an ABORT control batch.",
@@ -62,7 +62,7 @@
         {
             "id": "endtxn.response.v0.abort",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer to an abort, which is the same frame a commit is answered with: the error code 0 and nothing else.",
@@ -77,7 +77,7 @@
         {
             "id": "endtxn.request.v0.invalid-state",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequestV0",
             "version": 0,
             "source": "broker",
             "description": "EndTxn request v0 that aborts a transaction which was committed a moment before: the transactional id is in the state `CompleteCommit`, from which the coordinator allows a commit (again) but not an abort.",
@@ -97,7 +97,7 @@
         {
             "id": "endtxn.response.v0.invalid-state",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV0",
             "version": 0,
             "source": "broker",
             "description": "The answer to that abort: the error code 48 (InvalidTxnState). A repeated **commit** of the same transaction is answered with 0 instead, because `CompleteCommit` accepts the result it already has.",
@@ -107,6 +107,128 @@
                 "correlationId": 190,
                 "throttleTimeMs": 0,
                 "errorCode": 48
+            }
+        },
+        {
+            "id": "endtxn.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequestV1",
+            "version": 1,
+            "source": "broker",
+            "description": "EndTxn request v1, the frame of version 0 with the api version Kafka 2.0 added: the commit of the transaction the three requests above built.",
+            "hex": "00000031001a000100000200000a74342d766563746f7273001074342d32302d766563746f72732d74780000000000000029000001",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 26,
+                "apiVersion": 1,
+                "correlationId": 512,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-20-vectors-tx",
+                "producerId": 41,
+                "producerEpoch": 0,
+                "transactionResult": true
+            }
+        },
+        {
+            "id": "endtxn.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV1",
+            "version": 1,
+            "source": "broker",
+            "description": "EndTxn response v1: the error code 0, which says that the coordinator has written the outcome, not that the markers are in the partitions.",
+            "hex": "0000000a00000200000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 512,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "endtxn.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequestV2",
+            "version": 2,
+            "source": "broker",
+            "description": "EndTxn request v2 (Kafka 2.7, KIP-588) that ABORTS: the frame of version 1, with the promise of the error code 90.",
+            "hex": "00000031001a0002000003c7000a74342d766563746f7273001074342d32372d766563746f72732d7478000000000000002d000600",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 26,
+                "apiVersion": 2,
+                "correlationId": 967,
+                "clientId": "t4-vectors",
+                "transactionalId": "t4-27-vectors-tx",
+                "producerId": 45,
+                "producerEpoch": 6,
+                "transactionResult": false
+            }
+        },
+        {
+            "id": "endtxn.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV2",
+            "version": 2,
+            "source": "broker",
+            "description": "EndTxn answer v2: the error code 0 - the coordinator took the decision and writes the markers afterwards.",
+            "hex": "0000000a000003c7000000000000",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 967,
+                "throttleTimeMs": 0,
+                "errorCode": 0
+            }
+        },
+        {
+            "id": "endtxn.response.v2.fenced",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponseV2",
+            "version": 2,
+            "source": "broker",
+            "description": "EndTxn answer v2 to a producer that a later incarnation of the same transactional id has fenced: the error code **90** `ProducerFenced` of KIP-588, where the versions 0 and 1 are answered the 47.",
+            "hex": "0000000a000003c900000000005a",
+            "fields": {
+                "messageSize": 10,
+                "correlationId": 969,
+                "throttleTimeMs": 0,
+                "errorCode": 90
+            }
+        },
+        {
+            "id": "endtxn.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "EndTxn request v3 (Kafka 2.8, KIP-482) that COMMITS: the four fields of the version 2 in the flexible encoding, the first flexible version of this api.",
+            "hex": "00000032001a00030000032a000a74342d766563746f7273001174342d32382d766563746f72732d7478000000000000009900010100",
+            "fields": {
+                "messageSize": 50,
+                "apiKey": 26,
+                "apiVersion": 3,
+                "correlationId": 810,
+                "clientId": "t4-vectors",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-28-vectors-tx",
+                "producerId": 153,
+                "producerEpoch": 1,
+                "transactionResult": true
+            }
+        },
+        {
+            "id": "endtxn.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\EndTxnResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "EndTxn answer v3: the error code 0 - the coordinator took the decision and writes the markers of the partitions afterwards, with WriteTxnMarkers.",
+            "hex": "0000000c0000032a0000000000000000",
+            "fields": {
+                "messageSize": 12,
+                "correlationId": 810,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0
             }
         }
     ]

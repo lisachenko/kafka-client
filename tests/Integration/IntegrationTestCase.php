@@ -16,6 +16,8 @@ namespace Protocol\Kafka\Tests\Integration;
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\IO\SocketStream;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
 use Protocol\Kafka\Tests\Fixture\BrokerRecord;
 use Protocol\Kafka\Tests\Fixture\ClusterReadinessProbe;
 
@@ -37,7 +39,7 @@ abstract class IntegrationTestCase extends TestCase
     /**
      * Name of the environment variable that holds the `host:port` of the SSL listener of the same broker
      *
-     * The broker of `docker/kafka-1.1.1` binds `PLAINTEXT://0.0.0.0:9092` and `SSL://0.0.0.0:9093`, so the SSL
+     * The broker of `docker/kafka-2.8.2` binds `PLAINTEXT://0.0.0.0:9092` and `SSL://0.0.0.0:9093`, so the SSL
      * endpoint is derived from the default rather than configured separately; the variable only exists for a broker
      * that publishes its SSL listener somewhere else. The tests that need it are still skipped together with the
      * rest of the suite, i.e. when KAFKA_BOOTSTRAP_SERVERS is unset.
@@ -81,6 +83,13 @@ abstract class IntegrationTestCase extends TestCase
      */
     private static ?array $clusterBrokers = null;
 
+    /**
+     * Every topic name {@see self::uniqueTopicName()} handed out during the current test class
+     *
+     * @var list<string>
+     */
+    private static array $topicsOfTheClass = [];
+
     public static function setUpBeforeClass(): void
     {
         if (self::bootstrapServers() === [] || self::$clusterBrokers !== null) {
@@ -96,6 +105,38 @@ abstract class IntegrationTestCase extends TestCase
             ),
             self::CLUSTER_TIMEOUT
         )->awaitBrokers();
+    }
+
+    /**
+     * Deletes every topic this test class asked {@see self::uniqueTopicName()} for.
+     *
+     * The container is shared by every suite of this repository and it inherits the file-descriptor limit of the
+     * daemon, so a run that leaves its topics behind costs the next one: ~20000 leftover partitions took a log
+     * directory of the 2.8.2 container offline with "Too many open files" once, which leaves
+     * `__consumer_offsets` and `__transaction_state` without a leader. A class therefore cleans up after itself
+     * here, whatever its tests did - a topic that was never created, or that a test deleted itself, is answered
+     * with the error code 3 and ignored.
+     */
+    public static function tearDownAfterClass(): void
+    {
+        $topics                 = self::$topicsOfTheClass;
+        self::$topicsOfTheClass = [];
+        if ($topics === [] || self::bootstrapServers() === []) {
+            return;
+        }
+
+        try {
+            $stream = new SocketStream(
+                'tcp://' . self::firstBootstrapServer(),
+                [ClientConfig::REQUEST_TIMEOUT_MS => 30000],
+                5.0
+            );
+            new DeleteTopicsRequest($topics, 15000, 'kafka-client-cleanup')->writeTo($stream);
+            DeleteTopicsResponse::unpack($stream);
+        } catch (\Throwable) {
+            // The cleanup is best effort: a broker that is gone, a deletion that timed out or a topic that never
+            // existed must never turn a green suite red
+        }
     }
 
     protected function setUp(): void
@@ -203,12 +244,12 @@ abstract class IntegrationTestCase extends TestCase
     /**
      * Returns the certificate the broker presents on its SSL listener, to be used as the trust anchor of a client
      *
-     * It is the self-signed certificate that `docker/kafka-1.1.1` puts into the keystore of the broker
+     * It is the self-signed certificate that `docker/kafka-2.8.2` puts into the keystore of the broker
      * (CN=localhost, with `localhost` and `127.0.0.1` as subject alternative names).
      */
     final protected static function brokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-1.1.1/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-2.8.2/ssl/broker.crt';
     }
 
     /**
@@ -216,6 +257,10 @@ abstract class IntegrationTestCase extends TestCase
      */
     final protected static function uniqueTopicName(string $prefix): string
     {
-        return $prefix . '-' . bin2hex(random_bytes(6));
+        $topic = $prefix . '-' . bin2hex(random_bytes(6));
+        // Remembered so that {@see self::tearDownAfterClass()} can take it off the shared container again
+        self::$topicsOfTheClass[] = $topic;
+
+        return $topic;
     }
 }

@@ -31,7 +31,7 @@ use Protocol\Kafka\Tests\Unit\Protocol\Request\Fixture\SchemaMetadataResponse;
 /**
  * Byte-exact tests for the request and response framing.
  *
- * @see docs/protocol/1.1.md, sections "Requests" and "Responses"
+ * @see docs/protocol/2.8.md, sections "Requests" and "Responses"
  */
 #[CoversClass(AbstractProtocolMessage::class)]
 #[CoversClass(AbstractRequest::class)]
@@ -75,15 +75,23 @@ final class FramingTest extends TestCase
 
     public function testRequestSchemeDescribesTheHeaderOfTheSpec(): void
     {
+        // The client id is a `TYPE_STRING_NEVER_COMPACT`, not a `TYPE_STRING`: the two are the same int16-prefixed
+        // bytes here and stay the same in the request header v2 of a flexible version, where every other string of
+        // the frame becomes compact (`"flexibleVersions": "none"` in `RequestHeader.json` @ 2.8.2)
         self::assertSame(
             [
                 'messageSize'   => BinarySchema::TYPE_INT32,
                 'apiKey'        => BinarySchema::TYPE_INT16,
                 'apiVersion'    => BinarySchema::TYPE_INT16,
                 'correlationId' => BinarySchema::TYPE_INT32,
-                'clientId'      => BinarySchema::TYPE_STRING,
+                'clientId'      => BinarySchema::TYPE_STRING_NEVER_COMPACT,
             ],
             AbstractRequest::getScheme()
+        );
+        self::assertSame(
+            AbstractRequest::HEADER_V1,
+            AbstractRequest::getHeaderVersion(),
+            'a request of a version that is not flexible carries the common header'
         );
     }
 

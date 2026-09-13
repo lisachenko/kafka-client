@@ -1,8 +1,8 @@
 {
     "api": "offsets",
     "apiKey": 2,
-    "section": "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset",
-    "description": "Wire vectors of the Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset, replayed by tests/Compliance.",
+    "section": "Offsets API (key 2, v0 to v6), a.k.a. ListOffset",
+    "description": "Wire vectors of the Offsets API (key 2, v0 to v6), a.k.a. ListOffset, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsets.request.v0.latest",
@@ -277,7 +277,7 @@
         {
             "id": "offsets.request.v2.latest",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "Offsets (ListOffset) request v2 for the log end offset, with the isolation level `read_uncommitted`.",
@@ -306,7 +306,7 @@
         {
             "id": "offsets.response.v2.latest",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer v2: the throttle time in front of the topics of a v1 answer.",
@@ -333,7 +333,7 @@
         {
             "id": "offsets.request.v2.read-committed",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "The same request with the isolation level `read_committed`, which asks for the last stable offset instead.",
@@ -362,7 +362,7 @@
         {
             "id": "offsets.response.v2.read-committed",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer to it; without an open transaction the last stable offset is the log end offset.",
@@ -380,6 +380,238 @@
                                 "errorCode": 0,
                                 "timestamp": -1,
                                 "offset": 2
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v3.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV3",
+            "version": 3,
+            "source": "broker",
+            "description": "ListOffsets request v3 for the log end offset (-1) of one partition, asked by an ordinary consumer (replica id -1) with the isolation level read_uncommitted. The body is the body of version 2, byte for byte - ListOffsetsRequest.json @ 2.8.2 says \"Version 3 is the same as version 2\".",
+            "hex": "00000031000200030000001700027432ffffffff0000000001000a74322d766563746f72730000000100000000ffffffffffffffff",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 2,
+                "apiVersion": 3,
+                "correlationId": 23,
+                "clientId": "t2",
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v3.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV3",
+            "version": 3,
+            "source": "broker",
+            "description": "ListOffsets response v3: the throttle time of version 2, then the single offset and the timestamp -1 that every -1/-2 lookup answers. The frame is the one of version 2.",
+            "hex": "00000032000000170000000000000001000a74322d766563746f727300000001000000000000ffffffffffffffff0000000000000002",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 23,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-vectors": {
+                        "topic": "t2-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 2
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v4.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV4",
+            "version": 4,
+            "source": "broker",
+            "description": "ListOffsets request v4 for the log end offset of one partition, with the current_leader_epoch 0 between the partition index and the target timestamp.",
+            "hex": "00000038000200040000004a00027432ffffffff0000000001000d74322d32312d766563746f7273000000010000000000000000ffffffffffffffff",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 2,
+                "apiVersion": 4,
+                "correlationId": 74,
+                "clientId": "t2",
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 0,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v4.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV4",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer of that request: the leader_epoch that version 4 (KIP-320) appended to every partition entry, behind the offset - the epoch the leader was on when it read the offset, which the consumer keeps next to its position and sends back as the current_leader_epoch of its next fetch.",
+            "hex": "000000390000004a0000000000000001000d74322d32312d766563746f727300000001000000000000ffffffffffffffff000000000000000200000000",
+            "fields": {
+                "messageSize": 57,
+                "correlationId": 74,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-21-vectors": {
+                        "topic": "t2-21-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 2,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v5.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV5",
+            "version": 5,
+            "source": "broker",
+            "description": "ListOffsets request v5 (Kafka 2.2, KIP-207) for the log end offset of one partition: the frame of version 4, byte for byte - ListOffsetsRequest.json @ 2.8.2 says \"Version 5 is the same as version 4\" - with the current_leader_epoch 0 of KIP-320 between the partition index and the target timestamp. What version 5 states is that the client understands the error code 78 OFFSET_NOT_AVAILABLE in the answer.",
+            "hex": "00000038000200050000013b00027432ffffffff0000000001000d74322d32322d766563746f7273000000010000000000000000ffffffffffffffff",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 2,
+                "apiVersion": 5,
+                "correlationId": 315,
+                "clientId": "t2",
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-22-vectors": {
+                        "topic": "t2-22-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 0,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v5.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV5",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer v5: the frame of version 4, field for field - the throttle time, the error code, the timestamp -1 of a lookup that read no message, the log end offset and the leader_epoch the offset was resolved in. The code 78 that version 5 adds needs a leader whose high watermark lags behind the start offset of its own epoch, which a one-broker container never produces; a version below 5 is answered 5 LEADER_NOT_AVAILABLE in that state.",
+            "hex": "000000390000013b0000000000000001000d74322d32322d766563746f727300000001000000000000ffffffffffffffff000000000000000100000000",
+            "fields": {
+                "messageSize": 57,
+                "correlationId": 315,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-22-vectors": {
+                        "topic": "t2-22-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 1,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v6",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "ListOffsets request v6 (Kafka 2.8), the FLEXIBLE version of the api (KIP-482): the same question as version 5 - the replica id -1 of a consumer, read_uncommitted, one topic with one partition, the current_leader_epoch -1 of KIP-320 and the timestamp -1 of \"the latest offset\" - with compact types and a tag buffer behind the body, the topic entry and the partition entry.",
+            "hex": "0000003500020006000003850002743200ffffffff00020e74322d32382d766563746f72730200000000ffffffffffffffffffffffff000000",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 2,
+                "apiVersion": 6,
+                "correlationId": 901,
+                "clientId": "t2",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-28-vectors": {
+                        "topic": "t2-28-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v6",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The answer v6: the response header v1, the throttle time, a compact topic array and name, a compact partition array whose entry carries the error code, the timestamp -1 and the offset of the end of the log with the leader_epoch of KIP-320, and the tagged-field sections of a flexible frame.",
+            "hex": "00000036000003850000000000020e74322d32382d766563746f727302000000000000ffffffffffffffff000000000000000200000000000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 901,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-28-vectors": {
+                        "topic": "t2-28-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 2,
+                                "leaderEpoch": 0
                             }
                         ]
                     }

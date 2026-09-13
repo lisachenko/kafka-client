@@ -39,7 +39,7 @@ namespace Protocol\Kafka\Producer\Internals;
  * and there is no way out of {@see self::FATAL_ERROR} at all: a producer that was fenced by a newer incarnation of
  * its transactional id can never write again, whatever it does, so every following call reports the same error.
  *
- * @see docs/protocol/1.1.md, section "Transactions"
+ * @see docs/protocol/2.8.md, section "Transactions"
  */
 enum TransactionState: string
 {

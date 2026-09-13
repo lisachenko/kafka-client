@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * does not authenticate, and the authenticator answers the same frame for a second handshake on a connection that
  * already has one. (Kafka 1.0.2 still filled that answer with `config.saslEnabledMechanisms`; 1.1 empties it.)
  *
- * @see docs/protocol/1.1.md, section "SaslHandshake API (key 17, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "SaslHandshake API (key 17, v0 and v1)"
  */
 class SaslHandshakeResponse extends AbstractResponse
 {

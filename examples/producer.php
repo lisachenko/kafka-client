@@ -148,5 +148,5 @@ try {
 }
 
 echo "Done. Read the records back with the console consumer of the broker container:\n";
-echo "  docker exec kafka-1-1-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
+echo "  docker exec kafka-2-8-2 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092"
     . " --new-consumer --topic {$topic} --from-beginning --max-messages 12\n";

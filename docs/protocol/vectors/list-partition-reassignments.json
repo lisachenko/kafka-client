@@ -1,0 +1,52 @@
+{
+    "api": "list-partition-reassignments",
+    "apiKey": 46,
+    "section": "ListPartitionReassignments API (key 46, v0)",
+    "description": "Wire vectors of the ListPartitionReassignments API (key 46, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "listpartitionreassignments.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListPartitionReassignmentsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ListPartitionReassignments request v0 for one partition of one topic. The topic array is nullable and a null one would ask for every reassignment of the cluster, which a shared container must never be asked for.",
+            "hex": "00000042002e00000000032a00176b61666b612d636c69656e742d74312d766563746f7273000000ea60021474312d726561737369676e2d766563746f727302000000000000",
+            "fields": {
+                "messageSize": 66,
+                "apiKey": 46,
+                "apiVersion": 0,
+                "correlationId": 810,
+                "clientId": "kafka-client-t1-vectors",
+                "headerTaggedFields": [],
+                "timeoutMs": 60000,
+                "topics": {
+                    "t1-reassign-vectors": {
+                        "name": "t1-reassign-vectors",
+                        "partitionIndexes": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "listpartitionreassignments.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListPartitionReassignmentsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the container: no reassignment in progress. The empty answer is the only one a one-broker cluster can produce - every replica is already on the only broker, so a reassignment is complete before the controller answers the request that submitted it - and it is 14 bytes: the throttle time, the error code 0, an empty error message and an empty compact topic array.",
+            "hex": "0000000e0000032a00000000000000010100",
+            "fields": {
+                "messageSize": 14,
+                "correlationId": 810,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "topics": []
+            }
+        }
+    ]
+}

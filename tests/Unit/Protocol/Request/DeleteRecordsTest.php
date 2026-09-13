@@ -23,15 +23,21 @@ use Protocol\Kafka\Protocol\Data\DeleteRecordsRequestTopic;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponseTopic;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsRequestV0;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsRequestV1;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsResponse;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsResponseV0;
+use Protocol\Kafka\Protocol\Request\DeleteRecordsResponseV1;
 
 /**
  * Byte-exact tests for the DeleteRecords API of Kafka 0.11 (api key 21, v0).
  *
- * @see docs/protocol/1.1.md, section "DeleteRecords API (key 21, v0)"
+ * @see docs/protocol/2.8.md, section "DeleteRecords API (key 21, v0 to v2)"
  */
 #[CoversClass(DeleteRecordsRequest::class)]
+#[CoversClass(DeleteRecordsRequestV0::class)]
 #[CoversClass(DeleteRecordsResponse::class)]
+#[CoversClass(DeleteRecordsResponseV0::class)]
 #[CoversClass(DeleteRecordsRequestTopic::class)]
 #[CoversClass(DeleteRecordsRequestPartition::class)]
 #[CoversClass(DeleteRecordsResponseTopic::class)]
@@ -43,7 +49,7 @@ final class DeleteRecordsTest extends TestCase
      *
      *   Size          => 00 00 00 39 (57 bytes)
      *   ApiKey        => 00 15 (21)
-     *   ApiVersion    => 00 00
+     *   ApiVersion    => 00 01
      *   CorrelationId => 00 00 00 05
      *   ClientId      => 00 04 "test"
      *   Topics        => 00 00 00 01
@@ -55,7 +61,7 @@ final class DeleteRecordsTest extends TestCase
      */
     private const string REQUEST_HEX = '00000039'
         . '0015'
-        . '0000'
+        . '0001'
         . '00000005'
         . '0004' . '74657374'
         . '00000001'
@@ -66,7 +72,7 @@ final class DeleteRecordsTest extends TestCase
         . '00007530';
 
     /**
-     * DeleteRecords response v0: one partition deleted, one that the broker does not lead.
+     * DeleteRecords response v1: one partition deleted, one that the broker does not lead.
      *
      *   Size           => 00 00 00 33 (51 bytes)
      *   CorrelationId  => 00 00 00 05
@@ -100,7 +106,7 @@ final class DeleteRecordsTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new DeleteRecordsRequest(
+        $request = new DeleteRecordsRequestV1(
             ['topic' => [0 => 2, 1 => DeleteRecordsRequest::HIGH_WATERMARK]],
             30000,
             'test',
@@ -109,7 +115,7 @@ final class DeleteRecordsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DELETE_RECORDS, $request->getApiKey());
-        self::assertSame(0, $request->getApiVersion(), 'a 0.11.0.3 broker only serves version 0');
+        self::assertSame(1, $request->getApiVersion(), 'Kafka 2.0 raised the api to version 1 (KIP-219)');
         self::assertSame(57, $request->getMessageSize());
     }
 
@@ -121,7 +127,7 @@ final class DeleteRecordsTest extends TestCase
 
     public function testAlreadyBuiltTopicEntriesAreTakenAsTheyAre(): void
     {
-        $built = new DeleteRecordsRequest(
+        $built = new DeleteRecordsRequestV1(
             ['topic' => new DeleteRecordsRequestTopic('topic', [
                 0 => new DeleteRecordsRequestPartition(0, 2),
                 1 => new DeleteRecordsRequestPartition(1),
@@ -136,7 +142,7 @@ final class DeleteRecordsTest extends TestCase
 
     public function testResponseIsUnpackedAccordingToTheSpec(): void
     {
-        $response = DeleteRecordsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = DeleteRecordsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(5, $response->getCorrelationId());
         self::assertSame(0, $response->throttleTimeMs);
@@ -157,7 +163,7 @@ final class DeleteRecordsTest extends TestCase
     public function testTheThrottleTimeOpensTheAnswerOfThisApi(): void
     {
         // The api was born after KIP-124, so there is no version of it without a leading throttle time
-        $response = DeleteRecordsResponse::unpack(new StringStream((string) hex2bin(self::THROTTLED_RESPONSE_HEX)));
+        $response = DeleteRecordsResponseV1::unpack(new StringStream((string) hex2bin(self::THROTTLED_RESPONSE_HEX)));
 
         self::assertSame(793, $response->throttleTimeMs);
         self::assertSame(2, $response->topics['topic']->partitions[0]->lowWatermark);
@@ -165,8 +171,72 @@ final class DeleteRecordsTest extends TestCase
 
     public function testResponseSurvivesARoundTrip(): void
     {
-        $response = DeleteRecordsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+        $response = DeleteRecordsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
     }
+
+    public function testVersionTwoIsTheSameFrameInTheFlexibleEncoding(): void
+    {
+        // KIP-482 (Kafka 2.6): `DeleteRecordsRequest.json` @ 2.8.2 says "Version 2 is the first flexible
+        // version" and declares no field of it. The request header v2 gains a tag buffer behind the client id,
+        // the strings and arrays become compact, and the body, every topic entry and every partition entry end
+        // in a tagged-field section
+        $request = new DeleteRecordsRequest(
+            ['topic' => [0 => 2, 1 => DeleteRecordsRequest::HIGH_WATERMARK]],
+            30000,
+            'test',
+            5
+        );
+
+        self::assertSame(
+            '00000037'
+            . '0015' . '0002' . '00000005'
+            . '0004' . '74657374'                          // the client id is never compact
+            . '00'                                         // the tag buffer of the request header v2
+            . '02'                                         // the topics array: the varint 1 + 1
+            . '06' . '746f706963'                          // the name: the varint 5 + 1
+            . '03'                                         // the partitions array: the varint 2 + 1
+            . '00000000' . '0000000000000002' . '00'       // partition 0, offset 2, tag buffer
+            . '00000001' . 'ffffffffffffffff' . '00'       // partition 1, HIGH_WATERMARK, tag buffer
+            . '00'                                         // the tag buffer of the topic entry
+            . '00007530'                                   // the timeout, behind the topics as in every version
+            . '00',                                        // the tag buffer of the body
+            bin2hex((string) $request)
+        );
+        self::assertTrue(DeleteRecordsRequest::isFlexible());
+        self::assertSame(2, DeleteRecordsRequest::FLEXIBLE_VERSION);
+        self::assertSame(2, DeleteRecordsRequest::VERSION);
+        self::assertSame(2, DeleteRecordsResponse::VERSION);
+        self::assertFalse(DeleteRecordsRequestV1::isFlexible(), 'version 1 is the last plain one');
+        self::assertSame(1, DeleteRecordsRequestV1::VERSION);
+        self::assertSame(1, DeleteRecordsResponseV1::VERSION);
+
+        // The frame of version 1 is the same question with int16 and int32 lengths and no section at all
+        self::assertSame(self::REQUEST_HEX, bin2hex((string) new DeleteRecordsRequestV1(
+            ['topic' => [0 => 2, 1 => DeleteRecordsRequest::HIGH_WATERMARK]],
+            30000,
+            'test',
+            5
+        )));
+    }
+
+    public function testTheVersionZeroFrameIsTheSameBodyWithALowerVersionField(): void
+    {
+        $request = new DeleteRecordsRequestV0(
+            ['topic' => [0 => 2, 1 => DeleteRecordsRequest::HIGH_WATERMARK]],
+            30000,
+            'test',
+            5
+        );
+
+        // `DELETE_RECORDS_REQUEST_V1 = DELETE_RECORDS_REQUEST_V0` @ 2.0.1
+        self::assertSame(substr_replace(self::REQUEST_HEX, '0000', 12, 4), bin2hex((string) $request));
+        self::assertSame(0, $request->getApiVersion());
+
+        $response = DeleteRecordsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
+
+        self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
+    }
+
 }

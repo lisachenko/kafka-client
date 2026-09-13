@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `MetadataResponse.java` @ 1.1.1 - and {@see PartitionMetadataV0} is the shape those five versions share.
  * **Version 5 of the api (Kafka 1.0, KIP-112/113) appended `OfflineReplicas`**, see {@see self::$offlineReplicas}.
  *
- * @see docs/protocol/1.1.md, section "Metadata API (key 3, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
  */
 class PartitionMetadata implements BinarySchemaInterface
 {
@@ -46,7 +46,12 @@ class PartitionMetadata implements BinarySchemaInterface
     /**
      * Version of the Metadata API that this entry is unpacked from
      */
-    public const int VERSION = 5;
+    public const int VERSION = 7;
+
+    /**
+     * Epoch of an answer that names none, `MetadataResponse` default of `leader_epoch` @ 2.8.2
+     */
+    public const int UNKNOWN_LEADER_EPOCH = -1;
 
     /**
      * The error code for the partition, if any.
@@ -68,6 +73,22 @@ class PartitionMetadata implements BinarySchemaInterface
      *
      * @var list<int>
      */
+    /**
+     * Epoch the leader of this partition is currently on, the field version 7 added (Kafka 2.1, KIP-320)
+     *
+     * Every leader election of a partition raises it by one, and the record batches the leader appends carry it
+     * in their `partition_leader_epoch`. A consumer keeps the newest epoch it has seen per partition, ignores a
+     * metadata answer that carries an **older** one - the answer of a broker that has not caught up with the
+     * controller yet - and sends it back as the `current_leader_epoch` of its fetches and offset lookups, which
+     * is what makes a leader change visible to it instead of being read past.
+     *
+     * {@see self::UNKNOWN_LEADER_EPOCH} (`-1`) is what an answer below version 7 leaves here: it does not carry
+     * the field at all, so "the answer did not say", never "the partition has never had a leader".
+     *
+     * @since Version 7 of protocol
+     */
+    public int $leaderEpoch = self::UNKNOWN_LEADER_EPOCH;
+
     public array $replicas = [];
 
     /**
@@ -104,9 +125,12 @@ class PartitionMetadata implements BinarySchemaInterface
             'partitionErrorCode' => BinarySchema::TYPE_INT16,
             'partitionId'        => BinarySchema::TYPE_INT32,
             'leader'             => BinarySchema::TYPE_INT32,
-            'replicas'           => [BinarySchema::TYPE_INT32],
-            'isr'                => [BinarySchema::TYPE_INT32],
         ];
+        if (static::VERSION >= 7) {
+            $scheme['leaderEpoch'] = BinarySchema::TYPE_INT32;
+        }
+        $scheme['replicas'] = [BinarySchema::TYPE_INT32];
+        $scheme['isr']      = [BinarySchema::TYPE_INT32];
         if (static::VERSION >= 5) {
             $scheme['offlineReplicas'] = [BinarySchema::TYPE_INT32];
         }

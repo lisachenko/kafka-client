@@ -17,6 +17,7 @@ use Protocol\Kafka\Common\Record\MemoryRecords;
 use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
  * One partition of a Fetch response
@@ -42,7 +43,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * (KIP-107) added `LogStartOffset` between the two, which is what {@see FetchResponsePartitionV4} and
  * {@see FetchResponsePartitionV0} lower the version constant for.
  *
- * @see docs/protocol/1.1.md, sections "Fetch API (key 1, v0 to v7)", "MessageSet and Message" and
+ * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 class FetchResponsePartition implements BinarySchemaInterface
@@ -50,7 +51,7 @@ class FetchResponsePartition implements BinarySchemaInterface
     /**
      * Version of the Fetch API that this DTO is unpacked from
      */
-    public const int VERSION = 5;
+    public const int VERSION = 12;
 
     /**
      * Value of `LastStableOffset` in an answer that does not carry the field, and of a `read_uncommitted` fetch
@@ -61,6 +62,11 @@ class FetchResponsePartition implements BinarySchemaInterface
      * Value of `LogStartOffset` in an answer of a version below 5, which does not carry the field at all
      */
     public const int INVALID_LOG_START_OFFSET = -1;
+
+    /**
+     * Value of {@see self::$preferredReadReplica} that names no replica at all: "read from the leader" (KIP-392)
+     */
+    public const int NO_PREFERRED_READ_REPLICA = -1;
 
     /**
      * The id of the partition this response is for.
@@ -121,6 +127,56 @@ class FetchResponsePartition implements BinarySchemaInterface
     public ?array $abortedTransactions = null;
 
     /**
+     * Replica the consumer should read this partition from next, `-1` when that is the leader itself.
+     *
+     * **KIP-392** (Kafka 2.3) lets a consumer read from a **follower** instead of the leader, to keep the traffic
+     * of a rack-aware cluster inside its rack. The consumer names its own rack in the `rack_id` of the request
+     * ({@see \Protocol\Kafka\Protocol\Request\FetchRequest::$rackId},
+     * {@see \Protocol\Kafka\Consumer\ConsumerConfig::CLIENT_RACK}), and the **leader** decides: its
+     * `replica.selector.class` picks a replica for that rack and answers its node id here. The consumer then
+     * fetches the partition from that broker until the answer names another one - the field travels in every
+     * answer, so a leader can take the reader back at any time.
+     *
+     * {@see self::NO_PREFERRED_READ_REPLICA} (`-1`) is "read from me", which is what a broker without a selector
+     * (the default `replica.selector.class` is unset, and so is the container's) answers to every fetch, and what
+     * an answer below version 11 leaves here.
+     *
+     * @since Version 11 of protocol
+     */
+    public int $preferredReadReplica = self::NO_PREFERRED_READ_REPLICA;
+
+    /**
+     * Where the log of this client and the log of the leader diverge, `null` when the leader reported none.
+     *
+     * The **tag 0** of a version 12 partition entry (Kafka 2.7, KIP-595), see
+     * {@see FetchResponseDivergingEpoch}: the answer of a leader whose log does not match the
+     * `last_fetched_epoch` and the fetch offset of the request.
+     *
+     * @since Version 12 of protocol
+     */
+    public ?FetchResponseDivergingEpoch $divergingEpoch = null;
+
+    /**
+     * The node and the epoch this partition is really led with, `null` when the broker did not say.
+     *
+     * The **tag 1** of a version 12 partition entry (Kafka 2.7), see {@see FetchResponseCurrentLeader}: a broker
+     * that refuses a partition may name the leader to ask instead, which saves the fetcher a Metadata request.
+     *
+     * @since Version 12 of protocol
+     */
+    public ?FetchResponseCurrentLeader $currentLeader = null;
+
+    /**
+     * The snapshot to read instead of the log, `null` for every answer that has none.
+     *
+     * The **tag 2** of a version 12 partition entry (Kafka 2.7, KIP-630), see {@see FetchResponseSnapshotId}. It
+     * belongs to the raft replication of a KRaft cluster; a ZooKeeper-backed broker never sends it.
+     *
+     * @since Version 12 of protocol
+     */
+    public ?FetchResponseSnapshotId $snapshotId = null;
+
+    /**
      * Raw bytes of the returned record set, exactly as they lie in the log.
      *
      * The broker is allowed to cut the last batch of the set short, therefore these bytes are not necessarily a
@@ -160,7 +216,18 @@ class FetchResponsePartition implements BinarySchemaInterface
                 BinarySchema::FLAG_NULLABLE => true,
             ];
         }
+        if (static::VERSION >= 11) {
+            $scheme['preferredReadReplica'] = BinarySchema::TYPE_INT32;
+        }
         $scheme['messageSet'] = BinarySchema::TYPE_BYTEARRAY;
+        // The three tagged fields of version 12 (Kafka 2.7): they travel in the tagged-field section that closes
+        // every structure of a flexible version, in ascending order of their tag, and only when their value
+        // differs from the default of the specification - which for all three is "nothing to report"
+        if (static::VERSION >= 12) {
+            $scheme['divergingEpoch'] = new TaggedField(0, FetchResponseDivergingEpoch::class, null);
+            $scheme['currentLeader']  = new TaggedField(1, FetchResponseCurrentLeader::class, null);
+            $scheme['snapshotId']     = new TaggedField(2, FetchResponseSnapshotId::class, null);
+        }
 
         return $scheme;
     }

@@ -31,7 +31,7 @@ namespace Protocol\Kafka\Common\Record;
  * A 0.10.2 broker still writes this format for a topic configured with `message.format.version=0.9.0` (or lower),
  * and it converts a stored v1 log down to it for every client that asks with a Fetch request below version 2.
  *
- * @see docs/protocol/1.1.md, section "MessageSet and Message"
+ * @see docs/protocol/2.8.md, section "MessageSet and Message"
  * @see kafka/message/Message.scala @ 0.10.2.2
  */
 final class MessageV0 extends Message

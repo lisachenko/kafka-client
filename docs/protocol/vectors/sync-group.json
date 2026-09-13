@@ -1,8 +1,8 @@
 {
     "api": "sync-group",
     "apiKey": 14,
-    "section": "SyncGroup API (key 14, v0 and v1)",
-    "description": "Wire vectors of the SyncGroup API (key 14, v0 and v1), replayed by tests/Compliance.",
+    "section": "SyncGroup API (key 14, v0 to v5)",
+    "description": "Wire vectors of the SyncGroup API (key 14, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "syncgroup.request.v0",
@@ -88,7 +88,7 @@
         {
             "id": "syncgroup.request.v1",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequestV1",
             "version": 1,
             "source": "broker",
             "description": "SyncGroup request v1 of the leader, which publishes the assignment of the generation.",
@@ -115,7 +115,7 @@
         {
             "id": "syncgroup.response.v1",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponseV1",
             "version": 1,
             "source": "broker",
             "description": "The answer v1: the throttle time, the error code and the assignment of the member.",
@@ -127,6 +127,249 @@
                 "errorCode": 0,
                 "memberAssignment": {
                     "$bytes": "000000000001000b74332d7468726f74746c650000000300000000000000010000000200000000"
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v2",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequestV2",
+            "version": 2,
+            "source": "broker",
+            "description": "SyncGroup request v2 of the leader, which publishes the assignment of the generation; the frame of v1 with a higher version field.",
+            "hex": "000000d4000e0002000000ca00166b61666b612d636c69656e742d74332d6b6970323139000f74332d6b69703231392d67726f757000000001003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d31663464356332613933336500000001003b6b61666b612d636c69656e742d74332d6b69703231392d36653435633066612d633161622d343038632d623261322d3166346435633261393333650000001d000000000001000974332d6b6970323139000000010000000000000000",
+            "fields": {
+                "messageSize": 212,
+                "apiKey": 14,
+                "apiVersion": 2,
+                "correlationId": 202,
+                "clientId": "kafka-client-t3-kip219",
+                "consumerGroup": "t3-kip219-group",
+                "generationId": 1,
+                "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
+                "groupAssignments": {
+                    "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e": {
+                        "memberId": "kafka-client-t3-kip219-6e45c0fa-c1ab-408c-b2a2-1f4d5c2a933e",
+                        "assignment": {
+                            "$bytes": "000000000001000974332d6b6970323139000000010000000000000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v2",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponseV2",
+            "version": 2,
+            "source": "broker",
+            "description": "The answer v2: the throttle time, the error code and the share of the member that sent the request.",
+            "hex": "0000002b000000ca0000000000000000001d000000000001000974332d6b6970323139000000010000000000000000",
+            "fields": {
+                "messageSize": 43,
+                "correlationId": 202,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "memberAssignment": {
+                    "$bytes": "000000000001000974332d6b6970323139000000010000000000000000"
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequestV3",
+            "version": 3,
+            "source": "broker",
+            "description": "SyncGroup request v3 of the same static member, which is the leader of its generation and publishes the assignment of all three partitions to itself. The `group_instance_id` of KIP-345 stands behind the member id.",
+            "hex": "000000d7000e00030000019200136b61666b612d636c69656e742d74332d333435001474332d3334352d766563746f72732d67726f757000000001002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d643762633631313163636364000a74332d3334352d6f6e6500000001002f74332d3334352d6f6e652d33343230346466632d393531612d346235392d393433372d6437626336313131636363640000002a000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000",
+            "fields": {
+                "messageSize": 215,
+                "apiKey": 14,
+                "apiVersion": 3,
+                "correlationId": 402,
+                "clientId": "kafka-client-t3-345",
+                "consumerGroup": "t3-345-vectors-group",
+                "generationId": 1,
+                "memberId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                "groupInstanceId": "t3-345-one",
+                "groupAssignments": {
+                    "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd": {
+                        "memberId": "t3-345-one-34204dfc-951a-4b59-9437-d7bc6111cccd",
+                        "assignment": {
+                            "$bytes": "000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponseV3",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer, which version 3 left exactly as version 1 made it: the throttle time, the error code and the assignment of this member.",
+            "hex": "00000038000001920000000000000000002a000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000",
+            "fields": {
+                "messageSize": 56,
+                "correlationId": 402,
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "memberAssignment": {
+                    "$bytes": "000000000001000e74332d3334352d766563746f72730000000300000000000000010000000200000000"
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequestV4",
+            "version": 4,
+            "source": "broker",
+            "description": "SyncGroup request v4 (KIP-482) of the leader of the generation: a compact assignment array whose entries carry compact `member_id` and `member_assignment` fields.",
+            "hex": "000000d0000e00040000038700136b61666b612d636c69656e742d74332d323462001574332d3234622d766563746f72732d67726f7570000000013074332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d6364653636326166613732360b74332d3234622d6f6e65023074332d3234622d6f6e652d38356532343065332d643036382d343932322d386235642d6364653636326166613732362b000000000001000e74332d3234622d766563746f727300000003000000000000000100000002000000000000",
+            "fields": {
+                "messageSize": 208,
+                "apiKey": 14,
+                "apiVersion": 4,
+                "correlationId": 903,
+                "clientId": "kafka-client-t3-24b",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-24b-vectors-group",
+                "generationId": 1,
+                "memberId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                "groupInstanceId": "t3-24b-one",
+                "groupAssignments": {
+                    "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726": {
+                        "memberId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
+                        "assignment": {
+                            "$bytes": "000000000001000e74332d3234622d766563746f72730000000300000000000000010000000200000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponseV4",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer v4: the throttle time, the error code and the assignment of this member as `compact_bytes`.",
+            "hex": "0000003700000387000000000000002b000000000001000e74332d3234622d766563746f7273000000030000000000000001000000020000000000",
+            "fields": {
+                "messageSize": 55,
+                "correlationId": 903,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "memberAssignment": {
+                    "$bytes": "000000000001000e74332d3234622d766563746f72730000000300000000000000010000000200000000"
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "SyncGroup request v5 (Kafka 2.5, KIP-559) of the leader of the generation: the `protocol_type` and the `protocol_name` of KIP-559 stand between the `group_instance_id` and the assignment array, and they are what the JoinGroup answer reported - `consumer` and `range`.",
+            "hex": "000000da000e0005000003ed00126b61666b612d636c69656e742d74332d3235001474332d32352d766563746f72732d67726f757000000001386b61666b612d636c69656e742d74332d32352d62303930303031342d306565352d343663652d613031392d6336353034373639323763350009636f6e73756d65720672616e676502386b61666b612d636c69656e742d74332d32352d62303930303031342d306565352d343663652d613031392d63363530343736393237633522000000000001000d74332d32352d766563746f72730000000100000000000000000000",
+            "fields": {
+                "messageSize": 218,
+                "apiKey": 14,
+                "apiVersion": 5,
+                "correlationId": 1005,
+                "clientId": "kafka-client-t3-25",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-25-vectors-group",
+                "generationId": 1,
+                "memberId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
+                "groupInstanceId": null,
+                "protocolType": "consumer",
+                "protocolName": "range",
+                "groupAssignments": {
+                    "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5": {
+                        "memberId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
+                        "assignment": {
+                            "$bytes": "000000000001000d74332d32352d766563746f7273000000010000000000000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer v5: the same pair comes back between the error code and the assignment, so that a member which sent no protocol at all still learns what the group runs on.",
+            "hex": "0000003d000003ed0000000000000009636f6e73756d65720672616e676522000000000001000d74332d32352d766563746f727300000001000000000000000000",
+            "fields": {
+                "messageSize": 61,
+                "correlationId": 1005,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "protocolType": "consumer",
+                "protocolName": "range",
+                "memberAssignment": {
+                    "$bytes": "000000000001000d74332d32352d766563746f7273000000010000000000000000"
+                }
+            }
+        },
+        {
+            "id": "syncgroup.request.v5.no-protocol",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The same request with both fields **null**, the two `00` bytes of a null compact string. A version 5 may not leave them out: `SyncGroupRequest.areMandatoryProtocolTypeAndNamePresent()` @ 2.8.2 is the first thing `KafkaApis.handleSyncGroupRequest` asks.",
+            "hex": "000000cd000e0005000003eb00126b61666b612d636c69656e742d74332d3235001474332d32352d766563746f72732d67726f757000000001386b61666b612d636c69656e742d74332d32352d62303930303031342d306565352d343663652d613031392d63363530343736393237633500000002386b61666b612d636c69656e742d74332d32352d62303930303031342d306565352d343663652d613031392d63363530343736393237633522000000000001000d74332d32352d766563746f72730000000100000000000000000000",
+            "fields": {
+                "messageSize": 205,
+                "apiKey": 14,
+                "apiVersion": 5,
+                "correlationId": 1003,
+                "clientId": "kafka-client-t3-25",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-25-vectors-group",
+                "generationId": 1,
+                "memberId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
+                "groupInstanceId": null,
+                "protocolType": null,
+                "protocolName": null,
+                "groupAssignments": {
+                    "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5": {
+                        "memberId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
+                        "assignment": {
+                            "$bytes": "000000000001000d74332d32352d766563746f7273000000010000000000000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "syncgroup.response.v5.no-protocol",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\SyncGroupResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The refusal: **23** `InconsistentGroupProtocol`, with a null protocol type, a null protocol name and an empty assignment - and the membership of the sender untouched, the group stays in the generation it was in. A request that names a protocol the group did not settle on is answered with the very same code, one check later, in `GroupCoordinator.handleSyncGroup`.",
+            "hex": "0000000f000003eb0000000000001700000100",
+            "fields": {
+                "messageSize": 15,
+                "correlationId": 1003,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 23,
+                "protocolType": null,
+                "protocolName": null,
+                "memberAssignment": {
+                    "$bytes": ""
                 }
             }
         }

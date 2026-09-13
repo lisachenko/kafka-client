@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Data\DescribeConfigsResponseConfigEntry;
  *  - `synonyms` are the places the broker looked for the value, the winning one first, and the list is only filled
  *    when the request asked for them ({@see AdminClient::describeConfigs()} with `$includeSynonyms`).
  *
- * @see docs/protocol/1.1.md, section "DescribeConfigs API (key 32, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "DescribeConfigs API (key 32, v0 to v4)"
  */
 final class ConfigEntry
 {
@@ -54,6 +54,8 @@ final class ConfigEntry
      * @param bool               $isSensitive Whether the option holds a secret, whose value the broker never sends
      * @param bool               $isReadOnly  Whether the option cannot be changed with the AlterConfigs api
      * @param list<ConfigSynonym> $synonyms   Places the broker looked for the value, the winning one first
+     * @param int                $type        Data type of the option, a {@see ConfigType} constant (KIP-569)
+     * @param string|null        $documentation Documentation of the option, null unless it was asked for
      */
     public function __construct(
         public readonly string $name,
@@ -61,7 +63,9 @@ final class ConfigEntry
         public readonly int $source = ConfigSource::UNKNOWN,
         public readonly bool $isSensitive = false,
         public readonly bool $isReadOnly = false,
-        public readonly array $synonyms = []
+        public readonly array $synonyms = [],
+        public readonly int $type = ConfigType::UNKNOWN,
+        public readonly ?string $documentation = null
     ) {
         $this->isDefault = $source === ConfigSource::DEFAULT_CONFIG;
     }
@@ -85,7 +89,9 @@ final class ConfigEntry
             $entry->source($resourceType),
             $entry->isSensitive,
             $entry->readOnly,
-            array_map(ConfigSynonym::fromResponseSynonym(...), $entry->configSynonyms)
+            array_map(ConfigSynonym::fromResponseSynonym(...), $entry->configSynonyms),
+            ConfigType::fromWire($entry->configType),
+            $entry->documentation
         );
     }
 }

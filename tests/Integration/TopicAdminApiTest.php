@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
+use Protocol\Kafka\Admin\ConfigSource;
 use Protocol\Kafka\Admin\NewPartitions;
 use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
@@ -29,8 +30,13 @@ use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\RequestTimedOutException;
 use Protocol\Kafka\Common\Errors\TopicExistsException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\TopicMetadata;
+use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopic;
+use Protocol\Kafka\Protocol\Data\DeleteTopicsRequestTopic;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV0;
+use Protocol\Kafka\Protocol\Request\CreateTopicsRequestV3;
 use Protocol\Kafka\Protocol\Request\CreateTopicsResponseV0;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
@@ -44,8 +50,8 @@ use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
  * controller, so the error code 41 (NotController) can not be produced here - it is exercised with a scripted
  * two-broker cluster in `tests/Unit/Admin/AdminClientTest.php`.
  *
- * @see docs/protocol/1.1.md, sections "CreateTopics API (key 19, v0, v1 and v2)", "DeleteTopics API (key 20, v0 and v1)"
- *      and "CreatePartitions API (key 37, v0)"
+ * @see docs/protocol/2.8.md, sections "CreateTopics API (key 19, v0 to v7)", "DeleteTopics API (key 20, v0 to v6)"
+ *      and "CreatePartitions API (key 37, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(NewTopic::class)]
@@ -109,6 +115,118 @@ final class TopicAdminApiTest extends IntegrationTestCase
             self::assertSame([0], array_values($partition->replicas), 'the single broker hosts every partition');
         }
         self::assertContains($topic, $this->admin->listTopics());
+    }
+
+    /**
+     * The -1/-1 of KIP-464: the BROKER chooses the partition count and the replication factor (CreateTopics v4)
+     *
+     * The image sets `num.partitions=3` and no `default.replication.factor`, so the Kafka default 1 applies - a
+     * topic created this way is the same shape as the one above, without the client naming either number.
+     */
+    public function testATopicCanBeCreatedWithThePartitionDefaultsOfTheBroker(): void
+    {
+        $topic = $this->topicName('defaults');
+
+        $result = $this->admin->createTopics([NewTopic::withBrokerDefaults($topic)]);
+
+        self::assertSame([$topic => null], $result, 'the controller resolved the -1 against its own configuration');
+
+        $metadata   = $this->awaitTopic($topic);
+        $partitions = array_keys($metadata->partitions);
+        sort($partitions);
+        self::assertSame([0, 1, 2], $partitions, 'the `num.partitions=3` of the image');
+        foreach ($metadata->partitions as $partition) {
+            self::assertSame([0], array_values($partition->replicas), 'and the default replication factor 1');
+        }
+        self::assertGreaterThanOrEqual(
+            4,
+            CreateTopicsRequest::VERSION,
+            'KIP-464 needs the version 4; this line sends the flexible 5 of KIP-482, which carries the same meaning'
+        );
+    }
+
+    /**
+     * What KIP-525 put into the answer of the **version 5**: the shape of the topic and its whole configuration
+     *
+     * `AdminClient::createTopicsWithResults()` is the same request as `createTopics()` with the entries of the
+     * answer kept instead of only their errors, so that no DescribeConfigs has to follow the creation.
+     */
+    public function testTheAnswerOfVersionFiveCarriesTheShapeAndTheConfigurationOfTheNewTopic(): void
+    {
+        $topic = $this->topicName('kip525');
+
+        $created = $this->admin->createTopicsWithResults([
+            new NewTopic($topic, 2, 1, configs: ['retention.ms' => '3600000']),
+        ])[$topic];
+
+        self::assertNull($created->error, 'the topic was created');
+        self::assertSame($topic, $created->topic);
+        self::assertSame(2, $created->numPartitions, 'the partition count the request asked for');
+        self::assertSame(1, $created->replicationFactor);
+        self::assertSame(0, $created->configErrorCode, 'the broker read the configuration back');
+        self::assertNotNull($created->config, 'and sent it');
+        self::assertSame(
+            '3600000',
+            $created->config->value('retention.ms'),
+            'the option the request set is in the answer with its value'
+        );
+        self::assertSame(
+            ConfigSource::TOPIC_CONFIG,
+            $created->config->get('retention.ms')->source,
+            'and with the source a DescribeConfigs would report for it'
+        );
+        self::assertGreaterThan(
+            10,
+            count($created->config->entries),
+            'every option of the topic is in there, not only the ones the request named'
+        );
+        self::assertNotNull(
+            $created->config->get('cleanup.policy'),
+            'an option the request never mentioned, with the value the topic inherited'
+        );
+        self::assertGreaterThanOrEqual(
+            5,
+            CreateTopicsRequest::VERSION,
+            'the answer of KIP-525 arrived with the version 5 and every version above it carries it'
+        );
+    }
+
+    /**
+     * The -1/-1 of KIP-464 and the answer of KIP-525 together: the broker says what it chose
+     */
+    public function testTheBrokerDefaultsAreReportedBackByTheAnswerOfVersionFive(): void
+    {
+        $topic = $this->topicName('kip525-defaults');
+
+        $created = $this->admin->createTopicsWithResults([NewTopic::withBrokerDefaults($topic)])[$topic];
+
+        self::assertNull($created->error);
+        self::assertSame(3, $created->numPartitions, 'the `num.partitions=3` of the image, reported back');
+        self::assertSame(1, $created->replicationFactor, 'and the default replication factor');
+    }
+
+    /**
+     * A client that sends a version below 4 refuses the shape itself - the broker of 2.8.2 would not
+     *
+     * `ZkAdminManager.createTopics` @ 2.8.2 resolves the -1 for every api version, so the guard has to be here:
+     * `CreateTopicsRequest.Builder.build(version)` @ 2.8.2 throws for it, because a broker of Kafka 2.3 or below
+     * has no such fallback and would answer the topic with 37 or 38.
+     */
+    public function testTheBrokerDefaultsAreRefusedBeforeAVersionThreeRequestIsEvenSent(): void
+    {
+        $topic = self::uniqueTopicName('t7-topics-never-created');
+
+        try {
+            new CreateTopicsRequestV3([NewTopic::withBrokerDefaults($topic)], 30000, false, 't7-topics', 1);
+            self::fail('a version 3 request cannot carry the broker defaults of KIP-464');
+        } catch (UnsupportedVersionException $exception) {
+            self::assertStringContainsString(
+                'only supported in CreateTopicRequest version 4+',
+                (string) $exception->getContext()['error']
+            );
+        }
+
+        self::assertNotContains($topic, $this->admin->listTopics(), 'and nothing reached the broker');
     }
 
     public function testATopicIsCreatedFromAnExplicitReplicaAssignmentWithTopicLevelOptions(): void
@@ -250,6 +368,108 @@ final class TopicAdminApiTest extends IntegrationTestCase
             'a timeout of 0 answers before the controller is done, with the code 7'
         );
         $this->awaitTopic($topic);
+    }
+
+    /**
+     * The topic id of KIP-516, which Kafka 2.8 put into the answer of the version 7
+     */
+    public function testTheAnswerOfVersionSevenCarriesTheIdTheControllerGaveTheTopic(): void
+    {
+        $topic = $this->topicName('kip516');
+
+        $created = $this->admin->createTopicsWithResults([new NewTopic($topic, 1, 1)])[$topic];
+
+        self::assertNull($created->error, 'the topic was created');
+        self::assertSame(16, strlen($created->topicId), 'a topic id is 16 raw bytes, not a string of them');
+        self::assertNotSame(
+            CreateTopicsResponseTopic::NO_TOPIC_ID,
+            $created->topicId,
+            'and the controller filled it with the id of the new topic'
+        );
+
+        $refused = $this->admin->createTopicsWithResults([new NewTopic($topic, 1, 1)])[$topic];
+
+        self::assertInstanceOf(TopicExistsException::class, $refused->error);
+        self::assertSame(
+            CreateTopicsResponseTopic::NO_TOPIC_ID,
+            $refused->topicId,
+            'a topic the controller refused has the zero id - nothing was created to have one'
+        );
+        self::assertGreaterThanOrEqual(
+            7,
+            CreateTopicsRequest::VERSION,
+            'the id arrived with the version 7 and every version above it carries it'
+        );
+    }
+
+    /**
+     * The other half of KIP-516: a DeleteTopics v6 request names its topic by that id instead of by its name
+     */
+    public function testATopicIsDeletedByTheIdItsCreationAnswered(): void
+    {
+        $topic = $this->topicName('kip516-delete');
+        $id    = $this->admin->createTopicsWithResults([new NewTopic($topic, 1, 1)])[$topic]->topicId;
+        $this->awaitTopic($topic);
+
+        $stream = $this->connect();
+        new DeleteTopicsRequest([new DeleteTopicsRequestTopic(null, $id)], 30000, 't7-topics', 7102)
+            ->writeTo($stream);
+        $response = DeleteTopicsResponse::unpack($stream);
+        $this->createdTopics = [];
+
+        $result = $response->topics[$topic] ?? null;
+        self::assertNotNull($result, 'the controller resolved the id to the name of the topic it deleted');
+        self::assertSame(0, $result->errorCode);
+        self::assertSame($id, $result->topicId, 'and echoed the id the request carried');
+        $this->awaitTopicIsGone($topic);
+    }
+
+    public function testAnIdNoTopicOfTheClusterCarriesIsAnsweredWithUnknownTopicId(): void
+    {
+        $unknownId = (string) hex2bin('0123456789abcdef0123456789abcdef');
+
+        $stream = $this->connect();
+        new DeleteTopicsRequest([new DeleteTopicsRequestTopic(null, $unknownId)], 30000, 't7-topics', 7103)
+            ->writeTo($stream);
+        $response = DeleteTopicsResponse::unpack($stream);
+
+        // The name of the entry is null, so the answer is not keyed by a topic name at all
+        $result = $response->topics[0];
+        self::assertNull($result->topic, 'the controller could not resolve the id to a name');
+        self::assertSame($unknownId, $result->topicId);
+        self::assertSame(
+            KafkaException::UNKNOWN_TOPIC_ID,
+            $result->errorCode,
+            'the error code 100 Kafka 2.8 added for an id, where a name it does not know is still the 3'
+        );
+    }
+
+    public function testATopicThatIsNamedByItsNameAndItsIdAtOnceFailsTheWholeRequest(): void
+    {
+        $topic = $this->topicName('kip516-both');
+        self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 1, 1)]));
+        $this->awaitTopic($topic);
+
+        $stream = $this->connect();
+        new DeleteTopicsRequest(
+            [
+                new DeleteTopicsRequestTopic('t7-topics-never-created', (string) hex2bin(str_repeat('ab', 16))),
+                new DeleteTopicsRequestTopic($topic),
+            ],
+            30000,
+            't7-topics',
+            7104
+        )->writeTo($stream);
+        $response = DeleteTopicsResponse::unpack($stream);
+
+        foreach ($response->topics as $result) {
+            self::assertSame(
+                KafkaException::INVALID_REQUEST,
+                $result->errorCode,
+                'the exception of the malformed entry fails every topic of the request'
+            );
+        }
+        self::assertContains($topic, $this->admin->listTopics(), 'so the topic that was named properly is still there');
     }
 
     public function testADeletedTopicDisappearsFromTheMetadataOfTheCluster(): void

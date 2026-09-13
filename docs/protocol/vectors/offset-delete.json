@@ -1,0 +1,130 @@
+{
+    "api": "offset-delete",
+    "apiKey": 47,
+    "section": "OffsetDelete API (key 47, v0)",
+    "description": "Wire vectors of the OffsetDelete API (key 47, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "offsetdelete.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetDeleteRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "OffsetDelete request v0 that deletes the committed offsets of two partitions of one topic for the group `t1-offsetdel-empty-8c32b76e`, which has no member left. The frame is a plain one - the api is the one Kafka 2.4 added **without** the flexible encoding - so the group id and the topic name are int16-prefixed strings and both arrays are counted by an int32.",
+            "hex": "00000065002f00000000126700176b61666b612d636c69656e742d74312d766563746f7273001b74312d6f666673657464656c2d656d7074792d386333326237366500000001001574312d6f666673657464656c2d3863333262373665000000020000000000000002",
+            "fields": {
+                "messageSize": 101,
+                "apiKey": 47,
+                "apiVersion": 0,
+                "correlationId": 4711,
+                "clientId": "kafka-client-t1-vectors",
+                "groupId": "t1-offsetdel-empty-8c32b76e",
+                "topics": {
+                    "t1-offsetdel-8c32b76e": {
+                        "name": "t1-offsetdel-8c32b76e",
+                        "partitions": {
+                            "0": {
+                                "partitionIndex": 0
+                            },
+                            "2": {
+                                "partitionIndex": 2
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetdelete.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetDeleteResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the container. **The top-level error code stands before the throttle time**, which no other api of this protocol does, and both partitions carry the code 0 - the second of them had never had a committed offset at all, because `GroupCoordinator.handleDeleteOffsets` @ 2.8.2 answers `NONE` for every partition it considers eligible without looking whether it removed anything.",
+            "hex": "000000350000126700000000000000000001001574312d6f666673657464656c2d386333326237366500000002000000000000000000020000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 4711,
+                "errorCode": 0,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-offsetdel-8c32b76e": {
+                        "name": "t1-offsetdel-8c32b76e",
+                        "partitions": {
+                            "0": {
+                                "partitionIndex": 0,
+                                "errorCode": 0
+                            },
+                            "2": {
+                                "partitionIndex": 2,
+                                "errorCode": 0
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetdelete.response.v0.group-subscribed-to-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetDeleteResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The same request against a group that is `Stable` and whose live member is subscribed to that very topic: both partitions are refused with **86** (`GroupSubscribedToTopic`), the code KIP-496 added for it, while the top-level code stays 0. A partition of a topic the members are *not* subscribed to is deleted in the very same answer.",
+            "hex": "000000350000126800000000000000000001001574312d6f666673657464656c2d386333326237366500000002000000000056000000010056",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 4712,
+                "errorCode": 0,
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t1-offsetdel-8c32b76e": {
+                        "name": "t1-offsetdel-8c32b76e",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 86
+                            },
+                            {
+                                "partitionIndex": 1,
+                                "errorCode": 86
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetdelete.response.v0.non-empty-group",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetDeleteResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "A group that has a live member and is **not** a `consumer` group - its members joined with another protocol type - falls into the `case _` of `GroupCoordinator.handleDeleteOffsets` and is refused as a whole with the top-level **68** (`NonEmptyGroup`). The answer is 18 bytes: the error code, the throttle time and an empty topic array, so nothing is said about the partitions of the request.",
+            "hex": "0000000e0000126a00440000000000000000",
+            "fields": {
+                "messageSize": 14,
+                "correlationId": 4714,
+                "errorCode": 68,
+                "throttleTimeMs": 0,
+                "topics": []
+            }
+        },
+        {
+            "id": "offsetdelete.response.v0.group-id-not-found",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetDeleteResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "A group the coordinator has never heard of is the top-level **69** (`GroupIdNotFound`), in the same 18 bytes. A group that *had* offsets and lost the last of them answers this too, because deleting the last committed offset of an `Empty` group transitions it to `Dead` and removes it from the cache.",
+            "hex": "0000000e0000126b00450000000000000000",
+            "fields": {
+                "messageSize": 14,
+                "correlationId": 4715,
+                "errorCode": 69,
+                "throttleTimeMs": 0,
+                "topics": []
+            }
+        }
+    ]
+}

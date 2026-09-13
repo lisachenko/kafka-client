@@ -44,7 +44,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * keys and the offsets survive that conversion, the timestamps do not. What the log really holds and what a Fetch
  * v2 request answers is the subject of {@see MessageFormatV1Test}.
  *
- * @see docs/protocol/1.1.md, section "MessageSet and Message"
+ * @see docs/protocol/2.8.md, section "MessageSet and Message"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]
@@ -204,7 +204,7 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     {
         $stream = $this->connect();
         // A message set of the formats v0 and v1 may only travel in a request below version 3, see
-        // docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
+        // docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
         new ProduceRequestV2(
             [$this->topic => [self::PARTITION => $messageSet]],
             1,

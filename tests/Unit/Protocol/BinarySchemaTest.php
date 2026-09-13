@@ -24,7 +24,7 @@ use Protocol\Kafka\Tests\Fixture\BrokerRecord;
 /**
  * Byte-exact tests for the schema engine and the protocol primitive types.
  *
- * @see docs/protocol/1.1.md, section "Protocol primitive types"
+ * @see docs/protocol/2.8.md, section "Protocol primitive types"
  */
 #[CoversClass(BinarySchema::class)]
 final class BinarySchemaTest extends TestCase

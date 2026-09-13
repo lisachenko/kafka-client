@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * GroupCoordinator, version 1: asks any broker which broker coordinates a group or a transactional id (key 10)
+ * GroupCoordinator, version 2: asks any broker which broker coordinates a group or a transactional id (key 10)
  *
  * The offsets for a given consumer group are maintained by a specific broker called the group coordinator. i.e., a
  * consumer needs to issue its offset commit and fetch requests to this specific broker.
@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `FIND_COORDINATOR_REQUEST_V0` and `FIND_COORDINATOR_REQUEST_V1`.
  *
  * <pre>
- *   FindCoordinator Request (Version: 1) => coordinator_key coordinator_type
+ *   FindCoordinator Request (Version: 1 and 2) => coordinator_key coordinator_type
  *     coordinator_key  => STRING
  *     coordinator_type => INT8      -- since version 1
  * </pre>
@@ -42,13 +42,20 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * for the transactional id of a producer. The property that carries the key keeps the name `consumerGroup` of the
  * pre-schema `main`, which knew no other coordinator type; with the transaction type it holds a transactional id.
  *
+ * Version 2 (KIP-219, Kafka 2.0) added no field - `FindCoordinatorRequest.json` @ 2.8.2 has `Key` at `0+` and
+ * `KeyType` at `1+` and nothing else below the flexible version 3 - so {@see GroupCoordinatorRequestV1} sends the
+ * very same bytes one api version lower. What version 2 stands for is the throttling contract of KIP-219: a
+ * throttled broker answers first and mutes the channel afterwards. A **coordinator type the broker does not know**
+ * is answered by a 2.8.2 broker with the error code 42 (InvalidRequest) and the coordinator `-1:"":-1`, where a
+ * 1.1.1 broker closed the connection.
+ *
  * The two types are looked up in two different internal topics - `__consumer_offsets` for a group and
  * `__transaction_state` for a transactional id, `KafkaApis.handleFindCoordinatorRequest` @ 0.11.0.3 - and both
  * topics are created lazily by the first lookup that needs them, which is why that first request is answered with
  * the error code 15 (GroupCoordinatorNotAvailable) and the lookup has to be retried, see
  * {@see \Protocol\Kafka\Common\CoordinatorLookup}.
  *
- * @see docs/protocol/1.1.md, section "GroupCoordinator API (key 10, v0 and v1)"
+ * @see docs/protocol/2.8.md, section "GroupCoordinator API (key 10, v0 to v3)"
  */
 class GroupCoordinatorRequest extends AbstractRequest
 {
@@ -60,7 +67,13 @@ class GroupCoordinatorRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 3;
+
+    /**
+     * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
+     * is compact and every structure of it ends in a tagged-field section.
+     */
+    public const int FLEXIBLE_VERSION = 3;
 
     /**
      * Look the key up as a consumer group id, `CoordinatorType.GROUP` @ 0.11.0.3.

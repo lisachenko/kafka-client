@@ -29,7 +29,7 @@ use Protocol\Kafka\Common\Record\RecordBatch;
  * the 0.11.0.3 container appended when the transaction of `messageformat.v2.none.transactional` was committed: the
  * key `00 00 00 01` and the value `00 00 00 00 00 00`.
  *
- * @see docs/protocol/1.1.md, section "RecordBatch (message format v2)"
+ * @see docs/protocol/2.8.md, section "RecordBatch (message format v2)"
  */
 #[CoversClass(EndTransactionMarker::class)]
 #[CoversClass(ControlRecordType::class)]

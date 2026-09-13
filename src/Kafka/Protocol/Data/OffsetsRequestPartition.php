@@ -31,14 +31,23 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * per partition and dropped the field. The odd version out therefore lives in {@see OffsetsRequestPartitionV0} and
  * the scheme is selected by {@see OffsetsRequestPartition::VERSION}.
  *
- * @see docs/protocol/1.1.md, section "Offsets API (key 2, v0, v1 and v2), a.k.a. ListOffset"
+ * @see docs/protocol/2.8.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 class OffsetsRequestPartition implements BinarySchemaInterface
 {
     /**
      * Version of the Offsets API that this DTO is packed for
      */
-    public const int VERSION = 1;
+    public const int VERSION = 4;
+
+    /**
+     * Value of `current_leader_epoch` for a client that does not know the epoch of the partition, or does not care
+     *
+     * `ListOffsetsRequest.json` @ 2.8.2 gives the field the default -1, and `Partition.checkCurrentLeaderEpoch`
+     * @ 2.8.2 skips the fencing check for it - the very same rule the Fetch api follows, see
+     * {@see FetchRequestTopicPartition::UNKNOWN_LEADER_EPOCH}.
+     */
+    public const int UNKNOWN_LEADER_EPOCH = -1;
 
     /**
      * Id of the partition to list the offsets of
@@ -53,6 +62,17 @@ class OffsetsRequestPartition implements BinarySchemaInterface
      * which the time index of the log resolves. In version 0 the broker knew nothing about the timestamps of the
      * messages and answered with the start offsets of the log segments that were last modified before that time.
      */
+    /**
+     * Epoch the client believes this partition is being led with, the field version 4 added (Kafka 2.1, KIP-320)
+     *
+     * An epoch **older** than the one the leader is on is answered **74** `FENCED_LEADER_EPOCH`, a **newer** one
+     * **75** `UNKNOWN_LEADER_EPOCH`; both are retriable and both mean "refresh the metadata and ask again".
+     * {@see self::UNKNOWN_LEADER_EPOCH} switches the check off, and it is what every version below 4 is served as.
+     *
+     * @since Version 4 of protocol
+     */
+    public int $currentLeaderEpoch = self::UNKNOWN_LEADER_EPOCH;
+
     public int $timestamp;
 
     /**
@@ -62,11 +82,16 @@ class OffsetsRequestPartition implements BinarySchemaInterface
      */
     public int $maxNumberOfOffsets;
 
-    public function __construct(int $partition, int $timestamp, int $maxNumberOfOffsets = 1)
-    {
+    public function __construct(
+        int $partition,
+        int $timestamp,
+        int $maxNumberOfOffsets = 1,
+        int $currentLeaderEpoch = self::UNKNOWN_LEADER_EPOCH
+    ) {
         $this->partition          = $partition;
         $this->timestamp          = $timestamp;
         $this->maxNumberOfOffsets = $maxNumberOfOffsets;
+        $this->currentLeaderEpoch = $currentLeaderEpoch;
     }
 
     /**
@@ -74,10 +99,13 @@ class OffsetsRequestPartition implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        $scheme = [
-            'partition' => BinarySchema::TYPE_INT32,
-            'timestamp' => BinarySchema::TYPE_INT64,
-        ];
+        $scheme = ['partition' => BinarySchema::TYPE_INT32];
+        // The JSON specification is the wire order, and it puts `CurrentLeaderEpoch` between the partition index
+        // and the timestamp
+        if (static::VERSION >= 4) {
+            $scheme['currentLeaderEpoch'] = BinarySchema::TYPE_INT32;
+        }
+        $scheme['timestamp'] = BinarySchema::TYPE_INT64;
         if (static::VERSION === 0) {
             $scheme['maxNumberOfOffsets'] = BinarySchema::TYPE_INT32;
         }

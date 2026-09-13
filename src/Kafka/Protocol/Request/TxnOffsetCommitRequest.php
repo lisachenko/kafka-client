@@ -13,16 +13,18 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
+use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
 
 /**
- * TxnOffsetCommit, version 0: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
+ * TxnOffsetCommit, version 2: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
  *
  * <pre>
- *   TxnOffsetCommit Request (Version: 0) => transactional_id consumer_group_id producer_id producer_epoch [topics]
+ *   TxnOffsetCommit Request (Version: 2) => transactional_id consumer_group_id producer_id producer_epoch [topics]
  *     transactional_id  => STRING
  *     consumer_group_id => STRING
  *     producer_id       => INT64
@@ -52,7 +54,29 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
  * commits the offsets is not a member of the group, and the fencing that a generation would give is done by the
  * producer epoch instead. It has no `retention_time` either.
  *
- * @see docs/protocol/1.1.md, section "TxnOffsetCommit API (key 28, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TXN_OFFSET_COMMIT_REQUEST_V1 =
+ * TXN_OFFSET_COMMIT_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ * {@see TxnOffsetCommitRequestV0} is the same frame with the version field of Kafka 0.11.
+ *
+ * **Kafka 2.1 added version 2** (KIP-320), the first version of this api whose frame really changed: every
+ * partition of it carries a `committed_leader_epoch` between the offset and the metadata
+ * ({@see \Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestPartition}), so that the coordinator stores the
+ * epoch of the leader the offset was read from next to the offset itself. It is the version this client sends;
+ * {@see TxnOffsetCommitRequestV1} is the frame without that field, with the version of Kafka 2.0.
+ *
+ * **Kafka 2.5 added the version 3** (KIP-447), whose request carries **who the consumer is**: a `generation_id`,
+ * a `member_id` and a nullable `group_instance_id` between the producer epoch and the topics. Until then the
+ * coordinator only knew the group, so a consumer that had already been rebalanced away could still commit into a
+ * transaction; now `GroupCoordinator.handleTxnCommitOffsets` @ 2.8.2 refuses a stale membership with **22**
+ * `IllegalGeneration`, **25** `UnknownMemberId` or **82** `FencedInstanceId`. The generation **-1** with an empty
+ * member id is the "not a member" form and is accepted exactly as a version 2 commit was, which is what
+ * {@see ConsumerGroupMetadata::forGroup()} builds. The version 3 is also the first **flexible** one of this api.
+ * {@see TxnOffsetCommitRequestV2} is the frame of Kafka 2.1.
+ *
+ * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {
@@ -64,7 +88,12 @@ class TxnOffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 3;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 3;
 
     /**
      * Offsets to commit, indexed by the topic name
@@ -74,12 +103,35 @@ class TxnOffsetCommitRequest extends AbstractRequest
     protected readonly array $topics;
 
     /**
+     * Generation of the consumer group the offsets belong to, -1 for a producer that is not a member
+     *
+     * @since Version 3 of protocol
+     */
+    protected int $generationId = OffsetCommitRequest::DEFAULT_GENERATION_ID;
+
+    /**
+     * Member id the coordinator assigned to that consumer, the empty string when there is none
+     *
+     * @since Version 3 of protocol
+     */
+    protected string $memberId = '';
+
+    /**
+     * `group.instance.id` of a static member (KIP-345), null for a dynamic one
+     *
+     * @since Version 3 of protocol
+     */
+    protected ?string $groupInstanceId = null;
+
+    /**
      * @param string $transactionalId `transactional.id` of the producer that owns the transaction
      * @param string $groupId         Consumer group whose offsets are committed (`consumer_group_id` on the wire)
      * @param int    $producerId      Producer id the transaction coordinator handed out for that transactional id
      * @param int    $producerEpoch   Epoch of that producer id
      * @param array<string, array<int, int|OffsetAndMetadata>|TxnOffsetCommitRequestTopic> $topicPartitionOffsets
      *        Offsets to commit, as topic => partition => offset
+     * @param ConsumerGroupMetadata|null $groupMetadata Who the consumer is inside its group (KIP-447, version 3);
+     *        `null` is the "not a member" form, the generation -1 with an empty member id
      * @param string $clientId        A user specified identifier for the client making the request
      * @param int    $correlationId   A user-supplied value that the broker passes back unmodified
      */
@@ -101,16 +153,29 @@ class TxnOffsetCommitRequest extends AbstractRequest
          */
         protected readonly int $producerEpoch,
         array $topicPartitionOffsets = [],
+        /**
+         * Who the consumer is inside its group, `null` for a producer that is not a member of it
+         *
+         * @since Version 3 of protocol
+         */
+        protected readonly ?ConsumerGroupMetadata $groupMetadata = null,
         string $clientId = '',
         int $correlationId = 0
     ) {
+        $topicClass   = static::topicClass();
         $packedTopics = [];
         foreach ($topicPartitionOffsets as $topic => $partitionOffsets) {
             $packedTopics[$topic] = $partitionOffsets instanceof TxnOffsetCommitRequestTopic
                 ? $partitionOffsets
-                : new TxnOffsetCommitRequestTopic((string) $topic, $partitionOffsets);
+                : new $topicClass((string) $topic, $partitionOffsets);
         }
         $this->topics = $packedTopics;
+
+        if ($groupMetadata !== null) {
+            $this->generationId    = $groupMetadata->generationId;
+            $this->memberId        = $groupMetadata->memberId;
+            $this->groupInstanceId = $groupMetadata->groupInstanceId;
+        }
 
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
@@ -122,12 +187,29 @@ class TxnOffsetCommitRequest extends AbstractRequest
     {
         $header = parent::getScheme();
 
-        return $header + [
+        $body = [
             'transactionalId' => BinarySchema::TYPE_STRING,
             'groupId'         => BinarySchema::TYPE_STRING,
             'producerId'      => BinarySchema::TYPE_INT64,
             'producerEpoch'   => BinarySchema::TYPE_INT16,
-            'topics'          => ['topic' => TxnOffsetCommitRequestTopic::class],
         ];
+        if (static::VERSION >= 3) {
+            $body['generationId']    = BinarySchema::TYPE_INT32;
+            $body['memberId']        = BinarySchema::TYPE_STRING;
+            $body['groupInstanceId'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        $body['topics'] = ['topic' => static::topicClass()];
+
+        return $header + $body;
+    }
+
+    /**
+     * Returns the class of a topic entry for the version of the API that this request belongs to
+     *
+     * @return class-string<TxnOffsetCommitRequestTopic>
+     */
+    protected static function topicClass(): string
+    {
+        return static::VERSION >= 2 ? TxnOffsetCommitRequestTopic::class : TxnOffsetCommitRequestTopicV0::class;
     }
 }

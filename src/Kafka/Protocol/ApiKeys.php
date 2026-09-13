@@ -18,15 +18,24 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol;
 
 /**
- * Numeric codes that the ApiKey in the request can take, as of Kafka 1.1.1.
+ * Numeric codes that the ApiKey in the request can take, as of Kafka 2.8.2.
  *
- * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 1.1.1: SaslHandshake (17) and ApiVersions (18)
+ * The list mirrors org.apache.kafka.common.protocol.ApiKeys @ 2.8.2: SaslHandshake (17) and ApiVersions (18)
  * arrived with Kafka 0.10.0, CreateTopics (19) and DeleteTopics (20) with 0.10.1, the keys 21 to 33 (DeleteRecords,
  * the idempotent and transactional producer apis, the ACL and config apis) with 0.11.0, the keys 34 to 37
  * (AlterReplicaLogDirs and DescribeLogDirs of KIP-113, SaslAuthenticate of KIP-152, CreatePartitions of KIP-195)
  * with 1.0.0 and the keys 38 to 42 (the delegation token apis of KIP-48, DeleteGroups of KIP-229) with 1.1.0.
+ * Kafka 2.0 and 2.1 added no key; 2.2 added ElectLeaders (43, KIP-183, called ElectPreferredLeaders until 2.4), 2.3
+ * IncrementalAlterConfigs (44, KIP-339), 2.4 the two partition reassignment apis (45 and 46, KIP-455) and OffsetDelete
+ * (47, KIP-496), 2.6 the two client quota apis (48 and 49, KIP-546), 2.7 the two SCRAM credential apis (50 and 51,
+ * KIP-554), the four raft apis of the KRaft quorum (52 to 55, KIP-595), AlterIsr (56, KIP-497), UpdateFeatures (57,
+ * KIP-584) and Envelope (58, KIP-590), and 2.8 FetchSnapshot (59, KIP-630), DescribeCluster (60, KIP-700),
+ * DescribeProducers (61, KIP-664) and the three broker registration apis of the KRaft mode (62 to 64, KIP-631).
  * A broker of 0.10 or later answers an ApiVersions request with the keys and versions it serves; a request with a
- * key or version it cannot parse closes the connection.
+ * key or version it cannot parse closes the connection. A ZooKeeper-backed 2.8.2 broker serves the keys 0 to 51, 56,
+ * 57, 60 and 61 (the `zkBroker` listener of the message specifications); the raft, envelope, snapshot and broker
+ * registration apis (52 to 55, 58, 59, 62 to 64) are the KRaft controller's and never appear in its ApiVersions
+ * answer - their constants exist here so that a frame of any 2.8.2 api can be named.
  */
 class ApiKeys
 {
@@ -79,4 +88,26 @@ class ApiKeys
     public const EXPIRE_DELEGATION_TOKEN   = 40;
     public const DESCRIBE_DELEGATION_TOKEN = 41;
     public const DELETE_GROUPS             = 42;
+    public const ELECT_LEADERS                    = 43;
+    public const INCREMENTAL_ALTER_CONFIGS        = 44;
+    public const ALTER_PARTITION_REASSIGNMENTS    = 45;
+    public const LIST_PARTITION_REASSIGNMENTS     = 46;
+    public const OFFSET_DELETE                    = 47;
+    public const DESCRIBE_CLIENT_QUOTAS           = 48;
+    public const ALTER_CLIENT_QUOTAS              = 49;
+    public const DESCRIBE_USER_SCRAM_CREDENTIALS  = 50;
+    public const ALTER_USER_SCRAM_CREDENTIALS     = 51;
+    public const VOTE                             = 52;
+    public const BEGIN_QUORUM_EPOCH               = 53;
+    public const END_QUORUM_EPOCH                 = 54;
+    public const DESCRIBE_QUORUM                  = 55;
+    public const ALTER_ISR                        = 56;
+    public const UPDATE_FEATURES                  = 57;
+    public const ENVELOPE                         = 58;
+    public const FETCH_SNAPSHOT                   = 59;
+    public const DESCRIBE_CLUSTER                 = 60;
+    public const DESCRIBE_PRODUCERS               = 61;
+    public const BROKER_REGISTRATION              = 62;
+    public const BROKER_HEARTBEAT                 = 63;
+    public const UNREGISTER_BROKER                = 64;
 }

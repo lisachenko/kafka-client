@@ -30,10 +30,44 @@ use Protocol\Kafka\IO\StringStream;
  *     Size => int32
  * </pre>
  *
- * @see docs/protocol/1.1.md, section "Common request and response structure"
+ * Every message also knows **which version of the api it stands for** and whether that version is a flexible one
+ * (KIP-482, Kafka 2.4): `VERSION` is the version in the header of a request and the version the answer was read
+ * with, `FLEXIBLE_VERSION` is the first version of the api whose frame is written with the compact types and the
+ * tagged fields, and {@see self::isFlexible()} is the question the schema engine asks once per message. A class
+ * that does not override `FLEXIBLE_VERSION` is never flexible, which is what every api of the lines below this one
+ * is.
+ *
+ * @see docs/protocol/2.8.md, sections "Common request and response structure" and "Implementation model"
  */
-abstract class AbstractProtocolMessage implements BinarySchemaInterface
+abstract class AbstractProtocolMessage implements FlexibleSchemaInterface
 {
+    use PreservesUnknownTaggedFields;
+
+    /**
+     * Version of the api this class stands for (INT16), overridden by every versioned subclass
+     */
+    public const int VERSION = 0;
+
+    /**
+     * First version of this api that is **flexible**, i.e. written with the compact types and the tagged fields of
+     * KIP-482 (the `flexibleVersions` of its JSON message specification @ 2.8.2)
+     *
+     * `PHP_INT_MAX` means "no version of this api is flexible", which is the answer for every api of Kafka 1.1.1
+     * and below, for SaslHandshake (17) and for OffsetDelete (47).
+     */
+    public const int FLEXIBLE_VERSION = PHP_INT_MAX;
+
+    /**
+     * Tagged fields of the **header** of this message, as `tag => raw bytes`
+     *
+     * The request header v2 and the response header v1 end in a tagged-field section of their own, in the middle of
+     * the frame; no api of Kafka 2.8.2 defines a tag for it, so this is the empty array on every frame this client
+     * writes and on every frame it has seen. It is a property of its own rather than part of
+     * {@see PreservesUnknownTaggedFields} because the header and the body are two structures with two sections.
+     *
+     * @var array<int, string>
+     */
+    protected array $headerTaggedFields = [];
     /**
      * Upper bound for the size of one frame, mirroring the socket.request.max.bytes default of the broker.
      *
@@ -53,6 +87,14 @@ abstract class AbstractProtocolMessage implements BinarySchemaInterface
      * A user-supplied integer value that will be passed back with the response (INT32)
      */
     protected int $correlationId = 0;
+
+    /**
+     * Whether the version this class stands for is written with the compact types and tagged fields of KIP-482
+     */
+    final public static function isFlexible(): bool
+    {
+        return static::VERSION >= static::FLEXIBLE_VERSION;
+    }
 
     /**
      * Unpacks the message from the binary data buffer.

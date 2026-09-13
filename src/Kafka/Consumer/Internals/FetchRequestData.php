@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequest;
  * of a topic together, so a partition can only be ordered against the other partitions of its own topic here, which
  * is the very same approximation {@see \Protocol\Kafka\Consumer\KafkaConsumer} makes for its fetch order.
  *
- * @see docs/protocol/1.1.md, section "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/2.8.md, section "Fetch sessions (v7, KIP-227)"
  */
 final class FetchRequestData
 {

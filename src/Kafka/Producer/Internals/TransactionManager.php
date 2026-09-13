@@ -28,10 +28,12 @@ use Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException;
 use Protocol\Kafka\Common\Errors\OutOfOrderSequenceException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
 use Protocol\Kafka\Common\Errors\TransactionalIdAuthorizationException;
+use Protocol\Kafka\Common\Errors\TransactionalProducerFencedException;
 use Protocol\Kafka\Common\Errors\UnknownProducerIdException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
@@ -109,7 +111,7 @@ use Throwable;
  * again" and "your records are there and we disagree about them" visible at all.
  *
  * @see \Protocol\Kafka\Client::initProducerId()
- * @see docs/protocol/1.1.md, sections "InitProducerId API (key 22, v0)" and "The idempotent producer"
+ * @see docs/protocol/2.8.md, sections "InitProducerId API (key 22, v0 to v4)" and "The idempotent producer"
  */
 class TransactionManager
 {
@@ -164,6 +166,15 @@ class TransactionManager
      * {@see TransactionState::FATAL_ERROR}; `null` in every state that is not an error
      */
     private ?Throwable $lastError = null;
+
+    /**
+     * Whether the next abort has to bump the epoch of this producer, i.e. whether an abortable error was seen
+     *
+     * `TransactionManager.epochBumpRequired` @ 2.8.2, the flag KIP-360 added: the coordinator still holds the
+     * sequence state of the batches this producer lost, so the transaction after the abort has to run under a
+     * **new epoch** or the broker answers 45 / 47 to the first batch of it.
+     */
+    private bool $epochBumpRequired = false;
 
     /**
      * Where in its transaction this producer is, `UNINITIALIZED` until `initTransactions()` was called
@@ -518,7 +529,10 @@ class TransactionManager
      *
      * * **47** InvalidProducerEpoch ({@see ProducerFencedException}) - another producer took this id over, or the
      *   coordinator expired the transaction. Nothing this producer sends will ever be accepted again, so it goes
-     *   into a fatal state and every following call fails with the same error.
+     *   into a fatal state and every following call fails with the same error. Since Kafka 2.7 the transaction
+     *   apis answer the very same thing with the code **90** `ProducerFenced` when the request carried the version
+     *   KIP-588 added ({@see TransactionalProducerFencedException}, whose name keeps the 47 as the published
+     *   `ProducerFencedException`), and it is treated identically here.
      * * **45** OutOfOrderSequence - the producer and the broker do not agree on what is in the log any more. An
      *   idempotent producer throws its producer id away and starts over; a transactional one reports the error and
      *   leaves the decision to the caller, which has to abort the transaction.
@@ -549,7 +563,9 @@ class TransactionManager
             return;
         }
 
-        if ($error instanceof ProducerFencedException) {
+        if ($error instanceof ProducerFencedException || $error instanceof TransactionalProducerFencedException) {
+            // The 47 of KIP-98 and the 90 that KIP-588 (Kafka 2.7) answers a fenced producer of a bumped api
+            // version with: the same end of the same producer, under two error codes
             $this->transitionToFatalError($error);
 
             return;
@@ -590,6 +606,9 @@ class TransactionManager
         if ($this->currentState === TransactionState::ABORTING_TRANSACTION) {
             return;
         }
+
+        // KIP-360: the abort that follows has to bump the epoch, see `bumpEpochIfNeeded()`
+        $this->epochBumpRequired = true;
 
         $this->transitionTo(TransactionState::ABORTABLE_ERROR, $exception);
     }
@@ -813,15 +832,29 @@ class TransactionManager
      * The consumer of that group must **not** commit those offsets itself (`enable.auto.commit = false`), and it
      * has to read `read_committed`, otherwise it would see the records of a transaction that is later aborted.
      *
+     * **Kafka 2.5 added the membership of KIP-447** to the second request: a `ConsumerGroupMetadata` names the
+     * generation, the member id and the `group.instance.id` of the consumer, and the group coordinator refuses a
+     * commit of a generation that is over (22), of a member it does not know (25) or of an instance id that has
+     * moved on (82). A bare group id keeps meaning what it meant before - the generation -1 with an empty member
+     * id, which the coordinator accepts without checking anything.
+     *
      * @param array<string, array<int, int|OffsetAndMetadata>> $topicPartitionOffsets Offsets to commit, as
      *        topic => partition => offset
-     * @param string $groupId Consumer group the offsets belong to
+     * @param string|ConsumerGroupMetadata $groupMetadata Consumer group the offsets belong to, as its id or - from
+     *        Kafka 2.5 - as the whole membership of the consumer
      *
      * @throws LogicException For a producer that is not inside a transaction
      * @throws KafkaException For an error a coordinator reports
      */
-    public function sendOffsetsToTransaction(array $topicPartitionOffsets, string $groupId): void
-    {
+    public function sendOffsetsToTransaction(
+        array $topicPartitionOffsets,
+        string|ConsumerGroupMetadata $groupMetadata
+    ): void {
+        $groupMetadata = is_string($groupMetadata)
+            ? ConsumerGroupMetadata::forGroup($groupMetadata)
+            : $groupMetadata;
+        $groupId       = $groupMetadata->groupId;
+
         $this->ensureTransactional();
         $this->maybeFailWithError();
 
@@ -844,13 +877,19 @@ class TransactionManager
         ));
         $this->transactionalRequest(fn(): mixed => $this->onGroupCoordinator(
             $groupId,
-            function (Node $coordinator) use ($transactionalId, $groupId, $topicPartitionOffsets): void {
+            function (Node $coordinator) use (
+                $transactionalId,
+                $groupId,
+                $topicPartitionOffsets,
+                $groupMetadata
+            ): void {
                 $this->client->txnOffsetCommit(
                     $coordinator,
                     $transactionalId,
                     $groupId,
                     $this->producerIdAndEpoch,
-                    $topicPartitionOffsets
+                    $topicPartitionOffsets,
+                    $groupMetadata
                 );
             }
         ));
@@ -906,6 +945,8 @@ class TransactionManager
         $this->newPartitionsInTransaction = [];
 
         $this->endTransaction(EndTxnRequest::ABORT);
+
+        $this->bumpEpochIfNeeded();
     }
 
     /**
@@ -955,6 +996,62 @@ class TransactionManager
         ));
 
         $this->completeTransaction();
+    }
+
+    /**
+     * Asks the coordinator for a new epoch after an abort that an abortable error caused (KIP-360, Kafka 2.5).
+     *
+     * Until the version 3 of `InitProducerId` an abortable error was the end of a transactional producer: it could
+     * roll the transaction back, but the sequence numbers the coordinator held for its producer id were no longer
+     * the ones the producer had, so the first batch of the next transaction was answered **45**
+     * (`OutOfOrderSequenceNumber`) or **47** (`InvalidProducerEpoch`) and nothing but a new `transactional.id`
+     * helped. KIP-360 lets the producer ask for `epoch + 1` of the **same** id, which fences everything that was
+     * still in flight and starts the sequences at zero again.
+     *
+     * `TransactionManager.bumpIdempotentEpochAndResetIdIfNeeded()` @ 2.8.2 is the model, and it does two different
+     * things:
+     *
+     * * a **transactional** producer sends `InitProducerId` with its own id and epoch, and the coordinator answers
+     *   the same id one epoch higher;
+     * * an **idempotent** producer has no coordinator that remembers it, so it throws its id away and takes a new
+     *   one with the -1/-1 - which is what {@see TransactionManager::resetProducerId()} has always done.
+     *
+     * The five-batch window and the 59 `UnknownProducerId` of the 1.x line are untouched by this: they are the
+     * cure for a partition whose records were deleted, not for a producer that lost its sequence state.
+     *
+     * @throws KafkaException If the coordinator refuses the bump
+     */
+    private function bumpEpochIfNeeded(): void
+    {
+        if (!$this->epochBumpRequired) {
+            return;
+        }
+
+        $this->epochBumpRequired = false;
+
+        if (!$this->isTransactional() || !$this->producerIdAndEpoch->isValid()) {
+            return;
+        }
+
+        $transactionalId = $this->requireTransactionalId();
+        $current         = $this->producerIdAndEpoch;
+
+        $this->retrying(
+            function (): void {
+                $this->transactionCoordinator = null;
+            },
+            function () use ($transactionalId, $current): void {
+                $this->producerIdAndEpoch = $this->client->initProducerId(
+                    $transactionalId,
+                    $this->transactionTimeoutMs,
+                    $current->producerId,
+                    $current->epoch
+                );
+            }
+        );
+
+        $this->sequenceNumbers  = [];
+        $this->lastAckedOffsets = [];
     }
 
     /**
@@ -1093,6 +1190,7 @@ class TransactionManager
             $send();
         } catch (Throwable $error) {
             if ($error instanceof ProducerFencedException
+                || $error instanceof TransactionalProducerFencedException
                 || $error instanceof InvalidTxnStateException
                 || $error instanceof InvalidPidMappingException
                 || $error instanceof TransactionalIdAuthorizationException

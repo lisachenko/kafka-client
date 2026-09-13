@@ -15,6 +15,7 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\IllegalSaslStateException;
@@ -56,7 +57,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * afterwards, and every way a broker can refuse - the 58 with a message after a v1 handshake, and the connection
  * that simply goes away after a v0 one.
  *
- * @see docs/protocol/1.1.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0)"
+ * @see docs/protocol/2.8.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 to v2)"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
  */
 #[CoversClass(SocketStream::class)]
@@ -79,7 +80,7 @@ final class SaslTransportTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t8-sasl';
 
     /**
-     * Credentials of `docker/kafka-1.1.1/jaas.conf`
+     * Credentials of `docker/kafka-2.8.2/jaas.conf`
      */
     private const string USERNAME = 'kafkatest';
 
@@ -101,9 +102,30 @@ final class SaslTransportTest extends IntegrationTestCase
         }
     }
 
+    /**
+     * Topics this class let the broker create, deleted again after every test
+     *
+     * @var list<string>
+     */
+    private static array $createdTopics = [];
+
     protected function tearDown(): void
     {
         ConnectionFactory::closeAll();
+
+        if (self::$createdTopics !== []) {
+            // The topics of this class are created by `auto.create.topics.enable` behind a metadata request, and
+            // the container is shared with every other suite of this line, so they are removed again here
+            $configuration = [
+                ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::firstBootstrapServer()],
+                ClientConfig::CLIENT_ID                 => self::CLIENT_ID,
+                ClientConfig::REQUEST_TIMEOUT_MS        => 10000,
+                ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+            ];
+            new AdminClient(Cluster::bootstrap($configuration), $configuration)
+                ->deleteTopics(self::$createdTopics);
+            self::$createdTopics = [];
+        }
     }
 
     /**
@@ -116,7 +138,8 @@ final class SaslTransportTest extends IntegrationTestCase
     #[DataProvider('saslListeners')]
     public function testProduceAndFetchTravelThroughAnAuthenticatedConnection(string $listener): void
     {
-        $topic = self::uniqueTopicName('t8-sasl');
+        $topic                 = self::uniqueTopicName('t8-sasl');
+        self::$createdTopics[] = $topic;
         new TopicMetadataProbe(fn(): Stream => $this->connectWithSasl($listener), 30.0, self::CLIENT_ID)
             ->awaitTopicWithLeaders($topic);
 
@@ -124,7 +147,7 @@ final class SaslTransportTest extends IntegrationTestCase
         $records = [[null, 'authenticated'], ['key', 'with SASL/PLAIN']];
 
         // The batch is a message set of the specification, which only a request below version 3 may carry: a
-        // Produce v3 accepts the message format v2 alone, see docs/protocol/1.1.md
+        // Produce v3 accepts the message format v2 alone, see docs/protocol/2.8.md
         new ProduceRequestV2(
             [$topic => [0 => SpecMessageSet::of($records)]],
             1,
@@ -205,7 +228,8 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     public function testClusterDiscoveredOverSaslKeepsAuthenticating(): void
     {
-        $topic = self::uniqueTopicName('t8-sasl-cluster');
+        $topic                 = self::uniqueTopicName('t8-sasl-cluster');
+        self::$createdTopics[] = $topic;
         new TopicMetadataProbe(
             fn(): Stream => $this->connectWithSasl(SecurityProtocol::SASL_PLAINTEXT),
             30.0,
@@ -260,7 +284,13 @@ final class SaslTransportTest extends IntegrationTestCase
 
         self::assertSame(432, $answer->getCorrelationId());
         self::assertSame(0, $answer->errorCode, 'the credentials of the container are accepted');
-        self::assertNull($answer->errorMessage, 'a successful answer carries no message');
+        self::assertSame(
+            '',
+            $answer->errorMessage,
+            'a successful answer of a 2.8.2 broker carries the EMPTY message, not the null of a 1.1.1 one: the '
+            . 'generated `SaslAuthenticateResponseData` initialises `ErrorMessage` with "" and the authenticator '
+            . 'never sets it, where the hand-written response of 1.1.1 left the field null'
+        );
         self::assertSame('', $answer->saslAuthBytes, 'PLAIN completes with the empty token');
 
         // ... and the connection is an ordinary one from here on
@@ -334,8 +364,10 @@ final class SaslTransportTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::SASL_AUTHENTICATION_FAILED, $answer->errorCode);
         self::assertSame(
-            'Authentication failed due to invalid credentials with SASL mechanism PLAIN',
-            $answer->errorMessage
+            'Invalid SASL/PLAIN response: expected 3 tokens, got 1',
+            $answer->errorMessage,
+            'the message of `PlainSaslServer.evaluateResponse` @ 2.8.2, where a 1.1.1 broker hid it behind the '
+            . 'generic "Authentication failed due to invalid credentials with SASL mechanism PLAIN"'
         );
         self::assertSame('', $answer->saslAuthBytes);
     }
@@ -670,7 +702,7 @@ final class SaslTransportTest extends IntegrationTestCase
      */
     private static function saslBrokerCertificateFile(): string
     {
-        return dirname(__DIR__, 2) . '/docker/kafka-1.1.1/ssl/broker.crt';
+        return dirname(__DIR__, 2) . '/docker/kafka-2.8.2/ssl/broker.crt';
     }
 
     /**

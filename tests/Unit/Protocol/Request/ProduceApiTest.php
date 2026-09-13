@@ -22,21 +22,32 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV2;
+use Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV5;
+use Protocol\Kafka\Protocol\Data\ProduceResponseRecordError;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV2;
+use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV5;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV5;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV6;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV7;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV8;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV5;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV6;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV7;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV8;
 use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 
 /**
@@ -64,7 +75,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
  * The message sets are built by {@see SpecMessageSet} directly from the specification and the record batch is a
  * captured one, so that the request classes are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/1.1.md, sections "Produce API (key 0, v0 to v5)", "MessageSet and Message" and
+ * @see docs/protocol/2.8.md, sections "Produce API (key 0, v0 to v9)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 #[CoversClass(ProduceRequest::class)]
@@ -137,6 +148,21 @@ final class ProduceApiTest extends TestCase
      * The same header with the api version 5 in it, the version this client sends for the message format v2
      */
     private const string REQUEST_HEADER_V5_HEX = '0000004d' . '0000' . '0005' . '00000005' . '0004' . '74657374';
+
+    /**
+     * Header of the same request at version 6, the version the Kafka 2.0 part of this line sent
+     */
+    private const string REQUEST_HEADER_V6_HEX = '0000004d' . '0000' . '0006' . '00000005' . '0004' . '74657374';
+
+    /**
+     * Header of the same request at version 7, the version this client sends for the message format v2 (Kafka 2.1)
+     */
+    private const string REQUEST_HEADER_V7_HEX = '0000004d' . '0000' . '0007' . '00000005' . '0004' . '74657374';
+
+    /**
+     * Header of the same request at version 8, the version this client sends (Kafka 2.4, KIP-467)
+     */
+    private const string REQUEST_HEADER_V8_HEX = '0000004d' . '0000' . '0008' . '00000005' . '0004' . '74657374';
 
     /**
      * The same header with the api version 1 in it, the only byte a version 1 request differs in
@@ -293,10 +319,18 @@ final class ProduceApiTest extends TestCase
         self::assertNull($request->getTransactionalId());
     }
 
-    public function testTheVersionsThreeToFiveSendOneAndTheSameBody(): void
+    public function testTheVersionsThreeToEightSendOneAndTheSameBody(): void
     {
-        $frames = [];
-        foreach ([3 => ProduceRequestV3::class, 4 => ProduceRequestV4::class, 5 => ProduceRequest::class] as $version => $requestClass) {
+        $versions = [
+            3 => ProduceRequestV3::class,
+            4 => ProduceRequestV4::class,
+            5 => ProduceRequestV5::class,
+            6 => ProduceRequestV6::class,
+            7 => ProduceRequestV7::class,
+            8 => ProduceRequestV8::class,
+        ];
+        $frames   = [];
+        foreach ($versions as $version => $requestClass) {
             $request          = new $requestClass(
                 ['orders' => [0 => SpecMessageSet::of([[null, 'hello']])]],
                 1,
@@ -307,15 +341,47 @@ final class ProduceApiTest extends TestCase
             $frames[$version] = bin2hex((string) $request);
         }
 
-        // `PRODUCE_REQUEST_V5` is `PRODUCE_REQUEST_V4` is `PRODUCE_REQUEST_V3` @ 1.1.1: what the two later
-        // versions state is that the client understands the error code 56 (v4) and the LogStartOffset of the
-        // answer (v5), not that the request looks different - only the api version of the header does
+        // `ProduceRequest.json` @ 2.8.2 carries no field above version 3, so the five bodies are the same bytes:
+        // what the later versions state is that the client understands the error code 56 (v4), the LogStartOffset
+        // of the answer (v5), the throttling of KIP-219 (v6, Kafka 2.0) and the zstd codec of KIP-110 (v7, Kafka
+        // 2.1) - only the api version of the header ever differs
         $body = 'ffff' . '0001' . self::REQUEST_BODY_HEX;
         self::assertSame(self::REQUEST_HEADER_V3_HEX . $body, $frames[3]);
         self::assertSame(self::REQUEST_HEADER_V4_HEX . $body, $frames[4]);
         self::assertSame(self::REQUEST_HEADER_V5_HEX . $body, $frames[5]);
-        self::assertSame(ProduceRequestV3::getScheme(), ProduceRequest::getScheme());
-        self::assertSame(5, ProduceRequest::VERSION, 'the client sends version 5 for the message format v2');
+        self::assertSame(self::REQUEST_HEADER_V6_HEX . $body, $frames[6]);
+        self::assertSame(self::REQUEST_HEADER_V7_HEX . $body, $frames[7]);
+        self::assertSame(self::REQUEST_HEADER_V8_HEX . $body, $frames[8]);
+        self::assertSame(ProduceRequestV3::getScheme(), ProduceRequestV8::getScheme());
+        self::assertSame(9, ProduceRequest::VERSION, 'the client sends version 9, the flexible one of KIP-482');
+        self::assertSame(8, ProduceRequestV8::VERSION, 'version 8 is the one of the record errors');
+        self::assertSame(7, ProduceRequestV7::VERSION, 'version 7 is the one a zstd batch needs');
+        self::assertSame(6, ProduceRequestV6::VERSION);
+        self::assertSame(5, ProduceRequestV5::VERSION);
+    }
+
+    public function testTheAnswerOfAVersionSixOrSevenRequestIsTheVersionFiveFrame(): void
+    {
+        // KIP-219 changed when a throttled answer arrives, not what it holds, and KIP-110 changed only what the
+        // request may carry: `ProduceResponse.json` @ 2.8.2 has no field of version 6 or 7, so the three classes
+        // read the very same bytes into the very same values
+        self::assertSame(ProduceResponseV5::getScheme(), ProduceResponseV6::getScheme());
+        self::assertSame(ProduceResponseV5::getScheme(), ProduceResponseV7::getScheme());
+        self::assertSame(
+            ProduceResponseV5::getScheme()['topics'],
+            ProduceResponseV7::getScheme()['topics'],
+            'the topic entry of a version 7 answer is the one of version 5'
+        );
+        self::assertNotSame(
+            ProduceResponseV7::getScheme()['topics'],
+            ProduceResponseV8::getScheme()['topics'],
+            'and the one of version 8 carries the record errors of KIP-467'
+        );
+        self::assertSame(9, ProduceResponse::VERSION);
+        self::assertSame(8, ProduceResponseV8::VERSION);
+        self::assertSame(7, ProduceResponseV7::VERSION);
+        self::assertSame(6, ProduceResponseV6::VERSION);
+        self::assertSame(5, ProduceResponseV5::VERSION);
     }
 
     public function testVersion3RequestCarriesTheTransactionalIdOfItsProducer(): void
@@ -473,7 +539,7 @@ final class ProduceApiTest extends TestCase
             . '00000000'
         );
 
-        $response  = ProduceResponse::unpack(new StringStream($frame));
+        $response  = ProduceResponseV5::unpack(new StringStream($frame));
         $partition = $response->topics['orders']->partitions[0];
 
         self::assertSame(42, $partition->baseOffset);
@@ -492,7 +558,7 @@ final class ProduceApiTest extends TestCase
             . '00000000'
         );
 
-        $response = ProduceResponse::unpack(new StringStream($frame));
+        $response = ProduceResponseV5::unpack(new StringStream($frame));
 
         self::assertSame(0, $response->topics['orders']->partitions[0]->logStartOffset);
         self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
@@ -537,13 +603,67 @@ final class ProduceApiTest extends TestCase
         self::assertSame($frame, (string) $response, 'the response has to survive a round trip');
     }
 
+    public function testVersionEightReadsTheRecordErrorsOfARefusedBatch(): void
+    {
+        // The answer of the container to a batch of three records, the second and the third of them without a
+        // key, on a `cleanup.policy=compact` topic: 87 INVALID_RECORD, the offsets -1 of a batch that was never
+        // appended, two record errors by their BATCH INDEX and the partition-wide message (KIP-467)
+        $message      = 'Compacted topic cannot accept message without key in topic partition orders-0.';
+        $summary      = 'One or more records have been rejected';
+        $recordErrors = '00000002'
+            . '00000001' . sprintf('%04x', strlen($message)) . bin2hex($message)
+            . '00000002' . sprintf('%04x', strlen($message)) . bin2hex($message);
+        $body = '00000003'
+            . '00000001' . '0006' . '6f7264657273' . '00000001'
+            . '00000000' . '0057' . 'ffffffffffffffff' . 'ffffffffffffffff' . '0000000000000000'
+            . $recordErrors
+            . sprintf('%04x', strlen($summary)) . bin2hex($summary)
+            . '00000000';
+        $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+
+        $response  = ProduceResponseV8::unpack(new StringStream($frame));
+        $partition = $response->topics['orders']->partitions[0];
+
+        self::assertSame(87, $partition->errorCode);
+        self::assertSame(-1, $partition->baseOffset, 'nothing of the batch was appended');
+        self::assertSame($summary, $partition->errorMessage);
+        self::assertSame([1, 2], array_keys($partition->recordErrors), 'the array is keyed by the batch index');
+        self::assertSame(1, $partition->recordErrors[1]->batchIndex);
+        self::assertSame($message, $partition->recordErrors[1]->batchIndexErrorMessage);
+        self::assertSame(2, $partition->recordErrors[2]->batchIndex);
+        self::assertSame($frame, (string) $response, 'the answer has to survive a round trip');
+
+        // An accepted partition carries the two fields as well, empty and null: they are fields of the version
+        $acceptedBody = '00000003'
+            . '00000001' . '0006' . '6f7264657273' . '00000001'
+            . '00000000' . '0000' . '000000000000002a' . 'ffffffffffffffff' . '0000000000000000'
+            . '00000000' . 'ffff'
+            . '00000000';
+        $accepted = ProduceResponseV8::unpack(new StringStream(
+            (string) hex2bin(sprintf('%08x', intdiv(strlen($acceptedBody), 2)) . $acceptedBody)
+        ));
+
+        self::assertSame([], $accepted->topics['orders']->partitions[0]->recordErrors);
+        self::assertNull($accepted->topics['orders']->partitions[0]->errorMessage);
+        self::assertSame(42, $accepted->topics['orders']->partitions[0]->baseOffset);
+    }
+
     public function testEveryVersionOfTheResponseReadsThePartitionEntryOfItsOwnVersion(): void
     {
         self::assertSame(
             ['partition' => BinarySchema::TYPE_INT32, 'errorCode' => BinarySchema::TYPE_INT16,
                 'baseOffset' => BinarySchema::TYPE_INT64, 'logAppendTime' => BinarySchema::TYPE_INT64,
+                'logStartOffset' => BinarySchema::TYPE_INT64,
+                'recordErrors' => ['batchIndex' => ProduceResponseRecordError::class],
+                'errorMessage' => BinarySchema::TYPE_NULLABLE_STRING],
+            ProduceResponsePartition::getScheme(),
+            'version 8 (KIP-467) names the records a refused batch was refused for'
+        );
+        self::assertSame(
+            ['partition' => BinarySchema::TYPE_INT32, 'errorCode' => BinarySchema::TYPE_INT16,
+                'baseOffset' => BinarySchema::TYPE_INT64, 'logAppendTime' => BinarySchema::TYPE_INT64,
                 'logStartOffset' => BinarySchema::TYPE_INT64],
-            ProduceResponsePartition::getScheme()
+            ProduceResponsePartitionV5::getScheme()
         );
         self::assertSame(
             ['partition' => BinarySchema::TYPE_INT32, 'errorCode' => BinarySchema::TYPE_INT16,
@@ -558,6 +678,11 @@ final class ProduceApiTest extends TestCase
         self::assertSame(
             ['topic' => ProduceResponseTopic::class],
             ProduceResponse::getScheme()['topics'],
+            'version 8 reads the partition entries with the record errors'
+        );
+        self::assertSame(
+            ['topic' => ProduceResponseTopicV5::class],
+            ProduceResponseV5::getScheme()['topics'],
             'version 5 reads the partition entries with the LogStartOffset'
         );
         self::assertSame(

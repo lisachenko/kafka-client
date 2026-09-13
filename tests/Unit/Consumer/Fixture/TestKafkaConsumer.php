@@ -47,6 +47,38 @@ final class TestKafkaConsumer extends KafkaConsumer
     /**
      * @inheritdoc
      */
+    /**
+     * Leader epoch of every partition, as topic => partition => epoch; a test moves an entry to script a leader
+     * change and with it the position validation of KIP-320
+     *
+     * @var array<string, array<int, int>>
+     */
+    public array $leaderEpochs = [];
+
+    /**
+     * @inheritdoc
+     */
+    protected function leaderEpochOf(string $topic, int $partition): ?int
+    {
+        return $this->leaderEpochs[$topic][$partition] ?? null;
+    }
+
+    /**
+     * How often the consumer asked for fresh cluster metadata, which is what a 74 or a 75 of KIP-320 costs
+     */
+    public int $metadataRefreshes = 0;
+
+    /**
+     * @inheritdoc
+     */
+    protected function refreshMetadata(): void
+    {
+        $this->metadataRefreshes++;
+    }
+
+    /**
+     * @inheritdoc
+     */
     protected function partitionsForAssignment(array $topics): array
     {
         return array_intersect_key($this->fakeClient->partitionsPerTopic, array_flip($topics));

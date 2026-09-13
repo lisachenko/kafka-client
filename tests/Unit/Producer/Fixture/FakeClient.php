@@ -18,6 +18,7 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
+use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
@@ -176,11 +177,16 @@ final class FakeClient extends Client
      */
     public function initProducerId(
         ?string $transactionalId = null,
-        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS
+        int $transactionTimeoutMs = InitProducerIdRequest::DEFAULT_TRANSACTION_TIMEOUT_MS,
+        int $producerId = InitProducerIdRequest::NO_PRODUCER_ID,
+        int $producerEpoch = InitProducerIdRequest::NO_PRODUCER_EPOCH
     ): ProducerIdAndEpoch {
         $this->initProducerIdCalls[] = [
             'transactionalId'      => $transactionalId,
             'transactionTimeoutMs' => $transactionTimeoutMs,
+            // The pair of KIP-360: -1/-1 asks for a new id, anything else asks for an epoch bump
+            'producerId'           => $producerId,
+            'producerEpoch'        => $producerEpoch,
         ];
 
         $error = array_shift($this->initProducerIdErrors);
@@ -261,9 +267,18 @@ final class FakeClient extends Client
         string $transactionalId,
         string $groupId,
         ProducerIdAndEpoch $producerIdAndEpoch,
-        array $topicPartitionOffsets
+        array $topicPartitionOffsets,
+        ?ConsumerGroupMetadata $groupMetadata = null
     ): void {
-        $this->transactionCalls[] = ['txnOffsetCommit', $transactionalId, $groupId, $topicPartitionOffsets];
+        // The membership of KIP-447 is recorded as well, so that a test can see what the producer told the group
+        // coordinator about its consumer
+        $this->transactionCalls[] = [
+            'txnOffsetCommit',
+            $transactionalId,
+            $groupId,
+            $topicPartitionOffsets,
+            $groupMetadata,
+        ];
 
         $this->maybeThrow('txnOffsetCommit');
     }

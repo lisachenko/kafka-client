@@ -18,11 +18,11 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * CreateDelegationToken, version 0: issues a delegation token for the principal of the connection (ApiKey 38,
+ * CreateDelegationToken, version 2: issues a delegation token for the principal of the connection (ApiKey 38,
  * Kafka 1.1, KIP-48)
  *
  * <pre>
- *   CreateDelegationToken Request (Version: 0) => [renewers] max_life_time
+ *   CreateDelegationToken Request (Version: 0 and 1) => [renewers] max_life_time
  *     renewers => principal_type name
  *       principal_type => STRING
  *       name           => STRING
@@ -42,7 +42,20 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * `delegation.token.max.lifetime.ms` (7 days by default) and a value of `-1`
  * ({@see self::DEFAULT_MAX_LIFE_TIME}, i.e. anything `<= 0`) asks for exactly that maximum.
  *
- * @see docs/protocol/1.1.md, section "CreateDelegationToken API (key 38, v0)"
+ * **Kafka 2.0 added version 1** and changed nothing about the bytes: `TOKEN_CREATE_REQUEST_V1 =
+ * TOKEN_CREATE_REQUEST_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
+ * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
+ * FIRST and muting the channel afterwards, instead of holding the answer back
+ * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
+ *
+ * **Kafka 2.4 added version 2**, the first **flexible** version of the api (`"flexibleVersions": "2+"` in
+ * `CreateDelegationTokenRequest.json` @ 2.8.2): the request header v2, a compact array of renewers whose two
+ * strings are compact as well, and a tagged-field section at the end of every structure. No field is added, and
+ * `throttle_time_ms` stays the **last** field of the answer, where KIP-124 put it for the four token apis.
+ * {@see CreateDelegationTokenRequestV1} and {@see CreateDelegationTokenRequestV0} are the same frame in the plain
+ * encoding.
+ *
+ * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 to v2)"
  */
 class CreateDelegationTokenRequest extends AbstractRequest
 {
@@ -54,7 +67,12 @@ class CreateDelegationTokenRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 2;
+
+    /**
+     * @inheritdoc
+     */
+    public const int FLEXIBLE_VERSION = 2;
 
     /**
      * Asks for the `delegation.token.max.lifetime.ms` of the broker instead of a lifetime of its own

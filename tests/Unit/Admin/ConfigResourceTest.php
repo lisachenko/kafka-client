@@ -27,11 +27,12 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\Request\DeleteRecordsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV0;
+use Protocol\Kafka\Protocol\Request\DescribeConfigsResponseV1;
 
 /**
  * Tests the value objects of the admin apis Kafka 0.11 added.
  *
- * @see docs/protocol/1.1.md, sections "DeleteRecords API (key 21, v0)" and "DescribeConfigs API (key 32, v0 and v1)"
+ * @see docs/protocol/2.8.md, sections "DeleteRecords API (key 21, v0 to v2)" and "DescribeConfigs API (key 32, v0 to v4)"
  */
 #[CoversClass(ConfigResource::class)]
 #[CoversClass(ConfigEntry::class)]
@@ -139,7 +140,7 @@ final class ConfigResourceTest extends TestCase
     public function testTheNonDefaultValuesAreWhatAnAlterConfigsHasToSendBack(): void
     {
         // AlterConfigs replaces the whole configuration, so keeping a topic as it is means sending exactly the
-        // options that are not defaults - see the "AlterConfigs API (key 33, v0)" section
+        // options that are not defaults - see the "AlterConfigs API (key 33, v0 to v2)" section
         $response = DescribeConfigsResponseV0::unpack(new StringStream((string) hex2bin(self::RESPONSE_HEX)));
 
         $config = Config::fromResponseResource($response->resources[0]);
@@ -185,7 +186,7 @@ final class ConfigResourceTest extends TestCase
 
     public function testAVersionOneAnswerCarriesTheSourceAndTheSynonymsOfEveryEntry(): void
     {
-        $response = DescribeConfigsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $response = DescribeConfigsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
 
         $config = Config::fromResponseResource($response->resources[0]);
 
@@ -215,7 +216,7 @@ final class ConfigResourceTest extends TestCase
     {
         // `nonDefaultValues()` reports what the broker does not call a default, which since KIP-226 includes the
         // options its own server.properties sets; `ownValues()` is the set the resource really carries
-        $response = DescribeConfigsResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
+        $response = DescribeConfigsResponseV1::unpack(new StringStream((string) hex2bin(self::RESPONSE_V1_HEX)));
 
         $config = Config::fromResponseResource($response->resources[0]);
 

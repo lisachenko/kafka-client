@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
 use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
 
 /**
- * The produce API, version 5
+ * The produce API, version 8
  *
  * The produce API is used to send message sets to the server. For efficiency it allows sending message sets intended
  * for many topic partitions in a single request.
@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * time of the send the producer is free to fill in that field in any way it likes.
  *
  * <pre>
- *   ProduceRequest (Version: 5) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
+ *   ProduceRequest (Version: 8) => TransactionalId RequiredAcks Timeout [TopicName [Partition RecordSetSize
  *                                                                                   RecordSet]]
  *     TransactionalId => nullable string
  *     RequiredAcks    => int16
@@ -62,15 +62,57 @@ use Protocol\Kafka\Protocol\Data\ProduceRequestTopic;
  * * **version 5** says that the client understands the `LogStartOffset` that the answer gained, see
  *   {@see \Protocol\Kafka\Protocol\Data\ProduceResponsePartition::$logStartOffset}.
  *
- * {@see ProduceRequestV4}, {@see ProduceRequestV3}, {@see ProduceRequestV2}, {@see ProduceRequestV1} and
- * {@see ProduceRequestV0} keep the lower versions - and with them the legacy message sets - available.
+ * **Version 6 (Kafka 2.0, KIP-219) sends the same body once more**: `PRODUCE_REQUEST_V6` is `PRODUCE_REQUEST_V5`
+ * is `PRODUCE_REQUEST_V3` - `ProduceRequest.json` @ 2.8.2 has no field above version 3 - so a version 6 request is
+ * a version 3 request with another number in its header. What the version states is a promise of the **client**:
+ * that it honours the `ThrottleTime` of the answer itself, because a throttled request is answered **before** the
+ * delay and the channel is muted for the reported time afterwards, instead of the answer being held back until the
+ * throttle has passed. {@see \Protocol\Kafka\Client} does that: it sleeps the remaining throttle time of a
+ * broker before its next request to it, unless {@see \Protocol\Kafka\Common\ClientConfig::THROTTLE_WAIT}
+ * switches it off.
+ *
+ * **A 2.8.2 broker does not branch on the version here** - measured, and `KafkaApis.handleProduceRequest` @ 2.8.2
+ * says so itself ("Send the response immediately. In case of throttling, the channel has already been muted"): a
+ * version 5 request of the same burst is answered just as quickly and with the same `ThrottleTime`. The version is
+ * what the client promises, not what the broker decides, and a client that sends a lower version simply stalls on
+ * the muted channel instead.
+ *
+ * **Version 7 (Kafka 2.1, KIP-110) sends the same body a fourth time, and it is the version a zstd batch needs.**
+ * `ProduceRequest.json` @ 2.8.2 still has no field above version 3, so the frame is the frame of version 3 with
+ * another number in its header; what the version states is that the record sets of this request may carry the
+ * compression type **4**, zstd. `ProduceRequest.validateRecords` @ 2.8.2 refuses a lower version that does:
+ *
+ * ```java
+ * if (version < 7 && entry.compressionType() == CompressionType.ZSTD) {
+ *     throw new UnsupportedCompressionTypeException("Produce requests with version " + version + " are not allowed to use ZStandard compression");
+ * }
+ * ```
+ *
+ * and the check runs on the **broker** as well, because it parses the request with the same class - measured on
+ * the container, see the section of the document. This is why the client sends version 7 as soon as
+ * {@see \Protocol\Kafka\Producer\ProducerConfig::COMPRESSION_TYPE} may be `zstd`
+ * ({@see \Protocol\Kafka\Common\Record\CompressionCodec::ZSTD}); the answer is unchanged, see
+ * {@see ProduceResponse}.
+ *
+ * **Version 8 (Kafka 2.4, KIP-467) sends the same body a fifth time**, and what it states is again about the
+ * answer: that the client understands the `record_errors` and the `error_message` that a refused batch is
+ * answered with, see {@see ProduceResponse}. `ProduceRequest.json` @ 2.8.2 has no field of it either.
+ *
+ * **Version 9 (Kafka 2.8) is the flexible version of KIP-482**, see {@see self::FLEXIBLE_VERSION}: the same body
+ * once more, written with the request header **v2**, a compact `transactional_id` and topic name, compact arrays,
+ * a **compact record set** and a tagged-field section at the end of the body, of every topic entry and of every
+ * partition entry. This class is that version and {@see ProduceRequestV8} keeps the plain frame.
+ *
+ * {@see ProduceRequestV8}, {@see ProduceRequestV7}, {@see ProduceRequestV6}, {@see ProduceRequestV5}, {@see ProduceRequestV4}, {@see ProduceRequestV3},
+ * {@see ProduceRequestV2}, {@see ProduceRequestV1} and {@see ProduceRequestV0} keep the lower versions - and with
+ * them the legacy message sets - available.
  *
  * The broker does **not** check the message format against the api version: it stores whatever it is given in the
  * `message.format.version` of the topic and converts the batch on append. What a version really states is what the
  * *client* understands, and the version of a Produce request only ever matters for the answer it selects; it is the
  * Fetch api that converts a log down for a client that asked with an older version.
  *
- * @see docs/protocol/1.1.md, section "Produce API (key 0, v0 to v5)"
+ * @see docs/protocol/2.8.md, section "Produce API (key 0, v0 to v9)"
  */
 class ProduceRequest extends AbstractRequest
 {
@@ -82,7 +124,16 @@ class ProduceRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 9;
+
+    /**
+     * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
+     *
+     * `ProduceRequest.json` @ 2.8.2 declares `"flexibleVersions": "9+"` and comments "Version 9 enables flexible
+     * versions": not a field was added, the encoding changed. The record set of a partition entry is then a
+     * **compact** byte array - an unsigned varint of `length + 1` in front of the batches instead of an int32.
+     */
+    public const int FLEXIBLE_VERSION = 9;
 
     /**
      * Value of RequiredAcks for which the broker sends no response at all
