@@ -303,6 +303,21 @@ integration branch, which is in `main`'s history after the final merge):
 | `2.7.2` | 2.7 | `c61f52c` (`chore(2.x): Kafka 2.7 complete`) | #148 (T2), #149 (T1), #150 (T4) |
 | `2.8.2` | 2.8 | `53d91b2` (`chore(2.x): Kafka 2.8 complete`) | #151 (T1), #152 (T2), #153 (T4) |
 
+The tags are created by the owner on `main` after the merge of PR #141 (`bc5dec5`, a merge commit, so every
+milestone commit is in `main`'s history; `2.x` was created at the same commit). Lightweight tags, as every tag of
+this repository is:
+
+```sh
+git fetch origin main 2.x
+for pair in 2.0.1:2afcb2f 2.1.1:72d1bb3 2.2.2:8c9fae9 2.3.1:d2b20c6 2.4.1:3e21b50 \
+            2.5.1:f85c7df 2.6.3:9978b33 2.7.2:c61f52c 2.8.2:53d91b2; do
+  tag=${pair%%:*}; commit=${pair##*:}
+  git merge-base --is-ancestor "$commit" origin/main || { echo "$commit is not in main"; exit 1; }
+  git tag "$tag" "$commit"
+done
+git push origin 2.0.1 2.1.1 2.2.2 2.3.1 2.4.1 2.5.1 2.6.3 2.7.2 2.8.2
+```
+
 Every PR: its own `t<n>-<slug>` branch off the integration branch (the same branch continues across the minors,
 merged with the integration branch before each push), a PR against it titled `[2.x] T<n> (Kafka 2.N): …` with
 `Part of #<ticket>`, commits `feat(2.N): …`, the report of `docs/handoff/AGENT_BRIEF.template.md`, its own doc
