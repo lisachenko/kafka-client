@@ -96,7 +96,7 @@ use Protocol\Kafka\Protocol\Data\MetadataRequestTopicV9;
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/2.8.md, section "Metadata API (key 3, v0 to v11)"
+ * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v11)"
  */
 class MetadataRequest extends AbstractRequest
 {

@@ -97,7 +97,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupRequestProtocol;
  * back and may report a null `protocol_name` ({@see JoinGroupResponse}). {@see JoinGroupRequestV6} sends these
  * very bytes one api version lower and is answered with {@see JoinGroupResponseV6}.
  *
- * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v7)"
  */
 class JoinGroupRequest extends AbstractRequest
 {

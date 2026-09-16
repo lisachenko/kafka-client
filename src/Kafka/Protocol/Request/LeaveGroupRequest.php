@@ -51,7 +51,7 @@ use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
  * The frame this class writes is therefore a different one below and above version 3, and the constructor takes
  * either shape: a plain member id, which becomes a one-element batch, or the batch itself.
  *
- * @see docs/protocol/2.8.md, section "The batch leave of KIP-345 (v3)"
+ * @see docs/protocol/3.9.md, section "The batch leave of KIP-345 (v3)"
  */
 class LeaveGroupRequest extends AbstractRequest
 {

@@ -49,7 +49,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponseTopic;
  * `IllegalGeneration`, 25 `UnknownMemberId` and 82 `FencedInstanceId`. The version 3 is the first flexible one of
  * this api; {@see TxnOffsetCommitResponseV2} is the frame of Kafka 2.1.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 class TxnOffsetCommitResponse extends AbstractResponse
 {

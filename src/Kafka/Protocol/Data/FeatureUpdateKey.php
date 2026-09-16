@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * feature, and a deletion - like any lowering of the level - needs `AllowDowngrade` set, or the controller refuses
  * it with 96 (`FeatureUpdateFailed`).
  *
- * @see docs/protocol/2.8.md, section "UpdateFeatures API (key 57, v0)"
+ * @see docs/protocol/3.9.md, section "UpdateFeatures API (key 57, v0)"
  */
 class FeatureUpdateKey implements BinarySchemaInterface
 {

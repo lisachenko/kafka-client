@@ -58,7 +58,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * What changes is what the answer MEANS for a request that carried a producer id - the same id with `epoch + 1`
  * instead of a fresh id. {@see InitProducerIdResponseV2} is the identical frame with the version of Kafka 2.4.
  *
- * @see docs/protocol/2.8.md, section "InitProducerId API (key 22, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v4)"
  */
 class InitProducerIdResponse extends AbstractResponse
 {

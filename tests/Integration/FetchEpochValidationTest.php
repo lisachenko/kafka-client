@@ -41,7 +41,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  *
  * Every case of the table in the document is measured here, against a fresh topic whose log is at the epoch 0.
  *
- * @see docs/protocol/2.8.md, sections "Epoch validation in the fetch itself (v12, KIP-595)" and
+ * @see docs/protocol/3.9.md, sections "Epoch validation in the fetch itself (v12, KIP-595)" and
  *      "Fetch API (key 1, v0 to v12)"
  */
 #[CoversClass(FetchRequest::class)]
@@ -279,6 +279,6 @@ final class FetchEpochValidationTest extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
 
-        return $container === false || trim($container) === '' ? 'kafka-2-8-2' : trim($container);
+        return $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
     }
 }

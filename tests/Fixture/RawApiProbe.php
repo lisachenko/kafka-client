@@ -255,6 +255,19 @@ final class RawApiProbe
     }
 
     /**
+     * Encodes a **null nullable struct**: the single byte `ff`
+     *
+     * A nullable struct field - `"type": "Cursor", "nullableVersions": "0+"` in `DescribeTopicPartitionsRequest.json`
+     * @ 3.9.2, the first such field a client sends - is not a compact type: the generated message class writes
+     * an int8 **-1** for `null` and an int8 **1** followed by the fields of the struct otherwise, and reads
+     * it back as "negative means null". There is no length in front of the struct and no varint anywhere.
+     */
+    public static function nullStruct(): string
+    {
+        return "\xff";
+    }
+
+    /**
      * Closes the connection to the broker
      */
     public function close(): void

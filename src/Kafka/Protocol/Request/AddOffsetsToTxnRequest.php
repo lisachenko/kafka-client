@@ -47,7 +47,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see AddOffsetsToTxnRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "AddOffsetsToTxn API (key 25, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v3)"
  */
 class AddOffsetsToTxnRequest extends AbstractRequest
 {

@@ -53,7 +53,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see EndTxnRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/2.8.md, section "EndTxn API (key 26, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "EndTxn API (key 26, v0 to v3)"
  */
 class EndTxnRequest extends AbstractRequest
 {

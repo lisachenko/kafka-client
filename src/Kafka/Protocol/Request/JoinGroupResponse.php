@@ -72,7 +72,7 @@ use Protocol\Kafka\Protocol\Data\JoinGroupResponseMemberV0;
  * empty leader id and an empty member array - and {@see self::$memberId} holding the id the coordinator assigned
  * to the client, which is the whole point of it.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v7)" and "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, sections "JoinGroup API (key 11, v0 to v7)" and "Quotas and throttle time"
  */
 class JoinGroupResponse extends AbstractResponse
 {

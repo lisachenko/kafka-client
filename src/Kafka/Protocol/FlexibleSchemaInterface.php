@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol;
  * ({@see BinarySchema::readObjectFromStream()}); a nested DTO therefore needs no flag of its own and the same
  * `FetchRequestTopic` scheme serves a v11 and a v12 Fetch request.
  *
- * @see docs/protocol/2.8.md, section "Implementation model"
+ * @see docs/protocol/3.9.md, section "Implementation model"
  */
 interface FlexibleSchemaInterface extends BinarySchemaInterface
 {

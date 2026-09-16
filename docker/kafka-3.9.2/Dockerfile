@@ -1,14 +1,17 @@
-# Apache Kafka 2.8.2 (Scala 2.13) with the bundled ZooKeeper, for wire-protocol testing.
+# Apache Kafka 3.9.2 (Scala 2.13) in KRaft mode - one combined node (broker + controller), no ZooKeeper - for
+# wire-protocol testing.
 #
-# The broker listens on PLAINTEXT (9092), SSL (9093), SASL_PLAINTEXT (9094) and SASL_SSL (9095).
-# SASL offers the PLAIN mechanism only (users in jaas.conf: kafkatest/kafkatest-secret, admin/admin-secret). The SSL listener uses the self-signed test
-# certificate from ssl/ (CN=localhost, SAN=localhost,127.0.0.1, valid for 100 years); the same broker.crt
-# is the CA file that the SSL integration tests hand to the client. Do not use these keys anywhere else.
-FROM eclipse-temurin:11-jre
+# The node listens on PLAINTEXT (9092), SSL (9093), SASL_PLAINTEXT (9094) and SASL_SSL (9095) for the clients, and on
+# CONTROLLER (9096, PLAINTEXT, inside the container only) for its own quorum. SASL offers the PLAIN mechanism only
+# (users in jaas.conf: kafkatest/kafkatest-secret, admin/admin-secret, and acltest/acltest-secret, the one user that
+# is NOT a super user of the StandardAuthorizer, so that an ACL is visible to somebody). The SSL listener uses the
+# self-signed test certificate from ssl/ (CN=localhost, SAN=localhost,127.0.0.1, valid for 100 years); the same
+# broker.crt is the CA file that the SSL integration tests hand to the client. Do not use these keys anywhere else.
+FROM eclipse-temurin:17-jre
 
-ARG KAFKA_VERSION=2.8.2
+ARG KAFKA_VERSION=3.9.2
 ARG SCALA_VERSION=2.13
-ARG KAFKA_DIST=kafka_2.13-2.8.2
+ARG KAFKA_DIST=kafka_2.13-3.9.2
 
 # Extra CA certificates of a sandbox proxy, see ca/README.md (the directory is normally empty)
 COPY ca/ /usr/local/share/ca-certificates/extra/
@@ -42,9 +45,9 @@ ENV ADVERTISED_HOST=127.0.0.1 \
     ADVERTISED_SSL_PORT=9093 \
     ADVERTISED_SASL_PORT=9094 \
     ADVERTISED_SASL_SSL_PORT=9095 \
-    BROKER_ID=0 \
+    NODE_ID=1 \
     NUM_PARTITIONS=3
 
-EXPOSE 2181 9092 9093 9094 9095
+EXPOSE 9092 9093 9094 9095
 
 CMD ["/opt/start.sh"]

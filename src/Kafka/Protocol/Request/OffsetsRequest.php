@@ -93,7 +93,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk. Neither of them reads a message, so
  * their answer carries the timestamp -1.
  *
- * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v6), a.k.a. ListOffset" and
+ * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v6), a.k.a. ListOffset" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest

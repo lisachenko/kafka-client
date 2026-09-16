@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 3 (KIP-345, Kafka 2.3) changed the **request** alone - the `group_instance_id` of a static member - so
  * this answer and {@see SyncGroupResponse} decode the very same bytes.
  *
- * @see docs/protocol/2.8.md, section "Static membership (KIP-345)"
+ * @see docs/protocol/3.9.md, section "Static membership (KIP-345)"
  */
 final class SyncGroupResponseV2 extends SyncGroupResponse
 {

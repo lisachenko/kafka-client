@@ -19,8 +19,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 2 (Kafka 2.4, KIP-482) added no field: it is this frame with a **compact** group array and a
  * tagged-field section, which {@see DeleteGroupsRequest} sends.
  *
- * @see docs/protocol/2.8.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/3.9.md, section "DeleteGroups API (key 42, v0 to v2)"
  */
 final class DeleteGroupsRequestV1 extends DeleteGroupsRequest
 {

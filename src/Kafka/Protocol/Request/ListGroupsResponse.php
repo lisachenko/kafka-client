@@ -40,7 +40,7 @@ use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocolV0;
  * encoding ({@see ListGroupsResponseV3}). **Version 4 (KIP-518, Kafka 2.6) gave every group entry its
  * `group_state`**, so that a listing answers what an operator otherwise had to ask DescribeGroups for.
  *
- * @see docs/protocol/2.8.md, sections "ListGroups API (key 16, v0 to v4)" and "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, sections "ListGroups API (key 16, v0 to v4)" and "Quotas and throttle time"
  */
 class ListGroupsResponse extends AbstractResponse
 {

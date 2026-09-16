@@ -75,7 +75,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
  * The message sets are built by {@see SpecMessageSet} directly from the specification and the record batch is a
  * captured one, so that the request classes are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/2.8.md, sections "Produce API (key 0, v0 to v9)", "MessageSet and Message" and
+ * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v9)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 #[CoversClass(ProduceRequest::class)]

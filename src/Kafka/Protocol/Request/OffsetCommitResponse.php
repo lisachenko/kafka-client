@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
  * constant this scheme follows, and so do {@see OffsetCommitResponseV4} and {@see OffsetCommitResponseV5}: the
  * answer is one and the same layout from version 3 on, because neither KIP-211 nor KIP-320 touched it.
  *
- * @see docs/protocol/2.8.md, sections "OffsetCommit API (key 8, v0 to v8)" and "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, sections "OffsetCommit API (key 8, v0 to v8)" and "Quotas and throttle time"
  */
 class OffsetCommitResponse extends AbstractResponse
 {

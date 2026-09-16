@@ -76,7 +76,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
  * {@see ConsumerGroupMetadata::forGroup()} builds. The version 3 is also the first **flexible** one of this api.
  * {@see TxnOffsetCommitRequestV2} is the frame of Kafka 2.1.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {

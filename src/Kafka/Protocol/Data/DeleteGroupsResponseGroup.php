@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * has members and 69 for one the coordinator does not know - are what distinguishes "not deleted" from "never
  * existed".
  *
- * @see docs/protocol/2.8.md, section "DeleteGroups API (key 42, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DeleteGroups API (key 42, v0 to v2)"
  */
 class DeleteGroupsResponseGroup implements BinarySchemaInterface
 {

@@ -57,7 +57,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV7;
  * field alone. Kafka 2.1 changed the frame twice more: version 5 **removes** `retention_time` (KIP-211) and
  * version 6 gives every partition a `committed_leader_epoch` (KIP-320), which is the version this client sends.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
+ * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v8)"
  */
 #[CoversClass(OffsetCommitRequest::class)]
 #[CoversClass(OffsetCommitRequestV0::class)]

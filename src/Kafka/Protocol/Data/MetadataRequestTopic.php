@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * topic name to null", so this client writes {@see Uuid::ZERO} and the real name in every entry - which is what
  * the Java client does as well.
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v11)", "Topic ids (v10, KIP-516)" and
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v11)", "Topic ids (v10, KIP-516)" and
  *      "Flexible versions in the engine (KIP-482)"
  */
 class MetadataRequestTopic implements BinarySchemaInterface

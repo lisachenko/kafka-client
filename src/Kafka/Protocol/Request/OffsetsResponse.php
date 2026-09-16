@@ -76,7 +76,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
  * and -1 (`KafkaApis.fetchOffsetForTimestamp` @ 0.11.0.3).
  *
- * @see docs/protocol/2.8.md, sections "Offsets API (key 2, v0 to v6), a.k.a. ListOffset",
+ * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v6), a.k.a. ListOffset",
  *      "Quotas and throttle time" and "The leader epoch (KIP-320)"
  */
 class OffsetsResponse extends AbstractResponse

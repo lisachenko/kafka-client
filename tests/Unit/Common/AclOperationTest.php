@@ -20,7 +20,7 @@ use Protocol\Kafka\Common\AclOperation;
 /**
  * The bitfield of KIP-430 (Kafka 2.3), which a Metadata v8 and a DescribeGroups v3 answer report.
  *
- * @see docs/protocol/2.8.md, section "The authorized operations (v8, KIP-430)"
+ * @see docs/protocol/3.9.md, section "The authorized operations (v8, KIP-430)"
  */
 #[CoversClass(AclOperation::class)]
 final class AclOperationTest extends TestCase

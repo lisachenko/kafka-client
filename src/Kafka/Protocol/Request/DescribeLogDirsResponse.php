@@ -54,7 +54,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DescribeLogDirsResponseV0} is the same frame with the version field of Kafka 1.0.
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v2)"
  */
 class DescribeLogDirsResponse extends AbstractResponse
 {

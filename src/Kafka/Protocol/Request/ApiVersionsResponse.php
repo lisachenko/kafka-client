@@ -76,7 +76,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * 2.8.2, KIP-500), so the KRaft apis 52-55, 58, 59 and 62-64 of the controller listener never appear here, and an
  * api whose `minRequiredInterBrokerMagic` is above the message format of the broker is dropped as well.
  *
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v3)"
  */
 class ApiVersionsResponse extends AbstractResponse
 {

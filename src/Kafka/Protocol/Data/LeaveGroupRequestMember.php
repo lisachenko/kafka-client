@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * id really belongs to that instance and answers **82** (`FencedInstanceId`) when another consumer has taken the
  * instance over.
  *
- * @see docs/protocol/2.8.md, section "The batch leave of KIP-345 (v3)"
+ * @see docs/protocol/3.9.md, section "The batch leave of KIP-345 (v3)"
  */
 final class LeaveGroupRequestMember implements BinarySchemaInterface
 {

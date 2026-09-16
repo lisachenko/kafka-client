@@ -87,7 +87,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
  * of a member whose instance id has been taken over by another consumer with 82 (`FencedInstanceId`). A dynamic
  * member sends `null` here, which is the frame of {@see OffsetCommitRequestV6} with one more field.
  *
- * @see docs/protocol/2.8.md, section "OffsetCommit API (key 8, v0 to v8)"
+ * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v8)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {

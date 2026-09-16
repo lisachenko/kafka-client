@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * v0, flexible body or not, so that a client which asked for a version the broker does not serve can read the
  * error code 35 out of a frame whose header it can always parse.
  *
- * @see docs/protocol/2.8.md, section "Responses"
+ * @see docs/protocol/3.9.md, section "Responses"
  */
 abstract class AbstractResponse extends AbstractProtocolMessage
 {

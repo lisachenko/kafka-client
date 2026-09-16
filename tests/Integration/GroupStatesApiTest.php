@@ -38,7 +38,7 @@ use Protocol\Kafka\Tests\Fixture\RawGroupMember;
  * group of this class is named `t3-26-…`. The broker is shared with the other suites and coordinates hundreds of
  * their groups, so every assertion is about the group of the test and never about the whole answer.
  *
- * @see docs/protocol/2.8.md, sections "The group states of KIP-518 (Kafka 2.6)" and "ListGroups API (key 16, v0 to
+ * @see docs/protocol/3.9.md, sections "The group states of KIP-518 (Kafka 2.6)" and "ListGroups API (key 16, v0 to
  *      v4)"
  */
 #[CoversClass(ListGroupsRequest::class)]

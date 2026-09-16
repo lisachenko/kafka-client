@@ -22,7 +22,7 @@ use Protocol\Kafka\Common\Node;
  * these fields had to be read out of a **Metadata** answer, which is a request about topics; KIP-700 gave them a
  * request of their own.
  *
- * @see docs/protocol/2.8.md, section "DescribeCluster API (key 60, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0)"
  */
 final class ClusterDescription
 {

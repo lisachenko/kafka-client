@@ -49,7 +49,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * ids: Metadata **v10** (KIP-516) puts the id of a topic into every entry of the request and of the answer, and
  * Metadata **v11** (KIP-700) takes `cluster_authorized_operations` out again.
  *
- * @see docs/protocol/2.8.md, sections "Topic ids (v10, KIP-516)", "Metadata API (key 3, v0 to v11)",
+ * @see docs/protocol/3.9.md, sections "Topic ids (v10, KIP-516)", "Metadata API (key 3, v0 to v11)",
  *      "Produce API (key 0, v0 to v9)" and "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
 #[CoversClass(ProduceRequest::class)]
@@ -294,6 +294,6 @@ final class TopicIdsApiTest extends IntegrationTestCase
     {
         $container = getenv('KAFKA_CONTAINER');
 
-        return $container === false || trim($container) === '' ? 'kafka-2-8-2' : trim($container);
+        return $container === false || trim($container) === '' ? 'kafka-3-9-2' : trim($container);
     }
 }

@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\Data\DescribeClusterBroker;
  * per `AclOperation` the caller may perform on the cluster. On a broker that runs **without** an authorizer every
  * operation is allowed, so what comes back is the whole set `AclEntry.supportedOperations(CLUSTER)` names.
  *
- * @see docs/protocol/2.8.md, section "DescribeCluster API (key 60, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0)"
  */
 class DescribeClusterResponse extends AbstractResponse
 {

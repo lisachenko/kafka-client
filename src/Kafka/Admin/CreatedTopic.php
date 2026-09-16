@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\Data\CreateTopicsResponseTopic;
  * every answer below the version 7; `bin2hex()` renders it, and {@see \Protocol\Kafka\Protocol\Data\DeleteTopicsRequestTopic}
  * is where it can be handed back.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreatedTopic
 {

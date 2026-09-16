@@ -30,7 +30,7 @@ use Protocol\Kafka\Common\Security\SslProtocol;
  * and the `sasl.*` options configure the authentication exchange that Kafka 0.10.0 made part of the protocol
  * (`SaslHandshake`, api key 17).
  *
- * @see docs/protocol/2.8.md, section "Transport security (SSL)"
+ * @see docs/protocol/3.9.md, section "Transport security (SSL)"
  */
 class ClientConfig
 {
@@ -217,7 +217,7 @@ class ClientConfig
      * client sends the next request right away and the stall happens on the broker side instead, which is what
      * every line of this package below 2.0 did.
      *
-     * @see docs/protocol/2.8.md, section "Quotas and throttle time"
+     * @see docs/protocol/3.9.md, section "Quotas and throttle time"
      */
     public const THROTTLE_WAIT = 'throttle.wait';
 

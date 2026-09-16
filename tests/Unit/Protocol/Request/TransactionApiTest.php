@@ -68,7 +68,7 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
 /**
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
- * @see docs/protocol/2.8.md, sections "AddPartitionsToTxn API (key 24, v0 to v3)", "AddOffsetsToTxn API (key 25, v0 to v3)",
+ * @see docs/protocol/3.9.md, sections "AddPartitionsToTxn API (key 24, v0 to v3)", "AddOffsetsToTxn API (key 25, v0 to v3)",
  *      "EndTxn API (key 26, v0 to v3)", "WriteTxnMarkers API (key 27, v0 and v1)" and "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]

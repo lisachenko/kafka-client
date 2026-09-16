@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * The request is routed **per leader**, not to any node and not to a coordinator: a partition's producer state
  * lives in its log, so only the broker that holds the leader replica can answer for it.
  *
- * @see docs/protocol/2.8.md, section "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeProducers API (key 61, v0)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeProducersRequest::class)]

@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * topics with the version 3, which is also the first flexible one. A `ConsumerGroupMetadata` handed to this class
  * is therefore not written - the coordinator reads such a commit as the "not a member" form it always was.
  *
- * @see docs/protocol/2.8.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 final class TxnOffsetCommitRequestV2 extends TxnOffsetCommitRequest
 {

@@ -51,7 +51,7 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
  * lifetime is a single millisecond: a token that is past its expiry can no longer be expired through the protocol
  * at all (the broker answers 66 for that too), and only the broker's own sweeper removes it.
  *
- * @see docs/protocol/2.8.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
+ * @see docs/protocol/3.9.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
  *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
  *      "DescribeDelegationToken API (key 41, v0 to v2)"
  */
@@ -76,7 +76,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
     private const string CLIENT_ID = 'kafka-client-t7-tokens';
 
     /**
-     * The two users of `docker/kafka-2.8.2/jaas.conf`
+     * The two users of `docker/kafka-3.9.2/jaas.conf`
      */
     private const string OWNER_USER = 'kafkatest';
 

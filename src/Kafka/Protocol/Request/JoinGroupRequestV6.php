@@ -21,8 +21,8 @@ namespace Protocol\Kafka\Protocol\Request;
  * `protocol_type` of the group back and may report a null `protocol_name`. A member that sends this version is
  * answered with {@see JoinGroupResponseV6}, whose answer has neither.
  *
- * @see docs/protocol/2.8.md, section "The protocol type and name of KIP-559 (Kafka 2.5)"
- * @see docs/protocol/2.8.md, section "JoinGroup API (key 11, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "The protocol type and name of KIP-559 (Kafka 2.5)"
+ * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v7)"
  */
 final class JoinGroupRequestV6 extends JoinGroupRequest
 {

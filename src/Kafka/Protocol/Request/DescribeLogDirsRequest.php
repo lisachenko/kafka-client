@@ -58,7 +58,7 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsRequestTopic;
  * array is the compact nullable one, so the `ff ff ff ff` of a request that asks for every replica of every
  * directory is the single byte `00`. {@see DescribeLogDirsRequestV1} keeps the frame of the versions 0 and 1.
  *
- * @see docs/protocol/2.8.md, section "DescribeLogDirs API (key 35, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v2)"
  */
 class DescribeLogDirsRequest extends AbstractRequest
 {

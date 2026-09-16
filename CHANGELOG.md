@@ -4,19 +4,67 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
-own: `main` is the **2.x line** and implements the **Kafka 2.8.2 wire protocol** — the last release
-of the 2.x major, so everything Kafka 2.0 to 2.8 added — and nothing above it. The lines below it are
-`1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x` (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1)
-and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards into the next one, so the sections
-below accumulate: what a line added stays true of every line above it.
+own: `main` is the **3.x line** and is being built towards the **Kafka 3.9.2 wire protocol** — the last
+release of the 3.x major, so everything Kafka 3.0 to 3.9 added — one Kafka minor at a time. The lines
+below it are `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
+(Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
+into the next one, so the sections below accumulate: what a line added stays true of every line above it.
+
+Unreleased — the 3.x line (Kafka 3.0 to 3.9, towards 3.9.2)
+-----------------------------------------------------------
+
+The 3.x line, built on `main` on top of the finished 2.x line (branched off as `2.x`). Everything
+below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (`docker/kafka-3.9.2/`,
+broker and controller in one process, four client listeners) and documented in
+[docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
+complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: none yet — the foundation.**
+
+### Added
+
+- **The Kafka 3.9.2 node of the line** — `docker/kafka-3.9.2/` (`eclipse-temurin:17-jre`,
+  `kafka_2.13-3.9.2`) in **KRaft** combined mode: `process.roles=broker,controller`, node id 1, a
+  `CONTROLLER` listener on 9096 inside the container next to the four client listeners, the storage
+  formatted at the first start (`kafka-storage.sh format`, metadata version `3.9-IV0`), the two log
+  directories, the delegation-token secret key, the one-node `offsets.topic.*` and
+  `transaction.state.log.*` settings, the **new group coordinator with the `consumer` rebalance
+  protocol** of KIP-848 (`group.coordinator.rebalance.protocols=classic,consumer`) and, for the first
+  time, an **authorizer** (`org.apache.kafka.metadata.authorizer.StandardAuthorizer` with
+  `super.users=User:ANONYMOUS;User:admin;User:kafkatest`; the SASL user `acltest` is the one principal
+  the ACLs really apply to). `docker-compose.yml` builds it as the container `kafka-3-9-2`; there is no
+  ZooKeeper any more. The 2.8.2 image is gone from this branch (it lives on `2.x`).
+- **The api keys 65–87** of `ApiKeys.java` @ 3.9.2 in `Protocol\ApiKeys` (DescribeTransactions … 
+  ReadShareGroupStateSummary; key 56 keeps the published name `ALTER_ISR`), and **the error codes
+  105–127** of `Errors.java` @ 3.9.2 in `KafkaException`, one exception class each
+  (`TransactionalIdNotFoundException` … `VoterNotFoundException`); 106, 122 and 123 are
+  `RetriableException`s in the Java client, and here. Read at the release tags: 105 is Kafka 3.0's,
+  106 3.1's, 107–108 3.3's, 109–112 3.5's, 113 3.6's, 114–119 3.7's, 120 3.8's, 121–127 3.9's.
+- **`tests/Fixture/ClientQuota` speaks the quota apis** (AlterClientQuotas, key 49) instead of shelling
+  `kafka-configs.sh --zookeeper` into the container, which a KRaft node has no ZooKeeper for.
+
+### Changed
+
+- **The protocol document is `docs/protocol/3.9.md`**, renamed from `docs/protocol/2.8.md` with every
+  `@see` reference, and its api-key table is the answer of the KRaft node on its client listeners:
+  **61 keys** (0–3, 8–51, 55, 57, 60, 61, 64–66, 68, 69, 74, 75, 80, 81), pinned by
+  `ApiVersionProbeTest`. The ZooKeeper-only apis 4–7 and 56 are not served on a KRaft node's client
+  listener, the controller-only apis live on the controller listener, the client-metrics apis 71 and 72
+  are hidden without a telemetry plugin and the early-access share-group apis 76–79 and 83–87 without
+  `unstable.api.versions.enable`.
+- **`docs/handoff/main.md` is the plan of the 3.x line** (the former `docs/handoff/3.x.md`); the record
+  of the 2.x line is `docs/handoff/2.x.md`.
+- **A KRaft node answers OffsetCommit v0 and OffsetFetch v0 with 35** (`Unsupported when using a
+  Raft-based metadata quorum`): `offsets.storage = zookeeper` keeps its classes for the wire vectors of
+  the lines below, but cannot be used against the node of this line.
 
 Unreleased — the 2.x line (Kafka 2.8.2)
 ---------------------------------------
 
-The 2.x line, built on `main` on top of the finished 1.x line (branched off as `1.x`). Everything
-below is verified against a real Apache **2.8.2** broker (`docker/kafka-2.8.2/`, four listeners)
-and documented in [docs/protocol/2.8.md](docs/protocol/2.8.md). The plan of the line, and its
-release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.md).
+The 2.x line, built on `main` on top of the finished 1.x line (branched off as `1.x`), **complete** and
+branched off as `2.x`. Everything below was verified against a real Apache **2.8.2** broker
+(`docker/kafka-2.8.2/` on that branch, four listeners) and documented in `docs/protocol/2.8.md` (on
+`2.x`; on `main` the document continues as [docs/protocol/3.9.md](docs/protocol/3.9.md)). The record of
+the line is [docs/handoff/2.x.md](docs/handoff/2.x.md).
 
 ### Added
 
@@ -37,7 +85,7 @@ release record once it is complete, is [docs/handoff/main.md](docs/handoff/main.
 
 ### Changed
 
-- **The protocol document is `docs/protocol/2.8.md`**, renamed from `docs/protocol/1.1.md` with every
+- **The protocol document is `docs/protocol/3.9.md`**, renamed from `docs/protocol/1.1.md` with every
   `@see` reference; `docs/handoff/main.md` (the 1.x record) is `docs/handoff/1.x.md` now, and the
   plan of the 2.x line (`docs/handoff/2.0.x.md`) took its place as `docs/handoff/main.md`.
 
@@ -93,7 +141,7 @@ almost only the version bumps of KIP-219 — and its one runtime change, the cli
   empty partition included, where a 1.1.1 broker answered -1 (KAFKA-7415).
 
 - **What a 2.x coordinator does differently**, measured on the container and written down in
-  "Broker quirks and observations" of [docs/protocol/2.8.md](docs/protocol/2.8.md): a **`consumer`**
+  "Broker quirks and observations" of [docs/protocol/3.9.md](docs/protocol/3.9.md): a **`consumer`**
   group whose member metadata is not a real `Subscription` never leaves `PreparingRebalance` (KIP-345
   parses it, and the parse error is swallowed by the purgatory's timer thread); an error answer of
   JoinGroup carries the generation **-1** instead of 0; a successful FindCoordinator answer carries
@@ -169,7 +217,7 @@ consumer, the zstd codec of KIP-110, KIP-211 and the version bumps that carry th
   the Metadata v7 pair, the OffsetForLeaderEpoch v2 pair and its 75, the Produce v7 pair, and the three
   frames of the zstd rule (the **76** of a Fetch v9 against a `compression.type=zstd` topic, the same
   partition served to a Fetch v10, and the **76** of a Produce v6 whose record set is zstd).
-- **New sections of [docs/protocol/2.8.md](docs/protocol/2.8.md)**: "The leader epoch (KIP-320)",
+- **New sections of [docs/protocol/3.9.md](docs/protocol/3.9.md)**: "The leader epoch (KIP-320)",
   "Version 10 and the zstd codec (KIP-110)", "KIP-320 in the consumer: leader epochs and truncation
   detection" and "The zstd codec (Kafka 2.1, KIP-110)", plus four measured broker quirks — the 75 that a
   one-broker container can produce and the 74 it cannot, the zstd refusal that is decided by the **topic
@@ -301,7 +349,7 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
 - **7 wire vectors** captured on `kafka-2-8-2` against the topic `t2-23-vectors`: the Metadata v8 pair with both
   booleans on, the same answer with them off, the Fetch v11 pair and the OffsetForLeaderEpoch v3 pair, each with
   its annotated dump.
-- **New sections of [docs/protocol/2.8.md](docs/protocol/2.8.md)**: "Reading from a follower (v11, KIP-392)" and
+- **New sections of [docs/protocol/3.9.md](docs/protocol/3.9.md)**: "Reading from a follower (v11, KIP-392)" and
   "The authorized operations (v8, KIP-430)" — with the measured bitfields of an unsecured broker, **8096** for
   the cluster and **3576** for a topic, which are the *supported* operations of the resource type — plus the
   version paragraphs of the three apis and two more broker quirks.
@@ -425,7 +473,7 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   unknown broker 4242 is answered 8 in **13 bytes**, the smallest frame of the document: an empty compact array
   is one byte `01` and each tag buffer one byte `00`.
 - **Ten wire vectors** of the five versions (one request/answer pair each, topic `t4-24f-vectors`), with
-  annotated dumps in the flexible notation of the engine, and the five headings of `docs/protocol/2.8.md` moved
+  annotated dumps in the flexible notation of the engine, and the five headings of `docs/protocol/3.9.md` moved
   to their new ranges.
 - **LeaveGroup v3, the batch leave of KIP-345** — the request's single `member_id` is **replaced** by a list of
   member identities (`member_id` plus a nullable `group_instance_id` each), and the answer gains a matching
@@ -577,7 +625,7 @@ of KIP-430, reading from a follower (KIP-392) and the IncrementalAlterConfigs ap
   `Protocol\Data\CreatePartitionsRequestAssignment` is that structure now, for every version, so the v0 and v1
   frames are unchanged to the byte and the v2 frame is accepted.
 - **Twenty-one wire vectors** of the seven versions, with their annotated dumps, and two new subsections of
-  [docs/protocol/2.8.md](docs/protocol/2.8.md): "Bumping the epoch (KIP-360)" and "The consumer group metadata of
+  [docs/protocol/3.9.md](docs/protocol/3.9.md): "Bumping the epoch (KIP-360)" and "The consumer group metadata of
   a transactional commit (KIP-447)".
 
 *(Nothing on the Produce, Fetch, ListOffsets, Metadata and OffsetForLeaderEpoch apis: Kafka 2.5 raised none of
@@ -880,7 +928,7 @@ them. What the release added lives in the group and transaction apis.)*
 
 The 1.x line, built on top of the `0.11.x` line it was cascade-merged from. Everything below is
 verified against a real Apache **1.1.1** broker (`docker/kafka-1.1.1/`, four listeners) and
-documented in [docs/protocol/2.8.md](docs/protocol/2.8.md), whose **314** wire vectors
+documented in [docs/protocol/3.9.md](docs/protocol/3.9.md), whose **314** wire vectors
 [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 85 frames this
 line captured and the 229 of the four lines below, which a 1.1.1 broker still speaks. What the line
 delivered, how it was verified and what the line above it starts from is in
@@ -1128,7 +1176,7 @@ delivered, how it was verified and what the line above it starts from is in
 
 ### Changed
 
-- **The protocol document is `docs/protocol/2.8.md`** (renamed from `docs/protocol/0.11.0.md`, as
+- **The protocol document is `docs/protocol/3.9.md`** (renamed from `docs/protocol/0.11.0.md`, as
   every line renames it), and its front matter, api-key table, "What is not in Kafka 1.1.1", error
   codes, group-state tables and "Broker quirks and observations" now describe Kafka 1.1.1. The
   section "The last Scala api does not check its version" became **"Every api of the table
@@ -1167,7 +1215,7 @@ delivered, how it was verified and what the line above it starts from is in
   at version 0 and every observation of the 0.11 line was re-measured on the 1.1.1 coordinator with
   the same result, down to the defaults `transactional.id.expiration.ms = 604800000` and
   `transaction.abort.timed.out.transaction.cleanup.interval.ms = 60000`.
-- **The consistency pass over the documentation of the line** — `docs/protocol/2.8.md` no longer
+- **The consistency pass over the documentation of the line** — `docs/protocol/3.9.md` no longer
   names a ticket anywhere except at the consumer half of the fetch sessions, "Broker quirks and
   observations" is grouped by api (with new groups for the KIP-226 configuration, CreatePartitions
   and DeleteGroups, and for the delegation tokens), the "Wire vectors" preamble states the counts of
@@ -1208,7 +1256,7 @@ Unreleased — the 0.11.x line (Kafka 0.11.0.3)
 
 The 0.11 line, built on top of the `0.10.x` line it was cascade-merged from. Everything below was
 verified against a real Apache **0.11.0.3** broker (`docker/kafka-0.11.0.3/`, four listeners) and
-is documented byte for byte in [docs/protocol/2.8.md](docs/protocol/2.8.md), whose 229 wire
+is documented byte for byte in [docs/protocol/3.9.md](docs/protocol/3.9.md), whose 229 wire
 vectors [`tests/Compliance`](tests/Compliance) replays through the protocol classes — the 109 frames
 this line captured and the 120 of the three lines below, which a 0.11.0.3 broker still speaks.
 
@@ -1396,7 +1444,7 @@ this line captured and the 120 of the three lines below, which a 0.11.0.3 broker
 
 ### Changed
 
-- **`docs/protocol/2.8.md` is the grammar of Kafka 0.11.0.3.** The api-key table is the literal
+- **`docs/protocol/3.9.md` is the grammar of Kafka 0.11.0.3.** The api-key table is the literal
   ApiVersions answer of the container (34 keys), the error-code table runs to 55, the sources are
   the ones at `0.11.0.3-rc0` — the Apache repository has no `0.11.0.3` tag — and the "Broker quirks
   and observations" section records what 0.11 changed against 0.10.2.2.
@@ -1468,7 +1516,7 @@ Previous line — 0.10.x (Kafka 0.10.2.2)
 
 Everything a Kafka 0.10.2.2 broker speaks, built on top of the `0.9.x` line it was merged from.
 Every wire format below was verified against a real 0.10.2.2 broker and is documented byte for
-byte in [docs/protocol/2.8.md](docs/protocol/2.8.md), with 120 wire vectors in
+byte in [docs/protocol/3.9.md](docs/protocol/3.9.md), with 120 wire vectors in
 [docs/protocol/vectors](docs/protocol/vectors) that `tests/Compliance` replays through the
 protocol classes.
 
@@ -1560,7 +1608,7 @@ protocol classes.
   `metadata.json`, `produce.json`, `fetch.json`, `offsets.json`, `offset-fetch.json` and
   `join-group.json`, all captured from the container and replayed by
   `tests/Compliance/ProtocolVectorTest`; `DocumentationSyncTest` additionally checks that every
-  `@see docs/protocol/2.8.md, section "…"` of the sources names a heading that exists.
+  `@see docs/protocol/3.9.md, section "…"` of the sources names a heading that exists.
 - **Examples** — [`examples/create-topic.php`](examples/create-topic.php),
   [`examples/offsets-for-times.php`](examples/offsets-for-times.php) and
   [`examples/sasl.php`](examples/sasl.php).
@@ -1586,7 +1634,7 @@ protocol classes.
 - **Breaking: `Client::joinGroup()` takes a `?int $rebalanceTimeoutMs = null`** as its last
   argument (`null` = the configured `max.poll.interval.ms`), and `Client` sends Produce v2, Fetch
   v3, Offsets v1, Metadata v2, OffsetFetch v2 and JoinGroup v1 instead of the 0.9 versions.
-- **The protocol document is `docs/protocol/2.8.md`** and describes Kafka 0.10.2.2: the api-key
+- **The protocol document is `docs/protocol/3.9.md`** and describes Kafka 0.10.2.2: the api-key
   table is the literal ApiVersions answer of the broker, one section per api of the line, the error
   table runs to 44, and "Broker quirks and observations" collects every behaviour the integration
   suite established. `docs/protocol/0.9.0.md` stays on the `0.9.x` branch.

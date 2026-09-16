@@ -18,8 +18,8 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * Version 3 (Kafka 2.4, KIP-482) is the same answer in the flexible encoding, see {@see ListGroupsResponse}.
  *
- * @see docs/protocol/2.8.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/2.8.md, section "ListGroups API (key 16, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
+ * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v4)"
  */
 final class ListGroupsResponseV2 extends ListGroupsResponse
 {

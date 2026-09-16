@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `topic_id`, which version 10 (KIP-516) added, and the `cluster_authorized_operations` that version 11
  * (KIP-700) took out again, see {@see MetadataResponse}.
  *
- * @see docs/protocol/2.8.md, sections "Metadata API (key 3, v0 to v11)" and "Topic ids (v10, KIP-516)"
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v11)" and "Topic ids (v10, KIP-516)"
  */
 final class MetadataResponseV9 extends MetadataResponse
 {

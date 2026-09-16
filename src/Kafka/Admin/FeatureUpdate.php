@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\FeatureUpdateKey;
  * `FeatureUpdate` of the Java admin client. A `maxVersionLevel` below 1 deletes the finalized feature, and every
  * lowering - a deletion included - needs `allowDowngrade`.
  *
- * @see docs/protocol/2.8.md, section "UpdateFeatures API (key 57, v0)"
+ * @see docs/protocol/3.9.md, section "UpdateFeatures API (key 57, v0)"
  */
 final class FeatureUpdate
 {

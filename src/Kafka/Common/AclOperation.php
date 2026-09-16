@@ -30,7 +30,7 @@ namespace Protocol\Kafka\Common;
  * A broker **without an authorizer** - the container of this line has none - answers every asked-for bitfield
  * with the full set of the operations of the resource, because `AclAuthorizer` is not there to refuse anything.
  *
- * @see docs/protocol/2.8.md, section "The authorized operations (v8, KIP-430)"
+ * @see docs/protocol/3.9.md, section "The authorized operations (v8, KIP-430)"
  */
 final class AclOperation
 {

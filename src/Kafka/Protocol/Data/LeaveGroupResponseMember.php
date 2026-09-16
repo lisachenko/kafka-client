@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * group does not have it, 82 (`FencedInstanceId`) when another consumer holds its instance id - and the top-level
  * error code of the answer stays 0 for all of them.
  *
- * @see docs/protocol/2.8.md, section "The batch leave of KIP-345 (v3)"
+ * @see docs/protocol/3.9.md, section "The batch leave of KIP-345 (v3)"
  */
 final class LeaveGroupResponseMember implements BinarySchemaInterface
 {

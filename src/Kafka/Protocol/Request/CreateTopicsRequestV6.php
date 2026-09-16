@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * 7 is in the **answer**, which carries the `topic_id` of the new topic (KIP-516). The request of the versions 5, 6
  * and 7 is one and the same frame.
  *
- * @see docs/protocol/2.8.md, section "CreateTopics API (key 19, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "CreateTopics API (key 19, v0 to v7)"
  */
 final class CreateTopicsRequestV6 extends CreateTopicsRequest
 {

@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *   DeleteGroups Response (Version: 0 and 1) => throttle_time_ms [group_error_codes]
  * </pre>
  *
- * @see docs/protocol/2.8.md, sections "DeleteGroups API (key 42, v0 to v2)" and "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, sections "DeleteGroups API (key 42, v0 to v2)" and "Quotas and throttle time"
  */
 final class DeleteGroupsResponseV0 extends DeleteGroupsResponse
 {

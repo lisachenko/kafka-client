@@ -91,7 +91,7 @@ use Protocol\Kafka\Tests\Fixture\ResponseFrame;
  * byte, and only checks that they survive the round trip untouched. A real `consumer` group is a different matter:
  * a 2.x coordinator does parse the metadata of such a group, see the integration suite.
  *
- * @see docs/protocol/2.8.md, sections "JoinGroup API (key 11, v0 to v7)", "SyncGroup API (key 14, v0 to v5)",
+ * @see docs/protocol/3.9.md, sections "JoinGroup API (key 11, v0 to v7)", "SyncGroup API (key 14, v0 to v5)",
  *      "Heartbeat API (key 12, v0 to v4)" and "LeaveGroup API (key 13, v0 to v4)"
  */
 #[CoversClass(JoinGroupRequest::class)]

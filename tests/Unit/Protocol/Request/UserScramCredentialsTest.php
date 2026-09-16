@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\UpdateFeaturesResponse;
  * one. What makes the pair of KIP-554 interesting is that the **client** does a computation before it sends
  * anything: the salted password of RFC 5802, which is the reason the broker never learns a password.
  *
- * @see docs/protocol/2.8.md, sections "DescribeUserScramCredentials API (key 50, v0)",
+ * @see docs/protocol/3.9.md, sections "DescribeUserScramCredentials API (key 50, v0)",
  *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0)"
  */
 #[CoversClass(DescribeUserScramCredentialsRequest::class)]

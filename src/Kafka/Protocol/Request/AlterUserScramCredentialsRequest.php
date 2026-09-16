@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\Data\ScramCredentialUpsertion;
  * password, only something it can verify a login against. `iterations` below the minimum of the mechanism (4096
  * for both mechanisms of 2.8.2) is refused with **93** (`UnacceptableCredential`).
  *
- * @see docs/protocol/2.8.md, section "AlterUserScramCredentials API (key 51, v0)"
+ * @see docs/protocol/3.9.md, section "AlterUserScramCredentials API (key 51, v0)"
  */
 class AlterUserScramCredentialsRequest extends AbstractRequest
 {

@@ -92,7 +92,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  *   FetchResponse v7        => ThrottleTimeMs ErrorCode SessionId [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/2.8.md, sections "Fetch API (key 1, v0 to v12)", "Fetch sessions (v7, KIP-227)" and
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v12)", "Fetch sessions (v7, KIP-227)" and
  *      "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]

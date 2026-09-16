@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * `last_fetched_epoch` between the fetch offset and the log start offset, see
  * {@see FetchRequestTopicPartition::$lastFetchedEpoch}; this class is the entry without it.
  *
- * @see docs/protocol/2.8.md, section "Fetch API (key 1, v0 to v12)"
+ * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v12)"
  */
 final class FetchRequestTopicPartitionV9 extends FetchRequestTopicPartition
 {

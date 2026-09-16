@@ -1,7 +1,10 @@
-Wire vectors of the Kafka 2.8.2 protocol
+Wire vectors of the Kafka 3.9.2 protocol
 ========================================
+The 3.x line has captured no vector of its own yet: the **669** vectors of the lines up to 2.x below are replayed
+unchanged against the classes of this line, and the 3.9.2 node still serves every version they were captured at.
+
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
-machine-readable half of [`../2.8.md`](../2.8.md), whose "Wire vectors" section shows the same bytes as annotated
+machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
 hex dumps. There are **669** of them in **48** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis

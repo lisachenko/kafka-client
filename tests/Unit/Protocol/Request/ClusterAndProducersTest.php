@@ -38,7 +38,7 @@ use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
  * boolean - and the second is the producer state of a log made visible, which is the only place in this protocol
  * where a producer epoch is an `int32`.
  *
- * @see docs/protocol/2.8.md, sections "DescribeCluster API (key 60, v0)" and "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0)" and "DescribeProducers API (key 61, v0)"
  */
 #[CoversClass(DescribeClusterRequest::class)]
 #[CoversClass(DescribeClusterResponse::class)]

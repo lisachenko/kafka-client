@@ -44,7 +44,7 @@ use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsResponseTopic;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see AlterReplicaLogDirsResponseV0} is the same frame with the version field of Kafka 1.0.
  *
- * @see docs/protocol/2.8.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 class AlterReplicaLogDirsResponse extends AbstractResponse
 {

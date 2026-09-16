@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * The flag asks for the `cluster_authorized_operations` bit field of KIP-430. Without it the answer carries
  * `Integer.MIN_VALUE` (`-2147483648`), which is the specification's own default and means "not asked".
  *
- * @see docs/protocol/2.8.md, section "DescribeCluster API (key 60, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0)"
  */
 class DescribeClusterRequest extends AbstractRequest
 {

@@ -55,7 +55,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * {@see CreateDelegationTokenRequestV1} and {@see CreateDelegationTokenRequestV0} are the same frame in the plain
  * encoding.
  *
- * @see docs/protocol/2.8.md, section "CreateDelegationToken API (key 38, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v2)"
  */
 class CreateDelegationTokenRequest extends AbstractRequest
 {

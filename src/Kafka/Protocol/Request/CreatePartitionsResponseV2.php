@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The version 3 of KIP-599 adds no field; it adds the error code 89 `ThrottlingQuotaExceeded` a topic entry may
  * carry when the broker refuses the request instead of queueing it.
  *
- * @see docs/protocol/2.8.md, section "CreatePartitions API (key 37, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "CreatePartitions API (key 37, v0 to v3)"
  */
 final class CreatePartitionsResponseV2 extends CreatePartitionsResponse
 {

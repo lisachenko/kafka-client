@@ -35,7 +35,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * is the half of the KIP that the *answer* carries; the other half is the `states_filter` of the request.
  * {@see ListGroupResponseProtocolV0} is the entry of the versions 0 to 3, which have no such field.
  *
- * @see docs/protocol/2.8.md, section "ListGroups API (key 16, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v4)"
  */
 class ListGroupResponseProtocol implements BinarySchemaInterface
 {

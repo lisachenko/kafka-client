@@ -41,7 +41,7 @@ use Protocol\Kafka\Protocol\Data\FeatureUpdateKey;
  * A `max_version_level` **below 1** is not a version but the request to **delete** the finalized feature, and
  * every lowering - a deletion included - needs `allow_downgrade`.
  *
- * @see docs/protocol/2.8.md, section "UpdateFeatures API (key 57, v0)"
+ * @see docs/protocol/3.9.md, section "UpdateFeatures API (key 57, v0)"
  */
 class UpdateFeaturesRequest extends AbstractRequest
 {

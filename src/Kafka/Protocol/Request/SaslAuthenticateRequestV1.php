@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka 2.5 made the version 2 the first **flexible** one of this api (KIP-482) and changed no field, so this
  * class only lowers the version constant: the version 1 is the frame a broker below Kafka 2.5 speaks. The version 1 is the one Kafka 2.2 added for the `session_lifetime_ms` of KIP-368.
  *
- * @see docs/protocol/2.8.md, section "SaslAuthenticate API (key 36, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "SaslAuthenticate API (key 36, v0 to v2)"
  */
 final class SaslAuthenticateRequestV1 extends SaslAuthenticateRequest
 {

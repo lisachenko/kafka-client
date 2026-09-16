@@ -33,7 +33,7 @@ use Protocol\Kafka\Protocol\Data\UpdatableFeatureResult;
  * where **96** (`FeatureUpdateFailed`) is what a ZooKeeper-backed 2.8.2 cluster says about every feature, because
  * it finalizes none.
  *
- * @see docs/protocol/2.8.md, section "UpdateFeatures API (key 57, v0)"
+ * @see docs/protocol/3.9.md, section "UpdateFeatures API (key 57, v0)"
  */
 class UpdateFeaturesResponse extends AbstractResponse
 {

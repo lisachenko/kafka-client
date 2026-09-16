@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\Data\LeaveGroupResponseMember;
  * (`GroupCoordinatorNotAvailable`), 16 (`NotCoordinatorForGroup`), 14 (`GroupLoadInProgress`) - and a request whose
  * members were all refused still carries **0** there, with the member array holding every reason.
  *
- * @see docs/protocol/2.8.md, sections "The batch leave of KIP-345 (v3)", "LeaveGroup API (key 13, v0 to v4)" and
+ * @see docs/protocol/3.9.md, sections "The batch leave of KIP-345 (v3)", "LeaveGroup API (key 13, v0 to v4)" and
  *      "Quotas and throttle time"
  */
 class LeaveGroupResponse extends AbstractResponse

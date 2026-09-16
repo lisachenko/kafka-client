@@ -37,7 +37,7 @@ use Protocol\Kafka\IO\StringStream;
  * that does not override `FLEXIBLE_VERSION` is never flexible, which is what every api of the lines below this one
  * is.
  *
- * @see docs/protocol/2.8.md, sections "Common request and response structure" and "Implementation model"
+ * @see docs/protocol/3.9.md, sections "Common request and response structure" and "Implementation model"
  */
 abstract class AbstractProtocolMessage implements FlexibleSchemaInterface
 {

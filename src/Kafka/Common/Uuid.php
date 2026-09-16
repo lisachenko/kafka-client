@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Common;
  * `Uuid.fromString()` reads exactly that - it is what `kafka-topics.sh --describe` shows as the `TopicId` of a
  * topic, so it is the form this client prints as well.
  *
- * @see docs/protocol/2.8.md, section "Topic ids (v10, KIP-516)"
+ * @see docs/protocol/3.9.md, section "Topic ids (v10, KIP-516)"
  */
 final class Uuid
 {

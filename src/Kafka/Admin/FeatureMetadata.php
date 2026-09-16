@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Admin;
  * A ZooKeeper-backed Kafka 2.8.2 cluster finalizes no feature at all: `supportedFeatures` names what the broker
  * could agree to, `finalizedFeatures` is empty and `finalizedFeaturesEpoch` is `0`.
  *
- * @see docs/protocol/2.8.md, sections "ApiVersions API (key 18, v0 to v3)" and "UpdateFeatures API (key 57, v0)"
+ * @see docs/protocol/3.9.md, sections "ApiVersions API (key 18, v0 to v3)" and "UpdateFeatures API (key 57, v0)"
  */
 final class FeatureMetadata
 {

@@ -4,28 +4,36 @@ Pure-PHP Apache Kafka client. Each Kafka protocol line lives on its own branch a
 lowest-first, then cascade-merged upwards: `0.8.x` (Kafka 0.8.2.2, **complete**) → `0.9.x`
 (Kafka 0.9.0.1, **complete**) → `0.10.x` (Kafka 0.10.2.2, **complete**) → `0.11.x`
 (Kafka 0.11.0.3, **complete**) → `1.x` (Kafka **1.1.1**, **complete**) → `2.x` (Kafka **2.8.2**, **complete**,
-**protected**) → `main` (the **3.x line**, Kafka **3.9.2**, **next**). From the 1.x line on the lines are **major**
+**protected**) → `main` (the **3.x line**, Kafka **3.9.2**, **in development**). From the 1.x line on the lines are **major**
 lines: one branch per Kafka major version, covering every minor release inside it (`1.x` speaks 1.1.1 and with it
 everything 1.0 and 1.1 added; `2.x` speaks 2.8.2 and with it everything 2.0 to 2.8 added, one gated milestone commit
 and one tag per minor, `2.0.1` … `2.8.2`). See `docs/CASCADE.md` and, for each line, `docs/handoff/<branch>.md`: every
 one of those files carries the release notes of its line with the plan it was built from below them —
-`docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/main.md` is the record of the 2.x line (the first
-ticket of the 3.x line renames it to `docs/handoff/2.x.md`), and **`docs/handoff/3.x.md` is the plan of the 3.x line**:
-what Kafka 3.0 to 3.9 add api by api, derived from the message specs at the release tags, the decisions the owner
-takes first (KRaft or ZooKeeper, ACLs, the KIP-848 consumer), the environment recipe, the ticket plan and the
-pitfalls of the 2.x session. `main` and `2.x` are identical at `bc5dec5`, so the 3.x line starts on `main` without
-branching anything off. The grammar `main` implements today is `docs/protocol/2.8.md`; the 3.x line renames it to
-`docs/protocol/3.9.md` with its first ticket.
+`docs/handoff/1.x.md` is the record of the 1.x line, `docs/handoff/2.x.md` the record of the 2.x line, and
+**`docs/handoff/main.md` is the plan of the 3.x line** (its release notes are written above the plan when the line is
+complete): what Kafka 3.0 to 3.9 add api by api, derived from the message specs at the release tags, the owner's
+decisions (a KRaft node, the ACL apis in, the KIP-848 consumer in as the last wave, share groups out, client metrics
+wire only), the environment recipe, the ticket plan and the pitfalls of the 2.x session. `main` and `2.x` are
+identical at `bc5dec5`, so the 3.x line started on `main` without branching anything off; its foundation commit
+renamed the grammar to `docs/protocol/3.9.md` and declared the api keys 65–87 and the error codes 105–127.
 
 **The 2.x line starts from `main` as it stood at the end of 1.x** (the finished 1.x tree was branched off as `1.x`
 at `2ee4866`, the merge of PR #109, so that `main` can carry it). What Kafka 2.0 to 2.8 add over 1.1.1 api by
 api, the ticket plan, the environment recipe and the pitfalls of the 1.x session are in `docs/handoff/main.md`.
 The broker of the 2.x line is **2.8.2**, the last release of the 2.x line, which still serves every version 2.0 to
-2.7 added, so one container verifies the whole line; the broker of the 3.x line is **3.9.2** (`docs/handoff/3.x.md`). Its four big additions over 1.1.1: the **flexible versions**
+2.7 added, so one container verifies the whole line; the broker of the 3.x line is **3.9.2** (`docs/handoff/main.md`). Its four big additions over 1.1.1: the **flexible versions**
 of KIP-482 (compact strings, bytes and arrays, tagged fields, request header v2 and response header v1, Kafka
 2.4), the **leader epochs** of KIP-320 (2.1), the **zstd** codec of KIP-110 (2.1) and **22 new api keys** (43 to
 64, of which a ZooKeeper-backed broker serves 43-51, 56, 57, 60 and 61), next to some 140 version bumps and the
 error codes 72-104.
+
+**The 3.x line starts from `main` as it stood at the end of 2.x** (`bc5dec5` plus the close-out PR #158) and speaks
+towards **Kafka 3.9.2**, the last release of the 3.x line (and the last one that can run with ZooKeeper — the node of
+this line runs **KRaft**). What Kafka 3.0 to 3.9 add over 2.8.2 api by api (23 api keys 65–87, some 60 version bumps,
+the error codes 105–127; no new encoding and no new message format), the ticket plan per agent and the milestone
+process are in `docs/handoff/main.md`. For this line rule 4 means "start from the 2.8.2 class of `main` and add what
+the new release adds", and rule 2 "the names of the 2.8.2 classes, plus the names of the Java client @ 3.9.2 for what
+is new" (`DescribeTransactionsRequest`, `ConsumerGroupHeartbeatRequest`, …; key 56 stays `AlterIsrRequest`).
 
 ## Hard rules (owner's decisions)
 
@@ -89,16 +97,16 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
 ### Kafka broker for integration tests
 
 - `docker compose up -d --wait` starts the broker of this branch's Kafka version
-  (`docker/kafka-<version>/`, ZooKeeper bundled, advertised as 127.0.0.1:9092). On `main` that is
-  **`docker/kafka-2.8.2`**, the container `kafka-2-8-2`; on `0.11.x` it is `docker/kafka-0.11.0.3`, the
-  container `kafka-0-11-0-3`. Either way it has the four listeners PLAINTEXT 9092, SSL 9093,
-  SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch carries — the first
-  ticket of a new line adds its image, points `docker-compose.yml` and every fixture at it and
-  **deletes the one below**. A stale container name does not fail a test, it makes it *skip*: grep the
-  tree for the old container and the old image directory (`tests/Fixture/ClientQuota`,
-  `MessageFormatV1Test`, `RecordBatchV2Test`, `tests/Unit/IO/SocketStreamSslTest.php`,
-  `tests/Unit/IO/LocalTlsServer.php`, the examples) before the baseline is measured, and demand zero
-  skips from every gate.
+  (`docker/kafka-<version>/`, advertised as 127.0.0.1:9092). On `main` that is **`docker/kafka-3.9.2`**, the
+  container `kafka-3-9-2`: a **KRaft** node (`process.roles=broker,controller`, no ZooKeeper, a CONTROLLER
+  listener on 9096 inside the container); on `2.x` it is `docker/kafka-2.8.2` (`kafka-2-8-2`, ZooKeeper
+  bundled), on `0.11.x` `docker/kafka-0.11.0.3` (`kafka-0-11-0-3`). Either way it has the four listeners
+  PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094 and SASL_SSL 9095, and it is the only broker image a branch
+  carries — the first ticket of a new line adds its image, points `docker-compose.yml` and every fixture at
+  it and **deletes the one below**. A stale container name does not fail a test, it makes it *skip*: grep
+  the tree for the old container and the old image directory (`MessageFormatV1Test`, `RecordBatchV2Test`,
+  `tests/Unit/IO/SocketStreamSslTest.php`, `tests/Unit/IO/LocalTlsServer.php`, the examples) before the
+  baseline is measured, and demand zero skips from every gate.
 - In the remote sandbox the Docker daemon may not be running: `nohup dockerd >/tmp/dockerd.log 2>&1 &`
   and wait for `docker info` to answer. Old Docker Hub images with v1 manifests cannot be pulled;
   build the image from `docker/` (the Kafka tarball comes from archive.apache.org, which is reachable).
@@ -126,11 +134,25 @@ and several worktrees fill the disk. `composer.lock` already lists everything; n
   newline as well, so `start.sh` keeps appending one, and the one-broker `transaction.state.log.*=1` settings are
   still needed. Two settings are new in this image: **two log directories**
   (`log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2` — a partition lands in either, find it with
-  `docker exec kafka-2-8-2 ls /tmp/kafka-logs /tmp/kafka-logs-2`) and a
+  `docker exec kafka-3-9-2 ls /tmp/kafka-logs /tmp/kafka-logs-2`) and a
   **`delegation.token.master.key`**, without which the token apis 38–41 answer 61 instead of 64. And **a 1.x broker
   closes the socket on a version above its table for every api, ControlledShutdown included** — only ApiVersions
   answers an unknown version with the error code 35.
-- Useful in-container tools: `docker exec <container> /opt/kafka/bin/kafka-topics.sh --zookeeper localhost:2181 --list`,
+- **3.9 specifics (KRaft).** There is **no ZooKeeper**: every tool takes `--bootstrap-server localhost:9092`
+  (`kafka-topics.sh`, `kafka-configs.sh` for quotas and broker configs alike, `kafka-consumer-groups.sh`,
+  `kafka-acls.sh`, `kafka-delegation-tokens.sh`), and `tests/Fixture/ClientQuota` sets quotas through the quota
+  apis 48/49. The storage is formatted once at the first start (`kafka-storage.sh format`, metadata version
+  `3.9-IV0`; `docker compose down -v` starts over with a new cluster id). The node lists **61 keys** on its client
+  listeners (0–3, 8–51, 55, 57, 60, 61, 64–66, 68, 69, 74, 75, 80, 81): the ZooKeeper-only apis 4–7 and 56 are not
+  served there, the controller-only ones live on the controller listener, 71/72 are hidden without a
+  client-telemetry plugin, 76–79 and 83–87 without `unstable.api.versions.enable`. **OffsetCommit v0 and
+  OffsetFetch v0 answer 35** (`offsets.storage = zookeeper` cannot be used). The `StandardAuthorizer` is on with
+  `super.users=User:ANONYMOUS;User:admin;User:kafkatest`; the SASL user `acltest`/`acltest-secret` is the one
+  principal the ACLs apply to. The KIP-848 coordinator is on (`group.coordinator.rebalance.protocols=classic,consumer`).
+  Metadata answers brokers before any topic exists; a fresh topic still answers 5/6 for a moment.
+- Useful in-container tools (the `--zookeeper` forms are the lines up to 2.x): `docker exec <container>
+  /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list` (`--zookeeper localhost:2181` on a
+  ZooKeeper broker),
   `kafka-console-producer.sh`/`kafka-console-consumer.sh`, `kafka-run-class.sh kafka.tools.DumpLogSegments`,
   `kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list|--describe --group G`, `kafka-configs.sh` (both
   `--zookeeper` for quotas and, from 1.1, `--bootstrap-server … --entity-type brokers` for the dynamic broker

@@ -59,7 +59,7 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
  * offsets and the last commit of that partition belongs to a transaction that is still open.
  * {@see OffsetFetchResponseV6} decodes the same bytes one api version lower.
  *
- * @see docs/protocol/2.8.md, sections "OffsetFetch API (key 9, v0 to v7)", "Stable offsets and the 88 of KIP-447
+ * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v7)", "Stable offsets and the 88 of KIP-447
  *      (Kafka 2.5)" and "Quotas and throttle time"
  */
 class OffsetFetchResponse extends AbstractResponse

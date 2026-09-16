@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * makes the filter case sensitive; the constants of {@see \Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata}
  * are those names.
  *
- * @see docs/protocol/2.8.md, section "ListGroups API (key 16, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v4)"
  */
 class ListGroupsRequest extends AbstractRequest
 {

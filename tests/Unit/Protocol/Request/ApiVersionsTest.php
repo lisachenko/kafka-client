@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV2;
  * header v2, two compact strings of KIP-511 in the request, a compact api array in the answer and the tagged
  * fields of KIP-584 at the end of it - behind a response header **v0**, which is the exception this api is.
  *
- * @see docs/protocol/2.8.md, section "ApiVersions API (key 18, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v3)"
  */
 #[CoversClass(ApiVersionsRequest::class)]
 #[CoversClass(ApiVersionsRequestV0::class)]

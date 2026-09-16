@@ -60,7 +60,7 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
  * unchanged at v0 and so is `TransactionCoordinator` - with a single addition of the 1.x line: the **59**
  * `UnknownProducerId` of a producer whose records were deleted under it does not end its transaction.
  *
- * @see docs/protocol/2.8.md, section "Transactions"
+ * @see docs/protocol/3.9.md, section "Transactions"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(TransactionManager::class)]
