@@ -174,8 +174,14 @@ class SocketStream extends AbstractStream
         for ($written = 0; $written < $totalBytes;) {
             $result = @fwrite($this->streamSocket, substr($packedData, $written));
             if ($result === false || $result === 0) {
-                // Nothing has been sent yet, so a dropped connection can still be retried transparently
-                if (!$isReconnected && !$this->isAuthenticating && $written === 0 && !$this->isConnected()) {
+                // The socket is unusable, whatever `isConnected()` says about it (a socket the peer has closed
+                // still answers `stream_socket_get_name()`): drop it, so that the next call opens a new one
+                $this->disconnect();
+                // Nothing has been sent yet, so a dropped connection can still be replaced transparently - once,
+                // and only for a caller that hands the whole frame to one write() call (see
+                // AbstractProtocolMessage::writeTo()): a frame that continued on a new connection would start it
+                // in the middle of a message, which the broker reads as a size field and waits on forever
+                if (!$isReconnected && !$this->isAuthenticating && $written === 0) {
                     $this->connect();
                     $isReconnected = true;
                     continue;
@@ -260,8 +266,7 @@ class SocketStream extends AbstractStream
             return '';
         }
 
-        $buffer        = '';
-        $isReconnected = false;
+        $buffer = '';
         while (($received = strlen($buffer)) < $length) {
             $chunk = @fread($this->streamSocket, $length - $received);
             if ($chunk === false || $chunk === '') {
@@ -273,13 +278,15 @@ class SocketStream extends AbstractStream
                         'received' => $received,
                     ]);
                 }
-                // Only a connection that dropped before the first byte of a frame can be retried transparently,
-                // reconnecting in the middle of a frame would resume the parser at an arbitrary offset
-                if (!$isReconnected && !$this->isAuthenticating && $received === 0 && !$this->isConnected()) {
-                    $this->connect();
-                    $isReconnected = true;
-                    continue;
-                }
+                // The peer closed the connection. Whatever request was written to it is gone with it, so nothing
+                // can be resumed on a new connection - not even a read that has not received its first byte yet:
+                // the answer it waits for was never going to come on a socket the request never reached. The
+                // socket is dropped, the caller gets the error (a retry policy sends the whole request again), and
+                // the next write() opens a new connection. Up to the 2.x line this method reconnected here and
+                // kept reading, which left every later request of the process waiting on a connection that had
+                // never seen a request - the client stalled for the request timeout, over and over, once a
+                // broker had closed the pooled connection (an idle timeout, or an api the broker refuses)
+                $this->disconnect();
 
                 throw new NetworkException([
                     'error'    => 'Unexpected end of stream',

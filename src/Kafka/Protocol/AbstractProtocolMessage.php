@@ -125,7 +125,11 @@ abstract class AbstractProtocolMessage implements FlexibleSchemaInterface
      */
     final public function writeTo(Stream $stream): void
     {
-        $this->packInto($stream);
+        // The whole frame goes to the stream in ONE write: the schema writer emits a message field by field, and
+        // a socket stream that has to replace a connection the broker closed can only do so before the first byte
+        // of a frame has left (SocketStream::write()) - a frame continued on a new connection would be read by the
+        // broker from its middle, as a size field it then waits on forever
+        $stream->write('a*', (string) $this);
     }
 
     /**
