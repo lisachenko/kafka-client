@@ -523,7 +523,7 @@ final class RecordBatchV2Test extends IntegrationTestCase
         $container = getenv('KAFKA_CONTAINER');
         $command   = [
             'docker', 'exec', $container === false || $container === '' ? 'kafka-3-9-2' : $container,
-            '/opt/kafka/bin/kafka-topics.sh', '--zookeeper', 'localhost:2181',
+            '/opt/kafka/bin/kafka-topics.sh', '--bootstrap-server', 'localhost:9092',
             '--create', '--topic', $topic, '--partitions', '1', '--replication-factor', '1',
         ];
         foreach ($configuration as $entry) {
