@@ -35,7 +35,7 @@ final class ProtocolMessageFramingTest extends TestCase
     public function testAMessageIsWrittenToTheStreamInOneCall(): void
     {
         $stream  = new WriteCountingStream();
-        $request = new MetadataRequest(['test'], 'kafka-client-test', 42);
+        $request = new MetadataRequest(['test'], true, 'kafka-client-test', 42);
 
         $request->writeTo($stream);
 
@@ -47,7 +47,7 @@ final class ProtocolMessageFramingTest extends TestCase
     {
         $stream = new WriteCountingStream();
 
-        new MetadataRequest(['one', 'two'], 'kafka-client-test', 1)->writeTo($stream);
+        new MetadataRequest(['one', 'two'], true, 'kafka-client-test', 1)->writeTo($stream);
 
         self::assertSame(1, $stream->writes);
         self::assertSame(
