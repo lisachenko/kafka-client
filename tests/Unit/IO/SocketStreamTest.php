@@ -158,6 +158,41 @@ final class SocketStreamTest extends TestCase
         }
     }
 
+    /**
+     * A connection the server closed is dropped, and the next write opens a new one
+     *
+     * The request that was written to the old connection is lost with it, so the read that waits for its answer
+     * reports the end of the stream instead of continuing on a new connection (which had never seen the request
+     * and would only run into the request timeout), and the stream is disconnected afterwards: the next write is
+     * the first byte of a new frame and opens a new connection by itself. This is what a broker does to an idle
+     * connection (`connections.max.idle.ms`) and to a frame of an api it refuses; reconnecting and reading on
+     * left every later request of the process waiting on a connection without a request.
+     */
+    public function testAConnectionTheServerClosedIsDroppedAndTheNextWriteOpensANewOne(): void
+    {
+        $stream = $this->connectStream([ClientConfig::REQUEST_TIMEOUT_MS => 2000]);
+
+        fclose($this->connection);
+        $this->connection = null;
+
+        $startedAt = microtime(true);
+        try {
+            $stream->readInt32();
+            self::fail('A closed connection is expected to be reported as a network error');
+        } catch (NetworkException $exception) {
+            self::assertSame('Unexpected end of stream', $exception->getContext()['error']);
+            self::assertSame(0, $exception->getContext()['received']);
+        }
+        self::assertLessThan(1.5, microtime(true) - $startedAt, 'no reconnect, no wait for the request timeout');
+        self::assertFalse($stream->isConnected(), 'the closed connection is dropped');
+
+        // The next frame opens a new connection, and arrives whole on it
+        $stream->write('a*', 'req2');
+
+        self::assertSame(bin2hex('req2'), $this->readFromServer(4));
+        self::assertTrue($stream->isConnected());
+    }
+
     public function testRequestTimeoutIsHonouredWhileReading(): void
     {
         $stream = $this->connectStream([ClientConfig::REQUEST_TIMEOUT_MS => 200]);
