@@ -282,16 +282,29 @@ final class ClusterTest extends TestCase
         );
 
         $cacheFile     = sys_get_temp_dir() . '/t7-cluster-cache-' . bin2hex(random_bytes(6)) . '.php';
+        $maxAgeMs      = 60000;
         $configuration = $this->configuration([
             ClientConfig::METADATA_CACHE_FILE => $cacheFile,
-            ClientConfig::METADATA_MAX_AGE_MS => 20,
+            ClientConfig::METADATA_MAX_AGE_MS => $maxAgeMs,
         ]);
 
         try {
             Cluster::bootstrap($configuration);
             self::assertFileExists($cacheFile, 'a successful metadata fetch fills the cache');
 
-            usleep(40000);
+            // The entry is aged in the file instead of waiting for it to age: the cache stores the time of the
+            // fetch in milliseconds next to the metadata, and a maximum age the test sleeps past (20 ms once) is
+            // one a slow runner spends on the first bootstrap alone, which then refreshed once more than the
+            // test counted. Rewriting the stored time makes the entry stale whatever the clock does.
+            [$fetchedAtMs, $metadata] = include $cacheFile;
+            file_put_contents(
+                $cacheFile,
+                '<?php return ' . var_export([$fetchedAtMs - 2 * $maxAgeMs, $metadata], true) . ';'
+            );
+            if (function_exists('opcache_invalidate')) {
+                opcache_invalidate($cacheFile, true);
+            }
+
             $reloaded = Cluster::bootstrap($configuration);
 
             self::assertSame(['orders'], $reloaded->topics());
