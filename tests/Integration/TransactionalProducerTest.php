@@ -19,6 +19,7 @@ use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\ConcurrentTransactionsException;
 use Protocol\Kafka\Common\Errors\InvalidTxnStateException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\ProducerFencedException;
@@ -30,6 +31,7 @@ use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Consumer\ConsumerConfig;
 use Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter;
+use Protocol\Kafka\Producer\Internals\ProducerIdAndEpoch;
 use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\Internals\TransactionState;
 use Protocol\Kafka\Producer\KafkaProducer;
@@ -302,12 +304,40 @@ final class TransactionalProducerTest extends IntegrationTestCase
         $producerIdAndEpoch = $manager->getProducerIdAndEpoch();
 
         // `CompleteCommit` accepts the result it already has ...
-        $this->client->endTxn($coordinator, $transactionalId, $producerIdAndEpoch, EndTxnRequest::COMMIT);
+        $this->endTxnOnceTheCoordinatorIsDone($coordinator, $transactionalId, $producerIdAndEpoch, EndTxnRequest::COMMIT);
 
         // ... and refuses the other one
         $this->expectException(InvalidTxnStateException::class);
 
         $this->client->endTxn($coordinator, $transactionalId, $producerIdAndEpoch, EndTxnRequest::ABORT);
+    }
+
+    /**
+     * Sends EndTxn for as long as the coordinator answers 51 `ConcurrentTransactions`.
+     *
+     * `commitTransaction()` returns as soon as the coordinator has persisted `PrepareCommit`; the markers are
+     * written after that, and only then does the id reach `CompleteCommit`, the state in which a second COMMIT is
+     * accepted. A request that arrives in between is answered with 51, which the raw {@see Client::endTxn()}
+     * reports as it is - the {@see TransactionManager} backs off and asks again, and so does this helper.
+     */
+    private function endTxnOnceTheCoordinatorIsDone(
+        Node $coordinator,
+        string $transactionalId,
+        ProducerIdAndEpoch $producerIdAndEpoch,
+        bool $transactionResult
+    ): void {
+        for ($attempt = 1;; $attempt++) {
+            try {
+                $this->client->endTxn($coordinator, $transactionalId, $producerIdAndEpoch, $transactionResult);
+
+                return;
+            } catch (ConcurrentTransactionsException $exception) {
+                if ($attempt >= 100) {
+                    throw $exception;
+                }
+                usleep(100_000);
+            }
+        }
     }
 
     public function testAddPartitionsToTxnReportsTheStateOfTheIdOnEveryPartition(): void
