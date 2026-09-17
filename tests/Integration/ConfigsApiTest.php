@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Tests\Integration;
 
+use Closure;
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\Config;
@@ -106,6 +107,11 @@ final class ConfigsApiTest extends IntegrationTestCase
     private const string DYNAMIC_OPTION = 'log.cleaner.backoff.ms';
 
     private const string DYNAMIC_OPTION_DEFAULT = '15000';
+
+    /**
+     * How long a test waits for a dynamic broker option to be live after the broker accepted it, in seconds
+     */
+    private const float DYNAMIC_OPTION_TIMEOUT = 5.0;
 
     private Cluster $cluster;
 
@@ -461,10 +467,14 @@ final class ConfigsApiTest extends IntegrationTestCase
                 'a 0.11 broker refused every broker resource with 42 and "AlterConfigs is only supported for topics"'
             );
 
-            $entry = $this->admin->describeConfigs([$resource], [self::DYNAMIC_OPTION], true)[$resource->key()]
-                ->get(self::DYNAMIC_OPTION);
+            $entry = $this->describeUntil(
+                $resource,
+                [self::DYNAMIC_OPTION],
+                static fn(Config $config): bool => $config->get(self::DYNAMIC_OPTION)?->value === '16000'
+            )->get(self::DYNAMIC_OPTION);
 
-            self::assertSame('16000', $entry->value, 'the new value is live right away');
+            self::assertNotNull($entry);
+            self::assertSame('16000', $entry->value, 'the new value is live once the broker applied it');
             self::assertSame(ConfigSource::DYNAMIC_BROKER_CONFIG, $entry->source);
             self::assertFalse($entry->isDefault);
             self::assertFalse($entry->isReadOnly);
@@ -497,19 +507,28 @@ final class ConfigsApiTest extends IntegrationTestCase
             $result = $this->admin->alterConfigs([$default->key() => [self::DYNAMIC_OPTION => '17000']]);
             self::assertSame([$default->key() => null], $result);
 
-            $configs = $this->admin->describeConfigs([$default], null, true);
-            $entry   = $configs[$default->key()]->get(self::DYNAMIC_OPTION);
+            $config = $this->describeUntil(
+                $default,
+                null,
+                static fn(Config $config): bool => $config->get(self::DYNAMIC_OPTION)?->value === '17000'
+            );
+            $entry  = $config->get(self::DYNAMIC_OPTION);
 
             self::assertSame(
                 [self::DYNAMIC_OPTION],
-                array_keys($configs[$default->key()]->entries),
+                array_keys($config->entries),
                 'the default resource holds the dynamic default configuration alone, not the options of a broker'
             );
+            self::assertNotNull($entry);
             self::assertSame('17000', $entry->value);
             self::assertSame(ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG, $entry->source);
 
-            $ofTheBroker = $this->admin->describeConfigs([$broker], [self::DYNAMIC_OPTION], true)[$broker->key()]
-                ->get(self::DYNAMIC_OPTION);
+            $ofTheBroker = $this->describeUntil(
+                $broker,
+                [self::DYNAMIC_OPTION],
+                static fn(Config $config): bool => $config->get(self::DYNAMIC_OPTION)?->value === '17000'
+            )->get(self::DYNAMIC_OPTION);
+            self::assertNotNull($ofTheBroker);
             self::assertSame('17000', $ofTheBroker->value, 'every broker of the cluster picks the default up');
             self::assertSame(ConfigSource::DYNAMIC_DEFAULT_BROKER_CONFIG, $ofTheBroker->source);
         } finally {
@@ -604,8 +623,11 @@ final class ConfigsApiTest extends IntegrationTestCase
                 $result,
                 'the broker stores an option it has no idea about, where a topic answers 40'
             );
-            $entry = $this->admin->describeConfigs([$resource], ['no.such.broker.option'], true)[$resource->key()]
-                ->get('no.such.broker.option');
+            $entry = $this->describeUntil(
+                $resource,
+                ['no.such.broker.option'],
+                static fn(Config $config): bool => $config->get('no.such.broker.option') !== null
+            )->get('no.such.broker.option');
             self::assertNotNull($entry, 'and reports it back as a dynamic broker config of its own');
             self::assertSame(ConfigSource::DYNAMIC_BROKER_CONFIG, $entry->source);
             self::assertTrue(
@@ -618,6 +640,33 @@ final class ConfigsApiTest extends IntegrationTestCase
         } finally {
             $this->admin->alterConfigs([$resource->key() => []]);
         }
+    }
+
+    /**
+     * Describes a broker resource until the broker reports what the caller waits for, or the timeout passes
+     *
+     * A dynamic broker option travels through ZooKeeper: `AlterConfigs` is answered once the znode is written,
+     * and the live configuration of the broker follows when its watch fires, a moment later. Up to the io fix of
+     * #166 every request left this client some 40 ms late - Nagle's algorithm held the field-by-field writes of a
+     * frame behind the delayed ACK of the broker - which covered that moment every time; a frame that leaves in
+     * one write reaches the broker before the watch fired, so the read is repeated with a short back-off. The
+     * last answer is returned either way, for the assertion to name what is wrong.
+     *
+     * @param list<string>|null     $names     The option names to describe, null for all of them
+     * @param Closure(Config): bool $satisfied Whether the answer is the one the caller waits for
+     */
+    private function describeUntil(ConfigResource $resource, ?array $names, Closure $satisfied): Config
+    {
+        $deadline = microtime(true) + self::DYNAMIC_OPTION_TIMEOUT;
+        do {
+            $config = $this->admin->describeConfigs([$resource], $names, true)[$resource->key()];
+            if ($satisfied($config)) {
+                return $config;
+            }
+            usleep(50000);
+        } while (microtime(true) < $deadline);
+
+        return $config;
     }
 
     /**
