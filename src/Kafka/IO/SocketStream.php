@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Request\SaslHandshakeResponse;
  * asks for, and as bare size-prefixed frames after a v0 one ({@see SocketStream::authenticate()}). Only the PLAIN
  * mechanism is implemented, see {@see SaslMechanism}.
  *
- * @see docs/protocol/3.9.md, section "Transport security (SSL)"
+ * @see docs/protocol/2.8.md, section "Transport security (SSL)"
  */
 class SocketStream extends AbstractStream
 {
@@ -282,10 +282,10 @@ class SocketStream extends AbstractStream
                 // can be resumed on a new connection - not even a read that has not received its first byte yet:
                 // the answer it waits for was never going to come on a socket the request never reached. The
                 // socket is dropped, the caller gets the error (a retry policy sends the whole request again), and
-                // the next write() opens a new connection. Up to the 2.x line this method reconnected here and
-                // kept reading, which left every later request of the process waiting on a connection that had
-                // never seen a request - the client stalled for the request timeout, over and over, once a
-                // broker had closed the pooled connection (an idle timeout, or an api the broker refuses)
+                // the next write() opens a new connection. Reconnecting here and reading on, as this method did
+                // before, left every later request of the process waiting on a connection that had never seen a
+                // request - the client stalled for the request timeout, over and over, once a broker had closed
+                // the pooled connection (an idle timeout, or an api the broker refuses)
                 $this->disconnect();
 
                 throw new NetworkException([

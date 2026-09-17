@@ -490,6 +490,16 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         self::assertSame(KafkaException::NO_ERROR, $zero->errorCode, 'a rebalance timeout of 0 is accepted too');
         self::assertSame(1, $zero->generationId);
 
+        // The expiration is a delayed operation of the coordinator, which fires a moment after the answer left:
+        // a LeaveGroup that arrives before it still finds the member (since the io fix of #166 a request leaves
+        // this client without the 40 ms Nagle delay that used to cover that moment), so the member heartbeats
+        // until the coordinator no longer knows it
+        self::assertSame(
+            KafkaException::UNKNOWN_MEMBER_ID,
+            $this->heartbeatUntil($stream, $immediate, $zero, KafkaException::UNKNOWN_MEMBER_ID),
+            'the pending-sync expiration of the rebalance timeout 0 removes the member before it can sync'
+        );
+
         new LeaveGroupRequest($immediate, $zero->memberId, $this->clientId(), 312)->writeTo($stream);
         $left = LeaveGroupResponse::unpack($stream);
 
@@ -499,7 +509,7 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         self::assertSame(
             KafkaException::UNKNOWN_MEMBER_ID,
             $left->members[0]->errorCode,
-            'the pending-sync expiration of the rebalance timeout 0 removed the member before it could sync'
+            'and the LeaveGroup of the removed member reports that in its entry'
         );
     }
 

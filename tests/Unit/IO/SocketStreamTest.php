@@ -165,8 +165,8 @@ final class SocketStreamTest extends TestCase
      * reports the end of the stream instead of continuing on a new connection (which had never seen the request
      * and would only run into the request timeout), and the stream is disconnected afterwards: the next write is
      * the first byte of a new frame and opens a new connection by itself. This is what a broker does to an idle
-     * connection (`connections.max.idle.ms`) and to a frame of an api it refuses, and up to the 2.x line it left
-     * every later request of the process waiting on a connection without a request.
+     * connection (`connections.max.idle.ms`) and to a frame of an api it refuses; reconnecting and reading on
+     * left every later request of the process waiting on a connection without a request.
      */
     public function testAConnectionTheServerClosedIsDroppedAndTheNextWriteOpensANewOne(): void
     {
