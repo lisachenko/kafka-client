@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Tests\Integration;
 
+use Closure;
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\AlterConfigOp;
@@ -531,19 +532,11 @@ final class ConfigsApiTest extends IntegrationTestCase
                 'a 0.11 broker refused every broker resource with 42 and "AlterConfigs is only supported for topics"'
             );
 
-            // A dynamic broker option travels through the ZooKeeper watch of the broker, so the read-back can
-            // lag the accepted write by a moment on a loaded or freshly started container: the describe is
-            // repeated for a few hundred milliseconds before the assertion decides
-            $entry    = null;
-            $deadline = microtime(true) + self::DYNAMIC_OPTION_TIMEOUT;
-            do {
-                $entry = $this->admin->describeConfigs([$resource], [self::DYNAMIC_OPTION], true)[$resource->key()]
-                    ->get(self::DYNAMIC_OPTION);
-                if ($entry?->value === '16000') {
-                    break;
-                }
-                usleep(50000);
-            } while (microtime(true) < $deadline);
+            $entry = $this->describeUntil(
+                $resource,
+                [self::DYNAMIC_OPTION],
+                static fn(Config $config): bool => $config->get(self::DYNAMIC_OPTION)?->value === '16000'
+            )->get(self::DYNAMIC_OPTION);
 
             self::assertNotNull($entry);
             self::assertSame('16000', $entry->value, 'the new value is live once the broker applied it');
@@ -587,8 +580,11 @@ final class ConfigsApiTest extends IntegrationTestCase
                 $result = $this->admin->alterConfigs([$default->key() => [self::DYNAMIC_OPTION => '17000']]);
                 self::assertSame([$default->key() => null], $result);
 
-                $configs = $this->admin->describeConfigs([$default], null, true);
-                $entry   = $configs[$default->key()]->get(self::DYNAMIC_OPTION);
+                $entry = $this->describeUntil(
+                    $default,
+                    null,
+                    static fn(Config $config): bool => $config->get(self::DYNAMIC_OPTION) !== null
+                )->get(self::DYNAMIC_OPTION);
             }
 
             self::assertNotNull(
@@ -607,6 +603,11 @@ final class ConfigsApiTest extends IntegrationTestCase
             // shared default resource alone, where an AlterConfigs of an empty map would wipe all of them
             $this->admin->incrementalAlterConfigs(
                 [$default->key() => [AlterConfigOp::delete(self::DYNAMIC_OPTION)]]
+            );
+            $this->describeUntil(
+                $default,
+                [self::DYNAMIC_OPTION],
+                static fn(Config $config): bool => $config->get(self::DYNAMIC_OPTION) === null
             );
             $this->restoreTheDynamicOption($broker);
         }
@@ -698,8 +699,11 @@ final class ConfigsApiTest extends IntegrationTestCase
                 $result,
                 'the broker stores an option it has no idea about, where a topic answers 40'
             );
-            $entry = $this->admin->describeConfigs([$resource], ['no.such.broker.option'], true)[$resource->key()]
-                ->get('no.such.broker.option');
+            $entry = $this->describeUntil(
+                $resource,
+                ['no.such.broker.option'],
+                static fn(Config $config): bool => $config->get('no.such.broker.option') !== null
+            )->get('no.such.broker.option');
             self::assertNotNull($entry, 'and reports it back as a dynamic broker config of its own');
             self::assertSame(ConfigSource::DYNAMIC_BROKER_CONFIG, $entry->source);
             self::assertTrue(
@@ -711,6 +715,11 @@ final class ConfigsApiTest extends IntegrationTestCase
             self::assertTrue($entry->isReadOnly, 'and no name of it is in AllDynamicConfigs');
         } finally {
             $this->admin->alterConfigs([$resource->key() => []]);
+            $this->describeUntil(
+                $resource,
+                ['no.such.broker.option'],
+                static fn(Config $config): bool => $config->get('no.such.broker.option') === null
+            );
         }
     }
 
@@ -725,6 +734,40 @@ final class ConfigsApiTest extends IntegrationTestCase
     {
         $this->admin->alterConfigs([$resource->key() => [self::DYNAMIC_OPTION => self::DYNAMIC_OPTION_DEFAULT]]);
         $this->admin->alterConfigs([$resource->key() => []]);
+        $this->describeUntil(
+            $resource,
+            [self::DYNAMIC_OPTION],
+            static fn(Config $config): bool => !array_key_exists(self::DYNAMIC_OPTION, $config->ownValues())
+        );
+    }
+
+    /**
+     * Describes a broker resource until the broker reports what the caller waits for, or the timeout passes
+     *
+     * A dynamic broker option travels through ZooKeeper: `AlterConfigs` and `IncrementalAlterConfigs` are answered
+     * once the znode is written, and the live configuration of the broker follows when its watch fires, a moment
+     * later. Up to the io fix of #166 every request left this client some 40 ms late - Nagle's algorithm held the
+     * field-by-field writes of a frame behind the delayed ACK of the broker - which covered that moment every
+     * time; a frame that leaves in one write reaches the broker before the watch fired, so a read that follows
+     * a write is repeated with a short back-off - the reads of the tests, and the reads behind the cleanups, so
+     * that the next test does not find what the previous one removed. The last answer is returned either way,
+     * for the assertion to name what is wrong.
+     *
+     * @param list<string>|null     $names     The option names to describe, null for all of them
+     * @param Closure(Config): bool $satisfied Whether the answer is the one the caller waits for
+     */
+    private function describeUntil(ConfigResource $resource, ?array $names, Closure $satisfied): Config
+    {
+        $deadline = microtime(true) + self::DYNAMIC_OPTION_TIMEOUT;
+        do {
+            $config = $this->admin->describeConfigs([$resource], $names, true)[$resource->key()];
+            if ($satisfied($config)) {
+                return $config;
+            }
+            usleep(50000);
+        } while (microtime(true) < $deadline);
+
+        return $config;
     }
 
     /**
