@@ -1308,7 +1308,7 @@
             "version": 4,
             "source": "broker",
             "description": "ApiVersions request **v4**, the version this client sends since Kafka 3.9: the flexible v3 frame of KIP-511 with a **4** in its header and not one field more. \"Version 4 fixes KAFKA-17011, which blocked SupportedFeatures.MinVersion in the response from being 0\" is the whole comment of the bump in `ApiVersionsRequest.json` @ 3.9.2, so this frame and `apiversions.request.v3.kraft-node` differ in exactly one byte.",
-            "hex": "0000003a0012000400000f3c00126b61666b612d636c69656e742d74312d333900186c6973616368656e6b6f2d6b61666b612d636c69656e7404322e3800",
+            "hex": "0000003a0012000400000f3c00126b61666b612d636c69656e742d74312d333900186c6973616368656e6b6f2d6b61666b612d636c69656e7404332e3900",
             "fields": {
                 "messageSize": 58,
                 "apiKey": 18,
@@ -1317,7 +1317,7 @@
                 "clientId": "kafka-client-t1-39",
                 "headerTaggedFields": [],
                 "clientSoftwareName": "lisachenko-kafka-client",
-                "clientSoftwareVersion": "2.8"
+                "clientSoftwareVersion": "3.9"
             }
         },
         {
@@ -1669,7 +1669,7 @@
             "version": 3,
             "source": "broker",
             "description": "The same request one api version lower, sent to the same node on the same listener seconds later: the api version of the header is the only byte that differs from `apiversions.request.v4`.",
-            "hex": "0000003a0012000300000f3d00126b61666b612d636c69656e742d74312d333900186c6973616368656e6b6f2d6b61666b612d636c69656e7404322e3800",
+            "hex": "0000003a0012000300000f3d00126b61666b612d636c69656e742d74312d333900186c6973616368656e6b6f2d6b61666b612d636c69656e7404332e3900",
             "fields": {
                 "messageSize": 58,
                 "apiKey": 18,
@@ -1678,7 +1678,7 @@
                 "clientId": "kafka-client-t1-39",
                 "headerTaggedFields": [],
                 "clientSoftwareName": "lisachenko-kafka-client",
-                "clientSoftwareVersion": "2.8"
+                "clientSoftwareVersion": "3.9"
             }
         },
         {

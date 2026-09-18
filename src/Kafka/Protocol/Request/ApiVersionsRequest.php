@@ -104,9 +104,9 @@ class ApiVersionsRequest extends AbstractRequest
      * Version of the client software, which for this package is the Kafka protocol line it speaks
      *
      * Every line of this repository follows the Apache Kafka release it implements instead of a semantic version of
-     * its own - `main` speaks Kafka 2.8 - so that is what a broker is told.
+     * its own - `main` speaks Kafka 3.9 - so that is what a broker is told.
      */
-    public const string CLIENT_SOFTWARE_VERSION = '2.8';
+    public const string CLIENT_SOFTWARE_VERSION = '3.9';
 
     /**
      * Name of the client software, sent from version 3 on (COMPACT_STRING, KIP-511)

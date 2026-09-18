@@ -68,7 +68,7 @@ final class ApiVersionsTest extends TestCase
      *   ClientId              => 00 04 "test"           (int16 length even here: "flexibleVersions": "none")
      *   TAG_BUFFER            => 00                     (the tagged fields of the request header v2)
      *   ClientSoftwareName    => 18 "lisachenko-kafka-client"   (compact: 23 + 1)
-     *   ClientSoftwareVersion => 04 "2.8"                       (compact: 3 + 1)
+     *   ClientSoftwareVersion => 04 "3.9"                       (compact: 3 + 1)
      *   TAG_BUFFER            => 00                     (the tagged fields of the body)
      */
     private const string REQUEST_HEX = '0000002c'
@@ -78,7 +78,7 @@ final class ApiVersionsTest extends TestCase
         . '0004' . '74657374'
         . '00'
         . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74'
-        . '04' . '322e38'
+        . '04' . '332e39'
         . '00';
 
     /**
@@ -298,7 +298,7 @@ final class ApiVersionsTest extends TestCase
 
         self::assertSame(
             '00000028' . '0012' . '0004' . '00000000' . '0000' . '00'
-            . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74' . '04' . '322e38' . '00',
+            . '18' . '6c6973616368656e6b6f2d6b61666b612d636c69656e74' . '04' . '332e39' . '00',
             bin2hex((string) $request)
         );
     }
