@@ -365,6 +365,21 @@ coordinator that finds no common protocol refuses the join with the error 23. A
 each rebalance takes away and hands over, which is where a consumer with `enable.auto.commit`
 off commits what it has consumed.
 
+`group.protocol = consumer` switches the consumer to the **new consumer protocol of KIP-848**
+(Kafka 3.5). The four apis of the classic membership protocol are then replaced by the single
+**ConsumerGroupHeartbeat** (key 68), and three things change for an application: the
+**coordinator** computes the assignment, so `partition.assignment.strategy` has nothing to say
+and `group.remote.assignor` names a *server-side* assignor instead; the heartbeat interval is
+dictated by the broker (`group.consumer.heartbeat.interval.ms`) rather than by
+`heartbeat.interval.ms`; and a rebalance is **incremental** — a member gives up only the
+partitions it really loses, so `onPartitionsRevoked()` sees exactly those and
+`onPartitionsAssigned()` only the ones that were added, where the classic protocol hands the
+whole assignment back and forth on every rebalance. The member epoch takes the place of the
+generation and travels in the `OffsetCommit` v9 and `OffsetFetch` v9 of that member. A group is
+of one protocol or the other: a heartbeat for a classic group is refused with the **69**, and
+`AdminClient::describeConsumerGroups()` (key 69) describes the new groups where
+`describeGroups()` (key 15) describes the classic ones.
+
 [examples/consumer-group.php](examples/consumer-group.php) is a runnable version of this —
 start it twice and watch the two members split the partitions — and
 [examples/consumer.php](examples/consumer.php) is the same thing with `assign()`.
@@ -441,7 +456,8 @@ foreach ($group->members as $memberId => $member) {
 | `listGroupOffsets()`                         | OffsetFetch v9          | Without a partition list it asks for **every** topic the group committed (`null` topics of v2); one group travels as a one-element batch of v8 (Kafka 3.0), with the `member_id` / `member_epoch` of KIP-848 at their defaults (v9, Kafka 3.7) |
 | `listConsumerGroupOffsets()`                 | OffsetFetch v9          | The committed offsets of **several** groups in one request per coordinator (Kafka 3.0), each group with its own topic array, its own member of KIP-848 (v9, Kafka 3.7) and its own error code; an empty batch is refused client-side, because a 3.9.2 node answers it with nothing at all |
 | `listGroups()` / `listAllGroups()`           | ListGroups v5           | A broker only knows its own groups; `listAllGroups()` merges them all; an optional **state** filter (KIP-518) and **type** filter (KIP-848, Kafka 3.8) bound the answer |
-| `describeGroup()` / `describeGroups()`       | DescribeGroups v5       | Sent to the coordinator of the group; an unknown group answers `Dead`, one whose last member left `Empty` |
+| `describeGroup()` / `describeGroups()`       | DescribeGroups v5       | Sent to the coordinator of the group; an unknown group answers `Dead`, one whose last member left `Empty` — and so does a group of the **new** consumer protocol, which this api cannot describe |
+| `describeConsumerGroup()` / `describeConsumerGroups()` | ConsumerGroupDescribe v0 | The KIP-848 half of the question (Kafka 3.7): the group epoch, the assignment epoch, the server-side assignor and per member its member epoch, its subscription as plain topic names and **both** assignments, as an `Admin\ConsumerGroupDescription`; a **classic** group is the **69** `GroupIdNotFound` here |
 | `electLeaders()`                             | ElectLeaders v2         | Asks the **controller** to move partitions back to their preferred replica (KIP-183, Kafka 2.2); per-partition results, 84 for a partition that already has the right leader; `ElectionType::UNCLEAN` needs the v1 of KIP-460 |
 | `deleteRecords()`                            | DeleteRecords v2        | Moves the **low watermark** of a partition forward (KIP-107); sent to the partition leader, answers a `DeletedRecords` per partition |
 | `describeConfigs()`                          | DescribeConfigs v4      | The configuration of a topic or a broker (KIP-133); every entry says which `ConfigSource` its value comes from and, with `$includeSynonyms`, every place the broker looked (KIP-226). A broker resource is only answered by that broker, and a sensitive value comes back `null` |
@@ -636,7 +652,9 @@ marked **(0.10)**.
 | Option | Default | Meaning |
 |---|---|---|
 | `group.id` | `''` | group to join with `subscribe()`, and the group a commit belongs to |
-| `partition.assignment.strategy` | `range` | `range`, `roundrobin` or a `PartitionAssignorInterface` class |
+| `group.protocol` **(3.5)** | `classic` | `classic` (JoinGroup, SyncGroup, Heartbeat, LeaveGroup) or `consumer`, the **KIP-848** protocol: one ConsumerGroupHeartbeat, an assignment computed by the coordinator and an **incremental** rebalance |
+| `group.remote.assignor` **(3.5)** | `null` | the server-side assignor of a `group.protocol=consumer` member — `uniform` or `range` on a 3.9.2 node — `null` lets the coordinator pick; a name the broker does not have is the **112** |
+| `partition.assignment.strategy` | `range` | `range`, `roundrobin` or a `PartitionAssignorInterface` class; not used at all by `group.protocol=consumer`, where the **broker** assigns |
 | `session.timeout.ms` | **10000** | how long the coordinator waits for a heartbeat; the Java 0.10.1 default |
 | `max.poll.interval.ms` **(0.10)** | 300000 | the `rebalance_timeout` of JoinGroup v1: how long the group waits for this member to rejoin a rebalance |
 | `heartbeat.interval.ms` | 3000 | how often `poll()` sends a heartbeat |
@@ -771,8 +789,9 @@ version and one above it.
 
 The "main" column lists the versions this client has a class for; the one in **bold** is the version
 it sends, and a version the node serves that the current milestone has not reached yet is named as
-**not yet implemented on this line** — with the Kafka 3.9 milestone that is the keys **68** and **69**
-alone, the two apis of the KIP-848 consumer protocol. The `2.x` column is where the line started.
+**not yet implemented on this line** — with the KIP-848 consumer wave, the last one of the line, there is
+none left: every key the node serves on a client listener has a class here. The `2.x` column is where the
+line started.
 
 | Api key | API | Versions in 3.9.2 | Client-facing | `2.x` | `main` (3.x, towards Kafka 3.9.2) |
 |---|---|---|---|---|---|
@@ -836,8 +855,8 @@ alone, the two apis of the KIP-848 consumer protocol. The `2.x` column is where 
 | 64 | UnregisterBroker | v0 | controller | – | no — a controller api, probed only (Kafka 2.8) |
 | 65 | DescribeTransactions | v0 | yes | – | **v0** (`AdminClient::describeTransactions()`, Kafka 3.0) |
 | 66 | ListTransactions | v0, v1 | yes | – | **v0, v1** (`AdminClient::listTransactions()`, Kafka 3.0; the duration filter of KIP-994, Kafka 3.8; `ListTransactionsRequestV0` keeps the version below) |
-| 68 | ConsumerGroupHeartbeat | v0 | yes | – | **v0 not yet implemented on this line** (Kafka 3.5, the KIP-848 consumer protocol) |
-| 69 | ConsumerGroupDescribe | v0 | yes | – | **v0 not yet implemented on this line** (Kafka 3.7, the KIP-848 consumer protocol) |
+| 68 | ConsumerGroupHeartbeat | v0 | yes | – | **v0** (Kafka 3.5, KIP-848) — the whole membership protocol of the new consumer in one api, in place of JoinGroup, SyncGroup, Heartbeat and LeaveGroup: a consumer with `group.protocol=consumer` sends it from `Consumer\Internals\ConsumerGroupHeartbeatCoordinator` through `Client::joinConsumerGroup()`, `::consumerGroupHeartbeat()` and `::leaveConsumerGroup()`, with `ConsumerGroupHeartbeatRequest::forJoin()`/`forHeartbeat()`/`forLeave()` for the delta encoding of the frame |
+| 69 | ConsumerGroupDescribe | v0 | yes | – | **v0** (Kafka 3.7, KIP-848) — the DescribeGroups of the new protocol (`AdminClient::describeConsumerGroups()`, `::describeConsumerGroup()`): the group and assignment epochs, the server-side assignor and both assignments of every member. Key 15 answers a group of this type the state `Dead`, so an admin client routes by the `group_type` of a ListGroups v5 |
 | 71 | GetTelemetrySubscriptions | v0 | yes (hidden without a telemetry plugin) | – | **v0, wire only** (Kafka 3.7, KIP-714) — classes and vectors, no client method |
 | 72 | PushTelemetry | v0 | yes (hidden without a telemetry plugin) | – | **v0, wire only** (Kafka 3.7, KIP-714) |
 | 74 | ListClientMetricsResources | v0 | yes | – | **v0, wire only** (Kafka 3.7, KIP-714) — classes and vectors, no client method |
@@ -959,6 +978,7 @@ current milestone):
 | **KIP-966: the eligible leader replicas over the wire** (DescribeTopicPartitions, key 75; `describeTopicPartitions()`, `Admin\TopicDescription`, `Admin\TopicPartitionInfo`, `Protocol\NullableStruct`) and **KIP-994: the duration filter of `listTransactions()`** (ListTransactions v1) | 3.8 | – | – | – | – | – | – | **yes** — the api pages, and the node answers the two ELR arrays empty |
 | **KIP-890 (part 1): the abortable transaction error** (Produce v11; the **120** `TransactionAbortable` a transactional batch of an unverified partition is refused with, `TransactionAbortableException`, which makes the transaction abortable instead of fatal) | 3.8 | – | – | – | – | – | – | **yes** — the wire and the producer state machine; the transaction protocol v2 of part 2 is not in 3.9 (the node finalizes no `transaction.version`) |
 | **KIP-848 (the group types of a listing)** (ListGroups v5, `group_type` + `types_filter`) and **KIP-890 (the code 120 reaches FindCoordinator)** (v5, no field) | 3.8 | – | – | – | – | – | – | **yes** (`listGroups($node, $states, $types)`, `ListGroupResponseProtocol::TYPE_*`); the 120 is produced at AddPartitionsToTxn and Produce, never at FindCoordinator |
+| **KIP-848, the consumer protocol itself** (ConsumerGroupHeartbeat 68, ConsumerGroupDescribe 69, `group.protocol=consumer`, `group.remote.assignor`) | 3.5 / 3.7 | – | – | – | – | – | – | **yes** — one api in place of four, the assignment computed by the coordinator, the heartbeat interval dictated by the broker, an **incremental** rebalance, the member epoch on OffsetCommit v9 / OffsetFetch v9, the static leave of the epoch **-2**, and the codes 110, 111, 112 and the 69 of a classic group observed on the node |
 | **KIP-890, part 2 (the wire half): the abortable transaction error** (InitProducerId v5, AddPartitionsToTxn v5, AddOffsetsToTxn v4, EndTxn v4, TxnOffsetCommit v4, and the error code 120 `TransactionAbortableException`) | 3.8 | – | – | – | – | – | – | **yes** — the four client-facing versions are sent; AddPartitionsToTxn v5 stays a broker version. The node finalizes no `transaction.version`, so only the partition verification of part 1 produces the 120: a TxnOffsetCommit v4 whose offsets partition the transaction does not hold, where the v3 is answered 48 |
 | **KAFKA-17011: a supported feature with the minimum version 0** (ApiVersions v4, no field; `kraft.version` 0…1 appears in the answer of a v4 and in no answer below it) and **KIP-853: the reconfigurable quorum over the wire** (DescribeQuorum v2, the `Nodes` array, the `ReplicaDirectoryId` of a replica state and the two `ErrorMessage` fields; `Admin\QuorumNode`, `Admin\RaftVoterEndpoint`, `ReplicaState::$replicaDirectoryId`, and the `uint16` the engine gained for a listener port) | 3.9 | – | – | – | – | – | – | **yes** — the wire of both; the node runs a **static** voter set (`kraft.version` finalized at 0), so every directory id it reports is the zero uuid and the reconfiguration apis 80 and 81 refuse every frame with the 35 |
 | **KIP-853: the directory id of a follower fetch** (Fetch v17, the tagged `replica_directory_id` of every partition entry; `Data\FetchRequestTopicPartition::$replicaDirectoryId`, `FetchRequest::getReplicaDirectoryId()`) | 3.9 | – | – | – | – | – | – | **yes** — the wire; a consumer writes nothing and its frame does not change, and a fetch of an ordinary topic never reads the field: only `KafkaRaftClient` does, for `__cluster_metadata` on the controller listener |

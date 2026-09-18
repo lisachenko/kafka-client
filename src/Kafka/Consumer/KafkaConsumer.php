@@ -1564,15 +1564,14 @@ class KafkaConsumer
             return false;
         }
 
-        throw new InvalidConfigurationException([
-            'error' => sprintf(
-                '%s must be either "%s" or "%s", "%s" given',
-                ConsumerConfig::GROUP_PROTOCOL,
-                ConsumerConfig::GROUP_PROTOCOL_CLASSIC,
-                ConsumerConfig::GROUP_PROTOCOL_CONSUMER,
-                is_scalar($protocol) ? (string) $protocol : get_debug_type($protocol)
-            ),
-        ]);
+        throw new InvalidConfigurationException(sprintf(
+            '%s must be either "%s" (the membership protocol of every line below this one) or "%s" (the new '
+            . 'consumer protocol of KIP-848, Kafka 3.5), "%s" given.',
+            ConsumerConfig::GROUP_PROTOCOL,
+            ConsumerConfig::GROUP_PROTOCOL_CLASSIC,
+            ConsumerConfig::GROUP_PROTOCOL_CONSUMER,
+            is_scalar($protocol) ? (string) $protocol : get_debug_type($protocol)
+        ));
     }
 
     /**

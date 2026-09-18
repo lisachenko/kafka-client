@@ -25,6 +25,7 @@ use Protocol\Kafka\Common\Errors\StaleMemberEpochException;
 use Protocol\Kafka\Common\Errors\UnknownMemberIdException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\Stream;
@@ -40,9 +41,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV8;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
-use Protocol\Kafka\Tests\Fixture\ConsumerGroupHeartbeatProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
-use RuntimeException;
 
 /**
  * What Kafka 3.7 added to the group apis, against the 3.9.2 KRaft node: the OffsetFetch **v9** of KIP-848.
@@ -58,9 +57,9 @@ use RuntimeException;
  * one combination the node answers with the -1 of an `UnknownServerError`, and the group that does not exist,
  * which is answered the 0 of every version below and never the 69 that OffsetCommit v9 has.
  *
- * The KIP-848 group is created with a hand-built **ConsumerGroupHeartbeat** (key 68,
- * {@see ConsumerGroupHeartbeatProbe}, shared with {@see MemberEpochCommitApiTest} of the 3.6 wave): the api itself
- * is the last wave of this line and has no classes yet.
+ * The KIP-848 group is created with a **ConsumerGroupHeartbeat** (key 68, `Client::joinConsumerGroup()` of the
+ * KIP-848 wave, with the member id {@see ConsumerGroupHeartbeatCoordinator::newMemberId()} generates), exactly as
+ * {@see MemberEpochCommitApiTest} of the 3.6 wave creates one.
  *
  * Every group and topic of this class carries the `t3-37-` prefix of the Kafka 3.7 wave and is removed again in
  * {@see self::tearDownAfterClass()} - every KIP-848 member with the leave heartbeat of the epoch -1 first, because
@@ -614,12 +613,19 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
      */
     private function modernGroupWithACommittedOffset(string $groupId, string $topic): array
     {
-        $memberId = ConsumerGroupHeartbeatProbe::newMemberId();
-        $epoch    = new ConsumerGroupHeartbeatProbe(self::firstBootstrapServer())
-            ->join($groupId, $memberId, [$topic], self::REBALANCE_TIMEOUT_MS, 3694);
+        $memberId = ConsumerGroupHeartbeatCoordinator::newMemberId();
+        $answer   = new Client($this->cluster(), $this->configuration())->joinConsumerGroup(
+            $this->coordinator($groupId),
+            $groupId,
+            $memberId,
+            [$topic],
+            self::REBALANCE_TIMEOUT_MS
+        );
+        $epoch    = $answer->memberEpoch;
 
         self::$modernMembers[] = [$groupId, $memberId];
 
+        self::assertSame(KafkaException::NO_ERROR, $answer->errorCode, 'The node refused the heartbeat');
         self::assertGreaterThan(0, $epoch, 'a member that joined holds an epoch above zero');
 
         $this->commit($this->coordinatorStream($groupId), $groupId, $epoch, $memberId, $topic, 3695);
@@ -745,8 +751,15 @@ final class MemberEpochFetchApiTest extends IntegrationTestCase
     private static function leaveModernQuietly(string $groupId, string $memberId): void
     {
         try {
-            new ConsumerGroupHeartbeatProbe(self::firstBootstrapServer())->leave($groupId, $memberId, 3699);
-        } catch (RuntimeException) {
+            $configuration = self::cleanupConfiguration();
+            $cluster       = Cluster::bootstrap($configuration);
+
+            new Client($cluster, $configuration)->leaveConsumerGroup(
+                new CoordinatorLookup($cluster, $configuration)->findCoordinator($groupId),
+                $groupId,
+                $memberId
+            );
+        } catch (KafkaException) {
             // A member the session timeout has already reaped must not fail the suite
         }
     }

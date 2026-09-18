@@ -973,6 +973,52 @@ final class ResponseFrame
     }
 
     /**
+     * Builds a ConsumerGroupHeartbeat response (api key 68, v0 - the new consumer protocol of KIP-848)
+     *
+     * <pre>
+     *   ConsumerGroupHeartbeatResponse => ThrottleTimeMs ErrorCode ErrorMessage MemberId MemberEpoch
+     *                                     HeartbeatIntervalMs Assignment
+     * </pre>
+     *
+     * `$assignment` is the field that carries the whole reconciliation: **null** is the `ff` of "nothing changed
+     * since the last answer" and an array - even an empty one - is the `01` of a structure that follows, i.e. the
+     * partitions this member may own now. The map is `raw topic id => list of partitions`, exactly as
+     * {@see \Protocol\Kafka\Protocol\Data\ConsumerGroupHeartbeatAssignment::partitionsByTopicId()} answers it.
+     *
+     * @param array<string, list<int>>|null $assignment Partitions of the member, null for "unchanged"
+     */
+    public static function consumerGroupHeartbeat(
+        int $correlationId,
+        int $errorCode = 0,
+        ?string $memberId = null,
+        int $memberEpoch = 1,
+        int $heartbeatIntervalMs = 5000,
+        ?array $assignment = null,
+        ?string $errorMessage = null
+    ): string {
+        $body = pack('N', 0)
+            . pack('n', $errorCode)
+            . self::compactString($errorMessage)
+            . self::compactString($memberId)
+            . pack('N', $memberEpoch)
+            . pack('N', $heartbeatIntervalMs);
+
+        if ($assignment === null) {
+            $body .= pack('c', -1);
+        } else {
+            $body .= pack('c', 1) . self::compactCount(count($assignment));
+            foreach ($assignment as $topicId => $partitions) {
+                $body .= (string) $topicId
+                    . self::compactInt32Array($partitions)
+                    . self::tagBuffer();
+            }
+            $body .= self::tagBuffer();
+        }
+
+        return self::flexible($correlationId, $body);
+    }
+
+    /**
      * Encodes a non-nullable string: int16 length prefix followed by the content
      */
     private static function string(string $value): string
