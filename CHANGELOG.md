@@ -18,7 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.7** (the foundation, the re-baseline wave T0 and the 3.0 to 3.7 waves are in; Kafka 3.4 added nothing a client sends).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.8** (the foundation, the re-baseline wave T0 and the 3.0 to 3.8 waves are in; Kafka 3.4 added nothing a client sends).
 
 ### Added
 
@@ -291,6 +291,91 @@ ACL apis, measured against a real authorizer for the first time.
 - The error codes **107** `IneligibleReplica` and **108** `NewLeaderElected` of Kafka 3.3 belong to AlterPartition
   (56), a broker-to-controller api a client listener does not serve: declared at the foundation, never observed.
   73 wire vectors in all (26 of T1, 47 of T4): 836 in 54 files.
+
+### Kafka 3.8 — Added
+
+The eighth milestone of the line (PRs #204, #205, #206, #207): the first api of this protocol that pages, the
+abortable transaction error of KIP-890 on every transaction api and on Produce, the group types of KIP-848 in a
+listing, and the duration filter of ListTransactions.
+
+- **DescribeTopicPartitions (key 75, v0, KIP-966)** — the api `kafka-topics.sh --describe` speaks since Kafka 3.8:
+  the topics of a cluster with the **eligible leader replicas** next to every partition, and the first api of this
+  protocol that **pages**. `AdminClient::describeTopicPartitions(array $topics = [], int $responsePartitionLimit =
+  2000, ?DescribeTopicPartitionsCursor $cursor = null)` walks the `next_cursor` until the listing is complete and
+  answers `Admin\TopicDescription` objects (with `Admin\TopicPartitionInfo`, the ELR fields included) or a
+  `KafkaException` per topic, indexed by the topic name — the node sorts its answer and loses the order of the
+  request. The Data classes `DescribeTopicPartitionsRequestTopic`, `…ResponseTopic`, `…ResponsePartition` and
+  `…Cursor` carry the Java names @ 3.9.2, and the cursor is the first **nullable structure** of this protocol,
+  which is neither a nullable array nor a nullable string: `MessageDataGenerator` writes an int8 in front of the
+  structure, `-1` for null and `1` for present, and `Protocol\NullableStruct` is that notation in the schema engine
+  (size, read and write in `BinarySchema`, a branch in the vector flattener). Measured on the node: the two ELR
+  arrays come back **empty, never null** (`Replicas.toList(partition.elr)`); `next_cursor` names the **first
+  partition that is missing**, the partition 0 of the next topic when a whole topic did not fit, and the
+  `response_partition_limit` is clamped into `[1, max.request.partition.size.limit]` (the 2000 of the field's own
+  default); an empty topic array is every topic of the cluster; `topic_authorized_operations` is reported
+  **unasked** (3576 for `ANONYMOUS`); a refused cursor is a per-topic **42** for every topic of the request, a
+  cursor past the end the code 0 with no partition, an illegal name the **17**, and the **empty** topic name a
+  **-1** with a `NullPointerException` in the node's log; the authorizer answers a named topic `acltest` may not
+  describe with the **29** behind the answered ones and the empty topic array with an empty list. 28 wire vectors
+  in the new file `describe-topic-partitions.json`.
+- **ListTransactions v1 (KIP-994)** — "Version 1: adds DurationFilter to list transactions older than specified
+  duration": `AdminClient::listTransactions(..., int $durationFilterMs = -1)` sends v1;
+  `ListTransactionsRequestV0`/`ResponseV0` keep the version below. Measured on the node: the reference time is
+  `txnStartTimestamp`, the start of the transaction and not its last update, so a `CompleteCommit` entry is still
+  selected by the age of the transaction it committed — and an id that has only ever run `InitProducerId` carries
+  the start time **-1** and passes **every** filter. 8 wire vectors.
+- **Produce v11 — the abortable transaction error of KIP-890.** Neither half of the api gains a field:
+  `ProduceRequest.json` and `ProduceResponse.json` @ 3.8.1 carry the one comment "Version 11 adds support for
+  new error code TRANSACTION_ABORTABLE (KIP-890)", so a version 11 frame is a version 10 frame with another
+  number in its header. What the version states is that the client understands the **120**
+  `TransactionAbortable` in a partition of the answer — "abort this transaction and carry on with the same
+  transactional id" — where every version below it is answered the fatal-looking **48** `InvalidTxnState`.
+  `KafkaApis.handleProduceRequest` @ 3.9.2 decides it on the api version alone and `AddPartitionsToTxnManager`
+  maps the 120 back to the 48 for everybody below, which the two frames of `produce.*.unverified-partition`
+  show side by side. `Client::produce()` sends v11; `ProduceRequestV10`/`ProduceResponseV10` keep the leader
+  discovery of KIP-951 below it. The code needs no branch of its own in the producer:
+  `TransactionManager::batchFailed()` takes it down the abortable path, `commitTransaction()` refuses and
+  `abortTransaction()` leaves the producer usable with the same transactional id. The node finalizes no
+  `transaction.version` feature at all (only `metadata.version` 21 and `kraft.version` 0), so the 120 of this
+  line is the one the partition verification of KIP-890 part 1 produces, not the transaction protocol v2 of
+  part 2, which is not in 3.9. 6 wire vectors.
+- **ListGroups v5 (KIP-848)** — the `types_filter` of the request and the `group_type` of every entry of the
+  answer. `AdminClient::listGroups()`, `listAllGroups()` and `listConsumerGroups()` take the types as a second
+  optional argument next to the states (the `withTypes()` of the Java `ListGroupsOptions`), and
+  `Protocol\Data\ListGroupResponseProtocol` carries the type with the constants `TYPE_CLASSIC`, `TYPE_CONSUMER`,
+  `TYPE_SHARE` and `TYPE_UNKNOWN`. The field is what tells a classic group from a group of the new consumer
+  protocol: the `protocol_type` of both is `consumer`. Measured on the node: the type strings are `classic` and
+  `consumer`; the types filter is **parsed** and not compared (`CONSUMER` matches), a name the enum does not
+  define is an **empty** answer and never an error, the two filters are combined with *and*, and the type
+  outlives the group's members (an `Empty` KIP-848 group is still `consumer`). `ListGroupsRequestV4`,
+  `ListGroupsResponseV4` and `ListGroupResponseProtocolV4` keep the version of KIP-518. 16 wire vectors.
+- **FindCoordinator v5 (KIP-890)** — the version that promises the error code 120 `TransactionAbortable` and adds
+  no field. Every coordinator lookup of `Client` and `AdminClient` sends it; `GroupCoordinatorRequestV4`/
+  `GroupCoordinatorResponseV4` keep the version below it. No FindCoordinator of a 3.9.2 node ever answers the
+  120 (`KafkaApis.handleFindCoordinatorRequest` @ 3.9.2 has no path that writes it). 6 wire vectors.
+- **The transaction protocol of KIP-890 part 2, the wire half: InitProducerId v5, AddOffsetsToTxn v4, EndTxn v4
+  and TxnOffsetCommit v4** are the versions the client now sends (`Client::initProducerId()`,
+  `addOffsetsToTxn()`, `endTxn()` and `txnOffsetCommit()`, signatures unchanged, so `TransactionManager` and
+  `KafkaProducer` speak them without a change of their own), and **AddPartitionsToTxn v5** gets its classes and
+  vectors as a broker version (`Client::addPartitionsToTxn()` keeps v3; the node authorizes every version from 4
+  on as `CLUSTER_ACTION` and answers a client the same top-level 31 at v5 as at v4). None of the five declares a
+  field — every message specification @ 3.8.1 carries the one sentence "adds support for new error code
+  TRANSACTION_ABORTABLE (KIP-890)" — so every new request is the frame of the version below it with another
+  number in its header. Keep-behinds `InitProducerIdRequestV4`/`ResponseV4`, `AddPartitionsToTxnRequestV4`/
+  `ResponseV4`, `AddOffsetsToTxnRequestV3`/`ResponseV3`, `EndTxnRequestV3`/`ResponseV3` and
+  `TxnOffsetCommitRequestV3`/`ResponseV3`. Measured on the node: `transaction.version` is not even a *supported*
+  feature of a 3.9.2 node (`TransactionVersion.latestProduction` at the metadata version 3.9-IV0 is TV_0; TV_1
+  and TV_2 need IBP_4_0_IV0), so the behaviour half of KIP-890 part 2 — the implicit AddPartitionsToTxn of a
+  Produce, the epoch bump on EndTxn — is out of reach on this line; the 120 of this node is the partition
+  verification of part 1, gated on the api version, and exactly one of the four client bumps crosses that gate:
+  a **TxnOffsetCommit v4** whose `__consumer_offsets` partition the open transaction does not hold is answered
+  the **120** where the same commit at v3 is answered the **48** (`GroupCoordinator.handleTxnCommitOffsets` @
+  3.9.2, `apiVersion >= 4`) — an abortable error instead of a fatal one for a producer that forgot its
+  `addOffsetsToTxn()`. InitProducerId, AddOffsetsToTxn and EndTxn verify no partition and answer the 90, 49 and
+  48 they always answered; AddPartitionsToTxn v5 answers the 120 of a `verify_only` as its v4 does; and an
+  InitProducerId that carries the *last* epoch of a transactional id is read as the retry of a bump and answered
+  the current pair with the code 0. 24 wire vectors.
+- 88 wire vectors in all (36 of T1, 6 of T2, 22 of T3, 24 of T4): 1043 in 58 files.
 
 ### Kafka 3.7 — Added
 
