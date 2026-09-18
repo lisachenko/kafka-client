@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV8;
 use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Produce response object, version 10
+ * Produce response object, version 11
  *
  * <pre>
  *   ProduceResponse (Version: 8) => [TopicName [Partition ErrorCode Offset LogAppendTime LogStartOffset
@@ -94,16 +94,26 @@ use Protocol\Kafka\Protocol\TaggedField;
  * another number in its header, see {@see ProduceRequest}; {@see ProduceResponseV9} keeps the answer that has
  * neither, and {@see \Protocol\Kafka\Protocol\Data\ProduceResponsePartitionV8} its partition entry.
  *
+ * **Version 11 (Kafka 3.8, KIP-890) adds no field either** - `ProduceResponse.json` @ 3.8.1 comments "Version 11
+ * adds support for new error code TRANSACTION_ABORTABLE (KIP-890)" and declares nothing - so this class decodes
+ * the version 10 frame, and {@see ProduceResponseV10} the very same bytes for the version below. What changes is
+ * the **error code** a partition of a transactional produce may carry: **120** `TransactionAbortable`
+ * ({@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}), which says that the transaction can not
+ * be committed any more but the producer is intact, where version 10 is answered the **48** `InvalidTxnState`
+ * with the message "Partition was not added to the transaction". A broker picks between the two on the api
+ * version alone, see {@see ProduceRequest}.
+ *
  * A request with `RequiredAcks = 0` is never answered at all, see {@see ProduceRequest::expectsResponse()}.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v10)" and "The leader discovery of KIP-951 (v10)"
+ * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)", "The leader discovery of KIP-951 (v10)"
+ *      and "The abortable transaction error of KIP-890 (v11)"
  */
 class ProduceResponse extends AbstractResponse
 {
     /**
      * Version of the Produce API that this class decodes the answer of
      */
-    public const int VERSION = 10;
+    public const int VERSION = 11;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

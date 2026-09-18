@@ -15,6 +15,8 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\TransactionAbortableException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ProduceRequestPartition;
@@ -35,6 +37,7 @@ use Protocol\Kafka\Protocol\Data\ProduceResponseTopicV8;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV0;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV1;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV2;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV3;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV4;
@@ -46,6 +49,7 @@ use Protocol\Kafka\Protocol\Request\ProduceRequestV9;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV0;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV1;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV2;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV3;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV4;
@@ -82,7 +86,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
  * The message sets are built by {@see SpecMessageSet} directly from the specification and the record batch is a
  * captured one, so that the request classes are never checked against bytes they produced themselves.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v10)", "MessageSet and Message" and
+ * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)", "MessageSet and Message" and
  *      "RecordBatch (message format v2)"
  */
 #[CoversClass(ProduceRequest::class)]
@@ -111,6 +115,8 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 #[CoversClass(ProduceResponsePartitionV8::class)]
 #[CoversClass(ProduceResponseCurrentLeader::class)]
 #[CoversClass(ProduceResponseNodeEndpoint::class)]
+#[CoversClass(ProduceRequestV10::class)]
+#[CoversClass(ProduceResponseV10::class)]
 final class ProduceApiTest extends TestCase
 {
     /**
@@ -366,7 +372,8 @@ final class ProduceApiTest extends TestCase
         self::assertSame(self::REQUEST_HEADER_V7_HEX . $body, $frames[7]);
         self::assertSame(self::REQUEST_HEADER_V8_HEX . $body, $frames[8]);
         self::assertSame(ProduceRequestV3::getScheme(), ProduceRequestV8::getScheme());
-        self::assertSame(10, ProduceRequest::VERSION, 'the client sends version 10, the one of KIP-951');
+        self::assertSame(11, ProduceRequest::VERSION, 'the client sends version 11, the one of KIP-890');
+        self::assertSame(10, ProduceRequestV10::VERSION, 'version 10 is the leader discovery of KIP-951');
         self::assertSame(9, ProduceRequestV9::VERSION, 'version 9 is the flexible one of KIP-482');
         self::assertSame(8, ProduceRequestV8::VERSION, 'version 8 is the one of the record errors');
         self::assertSame(7, ProduceRequestV7::VERSION, 'version 7 is the one a zstd batch needs');
@@ -391,7 +398,8 @@ final class ProduceApiTest extends TestCase
             ProduceResponseV8::getScheme()['topics'],
             'and the one of version 8 carries the record errors of KIP-467'
         );
-        self::assertSame(10, ProduceResponse::VERSION);
+        self::assertSame(11, ProduceResponse::VERSION);
+        self::assertSame(10, ProduceResponseV10::VERSION);
         self::assertSame(9, ProduceResponseV9::VERSION);
         self::assertSame(8, ProduceResponseV8::VERSION);
         self::assertSame(7, ProduceResponseV7::VERSION);
@@ -751,13 +759,41 @@ final class ProduceApiTest extends TestCase
         ];
 
         $nine = bin2hex((string) new ProduceRequestV9(...$arguments));
-        $ten  = bin2hex((string) new ProduceRequest(...$arguments));
+        $ten  = bin2hex((string) new ProduceRequestV10(...$arguments));
 
         self::assertSame(9, ProduceRequestV9::VERSION);
-        self::assertSame(10, ProduceRequest::VERSION);
-        self::assertSame(ProduceRequestV9::getScheme(), ProduceRequest::getScheme());
+        self::assertSame(10, ProduceRequestV10::VERSION);
+        self::assertSame(ProduceRequestV9::getScheme(), ProduceRequestV10::getScheme());
         self::assertSame($nine, substr_replace($ten, '0009', 12, 4), 'only the api version differs');
         self::assertSame('0000000a', substr($ten, 8, 8), 'the key 0 and the version 10 of the header');
+    }
+
+    public function testAVersionElevenRequestIsTheVersionTenFrameWithAnotherApiVersion(): void
+    {
+        // `ProduceRequest.json` @ 3.8.1 declares no field of version 11 either - "Version 11 adds support for new
+        // error code TRANSACTION_ABORTABLE (KIP-890)" - so the promise of the version lives entirely in the
+        // ANSWER, and the two requests differ in the two bytes of the api version
+        $arguments = [
+            ['orders' => [0 => hex2bin(self::RECORD_BATCH_HEX)]],
+            1,
+            1000,
+            'test',
+            5,
+            'orders-tx',
+        ];
+
+        $ten    = bin2hex((string) new ProduceRequestV10(...$arguments));
+        $eleven = bin2hex((string) new ProduceRequest(...$arguments));
+
+        self::assertSame(11, ProduceRequest::VERSION);
+        self::assertSame(ProduceRequestV10::getScheme(), ProduceRequest::getScheme());
+        self::assertSame($ten, substr_replace($eleven, '000a', 12, 4), 'only the api version differs');
+        self::assertSame('0000000b', substr($eleven, 8, 8), 'the key 0 and the version 11 of the header');
+        self::assertSame(
+            'orders-tx',
+            new ProduceRequest(...$arguments)->getTransactionalId(),
+            'and the transactional id still travels in the body, as it has since version 3'
+        );
     }
 
     public function testAVersionTenAnswerThatRefusedNothingCarriesNeitherTaggedFieldOfKipNineFiveOne(): void
@@ -820,7 +856,45 @@ final class ProduceApiTest extends TestCase
         self::assertArrayNotHasKey('nodeEndpoints', ProduceResponseV9::getScheme());
         self::assertArrayNotHasKey('currentLeader', ProduceResponsePartitionV8::getScheme());
         self::assertArrayHasKey('nodeEndpoints', ProduceResponse::getScheme());
+        self::assertArrayHasKey('nodeEndpoints', ProduceResponseV10::getScheme());
         self::assertArrayHasKey('currentLeader', ProduceResponsePartition::getScheme());
+    }
+
+    public function testAVersionElevenAnswerIsTheVersionTenAnswerWithTheAbortableTransactionCode(): void
+    {
+        // KIP-890 adds no field to the answer either: what it changes is the error code a transactional partition
+        // the coordinator has not verified is refused with - 120 TransactionAbortable above version 10, the 48
+        // InvalidTxnState with the message "Partition was not added to the transaction" through it
+        $partitionEntry = '00000001' . '0078' . 'ffffffffffffffff' . 'ffffffffffffffff' . 'ffffffffffffffff'
+            . '01' . '00' . '00';
+        $body = '00000384' . '00'
+            . '02' . '076f7264657273' . '02' . $partitionEntry . '00'
+            . '00000000'
+            . '00';
+        $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+
+        $answer    = ProduceResponse::unpack(new StringStream($frame));
+        $partition = $answer->topics['orders']->partitions[1];
+
+        self::assertSame(11, ProduceResponse::VERSION);
+        self::assertSame(10, ProduceResponseV10::VERSION);
+        self::assertSame(KafkaException::TRANSACTION_ABORTABLE, $partition->errorCode);
+        self::assertSame(-1, $partition->baseOffset, 'nothing was appended');
+        self::assertNull($partition->errorMessage, 'the broker words the 48 alone, never the 120');
+        self::assertSame([], $partition->recordErrors);
+        self::assertNull($partition->currentLeader, 'and the 120 is not a code of KIP-951 either');
+        self::assertSame([], $answer->nodeEndpoints);
+        self::assertSame($frame, (string) $answer, 'the answer has to survive a round trip');
+        self::assertSame(
+            bin2hex($frame),
+            bin2hex((string) ProduceResponseV10::unpack(new StringStream($frame))),
+            'and the version 10 class reads the very same bytes - only the broker would not have sent them'
+        );
+        self::assertInstanceOf(
+            TransactionAbortableException::class,
+            KafkaException::fromCode($partition->errorCode, []),
+            'the code the version promises to understand'
+        );
     }
 
     private function createRequest(int $requiredAcks): ProduceRequest
