@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * understand the **109** `OFFSET_MOVED_TO_TIERED_STORAGE` of KIP-405. Version 15 keeps it unchanged again
  * ("Version 15 is the same as version 14 (KIP-903)"), because everything that version added is in the request.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)", "The tiered-storage error of KIP-405 (v14)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)", "The tiered-storage error of KIP-405 (v14)"
  *      and "The replica state of KIP-903 (v15)"
  */
 final class FetchResponseV14 extends FetchResponse

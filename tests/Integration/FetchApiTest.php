@@ -31,6 +31,7 @@ use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV13;
+use Protocol\Kafka\Protocol\Request\FetchRequestV15;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
@@ -64,7 +65,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * ({@see FetchSessionApiTest}) - this one only checks that a version 7 request **without** a session is served
  * like a version 6 one, which is what {@see \Protocol\Kafka\Client::fetchPartitions()} sends.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)" and "Fetch sessions (v7, KIP-227)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV6::class)]
@@ -320,7 +321,8 @@ final class FetchApiTest extends IntegrationTestCase
         );
         self::assertSame(8, FetchRequestV8::VERSION, 'the version Kafka 2.0 added');
         self::assertSame(13, FetchRequestV13::VERSION, 'the version Kafka 3.1 added');
-        self::assertSame(15, FetchRequest::VERSION, 'and the client sends the version Kafka 3.5 added');
+        self::assertSame(15, FetchRequestV15::VERSION, 'the version Kafka 3.5 added');
+        self::assertSame(16, FetchRequest::VERSION, 'and the client sends the version Kafka 3.7 added');
     }
 
     public function testAVersionSevenRequestWithoutASessionIsServedLikeAVersionSixOne(): void

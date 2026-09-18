@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The topic entry never changed, only the partition entries it holds did, so this class only lowers the version
  * constant that {@see FetchResponseTopic::partitionClass()} follows.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v15)"
+ * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v16)"
  */
 final class FetchResponseTopicV0 extends FetchResponseTopic
 {

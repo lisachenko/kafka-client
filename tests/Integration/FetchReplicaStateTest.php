@@ -34,9 +34,11 @@ use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV13;
 use Protocol\Kafka\Protocol\Request\FetchRequestV14;
+use Protocol\Kafka\Protocol\Request\FetchRequestV15;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV13;
 use Protocol\Kafka\Protocol\Request\FetchResponseV14;
+use Protocol\Kafka\Protocol\Request\FetchResponseV15;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
@@ -60,14 +62,16 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
  * Every topic of this class is named `t2-35-…`, so that it can run next to the other suites on the shared node.
  *
  * @see docs/protocol/3.9.md, sections "The tiered-storage error of KIP-405 (v14)", "The replica state of KIP-903
- *      (v15)" and "Fetch API (key 1, v0 to v15)"
+ *      (v15)" and "Fetch API (key 1, v0 to v16)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
 #[CoversClass(FetchRequestV13::class)]
 #[CoversClass(FetchResponseV13::class)]
 #[CoversClass(FetchRequestV14::class)]
+#[CoversClass(FetchRequestV15::class)]
 #[CoversClass(FetchResponseV14::class)]
+#[CoversClass(FetchResponseV15::class)]
 #[CoversClass(FetchRequestReplicaState::class)]
 #[CoversClass(Client::class)]
 final class FetchReplicaStateTest extends IntegrationTestCase
@@ -180,7 +184,7 @@ final class FetchReplicaStateTest extends IntegrationTestCase
     public function testAVersionFifteenConsumerFetchCarriesNoReplicaIdAtAll(): void
     {
         $fourteen = $this->fetchRequest(FetchRequestV14::class, 3520);
-        $fifteen  = $this->fetchRequest(FetchRequest::class, 3520);
+        $fifteen  = $this->fetchRequest(FetchRequestV15::class, 3520);
 
         self::assertSame(15, $fifteen->getApiVersion());
         self::assertNull($fifteen->getReplicaState(), 'a consumer writes no replica state');
@@ -192,7 +196,7 @@ final class FetchReplicaStateTest extends IntegrationTestCase
         );
         self::assertStringEndsWith('0100', bin2hex((string) $fifteen), 'the empty rack, then an EMPTY tag buffer');
 
-        $answer = $this->send($fifteen, FetchResponse::class);
+        $answer = $this->send($fifteen, FetchResponseV15::class);
 
         self::assertSame(KafkaException::NO_ERROR, $answer->errorCode);
         $partition = $answer->topics[0]->partitions[self::PARTITION];
@@ -358,7 +362,10 @@ final class FetchReplicaStateTest extends IntegrationTestCase
         $client  = new Client($this->cluster(), $this->configuration());
         $fetched = $client->fetchPartitions([$this->topic => [self::PARTITION => 0]], 250);
 
-        self::assertSame(15, FetchRequest::VERSION);
+        // Kafka 3.7 raised the version this client sends to 16 (KIP-951), which is the version 15 frame of this
+        // test with another number in its header; `FetchRequestV15` keeps the version the class measures
+        self::assertSame(15, FetchRequestV15::VERSION);
+        self::assertSame(16, FetchRequest::VERSION);
         self::assertSame(
             self::RECORDS,
             array_map(

@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version 3 answer of a log of the message format v2 carries the batches converted down to message format v1, one
  * message per record, see {@see FetchRequestV3}.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v15)"
+ * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v16)"
  */
 final class FetchResponseV3 extends FetchResponse
 {

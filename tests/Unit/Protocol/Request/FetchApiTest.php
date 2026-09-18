@@ -41,6 +41,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
 use Protocol\Kafka\Protocol\Data\FetchResponseAbortedTransaction;
 use Protocol\Kafka\Protocol\Data\FetchResponseCurrentLeader;
 use Protocol\Kafka\Protocol\Data\FetchResponseDivergingEpoch;
+use Protocol\Kafka\Protocol\Data\FetchResponseNodeEndpoint;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartitionV11;
@@ -61,6 +62,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV11;
 use Protocol\Kafka\Protocol\Request\FetchRequestV12;
 use Protocol\Kafka\Protocol\Request\FetchRequestV13;
 use Protocol\Kafka\Protocol\Request\FetchRequestV14;
+use Protocol\Kafka\Protocol\Request\FetchRequestV15;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
@@ -77,6 +79,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV11;
 use Protocol\Kafka\Protocol\Request\FetchResponseV12;
 use Protocol\Kafka\Protocol\Request\FetchResponseV13;
 use Protocol\Kafka\Protocol\Request\FetchResponseV14;
+use Protocol\Kafka\Protocol\Request\FetchResponseV15;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
 use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
@@ -106,13 +109,14 @@ use Protocol\Kafka\Protocol\TaggedField;
  *   FetchResponse v7        => ThrottleTimeMs ErrorCode SessionId [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)", "Fetch sessions (v7, KIP-227)",
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)", "Fetch sessions (v7, KIP-227)",
  *      "The topic ids of the fetch path (v13, KIP-516)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV12::class)]
 #[CoversClass(FetchRequestV13::class)]
 #[CoversClass(FetchRequestV14::class)]
+#[CoversClass(FetchRequestV15::class)]
 #[CoversClass(FetchRequestReplicaState::class)]
 #[CoversClass(FetchRequestV6::class)]
 #[CoversClass(FetchRequestV5::class)]
@@ -125,6 +129,8 @@ use Protocol\Kafka\Protocol\TaggedField;
 #[CoversClass(FetchResponseV12::class)]
 #[CoversClass(FetchResponseV13::class)]
 #[CoversClass(FetchResponseV14::class)]
+#[CoversClass(FetchResponseV15::class)]
+#[CoversClass(FetchResponseNodeEndpoint::class)]
 #[CoversClass(FetchResponseV6::class)]
 #[CoversClass(FetchResponseV5::class)]
 #[CoversClass(FetchResponseV4::class)]
@@ -743,8 +749,10 @@ final class FetchApiTest extends TestCase
         self::assertSame(13, FetchResponseV13::VERSION);
         self::assertSame(14, FetchRequestV14::VERSION);
         self::assertSame(14, FetchResponseV14::VERSION);
-        self::assertSame(15, FetchRequest::VERSION, 'the client sends the replica state of Kafka 3.5');
-        self::assertSame(15, FetchResponse::VERSION);
+        self::assertSame(15, FetchRequestV15::VERSION, 'the replica state of Kafka 3.5');
+        self::assertSame(15, FetchResponseV15::VERSION);
+        self::assertSame(16, FetchRequest::VERSION, 'the client sends the leader discovery of Kafka 3.7');
+        self::assertSame(16, FetchResponse::VERSION);
     }
 
     public function testTheIsolationLevelOfVersionFourIsWrittenBehindTheRequestLevelMaxBytes(): void
@@ -994,7 +1002,7 @@ final class FetchApiTest extends TestCase
             ['topic' => $topicId],
         ];
         $fourteen = bin2hex((string) new FetchRequestV14(...$arguments));
-        $fifteen  = bin2hex((string) new FetchRequest(...$arguments));
+        $fifteen  = bin2hex((string) new FetchRequestV15(...$arguments));
 
         // The api version, the size and the four bytes of the replica id are the whole difference: the body of a
         // version 15 request starts at `max_wait_ms`
@@ -1009,8 +1017,8 @@ final class FetchApiTest extends TestCase
             'a consumer writes no replica state at all, so the frame is four bytes shorter'
         );
         self::assertStringEndsWith('0100', $fifteen, 'the empty rack of KIP-392 and an EMPTY tag buffer');
-        self::assertSame(-1, new FetchRequest(...$arguments)->getReplicaId());
-        self::assertNull(new FetchRequest(...$arguments)->getReplicaState());
+        self::assertSame(-1, new FetchRequestV15(...$arguments)->getReplicaId());
+        self::assertNull(new FetchRequestV15(...$arguments)->getReplicaState());
         self::assertNull(
             new FetchRequestV14(...$arguments)->getReplicaState(),
             'no version below 15 has a replica state at all'
@@ -1067,6 +1075,92 @@ final class FetchApiTest extends TestCase
         self::assertSame(1, $decoded->getReplicaState()?->replicaId);
         self::assertSame(7, $decoded->getReplicaState()?->replicaEpoch);
         self::assertSame(bin2hex((string) $request), bin2hex((string) $decoded));
+    }
+
+    public function testAVersionSixteenRequestIsTheVersionFifteenFrameWithAnotherApiVersion(): void
+    {
+        // KIP-951 (Kafka 3.7) left the request alone: `FetchRequest.json` @ 3.7.2 declares no field of version 16
+        // and its whole comment is "Version 16 is the same as version 15 (KIP-951)"
+        $topicId   = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $arguments = [
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            FetchRequest::NO_RACK,
+            null,
+            ['topic' => $topicId],
+        ];
+
+        $fifteen = bin2hex((string) new FetchRequestV15(...$arguments));
+        $sixteen = bin2hex((string) new FetchRequest(...$arguments));
+
+        self::assertEquals(FetchRequestV15::getScheme(), FetchRequest::getScheme());
+        self::assertSame($fifteen, substr_replace($sixteen, '000f', 12, 4), 'only the api version differs');
+        self::assertSame('00010010', substr($sixteen, 8, 8), 'the key 1 and the version 16 of the header');
+        self::assertStringEndsWith('0100', $sixteen, 'the empty rack of KIP-392 and an EMPTY tag buffer');
+    }
+
+    public function testAVersionSixteenAnswerWithoutARefusedPartitionIsTheVersionFifteenAnswer(): void
+    {
+        // The `node_endpoints` of version 16 is a TAGGED field whose default is the empty array, so an answer
+        // that refused nothing writes it not at all and ends in the empty tagged section of the body it has ended
+        // in since version 12
+        $body = '00000001' . '00'
+            . '00000000' . '0000' . '00000000'
+            . '02' . '9853af22c18640468a52a3895221c6af'
+            . '02' . '00000000' . '0000' . '000000000000002a' . '000000000000002a' . '0000000000000000'
+            . '00' . 'ffffffff' . '01' . '00'
+            . '00'
+            . '00';
+        $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+
+        $answer = FetchResponse::unpack(new StringStream($frame));
+
+        self::assertSame([], $answer->nodeEndpoints, 'nothing was refused, so nothing is named');
+        self::assertSame(42, $answer->topics[0]->partitions[0]->highWaterMarkOffset);
+        self::assertSame($frame, (string) $answer, 'the answer has to survive a round trip');
+        self::assertSame(
+            bin2hex($frame),
+            bin2hex((string) FetchResponseV15::unpack(new StringStream($frame))),
+            'and those bytes are the version 15 answer'
+        );
+    }
+
+    public function testAVersionSixteenAnswerNamesWhereTheLeaderOfARefusedPartitionCanBeReached(): void
+    {
+        // The shape KIP-951 exists for: a partition refused 74 FencedLeaderEpoch, whose tagged current_leader
+        // (tag 1 of the entry, there since version 12) names the node 2 with the epoch 9, and the tagged
+        // node_endpoints of the BODY (tag 0, new in version 16) that says where the node 2 can be reached
+        $partition = '00000000' . '004a' . 'ffffffffffffffff' . 'ffffffffffffffff' . 'ffffffffffffffff'
+            . '00' . 'ffffffff' . '01'
+            . '01' . '01' . '09' . '00000002' . '00000009' . '00';
+        $body = '00000001' . '00'
+            . '00000000' . '0000' . '00000000'
+            . '02' . '9853af22c18640468a52a3895221c6af' . '02' . $partition . '00'
+            . '01' . '00' . '18' . '02' . '00000002' . '0962726f6b65722d32' . '00002384' . '057261636b' . '00';
+        $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+
+        $answer  = FetchResponse::unpack(new StringStream($frame));
+        $refused = $answer->topics[0]->partitions[0];
+
+        self::assertSame(KafkaException::FENCED_LEADER_EPOCH, $refused->errorCode);
+        self::assertSame(2, $refused->currentLeader?->leaderId, 'the node the partition is really led by');
+        self::assertSame(9, $refused->currentLeader?->leaderEpoch);
+        self::assertSame([2], array_keys($answer->nodeEndpoints), 'the array is keyed by the node id');
+        self::assertSame(2, $answer->nodeEndpoints[2]->nodeId);
+        self::assertSame('broker-2', $answer->nodeEndpoints[2]->host);
+        self::assertSame(9092, $answer->nodeEndpoints[2]->port);
+        self::assertSame('rack', $answer->nodeEndpoints[2]->rack);
+        self::assertSame(16, FetchResponseNodeEndpoint::VERSION);
+        self::assertSame($frame, (string) $answer, 'the answer has to survive a round trip');
     }
 
     public function testTheDebuggingReplicaIdTravelsInTheReplicaStateOfVersionFifteen(): void
@@ -1577,12 +1671,19 @@ final class FetchApiTest extends TestCase
     public function testEveryVersionOfTheResponseReadsThePartitionEntryOfItsOwnVersion(): void
     {
         self::assertSame(
-            ['messageSize', 'correlationId', 'headerTaggedFields', 'throttleTimeMs', 'errorCode', 'sessionId', 'topics'],
+            ['messageSize', 'correlationId', 'headerTaggedFields', 'throttleTimeMs', 'errorCode', 'sessionId',
+                'topics', 'nodeEndpoints'],
             array_keys(FetchResponse::getScheme()),
-            'a version 12 answer comes in a response header v1, whose tagged-field section follows the correlation id'
+            'a version 12 answer comes in a response header v1, whose tagged-field section follows the correlation '
+            . 'id, and version 16 declares the tagged node_endpoints of the body (KIP-951)'
         );
         self::assertSame(
-            array_keys(FetchResponse::getScheme()),
+            ['messageSize', 'correlationId', 'headerTaggedFields', 'throttleTimeMs', 'errorCode', 'sessionId', 'topics'],
+            array_keys(FetchResponseV15::getScheme()),
+            'no version below 16 has a field of the body above the topics array'
+        );
+        self::assertSame(
+            array_keys(FetchResponseV15::getScheme()),
             array_keys(FetchResponseV12::getScheme()),
             'version 13 changed the topic entry alone, not a field of the body'
         );

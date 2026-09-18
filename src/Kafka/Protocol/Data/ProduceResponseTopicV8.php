@@ -1,0 +1,31 @@
+<?php
+
+/*
+ * This file is part of the lisachenko/kafka-client package.
+ *
+ * (c) Alexander Lisachenko <lisachenko.it@gmail.com>
+ *
+ * For the full copyright and license information, please view the LICENSE
+ * file that was distributed with this source code.
+ */
+
+declare(strict_types=1);
+
+namespace Protocol\Kafka\Protocol\Data;
+
+/**
+ * Topic entry of a Produce answer of the versions 8 and 9
+ *
+ * The topic entry itself never changed; this class exists to pick {@see ProduceResponsePartitionV8} as its
+ * partition entry, i.e. the entry of KIP-467 without the tagged `current_leader` that version 10 (Kafka 3.7,
+ * KIP-951) added, see {@see ProduceResponseTopic}.
+ *
+ * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v10)" and "The leader discovery of KIP-951 (v10)"
+ */
+final class ProduceResponseTopicV8 extends ProduceResponseTopic
+{
+    /**
+     * @inheritdoc
+     */
+    public const int VERSION = 8;
+}

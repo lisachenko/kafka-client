@@ -32,16 +32,18 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * or 1 answer carries no `LogAppendTime` ({@see ProduceResponseTopicV0}), a version 2, 3 or 4 answer no
  * `LogStartOffset` ({@see ProduceResponseTopicV2}) - which is what the version constant of this DTO picks in
  * {@see self::partitionClass()}. The versions 3 and 4 changed nothing about the answer at all; version 5 (Kafka
- * 1.0) appended the `LogStartOffset` to every partition entry.
+ * 1.0) appended the `LogStartOffset` to every partition entry, version 8 (Kafka 2.4) the record errors of
+ * KIP-467 ({@see ProduceResponseTopicV8} is the entry of the versions 8 and 9) and version 10 (Kafka 3.7,
+ * KIP-951) the tagged `current_leader` this class picks.
  *
- * @see docs/protocol/3.9.md, section "Produce API (key 0, v0 to v9)"
+ * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v10)" and "The leader discovery of KIP-951 (v10)"
  */
 class ProduceResponseTopic implements BinarySchemaInterface
 {
     /**
      * Version of the Produce API that this DTO is unpacked from
      */
-    public const int VERSION = 8;
+    public const int VERSION = 10;
 
     /**
      * The name of the topic
@@ -74,7 +76,8 @@ class ProduceResponseTopic implements BinarySchemaInterface
     protected static function partitionClass(): string
     {
         return match (true) {
-            static::VERSION >= 8 => ProduceResponsePartition::class,
+            static::VERSION >= 10 => ProduceResponsePartition::class,
+            static::VERSION >= 8 => ProduceResponsePartitionV8::class,
             static::VERSION >= 5 => ProduceResponsePartitionV5::class,
             static::VERSION >= 2 => ProduceResponsePartitionV2::class,
             default              => ProduceResponsePartitionV0::class,

@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see FetchRequestTopicPartition::$currentLeaderEpoch}, which this entry has no place for, so a client that asks
  * with one of these versions is never fenced on its metadata.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)" and "The leader epoch (KIP-320)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)" and "The leader epoch (KIP-320)"
  */
 class FetchRequestTopicPartitionV5 extends FetchRequestTopicPartition
 {

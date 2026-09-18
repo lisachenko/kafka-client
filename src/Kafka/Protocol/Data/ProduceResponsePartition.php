@@ -19,6 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
  * Produce response partition DTO
@@ -39,16 +40,19 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see ProduceResponsePartitionV2} is the entry those three versions share.
  *
  * **Version 5 (Kafka 1.0) appended `LogStartOffset`**, which is what this class adds, see
- * {@see self::$logStartOffset}.
+ * {@see self::$logStartOffset}; **version 8** (Kafka 2.4, KIP-467) the `record_errors` array and the
+ * `error_message` of a refused batch, see {@see self::$recordErrors}, and **version 10** (Kafka 3.7, KIP-951)
+ * the **tagged** `current_leader`, see {@see self::$currentLeader}, which is the only difference between this
+ * entry and {@see ProduceResponsePartitionV8}.
  *
- * @see docs/protocol/3.9.md, section "Produce API (key 0, v0 to v9)"
+ * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v10)" and "The leader discovery of KIP-951 (v10)"
  */
 class ProduceResponsePartition implements BinarySchemaInterface
 {
     /**
      * Version of the Produce API that this DTO is unpacked from
      */
-    public const int VERSION = 8;
+    public const int VERSION = 10;
 
     /**
      * Value of `LogStartOffset` for an answer of a version below 5, which does not carry the field
@@ -149,6 +153,22 @@ class ProduceResponsePartition implements BinarySchemaInterface
     public ?string $errorMessage = null;
 
     /**
+     * The node and the epoch this partition is really led with, `null` when the broker did not say (KIP-951).
+     *
+     * The **tagged** field (tag 0) that version 10 (Kafka 3.7) added, and the only thing that version added to a
+     * partition entry. A broker fills it in for a partition it refused with **6** `NotLeaderForPartition` and
+     * whose new leader it knows, and names the address of that node in the top-level
+     * {@see \Protocol\Kafka\Protocol\Request\ProduceResponse::$nodeEndpoints} of the same answer; every other
+     * entry leaves it off the wire, which is what a tagged field whose value is its default does.
+     *
+     * An answer below version 10 has no room for it at all, and a producer that reads `null` here is exactly
+     * where it was before the KIP: it has to refresh its metadata to learn the new leader.
+     *
+     * @since Version 10 of protocol (Kafka 3.7, KIP-951)
+     */
+    public ?ProduceResponseCurrentLeader $currentLeader = null;
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
@@ -167,6 +187,11 @@ class ProduceResponsePartition implements BinarySchemaInterface
         if (static::VERSION >= 8) {
             $scheme['recordErrors']  = ['batchIndex' => ProduceResponseRecordError::class];
             $scheme['errorMessage']  = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        // The `current_leader` of version 10 is a TAGGED field (tag 0) and is therefore written at the end of the
+        // entry, and only for a partition whose leader the broker really named
+        if (static::VERSION >= 10) {
+            $scheme['currentLeader'] = new TaggedField(0, ProduceResponseCurrentLeader::class, null);
         }
 
         return $scheme;
