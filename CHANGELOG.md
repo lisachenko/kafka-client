@@ -18,7 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.9** (the foundation, the re-baseline wave T0 and the 3.0 to 3.9 waves are in; Kafka 3.4 added nothing a client sends; the KIP-848 consumer wave follows).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: the KIP-848 consumer, the last wave of the line** (the foundation, the re-baseline wave T0, the 3.0 to 3.9 waves and the KIP-848 consumer wave are in; Kafka 3.4 added nothing a client sends).
 
 ### Added
 
@@ -291,6 +291,36 @@ ACL apis, measured against a real authorizer for the first time.
 - The error codes **107** `IneligibleReplica` and **108** `NewLeaderElected` of Kafka 3.3 belong to AlterPartition
   (56), a broker-to-controller api a client listener does not serve: declared at the foundation, never observed.
   73 wire vectors in all (26 of T1, 47 of T4): 836 in 54 files.
+
+### The KIP-848 consumer — Added
+
+The last wave of the line (PR #211): the new consumer protocol as real client apis, the owner's decision
+taken as the last one — share groups stay out, and the codes 110 to 113 are now observed.
+
+- **The new consumer protocol of KIP-848** (ConsumerGroupHeartbeat **68**, Kafka 3.5; ConsumerGroupDescribe
+  **69**, Kafka 3.7). `ConsumerConfig::GROUP_PROTOCOL` switches a `KafkaConsumer` from the classic membership
+  protocol to `consumer`, where a single api replaces JoinGroup, SyncGroup, Heartbeat and LeaveGroup and the
+  **coordinator** computes the assignment: `Internals\ConsumerGroupHeartbeatCoordinator` is the second
+  implementation of the new `Internals\ConsumerCoordinatorInterface`, honours the `heartbeat_interval_ms` the
+  broker dictates, resolves the **topic ids** of an assignment through `Cluster`, acknowledges what it owns and
+  rejoins with the epoch 0 and a fresh member id after a 110, a 113 or a 25. `ConsumerConfig::GROUP_REMOTE_ASSIGNOR`
+  names the server-side assignor (`uniform` or `range` on a 3.9.2 node; anything else is the **112**), and
+  `partition.assignment.strategy` is not used on this path at all. A rebalance is **incremental**:
+  `ConsumerRebalanceListener::onPartitionsRevoked()` sees only the partitions that were really taken away and
+  `onPartitionsAssigned()` only the ones that were added. The member epoch takes the place of the generation and
+  travels in the OffsetCommit **v9** and OffsetFetch **v9** the client already sent.
+  `AdminClient::describeConsumerGroups()` answers an `Admin\ConsumerGroupDescription` with the group epoch, the
+  assignment epoch, the assignor and both assignments of every member; `describeGroups()` (key 15) answers a group
+  of this type the state `Dead`, so a caller routes by the `group_type` of a ListGroups v5. Measured on the node:
+  the 42 of a (re-)join whose `topic_partitions` is not the empty array, the **110** of a stale epoch in both
+  directions, the **111**, the **112**, the **69** of a classic group, the static leave of the epoch **-2** that
+  costs the group no rebalance, and the classic JoinGroup a `consumer` group still accepts — the online upgrade
+  path of the KIP. `ConsumerGroupHeartbeatApiTest`, `ConsumerGroupDescribeApiTest`, `Kip848ConsumerTest` and
+  `ConsumerGroupHeartbeatCoordinatorTest`; `tests/Fixture/ConsumerGroupHeartbeatProbe` is gone, the suites of
+  the 3.6, 3.7 and 3.8 waves use the real classes.
+- 50 wire vectors in the two new files `consumer-group-heartbeat.json` (34) and `consumer-group-describe.json`
+  (14) and in `describe-groups.json` (2, the classic describe of a KIP-848 group): 1135 in 60 files, 466 of the
+  line.
 
 ### Kafka 3.9 — Added
 
