@@ -427,9 +427,10 @@ foreach ($group->members as $memberId => $member) {
 | Method                                       | Wire API                | Notes                                                                |
 |----------------------------------------------|-------------------------|----------------------------------------------------------------------|
 | `getApiVersions()`                           | ApiVersions v2          | The version range of every api of **one** broker, indexed by api key; version 1 carries the throttle time |
-| `findAllBrokers()`                           | Metadata v11             | An empty result means "the cluster is not ready yet", see below      |
-| `listTopics()` / `describeTopics()`          | Metadata v11             | Asks with `allow_auto_topic_creation = false`, so an unknown topic is answered 3 and **not** created; `describeTopics([])` asks for every topic (the `null` array of v1); every partition reports its `offlineReplicas` (v5, KIP-112/113) |
-| `findController()`                           | Metadata v11             | The `controller_id` of the answer; the two topic apis below need it   |
+| `findAllBrokers()`                           | Metadata v12             | An empty result means "the cluster is not ready yet", see below      |
+| `listTopics()` / `describeTopics()`          | Metadata v12             | Asks with `allow_auto_topic_creation = false`, so an unknown topic is answered 3 and **not** created; `describeTopics([])` asks for every topic (the `null` array of v1); every partition reports its `offlineReplicas` (v5, KIP-112/113) |
+| `describeTopicsByIds()`                      | Metadata v12             | Names the topics by their **topic id** (KIP-516, Kafka 3.1), the `describeTopics(TopicCollection.ofTopicIds(...))` of the Java admin client; an id the cluster does not host is answered 100 `UnknownTopicId` with a `null` name |
+| `findController()`                           | Metadata v12             | The `controller_id` of the answer; the two topic apis below need it   |
 | `createTopics()`                             | CreateTopics v7         | `NewTopic` with partitions/factor or an explicit assignment, plus topic configs; `validateOnly` checks without creating |
 | `deleteTopics()`                             | DeleteTopics v6         | Needs `delete.topic.enable=true` on the broker                        |
 | `listOffsets()`                              | Offsets v7              | Earliest, latest, by message timestamp or `OffsetsRequest::MAX_TIMESTAMP`; **one** offset per partition, sent to the partition leader, with the isolation level `read_uncommitted` |
@@ -770,9 +771,9 @@ it sends, and a version the node serves that the current milestone has not reach
 | Api key | API | Versions in 3.9.2 | Client-facing | `2.x` | `main` (3.x, towards Kafka 3.9.2) |
 |---|---|---|---|---|---|
 | 0 | Produce | v0 … v11 | yes | v0 … v8, **v9** (**v2** for `message.format.version` below 0.11.0) | v0 … v8, **v9** (**v2** for `message.format.version` below 0.11.0); **v10 (3.7), v11 (3.8) not yet implemented on this line** |
-| 1 | Fetch | v0 … v17 | yes | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer) | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer); **v13 (3.1), v14 (3.5), v15 (3.5), v16 (3.7), v17 (3.9) not yet implemented on this line** |
+| 1 | Fetch | v0 … v17 | yes | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer) | v0 … v12, **v13** (every topic named by its **topic id**, KIP-516, Kafka 3.1; session-less in `fetchPartitions()`, with an incremental fetch session per broker in the consumer; `FetchRequestV12` keeps the frame that names its topics); **v14 (3.5), v15 (3.5), v16 (3.7), v17 (3.9) not yet implemented on this line** |
 | 2 | Offsets (ListOffsets) | v0 … v9 | yes | v0 … v5, **v6** | v0 … v6, **v7** (the max timestamp `-3` of KIP-734, Kafka 3.0); **v8 (3.5), v9 (3.9) not yet implemented on this line** |
-| 3 | Metadata | v0 … v12 | yes | v0 … v10, **v11** (v10 with the topic ids of KIP-516) | v0 … v10, **v11** (v10 with the topic ids of KIP-516); **v12 (3.1) not yet implemented on this line** |
+| 3 | Metadata | v0 … v12 | yes | v0 … v10, **v11** (v10 with the topic ids of KIP-516) | v0 … v11, **v12** (a request **by topic id**, `MetadataRequest::byTopicIds()`, KIP-516, Kafka 3.1; `MetadataRequestV11` keeps the version below it) |
 | 4 | LeaderAndIsr | not on the client listener of a KRaft node | broker→broker | no | no |
 | 5 | StopReplica | not on the client listener of a KRaft node | broker→broker | no | no |
 | 6 | UpdateMetadata | not on the client listener of a KRaft node | broker→broker | no | no |
@@ -934,6 +935,7 @@ current milestone):
 | **KIP-664: `describeTransactions()` / `listTransactions()`** (DescribeTransactions v0, ListTransactions v0) | 3.0 | – | – | – | – | – | – | **yes** |
 | **KIP-734: the max timestamp** (`OffsetsRequest::MAX_TIMESTAMP`, ListOffsets v7) | 3.0 | – | – | – | – | – | – | **yes** (`maxTimestampOffsets()`, `listMaxTimestampOffsets()`) |
 | **KIP-699: several coordinators in one FindCoordinator** (v4) and **several groups in one OffsetFetch** (v8) | 3.0 | – | – | – | – | – | – | **yes** (`getGroupCoordinators()`, `listConsumerGroupOffsets()`) |
+| **KIP-516, the request side: topics named by their id** (Fetch v13, Metadata v12; `Cluster::topicIdOf()`/`topicNameById()`, `describeTopicsByIds()`; the 106 of a fetch session that mixes ids and names) | 3.1 | – | – | – | – | – | – | **yes** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 127** (the constants of 3.9.2, declared by the foundation; 105 is 3.0's) |
 
 What this line leaves out **by design** (the owner's decisions for the 3.x line; everything else the 3.9.2

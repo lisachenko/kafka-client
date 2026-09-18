@@ -1,15 +1,16 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 3.x line has captured **49** vectors of its own so far — the frames of Kafka 3.0, on the `kafka-3-9-2` KRaft node:
+The 3.x line has captured **69** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
 the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
 `list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
-`group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — next to the **669** vectors of the lines
+`group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — and the 20 frames of Kafka 3.1, the
+10 of Fetch v13 in `fetch.json` and the 10 of Metadata v12 in `metadata.json` — next to the **669** vectors of the lines
 up to 2.x below, which are replayed unchanged against the classes of this line, because the 3.9.2 node still serves
 every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **718** of them in **50** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **738** of them in **50** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the

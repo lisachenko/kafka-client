@@ -18,7 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.0** (the foundation, the re-baseline wave T0 and the 3.0 wave are in).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.1** (the foundation, the re-baseline wave T0 and the 3.0 and 3.1 waves are in).
 
 ### Added
 
@@ -166,6 +166,39 @@ admin, transaction and SASL surface next to it.
 - **The load-sensitive tests of the suite wait for the node**: the fetch-session cache of a 3.9.2 node places a
   new session round-robin over eight shards, so `FetchSessionConsumerTest` fills it until eight requests in a row
   are refused; a ListOffsets and a DescribeConfigs of a fresh topic retry the retriable codes.
+
+### Kafka 3.1 — Added
+
+The second milestone of the line (PR #193): the one thing Kafka 3.1 added to the wire a client sends — the
+**request side of the topic ids of KIP-516**, two years after Kafka 2.8 put the ids into the answers.
+
+- **Fetch v13 (KIP-516)** — every topic of a request and of an answer is named by its **topic id**, in the topics
+  array and in `forgotten_topics_data` alike; nothing else of the encoding changes (a version 13 fetch is the
+  flexible version 12 body with 16 raw bytes of `uuid` where the compact name stood). `Cluster::topicIdOf()`,
+  `topicIdsOf()` and `topicNameById()` keep the name ↔ id map, filled from every Metadata answer; `Client` and
+  `KafkaConsumer` resolve the names of a request against it before every round — so a topic that was deleted
+  and re-created travels under its new id after the metadata refresh its error triggers — and read the answer
+  back through it; `FetchRequestV12`/`FetchResponseV12` keep the frame that names its topics. Measured on the
+  node: the **100** `UnknownTopicId` of an id the node does not host is **per partition** (the zero uuid gets the
+  same), and the **106** `FetchSessionTopicIdError` of Kafka 3.1 is produced in **both** directions of the mix —
+  a session opened at v13 and continued at v12 by name, and the other way round — as a top-level error with the
+  session id 0, after which the client starts over with a full fetch, as for the 70 and 71 of KIP-227.
+- **Metadata v12 (KIP-516)** — the version at which a request **by topic id** is served: `MetadataRequest::byTopicIds()`
+  and `AdminClient::describeTopicsByIds()`, the `describeTopics(TopicCollection.ofTopicIds(...))` of the Java
+  admin client; `MetadataRequestV11`/`MetadataResponseV11` keep the version below it. Measured on the node: an
+  id the cluster does not host is answered 100 with a **`null` topic name** (what version 12 made the field
+  nullable for, `TopicMetadata::$topic` is nullable now), an answer of a by-id request fills the name in and is
+  byte for byte the answer of the same question by name, a request that **mixes** ids and names loses the named
+  half without a word, and a version below 12 asked by id is refused with a whole error response (zero brokers,
+  a null cluster id, 42 per topic) — which is why `byTopicIds()` is a version 12 constructor.
+- **The error code 106 `FetchSessionTopicIdError` is observed**, and `FetchSessionHandler` keeps the id → name
+  map of its session (`rememberTopicIds()`, `getSessionTopicNames()`): an incremental fetch that moved no offset
+  sends no topic at all and is still answered for the whole session.
+- **Behaviour change**: a `FetchRequest` of version 13 needs the id of every topic it names and throws
+  `UnknownTopicIdException` without one (the `$topicIds` parameter, also on `fromTopicPartitions()`);
+  `FetchRequest::$topicPartitions` and `FetchResponse::$topics` are a plain **list** at that version, because an
+  entry carries no name to index by. 20 wire vectors (10 of Fetch, 10 of Metadata), two new subsections of the
+  grammar and three (3.x) items.
 
 Unreleased — the 2.x line (Kafka 2.8.2)
 ---------------------------------------
