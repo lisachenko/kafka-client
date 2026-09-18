@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\InlineStruct;
 
 /**
- * CreateDelegationToken response object, version 1 (key 38)
+ * CreateDelegationToken response object, version 3 (key 38)
  *
  * <pre>
  *   CreateDelegationToken Response (Version: 0 and 1) => error_code owner issue_timestamp expiry_timestamp max_timestamp
@@ -70,19 +70,32 @@ use Protocol\Kafka\Protocol\InlineStruct;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see CreateDelegationTokenResponseV0} is the same frame with the version field of Kafka 1.1.
  *
- * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v2)"
+ * **Kafka 3.3 added version 3 and with it the token requester** ("Version 3 adds token requester details" of
+ * `CreateDelegationTokenResponse.json` @ 3.3.2): two strings behind the owner - `token_requester_principal_type`
+ * and `token_requester_principal_name` - that say **who asked** for the token, which is a question the answer
+ * could not have before KIP-373 made the owner a field of the request. For a token a principal issues for
+ * itself the two principals are the same; for a token issued for somebody else the owner is the principal of the
+ * request and the requester is the caller. {@see CreateDelegationTokenResponseV2} decodes the answer of every
+ * version below 3, where {@see self::$tokenRequester} stays the owner.
+ *
+ * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 class CreateDelegationTokenResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * @inheritdoc
      */
     public const int FLEXIBLE_VERSION = 2;
+
+    /**
+     * The version 3 of Kafka 3.3 is the first one whose answer names the requester of the token (KIP-373)
+     */
+    public const int TOKEN_REQUESTER_VERSION = 3;
 
     /**
      * Timestamp of an answer that carries no token at all, `DelegationTokenManager.ErrorTimestamp`
@@ -98,6 +111,17 @@ class CreateDelegationTokenResponse extends AbstractResponse
      * Principal the token was issued for, i.e. the principal of the connection
      */
     public KafkaPrincipal $owner;
+
+    /**
+     * Principal that asked for the token, i.e. the principal of the connection
+     *
+     * It is the owner itself for a token a principal issued for itself, and the caller for a token of KIP-373
+     * that was issued for somebody else. Below the version 3 the field is not on the wire and
+     * {@see self::requester()} answers the owner.
+     *
+     * @since Version 3 of protocol (Kafka 3.3, KIP-373)
+     */
+    public KafkaPrincipal $tokenRequester;
 
     /**
      * Milliseconds since the epoch at which the broker issued the token
@@ -130,17 +154,33 @@ class CreateDelegationTokenResponse extends AbstractResponse
     public int $throttleTimeMs = 0;
 
     /**
+     * Returns the principal that asked for the token, which is the owner below the version 3
+     *
+     * A version below 3 does not carry the field at all, so the property stays uninitialized there and the owner
+     * is the only answer the frame has.
+     */
+    public function requester(): KafkaPrincipal
+    {
+        return $this->tokenRequester ?? $this->owner;
+    }
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
         $header = parent::getScheme();
-
-        return $header + [
+        $body   = [
             'errorCode'       => BinarySchema::TYPE_INT16,
             // `PrincipalType` and `PrincipalName` are two ordinary fields of the answer, not a structure of the
             // specification, so they are inlined here and carry no tagged-field section of their own in v2
             'owner'           => new InlineStruct(KafkaPrincipal::class),
+        ];
+        // The requester of KIP-373 sits between the owner and the timestamps, as two more flat fields
+        if (static::VERSION >= self::TOKEN_REQUESTER_VERSION) {
+            $body['tokenRequester'] = new InlineStruct(KafkaPrincipal::class);
+        }
+        $body += [
             'issueTimestamp'  => BinarySchema::TYPE_INT64,
             'expiryTimestamp' => BinarySchema::TYPE_INT64,
             'maxTimestamp'    => BinarySchema::TYPE_INT64,
@@ -148,5 +188,7 @@ class CreateDelegationTokenResponse extends AbstractResponse
             'hmac'            => BinarySchema::TYPE_BYTEARRAY,
             'throttleTimeMs'  => BinarySchema::TYPE_INT32,
         ];
+
+        return $header + $body;
     }
 }

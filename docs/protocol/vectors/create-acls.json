@@ -1,0 +1,290 @@
+{
+    "api": "create-acls",
+    "apiKey": 30,
+    "section": "CreateAcls API (key 30, v0 to v3)",
+    "description": "Wire vectors of the CreateAcls API (key 30, v0 to v3), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "createacls.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "CreateAcls request v3 (Kafka 3.3) that writes two acls in one frame: a LITERAL acl on the topic `t4-33-acl-topic` and a PREFIXED one on every group whose name starts with `t4-33-acl-`, both of them READ ALLOW for `User:acltest` from every host. The seven fields of a creation are flat, so the entry ends in its own tag buffer and nothing else separates the two.",
+            "hex": "0000005d001e000300000ce5000d74342d33332d766563746f72730003021074342d33332d61636c2d746f706963030d557365723a61636c74657374022a030300030b74342d33332d61636c2d040d557365723a61636c74657374022a03030000",
+            "fields": {
+                "messageSize": 93,
+                "apiKey": 30,
+                "apiVersion": 3,
+                "correlationId": 3301,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "creations": [
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-33-acl-topic",
+                            "patternType": 3
+                        },
+                        "entry": {
+                            "principal": "User:acltest",
+                            "host": "*",
+                            "operation": 3,
+                            "permissionType": 3
+                        }
+                    },
+                    {
+                        "pattern": {
+                            "resourceType": 3,
+                            "resourceName": "t4-33-acl-",
+                            "patternType": 4
+                        },
+                        "entry": {
+                            "principal": "User:acltest",
+                            "host": "*",
+                            "operation": 3,
+                            "permissionType": 3
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer of the node: one result per creation and in its order, each of them the code 0 with an `error_message` that is the EMPTY string (`AclApis.handleCreateAcls` @ 3.9.2 builds a bare `new AclCreationResult()` for a creation that worked and only sets the two fields of a failure). The api has no top-level error code at all.",
+            "hex": "0000001300000ce5000000000003000001000000010000",
+            "fields": {
+                "messageSize": 19,
+                "correlationId": 3301,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "results": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    },
+                    {
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.request.v3.user-resource",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The reason the version 3 exists: an acl on the USER resource (type 7) of KIP-373, which allows `User:acltest` the operation CREATE_TOKENS (13) on the user `acltest` - i.e. to ask for a delegation token of that owner. The resource type and the operation are both ones that Kafka 3.3 added.",
+            "hex": "00000036001e000300000cea000d74342d33332d766563746f72730002070861636c74657374030d557365723a61636c74657374022a0d030000",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 30,
+                "apiVersion": 3,
+                "correlationId": 3306,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "creations": [
+                    {
+                        "pattern": {
+                            "resourceType": 7,
+                            "resourceName": "acltest",
+                            "patternType": 3
+                        },
+                        "entry": {
+                            "principal": "User:acltest",
+                            "host": "*",
+                            "operation": 13,
+                            "permissionType": 3
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.response.v3.user-resource",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The node writes it like any other acl: the code 0 and the empty error message.",
+            "hex": "0000000f00000cea0000000000020000010000",
+            "fields": {
+                "messageSize": 15,
+                "correlationId": 3306,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "results": [
+                    {
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.request.v3.invalid",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "A creation whose resource name is the empty string, which `AclApis.handleCreateAcls` @ 3.9.2 refuses before it asks the authorizer for anything.",
+            "hex": "0000002f001e000300000cec000d74342d33332d766563746f727300020201030d557365723a61636c74657374022a03030000",
+            "fields": {
+                "messageSize": 47,
+                "apiKey": 30,
+                "apiVersion": 3,
+                "correlationId": 3308,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "creations": [
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "",
+                            "patternType": 3
+                        },
+                        "entry": {
+                            "principal": "User:acltest",
+                            "host": "*",
+                            "operation": 3,
+                            "permissionType": 3
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.response.v3.invalid",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The refusal of that one creation: the code 42 (InvalidRequest) and the message of the broker, in the entry of the creation - the api has no top-level error code to put it in.",
+            "hex": "0000002a00000cec000000000002002a1c496e76616c696420656d707479207265736f75726365206e616d650000",
+            "fields": {
+                "messageSize": 42,
+                "correlationId": 3308,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "results": [
+                    {
+                        "errorCode": 42,
+                        "errorMessage": "Invalid empty resource name"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.request.v3.pattern-type-any",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "A creation whose pattern type is the filter value ANY (1), which is not a pattern an acl can be stored with.",
+            "hex": "00000044001e000300000ced000d74342d33332d766563746f72730002021674342d33332d61636c2d7061747465726e2d616e79010d557365723a61636c74657374022a03030000",
+            "fields": {
+                "messageSize": 68,
+                "apiKey": 30,
+                "apiVersion": 3,
+                "correlationId": 3309,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "creations": [
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-33-acl-pattern-any",
+                            "patternType": 1
+                        },
+                        "entry": {
+                            "principal": "User:acltest",
+                            "host": "*",
+                            "operation": 3,
+                            "permissionType": 3
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.response.v3.pattern-type-any",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The node answers **-1** (UnknownServerError) with a NULL message: `CreateAclsRequest.aclBinding` @ 3.9.2 builds a `ResourcePattern` out of the entry before any validation of the api runs and that constructor throws the plain `IllegalArgumentException(\"patternType must not be ANY\")`, which `ApiError.fromThrowable` can only map to the unknown error. The Java admin client never sends such a request, because `AclBinding` refuses to be built.",
+            "hex": "0000000f00000ced000000000002ffff000000",
+            "fields": {
+                "messageSize": 15,
+                "correlationId": 3309,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "results": [
+                    {
+                        "errorCode": -1,
+                        "errorMessage": null
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.request.v3.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The same acl as the first vector, written by `acltest`.",
+            "hex": "0000003e001e000300000cef000d74342d33332d766563746f72730002021074342d33332d61636c2d746f706963030d557365723a61636c74657374022a03030000",
+            "fields": {
+                "messageSize": 62,
+                "apiKey": 30,
+                "apiVersion": 3,
+                "correlationId": 3311,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "creations": [
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-33-acl-topic",
+                            "patternType": 3
+                        },
+                        "entry": {
+                            "principal": "User:acltest",
+                            "host": "*",
+                            "operation": 3,
+                            "permissionType": 3
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "id": "createacls.response.v3.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The code 31 in the entry of the creation, because the api has nowhere else to put it. The message is the request object of the **CONTROLLER** listener with an `envelope=Some(...)` inside it: a KRaft broker forwards every write of an acl to the controller in an Envelope (key 58), and the authorization that refuses it happens there.",
+            "hex": "0000022900000cef000000000002001f9a045265717565737420526571756573742870726f636573736f723d312c20636f6e6e656374696f6e49643d3132372e302e302e313a393039362d3132372e302e302e313a33393239302d312c2073657373696f6e3d6f72672e6170616368652e6b61666b612e6e6574776f726b2e53657373696f6e4035666161386137372c206c697374656e65724e616d653d4c697374656e65724e616d6528434f4e54524f4c4c4552292c20736563757269747950726f746f636f6c3d504c41494e544558542c206275666665723d6a6176612e6e696f2e48656170427974654275666665725b706f733d3632206c696d3d3632206361703d38365d2c20656e76656c6f70653d536f6d6528526571756573742870726f636573736f723d312c20636f6e6e656374696f6e49643d3132372e302e302e313a393039362d3132372e302e302e313a33393239302d312c2073657373696f6e3d6f72672e6170616368652e6b61666b612e6e6574776f726b2e53657373696f6e4037346232323235632c206c697374656e65724e616d653d4c697374656e65724e616d6528434f4e54524f4c4c4552292c20736563757269747950726f746f636f6c3d504c41494e544558542c206275666665723d6a6176612e6e696f2e48656170427974654275666665725b706f733d3939206c696d3d3939206361703d39395d2c20656e76656c6f70653d4e6f6e65292929206973206e6f7420617574686f72697a65642e0000",
+            "fields": {
+                "messageSize": 553,
+                "correlationId": 3311,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "results": [
+                    {
+                        "errorCode": 31,
+                        "errorMessage": "Request Request(processor=1, connectionId=127.0.0.1:9096-127.0.0.1:39290-1, session=org.apache.kafka.network.Session@5faa8a77, listenerName=ListenerName(CONTROLLER), securityProtocol=PLAINTEXT, buffer=java.nio.HeapByteBuffer[pos=62 lim=62 cap=86], envelope=Some(Request(processor=1, connectionId=127.0.0.1:9096-127.0.0.1:39290-1, session=org.apache.kafka.network.Session@74b2225c, listenerName=ListenerName(CONTROLLER), securityProtocol=PLAINTEXT, buffer=java.nio.HeapByteBuffer[pos=99 lim=99 cap=99], envelope=None))) is not authorized."
+                    }
+                ]
+            }
+        }
+    ]
+}

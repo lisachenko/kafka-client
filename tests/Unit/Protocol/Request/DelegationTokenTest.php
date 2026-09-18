@@ -20,18 +20,23 @@ use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
+use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseTokenV2;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV0;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV1;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequestV2;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponseV0;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponseV1;
+use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponseV2;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV1;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponseV1;
+use Protocol\Kafka\Protocol\Request\DescribeDelegationTokenResponseV2;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequestV0;
 use Protocol\Kafka\Protocol\Request\ExpireDelegationTokenRequestV1;
@@ -54,9 +59,9 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV1;
  * wire - the owner of a token, the renewers of a request, the owners of a describe request - is the two-string
  * struct {@see KafkaPrincipal}.
  *
- * @see docs/protocol/3.9.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
+ * @see docs/protocol/3.9.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v3)",
  *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
- *      "DescribeDelegationToken API (key 41, v0 to v2)"
+ *      "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 #[CoversClass(CreateDelegationTokenRequest::class)]
 #[CoversClass(CreateDelegationTokenRequestV0::class)]
@@ -81,6 +86,11 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponseV1;
 #[CoversClass(ExpireDelegationTokenResponseV1::class)]
 #[CoversClass(DescribeDelegationTokenRequestV1::class)]
 #[CoversClass(DescribeDelegationTokenResponseV1::class)]
+#[CoversClass(CreateDelegationTokenRequestV2::class)]
+#[CoversClass(CreateDelegationTokenResponseV2::class)]
+#[CoversClass(DescribeDelegationTokenRequestV2::class)]
+#[CoversClass(DescribeDelegationTokenResponseV2::class)]
+#[CoversClass(DescribeDelegationTokenResponseTokenV2::class)]
 final class DelegationTokenTest extends TestCase
 {
     /**
@@ -124,6 +134,25 @@ final class DelegationTokenTest extends TestCase
         . '00000005'
         . '0004' . '74657374'
         . '00'
+        . '02'
+        . '05' . '55736572'
+        . '06' . '61646d696e'
+        . '00'
+        . '000000000036ee80'
+        . '00';
+
+    /**
+     * The same request as the **version 3** of Kafka 3.3, the one this client sends: the two nullable strings of
+     * the owner principal of KIP-373 stand behind the tag buffer of the header and in front of the renewers, and
+     * a request for the principal of the connection writes both of them as the compact null `00`.
+     */
+    private const string CREATE_REQUEST_V3_HEX = '00000027'
+        . '0026'
+        . '0003'
+        . '00000005'
+        . '0004' . '74657374'
+        . '00'
+        . '00' . '00'
         . '02'
         . '05' . '55736572'
         . '06' . '61646d696e'
@@ -313,16 +342,50 @@ final class DelegationTokenTest extends TestCase
     }
 
     /**
-     * Version 2 is the same request in the flexible encoding of Kafka 2.4, and it is the one the client sends
+     * Version 2 is the same request in the flexible encoding of Kafka 2.4
      */
     public function testTheCreateRequestOfVersionTwoIsCompact(): void
     {
-        $request = new CreateDelegationTokenRequest([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
+        $request = new CreateDelegationTokenRequestV2([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
 
         self::assertSame(self::CREATE_REQUEST_V2_HEX, bin2hex((string) $request));
         self::assertSame(2, $request->getApiVersion(), 'Kafka 2.4 raised the api to the flexible version 2');
-        self::assertTrue(CreateDelegationTokenRequest::isFlexible());
+        self::assertTrue(CreateDelegationTokenRequestV2::isFlexible());
         self::assertSame(37, $request->getMessageSize(), 'two bytes shorter than v1: four length prefixes, two tag buffers');
+    }
+
+    /**
+     * Version 3 is the version this client sends: the owner principal of KIP-373 in front of the renewers
+     */
+    public function testTheCreateRequestOfVersionThreeCarriesTheOwnerPrincipal(): void
+    {
+        $forItself = new CreateDelegationTokenRequest([KafkaPrincipal::user('admin')], 3600000, 'test', 5);
+
+        self::assertSame(3, $forItself->getApiVersion(), 'Kafka 3.3 raised the api to the version 3');
+        self::assertNull($forItself->getOwner(), 'a request without an owner is one for the principal itself');
+        self::assertSame(self::CREATE_REQUEST_V3_HEX, bin2hex((string) $forItself));
+        self::assertSame(
+            strlen(self::CREATE_REQUEST_V2_HEX) + 4,
+            strlen(self::CREATE_REQUEST_V3_HEX),
+            'which is the version 2 frame plus the two bytes of the two null owner strings'
+        );
+
+        $forAnother = new CreateDelegationTokenRequest([], 3600000, 'test', 5, KafkaPrincipal::user('acltest'));
+
+        self::assertEquals(KafkaPrincipal::user('acltest'), $forAnother->getOwner());
+        self::assertStringContainsString(
+            '05' . bin2hex('User') . '08' . bin2hex('acltest'),
+            bin2hex((string) $forAnother),
+            'the owner of KIP-373 is two compact strings, the type and the name'
+        );
+    }
+
+    public function testTheOwnerOfACreateRequestCanBeGivenAsAPrincipalString(): void
+    {
+        $fromString = new CreateDelegationTokenRequest([], 3600000, 'test', 5, 'User:acltest');
+        $fromObject = new CreateDelegationTokenRequest([], 3600000, 'test', 5, KafkaPrincipal::user('acltest'));
+
+        self::assertSame(bin2hex((string) $fromObject), bin2hex((string) $fromString));
     }
 
     public function testARenewerCanBeGivenAsThePrincipalStringOfTheKafkaTools(): void

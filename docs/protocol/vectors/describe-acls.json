@@ -1,0 +1,440 @@
+{
+    "api": "describe-acls",
+    "apiKey": 29,
+    "section": "DescribeAcls API (key 29, v0 to v3)",
+    "description": "Wire vectors of the DescribeAcls API (key 29, v0 to v3), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describeacls.request.v3.no-acl",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "DescribeAcls request v3 (Kafka 3.3) whose filter matches everything: the resource type, the pattern type, the operation and the permission type are all ANY (1) and the three names are null, which is the filter `AclBindingFilter.ANY` of the Java client. The version 3 is the one that says the client understands the USER resource type of KIP-373 in the answer; not one field changed with it.",
+            "hex": "00000020001d000300000ce4000d74342d33332d766563746f7273000100010000010100",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 29,
+                "apiVersion": 3,
+                "correlationId": 3300,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "patternFilter": {
+                    "resourceType": 1,
+                    "resourceName": null,
+                    "patternType": 1
+                },
+                "entryFilter": {
+                    "principal": null,
+                    "host": null,
+                    "operation": 1,
+                    "permissionType": 1
+                }
+            }
+        },
+        {
+            "id": "describeacls.response.v3.no-acl",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer of the node to that filter while no acl exists: the code 0, an `error_message` that is the EMPTY string - the compact `01`, not the null `00`, because the generated `DescribeAclsResponseData` @ 3.9.2 initialises the field with \"\" and `AclApis.handleDescribeAcls` never sets it - and no resource.",
+            "hex": "0000000e00000ce400000000000000010100",
+            "fields": {
+                "messageSize": 14,
+                "correlationId": 3300,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "resources": []
+            }
+        },
+        {
+            "id": "describeacls.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The same filter that matches everything, sent once the two acls exist.",
+            "hex": "00000020001d000300000ce6000d74342d33332d766563746f7273000100010000010100",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 29,
+                "apiVersion": 3,
+                "correlationId": 3302,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "patternFilter": {
+                    "resourceType": 1,
+                    "resourceName": null,
+                    "patternType": 1
+                },
+                "entryFilter": {
+                    "principal": null,
+                    "host": null,
+                    "operation": 1,
+                    "permissionType": 1
+                }
+            }
+        },
+        {
+            "id": "describeacls.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer with both acls: the resources come one per PATTERN - the prefixed GROUP `t4-33-acl-` first, the literal TOPIC `t4-33-acl-topic` second - with the acls of that pattern inside it, the principal as the `User:name` string the authorizer stores and the host as the literal `*` of an acl that names no host.",
+            "hex": "0000005500000ce6000000000000000103030b74342d33332d61636c2d04020d557365723a61636c74657374022a03030000021074342d33332d61636c2d746f70696303020d557365723a61636c74657374022a0303000000",
+            "fields": {
+                "messageSize": 85,
+                "correlationId": 3302,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "resources": [
+                    {
+                        "pattern": {
+                            "resourceType": 3,
+                            "resourceName": "t4-33-acl-",
+                            "patternType": 4
+                        },
+                        "acls": [
+                            {
+                                "principal": "User:acltest",
+                                "host": "*",
+                                "operation": 3,
+                                "permissionType": 3
+                            }
+                        ]
+                    },
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-33-acl-topic",
+                            "patternType": 3
+                        },
+                        "acls": [
+                            {
+                                "principal": "User:acltest",
+                                "host": "*",
+                                "operation": 3,
+                                "permissionType": 3
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeacls.request.v3.by-resource-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "A filter that names the resource type TOPIC (2) and leaves everything else a wildcard.",
+            "hex": "00000020001d000300000ce7000d74342d33332d766563746f7273000200010000010100",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 29,
+                "apiVersion": 3,
+                "correlationId": 3303,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "patternFilter": {
+                    "resourceType": 2,
+                    "resourceName": null,
+                    "patternType": 1
+                },
+                "entryFilter": {
+                    "principal": null,
+                    "host": null,
+                    "operation": 1,
+                    "permissionType": 1
+                }
+            }
+        },
+        {
+            "id": "describeacls.response.v3.by-resource-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "Only the literal TOPIC resource comes back; the prefixed GROUP acl is filtered out.",
+            "hex": "0000003400000ce7000000000000000102021074342d33332d61636c2d746f70696303020d557365723a61636c74657374022a0303000000",
+            "fields": {
+                "messageSize": 52,
+                "correlationId": 3303,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "resources": [
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-33-acl-topic",
+                            "patternType": 3
+                        },
+                        "acls": [
+                            {
+                                "principal": "User:acltest",
+                                "host": "*",
+                                "operation": 3,
+                                "permissionType": 3
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeacls.request.v3.by-principal",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "A filter that names the principal `User:acltest` and nothing else: the principal filter is matched literally, as the whole `<type>:<name>` string the authorizer stores.",
+            "hex": "0000002c001d000300000ce8000d74342d33332d766563746f7273000100010d557365723a61636c7465737400010100",
+            "fields": {
+                "messageSize": 44,
+                "apiKey": 29,
+                "apiVersion": 3,
+                "correlationId": 3304,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "patternFilter": {
+                    "resourceType": 1,
+                    "resourceName": null,
+                    "patternType": 1
+                },
+                "entryFilter": {
+                    "principal": "User:acltest",
+                    "host": null,
+                    "operation": 1,
+                    "permissionType": 1
+                }
+            }
+        },
+        {
+            "id": "describeacls.response.v3.by-principal",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "Both acls come back, because both were written for that principal.",
+            "hex": "0000005500000ce8000000000000000103030b74342d33332d61636c2d04020d557365723a61636c74657374022a03030000021074342d33332d61636c2d746f70696303020d557365723a61636c74657374022a0303000000",
+            "fields": {
+                "messageSize": 85,
+                "correlationId": 3304,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "resources": [
+                    {
+                        "pattern": {
+                            "resourceType": 3,
+                            "resourceName": "t4-33-acl-",
+                            "patternType": 4
+                        },
+                        "acls": [
+                            {
+                                "principal": "User:acltest",
+                                "host": "*",
+                                "operation": 3,
+                                "permissionType": 3
+                            }
+                        ]
+                    },
+                    {
+                        "pattern": {
+                            "resourceType": 2,
+                            "resourceName": "t4-33-acl-topic",
+                            "patternType": 3
+                        },
+                        "acls": [
+                            {
+                                "principal": "User:acltest",
+                                "host": "*",
+                                "operation": 3,
+                                "permissionType": 3
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeacls.request.v3.match",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The pattern type MATCH (2), which asks the wider question \"which acls apply to the group `t4-33-acl-group-one`\": the literal pattern of that name, every prefixed pattern the name starts with and the wildcard `*`.",
+            "hex": "00000033001d000300000ce9000d74342d33332d766563746f727300031474342d33332d61636c2d67726f75702d6f6e65020000010100",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 29,
+                "apiVersion": 3,
+                "correlationId": 3305,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "patternFilter": {
+                    "resourceType": 3,
+                    "resourceName": "t4-33-acl-group-one",
+                    "patternType": 2
+                },
+                "entryFilter": {
+                    "principal": null,
+                    "host": null,
+                    "operation": 1,
+                    "permissionType": 1
+                }
+            }
+        },
+        {
+            "id": "describeacls.response.v3.match",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The PREFIXED acl of `t4-33-acl-` is answered for a group that does not exist and whose name merely starts with it - which a filter of the pattern type LITERAL or ANY would not have found.",
+            "hex": "0000002f00000ce9000000000000000102030b74342d33332d61636c2d04020d557365723a61636c74657374022a0303000000",
+            "fields": {
+                "messageSize": 47,
+                "correlationId": 3305,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "resources": [
+                    {
+                        "pattern": {
+                            "resourceType": 3,
+                            "resourceName": "t4-33-acl-",
+                            "patternType": 4
+                        },
+                        "acls": [
+                            {
+                                "principal": "User:acltest",
+                                "host": "*",
+                                "operation": 3,
+                                "permissionType": 3
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeacls.request.v3.user-resource",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "A filter for the USER resource type (7), which no version below 3 may send.",
+            "hex": "00000020001d000300000ceb000d74342d33332d766563746f7273000700010000010100",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 29,
+                "apiVersion": 3,
+                "correlationId": 3307,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "patternFilter": {
+                    "resourceType": 7,
+                    "resourceName": null,
+                    "patternType": 1
+                },
+                "entryFilter": {
+                    "principal": null,
+                    "host": null,
+                    "operation": 1,
+                    "permissionType": 1
+                }
+            }
+        },
+        {
+            "id": "describeacls.response.v3.user-resource",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The USER acl of KIP-373 as the node answers it: the resource type 7, the user name as the resource name and the operation 13 (CREATE_TOKENS) inside it.",
+            "hex": "0000002c00000ceb000000000000000102070861636c7465737403020d557365723a61636c74657374022a0d03000000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 3307,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": "",
+                "resources": [
+                    {
+                        "pattern": {
+                            "resourceType": 7,
+                            "resourceName": "acltest",
+                            "patternType": 3
+                        },
+                        "acls": [
+                            {
+                                "principal": "User:acltest",
+                                "host": "*",
+                                "operation": 13,
+                                "permissionType": 3
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describeacls.request.v3.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The filter that matches everything, sent by the SASL user `acltest` - the one principal of the node that `super.users` does not name and that no acl of the authorizer allows anything on the cluster.",
+            "hex": "00000020001d000300000cee000d74342d33332d766563746f7273000100010000010100",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 29,
+                "apiVersion": 3,
+                "correlationId": 3310,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "patternFilter": {
+                    "resourceType": 1,
+                    "resourceName": null,
+                    "patternType": 1
+                },
+                "entryFilter": {
+                    "principal": null,
+                    "host": null,
+                    "operation": 1,
+                    "permissionType": 1
+                }
+            }
+        },
+        {
+            "id": "describeacls.response.v3.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeAclsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The code 31 (ClusterAuthorizationFailed) and no resource: `AclApis.handleDescribeAcls` @ 3.9.2 asks the authorizer for DESCRIBE on the CLUSTER resource BEFORE it reads the filter, so a principal cannot even read the acls that are written for itself. The `error_message` is the whole request object of the broker, which `AuthHelper.authorizeClusterOperation` builds with `s\"Request $request is not authorized.\"` - a processor number, a connection id, the identity hash of a Java object and the listener of the connection.",
+            "hex": "0000010a00000cee0000000000001ffc015265717565737420526571756573742870726f636573736f723d362c20636f6e6e656374696f6e49643d3137322e31382e302e323a393039342d3137322e31382e302e313a34363235322d32322c2073657373696f6e3d6f72672e6170616368652e6b61666b612e6e6574776f726b2e53657373696f6e40623830366633632c206c697374656e65724e616d653d4c697374656e65724e616d65285341534c5f504c41494e54455854292c20736563757269747950726f746f636f6c3d5341534c5f504c41494e544558542c206275666665723d6e756c6c2c20656e76656c6f70653d4e6f6e6529206973206e6f7420617574686f72697a65642e0100",
+            "fields": {
+                "messageSize": 266,
+                "correlationId": 3310,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 31,
+                "errorMessage": "Request Request(processor=6, connectionId=172.18.0.2:9094-172.18.0.1:46252-22, session=org.apache.kafka.network.Session@b806f3c, listenerName=ListenerName(SASL_PLAINTEXT), securityProtocol=SASL_PLAINTEXT, buffer=null, envelope=None) is not authorized.",
+                "resources": []
+            }
+        }
+    ]
+}

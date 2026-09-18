@@ -24,7 +24,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see CreateDelegationTokenRequest} sends. The frame of v1 is the frame of v0 with a higher number in the header,
  * which is the client's promise that it honours a `throttle_time_ms` itself.
  *
- * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 final class CreateDelegationTokenRequestV1 extends CreateDelegationTokenRequest
 {

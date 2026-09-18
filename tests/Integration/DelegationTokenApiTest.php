@@ -20,10 +20,12 @@ use Protocol\Kafka\Admin\DelegationToken;
 use Protocol\Kafka\Admin\TokenInformation;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\DelegationTokenAuthorizationException;
 use Protocol\Kafka\Common\Errors\DelegationTokenExpiredException;
 use Protocol\Kafka\Common\Errors\DelegationTokenNotFoundException;
 use Protocol\Kafka\Common\Errors\DelegationTokenOwnerMismatchException;
 use Protocol\Kafka\Common\Errors\InvalidPrincipalTypeException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\UnsupportedByAuthenticationException;
 use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Common\Security\SaslMechanism;
@@ -61,9 +63,9 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
  * expired as well on this node, where a 2.8.2 broker answered 66 for it - see
  * {@see self::testATokenThatRanOutOfItsMaximumLifetimeCanNotBeRenewedButCanStillBeExpired()}.
  *
- * @see docs/protocol/3.9.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
+ * @see docs/protocol/3.9.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v3)",
  *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
- *      "DescribeDelegationToken API (key 41, v0 to v2)"
+ *      "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DelegationToken::class)]
@@ -125,6 +127,17 @@ final class DelegationTokenApiTest extends IntegrationTestCase
      */
     private array $createdTokens = [];
 
+    /**
+     * Tokens this test asked for on behalf of {@see self::UNPRIVILEGED_USER} (KIP-373), as token id => hmac
+     *
+     * They are expired over the connection of that user, because the controller of a KRaft node lets the owner
+     * and the renewers of a token expire it and **not** the principal that asked for it - and the tear down waits
+     * until they are really gone, or the next test of the class sees them in the token cache of the broker.
+     *
+     * @var array<string, string>
+     */
+    private array $createdForeignTokens = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -146,6 +159,21 @@ final class DelegationTokenApiTest extends IntegrationTestCase
             }
         }
         $this->createdTokens = [];
+
+        $owner = $this->adminClient(
+            SecurityProtocol::SASL_PLAINTEXT,
+            self::UNPRIVILEGED_USER,
+            self::UNPRIVILEGED_PASSWORD
+        );
+        foreach ($this->createdForeignTokens as $tokenId => $hmac) {
+            try {
+                $owner->expireDelegationToken($hmac);
+                self::awaitTokenGone($owner, $tokenId);
+            } catch (DelegationTokenNotFoundException | DelegationTokenExpiredException) {
+                // The same best effort: the node must not keep a token of this suite, whatever a test did
+            }
+        }
+        $this->createdForeignTokens = [];
 
         ConnectionFactory::closeAll();
     }
@@ -447,12 +475,24 @@ final class DelegationTokenApiTest extends IntegrationTestCase
             $ordinary->describeDelegationToken(),
             'a principal the authorizer applies to does not see a token it neither owns nor may renew'
         );
-        self::assertSame(
-            [],
-            $ordinary->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]),
-            'and asking for a foreign owner is an empty array, not an error - `acltest` neither owns nor may renew'
-            . ' a token of `kafkatest`, so nothing of the shared set can show up here'
+        $ofTheForeignOwner = $ordinary->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]);
+
+        self::assertArrayNotHasKey(
+            $token->tokenId(),
+            $ofTheForeignOwner,
+            'and asking for a foreign owner is the code 0 with that token filtered out, not an error - `acltest`'
+            . ' neither owns nor may renew a token of `kafkatest`'
         );
+        foreach ($ofTheForeignOwner as $visible) {
+            // A superset assertion, because the tokens of the SASL users are shared with every other suite of the
+            // node: since KIP-373 an owner filter matches the REQUESTER of a token as well, so a token that
+            // `kafkatest` asked for on behalf of `acltest` is a legitimate answer here - what may never show up
+            // is a token that `acltest` neither owns nor asked for nor may renew
+            self::assertTrue(
+                $visible->tokenInformation->ownerOrRenewer(KafkaPrincipal::user(self::UNPRIVILEGED_USER)),
+                'a token the calling principal has nothing to do with was answered'
+            );
+        }
     }
 
     /**
@@ -482,6 +522,140 @@ final class DelegationTokenApiTest extends IntegrationTestCase
             'expire'   => $admin->expireDelegationToken(random_bytes(64)),
             'describe' => $admin->describeDelegationToken(),
         };
+    }
+
+    /**
+     * The owner principal of KIP-373 (Kafka 3.3): a token that belongs to somebody else than the caller
+     *
+     * The version 3 of CreateDelegationToken carries the owner, the version 3 of its answer and of a described
+     * token the **requester**, and the two are only different when a request asked for them to be. A super user
+     * needs no acl for it - `kafkatest` is one of the `super.users` of the node - while anybody else needs
+     * `CREATE_TOKENS` on the `USER` resource of the owner.
+     */
+    public function testATokenCanBeIssuedForAnotherPrincipal(): void
+    {
+        $admin = $this->adminClient();
+
+        $token = $admin->createDelegationToken([], self::MAX_LIFETIME_MS, KafkaPrincipal::user(self::UNPRIVILEGED_USER));
+        $this->createdForeignTokens[$token->tokenId()] = $token->hmac;
+
+        $information = $token->tokenInformation;
+        self::assertSame('User:' . self::UNPRIVILEGED_USER, $information->ownerAsString(), 'the owner of KIP-373');
+        self::assertSame(
+            'User:' . self::OWNER_USER,
+            $information->tokenRequesterAsString(),
+            'and the principal of the connection as the requester the version 3 added to the answer'
+        );
+        self::assertTrue($information->isIssuedForAnotherPrincipal());
+        self::assertSame([], $information->renewersAsString(), 'this request named no renewer at all');
+
+        // The requester counts as an owner for the describe filter of the broker, so it sees the token itself
+        $described = self::awaitToken($admin, $token->tokenId());
+        self::assertSame(
+            'User:' . self::UNPRIVILEGED_USER,
+            $described[$token->tokenId()]->tokenInformation->ownerAsString()
+        );
+        self::assertSame(
+            'User:' . self::OWNER_USER,
+            $described[$token->tokenId()]->tokenInformation->tokenRequesterAsString(),
+            'a described token names its requester since the version 3 as well'
+        );
+
+        // and the owner sees it over its own connection
+        $owner = $this->adminClient(
+            SecurityProtocol::SASL_PLAINTEXT,
+            self::UNPRIVILEGED_USER,
+            self::UNPRIVILEGED_PASSWORD
+        );
+        $ofTheOwner = self::awaitToken($owner, $token->tokenId());
+        self::assertSame(
+            'User:' . self::OWNER_USER,
+            $ofTheOwner[$token->tokenId()]->tokenInformation->tokenRequesterAsString()
+        );
+    }
+
+    /**
+     * A token of another owner is asked for by the owner filter of that owner, not by the one of the requester
+     */
+    public function testATokenOfAnotherPrincipalIsFoundByTheOwnerFilterOfItsOwner(): void
+    {
+        $admin = $this->adminClient();
+
+        $token = $admin->createDelegationToken([], self::MAX_LIFETIME_MS, 'User:' . self::UNPRIVILEGED_USER);
+        $this->createdForeignTokens[$token->tokenId()] = $token->hmac;
+
+        $byOwner = self::awaitToken($admin, $token->tokenId(), [KafkaPrincipal::user(self::UNPRIVILEGED_USER)]);
+
+        self::assertArrayHasKey($token->tokenId(), $byOwner);
+        self::assertSame(
+            'User:' . self::OWNER_USER,
+            $byOwner[$token->tokenId()]->tokenInformation->tokenRequesterAsString()
+        );
+    }
+
+    /**
+     * The requester may see the token it asked for, but the controller of a KRaft node does not let it renew one
+     *
+     * `TokenInformation.ownerOrRenewer` @ 3.9.2 counts the requester, which is what the describe filter asks,
+     * while `DelegationTokenControlManager.allowedToRenew` @ 3.9.2 - the controller half - is the owner and the
+     * renewers alone. The two halves therefore disagree, and this is the measurement of it.
+     */
+    public function testTheRequesterOfATokenOfAnotherOwnerMayNotRenewOrExpireIt(): void
+    {
+        $requester = $this->adminClient();
+        $owner     = $this->adminClient(
+            SecurityProtocol::SASL_PLAINTEXT,
+            self::UNPRIVILEGED_USER,
+            self::UNPRIVILEGED_PASSWORD
+        );
+
+        $token = $requester->createDelegationToken([], self::MAX_LIFETIME_MS, KafkaPrincipal::user(self::UNPRIVILEGED_USER));
+        $this->createdForeignTokens[$token->tokenId()] = $token->hmac;
+        self::awaitToken($requester, $token->tokenId());
+
+        try {
+            $requester->renewDelegationToken($token->hmac, 600000);
+            self::fail('The requester of the token was allowed to renew it');
+        } catch (DelegationTokenOwnerMismatchException) {
+            // 63: the controller of a KRaft node does not count the requester among the principals that may renew
+        }
+
+        try {
+            $requester->expireDelegationToken($token->hmac);
+            self::fail('The requester of the token was allowed to expire it');
+        } catch (DelegationTokenOwnerMismatchException) {
+            // the same 63 from the expire api
+        }
+
+        // The owner itself may do both, which is what ends this test and takes the token off the node
+        $expiry = $owner->expireDelegationToken($token->hmac);
+        self::assertLessThanOrEqual(self::now() + 1000, $expiry, 'an immediate expiry answers the clock of the broker');
+        self::awaitTokenGone($owner, $token->tokenId());
+    }
+
+    /**
+     * Asking for a token of a principal one has no `CREATE_TOKENS` acl for is the 65 of KIP-373
+     */
+    public function testAPrincipalWithoutTheCreateTokensAclMayNotAskForATokenOfAnotherOwner(): void
+    {
+        $unprivileged = $this->adminClient(
+            SecurityProtocol::SASL_PLAINTEXT,
+            self::UNPRIVILEGED_USER,
+            self::UNPRIVILEGED_PASSWORD
+        );
+
+        try {
+            $token = $unprivileged->createDelegationToken([], self::MAX_LIFETIME_MS, KafkaPrincipal::user(self::OTHER_USER));
+            $this->createdTokens[] = $token->hmac;
+            // Unreachable on this node: `acltest` has no CREATE_TOKENS acl on `User:admin`
+            self::fail('A principal outside super.users issued a token for somebody else without an acl');
+        } catch (DelegationTokenAuthorizationException $refused) {
+            self::assertSame(
+                KafkaException::DELEGATION_TOKEN_AUTHORIZATION_FAILED,
+                $refused->getCode(),
+                'the 65 of KIP-373, not the 31 the ACL apis answer'
+            );
+        }
     }
 
     /**

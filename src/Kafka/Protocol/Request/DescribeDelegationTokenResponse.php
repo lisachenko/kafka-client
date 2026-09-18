@@ -15,9 +15,10 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
+use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseTokenV2;
 
 /**
- * DescribeDelegationToken response object, version 1 (key 41)
+ * DescribeDelegationToken response object, version 3 (key 41)
  *
  * <pre>
  *   DescribeDelegationToken Response (Version: 0 and 1) => error_code [token_details] throttle_time_ms
@@ -47,14 +48,25 @@ use Protocol\Kafka\Protocol\Data\DescribeDelegationTokenResponseToken;
  * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
  * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
  *
- * @see docs/protocol/3.9.md, section "DescribeDelegationToken API (key 41, v0 to v2)"
+ * **Kafka 3.3 added the version 3 and with it the requester of every token** ("Version 3 adds token requester
+ * details" of `DescribeDelegationTokenResponse.json` @ 3.3.2), two strings inside each entry that name the
+ * principal which asked for it - the owner itself, unless the token was issued for somebody else with the owner
+ * principal of KIP-373. The request is unchanged, so the version alone asks for them;
+ * {@see DescribeDelegationTokenResponseV2} decodes the answer of a broker below Kafka 3.3.
+ *
+ * @see docs/protocol/3.9.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 class DescribeDelegationTokenResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
+
+    /**
+     * The version 3 of Kafka 3.3 is the first one whose tokens name their requester (KIP-373)
+     */
+    public const int TOKEN_REQUESTER_VERSION = 3;
 
     /**
      * @inheritdoc
@@ -87,8 +99,20 @@ class DescribeDelegationTokenResponse extends AbstractResponse
 
         return $header + [
             'errorCode'      => BinarySchema::TYPE_INT16,
-            'tokenDetails'   => ['tokenId' => DescribeDelegationTokenResponseToken::class],
+            'tokenDetails'   => ['tokenId' => static::tokenClass()],
             'throttleTimeMs' => BinarySchema::TYPE_INT32,
         ];
+    }
+
+    /**
+     * Returns the class of a token entry for the version of the api that this class unpacks
+     *
+     * @return class-string<DescribeDelegationTokenResponseToken>
+     */
+    protected static function tokenClass(): string
+    {
+        return static::VERSION >= self::TOKEN_REQUESTER_VERSION
+            ? DescribeDelegationTokenResponseToken::class
+            : DescribeDelegationTokenResponseTokenV2::class;
     }
 }

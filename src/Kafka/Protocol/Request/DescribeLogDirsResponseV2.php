@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * answers with 31 is, here, the empty `log_dirs` array alone. The versions 0 and 1 are the same fields in the
  * encoding before KIP-482 ({@see DescribeLogDirsResponseV1}).
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 final class DescribeLogDirsResponseV2 extends DescribeLogDirsResponse
 {

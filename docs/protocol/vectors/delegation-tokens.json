@@ -494,7 +494,7 @@
             "id": "createdelegationtoken.request.v2",
             "apiKey": 38,
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequestV2",
             "version": 2,
             "source": "broker",
             "description": "CreateDelegationToken request v2, the flexible version of Kafka 2.4: a compact array of renewers whose two principal strings are compact as well, a tag buffer per structure and the request header v2. Sent over the SASL_PLAINTEXT listener, where the principal of the connection is User:kafkatest.",
@@ -519,7 +519,7 @@
             "id": "createdelegationtoken.response.v2",
             "apiKey": 38,
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The token the broker issued for it. The owner is two compact strings WITHOUT a tag buffer of their own - PrincipalType and PrincipalName are fields of the answer, not a structure of the specification - and the throttle time stays the LAST field, where KIP-124 put it for the four token apis.",
@@ -546,7 +546,7 @@
         {
             "id": "createdelegationtoken.response.v2.invalid-principal-type",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The answer to a v2 request whose renewer is a Group instead of a User: the error code 67 (InvalidPrincipalType), the principal of the connection, -1 for the three timestamps and the compact empty string and byte array for the token id and the hmac.",
@@ -573,7 +573,7 @@
         {
             "id": "createdelegationtoken.response.v2.not-allowed",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponseV2",
             "version": 2,
             "source": "broker",
             "description": "The same request on the PLAINTEXT listener, where the principal is User:ANONYMOUS: the error code 64 (UnsupportedByAuthentication), because a token is only issued over a channel that authenticated a real principal.",
@@ -641,7 +641,7 @@
             "id": "describedelegationtoken.request.v2",
             "apiKey": 41,
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenRequestV2",
             "version": 2,
             "source": "broker",
             "description": "DescribeDelegationToken request v2, the first flexible version of the api (KIP-482): the owners whose tokens are asked for, each a `KafkaPrincipal` of two compact strings.",
@@ -665,7 +665,7 @@
             "id": "describedelegationtoken.response.v2",
             "apiKey": 41,
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenResponseV2",
             "version": 2,
             "source": "broker",
             "description": "DescribeDelegationToken answer v2: the token above with its owner, its renewers and its timestamps, and the throttle time last.",
@@ -736,6 +736,308 @@
                 "headerTaggedFields": [],
                 "errorCode": 0,
                 "expiryTimestamp": 1789153154952,
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "createdelegationtoken.request.v3",
+            "apiKey": 38,
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "CreateDelegationToken request v3 (Kafka 3.3, KIP-373) of a token for the caller itself: the two nullable strings of the owner principal are the first fields of the body and both of them are null, which is what every version below 3 sends - \"If it is null it defaults to the token request principal\" - followed by the one renewer `User:admin` and the maximum lifetime of an hour.",
+            "hex": "000000300026000300000d02000d74342d33332d766563746f72730000000205557365720661646d696e00000000000036ee8000",
+            "fields": {
+                "messageSize": 48,
+                "apiKey": 38,
+                "apiVersion": 3,
+                "correlationId": 3330,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "ownerPrincipalType": null,
+                "ownerPrincipalName": null,
+                "renewers": [
+                    {
+                        "principalType": "User",
+                        "name": "admin"
+                    }
+                ],
+                "maxLifeTime": 3600000
+            }
+        },
+        {
+            "id": "createdelegationtoken.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer of the node to the SASL user `kafkatest`: the owner, then the TOKEN REQUESTER of the version 3 - the same principal here, because the token was issued for the caller - then the three timestamps, the token id and the 64 bytes of the HmacSHA512, with the throttle time last as in every token api.",
+            "hex": "0000009a00000d0200000005557365720a6b61666b617465737405557365720a6b61666b6174657374000001a0b48a35f2000001a0b4c12472000001a0b4c124721755384f75796e36445173326b79512d54526f4655707741e15e78cd6426cc412ffd8481c0ef17724e8f2187c878ad2b6f5b69b1fdc15b9d639dc469d8089fd5b285c2cd90f9c11100e18bc2c341fea570742562913f93b50000000000",
+            "fields": {
+                "messageSize": 154,
+                "correlationId": 3330,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "owner": {
+                    "principalType": "User",
+                    "name": "kafkatest"
+                },
+                "tokenRequester": {
+                    "principalType": "User",
+                    "name": "kafkatest"
+                },
+                "issueTimestamp": 1789735351794,
+                "expiryTimestamp": 1789738951794,
+                "maxTimestamp": 1789738951794,
+                "tokenId": "U8Ouyn6DQs2kyQ-TRoFUpw",
+                "hmac": {
+                    "$bytes": "e15e78cd6426cc412ffd8481c0ef17724e8f2187c878ad2b6f5b69b1fdc15b9d639dc469d8089fd5b285c2cd90f9c11100e18bc2c341fea570742562913f93b5"
+                },
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "createdelegationtoken.request.v3.other-owner",
+            "apiKey": 38,
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The request KIP-373 added the version for: `kafkatest` asks for a token that belongs to `User:acltest`, which is what the two owner strings carry and what no version below 3 could ask for. The renewer array is empty here.",
+            "hex": "0000002f0026000300000d03000d74342d33332d766563746f72730005557365720861636c7465737401000000000036ee8000",
+            "fields": {
+                "messageSize": 47,
+                "apiKey": 38,
+                "apiVersion": 3,
+                "correlationId": 3331,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "ownerPrincipalType": "User",
+                "ownerPrincipalName": "acltest",
+                "renewers": [],
+                "maxLifeTime": 3600000
+            }
+        },
+        {
+            "id": "createdelegationtoken.response.v3.other-owner",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The answer names both principals: the OWNER `User:acltest`, for whom the token was issued, and the REQUESTER `User:kafkatest`, which asked for it - the pair that no version below 3 could express.",
+            "hex": "0000009800000d0300000005557365720861636c7465737405557365720a6b61666b6174657374000001a0b48a360d000001a0b4c1248d000001a0b4c1248d173868653741457a2d527736544f51327972374d61597741f027dae9966b7ad804c2d7de3eaa98459771b4d52d999104cb6e738ec1f79441bbe799e3790d82d67fc98b9181dfcf95f6ceb57d190301d25d1bd6dc5cfd11de0000000000",
+            "fields": {
+                "messageSize": 152,
+                "correlationId": 3331,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "owner": {
+                    "principalType": "User",
+                    "name": "acltest"
+                },
+                "tokenRequester": {
+                    "principalType": "User",
+                    "name": "kafkatest"
+                },
+                "issueTimestamp": 1789735351821,
+                "expiryTimestamp": 1789738951821,
+                "maxTimestamp": 1789738951821,
+                "tokenId": "8he7AEz-Rw6TOQ2yr7MaYw",
+                "hmac": {
+                    "$bytes": "f027dae9966b7ad804c2d7de3eaa98459771b4d52d999104cb6e738ec1f79441bbe799e3790d82d67fc98b9181dfcf95f6ceb57d190301d25d1bd6dc5cfd11de"
+                },
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "createdelegationtoken.request.v3.unauthorized",
+            "apiKey": 38,
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The SASL user `acltest` asks for a token that would belong to `User:admin`.",
+            "hex": "0000002d0026000300000d06000d74342d33332d766563746f72730005557365720661646d696e01000000000036ee8000",
+            "fields": {
+                "messageSize": 45,
+                "apiKey": 38,
+                "apiVersion": 3,
+                "correlationId": 3334,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "ownerPrincipalType": "User",
+                "ownerPrincipalName": "admin",
+                "renewers": [],
+                "maxLifeTime": 3600000
+            }
+        },
+        {
+            "id": "createdelegationtoken.response.v3.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\CreateDelegationTokenResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The refusal of KIP-373: **65** (`DelegationTokenAuthorizationFailed`), not the 31 of the other apis, because issuing a token for another principal is authorized as CREATE_TOKENS on the USER resource of that principal and `acltest` has no such acl. The answer still carries the owner that was asked for and the requester, with the three timestamps at -1, the empty token id and an empty hmac.",
+            "hex": "0000003e00000d0600004105557365720661646d696e05557365720861636c74657374ffffffffffffffffffffffffffffffffffffffffffffffff01010000000000",
+            "fields": {
+                "messageSize": 62,
+                "correlationId": 3334,
+                "headerTaggedFields": [],
+                "errorCode": 65,
+                "owner": {
+                    "principalType": "User",
+                    "name": "admin"
+                },
+                "tokenRequester": {
+                    "principalType": "User",
+                    "name": "acltest"
+                },
+                "issueTimestamp": -1,
+                "expiryTimestamp": -1,
+                "maxTimestamp": -1,
+                "tokenId": "",
+                "hmac": {
+                    "$bytes": ""
+                },
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "describedelegationtoken.request.v3",
+            "apiKey": 41,
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "DescribeDelegationToken request v3 (Kafka 3.3) with the null owner array, which asks for every token the caller may see. The request did not change with the version - \"Version 3 adds token requester into the response\" of `DescribeDelegationTokenRequest.json` @ 3.3.2.",
+            "hex": "0000001a0029000300000d04000d74342d33332d766563746f7273000000",
+            "fields": {
+                "messageSize": 26,
+                "apiKey": 41,
+                "apiVersion": 3,
+                "correlationId": 3332,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "owners": null
+            }
+        },
+        {
+            "id": "describedelegationtoken.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The two tokens `kafkatest` may see, each with the REQUESTER of the version 3 between its owner and its timestamps: its own token (owner and requester `User:kafkatest`, the renewer `User:admin`) and the token of `User:acltest` that it asked for - which it sees because `TokenInformation.ownerOrRenewer` @ 3.9.2 counts the requester of a token as one of its owners.",
+            "hex": "0000013700000d040000000305557365720861636c7465737405557365720a6b61666b6174657374000001a0b48a360d000001a0b4c1248d000001a0b4c1248d173868653741457a2d527736544f51327972374d61597741f027dae9966b7ad804c2d7de3eaa98459771b4d52d999104cb6e738ec1f79441bbe799e3790d82d67fc98b9181dfcf95f6ceb57d190301d25d1bd6dc5cfd11de010005557365720a6b61666b617465737405557365720a6b61666b6174657374000001a0b48a35f2000001a0b4c12472000001a0b4c124721755384f75796e36445173326b79512d54526f4655707741e15e78cd6426cc412ffd8481c0ef17724e8f2187c878ad2b6f5b69b1fdc15b9d639dc469d8089fd5b285c2cd90f9c11100e18bc2c341fea570742562913f93b50205557365720661646d696e00000000000000",
+            "fields": {
+                "messageSize": 311,
+                "correlationId": 3332,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "tokenDetails": {
+                    "8he7AEz-Rw6TOQ2yr7MaYw": {
+                        "owner": {
+                            "principalType": "User",
+                            "name": "acltest"
+                        },
+                        "tokenRequester": {
+                            "principalType": "User",
+                            "name": "kafkatest"
+                        },
+                        "issueTimestamp": 1789735351821,
+                        "expiryTimestamp": 1789738951821,
+                        "maxTimestamp": 1789738951821,
+                        "tokenId": "8he7AEz-Rw6TOQ2yr7MaYw",
+                        "hmac": {
+                            "$bytes": "f027dae9966b7ad804c2d7de3eaa98459771b4d52d999104cb6e738ec1f79441bbe799e3790d82d67fc98b9181dfcf95f6ceb57d190301d25d1bd6dc5cfd11de"
+                        },
+                        "renewers": []
+                    },
+                    "U8Ouyn6DQs2kyQ-TRoFUpw": {
+                        "owner": {
+                            "principalType": "User",
+                            "name": "kafkatest"
+                        },
+                        "tokenRequester": {
+                            "principalType": "User",
+                            "name": "kafkatest"
+                        },
+                        "issueTimestamp": 1789735351794,
+                        "expiryTimestamp": 1789738951794,
+                        "maxTimestamp": 1789738951794,
+                        "tokenId": "U8Ouyn6DQs2kyQ-TRoFUpw",
+                        "hmac": {
+                            "$bytes": "e15e78cd6426cc412ffd8481c0ef17724e8f2187c878ad2b6f5b69b1fdc15b9d639dc469d8089fd5b285c2cd90f9c11100e18bc2c341fea570742562913f93b5"
+                        },
+                        "renewers": [
+                            {
+                                "principalType": "User",
+                                "name": "admin"
+                            }
+                        ]
+                    }
+                },
+                "throttleTimeMs": 0
+            }
+        },
+        {
+            "id": "describedelegationtoken.request.v3.by-owner",
+            "apiKey": 41,
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "A describe that names one owner, `User:acltest`, instead of asking for every visible token.",
+            "hex": "000000280029000300000d05000d74342d33332d766563746f7273000205557365720861636c746573740000",
+            "fields": {
+                "messageSize": 40,
+                "apiKey": 41,
+                "apiVersion": 3,
+                "correlationId": 3333,
+                "clientId": "t4-33-vectors",
+                "headerTaggedFields": [],
+                "owners": [
+                    {
+                        "principalType": "User",
+                        "name": "acltest"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "describedelegationtoken.response.v3.by-owner",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeDelegationTokenResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "The one token of that owner, with `User:kafkatest` as its requester and no renewer at all.",
+            "hex": "0000009b00000d050000000205557365720861636c7465737405557365720a6b61666b6174657374000001a0b48a360d000001a0b4c1248d000001a0b4c1248d173868653741457a2d527736544f51327972374d61597741f027dae9966b7ad804c2d7de3eaa98459771b4d52d999104cb6e738ec1f79441bbe799e3790d82d67fc98b9181dfcf95f6ceb57d190301d25d1bd6dc5cfd11de01000000000000",
+            "fields": {
+                "messageSize": 155,
+                "correlationId": 3333,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "tokenDetails": {
+                    "8he7AEz-Rw6TOQ2yr7MaYw": {
+                        "owner": {
+                            "principalType": "User",
+                            "name": "acltest"
+                        },
+                        "tokenRequester": {
+                            "principalType": "User",
+                            "name": "kafkatest"
+                        },
+                        "issueTimestamp": 1789735351821,
+                        "expiryTimestamp": 1789738951821,
+                        "maxTimestamp": 1789738951821,
+                        "tokenId": "8he7AEz-Rw6TOQ2yr7MaYw",
+                        "hmac": {
+                            "$bytes": "f027dae9966b7ad804c2d7de3eaa98459771b4d52d999104cb6e738ec1f79441bbe799e3790d82d67fc98b9181dfcf95f6ceb57d190301d25d1bd6dc5cfd11de"
+                        },
+                        "renewers": []
+                    }
+                },
                 "throttleTimeMs": 0
             }
         }

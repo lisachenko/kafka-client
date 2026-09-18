@@ -18,8 +18,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * CreateDelegationToken, version 2: issues a delegation token for the principal of the connection (ApiKey 38,
- * Kafka 1.1, KIP-48)
+ * CreateDelegationToken, version 3: issues a delegation token for a principal (ApiKey 38, Kafka 1.1, KIP-48)
  *
  * <pre>
  *   CreateDelegationToken Request (Version: 0 and 1) => [renewers] max_life_time
@@ -55,7 +54,19 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * {@see CreateDelegationTokenRequestV1} and {@see CreateDelegationTokenRequestV0} are the same frame in the plain
  * encoding.
  *
- * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v2)"
+ * **Kafka 3.3 added version 3 and with it the owner principal** ("Version 3 adds owner principal" of
+ * `CreateDelegationTokenRequest.json` @ 3.3.2): two nullable strings **in front of** the renewers -
+ * `owner_principal_type` and `owner_principal_name` - with which a caller asks for a token that belongs to
+ * *another* principal. That is KIP-373: an application may hand out tokens for the users it acts for instead of
+ * making every one of them talk to the broker. Both fields null, which is what {@see self::$owner} being null
+ * writes, is the request of every version below 3 - "If it's null it defaults to the token request principal".
+ *
+ * Issuing a token for another principal is authorized on the **{@see \Protocol\Kafka\Common\ResourceType::USER}
+ * resource** of that principal, with the operation {@see \Protocol\Kafka\Common\AclOperation::CREATE_TOKENS} -
+ * the resource type the version 3 of the three ACL apis added in the same release. A super user needs no acl for
+ * it; anybody else is answered **31**.
+ *
+ * @see docs/protocol/3.9.md, section "CreateDelegationToken API (key 38, v0 to v3)"
  */
 class CreateDelegationTokenRequest extends AbstractRequest
 {
@@ -67,7 +78,7 @@ class CreateDelegationTokenRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * @inheritdoc
@@ -75,9 +86,24 @@ class CreateDelegationTokenRequest extends AbstractRequest
     public const int FLEXIBLE_VERSION = 2;
 
     /**
+     * The version 3 of Kafka 3.3 is the first one that can ask for a token of another principal (KIP-373)
+     */
+    public const int OWNER_PRINCIPAL_VERSION = 3;
+
+    /**
      * Asks for the `delegation.token.max.lifetime.ms` of the broker instead of a lifetime of its own
      */
     public const int DEFAULT_MAX_LIFE_TIME = -1;
+
+    /**
+     * Type of the principal the token is issued for, null for the principal of the connection
+     */
+    protected readonly ?string $ownerPrincipalType;
+
+    /**
+     * Name of the principal the token is issued for, null for the principal of the connection
+     */
+    protected readonly ?string $ownerPrincipalName;
 
     /**
      * Principals that may renew this token besides its owner
@@ -93,6 +119,8 @@ class CreateDelegationTokenRequest extends AbstractRequest
      *        {@see self::DEFAULT_MAX_LIFE_TIME} for the maximum of the broker
      * @param string $clientId      A user specified identifier for the client making the request
      * @param int    $correlationId A user-supplied value that the broker passes back unmodified
+     * @param KafkaPrincipal|string|null $owner Principal the token is issued for (Kafka 3.3, KIP-373), null for
+     *        the principal of the connection
      */
     public function __construct(
         array $renewers = [],
@@ -101,11 +129,30 @@ class CreateDelegationTokenRequest extends AbstractRequest
          */
         protected readonly int $maxLifeTime = self::DEFAULT_MAX_LIFE_TIME,
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        KafkaPrincipal|string|null $owner = null
     ) {
         $this->renewers = KafkaPrincipal::listOf($renewers);
 
+        $principal                = $owner === null || $owner instanceof KafkaPrincipal
+            ? $owner
+            : KafkaPrincipal::fromString($owner);
+        $this->ownerPrincipalType = $principal?->principalType;
+        $this->ownerPrincipalName = $principal?->name;
+
         parent::__construct(self::API_KEY, $clientId, $correlationId);
+    }
+
+    /**
+     * Returns the principal the token is asked for, null when it is the principal of the connection
+     */
+    public function getOwner(): ?KafkaPrincipal
+    {
+        if ($this->ownerPrincipalType === null || $this->ownerPrincipalName === null) {
+            return null;
+        }
+
+        return new KafkaPrincipal($this->ownerPrincipalType, $this->ownerPrincipalName);
     }
 
     /**
@@ -132,10 +179,16 @@ class CreateDelegationTokenRequest extends AbstractRequest
     public static function getScheme(): array
     {
         $header = parent::getScheme();
+        $body   = [];
 
-        return $header + [
-            'renewers'    => [KafkaPrincipal::class],
-            'maxLifeTime' => BinarySchema::TYPE_INT64,
-        ];
+        // The owner of KIP-373 is the FIRST field of the body of a version 3, in front of the renewers
+        if (static::VERSION >= self::OWNER_PRINCIPAL_VERSION) {
+            $body['ownerPrincipalType'] = BinarySchema::TYPE_NULLABLE_STRING;
+            $body['ownerPrincipalName'] = BinarySchema::TYPE_NULLABLE_STRING;
+        }
+        $body['renewers']    = [KafkaPrincipal::class];
+        $body['maxLifeTime'] = BinarySchema::TYPE_INT64;
+
+        return $header + $body;
     }
 }

@@ -16,6 +16,8 @@ namespace Protocol\Kafka\Admin;
 use Closure;
 use Exception;
 use Protocol\Kafka\Client;
+use Protocol\Kafka\Common\AclBinding;
+use Protocol\Kafka\Common\AclBindingFilter;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
@@ -63,10 +65,16 @@ use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsRequest;
 use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
+use Protocol\Kafka\Protocol\Request\CreateAclsRequest;
+use Protocol\Kafka\Protocol\Request\CreateAclsResponse;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
+use Protocol\Kafka\Protocol\Request\DeleteAclsRequest;
+use Protocol\Kafka\Protocol\Request\DeleteAclsResponse;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeAclsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeAclsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasRequest;
 use Protocol\Kafka\Protocol\Request\DescribeClientQuotasResponse;
 use Protocol\Kafka\Protocol\Request\DescribeClusterRequest;
@@ -2433,11 +2441,17 @@ class AdminClient
      * every topic entry that keeps no partition, a filter Kafka 3.7 added - so a request that names one partition
      * is answered with that one topic there.
      *
-     * The request goes out as **version 3**, the version Kafka 3.2 added: its answer carries a **top-level error
-     * code** ("Version 3 adds the top-level ErrorCode field" of `DescribeLogDirsResponse.json` @ 3.2.3), which is
-     * the refusal of the whole request and is thrown from here. On the node that code is 31
-     * ({@see \Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException}) for a principal that may not `Describe` the
-     * `CLUSTER` resource; a broker below Kafka 3.2 answers the same refusal with an empty directory map and no
+     * The request goes out as **version 4**, the version Kafka 3.3 added: every directory of its answer carries
+     * the `total_bytes` and `usable_bytes` of KIP-827, the size and the free space of the **volume** the directory
+     * sits on, which {@see LogDirInfo::$totalBytes} and {@see LogDirInfo::$usableBytes} report and which are
+     * {@see LogDirInfo::UNKNOWN_BYTES} for a directory the broker could not measure. Two directories of the same
+     * filesystem answer the same two numbers.
+     *
+     * The version 3 of Kafka 3.2 had added the **top-level error code** ("Version 3 adds the top-level ErrorCode
+     * field" of `DescribeLogDirsResponse.json` @ 3.2.3), which is the refusal of the whole request and is thrown
+     * from here. On the node that code is 31
+     * ({@see \Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException}) for a principal that may not
+     * `Describe` the `CLUSTER` resource; a broker below Kafka 3.2 answers the same refusal with an empty directory map and no
      * code at all, which a caller cannot tell from a broker without any log directory.
      *
      * @param list<int>                                              $brokerIds       Brokers to ask, by node id
@@ -2620,17 +2634,29 @@ class AdminClient
      * with the token id as the user name and the base64 hmac as the password, and this package speaks `PLAIN`
      * alone - see {@see DelegationToken}.
      *
+     * **`$owner` issues the token for another principal** (Kafka 3.3, KIP-373), which is the Java
+     * `CreateDelegationTokenOptions.owner(KafkaPrincipal)`: the token belongs to that principal - only it and its
+     * renewers can use and renew it - while the answer names the caller as the **requester** of the token
+     * ({@see TokenInformation::$tokenRequester}). The default `null` asks for a token of the principal of the
+     * connection, which is what every version below 3 could do. Issuing a token for somebody else is authorized
+     * on the {@see \Protocol\Kafka\Common\ResourceType::USER} resource of that principal with the operation
+     * {@see \Protocol\Kafka\Common\AclOperation::CREATE_TOKENS}, so a caller that is not a super user needs
+     * such an acl - {@see self::createAcls()} writes it - and is answered **65** without one.
+     *
      * @param list<KafkaPrincipal|string> $renewers      Principals that may renew the token besides its owner
      * @param int                         $maxLifeTimeMs Maximum lifetime in milliseconds, -1 for the maximum of
      *        the broker
+     * @param KafkaPrincipal|string|null  $owner         Principal the token belongs to, null for the caller
      *
      * @throws KafkaException If the broker refused the request - 61 when it has no `delegation.token.master.key`,
-     *         64 when the connection authenticated nobody, 67 for a renewer that is not a `User`
+     *         64 when the connection authenticated nobody, 67 for a renewer that is not a `User`, 65 for an owner
+     *         the caller may not issue a token for
      * @throws AllBrokersNotAvailableException If no broker of the cluster answered
      */
     public function createDelegationToken(
         array $renewers = [],
-        int $maxLifeTimeMs = CreateDelegationTokenRequest::DEFAULT_MAX_LIFE_TIME
+        int $maxLifeTimeMs = CreateDelegationTokenRequest::DEFAULT_MAX_LIFE_TIME,
+        KafkaPrincipal|string|null $owner = null
     ): DelegationToken {
         // The answer does not repeat the renewers of the request, so the list of the caller is the only place the
         // information of the issued token can take them from - as the Scala `AdminClient.createToken` does as well
@@ -2642,7 +2668,8 @@ class AdminClient
                 $principals,
                 $maxLifeTimeMs,
                 $this->clientId(),
-                $correlationId
+                $correlationId,
+                $owner
             ),
             CreateDelegationTokenResponse::class
         );
@@ -3169,5 +3196,173 @@ class AdminClient
             $replica->lastFetchTimestamp === $unknown ? null : $replica->lastFetchTimestamp,
             $replica->lastCaughtUpTimestamp === $unknown ? null : $replica->lastCaughtUpTimestamp
         );
+    }
+
+    /**
+     * Reads the acls of the cluster that a filter matches (ApiKey 29, Kafka 0.11, KIP-140)
+     *
+     * The api only answers on a broker that runs an authorizer: without an `authorizer.class.name` every version
+     * of it is refused with **54** (`SecurityDisabled`) and `No Authorizer is configured on the broker`, which is
+     * what every container below this line answered. The node of this line runs the KRaft `StandardAuthorizer`.
+     *
+     * The filter selects the acls to read and every field of it may be a wildcard, so
+     * {@see AclBindingFilter::any()} - the default - reads **every** acl of the cluster. The two pattern types
+     * {@see \Protocol\Kafka\Common\PatternType::ANY} and {@see \Protocol\Kafka\Common\PatternType::MATCH} exist
+     * for a filter alone: `ANY` matches a pattern of either kind with the given name, while `MATCH` asks the
+     * wider question "which acls apply to this resource" and answers the literal pattern of the name, every
+     * prefixed pattern the name starts with and the wildcard `*`.
+     *
+     * The answer of the broker is grouped by resource pattern; this method flattens it into one
+     * {@see AclBinding} per acl, in the order the broker sent them - which is the iteration order of the
+     * authorizer and not an order the api promises.
+     *
+     * **The request is authorized as a whole, before the filter is read**: the api asks the authorizer for
+     * `DESCRIBE` on the `CLUSTER` resource, so a principal that may not do it is answered 31 and cannot even read
+     * the acls that are written for itself.
+     *
+     * @param AclBindingFilter|null $filter Acls to read, null for every acl of the cluster
+     *
+     * @throws KafkaException If the broker refused the request - 31 (ClusterAuthorizationFailed) for a principal
+     *         that may not describe the cluster, 54 (SecurityDisabled) for a broker without an authorizer
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return list<AclBinding> Every acl the filter matched
+     */
+    public function describeAcls(?AclBindingFilter $filter = null): array
+    {
+        /** @var DescribeAclsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeAclsRequest => new DescribeAclsRequest(
+                $filter,
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeAclsResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => $response->errorMessage ?? 'The broker refused the acl filter']
+            );
+        }
+
+        return $response->bindings();
+    }
+
+    /**
+     * Writes acls into the authorizer of the cluster (ApiKey 30, Kafka 0.11, KIP-140)
+     *
+     * Every {@see AclBinding} of the call is written on its own and reported on its own, in the order of the
+     * request: a creation that is refused does not stop the others and nothing is thrown for it, exactly as
+     * {@see self::alterConfigs()} reports a resource. The api has **no top-level error code** at all, so a
+     * request that was refused as a whole - a principal that may not `ALTER` the `CLUSTER` resource - carries the
+     * same 31 in every entry of the result.
+     *
+     * A creation has to be a concrete acl: a pattern type of {@see \Protocol\Kafka\Common\PatternType::LITERAL}
+     * or {@see \Protocol\Kafka\Common\PatternType::PREFIXED}, a real resource type, operation and permission
+     * type, a principal and a host. Writing the same acl twice is not an error - the authorizer keeps a set.
+     *
+     * CAVEAT: on a KRaft cluster the answer means that the **controller** committed the acl to the metadata log;
+     * the authorizer of a broker applies it, and {@see self::describeAcls()} sees it, when that broker replays the
+     * record a moment later. A caller that reads its own write back has to repeat the read until it sees it.
+     *
+     * @param list<AclBinding> $bindings Acls to write
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return list<KafkaException|null> Error of every acl of the call, in its order; null when it was written
+     */
+    public function createAcls(array $bindings): array
+    {
+        $creations = array_values($bindings);
+        if ($creations === []) {
+            return [];
+        }
+
+        /** @var CreateAclsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): CreateAclsRequest => new CreateAclsRequest(
+                $creations,
+                $this->clientId(),
+                $correlationId
+            ),
+            CreateAclsResponse::class
+        );
+
+        $result = [];
+        foreach ($response->results as $index => $creation) {
+            $result[$index] = $creation->errorCode === KafkaException::NO_ERROR
+                ? null
+                : KafkaException::fromCode(
+                    $creation->errorCode,
+                    [
+                        'acl'   => (string) ($creations[$index] ?? ''),
+                        'error' => $creation->errorMessage ?? '',
+                    ]
+                );
+        }
+
+        return $result;
+    }
+
+    /**
+     * Removes the acls that the given filters match (ApiKey 31, Kafka 0.11, KIP-140)
+     *
+     * A delete never names an acl, it names a **filter** - and the answer is therefore the list of the acls that
+     * were really removed, one group per filter and in the order of the request.
+     * {@see AclBindingFilter::of()} builds the filter of one known acl, {@see AclBindingFilter::any()} removes
+     * every acl of the cluster.
+     *
+     * A filter that matched nothing is **not** an error: its entry is an empty list, which is what a delete of an
+     * acl that was never written answers. A filter the broker refused - and every filter of a request that was
+     * refused as a whole, with 31 - is reported as the exception of its code in the place of its list, so nothing
+     * is thrown here either.
+     *
+     * CAVEAT: the deletion is a controller write on a KRaft cluster, like a creation, and the authorizer of a
+     * broker forgets the acl when it replays the record.
+     *
+     * @param list<AclBindingFilter> $filters Filters of the acls to remove
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     *
+     * @return list<list<AclBinding>|KafkaException> The acls each filter removed, or the error of that filter
+     */
+    public function deleteAcls(array $filters): array
+    {
+        $applied = array_values($filters);
+        if ($applied === []) {
+            return [];
+        }
+
+        /** @var DeleteAclsResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DeleteAclsRequest => new DeleteAclsRequest(
+                $applied,
+                $this->clientId(),
+                $correlationId
+            ),
+            DeleteAclsResponse::class
+        );
+
+        $result = [];
+        foreach ($response->filterResults as $index => $filterResult) {
+            if ($filterResult->errorCode !== KafkaException::NO_ERROR) {
+                $result[$index] = KafkaException::fromCode(
+                    $filterResult->errorCode,
+                    ['error' => $filterResult->errorMessage ?? '']
+                );
+
+                continue;
+            }
+
+            $deleted = [];
+            foreach ($filterResult->matchingAcls as $matching) {
+                $deleted[] = $matching->binding;
+            }
+            $result[$index] = $deleted;
+        }
+
+        return $result;
     }
 }

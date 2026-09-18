@@ -48,8 +48,10 @@ use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV2;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV3;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV2;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV3;
 
 /**
  * Exercises the two JBOD apis of KIP-113 against the 3.9.2 KRaft node with **two** log directories.
@@ -64,14 +66,16 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV2;
  * `PARTITION_CHANGE_RECORD` into the metadata log about 90 ms after the answer of AlterReplicaLogDirs. The raft
  * log `__cluster_metadata-0` sits in the first directory and is never part of an answer of this api.
  *
- * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v3)" and
+ * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v4)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeLogDirsRequest::class)]
 #[CoversClass(DescribeLogDirsRequestV2::class)]
+#[CoversClass(DescribeLogDirsRequestV3::class)]
 #[CoversClass(DescribeLogDirsResponse::class)]
 #[CoversClass(DescribeLogDirsResponseV2::class)]
+#[CoversClass(DescribeLogDirsResponseV3::class)]
 #[CoversClass(DescribeLogDirsRequestTopic::class)]
 #[CoversClass(DescribeLogDirsResponseLogDir::class)]
 #[CoversClass(DescribeLogDirsResponseTopic::class)]
@@ -415,6 +419,83 @@ final class LogDirsApiTest extends IntegrationTestCase
         $this->expectException(BrokerNotAvailableException::class);
 
         $this->admin->describeLogDirs([$this->brokerId() + 4242]);
+    }
+
+    /**
+     * The two sizes of KIP-827 that the version 4 of Kafka 3.3 added to every directory entry of the answer
+     *
+     * They describe the **volume** the directory sits on, not the directory: the two log directories of this node
+     * are two paths of the same filesystem, so they answer the same pair in the same frame - which is exactly what
+     * makes them recognisable as a property of the mount point and not of the logs.
+     */
+    public function testEveryLogDirectoryReportsTheSizeAndTheFreeSpaceOfItsVolume(): void
+    {
+        $topic = $this->topicWithRecords('sizes');
+
+        $directories = $this->admin->describeLogDirs([$this->brokerId()], [$topic => [0]])[$this->brokerId()];
+
+        $first  = $directories[self::FIRST_DIR];
+        $second = $directories[self::SECOND_DIR];
+
+        foreach ([$first, $second] as $directory) {
+            self::assertTrue($directory->hasVolumeSizes(), 'the version 4 measured the volume of the directory');
+            self::assertGreaterThan(0, $directory->totalBytes, 'File.getTotalSpace of the volume');
+            self::assertGreaterThan(0, $directory->usableBytes, 'File.getUsableSpace of the volume');
+            self::assertLessThanOrEqual(
+                $directory->totalBytes,
+                $directory->usableBytes,
+                'a volume never has more free bytes than bytes'
+            );
+        }
+
+        self::assertSame(
+            [$first->totalBytes, $first->usableBytes],
+            [$second->totalBytes, $second->usableBytes],
+            'both log directories of this node sit on the same filesystem, so the two numbers are the same twice'
+        );
+
+        // The sizes have nothing to do with what the request asked for: the same pair comes back for a request
+        // that names no replica at all
+        $empty = $this->admin->describeLogDirs([$this->brokerId()], [])[$this->brokerId()][self::FIRST_DIR];
+        self::assertSame($first->totalBytes, $empty->totalBytes);
+    }
+
+    public function testTheRefusalOfTheWholeRequestCarriesNoVolumeSizeAtAll(): void
+    {
+        $unprivileged = $this->unprivilegedStream();
+
+        new DescribeLogDirsRequest(null, 't5-logdirs', 5162)->writeTo($unprivileged);
+        $refused = DescribeLogDirsResponse::unpack($unprivileged);
+
+        self::assertSame(5162, $refused->getCorrelationId());
+        self::assertSame(KafkaException::CLUSTER_AUTHORIZATION_FAILED, $refused->errorCode);
+        self::assertSame(
+            [],
+            $refused->logDirs,
+            'the two fields of KIP-827 live INSIDE a directory entry, and a refusal has no directory entry'
+        );
+    }
+
+    public function testAVersionThreeAnswerCarriesTheDirectoriesWithoutTheirVolumeSizes(): void
+    {
+        $topic  = $this->topicWithRecords('v3sizes');
+        $stream = $this->connect();
+
+        new DescribeLogDirsRequestV3([$topic => [0]], 't5-logdirs', 5163)->writeTo($stream);
+        $answer = DescribeLogDirsResponseV3::unpack($stream);
+
+        self::assertSame(5163, $answer->getCorrelationId());
+        self::assertSame(KafkaException::NO_ERROR, $answer->errorCode, 'the top-level code of Kafka 3.2 is there');
+        self::assertSame([self::FIRST_DIR, self::SECOND_DIR], array_keys($answer->logDirs));
+
+        foreach ($answer->logDirs as $directory) {
+            self::assertSame(
+                DescribeLogDirsResponseLogDir::UNKNOWN_BYTES,
+                $directory->totalBytes,
+                'a version below 4 has no field for the volume sizes, so they stay at the -1 of the default'
+            );
+            self::assertSame(DescribeLogDirsResponseLogDir::UNKNOWN_BYTES, $directory->usableBytes);
+        }
     }
 
     public function testAnUnauthorizedPrincipalIsRefusedWithTheTopLevelErrorCodeOfVersionThree(): void
