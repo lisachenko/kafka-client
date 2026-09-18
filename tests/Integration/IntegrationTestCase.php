@@ -109,14 +109,19 @@ abstract class IntegrationTestCase extends TestCase
         }
 
         // A broker that has just booted answers with an empty broker array, which is "not ready", not "no brokers"
-        self::$clusterBrokers = new ClusterReadinessProbe(
+        $probe = new ClusterReadinessProbe(
             static fn(): SocketStream => new SocketStream(
                 'tcp://' . self::firstBootstrapServer(),
                 [ClientConfig::REQUEST_TIMEOUT_MS => 5000],
                 5.0
             ),
             self::CLUSTER_TIMEOUT
-        )->awaitBrokers();
+        );
+        $brokers = $probe->awaitBrokers();
+        // ... and its group coordinator answers 14, 15 or 16 until `__consumer_offsets` is created and loaded,
+        // which the first group test of a process would otherwise pay for
+        $probe->awaitGroupCoordinator();
+        self::$clusterBrokers = $brokers;
     }
 
     /**
