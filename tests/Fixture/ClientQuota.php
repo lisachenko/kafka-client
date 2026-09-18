@@ -63,6 +63,11 @@ final class ClientQuota
     public const string BOOTSTRAP_ENV = 'KAFKA_BOOTSTRAP_SERVERS';
 
     /**
+     * How long {@see self::set()} waits for the broker to report the quota it has just set, in seconds
+     */
+    private const int APPLY_TIMEOUT = 30;
+
+    /**
      * Names of the quota entries that are currently set for the client id
      *
      * @var list<string>
@@ -115,6 +120,45 @@ final class ClientQuota
         }
 
         $this->applied = array_values(array_unique(array_merge($this->applied, array_keys($configuration))));
+        $this->awaitApplied($configuration);
+    }
+
+    /**
+     * Waits until the broker reports the quota entries it has just been asked to set
+     *
+     * A quota is a controller write that the broker enforces only once it has replayed the metadata record of it:
+     * a request that follows the AlterClientQuotas answer at once reaches the broker before that, and is not
+     * throttled. The lag is milliseconds on an idle node and seconds on a loaded CI runner; the DescribeClientQuotas
+     * of the same broker reads the same replayed image, so a quota it reports is a quota the broker applies.
+     *
+     * @param array<string, int> $configuration The entries that were set
+     */
+    private function awaitApplied(array $configuration): void
+    {
+        $deadline = microtime(true) + self::APPLY_TIMEOUT;
+        do {
+            $stored = $this->admin->describeClientQuotas(ClientQuotaFilter::containsOnly([
+                ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $this->clientId),
+            ]))[(string) $this->entity()] ?? [];
+
+            $missing = array_filter(
+                $configuration,
+                static fn(int $value, string $name): bool => ($stored[$name] ?? null) !== (float) $value,
+                ARRAY_FILTER_USE_BOTH
+            );
+            if ($missing === []) {
+                return;
+            }
+            usleep(100000);
+        } while (microtime(true) < $deadline);
+
+        throw new RuntimeException(sprintf(
+            'The broker did not apply the quota %s of %s within %d seconds, it reports %s',
+            json_encode($configuration),
+            $this->clientId,
+            self::APPLY_TIMEOUT,
+            json_encode($stored)
+        ));
     }
 
     /**
