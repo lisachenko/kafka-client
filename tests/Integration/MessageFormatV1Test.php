@@ -36,12 +36,18 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * The message format v1 of Kafka 0.10 against the real broker: timestamps, relative offsets and the conversions.
  *
  * The broker is the authority on the format. It validates the checksum of every message it appends, it decompresses
- * a compressed set to assign the offsets of its inner messages, it converts a batch into the
- * `message.format.version` of the topic, and it converts the log back down to message format v0 for every client
- * that fetches with a request below version 2. Everything this suite asserts was read out of a log that a 0.10.2.2
- * broker wrote.
+ * a compressed set to assign the offsets of its inner messages, and it converts the log back down to message
+ * format v0 for every client that fetches with a request below version 2.
  *
- * @see docs/protocol/3.9.md, section "MessageSet and Message"
+ * **What it no longer does is store a log in an older format.** KIP-724 (Kafka 3.0) retired
+ * `message.format.version`: a 3.9.2 node writes the record batch v2 whatever the topic asks for, and
+ * `kafka-topics.sh` answers `--config message.format.version=0.9.0` with "This configuration will be ignored ...
+ * if the inter.broker.protocol.version is 3.0 or newer". So the log of *every* topic of this suite is magic 2,
+ * and what the message formats v0 and v1 are still worth is what this class measures: the client writes them in
+ * a Produce v2, the node accepts and up-converts them on append, and it converts its v2 log back down for a
+ * Fetch v1 (magic 0) or a Fetch v2 (magic 1) on the way out.
+ *
+ * @see docs/protocol/3.9.md, sections "MessageSet and Message" and "What the broker converts, and when"
  */
 #[CoversClass(MessageSet::class)]
 #[CoversClass(Message::class)]
@@ -324,7 +330,9 @@ final class MessageFormatV1Test extends IntegrationTestCase
 
         $stored = MessageSet::shallowFromBuffer($this->fetchPartition($baseOffset, 2)->messageSet ?? '');
 
-        self::assertSame(Message::MAGIC_V1, $stored->getMagic(), 'the topic decides the format of the log');
+        // The node up-converts the v0 batch to the record batch v2 of the log on append and converts that log
+        // back down to the message format v1 for this Fetch v2 - the Fetch version decides what comes back
+        self::assertSame(Message::MAGIC_V1, $stored->getMagic(), 'a Fetch v2 is answered in message format v1');
         self::assertSame(
             [null, null],
             array_map(static fn(array $entry): ?int => $entry[1]->getTimestamp(), $stored->getMessages()),
@@ -334,27 +342,6 @@ final class MessageFormatV1Test extends IntegrationTestCase
             [Message::NO_TIMESTAMP, Message::NO_TIMESTAMP],
             array_map(static fn(array $entry): int => $entry[1]->timestamp, $stored->getMessages())
         );
-    }
-
-    public function testATopicOfTheOlderMessageFormatMakesTheBrokerDownConvertOnAppend(): void
-    {
-        $topic = self::uniqueTopicName('t2-message-format-090');
-        self::createTopic($topic, ['message.format.version=0.9.0']);
-        $this->awaitTopic($topic);
-
-        $baseOffset = $this->produce(
-            MessageSet::fromRecords([new Record('alpha', null, 0, null, $this->createTime)], CompressionCodec::NONE),
-            $topic
-        );
-
-        $stored = MessageSet::shallowFromBuffer($this->fetchPartition($baseOffset, 2, $topic)->messageSet ?? '');
-
-        self::assertSame(
-            Message::MAGIC_V0,
-            $stored->getMagic(),
-            'message.format.version=0.9.0 stores message format v0, whatever the producer sent'
-        );
-        self::assertNull($this->fetch($baseOffset, 2, $topic)[0]->timestamp);
     }
 
     public function testTheBrokerReadsTheLz4FramesOfThisClientAndWritesOnesItCanRead(): void

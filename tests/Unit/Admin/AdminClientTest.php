@@ -22,7 +22,6 @@ use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\AllBrokersNotAvailableException;
-use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
 use Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupLoadInProgressException;
@@ -42,7 +41,6 @@ use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
-use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
@@ -358,31 +356,6 @@ final class AdminClientTest extends TestCase
         self::assertSame(0, $coordinator->nodeId);
         self::assertSame('127.0.0.1', $coordinator->host);
         self::assertSame(9092, $coordinator->port);
-    }
-
-    public function testControlledShutdownThrowsTheErrorCodeOfTheController(): void
-    {
-        // A 0.9.0.1 controller answers an unknown broker id with the code 8, where 0.8.2.2 answered -1
-        $broker = $this->scriptBroker(self::vector('controlled-shutdown', 'controlledshutdown.response.v3'));
-        $admin  = $this->adminClient();
-
-        try {
-            $admin->controlledShutdown(4242);
-            self::fail('An unknown broker id has to be reported as an error');
-        } catch (BrokerNotAvailableException $exception) {
-            self::assertStringContainsString('4242', $exception->getMessage());
-        }
-
-        // The admin client sends version 1, the version whose header carries the client id
-        self::assertSame(
-            [self::requestFrame(new ControlledShutdownRequest(
-                4242,
-                ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH,
-                't10',
-                $broker->getReceivedCorrelationIds()[0]
-            ))],
-            $broker->getReceivedFrames()
-        );
     }
 
     public function testARequestIsTriedOnEveryBrokerBeforeItIsGivenUp(): void

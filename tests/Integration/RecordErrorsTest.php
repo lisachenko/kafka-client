@@ -98,7 +98,29 @@ final class RecordErrorsTest extends IntegrationTestCase
                 (string) $recordError->batchIndexErrorMessage
             );
         }
-        self::assertSame('One or more records have been rejected', $partition->errorMessage);
+
+        // The summary of the partition repeats what the per-record array already says: `LogValidator` @ 3.9.2
+        // builds it as "One or more records have been rejected due to <n> record errors in total, and only
+        // showing the first three errors at most: <the first three>" (`processRecordErrors`, moved to
+        // `org.apache.kafka.storage.internals.log` with the record validation of Kafka 3.0). The 2.8.2 broker of
+        // the line below sent the first sentence alone.
+        self::assertStringStartsWith(
+            'One or more records have been rejected due to 2 record errors in total, and only showing the first'
+            . ' three errors at most: [',
+            (string) $partition->errorMessage
+        );
+        foreach ([1, 2] as $batchIndex) {
+            self::assertStringContainsString(
+                sprintf(
+                    "RecordError(batchIndex=%d, message='Compacted topic cannot accept message without key in"
+                    . " topic partition %s-0')",
+                    $batchIndex,
+                    $this->compacted
+                ),
+                (string) $partition->errorMessage,
+                'the summary quotes the record errors, the topic and the partition of each of them'
+            );
+        }
     }
 
     public function testAVersionSevenRequestIsAnsweredTheErrorCodeAndNothingElse(): void
@@ -130,7 +152,12 @@ final class RecordErrorsTest extends IntegrationTestCase
 
             self::assertSame($this->compacted, $context['topic']);
             self::assertSame(0, $context['partitionId']);
-            self::assertSame('One or more records have been rejected', $context['errorMessage']);
+            self::assertStringStartsWith(
+                'One or more records have been rejected due to 1 record errors in total, and only showing the'
+                . ' first three errors at most: [',
+                (string) $context['errorMessage'],
+                'the summary of `LogValidator` @ 3.9.2 reaches the caller unchanged'
+            );
             self::assertSame([1], array_keys($context['recordErrors']), 'the second record is the bad one');
             self::assertStringContainsString(
                 'Compacted topic cannot accept message without key',

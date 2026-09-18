@@ -155,7 +155,7 @@ foreach ($admin->deleteConsumerGroups([$groupId]) as $deletedGroupId => $error) 
         : 'error ' . $error->getCode() . ' - ' . $error->getMessage()) . "\n";
 }
 
-// The remaining admin call, controlledShutdown(), asks the controller to move every leader off a broker. It is what
-// kafka-server-stop.sh triggers, and it really does stop serving that broker - only send it to a broker you want to
-// shut down. Creating and deleting topics is in examples/create-topic.php, the offsets by timestamp of Kafka 0.10.1
-// in examples/offsets-for-times.php.
+// The admin client of this line has no controlledShutdown() any more: ControlledShutdown (key 7) is a zkBroker api,
+// and a KRaft node does not serve it on a client listener at all - it closes the connection for every version of it.
+// Creating and deleting topics is in examples/create-topic.php, the offsets by timestamp of Kafka 0.10.1 in
+// examples/offsets-for-times.php.
