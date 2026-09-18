@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 16 (Kafka 3.7, KIP-951) puts the endpoints of the leaders a refused partition points at into that
  * empty section, see {@see FetchResponse::$nodeEndpoints}.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)" and "The leader discovery of KIP-951 (v16)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "The leader discovery of KIP-951 (v16)"
  */
 final class FetchResponseV15 extends FetchResponse
 {

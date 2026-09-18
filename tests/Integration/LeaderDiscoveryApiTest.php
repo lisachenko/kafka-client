@@ -35,6 +35,7 @@ use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\FetchRequestV15;
+use Protocol\Kafka\Protocol\Request\FetchRequestV16;
 use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV15;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -63,7 +64,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV9;
  * Every topic of this class is named `t2-37-…`, so that it can run next to the other suites on the shared node.
  *
  * @see docs/protocol/3.9.md, sections "The leader discovery of KIP-951 (v10)", "The leader discovery of KIP-951
- *      (v16)", "Produce API (key 0, v0 to v11)" and "Fetch API (key 1, v0 to v16)"
+ *      (v16)", "Produce API (key 0, v0 to v11)" and "Fetch API (key 1, v0 to v17)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
@@ -332,7 +333,8 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
         $produced = $client->produce([$this->topic => [self::PARTITION => [new Record('t2-37 three')]]]);
         $fetched  = $client->fetchPartitions([$this->topic => [self::PARTITION => 0]], 250);
 
-        self::assertSame(16, FetchRequest::VERSION);
+        self::assertSame(16, FetchRequestV16::VERSION, 'the version KIP-951 added');
+        self::assertSame(17, FetchRequest::VERSION, 'which the directory id of KIP-853 raised to 17');
         self::assertSame(10, ProduceRequestV10::VERSION);
         self::assertSame(
             count(self::RECORDS),

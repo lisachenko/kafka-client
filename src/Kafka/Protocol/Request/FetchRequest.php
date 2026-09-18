@@ -25,12 +25,13 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV12;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV13;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
 use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Fetch API (key 1), version 16
+ * Fetch API (key 1), version 17
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -45,9 +46,9 @@ use Protocol\Kafka\Protocol\TaggedField;
  * handle this case.
  *
  * <pre>
- *   FetchRequest (Version: 16) => MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
+ *   FetchRequest (Version: 17) => MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
  *                                 [TopicId [Partition CurrentLeaderEpoch FetchOffset LastFetchedEpoch
- *                                           LogStartOffset MaxBytes TAG_BUFFER] TAG_BUFFER]
+ *                                           LogStartOffset MaxBytes ReplicaDirectoryId TAG_BUFFER] TAG_BUFFER]
  *                                 [TopicId [Partition] TAG_BUFFER] RackId TAG_BUFFER
  *     ReplicaId      => int32     -- versions 0 to 14 only, replaced by the tagged ReplicaState
  *     ReplicaState   => tag 1, [ReplicaId int32 ReplicaEpoch int64] -- since version 15
@@ -65,6 +66,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  *     ClusterId      => tag 0, compact nullable string -- since version 12
  *     TopicName      => compact string -- versions 0 to 12 only
  *     TopicId        => uuid, 16 raw bytes -- since version 13
+ *     ReplicaDirectoryId => tag 0 of a partition entry, uuid -- since version 17
  * </pre>
  *
  * Every `TopicName` and `RackId` of a version 12 frame is a COMPACT string, every array a compact one, and the
@@ -149,22 +151,33 @@ use Protocol\Kafka\Protocol\TaggedField;
  *   client understands the **leader discovery** of the answer: the top-level tagged `node_endpoints` that names
  *   where the leader of a partition refused with **6** `NotLeaderForPartition` or **74** `FencedLeaderEpoch` can
  *   be reached, next to the `current_leader` that partition entry has carried since v12, see
- *   {@see FetchResponse::$nodeEndpoints}. This class is that version.
+ *   {@see FetchResponse::$nodeEndpoints} ({@see FetchRequestV16} keeps that version);
+ * * **v17** (Kafka 3.9, KIP-853) adds the **directory id of a follower** to every partition entry of the
+ *   request: `FetchRequest.json` @ 3.9.2 declares a `ReplicaDirectoryId` uuid `"versions": "17+",
+ *   "taggedVersions": "17+", "tag": 0` inside the partition structure, and its whole comment is "Version 17 adds
+ *   directory id support from KIP-853"; `FetchResponse.json` says "Version 17 no changes to the response
+ *   (KIP-853)". A follower of a KRaft cluster that keeps its replicas in more than one log directory names the
+ *   directory it fetches for, so that the controller's `DirectoryId` of the partition and the disk the data
+ *   really lies on can be kept in step without a separate api call. A **consumer never writes the tag**: the zero
+ *   uuid is the default of the field and a tagged field whose value is its default is left off the wire, so the
+ *   version 17 frame of this client is the version 16 frame with another number in its header, see
+ *   {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$replicaDirectoryId}. This class is that
+ *   version.
  *
  * A request of version 7 and above **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
  * which is what this class sends when it is given no metadata - is served exactly like a version 6 request: the
  * whole requested set comes back and the answer reports `session_id = 0`. That is what
  * {@see \Protocol\Kafka\Client::fetchPartitions()} sends today.
  *
- * {@see FetchRequestV15}, {@see FetchRequestV14}, {@see FetchRequestV13}, {@see FetchRequestV12}, {@see FetchRequestV11},
+ * {@see FetchRequestV16}, {@see FetchRequestV15}, {@see FetchRequestV14}, {@see FetchRequestV13}, {@see FetchRequestV12}, {@see FetchRequestV11},
  * {@see FetchRequestV10}, {@see FetchRequestV9}, {@see FetchRequestV8},
  * {@see FetchRequestV7}, {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4},
  * {@see FetchRequestV3}, {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower
  * versions available.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)", "Fetch sessions (v7, KIP-227)",
- *      "The topic ids of the fetch path (v13, KIP-516)", "The replica state of KIP-903 (v15)" and
- *      "The leader discovery of KIP-951 (v16)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
+ *      "The topic ids of the fetch path (v13, KIP-516)", "The replica state of KIP-903 (v15)",
+ *      "The leader discovery of KIP-951 (v16)" and "The replica directory id of KIP-853 (v17)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -176,7 +189,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 16;
+    public const int VERSION = 17;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -355,6 +368,12 @@ class FetchRequest extends AbstractRequest
      *                                                          (KIP-903); `null` and `-1` are "unknown", and a
      *                                                          consumer - `$replicaId = -1` - leaves the whole
      *                                                          structure off the wire.
+     * @param string|null                    $replicaDirectoryId Directory the follower keeps its replicas in, the
+     *                                                          tagged `replica_directory_id` of every partition
+     *                                                          entry of version 17 (KIP-853), as the 16 raw bytes
+     *                                                          of a uuid; `null` and {@see Uuid::ZERO} leave it
+     *                                                          off the wire, which is what a consumer means, see
+     *                                                          {@see FetchRequestTopicPartition::$replicaDirectoryId}.
      */
     public function __construct(
         array $topicPartitions,
@@ -404,7 +423,8 @@ class FetchRequest extends AbstractRequest
         protected readonly string $rackId = self::NO_RACK,
         ?string $clusterId = null,
         array $topicIds = [],
-        ?int $replicaEpoch = null
+        ?int $replicaEpoch = null,
+        ?string $replicaDirectoryId = null
     ) {
         $this->clusterId = $clusterId;
         $this->topicIds  = $topicIds;
@@ -444,7 +464,8 @@ class FetchRequest extends AbstractRequest
                     $partitionMaxBytes,
                     FetchRequestTopicPartition::INVALID_LOG_START_OFFSET,
                     $currentLeaderEpoch,
-                    self::lastFetchedEpochOf($fetchOffset)
+                    self::lastFetchedEpochOf($fetchOffset),
+                    $replicaDirectoryId ?? Uuid::ZERO
                 );
             }
             $entry = new $topicClass((string) $topic, $partitions, self::idOf($topicIds, (string) $topic));
@@ -623,6 +644,29 @@ class FetchRequest extends AbstractRequest
     }
 
     /**
+     * Returns the directory id every partition entry of this request names, {@see Uuid::ZERO} for a consumer
+     *
+     * The tagged `replica_directory_id` of version 17 (KIP-853), which this client writes into every partition
+     * entry of a request at once - one fetch of a follower asks for the replicas of one of its log directories -
+     * and which is the zero uuid of "no directory named" for every version below 17 and for every consumer,
+     * {@see FetchRequestTopicPartition::$replicaDirectoryId}.
+     */
+    public function getReplicaDirectoryId(): string
+    {
+        if (static::VERSION < 17) {
+            return Uuid::ZERO;
+        }
+
+        foreach ($this->topicPartitions as $topicEntry) {
+            foreach ($topicEntry->partitions as $partitionEntry) {
+                return $partitionEntry->replicaDirectoryId;
+            }
+        }
+
+        return Uuid::ZERO;
+    }
+
+    /**
      * Returns the isolation level this request asks for, {@see self::READ_UNCOMMITTED} below version 4
      */
     public function getIsolationLevel(): int
@@ -661,7 +705,8 @@ class FetchRequest extends AbstractRequest
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 13 => FetchRequestTopic::class,
+            static::VERSION >= 17 => FetchRequestTopic::class,
+            static::VERSION >= 13 => FetchRequestTopicV13::class,
             static::VERSION >= 12 => FetchRequestTopicV12::class,
             static::VERSION >= 9  => FetchRequestTopicV9::class,
             static::VERSION >= 5  => FetchRequestTopicV5::class,

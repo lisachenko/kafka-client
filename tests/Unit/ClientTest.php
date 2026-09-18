@@ -589,15 +589,17 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 16, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // ApiKey 1, ApiVersion 17, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
         // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch. A
-        // version 16 frame carries no `replica_id` at all (KIP-903 deprecated it in 15), so `max_wait_ms` follows
-        // the header at once, and KIP-951 added nothing to the request of version 16
-        self::assertStringStartsWith('00010010', $request, 'the Fetch api is spoken in version 16');
+        // version 17 frame carries no `replica_id` at all (KIP-903 deprecated it in 15), so `max_wait_ms` follows
+        // the header at once; KIP-951 added nothing to the request of version 16 and the `replica_directory_id`
+        // of KIP-853 is a tagged field a consumer leaves at its zero-uuid default, so version 17 adds nothing
+        // either
+        self::assertStringStartsWith('00010011', $request, 'the Fetch api is spoken in version 17');
         self::assertStringNotContainsString(
             '000974372d636c69656e7400' . 'ffffffff',
             $request,
-            'the deprecated replica_id is not in the body of a version 16 request'
+            'the deprecated replica_id is not in the body of a version 17 request'
         );
         self::assertStringContainsString(
             '00100000' . '00' . '00000000' . 'ffffffff',

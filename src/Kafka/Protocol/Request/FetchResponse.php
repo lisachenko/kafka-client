@@ -24,7 +24,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
 use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Fetch response object (key 1), version 16
+ * Fetch response object (key 1), version 17
  *
  * <pre>
  *   FetchResponse (Version: 16) => ThrottleTimeMs ErrorCode SessionId
@@ -122,23 +122,29 @@ use Protocol\Kafka\Protocol\TaggedField;
  * request of version 15, so an answer that refused nothing is the version 15 answer with another correlation of
  * versions and an empty tagged section ({@see FetchResponseV15} decodes those very bytes).
  *
+ * **Version 17 (Kafka 3.9, KIP-853) declares nothing at all here**: `FetchResponse.json` @ 3.9.2 adds no field
+ * and its whole comment is "Version 17 no changes to the response (KIP-853)", so this class decodes the very
+ * bytes {@see FetchResponseV16} decodes. What the version added is in the *request*, the tagged
+ * `replica_directory_id` of every partition entry, see
+ * {@see \Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition::$replicaDirectoryId}.
+ *
  * What the answer of every version has to match is the *version of the request it belongs to*, which is why
- * {@see FetchResponseV15}, {@see FetchResponseV14}, {@see FetchResponseV13}, {@see FetchResponseV12}, {@see FetchResponseV11},
+ * {@see FetchResponseV16}, {@see FetchResponseV15}, {@see FetchResponseV14}, {@see FetchResponseV13}, {@see FetchResponseV12}, {@see FetchResponseV11},
  * {@see FetchResponseV10}, {@see FetchResponseV9}, {@see FetchResponseV8},
  * {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4},
  * {@see FetchResponseV3}, {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)", "Fetch sessions (v7, KIP-227)",
- *      "The topic ids of the fetch path (v13, KIP-516)", "The tiered-storage error of KIP-405 (v14)" and
- *      "The leader discovery of KIP-951 (v16)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
+ *      "The topic ids of the fetch path (v13, KIP-516)", "The tiered-storage error of KIP-405 (v14)",
+ *      "The leader discovery of KIP-951 (v16)" and "The replica directory id of KIP-853 (v17)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 16;
+    public const int VERSION = 17;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

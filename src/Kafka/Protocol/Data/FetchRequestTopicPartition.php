@@ -13,8 +13,10 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
+use Protocol\Kafka\Protocol\TaggedField;
 
 /**
  * One partition of a Fetch request
@@ -37,15 +39,21 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see FetchRequestTopicPartitionV9} keeps the entry of the versions 9 to 11. A version 12 entry also ends in
  * the tagged-field section of a flexible structure, which the schema engine writes on its own.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)", "The leader epoch (KIP-320)" and
- *      "Epoch validation in the fetch itself (v12, KIP-595)"
+ * **Version 17 (Kafka 3.9, KIP-853) puts the first tagged field of its own into that section**: the
+ * `replica_directory_id` of {@see self::$replicaDirectoryId}, tag 0, which a **follower** writes to name the log
+ * directory its replica of this partition lives in. A consumer leaves it at the zero uuid, which is the default of
+ * the specification and is therefore not written at all, so a version 17 consumer entry is the version 12 entry
+ * byte for byte; {@see FetchRequestTopicPartitionV12} keeps the entry of the versions 12 to 16.
+ *
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "The leader epoch (KIP-320)",
+ *      "Epoch validation in the fetch itself (v12, KIP-595)" and "The replica directory id of KIP-853 (v17)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface
 {
     /**
      * Version of the Fetch API that this DTO is packed for
      */
-    public const int VERSION = 12;
+    public const int VERSION = 17;
 
     /**
      * `LogStartOffset` of a consumer, which is not a follower and therefore has no log of its own
@@ -131,13 +139,32 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
      */
     public int $lastFetchedEpoch = self::UNKNOWN_LAST_FETCHED_EPOCH;
 
+    /**
+     * Directory the **follower** that sends this fetch keeps its replica of the partition in (KIP-853)
+     *
+     * The tagged field (tag 0) that version 17 added, `"ignorable": true` in `FetchRequest.json` @ 3.9.2: the 16
+     * raw bytes of the uuid a broker wrote into the `meta.properties` of one of its log directories. KRaft records
+     * which directory holds which replica (`AssignmentsManager`, the `DirectoryId` of the `PartitionRecord`), and
+     * a follower that has moved a replica between its own disks says so in the fetch itself instead of in a
+     * separate api call.
+     *
+     * A **consumer has nothing to say here**, and neither has a follower that does not track its directories:
+     * {@see Uuid::ZERO} is the default of a `uuid` field of the specification, and a tagged field whose value is
+     * its default is left off the wire altogether, so a version 17 frame of this client is the version 16 frame
+     * byte for byte.
+     *
+     * @since Version 17 of protocol (Kafka 3.9, KIP-853)
+     */
+    public string $replicaDirectoryId = Uuid::ZERO;
+
     public function __construct(
         int $partition,
         int $fetchOffset,
         int $maxBytes,
         int $logStartOffset = self::INVALID_LOG_START_OFFSET,
         int $currentLeaderEpoch = self::UNKNOWN_LEADER_EPOCH,
-        int $lastFetchedEpoch = self::UNKNOWN_LAST_FETCHED_EPOCH
+        int $lastFetchedEpoch = self::UNKNOWN_LAST_FETCHED_EPOCH,
+        string $replicaDirectoryId = Uuid::ZERO
     ) {
         $this->partition          = $partition;
         $this->fetchOffset        = $fetchOffset;
@@ -145,6 +172,7 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
         $this->logStartOffset     = $logStartOffset;
         $this->currentLeaderEpoch = $currentLeaderEpoch;
         $this->lastFetchedEpoch   = $lastFetchedEpoch;
+        $this->replicaDirectoryId = $replicaDirectoryId;
     }
 
     /**
@@ -168,6 +196,11 @@ class FetchRequestTopicPartition implements BinarySchemaInterface
             $scheme['logStartOffset'] = BinarySchema::TYPE_INT64;
         }
         $scheme['maxBytes'] = BinarySchema::TYPE_INT32;
+        // The `replica_directory_id` of version 17 (KIP-853) is a TAGGED field (tag 0) and therefore travels in
+        // the section at the end of the entry, and only when it is not the zero uuid of the specification
+        if (static::VERSION >= 17) {
+            $scheme['replicaDirectoryId'] = new TaggedField(0, BinarySchema::TYPE_UUID, Uuid::ZERO);
+        }
 
         return $scheme;
     }

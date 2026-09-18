@@ -21,14 +21,14 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
 
 /**
- * Offsets API (key 2, v7), a.k.a. ListOffset
+ * Offsets API (key 2, v9), a.k.a. ListOffset
  *
  * This API describes the valid offset range available for a set of topic-partitions. As with the produce and fetch
  * APIs requests must be directed to the broker that is currently the leader for the partitions in question. This can
  * be determined using the metadata API.
  *
  * <pre>
- *   ListOffsets Request (Version: 8) => replica_id isolation_level [topics]
+ *   ListOffsets Request (Version: 9) => replica_id isolation_level [topics]
  *     replica_id      => INT32
  *     isolation_level => INT8       -- since version 2
  *     topics          => topic [partitions]
@@ -113,14 +113,23 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * line, as it is by default - the local log start offset **is** the log start offset, so `-4` answers exactly what
  * {@see self::EARLIEST} answers, and the value is how a client of a tiered cluster tells the two apart.
  *
- * The four special values keep their meaning in every version that knows them: {@see self::LATEST} (`-1`) asks for
+ * **Version 9 (Kafka 3.9, KIP-1005) is that same frame a third time and a fifth question.**
+ * `ListOffsetsRequest.json` @ 3.9.2 declares no field for it either - "Version 9 enables listing offsets by last
+ * tiered offset (KIP-1005)" - so {@see OffsetsRequestV8} writes the same bytes with another number in its header,
+ * and this class is the version 9. What it buys is the special target time
+ * {@see self::LATEST_TIERED_TIMESTAMP} (`-5`): "the **last** offset that has been moved to remote storage", the
+ * other end of the range `-4` names the beginning of. The two together are what tells a client of a tiered
+ * cluster which part of a partition is served from the object store and which part from the disks of the broker.
+ *
+ * The five special values keep their meaning in every version that knows them: {@see self::LATEST} (`-1`) asks for
  * the end of the log - the offset the next produced message will get, capped as the isolation level prescribes -
  * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk, {@see self::MAX_TIMESTAMP} (`-3`,
- * version 7) for the offset of the record with the largest timestamp and {@see self::EARLIEST_LOCAL_TIMESTAMP}
- * (`-4`, version 8) for the start of the local log. Only the third is answered with a real timestamp; the other
- * three do not read a message and are answered with the timestamp -1.
+ * version 7) for the offset of the record with the largest timestamp, {@see self::EARLIEST_LOCAL_TIMESTAMP}
+ * (`-4`, version 8) for the start of the local log and {@see self::LATEST_TIERED_TIMESTAMP} (`-5`, version 9) for
+ * the end of the tiered part of it. Only the third is answered with a real timestamp; the other four do not read
+ * a message and are answered with the timestamp -1.
  *
- * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v8), a.k.a. ListOffset" and
+ * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v9), a.k.a. ListOffset" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest
@@ -133,7 +142,7 @@ class OffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 8;
+    public const int VERSION = 9;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -186,6 +195,28 @@ class OffsetsRequest extends AbstractRequest
     public const int EARLIEST_LOCAL_TIMESTAMP = -4;
 
     /**
+     * Special value for the **last** offset that has been moved to remote storage,
+     * `ListOffsetsRequest.LATEST_TIERED_TIMESTAMP` @ 3.9.2 (Kafka 3.9, KIP-1005), which **version 9 and above** of
+     * the api accept
+     *
+     * It is the other end of the range {@see self::EARLIEST_LOCAL_TIMESTAMP} names the beginning of: `-5` answers
+     * where the **tiered** part of the partition stops, `-4` where the local part starts, and between the two
+     * answers lies the overlap a broker keeps on both. `UnifiedLog.fetchOffsetByTimestamp` @ 3.9.2 answers it with
+     * `highestOffsetInRemoteStorage()`, so a partition of a topic **without** remote storage - which is every
+     * topic of the node of this line, `remote.log.storage.system.enable` being off - is answered the offset
+     * `-1` with the timestamp `-1` and the error code 0: there is no tiered offset, and that is not an error.
+     *
+     * A request below version 9 that asks for it is answered **35** `UNSUPPORTED_VERSION` for that partition, see
+     * {@see OffsetsRequestV8}.
+     *
+     * It is the `OffsetSpec.latestTiered()` of the Java admin client, which has no consumer counterpart:
+     * {@see \Protocol\Kafka\Admin\AdminClient::listLatestTieredOffsets()} is where this client names it.
+     *
+     * @since Version 9 of protocol
+     */
+    public const int LATEST_TIERED_TIMESTAMP = -5;
+
+    /**
      * Replica id of an ordinary consumer, `ListOffsetRequest.CONSUMER_REPLICA_ID` @ 0.10.2.2.
      *
      * A consumer never sees an offset above the high watermark of the partition: the broker caps the answer of such
@@ -213,7 +244,8 @@ class OffsetsRequest extends AbstractRequest
      *
      * @param array<string, array<int, int>|OffsetsRequestTopic> $topicPartitions Target time of every partition, as
      *        topic => partition => time, where the time is a timestamp in milliseconds, {@see self::LATEST},
-     *        {@see self::EARLIEST}, {@see self::MAX_TIMESTAMP} or {@see self::EARLIEST_LOCAL_TIMESTAMP}
+     *        {@see self::EARLIEST}, {@see self::MAX_TIMESTAMP}, {@see self::EARLIEST_LOCAL_TIMESTAMP} or
+     *        {@see self::LATEST_TIERED_TIMESTAMP}
      * @param int    $replicaId      The node id of the replica that initiates this request. Ordinary consumers send
      *                               {@see self::CONSUMER_REPLICA_ID}, as they have no node id.
      * @param int    $isolationLevel {@see FetchRequest::READ_UNCOMMITTED} or {@see FetchRequest::READ_COMMITTED},

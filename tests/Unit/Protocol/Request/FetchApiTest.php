@@ -32,10 +32,12 @@ use Protocol\Kafka\Protocol\Data\FetchRequestReplicaState;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV0;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV12;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV5;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV9;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV12;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV13;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
 use Protocol\Kafka\Protocol\Data\FetchResponseAbortedTransaction;
@@ -63,6 +65,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV12;
 use Protocol\Kafka\Protocol\Request\FetchRequestV13;
 use Protocol\Kafka\Protocol\Request\FetchRequestV14;
 use Protocol\Kafka\Protocol\Request\FetchRequestV15;
+use Protocol\Kafka\Protocol\Request\FetchRequestV16;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
@@ -80,6 +83,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV12;
 use Protocol\Kafka\Protocol\Request\FetchResponseV13;
 use Protocol\Kafka\Protocol\Request\FetchResponseV14;
 use Protocol\Kafka\Protocol\Request\FetchResponseV15;
+use Protocol\Kafka\Protocol\Request\FetchResponseV16;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
 use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
@@ -109,7 +113,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  *   FetchResponse v7        => ThrottleTimeMs ErrorCode SessionId [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)", "Fetch sessions (v7, KIP-227)",
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)", "Fetch sessions (v7, KIP-227)",
  *      "The topic ids of the fetch path (v13, KIP-516)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
@@ -117,6 +121,7 @@ use Protocol\Kafka\Protocol\TaggedField;
 #[CoversClass(FetchRequestV13::class)]
 #[CoversClass(FetchRequestV14::class)]
 #[CoversClass(FetchRequestV15::class)]
+#[CoversClass(FetchRequestV16::class)]
 #[CoversClass(FetchRequestReplicaState::class)]
 #[CoversClass(FetchRequestV6::class)]
 #[CoversClass(FetchRequestV5::class)]
@@ -130,6 +135,7 @@ use Protocol\Kafka\Protocol\TaggedField;
 #[CoversClass(FetchResponseV13::class)]
 #[CoversClass(FetchResponseV14::class)]
 #[CoversClass(FetchResponseV15::class)]
+#[CoversClass(FetchResponseV16::class)]
 #[CoversClass(FetchResponseNodeEndpoint::class)]
 #[CoversClass(FetchResponseV6::class)]
 #[CoversClass(FetchResponseV5::class)]
@@ -751,8 +757,10 @@ final class FetchApiTest extends TestCase
         self::assertSame(14, FetchResponseV14::VERSION);
         self::assertSame(15, FetchRequestV15::VERSION, 'the replica state of Kafka 3.5');
         self::assertSame(15, FetchResponseV15::VERSION);
-        self::assertSame(16, FetchRequest::VERSION, 'the client sends the leader discovery of Kafka 3.7');
-        self::assertSame(16, FetchResponse::VERSION);
+        self::assertSame(16, FetchRequestV16::VERSION, 'the leader discovery of Kafka 3.7');
+        self::assertSame(16, FetchResponseV16::VERSION);
+        self::assertSame(17, FetchRequest::VERSION, 'the client sends the directory id of Kafka 3.9');
+        self::assertSame(17, FetchResponse::VERSION);
     }
 
     public function testTheIsolationLevelOfVersionFourIsWrittenBehindTheRequestLevelMaxBytes(): void
@@ -1100,12 +1108,133 @@ final class FetchApiTest extends TestCase
         ];
 
         $fifteen = bin2hex((string) new FetchRequestV15(...$arguments));
-        $sixteen = bin2hex((string) new FetchRequest(...$arguments));
+        $sixteen = bin2hex((string) new FetchRequestV16(...$arguments));
 
-        self::assertEquals(FetchRequestV15::getScheme(), FetchRequest::getScheme());
+        self::assertEquals(FetchRequestV15::getScheme(), FetchRequestV16::getScheme());
         self::assertSame($fifteen, substr_replace($sixteen, '000f', 12, 4), 'only the api version differs');
         self::assertSame('00010010', substr($sixteen, 8, 8), 'the key 1 and the version 16 of the header');
         self::assertStringEndsWith('0100', $sixteen, 'the empty rack of KIP-392 and an EMPTY tag buffer');
+    }
+
+    public function testAVersionSeventeenRequestOfAConsumerIsTheVersionSixteenFrameWithAnotherApiVersion(): void
+    {
+        // KIP-853 (Kafka 3.9) added one TAGGED field to the partition entry - `FetchRequest.json` @ 3.9.2:
+        // "Version 17 adds directory id support from KIP-853" - whose default is the zero uuid, and a tagged
+        // field whose value is its default is not written at all, so the frame of a consumer does not change
+        $topicId   = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $arguments = [
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            FetchRequest::NO_RACK,
+            null,
+            ['topic' => $topicId],
+        ];
+
+        $sixteen   = bin2hex((string) new FetchRequestV16(...$arguments));
+        $seventeen = bin2hex((string) new FetchRequest(...$arguments));
+
+        self::assertSame($sixteen, substr_replace($seventeen, '0010', 12, 4), 'only the api version differs');
+        self::assertSame('00010011', substr($seventeen, 8, 8), 'the key 1 and the version 17 of the header');
+        self::assertStringEndsWith('0100', $seventeen, 'the empty rack of KIP-392 and an EMPTY tag buffer');
+        self::assertSame(Uuid::ZERO, new FetchRequest(...$arguments)->getReplicaDirectoryId());
+        self::assertSame(Uuid::ZERO, new FetchRequestV16(...$arguments)->getReplicaDirectoryId());
+        self::assertSame(
+            FetchRequestTopicPartition::class,
+            FetchRequestTopic::partitionClass(),
+            'the partition entry of version 17 is the one that declares the tag'
+        );
+        self::assertSame(FetchRequestTopicPartitionV12::class, FetchRequestTopicV13::partitionClass());
+    }
+
+    public function testTheReplicaDirectoryIdOfVersionSeventeenIsTheTagZeroOfEveryPartitionEntry(): void
+    {
+        // The field a FOLLOWER writes: 18 bytes at the end of the partition entry - the tag 0, the size 16 and
+        // the 16 raw bytes of the uuid - and the tag buffer of that entry counts 01 instead of 00
+        $topicId     = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $directoryId = Uuid::fromString('UZcrwW8KpJUY7I9lFtsjSA');
+        $arguments   = [
+            ['topic' => [0 => 0]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            FetchRequest::NO_RACK,
+            null,
+            ['topic' => $topicId],
+            null,
+        ];
+
+        $plain = new FetchRequest(...$arguments);
+        $named = new FetchRequest(...[...$arguments, $directoryId]);
+
+        self::assertSame($directoryId, $named->getReplicaDirectoryId());
+        self::assertSame(
+            strlen((string) $plain) + 18,
+            strlen((string) $named),
+            'the tag, its size and the uuid are the whole cost of the field'
+        );
+        self::assertStringContainsString(
+            '01' . '00' . '10' . bin2hex($directoryId),
+            bin2hex((string) $named),
+            'one tagged field of the partition entry: the tag 0, the size 16 and the directory id'
+        );
+        self::assertSame(
+            substr(bin2hex((string) $plain), 8),
+            substr(str_replace('0100' . '10' . bin2hex($directoryId), '00', bin2hex((string) $named)), 8),
+            'and without the tag the entry is the version 16 entry again'
+        );
+
+        // A version below 17 has no place for it at all: the value is carried and never written
+        $below = new FetchRequestV16(...[...$arguments, $directoryId]);
+
+        self::assertSame(strlen((string) new FetchRequestV16(...$arguments)), strlen((string) $below));
+        self::assertSame(Uuid::ZERO, $below->getReplicaDirectoryId(), 'no version below 17 reports one');
+        self::assertInstanceOf(
+            TaggedField::class,
+            FetchRequestTopicPartition::getScheme()['replicaDirectoryId'],
+            'the field is declared as the tag 0 of the entry'
+        );
+        self::assertArrayNotHasKey('replicaDirectoryId', FetchRequestTopicPartitionV12::getScheme());
+    }
+
+    public function testAVersionSeventeenAnswerIsTheVersionSixteenAnswer(): void
+    {
+        // `FetchResponse.json` @ 3.9.2: "Version 17 no changes to the response (KIP-853)"
+        $body = '00000001' . '00'
+            . '00000000' . '0000' . '00000000'
+            . '02' . '9853af22c18640468a52a3895221c6af'
+            . '02' . '00000000' . '0000' . '000000000000002a' . '000000000000002a' . '0000000000000000'
+            . '00' . 'ffffffff' . '01' . '00'
+            . '00'
+            . '00';
+        $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
+
+        $answer = FetchResponse::unpack(new StringStream($frame));
+
+        self::assertEquals(FetchResponseV16::getScheme(), FetchResponse::getScheme());
+        self::assertSame([], $answer->nodeEndpoints);
+        self::assertSame(42, $answer->topics[0]->partitions[0]->highWaterMarkOffset);
+        self::assertSame($frame, (string) $answer, 'the answer has to survive a round trip');
+        self::assertSame(
+            bin2hex($frame),
+            bin2hex((string) FetchResponseV16::unpack(new StringStream($frame))),
+            'and those bytes are the version 16 answer'
+        );
     }
 
     public function testAVersionSixteenAnswerWithoutARefusedPartitionIsTheVersionFifteenAnswer(): void
@@ -1122,7 +1251,7 @@ final class FetchApiTest extends TestCase
             . '00';
         $frame = (string) hex2bin(sprintf('%08x', intdiv(strlen($body), 2)) . $body);
 
-        $answer = FetchResponse::unpack(new StringStream($frame));
+        $answer = FetchResponseV16::unpack(new StringStream($frame));
 
         self::assertSame([], $answer->nodeEndpoints, 'nothing was refused, so nothing is named');
         self::assertSame(42, $answer->topics[0]->partitions[0]->highWaterMarkOffset);
@@ -1210,9 +1339,16 @@ final class FetchApiTest extends TestCase
             FetchRequestTopic::getScheme()
         );
         self::assertSame(
-            ['topic' => BinarySchema::TYPE_STRING, 'partitions' => ['partition' => FetchRequestTopicPartition::class]],
+            ['topic' => BinarySchema::TYPE_STRING,
+                'partitions' => ['partition' => FetchRequestTopicPartitionV12::class]],
             FetchRequestTopicV12::getScheme(),
-            'version 12 names the topic and picks the very same partition entry'
+            'version 12 names the topic and picks the partition entry of the versions 12 to 16'
+        );
+        self::assertSame(
+            ['topicId' => BinarySchema::TYPE_UUID,
+                'partitions' => ['partition' => FetchRequestTopicPartitionV12::class]],
+            FetchRequestTopicV13::getScheme(),
+            'and so does the entry of the versions 13 to 16, which version 17 leaves for the tag of KIP-853'
         );
         self::assertSame(
             ['topicId' => BinarySchema::TYPE_UUID, 'partitions' => ['partition' => FetchResponsePartition::class]],
@@ -1222,8 +1358,11 @@ final class FetchApiTest extends TestCase
             ['topic' => BinarySchema::TYPE_STRING, 'partitions' => ['partition' => FetchResponsePartition::class]],
             FetchResponseTopicV12::getScheme()
         );
-        self::assertSame(13, FetchRequestTopic::VERSION);
+        self::assertSame(17, FetchRequestTopic::VERSION, 'the entry of version 17 picks the tag of KIP-853');
+        self::assertSame(13, FetchRequestTopicV13::VERSION);
         self::assertSame(12, FetchRequestTopicV12::VERSION);
+        self::assertSame(17, FetchRequestTopicPartition::VERSION);
+        self::assertSame(12, FetchRequestTopicPartitionV12::VERSION);
         self::assertSame(13, FetchResponseTopic::VERSION);
         self::assertSame(12, FetchResponseTopicV12::VERSION);
         self::assertSame(13, FetchRequestForgottenTopic::VERSION);
@@ -1387,8 +1526,13 @@ final class FetchApiTest extends TestCase
             ['partition' => BinarySchema::TYPE_INT32, 'currentLeaderEpoch' => BinarySchema::TYPE_INT32,
                 'fetchOffset' => BinarySchema::TYPE_INT64, 'lastFetchedEpoch' => BinarySchema::TYPE_INT32,
                 'logStartOffset' => BinarySchema::TYPE_INT64, 'maxBytes' => BinarySchema::TYPE_INT32],
-            FetchRequestTopicPartition::getScheme(),
+            FetchRequestTopicPartitionV12::getScheme(),
             'the LastFetchedEpoch of KIP-595 sits between the fetch offset and the log start offset'
+        );
+        self::assertSame(
+            array_keys(FetchRequestTopicPartitionV12::getScheme() + ['replicaDirectoryId' => null]),
+            array_keys(FetchRequestTopicPartition::getScheme()),
+            'and version 17 appends the tagged replica_directory_id of KIP-853 to that very entry'
         );
         self::assertSame(
             ['partition' => BinarySchema::TYPE_INT32, 'currentLeaderEpoch' => BinarySchema::TYPE_INT32,
