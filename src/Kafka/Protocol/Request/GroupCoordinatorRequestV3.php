@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * frame.
  *
  * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class GroupCoordinatorRequestV3 extends GroupCoordinatorRequest
 {

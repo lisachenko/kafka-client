@@ -1,8 +1,8 @@
 {
     "api": "group-coordinator",
     "apiKey": 10,
-    "section": "GroupCoordinator API (key 10, v0 to v5)",
-    "description": "Wire vectors of the GroupCoordinator API (key 10, v0 to v5), replayed by tests/Compliance.",
+    "section": "GroupCoordinator API (key 10, v0 to v6)",
+    "description": "Wire vectors of the GroupCoordinator API (key 10, v0 to v6), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "groupcoordinator.request.v0",
@@ -475,7 +475,7 @@
         {
             "id": "groupcoordinator.request.v5",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequestV5",
             "version": 5,
             "source": "broker",
             "description": "FindCoordinator request v5 (Kafka 3.8, KIP-890): the version 4 body byte for byte - the coordinator type and the one-element batch of `coordinator_keys` - with the number **5** in the api version field of the header. \"Version 5 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)\" (`FindCoordinatorRequest.json` @ 3.8.1), and that is the whole of it: the version is a promise about an error code, not a layout.",
@@ -496,7 +496,7 @@
         {
             "id": "groupcoordinator.response.v5",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponseV5",
             "version": 5,
             "source": "broker",
             "description": "The answer: the node **1** with its host and port, the error code 0 and the **empty-string** error message that `handleFindCoordinatorRequestV4AndAbove` @ 3.9.2 leaves at its default. Byte for byte the version 4 answer of the same key.",
@@ -521,7 +521,7 @@
         {
             "id": "groupcoordinator.request.v5.batch",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequestV5",
             "version": 5,
             "source": "broker",
             "description": "Two group keys in one version 5 request, the compact count `03` in front of them: the batching of KIP-699 is untouched by KIP-890, and the one `coordinator_type` in front of the array still holds for every key of the batch.",
@@ -543,7 +543,7 @@
         {
             "id": "groupcoordinator.response.v5.batch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponseV5",
             "version": 5,
             "source": "broker",
             "description": "One entry per key, each with the key it answers and an error code of its own - the same node on this one-broker container, because both groups hash onto partitions of the same `__consumer_offsets`.",
@@ -576,7 +576,7 @@
         {
             "id": "groupcoordinator.request.v5.transaction",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequestV5",
             "version": 5,
             "source": "broker",
             "description": "The same version with the coordinator type **1**: the key is a transactional id and the lookup goes to `__transaction_state`. This is the frame the transaction verification of KIP-890 raised the version for, and it is the frame a transactional producer sends before it does anything else.",
@@ -597,7 +597,7 @@
         {
             "id": "groupcoordinator.response.v5.transaction",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponseV5",
             "version": 5,
             "source": "broker",
             "description": "The transaction coordinator of that id, with the code 0. A transactional id is not registered by the lookup - the coordinator only hashes the key onto a partition - so an id that was never used is a legal question with a normal answer. The **120** `TransactionAbortable` that version 5 exists for is never produced here: `KafkaApis.handleFindCoordinatorRequest` @ 3.9.2 has no path that writes it.",
@@ -614,6 +614,337 @@
                         "host": "127.0.0.1",
                         "port": 9092,
                         "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v6",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "FindCoordinator request v6 (Kafka 3.9, KIP-932): the version 5 body byte for byte - the coordinator type and the one-element batch of `coordinator_keys` - with the number **6** in the api version field of the header. \"Version 6 adds support for share groups (KIP-932)\" (`FindCoordinatorRequest.json` @ 3.9.2), and the whole of that support is which values the one `coordinator_type` byte may take: no field was added to either half of the api.",
+            "hex": "00000034000a0006000021fc00126b61666b612d636c69656e742d74332d33390000021474332d33392d766563746f72732d67726f757000",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 10,
+                "apiVersion": 6,
+                "correlationId": 8700,
+                "clientId": "kafka-client-t3-39",
+                "headerTaggedFields": [],
+                "coordinatorType": 0,
+                "coordinatorKeys": [
+                    "t3-39-vectors-group"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v6",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The answer: the node **1** with its host and port, the error code 0 and the **empty-string** error message that `handleFindCoordinatorRequestV4AndAbove` @ 3.9.2 leaves at its default. Byte for byte the version 5 answer of the same key, and the last version of this api the 3.x line has.",
+            "hex": "00000035000021fc0000000000021474332d33392d766563746f72732d67726f7570000000010a3132372e302e302e31000023840000010000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 8700,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-39-vectors-group": {
+                        "key": "t3-39-vectors-group",
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v6.batch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "Two group keys in one version 6 request, the compact count `03` in front of them: the batching of KIP-699 is untouched by KIP-932, and the one `coordinator_type` in front of the array still holds for every key of the batch - which is why a share lookup can never share a frame with a group lookup either.",
+            "hex": "00000048000a0006000021fd00126b61666b612d636c69656e742d74332d33390000031474332d33392d766563746f72732d67726f75701474332d33392d766563746f72732d6f7468657200",
+            "fields": {
+                "messageSize": 72,
+                "apiKey": 10,
+                "apiVersion": 6,
+                "correlationId": 8701,
+                "clientId": "kafka-client-t3-39",
+                "headerTaggedFields": [],
+                "coordinatorType": 0,
+                "coordinatorKeys": [
+                    "t3-39-vectors-group",
+                    "t3-39-vectors-other"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v6.batch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "One entry per key, each with the key it answers and an error code of its own - the same node on this one-broker container, because both keys hash onto partitions of the same `__consumer_offsets`.",
+            "hex": "0000005f000021fd0000000000031474332d33392d766563746f72732d67726f7570000000010a3132372e302e302e3100002384000001001474332d33392d766563746f72732d6f74686572000000010a3132372e302e302e31000023840000010000",
+            "fields": {
+                "messageSize": 95,
+                "correlationId": 8701,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-39-vectors-group": {
+                        "key": "t3-39-vectors-group",
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    },
+                    "t3-39-vectors-other": {
+                        "key": "t3-39-vectors-other",
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v6.transaction",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "The same version with the coordinator type **1**: the key is a transactional id and the lookup goes to `__transaction_state`. This is the frame a transactional producer of this client sends before it does anything else.",
+            "hex": "00000031000a0006000021fe00126b61666b612d636c69656e742d74332d33390001021174332d33392d766563746f72732d747800",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 10,
+                "apiVersion": 6,
+                "correlationId": 8702,
+                "clientId": "kafka-client-t3-39",
+                "headerTaggedFields": [],
+                "coordinatorType": 1,
+                "coordinatorKeys": [
+                    "t3-39-vectors-tx"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v6.transaction",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The transaction coordinator of that id, with the code 0. A transactional id is not registered by the lookup - the coordinator only hashes the key onto a partition - so an id that was never used is a legal question with a normal answer.",
+            "hex": "00000032000021fe0000000000021174332d33392d766563746f72732d7478000000010a3132372e302e302e31000023840000010000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 8702,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-39-vectors-tx": {
+                        "key": "t3-39-vectors-tx",
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v6.share-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "The coordinator type **2**, `CoordinatorType.SHARE` @ 3.9.2, asked at the one version that may ask for it. This is the only thing version 6 added, and the frame is the version 5 frame of the same question with the byte `02` where the group lookup has `00`.",
+            "hex": "00000034000a0006000021ff00126b61666b612d636c69656e742d74332d33390002021474332d33392d766563746f72732d736861726500",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 10,
+                "apiVersion": 6,
+                "correlationId": 8703,
+                "clientId": "kafka-client-t3-39",
+                "headerTaggedFields": [],
+                "coordinatorType": 2,
+                "coordinatorKeys": [
+                    "t3-39-vectors-share"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v6.share-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The node answers the error code **15** `CoordinatorNotAvailable` with the coordinator `-1:\"\":-1` and the empty message - not the 42 of every version below 6. `KafkaApis.getCoordinator` @ 3.9.2 passes the version gate and the `CLUSTER_ACTION` check and then returns that code out of the `CoordinatorType.SHARE` branch of its match, under the comment *\"When share coordinator support is implemented in KIP-932, a proper check will go here\"*: the share coordinator does not exist on a 3.9.2 node at all. The 15 is a **retriable** code for `Common\\CoordinatorLookup`, so a client that asked for this type would retry it until its timeout ran out - which is one more reason the share groups are out of this line.",
+            "hex": "0000002c000021ff0000000000021474332d33392d766563746f72732d7368617265ffffffff01ffffffff000f010000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 8703,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-39-vectors-share": {
+                        "key": "t3-39-vectors-share",
+                        "nodeId": -1,
+                        "host": "",
+                        "port": -1,
+                        "errorCode": 15,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v5.share-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequestV5",
+            "version": 5,
+            "source": "broker",
+            "description": "The very same question one version lower: the bytes of `groupcoordinator.request.v6.share-type` with the number **5** in the api version field of its header.",
+            "hex": "00000034000a00050000220000126b61666b612d636c69656e742d74332d33390002021474332d33392d766563746f72732d736861726500",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 10,
+                "apiVersion": 5,
+                "correlationId": 8704,
+                "clientId": "kafka-client-t3-39",
+                "headerTaggedFields": [],
+                "coordinatorType": 2,
+                "coordinatorKeys": [
+                    "t3-39-vectors-share"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v5.share-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponseV5",
+            "version": 5,
+            "source": "broker",
+            "description": "The **42** `InvalidRequest` of `keyType == CoordinatorType.SHARE.id && request.context.apiVersion < 6`, with the coordinator `-1:\"\":-1` and an **empty** message, because the refusal comes out of the ordinary handler and not out of the error path. The version 4 frame of the same question answers the same 42 (`groupcoordinator.response.v4.share-type`), so the gate this pair measures sits exactly at the version 6 and nowhere else.",
+            "hex": "0000002c000022000000000000021474332d33392d766563746f72732d7368617265ffffffff01ffffffff002a010000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 8704,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-39-vectors-share": {
+                        "key": "t3-39-vectors-share",
+                        "nodeId": -1,
+                        "host": "",
+                        "port": -1,
+                        "errorCode": 42,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v6.unknown-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "A coordinator type the enum of 3.9.2 does not define at all, 99, at the version that legalised the type 2: the number of the version says nothing about the types above the three `CoordinatorType` knows.",
+            "hex": "00000034000a00060000220100126b61666b612d636c69656e742d74332d33390063021474332d33392d766563746f72732d736861726500",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 10,
+                "apiVersion": 6,
+                "correlationId": 8705,
+                "clientId": "kafka-client-t3-39",
+                "headerTaggedFields": [],
+                "coordinatorType": 99,
+                "coordinatorKeys": [
+                    "t3-39-vectors-share"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v6.unknown-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The **42** again, and this one through the **error path**: `CoordinatorType.forId(99)` throws inside the handler, `FindCoordinatorRequest.getErrorResponse()` builds the answer, and the entry therefore carries the generic message of the code instead of the empty string. The connection stays open, as it did at every version of this line. This is what separates \"a type the version does not allow\" (the 42 with no message) from \"a type that does not exist\" (the 42 with one).",
+            "hex": "000000d8000022010000000000021474332d33392d766563746f72732d7368617265ffffffff01ffffffff002aac0154686973206d6f7374206c696b656c79206f63637572732062656361757365206f6620612072657175657374206265696e67206d616c666f726d65642062792074686520636c69656e74206c696272617279206f7220746865206d657373616765207761732073656e7420746f20616e20696e636f6d70617469626c652062726f6b65722e20536565207468652062726f6b6572206c6f677320666f72206d6f72652064657461696c732e0000",
+            "fields": {
+                "messageSize": 216,
+                "correlationId": 8705,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-39-vectors-share": {
+                        "key": "t3-39-vectors-share",
+                        "nodeId": -1,
+                        "host": "",
+                        "port": -1,
+                        "errorCode": 42,
+                        "errorMessage": "This most likely occurs because of a request being malformed by the client library or the message was sent to an incompatible broker. See the broker logs for more details."
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v6.share-type-unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 6,
+            "source": "broker",
+            "description": "The same type 2 lookup, sent on the SASL_PLAINTEXT listener by `acltest`, the one SASL user of the image that `super.users` does not name. The request is byte for byte the authorized one with another correlation id.",
+            "hex": "00000034000a00060000220200126b61666b612d636c69656e742d74332d33390002021474332d33392d766563746f72732d736861726500",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 10,
+                "apiVersion": 6,
+                "correlationId": 8706,
+                "clientId": "kafka-client-t3-39",
+                "headerTaggedFields": [],
+                "coordinatorType": 2,
+                "coordinatorKeys": [
+                    "t3-39-vectors-share"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v6.share-type-unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 6,
+            "source": "broker",
+            "description": "The **31** `ClusterAuthorizationFailed`: a share lookup is authorized as `CLUSTER_ACTION` on the **cluster** (`KafkaApis.getCoordinator` @ 3.9.2), where a group lookup needs `DESCRIBE` on the group (the **30** for the same principal) and a transaction lookup `DESCRIBE` on the transactional id (the **53**). The share coordinator is a broker-internal thing in Kafka 3.9, which is why an ordinary client principal may not even ask where it is; the check runs **after** the version gate, so the same request at the version 5 is the 42 for this principal too.",
+            "hex": "0000002c000022020000000000021474332d33392d766563746f72732d7368617265ffffffff01ffffffff001f010000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 8706,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-39-vectors-share": {
+                        "key": "t3-39-vectors-share",
+                        "nodeId": -1,
+                        "host": "",
+                        "port": -1,
+                        "errorCode": 31,
                         "errorMessage": ""
                     }
                 }

@@ -18,9 +18,10 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * Version 5 (Kafka 3.8, KIP-890) added no field to either half of the api - *"Version 5 adds support for new error
  * code TRANSACTION_ABORTABLE (KIP-890)"* - so this frame is the version 5 frame with the number 4 in its header,
- * and it is the highest version a broker below Kafka 3.8 serves. {@see GroupCoordinatorRequest} sends the version 5.
+ * and it is the highest version a broker below Kafka 3.8 serves. {@see GroupCoordinatorRequestV5} sends that one
+ * and {@see GroupCoordinatorRequest} the version 6 of Kafka 3.9, which declares the same body again.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class GroupCoordinatorRequestV4 extends GroupCoordinatorRequest
 {
