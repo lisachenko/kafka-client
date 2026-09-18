@@ -745,15 +745,24 @@ final class TopicAdminApiTest extends IntegrationTestCase
 
         self::assertInstanceOf(RequestTimedOutException::class, $result[$topic]);
         self::assertNull($result[$topic]->getContext()['error'] ?? null, 'and the answer carries no message');
+        // A fresh topic is answered with 3, 5 or 6 for a moment, so only an answer that really describes the topic
+        // says anything about its partition count - and at least one of them has to arrive inside the window
         $deadline = microtime(true) + 3.0;
+        $seen     = 0;
         do {
-            self::assertCount(
-                1,
-                $this->admin->describeTopics([$topic])[$topic]->partitions,
-                'the expired event wrote nothing, so the topic still has the partition it was created with'
-            );
+            $metadata = $this->admin->describeTopics([$topic])[$topic] ?? null;
+            if ($metadata !== null && $metadata->topicErrorCode === KafkaException::NO_ERROR) {
+                ++$seen;
+                self::assertCount(
+                    1,
+                    $metadata->partitions,
+                    'the expired event wrote nothing, so the topic still has the partition it was created with'
+                );
+            }
             usleep(200000);
         } while (microtime(true) < $deadline);
+
+        self::assertGreaterThan(0, $seen, 'the topic was described at least once inside the window');
     }
 
     public function testCreatePartitionsWithoutATopicIsAnsweredWithAnEmptyResult(): void
@@ -814,6 +823,10 @@ final class TopicAdminApiTest extends IntegrationTestCase
 
     /**
      * Waits until the topic is in the metadata of the cluster with a leader for each of its partitions
+     *
+     * Any answer that is not the topic itself is simply retried, which covers the whole window a fresh topic has:
+     * the KRaft node elects the leader WITH the creation, so there is no `LeaderNotAvailable` (5) window any more,
+     * but a broker whose metadata cache has not replayed the `TopicRecord` yet answers **3** for a moment.
      */
     private function awaitTopic(string $topic): TopicMetadata
     {
@@ -834,7 +847,8 @@ final class TopicAdminApiTest extends IntegrationTestCase
      * Waits until the topic has the expected number of partitions in the metadata of the cluster
      *
      * The controller answers a CreatePartitions as soon as IT has the new partitions; the other brokers - and the
-     * metadata cache of the one that answers a Metadata request - learn about them a moment later.
+     * metadata cache of the one that answers a Metadata request - learn about them a moment later. Every other
+     * answer, the 3 of a cache that has not caught up included, is retried.
      */
     private function awaitPartitionCount(string $topic, int $expected): TopicMetadata
     {

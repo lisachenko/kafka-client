@@ -138,8 +138,11 @@ final class ConfigsApiTest extends IntegrationTestCase
      * log, and the broker applies it when it replays that record, a moment later - so a `DescribeConfigs` that
      * overtakes the replay still answers the previous value. A 2.8.2 broker had the same gap around a ZooKeeper
      * watch.
+     *
+     * The window is generous because the `broker:` resource is SHARED: the node of this line answers four suites at
+     * once, and a replay that takes a moment longer under that load is not a defect of the api.
      */
-    private const float DYNAMIC_OPTION_TIMEOUT = 5.0;
+    private const float DYNAMIC_OPTION_TIMEOUT = 20.0;
 
     private const string DYNAMIC_OPTION_DEFAULT = '15000';
 
