@@ -1,0 +1,271 @@
+{
+    "api": "describe-quorum",
+    "apiKey": 55,
+    "section": "DescribeQuorum API (key 55, v0 and v1)",
+    "description": "Wire vectors of the DescribeQuorum API (key 55, v0 and v1), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "describequorum.request.v1",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "DescribeQuorum request v1 for the metadata quorum of the node: the partition 0 of `__cluster_metadata`, the one partition a KRaft cluster replicates with raft. The request of the version 0 is the same frame - KIP-836 added fields to the answer alone - and the api is flexible from the version 0, so both compact arrays and the two tag buffers are there.",
+            "hex": "000000390037000100000ce500126b61666b612d636c69656e742d74312d33330002135f5f636c75737465725f6d657461646174610200000000000000",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 55,
+                "apiVersion": 1,
+                "correlationId": 3301,
+                "clientId": "kafka-client-t1-33",
+                "headerTaggedFields": [],
+                "topics": {
+                    "__cluster_metadata": {
+                        "topicName": "__cluster_metadata",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describequorum.response.v1",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The quorum of the one combined node: the leader is the node id **1** in the epoch 1, the high watermark is the offset the metadata log is replicated to, and the single **voter** is that node itself - a `process.roles=broker,controller` node votes and observes nothing, so the observer array is empty. The two timestamps of KIP-836 are the ones this version adds: the leader answers the **current time** for both of its own, not the -1 the `about` of the specification names for `LastFetchTimestamp` (`LeaderState.describeReplicaState` @ 3.3.2 sets both to `currentTimeMs` for the local id).",
+            "hex": "0000005400000ce500000002135f5f636c75737465725f6d65746164617461020000000000000000000100000001000000000000168f0200000001000000000000168f000001a0b47ebd02000001a0b47ebd020001000000",
+            "fields": {
+                "messageSize": 84,
+                "correlationId": 3301,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "topics": {
+                    "__cluster_metadata": {
+                        "topicName": "__cluster_metadata",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "leaderId": 1,
+                                "leaderEpoch": 1,
+                                "highWatermark": 5775,
+                                "currentVoters": {
+                                    "1": {
+                                        "replicaId": 1,
+                                        "logEndOffset": 5775,
+                                        "lastFetchTimestamp": 1789734599938,
+                                        "lastCaughtUpTimestamp": 1789734599938
+                                    }
+                                },
+                                "observers": []
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describequorum.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumRequestV0",
+            "version": 0,
+            "source": "broker",
+            "description": "The same request one api version lower: \"Version 1 adds additional fields in the response. The request is unchanged (KIP-836)\" - `DescribeQuorumRequest.json` @ 3.3.2 - so the only byte that differs from the version 1 frame is the api version of the header.",
+            "hex": "000000390037000000000ce600126b61666b612d636c69656e742d74312d33330002135f5f636c75737465725f6d657461646174610200000000000000",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 55,
+                "apiVersion": 0,
+                "correlationId": 3302,
+                "clientId": "kafka-client-t1-33",
+                "headerTaggedFields": [],
+                "topics": {
+                    "__cluster_metadata": {
+                        "topicName": "__cluster_metadata",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describequorum.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumResponseV0",
+            "version": 0,
+            "source": "broker",
+            "description": "The same quorum without the timestamps: a replica state of the version 0 is the replica id and the log end offset, and the answer is 16 bytes shorter than the version 1 one for that reason alone. This is what every client below Kafka 3.3 sees, and it cannot tell a voter that fetched a moment ago from one that has been gone for an hour with the same offset.",
+            "hex": "0000004400000ce600000002135f5f636c75737465725f6d65746164617461020000000000000000000100000001000000000000168f0200000001000000000000168f0001000000",
+            "fields": {
+                "messageSize": 68,
+                "correlationId": 3302,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "topics": {
+                    "__cluster_metadata": {
+                        "topicName": "__cluster_metadata",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 0,
+                                "leaderId": 1,
+                                "leaderEpoch": 1,
+                                "highWatermark": 5775,
+                                "currentVoters": {
+                                    "1": {
+                                        "replicaId": 1,
+                                        "logEndOffset": 5775
+                                    }
+                                },
+                                "observers": []
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describequorum.request.v1.unknown-topic",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "A DescribeQuorum request about an ordinary topic - the api takes any topic and partition, although a KRaft cluster replicates exactly one partition with raft.",
+            "hex": "000000390037000100000ce700126b61666b612d636c69656e742d74312d333300021374312d33332d6e6f742d612d71756f72756d0200000000000000",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 55,
+                "apiVersion": 1,
+                "correlationId": 3303,
+                "clientId": "kafka-client-t1-33",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t1-33-not-a-quorum": {
+                        "topicName": "t1-33-not-a-quorum",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describequorum.response.v1.unknown-topic",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The top level is **0** and the partition carries **3** (`UnknownTopicOrPartition`): the name is echoed back, and every other field of the entry is the zero of its type - the leader id is **0** and not the -1 that \"the leader is unknown\" would be, because `KafkaApis` @ 3.9.2 fills in an empty `PartitionData` next to the error code. Both replica arrays are empty.",
+            "hex": "0000003700000ce7000000021374312d33332d6e6f742d612d71756f72756d02000000000003000000000000000000000000000000000101000000",
+            "fields": {
+                "messageSize": 55,
+                "correlationId": 3303,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "topics": {
+                    "t1-33-not-a-quorum": {
+                        "topicName": "t1-33-not-a-quorum",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0,
+                                "errorCode": 3,
+                                "leaderId": 0,
+                                "leaderEpoch": 0,
+                                "highWatermark": 0,
+                                "currentVoters": [],
+                                "observers": []
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describequorum.request.v1.no-topics",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The smallest frame of this api: a request that names no topic at all, i.e. the compact array count `01` (0 + 1) and the tag buffer of the body.",
+            "hex": "0000001f0037000100000ce800126b61666b612d636c69656e742d74312d3333000100",
+            "fields": {
+                "messageSize": 31,
+                "apiKey": 55,
+                "apiVersion": 1,
+                "correlationId": 3304,
+                "clientId": "kafka-client-t1-33",
+                "headerTaggedFields": [],
+                "topics": []
+            }
+        },
+        {
+            "id": "describequorum.response.v1.no-topics",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "It is not refused: the node answers the top-level **0** with an empty topic array, nine bytes in all - the shortest answer of the whole protocol next to the ones of the same shape.",
+            "hex": "0000000900000ce80000000100",
+            "fields": {
+                "messageSize": 9,
+                "correlationId": 3304,
+                "headerTaggedFields": [],
+                "errorCode": 0,
+                "topics": []
+            }
+        },
+        {
+            "id": "describequorum.request.v1.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumRequest",
+            "version": 1,
+            "source": "broker",
+            "description": "The very same request, sent over the SASL_PLAINTEXT listener as `acltest` - the one principal of the image that is not in `super.users` and that no acl of the node names.",
+            "hex": "000000390037000100000ce900126b61666b612d636c69656e742d74312d33330002135f5f636c75737465725f6d657461646174610200000000000000",
+            "fields": {
+                "messageSize": 57,
+                "apiKey": 55,
+                "apiVersion": 1,
+                "correlationId": 3305,
+                "clientId": "kafka-client-t1-33",
+                "headerTaggedFields": [],
+                "topics": {
+                    "__cluster_metadata": {
+                        "topicName": "__cluster_metadata",
+                        "partitions": [
+                            {
+                                "partitionIndex": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describequorum.response.v1.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeQuorumResponse",
+            "version": 1,
+            "source": "broker",
+            "description": "The api needs `Describe` on the **cluster**, and a principal that does not have it is answered the top-level **31** (`ClusterAuthorizationFailed`) with **no topic at all** - not a per-partition error. There is no `error_message` in this version to carry the reason.",
+            "hex": "0000000900000ce900001f0100",
+            "fields": {
+                "messageSize": 9,
+                "correlationId": 3305,
+                "headerTaggedFields": [],
+                "errorCode": 31,
+                "topics": []
+            }
+        }
+    ]
+}
