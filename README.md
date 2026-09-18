@@ -458,9 +458,9 @@ foreach ($group->members as $memberId => $member) {
 | `createTopicsWithResults()`                  | CreateTopics v7 | The same creation, answered with what the broker made of it (KIP-525, Kafka 2.4): `CreatedTopic` with the partition count, the replication factor and every configuration entry of the new topic; `NewTopic::withBrokerDefaults()` asks for `num.partitions` and `default.replication.factor` (KIP-464) |
 | `alterPartitionReassignments()`              | AlterPartitionReassignments v0 | Moves the replicas of partitions to other brokers, or cancels a move with `null` (KIP-455, Kafka 2.4); sent to the **controller**, one error per partition |
 | `listPartitionReassignments()`               | ListPartitionReassignments v0 | The reassignments in flight, with the target, adding and removing replica lists of each partition (KIP-455) |
-| `removeMembersFromConsumerGroup()`           | LeaveGroup v4 | Removes members of a group by hand, a static one by its `group.instance.id` (KIP-345, Kafka 2.4); one error per member, `MemberToRemove::byInstanceId()`/`byMemberId()` |
+| `removeMembersFromConsumerGroup()`           | LeaveGroup v5 | Removes members of a group by hand, a static one by its `group.instance.id` (KIP-345, Kafka 2.4); one error per member, `MemberToRemove::byInstanceId()`/`byMemberId()`; since v5 (Kafka 3.2) every entry names a `reason`, `member was removed by an admin` unless the caller gives one |
 | `deleteConsumerGroupOffsets()`               | OffsetDelete v0 | Deletes the committed offsets of single partitions of a group (KIP-496, Kafka 2.4); an `Empty` group hands over everything, a live consumer group answers 86 for the topics it consumes, another protocol type 68 and an unknown group 69 |
-| `describeLogDirs()`                          | DescribeLogDirs v2      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories |
+| `describeLogDirs()`                          | DescribeLogDirs v3      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories; since v3 (Kafka 3.2) a refusal of the whole request is a **top-level error code** and is thrown (31 for a principal that may not describe the cluster) |
 | `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v2  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
 | `createPartitions()`                         | CreatePartitions v3     | Raises the partition count of topics that exist (KIP-195); controller-only like `createTopics()`, and it can only ever grow a topic (37 otherwise) |
 | `deleteConsumerGroups()`                     | DeleteGroups v2         | Makes the coordinator forget groups and their committed offsets (KIP-229); a group with a live member is 68, one the coordinator does not know 69 |
@@ -781,9 +781,9 @@ it sends, and a version the node serves that the current milestone has not reach
 | 8 | OffsetCommit | v0 … v9 | yes | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8**; **v9 (3.6) not yet implemented on this line** |
 | 9 | OffsetFetch | v0 … v9 | yes | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8** (several groups in one request, Kafka 3.0); **v9 (3.7) not yet implemented on this line** |
 | 10 | GroupCoordinator (FindCoordinator) | v0 … v6 | yes | v0 … v2, **v3** | v0 … v3, **v4** (several keys in one request, KIP-699, Kafka 3.0); **v5 (3.8), v6 (3.9) not yet implemented on this line** |
-| 11 | JoinGroup | v0 … v9 | yes | v0 … v6, **v7** | v0 … v6, **v7**; **v8 (3.2), v9 (3.2) not yet implemented on this line** |
+| 11 | JoinGroup | v0 … v9 | yes | v0 … v6, **v7** | v0 … v8, **v9** (the `reason` of KIP-800 at v8, the `skip_assignment` of KIP-814 at v9, Kafka 3.2; `JoinGroupRequestV7`/`V8` keep the versions below) |
 | 12 | Heartbeat | v0 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
-| 13 | LeaveGroup | v0 … v5 | yes | v0 … v3, **v4** | v0 … v3, **v4**; **v5 (3.2) not yet implemented on this line** |
+| 13 | LeaveGroup | v0 … v5 | yes | v0 … v3, **v4** | v0 … v4, **v5** (the `reason` of KIP-800 per member, Kafka 3.2; `LeaveGroupRequestV4` keeps the version below) |
 | 14 | SyncGroup | v0 … v5 | yes | v0 … v4, **v5** | v0 … v4, **v5** |
 | 15 | DescribeGroups | v0 … v5 | yes | v0 … v4, **v5** | v0 … v4, **v5** |
 | 16 | ListGroups | v0 … v5 | yes | v0 … v3, **v4** | v0 … v3, **v4**; **v5 (3.8) not yet implemented on this line** |
@@ -805,7 +805,7 @@ it sends, and a version the node serves that the current milestone has not reach
 | 32 | DescribeConfigs | v0 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
 | 33 | AlterConfigs | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 34 | AlterReplicaLogDirs | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
-| 35 | DescribeLogDirs | v0 … v4 | yes | v0, v1, **v2** | v0, v1, **v2**; **v3 (3.2), v4 (3.3) not yet implemented on this line** |
+| 35 | DescribeLogDirs | v0 … v4 | yes | v0, v1, **v2** | v0, v1, v2, **v3** (the top-level error code of the answer, Kafka 3.2); **v4 (3.3) not yet implemented on this line** |
 | 36 | SaslAuthenticate | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 37 | CreatePartitions | v0 … v3 | controller | v0 … v2, **v3** | v0 … v2, **v3** |
 | 38 | CreateDelegationToken | v0 … v3 | yes | v0, v1, **v2** | v0, v1, **v2**; **v3 (3.3) not yet implemented on this line** |
@@ -936,6 +936,8 @@ current milestone):
 | **KIP-734: the max timestamp** (`OffsetsRequest::MAX_TIMESTAMP`, ListOffsets v7) | 3.0 | – | – | – | – | – | – | **yes** (`maxTimestampOffsets()`, `listMaxTimestampOffsets()`) |
 | **KIP-699: several coordinators in one FindCoordinator** (v4) and **several groups in one OffsetFetch** (v8) | 3.0 | – | – | – | – | – | – | **yes** (`getGroupCoordinators()`, `listConsumerGroupOffsets()`) |
 | **KIP-516, the request side: topics named by their id** (Fetch v13, Metadata v12; `Cluster::topicIdOf()`/`topicNameById()`, `describeTopicsByIds()`; the 106 of a fetch session that mixes ids and names) | 3.1 | – | – | – | – | – | – | **yes** |
+| **KIP-800: the `reason` of a join and of a leave** (JoinGroup v8, LeaveGroup v5; `Client::joinGroup()`/`leaveGroup()`, `KafkaConsumer::unsubscribe()`, `removeMembersFromConsumerGroup()`) and **KIP-814: `skip_assignment`** (JoinGroup v9; a static leader that returns to a `Stable` group keeps its assignment) | 3.2 | – | – | – | – | – | – | **yes** |
+| **DescribeLogDirs v3: the top-level error code** of a refused request (thrown by `describeLogDirs()`) | 3.2 | – | – | – | – | – | – | **yes** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 127** (the constants of 3.9.2, declared by the foundation; 105 is 3.0's) |
 
 What this line leaves out **by design** (the owner's decisions for the 3.x line; everything else the 3.9.2

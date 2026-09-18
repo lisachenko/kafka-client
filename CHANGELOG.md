@@ -18,7 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.1** (the foundation, the re-baseline wave T0 and the 3.0 and 3.1 waves are in).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.2** (the foundation, the re-baseline wave T0 and the 3.0 to 3.2 waves are in).
 
 ### Added
 
@@ -199,6 +199,43 @@ The second milestone of the line (PR #193): the one thing Kafka 3.1 added to the
   `FetchRequest::$topicPartitions` and `FetchResponse::$topics` are a plain **list** at that version, because an
   entry carries no name to index by. 20 wire vectors (10 of Fetch, 10 of Metadata), two new subsections of the
   grammar and three (3.x) items.
+
+### Kafka 3.2 — Added
+
+The third milestone of the line (PRs #194, #195): what Kafka 3.2 added to the wire a client sends — one field on
+each half of the group membership protocol, and one on the answer of DescribeLogDirs.
+
+- **JoinGroup v8 and LeaveGroup v5 (KIP-800)** — the `reason`: a nullable string at the end of a JoinGroup
+  request ("the reason why the member (re-)joins the group") and one per entry of a LeaveGroup batch ("the reason
+  why the member left the group"), a free text the coordinator writes into the log line of the rebalance it starts
+  or of the member it removes, and nothing else; the client cuts it at 255 characters, as the Java client does.
+  `Client::joinGroup()`, `Client::leaveGroup()`, `AdminClient::removeMembersFromConsumerGroup()` (whose entries
+  say `member was removed by an admin` unless the caller gives a reason) and `KafkaConsumer::unsubscribe()` take
+  one; the consumer sends the texts the Java consumer sends (`the consumer is being closed`, `the consumer
+  unsubscribed from all topics`, `need to re-join with the given member-id: …`). Measured on the node: the reason
+  of a join that starts no rebalance — the 79 of KIP-394, the static return below — is never logged; only
+  `Preparing to rebalance group … ; client reason: …` and the explicit-leave line carry it.
+- **JoinGroup v9 (KIP-814)** — the `skip_assignment` byte of the answer, between the leader id and the member
+  id: `true` tells a **static** member that came back to a `Stable` group as its leader that the group keeps the
+  assignment it already has, and `Consumer\Internals\ConsumerCoordinator` then publishes an **empty** assignment
+  array with its SyncGroup and is answered the share the generation already agreed on. Measured on the node: the
+  flag comes back in 10 ms with the generation unchanged, where the first join of the same instance waits the
+  3 s of `group.initial.rebalance.delay.ms` — and **version 9 answers the new member id as the leader of a static
+  takeover where version 8 answers the one it has just replaced** (`GroupMetadataManager.updateStaticMemberAndRebalance`
+  @ 3.9.2 reads the leader after the swap on the KIP-814 branch and before it on the other), which is the one
+  inherited assertion the version bump moved. The keep-behind classes `JoinGroupRequestV7`/`V8`,
+  `JoinGroupResponseV7`/`V8`, `LeaveGroupRequestV4`, `LeaveGroupResponseV4` and `LeaveGroupRequestMemberV3` keep
+  the frames below; 16 wire vectors.
+- **DescribeLogDirs v3** — the one version Kafka 3.2 adds to the admin surface, and it is the answer that changes:
+  "Version 3 adds the top-level ErrorCode field" of `DescribeLogDirsResponse.json` @ 3.2.3, an `int16` between
+  `throttle_time_ms` and `log_dirs` next to the per-directory codes the version 0 already had (the request is the
+  version 2 frame byte for byte). `DescribeLogDirsResponse::$errorCode` carries it and
+  `AdminClient::describeLogDirs()` raises it as the exception of the whole request;
+  `DescribeLogDirsRequestV2`/`DescribeLogDirsResponseV2` keep the frame below it. Measured on the node as the SASL
+  user `acltest`: the refusal of a principal that may not `Describe` the `CLUSTER` resource is **31** with an empty
+  directory array at v3 (17 bytes), the empty array alone at v2 (15 bytes) and at v0/v1 (16 bytes) — below the
+  version 3 a refusal and a broker without a single log directory are the same bytes, which is why the Java admin
+  client guessed the 31 from an empty map and, at 3.2.3, still does whenever the new field is 0. Nine wire vectors.
 
 Unreleased — the 2.x line (Kafka 2.8.2)
 ---------------------------------------
