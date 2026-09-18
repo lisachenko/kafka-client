@@ -1,0 +1,205 @@
+{
+    "api": "get-telemetry-subscriptions",
+    "apiKey": 71,
+    "section": "GetTelemetrySubscriptions API (key 71, v0)",
+    "description": "Wire vectors of the GetTelemetrySubscriptions API (key 71, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "gettelemetrysubscriptions.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GetTelemetrySubscriptionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "GetTelemetrySubscriptions request v0 (Kafka 3.7, KIP-714) of a client that has no instance id yet: the whole body is the **zero uuid**, 16 bytes of `00`, which is what the specification prescribes for the first request.",
+            "hex": "0000002e0047000000000e8800126b61666b612d636c69656e742d74312d3337000000000000000000000000000000000000",
+            "fields": {
+                "messageSize": 46,
+                "apiKey": 71,
+                "apiVersion": 0,
+                "correlationId": 3720,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "00000000000000000000000000000000"
+                }
+            }
+        },
+        {
+            "id": "gettelemetrysubscriptions.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GetTelemetrySubscriptionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of a node on which no `client-metrics` resource exists: the code 0, a **generated** client instance id, a non-zero `subscription_id` (it is the CRC-32C of the empty subscription xor the hash of the instance id, never a \"nothing subscribed\" sentinel), the four codecs the broker takes for a push - `04 03 01 02`, i.e. zstd, lz4, gzip and snappy in that order - the **300000 ms** default interval of `ClientMetricsConfigs`, a **1048576**-byte limit, `delta_temporality = true` and an **empty** `requested_metrics`, which is \"no metric at all\" (a single empty string would be \"every metric\").",
+            "hex": "0000002f00000e880000000000000070a047ee23ba439881180f585897cfb25e529f420504030102000493e000100000010100",
+            "fields": {
+                "messageSize": 47,
+                "correlationId": 3720,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "clientInstanceId": {
+                    "$bytes": "70a047ee23ba439881180f585897cfb2"
+                },
+                "subscriptionId": 1582473026,
+                "acceptedCompressionTypes": [
+                    4,
+                    3,
+                    1,
+                    2
+                ],
+                "pushIntervalMs": 300000,
+                "telemetryMaxBytes": 1048576,
+                "deltaTemporality": true,
+                "requestedMetrics": []
+            }
+        },
+        {
+            "id": "gettelemetrysubscriptions.request.v0.throttled",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GetTelemetrySubscriptionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same request again, with the instance id the answer above handed out and inside the push interval it named.",
+            "hex": "0000002e0047000000000e8900126b61666b612d636c69656e742d74312d33370070a047ee23ba439881180f585897cfb200",
+            "fields": {
+                "messageSize": 46,
+                "apiKey": 71,
+                "apiVersion": 0,
+                "correlationId": 3721,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "70a047ee23ba439881180f585897cfb2"
+                }
+            }
+        },
+        {
+            "id": "gettelemetrysubscriptions.response.v0.throttled",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GetTelemetrySubscriptionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The **89** `ThrottlingQuotaExceeded`: asking twice inside one interval is a client that is misbehaving, and `ClientMetricsManager.validateGetRequest` @ 3.9.2 throws before it builds a subscription. The refusal is built by `getErrorResponse`, so every field of the answer is the default of its schema - a **zero** client instance id, the subscription id 0, no codec, no interval, no limit and `delta_temporality = false`.",
+            "hex": "0000002b00000e89000000000000590000000000000000000000000000000000000000010000000000000000000100",
+            "fields": {
+                "messageSize": 43,
+                "correlationId": 3721,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 89,
+                "clientInstanceId": {
+                    "$bytes": "00000000000000000000000000000000"
+                },
+                "subscriptionId": 0,
+                "acceptedCompressionTypes": [],
+                "pushIntervalMs": 0,
+                "telemetryMaxBytes": 0,
+                "deltaTemporality": false,
+                "requestedMetrics": []
+            }
+        },
+        {
+            "id": "gettelemetrysubscriptions.request.v0.subscribed",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GetTelemetrySubscriptionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same first request once a subscription exists on the node: the `client-metrics` resource `t1-37-metrics` with `metrics=org.apache.kafka.producer.`, `interval.ms=5000` and `match=client_id=kafka-client-t1-37`, written with `kafka-configs.sh --entity-type client-metrics` and removed again afterwards.",
+            "hex": "0000002e0047000000000e8a00126b61666b612d636c69656e742d74312d3337000000000000000000000000000000000000",
+            "fields": {
+                "messageSize": 46,
+                "apiKey": 71,
+                "apiVersion": 0,
+                "correlationId": 3722,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "00000000000000000000000000000000"
+                }
+            }
+        },
+        {
+            "id": "gettelemetrysubscriptions.response.v0.subscribed",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GetTelemetrySubscriptionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The subscription itself: `push_interval_ms` is the **5000** of the resource instead of the 300000 default, and `requested_metrics` carries the one prefix `org.apache.kafka.producer.`. The `subscription_id` is a different number than the one of the unsubscribed instance, which is the only thing a client has to compare: it echoes it in every push, and a push with any other id is refused 117.",
+            "hex": "0000004a00000e8a000000000000007f1214a284544929839dcf2cf7d9d8bedd0efe930504030102000013880010000001021b6f72672e6170616368652e6b61666b612e70726f64756365722e00",
+            "fields": {
+                "messageSize": 74,
+                "correlationId": 3722,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "clientInstanceId": {
+                    "$bytes": "7f1214a284544929839dcf2cf7d9d8be"
+                },
+                "subscriptionId": -586219885,
+                "acceptedCompressionTypes": [
+                    4,
+                    3,
+                    1,
+                    2
+                ],
+                "pushIntervalMs": 5000,
+                "telemetryMaxBytes": 1048576,
+                "deltaTemporality": true,
+                "requestedMetrics": [
+                    "org.apache.kafka.producer."
+                ]
+            }
+        },
+        {
+            "id": "gettelemetrysubscriptions.request.v0.unmatched",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GetTelemetrySubscriptionsRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same question, asked while that resource exists, by the client id `kafka-client-t1-37-other`, which its `match` pattern does not cover.",
+            "hex": "000000340047000000000e8b00186b61666b612d636c69656e742d74312d33372d6f74686572000000000000000000000000000000000000",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 71,
+                "apiVersion": 0,
+                "correlationId": 3723,
+                "clientId": "kafka-client-t1-37-other",
+                "headerTaggedFields": [],
+                "clientInstanceId": {
+                    "$bytes": "00000000000000000000000000000000"
+                }
+            }
+        },
+        {
+            "id": "gettelemetrysubscriptions.response.v0.unmatched",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GetTelemetrySubscriptionsResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The empty subscription again - the 300000 ms default and no metric - which is what the `match` of a `client-metrics` resource is for: the subscription belongs to the clients it names and to no others. Only the client id of the **request header** decides it; nothing else of these two frames differs.",
+            "hex": "0000002f00000e8b00000000000000055e6840a3274c23b9c57bd4df37535d144c57340504030102000493e000100000010100",
+            "fields": {
+                "messageSize": 47,
+                "correlationId": 3723,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "clientInstanceId": {
+                    "$bytes": "055e6840a3274c23b9c57bd4df37535d"
+                },
+                "subscriptionId": 340547380,
+                "acceptedCompressionTypes": [
+                    4,
+                    3,
+                    1,
+                    2
+                ],
+                "pushIntervalMs": 300000,
+                "telemetryMaxBytes": 1048576,
+                "deltaTemporality": true,
+                "requestedMetrics": []
+            }
+        }
+    ]
+}

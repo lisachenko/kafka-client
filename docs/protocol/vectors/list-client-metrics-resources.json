@@ -1,0 +1,80 @@
+{
+    "api": "list-client-metrics-resources",
+    "apiKey": 74,
+    "section": "ListClientMetricsResources API (key 74, v0)",
+    "description": "Wire vectors of the ListClientMetricsResources API (key 74, v0), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "listclientmetricsresources.request.v0",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "ListClientMetricsResources request v0 (Kafka 3.7, KIP-714), whose body is **empty**: the request header v2 and the tag buffer of the body, and nothing else at all.",
+            "hex": "0000001e004a000000000e7e00126b61666b612d636c69656e742d74312d33370000",
+            "fields": {
+                "messageSize": 30,
+                "apiKey": 74,
+                "apiVersion": 0,
+                "correlationId": 3710,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": []
+            }
+        },
+        {
+            "id": "listclientmetricsresources.response.v0",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of a node on which no operator has written a `client-metrics` resource: the code 0 and an **empty** array, thirteen bytes behind the size field.",
+            "hex": "0000000d00000e7e000000000000000100",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 3710,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "clientMetricsResources": []
+            }
+        },
+        {
+            "id": "listclientmetricsresources.request.v0.subscribed",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The very same frame, one correlation id later, sent while the resource `t1-37-metrics` exists.",
+            "hex": "0000001e004a000000000e7f00126b61666b612d636c69656e742d74312d33370000",
+            "fields": {
+                "messageSize": 30,
+                "apiKey": 74,
+                "apiVersion": 0,
+                "correlationId": 3711,
+                "clientId": "kafka-client-t1-37",
+                "headerTaggedFields": []
+            }
+        },
+        {
+            "id": "listclientmetricsresources.response.v0.subscribed",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The one name the cluster has. The api answers **names only** - what the subscription contains is read with DescribeConfigs (32) on the resource type `CLIENT_METRICS`, which is a resource type this client does not speak.",
+            "hex": "0000001c00000e7f00000000000000020e74312d33372d6d6574726963730000",
+            "fields": {
+                "messageSize": 28,
+                "correlationId": 3711,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "clientMetricsResources": {
+                    "t1-37-metrics": {
+                        "name": "t1-37-metrics"
+                    }
+                }
+            }
+        }
+    ]
+}

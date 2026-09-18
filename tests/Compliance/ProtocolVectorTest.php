@@ -478,6 +478,30 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function getTelemetrySubscriptionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function pushTelemetryVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function listClientMetricsResourcesVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('apiVersionsVectors')]
@@ -1071,6 +1095,33 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('listTransactionsVectors')]
     public function testListTransactionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('getTelemetrySubscriptionsVectors')]
+    public function testGetTelemetrySubscriptionsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('pushTelemetryVectors')]
+    public function testPushTelemetryApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('listClientMetricsResourcesVectors')]
+    public function testListClientMetricsResourcesApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

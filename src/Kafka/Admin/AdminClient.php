@@ -2260,22 +2260,33 @@ class AdminClient
      * `$includeAuthorizedOperations` asks for the acl bit field of KIP-430. Without it the answer carries
      * `Integer.MIN_VALUE`, which {@see ClusterDescription::hasAuthorizedOperations()} reports as "not asked".
      *
+     * **`$endpointType` is the version 1 of KIP-919** (Kafka 3.7), which this client sends: a cluster without
+     * ZooKeeper has brokers *and* controllers, and the byte says which of the two sets the answer describes.
+     * {@see EndpointType::Broker} is the default and the only thing a version 0 frame could ask for;
+     * {@see EndpointType::Controller} asks for the controllers, which a **broker** listener refuses with the
+     * **114** (`MismatchedEndpointType`) that Kafka 3.7 added for it - the request belongs on a controller
+     * listener, which this client is not configured with.
+     *
      * {@see self::describeClusterFromMetadata()} is the same description built from a Metadata answer, for a
      * broker below Kafka 2.8 - a 2.8.2 broker answers the api key 60 with the error code 35 on every line below
      * this one, so the choice is the caller's and not this client's.
      *
-     * @param bool $includeAuthorizedOperations Whether to ask for the acl bit field of the cluster
+     * @param bool         $includeAuthorizedOperations Whether to ask for the acl bit field of the cluster
+     * @param EndpointType $endpointType                Which half of the cluster to describe (KIP-919, version 1)
      *
      * @throws KafkaException If the broker refused the request
      */
-    public function describeCluster(bool $includeAuthorizedOperations = false): ClusterDescription
-    {
+    public function describeCluster(
+        bool $includeAuthorizedOperations = false,
+        EndpointType $endpointType = EndpointType::Broker
+    ): ClusterDescription {
         /** @var DescribeClusterResponse $response */
         $response = $this->sendAnyNode(
             fn(int $correlationId): DescribeClusterRequest => new DescribeClusterRequest(
                 $includeAuthorizedOperations,
                 $this->clientId(),
-                $correlationId
+                $correlationId,
+                $endpointType
             ),
             DescribeClusterResponse::class
         );
@@ -2302,7 +2313,8 @@ class AdminClient
             $response->clusterId,
             $response->controllerId,
             $nodes,
-            $response->clusterAuthorizedOperations
+            $response->clusterAuthorizedOperations,
+            $response->getEndpointType()
         );
     }
 
