@@ -18,7 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.3** (the foundation, the re-baseline wave T0 and the 3.0 to 3.3 waves are in).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.4** (the foundation, the re-baseline wave T0 and the 3.0 to 3.3 waves are in; Kafka 3.4 adds nothing a client sends).
 
 ### Added
 
@@ -291,6 +291,14 @@ ACL apis, measured against a real authorizer for the first time.
 - The error codes **107** `IneligibleReplica` and **108** `NewLeaderElected` of Kafka 3.3 belong to AlterPartition
   (56), a broker-to-controller api a client listener does not serve: declared at the foundation, never observed.
   73 wire vectors in all (26 of T1, 47 of T4): 836 in 54 files.
+
+### Kafka 3.4 — nothing on the wire a client sends
+
+Kafka 3.4 (tag `3.4.1`) raised only the broker-to-broker and broker-to-controller apis of the ZooKeeper
+migration (KIP-866: LeaderAndIsr v7, StopReplica v4, UpdateMetadata v8 and BrokerRegistration v1, none of them
+served on a client listener) and added no error code and no client-facing version: verified at the tag against
+`3.3.2`, message by message. The milestone is a record only; the client of the 3.3 milestone is the client of
+the 3.4 one.
 
 Unreleased — the 2.x line (Kafka 2.8.2)
 ---------------------------------------
