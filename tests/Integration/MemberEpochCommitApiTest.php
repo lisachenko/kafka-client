@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV8;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
-use Protocol\Kafka\Tests\Fixture\RawApiProbe;
+use Protocol\Kafka\Tests\Fixture\ConsumerGroupHeartbeatProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -48,9 +48,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * version 9 and at the version 8 next to it.
  *
  * The KIP-848 group of the last two tests is created with a hand-built **ConsumerGroupHeartbeat** (key 68,
- * {@see self::heartbeat()}): the api itself is the last wave of this line and has no classes yet, but without a
- * group of the new protocol neither the 113 nor the 35 of a member that sends a version below 9 can be produced
- * at all.
+ * {@see ConsumerGroupHeartbeatProbe}): the api itself is the last wave of this line and has no classes yet, but
+ * without a group of the new protocol neither the 113 nor the 35 of a member that sends a version below 9 can be
+ * produced at all.
  *
  * Every group and topic of this class carries the `t3-36-` prefix of the Kafka 3.6 wave and is removed again in
  * {@see self::tearDownAfterClass()}.
@@ -84,18 +84,6 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
      * A JoinGroup of a fresh group waits the 3 s of `group.initial.rebalance.delay.ms`
      */
     private const int REQUEST_TIMEOUT_MS = 30000;
-
-    /**
-     * Api key of ConsumerGroupHeartbeat (KIP-848), which this line implements in its last wave
-     */
-    private const int CONSUMER_GROUP_HEARTBEAT = 68;
-
-    /**
-     * Member epoch of a heartbeat that joins a group, and of one that leaves it
-     */
-    private const int JOIN_MEMBER_EPOCH = 0;
-
-    private const int LEAVE_MEMBER_EPOCH = -1;
 
     private static ?Cluster $sharedCluster = null;
 
@@ -518,23 +506,12 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
      */
     private function joinWithAHeartbeat(string $groupId, string $memberId, string $topic): int
     {
-        $answer = $this->heartbeat(
-            $groupId,
-            $memberId,
-            self::JOIN_MEMBER_EPOCH,
-            self::REBALANCE_TIMEOUT_MS,
-            [$topic],
-            3693
-        );
+        $epoch = new ConsumerGroupHeartbeatProbe(self::firstBootstrapServer())
+            ->join($groupId, $memberId, [$topic], self::REBALANCE_TIMEOUT_MS, 3693);
 
-        self::assertSame(
-            KafkaException::NO_ERROR,
-            $answer['errorCode'],
-            'The node refused the heartbeat that creates the group: ' . var_export($answer['errorMessage'], true)
-        );
-        self::assertGreaterThan(0, $answer['memberEpoch'], 'a member that joined holds an epoch above zero');
+        self::assertGreaterThan(0, $epoch, 'a member that joined holds an epoch above zero');
 
-        return $answer['memberEpoch'];
+        return $epoch;
     }
 
     /**
@@ -542,112 +519,9 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
      */
     private function leaveWithAHeartbeat(string $groupId, string $memberId): void
     {
-        $answer = $this->heartbeat($groupId, $memberId, self::LEAVE_MEMBER_EPOCH, -1, null, 3694);
+        $answer = new ConsumerGroupHeartbeatProbe(self::firstBootstrapServer())->leave($groupId, $memberId, 3694);
 
         self::assertSame(KafkaException::NO_ERROR, $answer['errorCode'], 'The node refused the leave');
-    }
-
-    /**
-     * Sends one hand-built ConsumerGroupHeartbeat v0 (KIP-848) and decodes the fields this class needs
-     *
-     * The api has no classes on this line yet - it is the last wave of it - and the frame is flexible from its
-     * version 0 on, so every string and array of it is compact and every structure ends in a tag buffer. The
-     * `topic_partitions` of a heartbeat that joins has to be an **empty** array and never the null the field
-     * defaults to: `GroupMetadataManager.throwIfConsumerGroupHeartbeatRequestIsInvalid` @ 3.9.2 refuses the null
-     * with "TopicPartitions must be empty when (re-)joining.".
-     *
-     * @param list<string>|null $topics Subscription of the member, which a join has to carry
-     *
-     * @return array{errorCode: int, errorMessage: string|null, memberId: string|null, memberEpoch: int}
-     */
-    private function heartbeat(
-        string $groupId,
-        string $memberId,
-        int $memberEpoch,
-        int $rebalanceTimeoutMs,
-        ?array $topics,
-        int $correlationId
-    ): array {
-        $body = RawApiProbe::compactString($groupId)
-            . RawApiProbe::compactString($memberId)
-            . RawApiProbe::int32($memberEpoch)
-            . RawApiProbe::compactString(null)           // instance id
-            . RawApiProbe::compactString(null)           // rack id
-            . RawApiProbe::int32($rebalanceTimeoutMs);
-        if ($topics === null) {
-            $body .= RawApiProbe::compactArray(null);
-        } else {
-            $body .= RawApiProbe::compactArray(count($topics));
-            foreach ($topics as $name) {
-                $body .= RawApiProbe::compactString($name);
-            }
-        }
-        $body .= RawApiProbe::compactString(null)        // server assignor
-            . RawApiProbe::compactArray($memberEpoch === self::JOIN_MEMBER_EPOCH ? 0 : null)
-            . RawApiProbe::tagBuffer();
-
-        $probe  = new RawApiProbe(self::firstBootstrapServer());
-        $answer = $probe->send(
-            self::CONSUMER_GROUP_HEARTBEAT,
-            0,
-            $body,
-            $correlationId,
-            RawApiProbe::HEADER_V2,
-            10.0
-        );
-        $probe->close();
-
-        self::assertSame(RawApiProbe::ANSWERED, $answer['status'], 'The node did not answer the heartbeat');
-        self::assertSame($correlationId, $answer['correlationId']);
-
-        return self::decodeHeartbeat($answer['body']);
-    }
-
-    /**
-     * Reads the leading fields of a ConsumerGroupHeartbeat answer, the tag buffer of the response header included
-     *
-     * @return array{errorCode: int, errorMessage: string|null, memberId: string|null, memberEpoch: int}
-     */
-    private static function decodeHeartbeat(string $body): array
-    {
-        $offset = 0;
-        $varint = static function () use ($body, &$offset): int {
-            $value = 0;
-            $shift = 0;
-            while (true) {
-                $byte = ord($body[$offset++]);
-                $value |= ($byte & 0x7F) << $shift;
-                if (($byte & 0x80) === 0) {
-                    return $value;
-                }
-                $shift += 7;
-            }
-        };
-        $string = static function () use ($body, &$offset, $varint): ?string {
-            $length = $varint();
-            if ($length === 0) {
-                return null;
-            }
-            $value = substr($body, $offset, $length - 1);
-            $offset += $length - 1;
-
-            return $value;
-        };
-
-        $varint();                                                  // tag buffer of the response header v1
-        $offset += 4;                                               // throttle time
-        $errorCode = (int) unpack('n', substr($body, $offset, 2))[1];
-        $offset += 2;
-        $errorMessage = $string();
-        $memberId     = $string();
-        $memberEpoch  = (int) unpack('N', substr($body, $offset, 4))[1];
-
-        return [
-            'errorCode'    => $errorCode > 0x7FFF ? $errorCode - 0x10000 : $errorCode,
-            'errorMessage' => $errorMessage,
-            'memberId'     => $memberId,
-            'memberEpoch'  => $memberEpoch > 0x7FFFFFFF ? $memberEpoch - 0x100000000 : $memberEpoch,
-        ];
     }
 
     /**

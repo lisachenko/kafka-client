@@ -1411,7 +1411,11 @@ final class ClientTest extends TestCase
             'the client commits with OffsetCommit version 9 since Kafka 3.6 (KIP-848)'
         );
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(8, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 8');
+        self::assertSame(
+            9,
+            $this->apiVersionOf($frames[1]),
+            'the client reads the offsets with OffsetFetch version 9 since Kafka 3.7 (KIP-848)'
+        );
     }
 
     public function testACommitErrorOfAPartitionIsReported(): void
@@ -1448,7 +1452,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(8, $this->apiVersionOf($frame), 'the nullable topic array of the one group of the batch');
+        self::assertSame(9, $this->apiVersionOf($frame), 'the nullable topic array of the one group of the batch');
         self::assertStringEndsWith(
             '0000',
             bin2hex($frame),
@@ -1479,7 +1483,7 @@ final class ClientTest extends TestCase
 
         [$plain, $stable] = $coordinator->getReceivedFrames();
 
-        self::assertSame(8, $this->apiVersionOf($plain));
+        self::assertSame(9, $this->apiVersionOf($plain));
         self::assertStringEndsWith('0000', bin2hex($plain), 'false, then the tag buffer of the body');
         self::assertStringEndsWith('0100', bin2hex($stable), 'true, then the tag buffer of the body');
         self::assertSame(
