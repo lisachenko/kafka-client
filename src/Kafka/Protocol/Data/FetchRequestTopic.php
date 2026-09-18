@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * next to the id for the client that filled it in: it is not on the wire of a version 13 frame, and an entry that
  * was **decoded** from one carries the empty name until the id is resolved against the cluster.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v13)" and "The topic ids of the fetch path
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)" and "The topic ids of the fetch path
  *      (v13, KIP-516)"
  */
 class FetchRequestTopic implements BinarySchemaInterface

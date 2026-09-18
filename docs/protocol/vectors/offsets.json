@@ -1,8 +1,8 @@
 {
     "api": "offsets",
     "apiKey": 2,
-    "section": "Offsets API (key 2, v0 to v7), a.k.a. ListOffset",
-    "description": "Wire vectors of the Offsets API (key 2, v0 to v7), a.k.a. ListOffset, replayed by tests/Compliance.",
+    "section": "Offsets API (key 2, v0 to v8), a.k.a. ListOffset",
+    "description": "Wire vectors of the Offsets API (key 2, v0 to v8), a.k.a. ListOffset, replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsets.request.v0.latest",
@@ -621,7 +621,7 @@
         {
             "id": "offsets.request.v7.max-timestamp",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV7",
             "version": 7,
             "source": "broker",
             "description": "ListOffsets request v7 (Kafka 3.0, KIP-734): the flexible frame of version 6, unchanged field for field, with the new special target time -3 (MAX_TIMESTAMP) - \"the offset of the record with the largest timestamp of this partition\" - asked by a consumer (replica id -1) with read_uncommitted and the current_leader_epoch -1 of KIP-320.",
@@ -652,7 +652,7 @@
         {
             "id": "offsets.response.v7.max-timestamp",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer v7 to the target time -3: the error code 0, the LARGEST timestamp of the partition (1789712920000) and the offset of the record that carries it - 1, the MIDDLE of the three records, because the producer stamped them out of order - with the leader epoch 0. The log end offset of the same partition is 3, so the max timestamp is demonstrably not the last offset.",
@@ -681,7 +681,7 @@
         {
             "id": "offsets.request.v7.latest",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV7",
             "version": 7,
             "source": "broker",
             "description": "ListOffsets request v7 asking for the target time -1, the latest offset: the frame of the version 6 request with another number in its header.",
@@ -712,7 +712,7 @@
         {
             "id": "offsets.response.v7.latest",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer v7 to -1: the log end offset 3 of the three-record partition, with the timestamp -1, because the broker does not read the record the offset points at.",
@@ -741,7 +741,7 @@
         {
             "id": "offsets.request.v7.earliest",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV7",
             "version": 7,
             "source": "broker",
             "description": "ListOffsets request v7 asking for the target time -2, the earliest offset that is still on disk.",
@@ -772,7 +772,7 @@
         {
             "id": "offsets.response.v7.earliest",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer v7 to -2: the offset 0 of a partition nothing was deleted from, again with the timestamp -1.",
@@ -861,7 +861,7 @@
         {
             "id": "offsets.request.v7.max-timestamp-empty",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV7",
             "version": 7,
             "source": "broker",
             "description": "The target time -3 asked of a partition whose log is empty.",
@@ -892,7 +892,7 @@
         {
             "id": "offsets.response.v7.max-timestamp-empty",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV7",
             "version": 7,
             "source": "broker",
             "description": "An empty log has no largest timestamp, and that is not an error: the code 0 with the timestamp -1, the offset -1 and the leader epoch -1, exactly like a timestamp that no record matches.",
@@ -912,6 +912,246 @@
                                 "timestamp": -1,
                                 "offset": -1,
                                 "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v8.earliest-local",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "ListOffsets request v8 (Kafka 3.5, KIP-405): the flexible frame of the versions 6 and 7, unchanged field for field, with the new special target time -4 (EARLIEST_LOCAL_TIMESTAMP) - \"the first offset that is still on the local disk of this broker\" - asked by a consumer (replica id -1) with read_uncommitted and the current_leader_epoch -1 of KIP-320.",
+            "hex": "00000045000200080000038e00126b61666b612d636c69656e742d74322d333500ffffffff00020e74322d33352d766563746f72730200000000fffffffffffffffffffffffc000000",
+            "fields": {
+                "messageSize": 69,
+                "apiKey": 2,
+                "apiVersion": 8,
+                "correlationId": 910,
+                "clientId": "kafka-client-t2-35",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-35-vectors": {
+                        "topic": "t2-35-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -4
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v8.earliest-local",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer v8 to the target time -4 on a partition of three records: the error code 0, the timestamp -1 - this lookup reads no record either - the offset 0 and the leader epoch 0. The node runs without remote storage, so UnifiedLog.localLogStartOffset @ 3.9.2 is the log start offset itself and the answer is the one of the target time -2.",
+            "hex": "000000360000038e0000000000020e74322d33352d766563746f727302000000000000ffffffffffffffff000000000000000000000000000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 910,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-35-vectors": {
+                        "topic": "t2-35-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 0,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v8.latest",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "The same version 8 with the oldest target time of the api, -1 (LATEST): the frame of a version 8 request is the frame of a version 7 and of a version 6 one, and the only thing the version decides is which target times the broker accepts.",
+            "hex": "00000045000200080000038f00126b61666b612d636c69656e742d74322d333500ffffffff00020e74322d33352d766563746f72730200000000ffffffffffffffffffffffff000000",
+            "fields": {
+                "messageSize": 69,
+                "apiKey": 2,
+                "apiVersion": 8,
+                "correlationId": 911,
+                "clientId": "kafka-client-t2-35",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-35-vectors": {
+                        "topic": "t2-35-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v8.latest",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer: the log end offset 3 with the timestamp -1, exactly as the versions 6 and 7 answer it.",
+            "hex": "000000360000038f0000000000020e74322d33352d766563746f727302000000000000ffffffffffffffff000000000000000300000000000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 911,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-35-vectors": {
+                        "topic": "t2-35-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 3,
+                                "leaderEpoch": 0
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v7.earliest-local",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequestV7",
+            "version": 7,
+            "source": "broker",
+            "description": "The very same question as offsets.request.v8.earliest-local with the api version 7 in its header: the target time -4 of KIP-405 asked by a client that did not promise to understand the answer.",
+            "hex": "00000045000200070000039000126b61666b612d636c69656e742d74322d333500ffffffff00020e74322d33352d766563746f72730200000000fffffffffffffffffffffffc000000",
+            "fields": {
+                "messageSize": 69,
+                "apiKey": 2,
+                "apiVersion": 7,
+                "correlationId": 912,
+                "clientId": "kafka-client-t2-35",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-35-vectors": {
+                        "topic": "t2-35-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -4
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v7.earliest-local-unsupported",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponseV7",
+            "version": 7,
+            "source": "broker",
+            "description": "The refusal: the error code 35 UnsupportedVersion for THAT PARTITION, with the timestamp, the offset and the leader epoch -1, the connection untouched and the throttle time 0. KafkaApis.handleListOffsetRequestV1AndAbove @ 3.9.2 maps every negative target time to the version that introduced it (timestampMinSupportedVersion) and demands the version 8 for -4.",
+            "hex": "00000036000003900000000000020e74322d33352d766563746f727302000000000023ffffffffffffffffffffffffffffffffffffffff000000",
+            "fields": {
+                "messageSize": 54,
+                "correlationId": 912,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-35-vectors": {
+                        "topic": "t2-35-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 35,
+                                "timestamp": -1,
+                                "offset": -1,
+                                "leaderEpoch": -1
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.request.v8.earliest-local-empty",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "The target time -4 asked of an EMPTY partition, the topic t2-35-vectors-empty.",
+            "hex": "0000004b000200080000039100126b61666b612d636c69656e742d74322d333500ffffffff00021474322d33352d766563746f72732d656d7074790200000000fffffffffffffffffffffffc000000",
+            "fields": {
+                "messageSize": 75,
+                "apiKey": 2,
+                "apiVersion": 8,
+                "correlationId": 913,
+                "clientId": "kafka-client-t2-35",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "isolationLevel": 0,
+                "topicPartitions": {
+                    "t2-35-vectors-empty": {
+                        "topic": "t2-35-vectors-empty",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "timestamp": -4
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsets.response.v8.earliest-local-empty",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetsResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer: the error code 0, the timestamp -1, the offset 0 and the leader epoch 0. An empty log starts where it ends, and its local log start offset is that same 0 - unlike the max timestamp -3 of KIP-734, which has nothing to report on an empty partition and is answered -1 / -1.",
+            "hex": "0000003c000003910000000000021474322d33352d766563746f72732d656d70747902000000000000ffffffffffffffff000000000000000000000000000000",
+            "fields": {
+                "messageSize": 60,
+                "correlationId": 913,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "topics": {
+                    "t2-35-vectors-empty": {
+                        "topic": "t2-35-vectors-empty",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "timestamp": -1,
+                                "offset": 0,
+                                "leaderEpoch": 0
                             }
                         ]
                     }

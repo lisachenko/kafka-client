@@ -3365,4 +3365,36 @@ class AdminClient
 
         return $result;
     }
+
+    /**
+     * Looks the **local log start offset** of every one of the given partitions up (KIP-405)
+     *
+     * This is `OffsetSpec.earliestLocal()` of the Java admin client, the question that **Kafka 3.5** added with
+     * **KIP-405** and that version 8 of the Offsets api carries as the special target time
+     * {@see OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP} (`-4`): "the first offset that is still on the local disk of
+     * this broker". On a cluster with tiered storage the front of a partition lives in remote storage and only the
+     * newest segments are on the broker itself, so this offset is where a fetch begins to be served from the local
+     * log; everything below it can only be read through the remote-storage path. Without remote storage - and this
+     * client speaks to no broker that has it configured - `UnifiedLog.localLogStartOffset` @ 3.9.2 is the log start
+     * offset itself, so the answer is the one of {@see self::listOffsets()} with {@see OffsetsRequest::EARLIEST}.
+     *
+     * It is deliberately an **admin** method and has no counterpart on the consumer, exactly as in the Java client:
+     * a consumer reads records, and where the records of a partition are stored is an operational question.
+     *
+     * The request goes to the leader of each partition, as every request of this api does, and it is sent as
+     * version 8. A broker that only serves version 7 - anything below Kafka 3.5 - answers the partition with the
+     * error code 35, which is thrown as an {@see UnsupportedVersionException}.
+     *
+     * @param array<string, list<int>>|iterable<TopicPartition> $topicPartitions Partitions to look up
+     *
+     * @throws \Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException If the cluster does not host one of the partitions
+     * @throws \Protocol\Kafka\Common\Errors\NotLeaderForPartitionException If the leader of a partition changed in the meantime
+     * @throws UnsupportedVersionException If the cluster does not know the target time -4, i.e. below Kafka 3.5
+     *
+     * @return array<string, array<int, int>> Local log start offsets as topic => partition => offset
+     */
+    public function listEarliestLocalOffsets(iterable $topicPartitions): array
+    {
+        return $this->listOffsets($topicPartitions, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
+    }
 }

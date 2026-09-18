@@ -28,7 +28,7 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * be determined using the metadata API.
  *
  * <pre>
- *   ListOffsets Request (Version: 7) => replica_id isolation_level [topics]
+ *   ListOffsets Request (Version: 8) => replica_id isolation_level [topics]
  *     replica_id      => INT32
  *     isolation_level => INT8       -- since version 2
  *     topics          => topic [partitions]
@@ -103,13 +103,24 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * with the timestamp and the offset -1. That is what a `-3` of {@see OffsetsRequestV6} gets, and it is also the
  * answer to any other negative value this line does not know.
  *
- * The three special values keep their meaning in every version that knows them: {@see self::LATEST} (`-1`) asks for
- * the end of the log - the offset the next produced message will get, capped as the isolation level prescribes -
- * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk, and {@see self::MAX_TIMESTAMP} (`-3`,
- * version 7) for the offset of the record with the largest timestamp. The first two do not read a message and are
- * answered with the timestamp -1; the third is answered with the timestamp it found.
+ * **Version 8 (Kafka 3.5, KIP-405) is the same frame again and a fourth question.**
+ * `ListOffsetsRequest.json` @ 3.5.2 declares no field for it either - "Version 8 enables listing offsets by local
+ * log start offset (KIP-405)" - so {@see OffsetsRequestV7} writes the same bytes with another number in its
+ * header, and this class is the version 8. What it buys is the special target time
+ * {@see self::EARLIEST_LOCAL_TIMESTAMP} (`-4`): "the first offset that is still on the **local** disk of this
+ * broker", which is where reading from the local log begins once the older segments of the partition have been
+ * moved to remote storage. Without tiered storage - `remote.log.storage.system.enable` is off on the node of this
+ * line, as it is by default - the local log start offset **is** the log start offset, so `-4` answers exactly what
+ * {@see self::EARLIEST} answers, and the value is how a client of a tiered cluster tells the two apart.
  *
- * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v7), a.k.a. ListOffset" and
+ * The four special values keep their meaning in every version that knows them: {@see self::LATEST} (`-1`) asks for
+ * the end of the log - the offset the next produced message will get, capped as the isolation level prescribes -
+ * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk, {@see self::MAX_TIMESTAMP} (`-3`,
+ * version 7) for the offset of the record with the largest timestamp and {@see self::EARLIEST_LOCAL_TIMESTAMP}
+ * (`-4`, version 8) for the start of the local log. Only the third is answered with a real timestamp; the other
+ * three do not read a message and are answered with the timestamp -1.
+ *
+ * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v8), a.k.a. ListOffset" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest
@@ -122,7 +133,7 @@ class OffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -156,6 +167,25 @@ class OffsetsRequest extends AbstractRequest
     public const int MAX_TIMESTAMP = -3;
 
     /**
+     * Special value for the first offset that is still on the **local** disk of the broker,
+     * `ListOffsetsRequest.EARLIEST_LOCAL_TIMESTAMP` @ 3.5.2 (Kafka 3.5, KIP-405), which **version 8 and above**
+     * of the api accept
+     *
+     * On a cluster with tiered storage the front of a partition lives in remote storage and only the newest
+     * segments are on the broker's own disk: `-2` answers where the *log* starts, this value answers where the
+     * **local** log starts, i.e. the first offset a fetch is served from the local segments. Without remote
+     * storage - which is how the node of this line runs - `UnifiedLog.localLogStartOffset` @ 3.9.2 is the log
+     * start offset itself and the two answers are the same number. A request below version 8 that asks for it is
+     * answered **35** `UNSUPPORTED_VERSION` for that partition, see {@see OffsetsRequestV7}.
+     *
+     * It is the `OffsetSpec.earliestLocal()` of the Java admin client, which has no consumer counterpart:
+     * {@see \Protocol\Kafka\Admin\AdminClient::listEarliestLocalOffsets()} is where this client names it.
+     *
+     * @since Version 8 of protocol
+     */
+    public const int EARLIEST_LOCAL_TIMESTAMP = -4;
+
+    /**
      * Replica id of an ordinary consumer, `ListOffsetRequest.CONSUMER_REPLICA_ID` @ 0.10.2.2.
      *
      * A consumer never sees an offset above the high watermark of the partition: the broker caps the answer of such
@@ -183,7 +213,7 @@ class OffsetsRequest extends AbstractRequest
      *
      * @param array<string, array<int, int>|OffsetsRequestTopic> $topicPartitions Target time of every partition, as
      *        topic => partition => time, where the time is a timestamp in milliseconds, {@see self::LATEST},
-     *        {@see self::EARLIEST} or {@see self::MAX_TIMESTAMP}
+     *        {@see self::EARLIEST}, {@see self::MAX_TIMESTAMP} or {@see self::EARLIEST_LOCAL_TIMESTAMP}
      * @param int    $replicaId      The node id of the replica that initiates this request. Ordinary consumers send
      *                               {@see self::CONSUMER_REPLICA_ID}, as they have no node id.
      * @param int    $isolationLevel {@see FetchRequest::READ_UNCOMMITTED} or {@see FetchRequest::READ_COMMITTED},

@@ -32,7 +32,10 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV7;
+use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV7;
 
 /**
  * Verifies the timestamp lookup of the Offsets (ListOffset) API - version 1 of Kafka 0.10.1, and version 2 with
@@ -51,13 +54,16 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
  * index. The code stays in {@see KafkaException} and in the error table, it is simply not reachable from a client
  * of a 3.x broker.
  *
- * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v7), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v8), a.k.a. ListOffset"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(AdminClient::class)]
 #[CoversClass(KafkaConsumer::class)]
 #[CoversClass(OffsetAndTimestamp::class)]
 #[CoversClass(OffsetsRequest::class)]
+#[CoversClass(OffsetsRequestV7::class)]
+#[CoversClass(OffsetsResponse::class)]
+#[CoversClass(OffsetsResponseV7::class)]
 #[CoversClass(OffsetsResponsePartition::class)]
 final class OffsetsByTimestampTest extends IntegrationTestCase
 {
@@ -379,10 +385,11 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
             $stream->disconnect();
         }
 
-        // The same branch of the broker refuses every negative target time this cluster does not know, whatever
-        // the version of the request - -4 is the earliest local timestamp of KIP-405, which version 8 asks for
+        // The same branch of the broker refuses every negative target time the version of the request does not
+        // cover: -5 is the LATEST_TIERED_TIMESTAMP of KIP-1005, which needs version 9 and is therefore refused to
+        // the version 8 this client sends (the -4 of KIP-405 is served by it, see the tests below)
         try {
-            $this->client($topic)->fetchTopicPartitionOffsetsForTimes([$topic => [self::PARTITION => -4]]);
+            $this->client($topic)->fetchTopicPartitionOffsetsForTimes([$topic => [self::PARTITION => -5]]);
             self::fail('A target time this cluster does not know is expected to fail');
         } catch (TopicPartitionRequestException $exception) {
             self::assertInstanceOf(
@@ -390,6 +397,120 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
                 $exception->getExceptions()[$topic][self::PARTITION]
             );
         }
+    }
+
+    public function testTheLocalLogStartOffsetOfKip405IsTheStartOfTheLogWithoutTieredStorage(): void
+    {
+        // KIP-405 (Kafka 3.5), the target time -4: "where does the part of this partition that is still on the
+        // broker's own disk begin?". The node runs without remote storage, so `UnifiedLog.localLogStartOffset`
+        // @ 3.9.2 is the log start offset itself and the answer is the one of -2
+        $topic = $this->preparedTopic('max-timestamp');
+
+        $local = $this->lookUp($topic, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
+
+        self::assertInstanceOf(OffsetAndTimestamp::class, $local);
+        self::assertSame(0, $local->offset, 'nothing of this log was ever moved anywhere');
+        self::assertSame(
+            OffsetsResponsePartition::UNKNOWN_TIMESTAMP,
+            $local->timestamp,
+            'like -1 and -2, the lookup reads no record and answers the timestamp -1'
+        );
+        self::assertSame(0, $local->leaderEpoch, 'the leader epoch of KIP-320 is answered as everywhere else');
+        self::assertEquals(
+            $this->lookUp($topic, OffsetsRequest::EARLIEST),
+            $local,
+            'without tiered storage the earliest offset and the earliest LOCAL offset are one and the same'
+        );
+
+        $configuration = $this->configuration();
+        $admin         = new AdminClient(Cluster::bootstrap($configuration, $topic), $configuration);
+
+        self::assertSame(
+            [$topic => [self::PARTITION => 0]],
+            $admin->listEarliestLocalOffsets([$topic => [self::PARTITION]]),
+            'AdminClient::listEarliestLocalOffsets() is the OffsetSpec.earliestLocal() of the Java admin client'
+        );
+        self::assertSame(
+            $admin->listOffsets([$topic => [self::PARTITION]], OffsetsRequest::EARLIEST),
+            $admin->listEarliestLocalOffsets([$topic => [self::PARTITION]])
+        );
+    }
+
+    public function testAnEmptyPartitionAnswersTheLocalLogStartOffsetZeroAndNotMinusOne(): void
+    {
+        // An empty log starts where it ends, and its local log start offset is that same 0 - which is the
+        // difference to the max timestamp -3, that has nothing to report on an empty partition
+        $topic = $this->preparedTopic('empty');
+        $local = $this->lookUp($topic, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
+
+        self::assertInstanceOf(OffsetAndTimestamp::class, $local);
+        self::assertSame(0, $local->offset);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $local->timestamp);
+        self::assertNull(
+            $this->lookUp($topic, OffsetsRequest::MAX_TIMESTAMP),
+            'the max timestamp of an empty log is the -1 / -1 this client hands out as null'
+        );
+    }
+
+    public function testAVersionBelowEightIsRefusedTheLocalLogStartOffsetPerPartition(): void
+    {
+        // `KafkaApis.handleListOffsetRequestV1AndAbove` @ 3.9.2 demands version 8 for the target time -4 and
+        // answers the partition of a lower version with 35 - without closing the connection
+        $topic  = $this->preparedTopic('max-timestamp');
+        $stream = $this->connect();
+
+        try {
+            new OffsetsRequestV7(
+                [$topic => [self::PARTITION => OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4051
+            )->writeTo($stream);
+            $refusal = OffsetsResponseV7::unpack($stream);
+
+            self::assertSame(4051, $refusal->getCorrelationId());
+            $partition = $refusal->topics[$topic]->partitions[self::PARTITION];
+            self::assertSame(KafkaException::UNSUPPORTED_VERSION, $partition->errorCode);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+            self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+
+            // The connection is untouched, and the very same version answers the max timestamp of KIP-734
+            new OffsetsRequestV7(
+                [$topic => [self::PARTITION => OffsetsRequest::MAX_TIMESTAMP]],
+                OffsetsRequest::CONSUMER_REPLICA_ID,
+                FetchRequest::READ_UNCOMMITTED,
+                self::CLIENT_ID,
+                4052
+            )->writeTo($stream);
+            $served = OffsetsResponseV7::unpack($stream);
+
+            self::assertSame(4052, $served->getCorrelationId());
+            self::assertSame(
+                KafkaException::NO_ERROR,
+                $served->topics[$topic]->partitions[self::PARTITION]->errorCode
+            );
+            self::assertSame(1, $served->topics[$topic]->partitions[self::PARTITION]->offset);
+        } finally {
+            $stream->disconnect();
+        }
+
+        // And the frame of the version 8 is the frame of the version 7, byte for byte behind the api version
+        $arguments = [
+            [$topic => [self::PARTITION => OffsetsRequest::LATEST]],
+            OffsetsRequest::CONSUMER_REPLICA_ID,
+            FetchRequest::READ_UNCOMMITTED,
+            self::CLIENT_ID,
+            4053,
+        ];
+        $eight = bin2hex((string) new OffsetsRequest(...$arguments));
+        $seven = bin2hex((string) new OffsetsRequestV7(...$arguments));
+
+        self::assertSame($seven, substr_replace($eight, '0007', 12, 4));
+        self::assertSame(7, OffsetsRequestV7::VERSION);
+        self::assertSame(7, OffsetsResponseV7::VERSION);
+        self::assertSame(8, OffsetsRequest::VERSION);
+        self::assertSame(-4, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
     }
 
     /**
