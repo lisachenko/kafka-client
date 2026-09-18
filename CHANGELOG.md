@@ -4,21 +4,22 @@ All notable changes to `lisachenko/kafka-client` are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and every line of
 this repository follows the Apache Kafka release it speaks rather than semantic versioning of its
-own: `main` is the **3.x line** and is being built towards the **Kafka 3.9.2 wire protocol** — the last
-release of the 3.x major, so everything Kafka 3.0 to 3.9 added — one Kafka minor at a time. The lines
+own: `main` is the **3.x line** and speaks the **Kafka 3.9.2 wire protocol** — the last release of the 3.x
+major, so everything Kafka 3.0 to 3.9 added, and the KIP-848 consumer protocol — built one Kafka minor at a
+time and complete. The lines
 below it are `2.x` (Kafka 2.8.2), `1.x` (Kafka 1.1.1), `0.11.x` (Kafka 0.11.0.3), `0.10.x`
 (Kafka 0.10.2.2), `0.9.x` (Kafka 0.9.0.1) and `0.8.x` (Kafka 0.8.2.2), and every line is merged upwards
 into the next one, so the sections below accumulate: what a line added stays true of every line above it.
 
-Unreleased — the 3.x line (Kafka 3.0 to 3.9, towards 3.9.2)
------------------------------------------------------------
+Unreleased — the 3.x line (Kafka 3.0 to 3.9 and the KIP-848 consumer, complete at 3.9.2)
+------------------------------------------------------------------------------------------
 
 The 3.x line, built on `main` on top of the finished 2.x line (branched off as `2.x`). Everything
 below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (`docker/kafka-3.9.2/`,
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: the KIP-848 consumer, the last wave of the line** (the foundation, the re-baseline wave T0, the 3.0 to 3.9 waves and the KIP-848 consumer wave are in; Kafka 3.4 added nothing a client sends).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **The line is complete** (the foundation, the re-baseline wave T0, the 3.0 to 3.9 waves and the KIP-848 consumer wave are in; Kafka 3.4 added nothing a client sends); its release notes stand above the plan in [docs/handoff/main.md](docs/handoff/main.md).
 
 ### Added
 

@@ -1,9 +1,106 @@
+# The 3.x line (Kafka 3.0 to 3.9 and the KIP-848 consumer, verified against 3.9.2 in KRaft) — release notes
+
+**State: complete.** `main` speaks the Apache Kafka **3.9.2** wire protocol — the last release of the 3.x major,
+so it covers everything Kafka 3.0 to 3.9 added over 2.8.2, and the last one that can still run with ZooKeeper,
+measured here on a **KRaft** node — on the `BinarySchema` engine of the lines below, extended by one type (the
+`uint16` of a listener port, KIP-853) and one notation (the nullable structure of KIP-966). The line was built on
+the integration branch `feature/intelligent-fermi-nx4imu` (epic
+[#159](https://github.com/lisachenko/kafka-client/issues/159), pull request
+[#160](https://github.com/lisachenko/kafka-client/pull/160)), **one Kafka minor at a time**: every minor ended in
+a gated milestone commit, the tag point of the last release of that minor (the table under "Tag points" below),
+the KIP-848 consumer came as the last wave after the 3.9 milestone, and the whole branch is merged into `main` as
+one pull request. This file is the release record of the line; the plan it was built from is kept below, under
+"The 3.x line … — the plan" and "The original plan", exactly as [`docs/handoff/2.x.md`](2.x.md) was written.
+
+The grammar is [`docs/protocol/3.9.md`](../protocol/3.9.md), the machine-readable frames are in
+[`docs/protocol/vectors`](../protocol/vectors), and what a client cannot read out of the grammar is in that
+document's "The 3.9.2 KRaft node of the 3.x line" items and its "Broker quirks and observations" section. The line
+below this one is `2.x` (Kafka 2.8.2, [`docs/handoff/2.x.md`](2.x.md)), branched off at `bc5dec5`; there is no line
+above it yet — Kafka 4.0 is the first release that drops versions a 3.9.2 node still serves (see "What 3.9.2 adds
+to the 2.8.2 protocol" in the document).
+
+## What was built, milestone by milestone
+
+| Milestone | Tag | Merged PRs | What it delivered |
+|---|---|---|---|
+| Re-baseline T0 | — | #185 (T1), #186 (T2), #187 (T3), #188 (T4) | The inherited suite of the 2.x line brought to what a **KRaft** node answers: the readiness probes of a node that publishes a leader before it serves, `offsets.storage = zookeeper` and `controlledShutdown()` retired (OffsetCommit v0, OffsetFetch v0 and ControlledShutdown are not served on a client listener), the ACL user `acltest` and the `StandardAuthorizer`, the KRaft-era answers of every inherited test |
+| Kafka 3.0 | `3.0.2` | #189, #190, #191, #192 | **DescribeTransactions (65)** and **ListTransactions (66)** at v0, ListOffsets v7 (the max timestamp `-3` of KIP-734), OffsetFetch v8 (several groups in one request) and FindCoordinator v4 (several keys in one request, KIP-699); 49 wire vectors |
+| Kafka 3.1 | `3.1.2` | #193 | The request side of the **topic ids of KIP-516**: Fetch v13 and Metadata v12 (`describeTopicsByIds()`), the error code 106 observed; 20 vectors |
+| Kafka 3.2 | `3.2.3` | #194, #195 | The `reason` of KIP-800 (JoinGroup v8, LeaveGroup v5), the `skip_assignment` of KIP-814 (JoinGroup v9) and the top-level error code of DescribeLogDirs v3; 25 vectors |
+| Kafka 3.3 | `3.3.2` | #196, #197 | The **ACL apis 29–31 at v3**, spoken for the first time by this package, against the `StandardAuthorizer` of the node; UpdateFeatures v1 (KIP-778), DescribeQuorum v0 and v1 (KIP-836), DescribeLogDirs v4 (KIP-827) and the token apis 38 and 41 at v3 (KIP-373); 73 vectors |
+| Kafka 3.4 | `3.4.1` | — | Nothing a client sends: KIP-866 raised LeaderAndIsr, StopReplica, UpdateMetadata and BrokerRegistration only, verified at the tag; the client of the 3.3 milestone is the client of the 3.4 one |
+| Kafka 3.5 | `3.5.2` | #198, #199 | Fetch v14 and v15 (the tiered-storage code 109 of KIP-405, the replica state of KIP-903), ListOffsets v8 (the local log start offset `-4`, `listEarliestLocalOffsets()`) and AddPartitionsToTxn v4 of KIP-890 as a broker version the client does not send |
+| Kafka 3.6 | `3.6.2` | #200 | OffsetCommit v9, the v8 frame that may carry the 69 of an unknown group and the **113** of a KIP-848 member epoch — the first code of the new protocol this package observed, with a hand-built member |
+| Kafka 3.7 | `3.7.2` | #201, #202, #203 | Produce v10 and Fetch v16 (the **leader discovery of KIP-951**, handed to the caller in the exception context), DescribeCluster v1 (the endpoint type of KIP-919, the codes 114 and 115), OffsetFetch v9 (the member id and epoch of KIP-848) and the client-metrics apis 71, 72 and 74 of KIP-714 as wire classes (117 and 118 observed on a node without a receiver) |
+| Kafka 3.8 | `3.8.1` | #204, #205, #206, #207 | **DescribeTopicPartitions (75)**, the paging api of KIP-966 and the nullable-structure notation of the engine; ListTransactions v1 (KIP-994); Produce v11 and the transaction apis at the versions that promise the **120** of KIP-890 part 2 (InitProducerId v5, AddOffsetsToTxn v4, EndTxn v4, TxnOffsetCommit v4, AddPartitionsToTxn v5 as a broker version); ListGroups v5 (the group types of KIP-848) and FindCoordinator v5 |
+| Kafka 3.9 | `3.9.2` | #208, #209, #210 | ApiVersions v4 (KAFKA-17011, `kraft.version` in the answer), **DescribeQuorum v2** (KIP-853: the nodes, the directory ids, the error messages, the `uint16` of the engine), Fetch v17 (the `replica_directory_id`), ListOffsets v9 (the last tiered offset `-5` of KIP-1005, `listLatestTieredOffsets()`), FindCoordinator v6 (the share type of KIP-932, refused 15), the raft-voter and share-group apis measured and left out (the codes 121–127 declared and unreachable), and the audit of both api-key tables |
+| The KIP-848 consumer | — | #211 | **ConsumerGroupHeartbeat (68)** and **ConsumerGroupDescribe (69)** as client apis, `group.protocol=consumer` in `KafkaConsumer` through `Internals\ConsumerGroupHeartbeatCoordinator` (the second implementation of `ConsumerCoordinatorInterface`, incremental rebalances, the member epoch on OffsetCommit v9 and OffsetFetch v9), `AdminClient::describeConsumerGroups()`, the codes 110–113 observed; 50 vectors |
+
+The **foundation** of the line, on the integration branch before the first milestone: the node image
+`docker/kafka-3.9.2/` (KRaft, four listeners, two log directories, the delegation-token secret key, the
+`StandardAuthorizer`, the KIP-848 group coordinator), the rename of the protocol document to `docs/protocol/3.9.md`,
+the api keys **65–87** and the error codes **105–127** with one exception class each. The final documentation pass
+(the coordinator's, after the last wave) brought this file, the CHANGELOG head, the README and the document intro to
+the finished line, made the client report `3.9` as its software version to the broker (KIP-511), and taught
+`DocumentationSyncTest` the section references that wrap over two docblock lines.
+
+## How it was verified
+
+Everything was measured against a real Apache Kafka **3.9.2** node in **KRaft** mode (`docker/kafka-3.9.2/`, the
+container `kafka-3-9-2`, `process.roles=broker,controller`, metadata version `3.9-IV0`), never against the
+specification alone, and every milestone commit was gated on a freshly recreated node (`docker compose down -v`)
+with no other test run on it:
+
+* **3639 unit and compliance tests** at the last milestone, replaying **1135 wire vectors** in 60 files
+  ([`docs/protocol/vectors`](../protocol/vectors)) — the **466** frames this line captured on the 3.9.2 node plus
+  the **669** of the six lines below, which the node still answers unchanged (the ApiVersions answers re-captured,
+  as on every line). Every vector is replayed in both directions, and `DocumentationSyncTest` holds the annotated
+  dumps of the document, the vector files and the section references of the docblocks together.
+* **937 integration tests** over all four listeners — PLAINTEXT 9092, SSL 9093, SASL_PLAINTEXT 9094, SASL_SSL
+  9095 — with unique topic, group and transactional-id names per test class, every suite deleting the topics and
+  groups it created, and **zero skips**. The same suite runs on CI (PHP 8.4, its own node) for every push of the
+  pull request; the two reds of the line were the replay lag of a slow runner, and the probes were hardened to
+  wait for what the node has really applied rather than for what its metadata cache announces.
+* The **api-key table** of the document is the literal ApiVersions answer of the node: the **61 keys** 0–3,
+  8–51, 55, 57, 60, 61, 64–66, 68, 69, 74, 75, 80 and 81 of a KRaft node's client listener. Every client-facing
+  api of the table is implemented at the highest version the node serves; the deliberate omissions (the owner's
+  decisions) are the share-group apis 76–79 and 83–87, the raft-voter apis 80 and 81, the controller apis, and
+  the client-metrics apis 71, 72 and 74 as wire only — every one of them probed and written down.
+* The attributions of fields to releases were verified against the message specifications at the tags 3.0.2 to
+  3.9.2, which corrected the plan where it guessed: Kafka 3.4 raised nothing a client sends, EndTxn did not grow
+  in 3.9 (its v5 is Kafka 4.0), and the codes 121–127 have no frame that can produce them on this node.
+
+## What the node taught the line
+
+* **KRaft publishes a leader before it serves it**: a Metadata answer names the leader of a fresh partition while
+  the replica manager still answers 5, 6 or 9, `__consumer_offsets` answers 14, 15 and 16 while it loads, and
+  quotas and configs replay with a lag on a slow runner — so the probes wait for a *serving* leader (ListOffsets),
+  for the group coordinator and for a read-back of every quota and config they set.
+* **A KRaft node writes the empty string where the specification says null** (the error messages of DescribeAcls
+  and DescribeQuorum v2, the `subscribed_topic_regex` of a KIP-848 member) and empty arrays where it could say
+  null (the ELR arrays of DescribeTopicPartitions); OffsetCommit v0 and OffsetFetch v0 are answered 35.
+* **The features gate more than the versions**: there is no `transaction.version` on 3.9.2 (only
+  `metadata.version` 21 and `kraft.version` 0), so the 120 of KIP-890 depends on the api version alone; a
+  `kraft.version` of 0 makes the raft-voter apis refuse every well-formed frame with the 35 and leaves the codes
+  125–127 unreachable, and ApiVersions v3 hides a feature whose minimum is 0 — the whole of KAFKA-17011 is 19 bytes.
+* **The share coordinator type of FindCoordinator v6 is the 15** of a coordinator the node does not have; the `-5`
+  of ListOffsets v9 is the offset -1 with the code 0 without remote storage; the `replica_directory_id` of Fetch
+  v17 is parsed and ignored on an ordinary topic — only the raft client reads it.
+* **The KIP-848 coordinator sends an assignment once** (null means unchanged, an empty array means "you own
+  nothing"), fences a stale epoch with the 110 on key 68 but with the 113 on OffsetCommit and OffsetFetch,
+  accepts a classic JoinGroup for a `consumer` group (the upgrade path of the KIP), answers key 15 a live KIP-848
+  group as `Dead`, and crashes its answer builder on an empty group id (the -1 instead of the 24).
+* **The shared node is a shared resource**: unique names per suite, every suite deletes its topics and groups
+  (every KIP-848 member leaves with the epoch -1 before its group is deleted, or the group survives the run), and
+  the container is recreated between milestones — ~20000 leftover partitions took a log directory offline once, in
+  the 2.x session, and the file-descriptor limit of the sandbox has not moved.
+
 # The 3.x line: Kafka 3.0 to 3.9 on a 3.9.2 KRaft node — the plan
 
-**State: in development on `main`.** The line is built on the integration branch `feature/intelligent-fermi-nx4imu`
-(the foundation commit is its first commit) and is merged into `main` as one pull request at the end; the release
-notes are written above this plan when the line is complete, so that the file becomes the record of the line, as
-[`docs/handoff/2.x.md`](2.x.md) is for the 2.x line.
+**State: complete — the release notes are above.** The line was built on the integration branch
+`feature/intelligent-fermi-nx4imu` (the foundation commit is its first commit) and is merged into `main` as one pull
+request at the end; this plan is kept as it was written, as [`docs/handoff/2.x.md`](2.x.md) keeps the plan of the 2.x
+line.
 
 ## Decisions taken at the start of the line (the owner's)
 
@@ -40,6 +137,11 @@ filled in as the milestones land.
 | `3.7.2` | 3.7 | dcc9261 | #201, #202, #203 |
 | `3.8.1` | 3.8 | 6737ec2 | #204, #205, #206, #207 |
 | `3.9.2` | 3.9 | 74e9e12 | #208, #210, #209 |
+
+The KIP-848 consumer wave (#211) landed after the 3.9 milestone, at `5bee399` (`chore(3.x): the KIP-848 consumer
+complete`), and the final documentation pass closes the line right behind it. A tag `3.9.2` set at `74e9e12` carries
+every Kafka 3.9 version and not the consumer protocol of the same line; setting it at the last commit of the branch
+instead makes the tag the whole line — the owner's choice at tagging time.
 
 ## What the foundation measured
 
