@@ -19,8 +19,8 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException;
 use Protocol\Kafka\Common\Errors\KafkaException;
-use Protocol\Kafka\Common\SaslMechanism;
-use Protocol\Kafka\Common\SecurityProtocol;
+use Protocol\Kafka\Common\Security\SaslMechanism;
+use Protocol\Kafka\Common\Security\SecurityProtocol;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Protocol\Data\FindCoordinatorResponseCoordinator;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
@@ -99,14 +99,17 @@ final class ShareCoordinatorTypeApiTest extends IntegrationTestCase
     {
         $stream = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => self::REQUEST_TIMEOUT_MS]);
 
-        foreach ([GroupCoordinatorRequestV4::class, GroupCoordinatorRequestV5::class] as $requestClass) {
-            $responseClass = str_replace('Request', 'Response', $requestClass);
-            $entry         = $this->lookup($stream, $requestClass, $responseClass, 4001);
+        $frames = [
+            [4, GroupCoordinatorRequestV4::class, GroupCoordinatorResponseV4::class],
+            [5, GroupCoordinatorRequestV5::class, GroupCoordinatorResponseV5::class],
+        ];
+        foreach ($frames as [$version, $requestClass, $responseClass]) {
+            $entry = $this->lookup($stream, $requestClass, $responseClass, 4001);
 
             self::assertSame(
                 KafkaException::INVALID_REQUEST,
                 $entry->errorCode,
-                "the version {$requestClass::VERSION} may not ask for the coordinator type 2"
+                "the version {$version} may not ask for the coordinator type 2"
             );
             self::assertSame('', $entry->errorMessage, 'the refusal comes out of the ordinary handler');
             self::assertSame(-1, $entry->nodeId);
