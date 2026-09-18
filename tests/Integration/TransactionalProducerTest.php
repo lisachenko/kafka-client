@@ -42,7 +42,9 @@ use Protocol\Kafka\Producer\Internals\TransactionState;
 use Protocol\Kafka\Producer\KafkaProducer;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV3;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV3;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -77,7 +79,9 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 #[CoversClass(TransactionState::class)]
 #[CoversClass(KafkaProducer::class)]
 #[CoversClass(AddPartitionsToTxnRequest::class)]
+#[CoversClass(AddPartitionsToTxnRequestV3::class)]
 #[CoversClass(AddPartitionsToTxnResponse::class)]
+#[CoversClass(AddPartitionsToTxnResponseV3::class)]
 #[CoversClass(EndTxnRequest::class)]
 #[CoversClass(EndTxnResponse::class)]
 final class TransactionalProducerTest extends IntegrationTestCase
