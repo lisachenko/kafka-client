@@ -19,6 +19,7 @@ use Protocol\Kafka\Admin\NewTopic;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\RetriableException;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
@@ -127,8 +128,8 @@ final class AdminApiTest extends IntegrationTestCase
         $partitions = array_keys($this->awaitTopic($topic)->partitions);
         $this->cluster->reload();
 
-        $latest   = $this->admin->listOffsets([$topic => $partitions]);
-        $earliest = $this->admin->listOffsets([$topic => $partitions], OffsetsRequest::EARLIEST);
+        $latest   = $this->listOffsetsOfALeaderThatIsThere($topic, $partitions, OffsetsRequest::LATEST);
+        $earliest = $this->listOffsetsOfALeaderThatIsThere($topic, $partitions, OffsetsRequest::EARLIEST);
 
         self::assertSame([$topic], array_keys($latest));
         foreach ($partitions as $partition) {
@@ -194,6 +195,35 @@ final class AdminApiTest extends IntegrationTestCase
         } while (microtime(true) < $deadline);
 
         self::fail("The topic {$topic} did not become available in time");
+    }
+
+    /**
+     * Lists the offsets of a freshly created topic, retrying while the node is still moving its leadership around
+     *
+     * A KRaft node answers a topic that the controller has just created before every broker has replayed the
+     * metadata record of it, so the leader of a partition can be elsewhere for a moment and the Offsets api - which
+     * only its leader serves - answers **6** `NotLeaderForPartition` (and **3** while the partition is not there at
+     * all). Both are retriable and both pass within a few dozen milliseconds; the metadata of the client is
+     * reloaded between the attempts, because it is the stale half of the race.
+     *
+     * @param list<int> $partitions Partitions of the topic to list
+     *
+     * @return array<string, array<int, int>> Offsets as topic => partition => offset
+     */
+    private function listOffsetsOfALeaderThatIsThere(string $topic, array $partitions, int $time): array
+    {
+        $deadline = microtime(true) + 30.0;
+        do {
+            try {
+                return $this->admin->listOffsets([$topic => $partitions], $time);
+            } catch (RetriableException $exception) {
+                $last = $exception;
+                usleep(200000);
+                $this->cluster->reload();
+            }
+        } while (microtime(true) < $deadline);
+
+        throw $last;
     }
 
     /**

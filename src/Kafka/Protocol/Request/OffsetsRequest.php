@@ -21,14 +21,14 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
 
 /**
- * Offsets API (key 2, v6), a.k.a. ListOffset
+ * Offsets API (key 2, v7), a.k.a. ListOffset
  *
  * This API describes the valid offset range available for a set of topic-partitions. As with the produce and fetch
  * APIs requests must be directed to the broker that is currently the leader for the partitions in question. This can
  * be determined using the metadata API.
  *
  * <pre>
- *   ListOffsets Request (Version: 6) => replica_id isolation_level [topics]
+ *   ListOffsets Request (Version: 7) => replica_id isolation_level [topics]
  *     replica_id      => INT32
  *     isolation_level => INT8       -- since version 2
  *     topics          => topic [partitions]
@@ -88,12 +88,28 @@ use Protocol\Kafka\Protocol\Data\OffsetsRequestTopicV1;
  * arrays and a tagged-field section at the end of the body, of every topic entry and of every partition entry.
  * {@see OffsetsRequestV5} keeps the plain frame.
  *
- * The two special values keep their meaning in every version: {@see self::LATEST} (`-1`) asks for the end of the
- * log - the offset the next produced message will get, capped as the isolation level prescribes - and
- * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk. Neither of them reads a message, so
- * their answer carries the timestamp -1.
+ * **Version 7 (Kafka 3.0, KIP-734) is the version 6 frame once more and one more question.**
+ * `ListOffsetsRequest.json` @ 3.0.2 declares no field for it - "Version 7 enables listing offsets by max timestamp
+ * (KIP-734)" is its whole comment - so {@see OffsetsRequestV6} writes the same bytes with another number in its
+ * header. What the version buys is the third special target time {@see self::MAX_TIMESTAMP} (`-3`): "the offset of
+ * the record with the **largest timestamp** of this partition", which is not the last offset of the log as soon as
+ * the producer stamped its records out of order. A broker keeps that pair in the metadata of every log segment
+ * (`maxTimestampSoFar`/`offsetOfMaxTimestampSoFar`), so the lookup reads no record, and unlike `-1` and `-2` the
+ * answer carries a real timestamp next to the offset.
  *
- * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v6), a.k.a. ListOffset" and
+ * The version is the promise the client makes: `KafkaApis.handleListOffsetRequestV1AndAbove` @ 3.9.2 maps every
+ * negative target time to the version that introduced it (`timestampMinSupportedVersion`) and answers a partition
+ * whose target time needs a higher version than the request with **35** `UNSUPPORTED_VERSION` - per partition,
+ * with the timestamp and the offset -1. That is what a `-3` of {@see OffsetsRequestV6} gets, and it is also the
+ * answer to any other negative value this line does not know.
+ *
+ * The three special values keep their meaning in every version that knows them: {@see self::LATEST} (`-1`) asks for
+ * the end of the log - the offset the next produced message will get, capped as the isolation level prescribes -
+ * {@see self::EARLIEST} (`-2`) for the first offset that is still on disk, and {@see self::MAX_TIMESTAMP} (`-3`,
+ * version 7) for the offset of the record with the largest timestamp. The first two do not read a message and are
+ * answered with the timestamp -1; the third is answered with the timestamp it found.
+ *
+ * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v7), a.k.a. ListOffset" and
  *      "The leader epoch (KIP-320)"
  */
 class OffsetsRequest extends AbstractRequest
@@ -106,7 +122,7 @@ class OffsetsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -125,6 +141,19 @@ class OffsetsRequest extends AbstractRequest
      * Special value for receiving the earliest available offset, `ListOffsetRequest.EARLIEST_TIMESTAMP` @ 0.10.2.2
      */
     public const int EARLIEST = -2;
+
+    /**
+     * Special value for the offset of the record with the largest timestamp, `ListOffsetsRequest.MAX_TIMESTAMP`
+     * @ 3.0.2 (Kafka 3.0, KIP-734), which **version 7 and above** of the api accept
+     *
+     * The answer names that largest timestamp and the offset of the record carrying it, which is the last offset
+     * of the log only while the timestamps rise with the offsets - a producer that stamps its records out of order,
+     * or several producers whose clocks differ, put it anywhere. A request below version 7 that asks for it is
+     * answered **35** `UNSUPPORTED_VERSION` for that partition, see {@see OffsetsRequestV6}.
+     *
+     * @since Version 7 of protocol
+     */
+    public const int MAX_TIMESTAMP = -3;
 
     /**
      * Replica id of an ordinary consumer, `ListOffsetRequest.CONSUMER_REPLICA_ID` @ 0.10.2.2.
@@ -153,8 +182,8 @@ class OffsetsRequest extends AbstractRequest
      * A value of the `$topicPartitions` map is either a plain target time or an already built topic DTO.
      *
      * @param array<string, array<int, int>|OffsetsRequestTopic> $topicPartitions Target time of every partition, as
-     *        topic => partition => time, where the time is a timestamp in milliseconds, {@see self::LATEST} or
-     *        {@see self::EARLIEST}
+     *        topic => partition => time, where the time is a timestamp in milliseconds, {@see self::LATEST},
+     *        {@see self::EARLIEST} or {@see self::MAX_TIMESTAMP}
      * @param int    $replicaId      The node id of the replica that initiates this request. Ordinary consumers send
      *                               {@see self::CONSUMER_REPLICA_ID}, as they have no node id.
      * @param int    $isolationLevel {@see FetchRequest::READ_UNCOMMITTED} or {@see FetchRequest::READ_COMMITTED},
@@ -190,7 +219,8 @@ class OffsetsRequest extends AbstractRequest
      * Builds a request that asks for the same target time for each of the given topic partitions
      *
      * @param iterable<TopicPartition> $topicPartitions Partitions to list the offsets of
-     * @param int                      $timestamp       Timestamp in ms, {@see self::LATEST} or {@see self::EARLIEST}
+     * @param int                      $timestamp       Timestamp in ms, {@see self::LATEST},
+     *                                                  {@see self::EARLIEST} or {@see self::MAX_TIMESTAMP}
      */
     public static function fromTopicPartitions(
         iterable $topicPartitions,

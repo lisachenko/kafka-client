@@ -20,10 +20,10 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
 
 /**
- * Offsets (ListOffset) response object (key 2, v6)
+ * Offsets (ListOffset) response object (key 2, v7)
  *
  * <pre>
- *   ListOffsets Response (Version: 6) => throttle_time_ms [responses]
+ *   ListOffsets Response (Version: 7) => throttle_time_ms [responses]
  *     throttle_time_ms => INT32     -- since version 2
  *     responses => topic [partition_responses]
  *       topic               => STRING
@@ -71,12 +71,23 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
  * topic entry and of every partition entry, with the same fields as version 5. {@see OffsetsResponseV5} decodes
  * the plain frame.
  *
+ * **Version 7 (Kafka 3.0, KIP-734) is the version 6 answer, field for field.** `ListOffsetsResponse.json` @ 3.0.2
+ * says "Version 7 is the same as version 6 (KIP-734)" and declares no field of it, so {@see OffsetsResponseV6}
+ * decodes the very same bytes. What the version carries is the answer to the new target time
+ * {@see OffsetsRequest::MAX_TIMESTAMP} (`-3`): the **largest timestamp** of the partition in `timestamp` and the
+ * offset of the record that holds it in `offset`, which is the last offset of the log only while the timestamps
+ * of the records rise with their offsets. It is the one lookup of this api whose answer carries a real timestamp
+ * without reading a record - the broker keeps the pair in the metadata of every log segment - and the one for
+ * which an empty partition is answered `-1` / `-1` with the error code 0, exactly like a timestamp nothing
+ * matches. A **version 6 or lower** request that asks for `-3` is answered **35** `UNSUPPORTED_VERSION` for that
+ * partition, with `-1` / `-1`, see {@see OffsetsRequestV6}.
+ *
  * A target timestamp that no message matches - one above the timestamp of every message of the log, and any
  * timestamp on an empty log - is **not** an error: the broker answers the code 0 with
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
  * and -1 (`KafkaApis.fetchOffsetForTimestamp` @ 0.11.0.3).
  *
- * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v6), a.k.a. ListOffset",
+ * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v7), a.k.a. ListOffset",
  *      "Quotas and throttle time" and "The leader epoch (KIP-320)"
  */
 class OffsetsResponse extends AbstractResponse
@@ -84,7 +95,7 @@ class OffsetsResponse extends AbstractResponse
     /**
      * @inheritdoc
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

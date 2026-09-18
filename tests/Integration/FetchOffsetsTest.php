@@ -38,6 +38,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV2;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV2;
@@ -337,7 +338,8 @@ final class FetchOffsetsTest extends IntegrationTestCase
         $versionThree = OffsetsResponseV3::unpack($stream);
 
         self::assertSame(3, OffsetsRequestV3::VERSION, 'the version Kafka 2.0 added');
-        self::assertSame(6, OffsetsRequest::VERSION, 'and the client sends the flexible version Kafka 2.8 added');
+        self::assertSame(6, OffsetsRequestV6::VERSION, 'the flexible version Kafka 2.8 added');
+        self::assertSame(7, OffsetsRequest::VERSION, 'and the client sends the version Kafka 3.0 added');
         self::assertSame($versionTwo->getMessageSize(), $versionThree->getMessageSize());
         self::assertSame(0, $versionThree->throttleTimeMs, 'no quota is set for this client id');
 

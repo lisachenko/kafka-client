@@ -427,6 +427,9 @@ class KafkaConsumer
      * Nothing is moved by this call: it is a query, and a consumer that wants to read from what it found seeks
      * there itself.
      *
+     * The special target time {@see OffsetsRequest::MAX_TIMESTAMP} (`-3`) of Kafka 3.0 is accepted here too, and
+     * {@see self::maxTimestampOffsets()} is the method that names it.
+     *
      * ```php
      * $offsets = $consumer->offsetsForTimes(['my-topic' => [0 => $sinceMs, 1 => $sinceMs]]);
      * foreach ($offsets as $topic => $partitions) {
@@ -1725,5 +1728,46 @@ class KafkaConsumer
         }
 
         return $result;
+    }
+    /**
+     * Looks the offset of the record with the **largest timestamp** up, for every one of the given partitions
+     *
+     * The consumer half of `OffsetSpec.maxTimestamp()`, i.e. the special target time
+     * {@see OffsetsRequest::MAX_TIMESTAMP} (`-3`) that **Kafka 3.0** added with **KIP-734** and that version 7 of
+     * the Offsets api carries. {@see self::endOffsets()} answers where the log *ends*, this one where its largest
+     * timestamp *is* - and the two are the same offset only while the timestamps of the log rise with its offsets,
+     * which nothing enforces: with the default `message.timestamp.type=CreateTime` the producer stamps its own
+     * records, so a batch assembled out of order, a retry, or two producers whose clocks disagree put the largest
+     * timestamp anywhere in the log.
+     *
+     * The answer carries the largest timestamp next to the offset, so it comes back in the same
+     * {@see OffsetAndTimestamp} shape as {@see self::offsetsForTimes()} - and, as there, a partition that has no
+     * answer is `null` rather than an error: an **empty** log has no largest timestamp and is reported by the
+     * broker with the error code 0 and the offset -1.
+     *
+     * Nothing is moved by this call. The partitions do not have to be assigned to this consumer, and a consumer
+     * that wants to read from what it found seeks there itself.
+     *
+     * @param array<string, list<int>|PartitionsForTopic> $topicPartitions Partitions to look up
+     *
+     * @throws TopicPartitionRequestException when a partition was answered with an error code - which is how the
+     *         **35** of a cluster below Kafka 3.0, that does not know the target time -3, arrives
+     *
+     * @return array<string, array<int, OffsetAndTimestamp|null>> [topic][partition] => the largest timestamp of the
+     *                                                            partition and the offset of the record that holds
+     *                                                            it, or null for an empty log
+     */
+    public function maxTimestampOffsets(array $topicPartitions): array
+    {
+        if ($topicPartitions === []) {
+            return [];
+        }
+
+        $request = [];
+        foreach (self::normalizePartitionLists($topicPartitions) as $topic => $partitions) {
+            $request[$topic] = array_fill_keys($partitions, OffsetsRequest::MAX_TIMESTAMP);
+        }
+
+        return $this->getClient()->fetchTopicPartitionOffsetsForTimes($request);
     }
 }
