@@ -75,8 +75,8 @@ use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\AbstractResponse;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
-use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
-use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV3;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV3;
 use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsRequest;
 use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
@@ -3099,6 +3099,15 @@ class Client
      * previous transaction is still being completed - is repeated on every partition, so the first error code of
      * the answer is the one that is reported here.
      *
+     * **The frame stays the version 3 of Kafka 2.8.** Kafka 3.5 (KIP-890) added the version 4, but for the
+     * brokers: `KafkaApis.handleAddPartitionsToTxnRequest` @ 3.9.2 authorizes it as `CLUSTER_ACTION` and answers
+     * a principal that is not a broker with the top-level error code 31, it skips the `WRITE` authorization of the
+     * transactional id and of the topics that a client needs, and its per-partition codes are the 120 and the 90
+     * that the requesting broker maps back to the 48 and the 47 a producer expects. The classes and the wire
+     * vectors of the version 4 exist
+     * ({@see \Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest::forTransactions()}); the first version
+     * above 3 that a client may send is the 5 of Kafka 3.8.
+     *
      * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
      * @param string             $transactionalId    `transactional.id` of the producer
      * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
@@ -3114,7 +3123,7 @@ class Client
     ): void {
         $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): AddPartitionsToTxnRequest => new AddPartitionsToTxnRequest(
+            fn(int $correlationId): AddPartitionsToTxnRequestV3 => new AddPartitionsToTxnRequestV3(
                 $transactionalId,
                 $producerIdAndEpoch->producerId,
                 $producerIdAndEpoch->epoch,
@@ -3122,8 +3131,8 @@ class Client
                 $this->configuration[ClientConfig::CLIENT_ID],
                 $correlationId
             ),
-            AddPartitionsToTxnResponse::class,
-            static function (AddPartitionsToTxnResponse $response) use ($transactionalId): void {
+            AddPartitionsToTxnResponseV3::class,
+            static function (AddPartitionsToTxnResponseV3 $response) use ($transactionalId): void {
                 foreach ($response->errors as $topic => $topicErrors) {
                     /** @var AddPartitionsToTxnResponsePartition $partitionError */
                     foreach ($topicErrors->partitionErrors as $partitionId => $partitionError) {

@@ -15,13 +15,17 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\OffsetAndMetadata;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponsePartition;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponseTopic;
+use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResult;
+use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnTransaction;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestPartition;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
@@ -41,10 +45,12 @@ use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV2;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV1;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV3;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV1;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV2;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV3;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV1;
@@ -68,14 +74,18 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
 /**
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
- * @see docs/protocol/3.9.md, sections "AddPartitionsToTxn API (key 24, v0 to v3)", "AddOffsetsToTxn API (key 25, v0 to v3)",
+ * @see docs/protocol/3.9.md, sections "AddPartitionsToTxn API (key 24, v0 to v4)", "AddOffsetsToTxn API (key 25, v0 to v3)",
  *      "EndTxn API (key 26, v0 to v3)", "WriteTxnMarkers API (key 27, v0 and v1)" and "TxnOffsetCommit API (key 28, v0 to v3)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
+#[CoversClass(AddPartitionsToTxnRequestV3::class)]
 #[CoversClass(AddPartitionsToTxnRequestV1::class)]
 #[CoversClass(AddPartitionsToTxnRequestV0::class)]
 #[CoversClass(AddPartitionsToTxnResponse::class)]
+#[CoversClass(AddPartitionsToTxnResponseV3::class)]
 #[CoversClass(AddPartitionsToTxnResponseV2::class)]
+#[CoversClass(AddPartitionsToTxnTransaction::class)]
+#[CoversClass(AddPartitionsToTxnResult::class)]
 #[CoversClass(AddPartitionsToTxnResponseV1::class)]
 #[CoversClass(AddPartitionsToTxnResponseV0::class)]
 #[CoversClass(AddPartitionsToTxnResponseTopic::class)]
@@ -142,6 +152,100 @@ final class TransactionApiTest extends TestCase
         . '00000001'
         . '0005' . '746f706963'
         . '00000002' . '00000000' . '00000001';
+
+    /**
+     * AddPartitionsToTxn request **v4** (Kafka 3.5, KIP-890) for the same two partitions, with `verify_only`.
+     *
+     *   Size            => 00 00 00 33 (51 bytes)
+     *   ApiKey          => 00 18 (24)
+     *   ApiVersion      => 00 04
+     *   CorrelationId   => 00 00 00 07
+     *   ClientId        => 00 04 "test"       -- the client id keeps its int16 length in the header v2
+     *   TAG_BUFFER      => 00
+     *   Transactions    => 02                 -- one entry, compact
+     *     TransactionalId => 05 "tx-1"
+     *     ProducerId      => 00 00 00 00 00 00 00 2a (42)
+     *     ProducerEpoch   => 00 03
+     *     VerifyOnly      => 01               -- the field of KIP-890
+     *     Topics          => 02
+     *       Name       => 06 "topic"
+     *       Partitions => 03, 00 00 00 00, 00 00 00 01
+     *       TAG_BUFFER => 00
+     *     TAG_BUFFER      => 00
+     *   TAG_BUFFER      => 00
+     */
+    private const string ADD_PARTITIONS_V4_REQUEST_HEX = '00000033'
+        . '0018'
+        . '0004'
+        . '00000007'
+        . '0004' . '74657374'
+        . '00'
+        . '02'
+        . '05' . '74782d31'
+        . '000000000000002a'
+        . '0003'
+        . '01'
+        . '02'
+        . '06' . '746f706963'
+        . '03' . '00000000' . '00000001'
+        . '00'
+        . '00'
+        . '00';
+
+    /**
+     * The first 27 bytes of a version 4 batch of two transactions: the header, the count 2 and the id of the first
+     */
+    private const string ADD_PARTITIONS_V4_BATCH_PREFIX_HEX = '00000051' . '0018'
+        . '0004'
+        . '00000007'
+        . '0004' . '74657374'
+        . '00'
+        . '03'
+        . '05' . '74782d31';
+
+    /**
+     * AddPartitionsToTxn answer **v4**: the top-level code 0, one transaction, the partition 1 not in it (120).
+     */
+    private const string ADD_PARTITIONS_V4_RESPONSE_HEX = '0000002a'
+        . '00000007'
+        . '00'
+        . '00000000'
+        . '0000'
+        . '02'
+        . '05' . '74782d31'
+        . '02'
+        . '06' . '746f706963'
+        . '03'
+        . '00000000' . '0000' . '00'
+        . '00000001' . '0078' . '00'
+        . '00'
+        . '00'
+        . '00';
+
+    /**
+     * AddPartitionsToTxn answer **v4** of a principal without `CLUSTER_ACTION`: the 31 and no transaction at all.
+     */
+    private const string ADD_PARTITIONS_V4_REFUSAL_HEX = '0000000d'
+        . '00000007'
+        . '00'
+        . '00000000'
+        . '001f'
+        . '01'
+        . '00';
+
+    /**
+     * AddPartitionsToTxn answer **v3**: the flexible frame of Kafka 2.8, which has no top-level error code.
+     */
+    private const string ADD_PARTITIONS_V3_RESPONSE_HEX = '0000001a'
+        . '00000007'
+        . '00'
+        . '00000000'
+        . '02'
+        . '06' . '746f706963'
+        . '02'
+        . '00000000' . '0000' . '00'
+        . '00'
+        . '00';
 
     /**
      * AddPartitionsToTxn response v0: the first partition joined the transaction, the second is fenced (47).
@@ -328,6 +432,103 @@ final class TransactionApiTest extends TestCase
         // 47 is a statement about the transactional id, and it still arrives on every partition of the answer
         self::assertSame(KafkaException::INVALID_PRODUCER_EPOCH, $partitions[1]->errorCode);
         self::assertSame(self::ADD_PARTITIONS_RESPONSE_HEX, bin2hex((string) $response));
+    }
+
+    public function testAddPartitionsToTxnV4PutsTheTransactionIntoTheBatchArray(): void
+    {
+        $request = new AddPartitionsToTxnRequest('tx-1', 42, 3, ['topic' => [0, 1]], 'test', 7, true);
+
+        self::assertSame(4, $request->getApiVersion(), 'Kafka 3.5 added the version 4 of KIP-890');
+        self::assertSame(self::ADD_PARTITIONS_V4_REQUEST_HEX, bin2hex((string) $request));
+    }
+
+    public function testAddPartitionsToTxnV4BatchesSeveralTransactionsInOneFrame(): void
+    {
+        $request = AddPartitionsToTxnRequest::forTransactions(
+            [
+                new AddPartitionsToTxnTransaction('tx-1', 42, 3, ['topic' => [0, 1]], true),
+                new AddPartitionsToTxnTransaction('tx-2', 43, 1, ['topic' => new PartitionsForTopic('topic', [0])]),
+            ],
+            'test',
+            7
+        );
+
+        $frame = bin2hex((string) $request);
+        self::assertStringStartsWith(
+            self::ADD_PARTITIONS_V4_BATCH_PREFIX_HEX,
+            $frame,
+            'the batch is the same body with two entries, so it starts with the count 3 and the first transaction'
+        );
+        self::assertStringEndsWith(
+            '05' . '74782d32' . '000000000000002b' . '0001' . '00'
+            . '02' . '06' . '746f706963' . '02' . '00000000' . '00' . '00' . '00',
+            $frame,
+            'and ends with the second transaction, its own verify_only false and its own tag buffers'
+        );
+    }
+
+    public function testAnEmptyAddPartitionsToTxnBatchIsRefused(): void
+    {
+        // A 3.9.2 node answers a `transactions = []` frame with nothing at all and strands the connection
+        $this->expectException(InvalidRequestException::class);
+
+        AddPartitionsToTxnRequest::forTransactions([]);
+    }
+
+    public function testAVersionBelowFourCanNotCarryMoreThanOneTransaction(): void
+    {
+        $this->expectException(UnsupportedVersionException::class);
+
+        AddPartitionsToTxnRequestV3::forTransactions(
+            [
+                new AddPartitionsToTxnTransaction('tx-1', 42, 3, ['topic' => [0]]),
+                new AddPartitionsToTxnTransaction('tx-2', 43, 1, ['topic' => [0]]),
+            ]
+        );
+    }
+
+    public function testTheVersion4AnswerCarriesATopLevelErrorCodeAndOneResultPerTransaction(): void
+    {
+        $response = AddPartitionsToTxnResponse::unpack(
+            new StringStream((string) hex2bin(self::ADD_PARTITIONS_V4_RESPONSE_HEX))
+        );
+
+        self::assertSame(7, $response->getCorrelationId());
+        self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
+        self::assertSame(['tx-1'], array_keys($response->resultsByTransaction));
+
+        $result = $response->resultOf('tx-1');
+        self::assertSame('tx-1', $result->transactionalId);
+        $partitions = $result->topicResults['topic']->partitionErrors;
+        self::assertSame(KafkaException::NO_ERROR, $partitions[0]->errorCode);
+        // the code of a partition that is not part of the transaction, which a broker maps to the 48 for a client
+        self::assertSame(120, $partitions[1]->errorCode);
+        self::assertSame(self::ADD_PARTITIONS_V4_RESPONSE_HEX, bin2hex((string) $response));
+    }
+
+    public function testTheRefusalOfAWholeVersion4RequestIsTheTopLevelCode(): void
+    {
+        $response = AddPartitionsToTxnResponse::unpack(
+            new StringStream((string) hex2bin(self::ADD_PARTITIONS_V4_REFUSAL_HEX))
+        );
+
+        self::assertSame(KafkaException::CLUSTER_AUTHORIZATION_FAILED, $response->errorCode);
+        self::assertSame([], $response->resultsByTransaction, 'a refused request answers no transaction at all');
+        self::assertSame(self::ADD_PARTITIONS_V4_REFUSAL_HEX, bin2hex((string) $response));
+    }
+
+    public function testAnAnswerBelowVersion4IsReadAsOneTransactionAsWell(): void
+    {
+        $response = AddPartitionsToTxnResponseV3::unpack(
+            new StringStream((string) hex2bin(self::ADD_PARTITIONS_V3_RESPONSE_HEX))
+        );
+
+        $result = $response->resultOf('tx-1');
+        self::assertSame('tx-1', $result->transactionalId, 'the id comes from the caller, the answer has none');
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $result->topicResults['topic']->partitionErrors[0]->errorCode
+        );
     }
 
     public function testAddOffsetsToTxnRequestIsPackedAccordingToTheSpec(): void
