@@ -36,9 +36,9 @@ use Protocol\Kafka\Protocol\NullableStruct;
  * {@see MetadataRequest} answers every partition of every topic it was asked for in one frame, which is how a
  * cluster of a hundred thousand partitions produces an answer no broker wants to build; this api answers at most
  * `response_partition_limit` partitions and hands back a `next_cursor` that the next request puts into its
- * `cursor` field. The limit is clamped by the broker into `[1, max.request.partition.size.limit]` (1000 on a
- * default node), so a request for 0 partitions is a request for one and a request for a million is a request for
- * a thousand.
+ * `cursor` field. The limit is clamped by the broker into `[1, max.request.partition.size.limit]` (**2000** by
+ * default, the same number as the default of the field), so a request for 0 partitions is a request for one and a
+ * request for a million is a request for two thousand.
  *
  * **An empty topic array asks for every topic of the cluster**, the internal ones included - the opposite of what
  * an empty array means in most apis of this protocol, and the same as the null topic array of Metadata.
