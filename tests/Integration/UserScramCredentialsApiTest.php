@@ -331,24 +331,34 @@ final class UserScramCredentialsApiTest extends IntegrationTestCase
      *
      * A ZooKeeper-backed 2.8.2 cluster finalized nothing at all: all three values were empty or 0. The node of
      * this line was formatted at `3.9-IV0`, which is the feature level **21** of `metadata.version`, and it both
-     * supports (1 to 21) and finalizes (21/21) that one feature. The epoch is the **offset of the metadata log**
-     * at which the agreement was written, so it grows with every write the cluster does and can only be asserted
-     * to be positive.
+     * supports (1 to 21) and finalizes (21/21) that one feature. Since this client sends the **ApiVersions v4** of
+     * Kafka 3.9 the *supported* map also carries `kraft.version` 0 to 1, which a v3 answer hides because its
+     * minimum is 0 (KAFKA-17011); it is **not** in the finalized map, because the node has finalized it at the
+     * level 0 and a feature at level 0 is not finalized at all - its quorum is the static
+     * `controller.quorum.voters` of KIP-595. The epoch is the **offset of the metadata log** at which the
+     * agreement was written, so it grows with every write the cluster does and can only be asserted to be
+     * positive.
      */
     public function testTheNodeFinalizesItsMetadataVersion(): void
     {
         $features = $this->admin->describeFeatures();
 
         self::assertSame(
-            ['metadata.version'],
+            ['kraft.version', 'metadata.version'],
             array_keys($features->supportedFeatures),
-            'the only feature a 3.9.2 node supports for a client that sends ApiVersions v3 - `kraft.version` has'
-            . ' the minimum 0 and is filtered out of a v3 answer'
+            'the two features a 3.9.2 node supports; a client that sent ApiVersions v3 would see the second alone,'
+            . ' because the minimum of `kraft.version` is 0 (KAFKA-17011)'
         );
+        self::assertSame(0, $features->supportedFeatures['kraft.version']->minVersion, 'the static voter set');
+        self::assertSame(1, $features->supportedFeatures['kraft.version']->maxVersion, 'the KIP-853 voter set');
         self::assertSame(1, $features->supportedFeatures['metadata.version']->minVersion);
         self::assertSame(21, $features->supportedFeatures['metadata.version']->maxVersion, '3.9-IV0');
 
-        self::assertSame(['metadata.version'], array_keys($features->finalizedFeatures));
+        self::assertSame(
+            ['metadata.version'],
+            array_keys($features->finalizedFeatures),
+            '`kraft.version` is finalized at the level 0, and a feature at level 0 is not in the finalized map'
+        );
         self::assertSame(21, $features->finalizedFeatures['metadata.version']->minVersionLevel);
         self::assertSame(21, $features->finalizedFeatures['metadata.version']->maxVersionLevel);
 
