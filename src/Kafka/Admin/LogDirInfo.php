@@ -32,19 +32,34 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * A directory that is configured but **offline** is reported with the error code 56 (KafkaStorageError) and an
  * empty `replicaInfos`, so an empty map alone does not mean that the disk is healthy - the error does.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v3)"
+ * {@see self::$totalBytes} and {@see self::$usableBytes} are the two sizes of KIP-827 that Kafka 3.3 added to the
+ * answer: the size and the free space of the **volume** the directory sits on, in bytes. They are
+ * {@see self::UNKNOWN_BYTES} for every answer below the version 4 - the Java `LogDirDescription` reports them as
+ * an empty `OptionalLong` there - and for a directory the broker could not measure. Two directories of the same
+ * filesystem answer the same two numbers, which is what the two log directories of the node of this line do.
+ *
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 final class LogDirInfo
 {
     /**
+     * The two sizes of a directory the broker did not measure, and of every answer below the version 4
+     */
+    public const int UNKNOWN_BYTES = DescribeLogDirsResponseLogDir::UNKNOWN_BYTES;
+
+    /**
      * @param string                     $logDir       Absolute path of the directory, as the broker resolved it
      * @param KafkaException|null        $error        Error of the directory, null when it is online
      * @param array<string, ReplicaInfo> $replicaInfos Replicas in this directory, indexed by `topic-partition`
+     * @param int                        $totalBytes   Size of the volume in bytes, -1 when it was not measured
+     * @param int                        $usableBytes  Free bytes of the volume, -1 when it was not measured
      */
     public function __construct(
         public readonly string $logDir,
         public readonly ?KafkaException $error,
         public readonly array $replicaInfos,
+        public readonly int $totalBytes = self::UNKNOWN_BYTES,
+        public readonly int $usableBytes = self::UNKNOWN_BYTES,
     ) {}
 
     /**
@@ -65,7 +80,9 @@ final class LogDirInfo
             $logDir->errorCode === KafkaException::NO_ERROR
                 ? null
                 : KafkaException::fromCode($logDir->errorCode, ['logDir' => $logDir->logDir]),
-            $replicaInfos
+            $replicaInfos,
+            $logDir->totalBytes,
+            $logDir->usableBytes
         );
     }
 
@@ -75,6 +92,16 @@ final class LogDirInfo
     public static function keyOf(string $topic, int $partition): string
     {
         return (string) new TopicPartition($topic, $partition);
+    }
+
+    /**
+     * Tells whether the broker measured the volume of this directory, i.e. whether the two sizes are real
+     *
+     * They are never measured below the version 4 of Kafka 3.3, which is the version this client sends.
+     */
+    public function hasVolumeSizes(): bool
+    {
+        return $this->totalBytes !== self::UNKNOWN_BYTES && $this->usableBytes !== self::UNKNOWN_BYTES;
     }
 
     /**

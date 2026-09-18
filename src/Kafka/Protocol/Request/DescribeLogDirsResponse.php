@@ -16,15 +16,16 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
+use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDirV3;
 
 /**
- * DescribeLogDirs response object, version 3 (key 35)
+ * DescribeLogDirs response object, version 4 (key 35)
  *
  * <pre>
- *   DescribeLogDirs Response (Version: 3) => throttle_time_ms error_code [log_dirs]
+ *   DescribeLogDirs Response (Version: 4) => throttle_time_ms error_code [log_dirs]
  *     throttle_time_ms => INT32
  *     error_code       => INT16                      -- since version 3
- *     log_dirs         => error_code log_dir [topics]
+ *     log_dirs         => error_code log_dir [topics] total_bytes usable_bytes
  *       error_code => INT16
  *       log_dir    => STRING
  *       topics     => topic [partitions]
@@ -34,6 +35,8 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  *           size       => INT64
  *           offset_lag => INT64
  *           is_future  => BOOLEAN
+ *       total_bytes  => INT64                        -- since version 4
+ *       usable_bytes => INT64                        -- since version 4
  * </pre>
  *
  * The api was born in Kafka 1.0, long after KIP-124 made `throttle_time_ms` the first field of every new answer, so
@@ -58,6 +61,15 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * the whole request. {@see DescribeLogDirsResponseV2} decodes the answer of the versions 2 and below, which has no
  * such field.
  *
+ * **Kafka 3.3 added the version 4 and with it the two sizes of KIP-827** ("Version 4 adds the TotalBytes and
+ * UsableBytes fields" of `DescribeLogDirsResponse.json` @ 3.3.2): two `int64` at the **end of every directory
+ * entry**, behind its topics, that describe the volume the directory sits on rather than the directory itself -
+ * `LogManager.describeLogDirs` @ 3.9.2 fills them with `File.getTotalSpace` and `File.getUsableSpace`. Two
+ * directories of the same filesystem therefore answer the same two numbers, and a directory the broker could not
+ * measure keeps the default {@see \Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir::UNKNOWN_BYTES}.
+ * The request is unchanged, so the version alone asks for them; {@see DescribeLogDirsResponseV3} decodes the
+ * answer of a broker below Kafka 3.3, whose directory entries end with their topics.
+ *
  * **Kafka 2.0 added version 1** and changed nothing about the bytes: `DESCRIBE_LOG_DIRS_RESPONSE_V1 =
  * DESCRIBE_LOG_DIRS_RESPONSE_V0` in `Protocol.java` @ 2.0.1. The higher version is the client's promise of KIP-219 -
  * that it honours `throttle_time_ms` itself - and a 2.8.2 broker acts on it by answering a throttled request
@@ -65,14 +77,14 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseLogDir;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see DescribeLogDirsResponseV0} is the same frame with the version field of Kafka 1.0.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v4)"
  */
 class DescribeLogDirsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * The version 2 of Kafka 2.6 is the first flexible one of this api (KIP-482)
@@ -83,6 +95,11 @@ class DescribeLogDirsResponse extends AbstractResponse
      * The version 3 of Kafka 3.2 is the first one whose answer carries a top-level error code
      */
     public const int TOP_LEVEL_ERROR_VERSION = 3;
+
+    /**
+     * The version 4 of Kafka 3.3 is the first one whose directories carry the two sizes of their volume (KIP-827)
+     */
+    public const int VOLUME_SIZE_VERSION = 4;
 
     /**
      * Duration in milliseconds for which the request was throttled due to a quota violation
@@ -115,8 +132,20 @@ class DescribeLogDirsResponse extends AbstractResponse
             $body['errorCode'] = BinarySchema::TYPE_INT16;
         }
 
-        $body['logDirs'] = ['logDir' => DescribeLogDirsResponseLogDir::class];
+        $body['logDirs'] = ['logDir' => static::logDirClass()];
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the class of a directory entry for the version of the api that this class unpacks
+     *
+     * @return class-string<DescribeLogDirsResponseLogDir>
+     */
+    protected static function logDirClass(): string
+    {
+        return static::VERSION >= self::VOLUME_SIZE_VERSION
+            ? DescribeLogDirsResponseLogDir::class
+            : DescribeLogDirsResponseLogDirV3::class;
     }
 }

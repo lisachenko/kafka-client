@@ -256,6 +256,30 @@ final class ProtocolVectorTest extends TestCase
     /**
      * @return iterable<string, array{0: array<string, mixed>}>
      */
+    public static function describeAclsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function createAclsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function deleteAclsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
     public static function createPartitionsVectors(): iterable
     {
         return VectorFile::provideFor(__FUNCTION__);
@@ -792,6 +816,33 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('describeLogDirsVectors')]
     public function testDescribeLogDirsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeAclsVectors')]
+    public function testDescribeAclsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('createAclsVectors')]
+    public function testCreateAclsApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('deleteAclsVectors')]
+    public function testDeleteAclsApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }

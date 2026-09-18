@@ -51,7 +51,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * **Kafka 2.5 added the version 2** (KIP-482), the same fields in the flexible encoding: every string and array of
  * the frame is compact, the header carries a tag buffer and every structure ends in one. Not a field changed.
  *
- * @see docs/protocol/3.9.md, section "DescribeDelegationToken API (key 41, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DescribeDelegationToken API (key 41, v0 to v3)"
  */
 class DescribeDelegationTokenRequest extends AbstractRequest
 {
@@ -63,7 +63,7 @@ class DescribeDelegationTokenRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 
     /**
      * @inheritdoc
