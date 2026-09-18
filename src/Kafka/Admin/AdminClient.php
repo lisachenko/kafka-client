@@ -45,6 +45,7 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeQuorumResponseReplicaState;
+use Protocol\Kafka\Protocol\Data\DescribeTopicPartitionsCursor;
 use Protocol\Kafka\Protocol\Data\DescribeTransactionsResponseTopic;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
@@ -91,6 +92,8 @@ use Protocol\Kafka\Protocol\Request\DescribeProducersRequest;
 use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
 use Protocol\Kafka\Protocol\Request\DescribeQuorumRequest;
 use Protocol\Kafka\Protocol\Request\DescribeQuorumResponse;
+use Protocol\Kafka\Protocol\Request\DescribeTopicPartitionsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeTopicPartitionsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeTransactionsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeTransactionsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsRequest;
@@ -2932,9 +2935,17 @@ class AdminClient
      * request that names **only** unknown states is answered with an empty list - passing
      * {@see TransactionState} cases instead of strings is what keeps that from happening silently.
      *
+     * **The `$durationFilterMs` of KIP-994 (Kafka 3.8, version 1)** bounds the listing by the **age** of the
+     * transaction: only a transaction whose start is more than that many milliseconds ago is listed, and the
+     * default -1 ({@see ListTransactionsRequest::NO_DURATION_FILTER}) is every transaction. The age is measured
+     * against the `txnStartTimestamp` the coordinator holds, which is set when the transaction opens and is never
+     * cleared, so a transactional id that has never begun a transaction carries the -1 of "no start" and passes
+     * **every** filter; the three filters are ANDed by the coordinator.
+     *
      * @param list<TransactionState|string> $stateFilters      States to list, empty for every state
      * @param list<int>                     $producerIdFilters Producer ids to list, empty for every producer id
      * @param list<string>|null             $unknownStateFilters Filled with the state names no coordinator knew
+     * @param int                           $durationFilterMs  Age in ms a transaction has to exceed, -1 for all
      *
      * @throws KafkaException If a broker refused to list its transactions - 14 while it is still reading a
      *         `__transaction_state` partition, 15 while its coordinator is not available
@@ -2945,7 +2956,8 @@ class AdminClient
     public function listTransactions(
         array $stateFilters = [],
         array $producerIdFilters = [],
-        ?array &$unknownStateFilters = null
+        ?array &$unknownStateFilters = null,
+        int $durationFilterMs = ListTransactionsRequest::NO_DURATION_FILTER
     ): array {
         $states = array_map(
             static fn(TransactionState|string $state): string => $state instanceof TransactionState
@@ -2964,7 +2976,8 @@ class AdminClient
                     $states,
                     array_values($producerIdFilters),
                     $this->clientId(),
-                    $correlationId
+                    $correlationId,
+                    $durationFilterMs
                 ),
                 ListTransactionsResponse::class,
                 ['node' => $node->nodeId]
@@ -3412,5 +3425,104 @@ class AdminClient
     public function listEarliestLocalOffsets(iterable $topicPartitions): array
     {
         return $this->listOffsets($topicPartitions, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
+    }
+
+    /**
+     * Describes the partitions of the given topics, page by page (ApiKey 75, Kafka 3.8, KIP-966)
+     *
+     * The api `kafka-topics.sh --describe` speaks since Kafka 3.8, and the answer of
+     * {@see self::describeTopics()} with two things the Metadata api cannot give: the **eligible leader
+     * replicas** of KIP-966 per partition, and a bound on the size of the answer. A Metadata frame describes
+     * every partition of every topic it was asked for, which on a large cluster is an answer no broker wants to
+     * build; this api answers at most `$responsePartitionLimit` partitions and names the topic and partition the
+     * next request has to start at, and this method walks those pages until the answer is complete - exactly as
+     * the Java `describeTopics(…, DescribeTopicsOptions.partitionSizeLimitPerResponse)` does.
+     *
+     * **An empty topic list asks for every topic of the cluster**, the internal ones included, as the null topic
+     * array of Metadata does; the answer is then sorted by topic name, because the broker sorts the names before
+     * it builds the answer. A topic that was named and does not exist is **not** an exception of the call but the
+     * error code 3 in its own entry, which this method returns as the exception of that code in the place of the
+     * description, as {@see self::describeTransactions()} does with an unknown transactional id.
+     *
+     * The `$cursor` starts the listing in the middle: it is a {@see DescribeTopicPartitionsCursor} of a previous
+     * answer, or one a caller builds itself. The broker refuses a cursor whose topic is not in the topic list of
+     * the same request with the error code 42, and a cursor whose partition index is negative with the same code.
+     *
+     * The acl bit field of KIP-430 is reported for every topic without being asked for it, so
+     * {@see TopicDescription::authorizedOperations()} always answers the operations of the principal.
+     *
+     * @param list<string>                       $topics                 Topics to describe, empty for every topic
+     * @param int                                $responsePartitionLimit Most partitions one answer may carry
+     * @param DescribeTopicPartitionsCursor|null $cursor                 Topic and partition to start at
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered
+     * @throws KafkaException If the broker refused the request as a whole - 42 for a cursor it cannot use
+     *
+     * @return array<string, TopicDescription|KafkaException> The description or the error of every topic of the
+     *         listing, indexed by the topic name
+     */
+    public function describeTopicPartitions(
+        array $topics = [],
+        int $responsePartitionLimit = DescribeTopicPartitionsRequest::DEFAULT_PARTITION_LIMIT,
+        ?DescribeTopicPartitionsCursor $cursor = null
+    ): array {
+        /** @var array<string, TopicDescription|KafkaException> $described */
+        $described = [];
+        /** @var array<string, array<int, TopicPartitionInfo>> $partitions */
+        $partitions = [];
+        $requested  = array_values($topics);
+
+        do {
+            /** @var DescribeTopicPartitionsResponse $response */
+            $response = $this->sendAnyNode(
+                fn(int $correlationId): DescribeTopicPartitionsRequest => new DescribeTopicPartitionsRequest(
+                    $requested,
+                    $responsePartitionLimit,
+                    $cursor,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DescribeTopicPartitionsResponse::class
+            );
+
+            foreach ($response->topics as $topic) {
+                $name = $topic->name ?? '';
+                if ($topic->errorCode !== KafkaException::NO_ERROR) {
+                    $described[$name] = KafkaException::fromCode($topic->errorCode, ['topic' => $name]);
+                    continue;
+                }
+
+                foreach ($topic->partitions as $partition) {
+                    $partitions[$name][$partition->partitionIndex]
+                        = TopicPartitionInfo::fromResponsePartition($partition);
+                }
+                $described[$name] = new TopicDescription(
+                    $name,
+                    $topic->isInternal,
+                    $partitions[$name] ?? [],
+                    $topic->topicAuthorizedOperations,
+                    $topic->topicId
+                );
+            }
+
+            $previous = $cursor;
+            $cursor   = $response->nextCursor;
+            // A cursor that does not move would page for ever: the node always advances it, and a broker that
+            // does not is one this client stops asking
+        } while ($cursor !== null && !self::isSameCursor($cursor, $previous));
+
+        return $described;
+    }
+
+    /**
+     * Whether two page cursors of DescribeTopicPartitions point at the same topic and partition
+     */
+    private static function isSameCursor(
+        DescribeTopicPartitionsCursor $cursor,
+        ?DescribeTopicPartitionsCursor $other
+    ): bool {
+        return $other !== null
+            && $cursor->topicName === $other->topicName
+            && $cursor->partitionIndex === $other->partitionIndex;
     }
 }

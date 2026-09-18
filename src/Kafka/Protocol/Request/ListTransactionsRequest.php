@@ -17,12 +17,13 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * ListTransactions, version 0: the transactional ids a broker coordinates (ApiKey 66, Kafka 3.0)
+ * ListTransactions, version 1: the transactional ids a broker coordinates (ApiKey 66, Kafka 3.0)
  *
  * <pre>
- *   ListTransactions Request (Version: 0) => [state_filters] [producer_id_filters]
+ *   ListTransactions Request (Version: 0 to 1) => [state_filters] [producer_id_filters] duration_filter
  *     state_filters       => COMPACT_STRING
  *     producer_id_filters => INT64
+ *     duration_filter     => INT64      -- since version 1, -1 for "every transaction"
  * </pre>
  *
  * `ListTransactionsRequest.json` @ 3.0.2 declares the two filters, both flexible from the version 0. An **empty**
@@ -36,9 +37,16 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * broker, as it does with {@see ListGroupsRequest}. The `Dead` state is never listed - it is the transient state
  * of an id whose metadata is being expired.
  *
- * **Version 1** (Kafka 3.8, KIP-994) adds a `duration_filter` and is not part of this milestone.
+ * **Version 1 (Kafka 3.8, KIP-994) added the `duration_filter`**: "Version 1: adds DurationFilter to list
+ * transactions older than specified duration" is the comment above its `validVersions` in
+ * `ListTransactionsRequest.json` @ 3.8.1. It is an age in **milliseconds** measured against the
+ * `txnStartTimestamp` of the transaction, and `TransactionStateManager.listTransactionStates` @ 3.9.2 drops every
+ * transaction for which `(now - txnStartTimestamp) <= duration_filter`, so the filter is strictly "older than".
+ * A negative value - the `"default": -1` of the field - is "every transaction", which is what a version 0 frame
+ * means implicitly. The three filters are ANDed. {@see ListTransactionsRequestV0} is the frame below it, which
+ * cannot ask at all.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0)"
+ * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
  */
 class ListTransactionsRequest extends AbstractRequest
 {
@@ -50,7 +58,7 @@ class ListTransactionsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc
@@ -58,10 +66,18 @@ class ListTransactionsRequest extends AbstractRequest
     public const int FLEXIBLE_VERSION = 0;
 
     /**
+     * Value of the `duration_filter` that asks for every transaction, whatever its age
+     *
+     * @since Version 1 of protocol (Kafka 3.8, KIP-994)
+     */
+    public const int NO_DURATION_FILTER = -1;
+
+    /**
      * @param list<string> $stateFilters      States to list, empty for every state
      * @param list<int>    $producerIdFilters Producer ids to list, empty for every producer
      * @param string       $clientId          A user specified identifier for the client
      * @param int          $correlationId     A value the broker passes back unmodified
+     * @param int          $durationFilter    Age in milliseconds a transaction has to exceed, -1 for every one
      */
     public function __construct(
         /**
@@ -77,7 +93,13 @@ class ListTransactionsRequest extends AbstractRequest
          */
         protected readonly array $producerIdFilters = [],
         string $clientId = '',
-        int $correlationId = 0
+        int $correlationId = 0,
+        /**
+         * Age in milliseconds a transaction has to be older than, -1 for every transaction.
+         *
+         * @since Version 1 of protocol (Kafka 3.8, KIP-994)
+         */
+        protected readonly int $durationFilter = self::NO_DURATION_FILTER
     ) {
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
@@ -88,11 +110,15 @@ class ListTransactionsRequest extends AbstractRequest
     public static function getScheme(): array
     {
         $header = parent::getScheme();
-
-        return $header + [
+        $body   = [
             'stateFilters'      => [BinarySchema::TYPE_STRING],
             'producerIdFilters' => [BinarySchema::TYPE_INT64],
         ];
+        if (static::VERSION >= 1) {
+            $body['durationFilter'] = BinarySchema::TYPE_INT64;
+        }
+
+        return $header + $body;
     }
 
     /**
@@ -113,5 +139,14 @@ class ListTransactionsRequest extends AbstractRequest
     public function getProducerIdFilters(): array
     {
         return $this->producerIdFilters;
+    }
+
+    /**
+     * Returns the age in milliseconds a transaction has to exceed to be listed, -1 for every transaction
+     * (KIP-994, version 1)
+     */
+    public function getDurationFilter(): int
+    {
+        return $this->durationFilter;
     }
 }

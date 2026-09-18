@@ -149,6 +149,11 @@ class BinarySchema
             return self::objectSize($value, $flexible, false);
         }
 
+        // A nullable structure: the int8 that announces it, and the structure itself when it is there
+        if ($schemeType instanceof NullableStruct) {
+            return 1 + ($value === null ? 0 : self::getObjectTypeSize($value, $flexible));
+        }
+
         // If it's a string, then we have an object with an internal scheme
         if (is_string($schemeType)) {
             return self::getObjectTypeSize($value, $flexible);
@@ -416,6 +421,16 @@ class BinarySchema
             return self::readObject($schemeType->type, $stream, "{$path}:{$schemeType->type}", $flexible, false);
         }
 
+        // A nullable structure: the int8 in front of it says whether a structure follows at all
+        if ($schemeType instanceof NullableStruct) {
+            $marker = self::readSingleType(self::TYPE_INT8, $stream, "{$path}[present]");
+            if ($marker === NullableStruct::ABSENT) {
+                return null;
+            }
+
+            return self::readObjectFromStream($schemeType->type, $stream, "{$path}:{$schemeType->type}", $flexible);
+        }
+
         // If it's a string, then we have a nested object that can be unpacked
         if (is_string($schemeType)) {
             return self::readObjectFromStream($schemeType, $stream, "{$path}:{$schemeType}", $flexible);
@@ -561,6 +576,19 @@ class BinarySchema
         // A nested object the specification does not have, i.e. a group of fields of this structure
         if ($schemeType instanceof InlineStruct) {
             self::writeObject($value, $stream, $flexible, false);
+
+            return;
+        }
+
+        // A nullable structure: the int8 that announces it, and the structure itself when it is there
+        if ($schemeType instanceof NullableStruct) {
+            if ($value === null) {
+                self::writeSingleType(self::TYPE_INT8, NullableStruct::ABSENT, $stream);
+
+                return;
+            }
+            self::writeSingleType(self::TYPE_INT8, NullableStruct::PRESENT, $stream);
+            self::writeObjectToStream($value, $stream, $flexible);
 
             return;
         }

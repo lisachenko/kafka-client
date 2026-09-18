@@ -19,6 +19,7 @@ use function is_string;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 use Protocol\Kafka\Protocol\InlineStruct;
+use Protocol\Kafka\Protocol\NullableStruct;
 use Protocol\Kafka\Protocol\TaggedField;
 use ReflectionProperty;
 
@@ -33,8 +34,9 @@ use ReflectionProperty;
  *
  * The two descriptors of the flexible encoding are unwrapped on the way: a {@see TaggedField} is documented as the
  * value of its own type - a vector shows what the tagged field carries, not that it is tagged - and an
- * {@see InlineStruct} as the nested map its object is. The tag buffer of a header is a field of the scheme like any
- * other and shows up as the (usually empty) map of the tags that were read.
+ * {@see InlineStruct} as the nested map its object is, while a {@see NullableStruct} is that map or `null`. The tag
+ * buffer of a header is a field of the scheme like any other and shows up as the (usually empty) map of the tags that
+ * were read.
  */
 final class MessageFields
 {
@@ -70,6 +72,10 @@ final class MessageFields
         }
         if ($schemeType instanceof InlineStruct) {
             return self::of($value);
+        }
+        // A nullable structure is the map of its fields, or null when the byte in front of it said so
+        if ($schemeType instanceof NullableStruct) {
+            return $value === null ? null : self::of($value);
         }
 
         if (is_array($schemeType)) {
