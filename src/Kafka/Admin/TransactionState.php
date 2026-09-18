@@ -33,7 +33,7 @@ namespace Protocol\Kafka\Admin;
  * Java admin client does with its `UNKNOWN`: a broker of a later release may hold a state this line has no case
  * for, and that must not be an exception.
  *
- * @see docs/protocol/3.9.md, sections "DescribeTransactions API (key 65, v0)" and "ListTransactions API (key 66, v0)"
+ * @see docs/protocol/3.9.md, sections "DescribeTransactions API (key 65, v0)" and "ListTransactions API (key 66, v0 and v1)"
  */
 enum TransactionState: string
 {
