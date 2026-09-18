@@ -457,6 +457,10 @@ class AdminClient
      * An **empty** batch answers an empty array without sending anything: a 3.9.2 node answers a `groups = []`
      * frame with nothing at all and strands the connection.
      *
+     * The frame that goes out is the **version 9** of Kafka 3.7, whose `member_id` and `member_epoch` of KIP-848
+     * stay at `null` and `-1` in every entry of the batch - the values of an administrative reader, which the
+     * coordinator accepts without looking a member up, for a classic and for a KIP-848 group alike.
+     *
      * @param array<string, array<string, list<int>>|iterable<TopicPartition>|null> $groupTopicPartitions Partitions
      *        to read the offsets of, per group; a `null` value asks for every topic-partition of that group
      *

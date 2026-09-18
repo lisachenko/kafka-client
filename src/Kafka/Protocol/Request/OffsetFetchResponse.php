@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
 use UnexpectedValueException;
 
 /**
- * OffsetFetch response object, version 8
+ * OffsetFetch response object, version 9
  *
  * <pre>
  *   OffsetFetch Response (Version: 5 to 7) => throttle_time_ms [responses] error_code
@@ -36,7 +36,7 @@ use UnexpectedValueException;
  *         error_code   => INT16
  *     error_code => INT16           -- since version 2
  *
- *   OffsetFetch Response (Version: 8)     => throttle_time_ms [groups]
+ *   OffsetFetch Response (Version: 8, 9) => throttle_time_ms [groups]
  *     groups => group_id [responses] error_code   -- since version 8, one entry per group of the request
  * </pre>
  *
@@ -72,15 +72,24 @@ use UnexpectedValueException;
  * {@see self::groupOf()} reads one group out of either shape, and {@see OffsetFetchResponseV7} decodes the answer
  * of the versions below.
  *
- * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v8)", "Stable offsets and the 88 of KIP-447
+ * **Version 9 (Kafka 3.7, KIP-848) changed no field of this half either**: "the response is the same as version 8
+ * but can return STALE_MEMBER_EPOCH and UNKNOWN_MEMBER_ID errors when the new consumer group protocol is used"
+ * (`OffsetFetchResponse.json` @ 3.7.2). The two codes stand in the **group-level** `error_code` of the entry
+ * whose request named a member id and a member epoch: **25** `UnknownMemberId` for a member the KIP-848 group
+ * does not hold and **113** `StaleMemberEpoch` for an epoch that is not the one the coordinator holds for it.
+ * The topics of such an entry are empty, exactly as they are for every other group-level error of this api.
+ * {@see OffsetFetchResponseV8} decodes the same bytes one api version lower.
+ *
+ * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v9)", "Stable offsets and the 88 of KIP-447
  *      (Kafka 2.5)" and "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, section "The member id and epoch of KIP-848 (v9)"
  */
 class OffsetFetchResponse extends AbstractResponse
 {
     /**
      * Version of the OffsetFetch API that this class decodes the answer of
      */
-    public const int VERSION = 8;
+    public const int VERSION = 9;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it

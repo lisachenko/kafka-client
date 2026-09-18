@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * tagged-field section per structure, which {@see OffsetFetchRequestV6} sends.
  *
  * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v8)"
+ * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 final class OffsetFetchRequestV5 extends OffsetFetchRequest
 {

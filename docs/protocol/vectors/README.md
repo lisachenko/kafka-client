@@ -1,6 +1,6 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 3.x line has captured **266** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
+The 3.x line has captured **286** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
 the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
 `list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
 `group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — the 20 frames of Kafka 3.1, the
@@ -14,21 +14,23 @@ DescribeLogDirs v4 in `describe-log-dirs.json` and the 10 of the two delegation-
 `add-partitions-to-txn.json`, the 12 of Fetch v14 and v15 in `fetch.json` and the 8 of ListOffsets v8 in
 `offsets.json` — and the 18 frames of Kafka 3.6, the OffsetCommit v9 of KIP-848 in `offset-commit.json`, with
 the 69 of a group that does not exist, the 113 of a stale member epoch and the two version 8 frames that answer
-the same questions with the 22 and the 35 — and the 51 frames of Kafka 3.7: the 12 of DescribeCluster v1 (the
+the same questions with the 22 and the 35 — and the 71 frames of Kafka 3.7: the 12 of DescribeCluster v1 (the
 endpoint type of KIP-919, with the 114 of a controller asked on a broker listener and the 115 of a type the api
 does not define) in `describe-cluster.json`, the 26 of the three client-metrics apis of KIP-714 in the three
 new files `get-telemetry-subscriptions.json`, `push-telemetry.json` and `list-client-metrics-resources.json`,
-which are wire only, and the 13 of the leader discovery of KIP-951: the 5 of Produce v10 in `produce.json`, one
-of them the constructed answer that names the current leader of a refused partition, and the 8 of Fetch v16 in
-`fetch.json`, among them the follower fetch the node really answers with the `current_leader` and the
-`node_endpoints` — next to the
+which are wire only, the 20 of OffsetFetch v9 of KIP-848 in `offset-fetch.json`, with the 113 of a stale
+member epoch, the 25 of an unknown member id and the -1 a null member id with a non-negative epoch is answered,
+and the 13 of the leader discovery of KIP-951: the 5 of Produce v10 in `produce.json`, one of them the
+constructed answer that names the current leader of a refused partition, and the 8 of Fetch v16 in `fetch.json`,
+among them the follower fetch the node really answers with the `current_leader` and the `node_endpoints` — next
+to the
 **669** vectors of the lines
 up to 2.x below, which are replayed unchanged against the classes of this line, because the 3.9.2 node still serves
 every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **935** of them in **57** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **955** of them in **57** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the

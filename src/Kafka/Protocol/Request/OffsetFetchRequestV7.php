@@ -18,10 +18,11 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * Version 8 (Kafka 3.0) moved the group id and the topic array into a `groups` array, so that one request can ask
  * for the committed offsets of several groups at once; this version names its single group at the top level and is
- * the highest one a broker below Kafka 3.0 serves. {@see OffsetFetchRequest} sends the batched frame.
+ * the highest one a broker below Kafka 3.0 serves. {@see OffsetFetchRequestV8} is the batch without the
+ * member of KIP-848, and {@see OffsetFetchRequest} the version 9 this client sends.
  *
  * @see docs/protocol/3.9.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v8)"
+ * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 final class OffsetFetchRequestV7 extends OffsetFetchRequest
 {

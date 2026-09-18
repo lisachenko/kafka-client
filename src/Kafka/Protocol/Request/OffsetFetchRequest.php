@@ -18,10 +18,11 @@ use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroup;
+use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroupV8;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
- * OffsetFetch, version 8: the offsets that consumer groups committed, read from `__consumer_offsets`
+ * OffsetFetch, version 9: the offsets that consumer groups committed, read from `__consumer_offsets`
  *
  * This API reads back the offsets that were committed for a consumer group with the OffsetCommit API, so it has to
  * be sent to the coordinator of that group.
@@ -38,6 +39,9 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  *   OffsetFetch Request (Version: 8)      => [groups] require_stable
  *     groups         => group_id [topics]  -- since version 8, in place of the two top-level fields
  *     require_stable => BOOLEAN            -- one flag for the whole batch
+ *
+ *   OffsetFetch Request (Version: 9)      => [groups] require_stable
+ *     groups         => group_id member_id member_epoch [topics]   -- the two member fields since version 9
  * </pre>
  *
  * Version 2 (KIP-88, Kafka 0.10.2) made the topic array **nullable**, and that is the only change of the request:
@@ -82,14 +86,25 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * every later request on it waits forever - and this client therefore never puts such a frame on the wire, see
  * {@see self::forGroups()}.
  *
+ * **Version 9 (Kafka 3.7, KIP-848) named the member inside every group entry.**
+ * `OffsetFetchRequest.json` @ 3.7.2 - *"Version 9 is the first version that can be used with the new consumer
+ * group protocol (KIP-848). It adds the MemberId and MemberEpoch fields. Those are filled in and validated when
+ * the new consumer protocol is used."* - puts a nullable `MemberId` (default `null`) and a `MemberEpoch` (int32,
+ * default `-1`) behind the group id of every {@see OffsetFetchRequestGroup}, before its topic array. This client
+ * sends the version 9 for every fetch and leaves the two fields at their defaults, which is what a classic member
+ * and every administrative reader do; {@see self::forMember()} fills them for a member of a KIP-848 group, which
+ * is answered the 25 `UnknownMemberId` or the 113 `StaleMemberEpoch` when they do not match the coordinator.
+ * {@see OffsetFetchRequestV8} is the same batch without the two fields.
+ *
  * Versions 0 and 1 have no nullable array ({@see OffsetFetchRequestV1}, {@see OffsetFetchRequestV0}) and are
  * identical to each other on the wire: they only differ in where the broker reads the offsets from - ZooKeeper for
  * version 0, the `__consumer_offsets` topic of the cluster for version 1 and above. Asking those versions for all
  * topics is refused here with an {@see UnsupportedVersionException}, exactly as `OffsetFetchRequest.Builder.build()`
  * @ 0.11.0.3 does; sending a `-1` topic array with version 1 makes the broker close the connection.
  *
- * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v8)" and "Stable offsets and the 88 of
+ * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v9)" and "Stable offsets and the 88 of
  *      KIP-447 (Kafka 2.5)"
+ * @see docs/protocol/3.9.md, section "The member id and epoch of KIP-848 (v9)"
  */
 class OffsetFetchRequest extends AbstractRequest
 {
@@ -101,7 +116,7 @@ class OffsetFetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 8;
+    public const int VERSION = 9;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -113,6 +128,11 @@ class OffsetFetchRequest extends AbstractRequest
      * The first version that asks for several groups in one request (Kafka 3.0)
      */
     public const int MIN_BATCHED_VERSION = 8;
+
+    /**
+     * The first version whose group entry names the member id and the member epoch of KIP-848 (Kafka 3.7)
+     */
+    public const int MIN_MEMBER_VERSION = 9;
 
     /**
      * Partitions whose offsets are requested, indexed by the topic they belong to, or null for every topic
@@ -183,8 +203,13 @@ class OffsetFetchRequest extends AbstractRequest
             $this->topicPartitions = $packedTopicPartitions;
         }
 
-        $this->groups = $groups
-            ?? [$consumerGroup => new OffsetFetchRequestGroup($consumerGroup, $this->topicPartitions)];
+        $packedGroups = [];
+        foreach ($groups ?? [] as $groupId => $group) {
+            $packedGroups[(string) $groupId] = static::packGroup((string) $groupId, $group);
+        }
+        $this->groups = $groups === null
+            ? [$consumerGroup => static::packGroup($consumerGroup, $this->topicPartitions)]
+            : $packedGroups;
 
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
@@ -215,8 +240,10 @@ class OffsetFetchRequest extends AbstractRequest
      * dies in `NoSuchElementException: key not found: null` inside the broker and the connection is left owing an
      * answer that never comes, which strands every later request on it - so this client never sends one.
      *
-     * @param array<string, array<string, list<int>|PartitionsForTopic>|null> $groupTopicPartitions Partitions to
-     *        fetch per topic, per group; a `null` value asks for every topic of that group
+     * @param array<string, array<string, list<int>|PartitionsForTopic>|null|OffsetFetchRequestGroup>
+     *        $groupTopicPartitions Partitions to fetch per topic, per group; a `null` value asks for every topic
+     *        of that group, and a ready-made {@see OffsetFetchRequestGroup} carries the member id and the member
+     *        epoch of KIP-848 with it (version 9)
      * @param string $clientId      Unique client identifier
      * @param int    $correlationId Correlated request id
      * @param bool   $requireStable Whether the coordinator has to hold back the offsets of an open transaction,
@@ -255,7 +282,7 @@ class OffsetFetchRequest extends AbstractRequest
 
         $groups = [];
         foreach ($groupTopicPartitions as $groupId => $topicPartitions) {
-            $groups[(string) $groupId] = new OffsetFetchRequestGroup((string) $groupId, $topicPartitions);
+            $groups[(string) $groupId] = static::packGroup((string) $groupId, $topicPartitions);
         }
         $firstGroup = array_key_first($groups);
 
@@ -266,6 +293,58 @@ class OffsetFetchRequest extends AbstractRequest
             $correlationId,
             $requireStable,
             $groups
+        );
+    }
+
+    /**
+     * Builds the request of a member of a KIP-848 group, which names itself in its group entry (version 9)
+     *
+     * `OffsetFetchRequest.json` @ 3.7.2 added the nullable `MemberId` and the `MemberEpoch` to every entry of the
+     * batch, "filled in and validated when the new consumer protocol is used": the coordinator looks the member
+     * up in the group and answers the group-level **25** `UnknownMemberId` for an id it does not hold and the
+     * **113** `StaleMemberEpoch` for an epoch that is not the one it holds, above and below it alike. A **classic**
+     * group ignores both fields, and an entry that leaves them at `null` / `-1` is accepted by either kind of group
+     * without a member lookup at all.
+     *
+     * @param string $groupId     The KIP-848 group to read the offsets of
+     * @param array<string, list<int>|PartitionsForTopic>|null $topicPartitions Partitions to fetch, per topic, or
+     *        null to ask for every topic-partition that group has committed an offset for
+     * @param string $memberId    The member id the coordinator assigned to this member
+     * @param int    $memberEpoch The member epoch the coordinator last answered this member with
+     * @param string $clientId      Unique client identifier
+     * @param int    $correlationId Correlated request id
+     * @param bool   $requireStable Whether the coordinator has to hold back the offsets of an open transaction
+     *
+     * @throws UnsupportedVersionException If the version of this class has no group array at all
+     */
+    public static function forMember(
+        string $groupId,
+        ?array $topicPartitions,
+        string $memberId,
+        int $memberEpoch,
+        string $clientId = '',
+        int $correlationId = 0,
+        bool $requireStable = false
+    ): static {
+        if (static::VERSION < self::MIN_MEMBER_VERSION) {
+            throw new UnsupportedVersionException(
+                [
+                    'error' => sprintf(
+                        'The version %d of the OffsetFetch api can not name a member: the member id and the '
+                        . 'member epoch of KIP-848 arrived with the version %d in Kafka 3.7',
+                        static::VERSION,
+                        self::MIN_MEMBER_VERSION
+                    ),
+                    'groupId' => $groupId,
+                ]
+            );
+        }
+
+        return static::forGroups(
+            [$groupId => new OffsetFetchRequestGroup($groupId, $topicPartitions, $memberId, $memberEpoch)],
+            $clientId,
+            $correlationId,
+            $requireStable
         );
     }
 
@@ -286,7 +365,7 @@ class OffsetFetchRequest extends AbstractRequest
             $body['consumerGroup']   = BinarySchema::TYPE_STRING;
             $body['topicPartitions'] = $topicPartitions;
         } else {
-            $body['groups'] = ['groupId' => OffsetFetchRequestGroup::class];
+            $body['groups'] = ['groupId' => static::groupClass()];
         }
 
         if (static::VERSION >= 7) {
@@ -294,5 +373,42 @@ class OffsetFetchRequest extends AbstractRequest
         }
 
         return $header + $body;
+    }
+
+    /**
+     * Builds the entry of one group in the class the version of this request declares
+     *
+     * A ready-made entry is rebuilt in that class, so that a batch whose entries name a member of KIP-848 can be
+     * sent at a version that has no member fields: the two fields are simply not written then.
+     *
+     * @param array<string, list<int>|PartitionsForTopic>|null|OffsetFetchRequestGroup $topicPartitions
+     */
+    private static function packGroup(
+        string $groupId,
+        array|null|OffsetFetchRequestGroup $topicPartitions
+    ): OffsetFetchRequestGroup {
+        $groupClass = static::groupClass();
+        if ($topicPartitions instanceof OffsetFetchRequestGroup) {
+            return $topicPartitions::class === $groupClass ? $topicPartitions : new $groupClass(
+                $groupId,
+                $topicPartitions->topicPartitions,
+                $topicPartitions->memberId,
+                $topicPartitions->memberEpoch
+            );
+        }
+
+        return new $groupClass($groupId, $topicPartitions);
+    }
+
+    /**
+     * Returns the class of a group entry for the version of the API that this class sends
+     *
+     * @return class-string<OffsetFetchRequestGroup>
+     */
+    protected static function groupClass(): string
+    {
+        return static::VERSION >= self::MIN_MEMBER_VERSION
+            ? OffsetFetchRequestGroup::class
+            : OffsetFetchRequestGroupV8::class;
     }
 }
