@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * are not on the wire here, so this class only lowers the version constant that {@see FetchResponse::getScheme()}
  * and {@see FetchResponse::topicClass()} follow.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v13)"
+ * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v15)"
  */
 final class FetchResponseV5 extends FetchResponse
 {

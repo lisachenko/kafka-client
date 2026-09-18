@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * {@see FetchRequestForgottenTopic}. Nothing else about the entry ever changed - the partitions are an `int32`
  * array in every version, compact from version 12 on.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v13)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)" and "Fetch sessions (v7, KIP-227)"
  */
 final class FetchRequestForgottenTopicV7 extends FetchRequestForgottenTopic
 {

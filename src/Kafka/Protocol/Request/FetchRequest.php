@@ -20,6 +20,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopicV7;
+use Protocol\Kafka\Protocol\Data\FetchRequestReplicaState;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
@@ -29,7 +30,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
 use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Fetch API (key 1), version 13
+ * Fetch API (key 1), version 15
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -44,11 +45,12 @@ use Protocol\Kafka\Protocol\TaggedField;
  * handle this case.
  *
  * <pre>
- *   FetchRequest (Version: 13) => ReplicaId MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
+ *   FetchRequest (Version: 15) => MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
  *                                 [TopicId [Partition CurrentLeaderEpoch FetchOffset LastFetchedEpoch
  *                                           LogStartOffset MaxBytes TAG_BUFFER] TAG_BUFFER]
  *                                 [TopicId [Partition] TAG_BUFFER] RackId TAG_BUFFER
- *     ReplicaId      => int32
+ *     ReplicaId      => int32     -- versions 0 to 14 only, replaced by the tagged ReplicaState
+ *     ReplicaState   => tag 1, [ReplicaId int32 ReplicaEpoch int64] -- since version 15
  *     MaxWaitTime    => int32
  *     MinBytes       => int32
  *     MaxBytes       => int32
@@ -128,20 +130,34 @@ use Protocol\Kafka\Protocol\TaggedField;
  *   topic whose id it does not know is fetched after a metadata refresh, never by name. An id the broker does not
  *   host is answered with **100** `UnknownTopicId` per **partition**, and a session whose earlier requests named
  *   the topics the other way round with the top-level **106** `FetchSessionTopicIdError` that the same release
- *   added. This class is that version.
+ *   added ({@see FetchRequestV13} keeps that version);
+ * * **v14** (Kafka 3.5, KIP-405) is byte-identical to v13 in both directions - `FetchRequest.json` @ 3.5.2 has no
+ *   field of it and its whole comment is "Version 14 is the same as version 13 but it also receives a new error
+ *   called OffsetMovedToTieredStorageException" - and states that the client understands the error code **109**
+ *   `OFFSET_MOVED_TO_TIERED_STORAGE`, which a broker with remote storage answers for a fetch offset that is no
+ *   longer on its local disk. A version below 14 gets **1** `OffsetOutOfRange` for the same condition
+ *   (`ReplicaManager.handleOffsetMovedToTieredStorage` @ 3.9.2); this node has no remote storage configured, so
+ *   the code cannot be produced on it and the version is documented on the wire alone
+ *   ({@see FetchRequestV14} keeps it);
+ * * **v15** (Kafka 3.5, KIP-903) **deprecates the top-level `replica_id`** - it is `versions 0-14` from that
+ *   release on - and puts a tagged `replica_state` of a replica id **and a replica epoch** in its place, see
+ *   {@see self::$replicaState} and {@see \Protocol\Kafka\Protocol\Data\FetchRequestReplicaState}. A consumer's
+ *   state is the default `-1` / `-1`, which a tagged field does not write at all, so a version 15 consumer fetch
+ *   is the version 14 frame **minus** the four bytes of the old field. This class is that version.
  *
  * A request of version 7 and above **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
  * which is what this class sends when it is given no metadata - is served exactly like a version 6 request: the
  * whole requested set comes back and the answer reports `session_id = 0`. That is what
  * {@see \Protocol\Kafka\Client::fetchPartitions()} sends today.
  *
- * {@see FetchRequestV12}, {@see FetchRequestV11}, {@see FetchRequestV10}, {@see FetchRequestV9}, {@see FetchRequestV8},
+ * {@see FetchRequestV14}, {@see FetchRequestV13}, {@see FetchRequestV12}, {@see FetchRequestV11},
+ * {@see FetchRequestV10}, {@see FetchRequestV9}, {@see FetchRequestV8},
  * {@see FetchRequestV7}, {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4},
  * {@see FetchRequestV3}, {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower
  * versions available.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v13)", "Fetch sessions (v7, KIP-227)" and
- *      "The topic ids of the fetch path (v13, KIP-516)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)", "Fetch sessions (v7, KIP-227)",
+ *      "The topic ids of the fetch path (v13, KIP-516)" and "The replica state of KIP-903 (v15)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -153,7 +169,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 13;
+    public const int VERSION = 15;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
@@ -257,6 +273,24 @@ class FetchRequest extends AbstractRequest
     protected ?string $clusterId = null;
 
     /**
+     * Who this fetch comes from, the tagged `replica_state` of version 15 (Kafka 3.5, KIP-903)
+     *
+     * `null` - what a consumer means and what this client sends - is the pair `-1` / `-1` of the specification and
+     * leaves the field off the wire altogether, which is what a tagged field whose value is its default does. A
+     * caller that really is a follower states its node id and its **broker epoch** here, and the leader of the
+     * partition fences a fetch whose epoch is older than the one the controller published for that broker
+     * ({@see \Protocol\Kafka\Protocol\Data\FetchRequestReplicaState}).
+     *
+     * Every version below 15 carries the node id in the plain {@see self::$replicaId} field instead and has no
+     * place for an epoch at all; the property is declared here rather than promoted in the constructor for the
+     * reason {@see self::$clusterId} is - a tagged field that a frame does not carry would leave a promoted
+     * property uninitialized.
+     *
+     * @since Version 15 of protocol (Kafka 3.5, KIP-903)
+     */
+    protected ?FetchRequestReplicaState $replicaState = null;
+
+    /**
      * @param array<string, array<int, int|array{int, int}>> $topicPartitions Fetch offset of every partition, as
      *                                                          topic => partition => offset. The **order** of this
      *                                                          array is the order the broker fills the answer in,
@@ -288,7 +322,11 @@ class FetchRequest extends AbstractRequest
      *                                                          request. Ordinary consumers always send -1 as they
      *                                                          have no node id; -2 is accepted from a non-broker
      *                                                          that wants to fetch as if it were a replica, for
-     *                                                          debugging purposes.
+     *                                                          debugging purposes. **From version 15 on the value
+     *                                                          travels in the tagged `replica_state`** instead of
+     *                                                          in a field of its own (KIP-903), see
+     *                                                          {@see self::$replicaState}, and a -1 leaves it off
+     *                                                          the wire.
      * @param int                            $maxBytes          The maximum number of bytes of the whole answer
      *                                                          (`fetch.max.bytes`), the field that version 3 added.
      * @param FetchMetadata|null             $metadata          Session id and epoch of version 7, `null` for the
@@ -305,6 +343,11 @@ class FetchRequest extends AbstractRequest
      *                                                          raw bytes of its uuid; **version 13 needs one per
      *                                                          topic** and throws {@see UnknownTopicIdException}
      *                                                          without it, every lower version ignores the map.
+     * @param int|null                       $replicaEpoch      Broker epoch of the follower named in `$replicaId`,
+     *                                                          the second half of the `replica_state` of version 15
+     *                                                          (KIP-903); `null` and `-1` are "unknown", and a
+     *                                                          consumer - `$replicaId = -1` - leaves the whole
+     *                                                          structure off the wire.
      */
     public function __construct(
         array $topicPartitions,
@@ -353,10 +396,18 @@ class FetchRequest extends AbstractRequest
          */
         protected readonly string $rackId = self::NO_RACK,
         ?string $clusterId = null,
-        array $topicIds = []
+        array $topicIds = [],
+        ?int $replicaEpoch = null
     ) {
         $this->clusterId = $clusterId;
         $this->topicIds  = $topicIds;
+
+        // The `replica_state` of version 15 is a TAGGED field whose default is the pair -1 / -1: a consumer says
+        // nothing at all, and only a caller that really claims to be a replica puts the structure on the wire
+        $replicaEpoch ??= FetchRequestReplicaState::UNKNOWN;
+        if ($replicaId !== FetchRequestReplicaState::UNKNOWN || $replicaEpoch !== FetchRequestReplicaState::UNKNOWN) {
+            $this->replicaState = new FetchRequestReplicaState($replicaId, $replicaEpoch);
+        }
 
         $metadata ??= FetchMetadata::legacy();
         $this->sessionId = $metadata->sessionId;
@@ -497,11 +548,14 @@ class FetchRequest extends AbstractRequest
     public static function getScheme(): array
     {
         $header = parent::getScheme();
-        $body   = [
-            'replicaId'   => BinarySchema::TYPE_INT32,
-            'maxWaitTime' => BinarySchema::TYPE_INT32,
-            'minBytes'    => BinarySchema::TYPE_INT32,
-        ];
+        $body   = [];
+        // Version 15 (KIP-903) deprecated the plain `replica_id` - `"versions": "0-14"` in FetchRequest.json
+        // @ 3.5.2 - and replaced it with the tagged `replica_state` at the end of the body, see below
+        if (static::VERSION <= 14) {
+            $body['replicaId'] = BinarySchema::TYPE_INT32;
+        }
+        $body['maxWaitTime'] = BinarySchema::TYPE_INT32;
+        $body['minBytes']    = BinarySchema::TYPE_INT32;
         if (static::VERSION >= 3) {
             $body['maxBytes'] = BinarySchema::TYPE_INT32;
         }
@@ -528,8 +582,37 @@ class FetchRequest extends AbstractRequest
         if (static::VERSION >= 12) {
             $body['clusterId'] = new TaggedField(0, BinarySchema::TYPE_NULLABLE_STRING, null);
         }
+        // The `replica_state` of version 15 is tagged as well (tag 1) and follows the cluster id in the section,
+        // which the engine writes in ascending order of the tags whatever the scheme declares
+        if (static::VERSION >= 15) {
+            $body['replicaState'] = new TaggedField(1, FetchRequestReplicaState::class, null);
+        }
 
         return $header + $body;
+    }
+
+    /**
+     * Returns the node id this request claims to come from, -1 for the ordinary consumer fetch
+     *
+     * Below version 15 that is the plain `replica_id` field of the frame; from version 15 on it is the replica id
+     * of the tagged `replica_state` of KIP-903, and a frame that does not carry the tag at all means the -1 of a
+     * consumer, {@see self::$replicaState}.
+     */
+    public function getReplicaId(): int
+    {
+        if (static::VERSION >= 15) {
+            return $this->replicaState?->replicaId ?? FetchRequestReplicaState::UNKNOWN;
+        }
+
+        return $this->replicaId;
+    }
+
+    /**
+     * Returns the `replica_state` of version 15, `null` for a consumer and for every version below it (KIP-903)
+     */
+    public function getReplicaState(): ?FetchRequestReplicaState
+    {
+        return static::VERSION >= 15 ? $this->replicaState : null;
     }
 
     /**

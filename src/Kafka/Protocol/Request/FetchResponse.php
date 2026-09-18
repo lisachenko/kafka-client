@@ -99,21 +99,32 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
  * `FetchSessionTopicIdError` of a session that was started with the other kind of name, see {@see self::$errorCode}.
  * {@see FetchResponseV12} keeps the answer that names its topics.
  *
+ * **The versions 14 and 15 (Kafka 3.5) leave the frame alone again.** `FetchResponse.json` @ 3.5.2 declares no
+ * field of either - "Version 14 is the same as version 13 but it also receives a new error called
+ * OffsetMovedToTieredStorageException (KIP-405)" and "Version 15 is the same as version 14 (KIP-903)" - so
+ * {@see FetchResponseV14} and {@see FetchResponseV13} decode the very same bytes as this class. What version 14
+ * states is that the client understands the error code **109** `OFFSET_MOVED_TO_TIERED_STORAGE` in a partition
+ * entry, which a broker with remote storage answers for a fetch offset that is no longer on its local disk and
+ * which it turns into **1** `OffsetOutOfRange` for a request below that version
+ * (`ReplicaManager.handleOffsetMovedToTieredStorage` @ 3.9.2); what version 15 states is what the *request*
+ * carries, the `replica_state` of KIP-903, see {@see FetchRequest::$replicaState}.
+ *
  * What the answer of every version has to match is the *version of the request it belongs to*, which is why
- * {@see FetchResponseV12}, {@see FetchResponseV11}, {@see FetchResponseV10}, {@see FetchResponseV9}, {@see FetchResponseV8},
+ * {@see FetchResponseV14}, {@see FetchResponseV13}, {@see FetchResponseV12}, {@see FetchResponseV11},
+ * {@see FetchResponseV10}, {@see FetchResponseV9}, {@see FetchResponseV8},
  * {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4},
  * {@see FetchResponseV3}, {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v13)", "Fetch sessions (v7, KIP-227)" and
- *      "The topic ids of the fetch path (v13, KIP-516)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)", "Fetch sessions (v7, KIP-227)",
+ *      "The topic ids of the fetch path (v13, KIP-516)" and "The tiered-storage error of KIP-405 (v14)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 13;
+    public const int VERSION = 15;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

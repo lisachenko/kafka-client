@@ -82,12 +82,20 @@ use Protocol\Kafka\Protocol\Data\OffsetsResponseTopicV1;
  * matches. A **version 6 or lower** request that asks for `-3` is answered **35** `UNSUPPORTED_VERSION` for that
  * partition, with `-1` / `-1`, see {@see OffsetsRequestV6}.
  *
+ * **Version 8 (Kafka 3.5, KIP-405) is that same answer once more.** `ListOffsetsResponse.json` @ 3.5.2 says
+ * "Version 8 enables listing offsets by local log start offset" and declares no field of it, so
+ * {@see OffsetsResponseV7} decodes the very same bytes. What the version carries is the answer to the target time
+ * {@see OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP} (`-4`): the first offset that is still on the **local** disk of
+ * the broker, with the timestamp `-1`, because that lookup reads no record either. On a cluster without remote
+ * storage it is the log start offset, i.e. the same number `-2` answers. A **version 7 or lower** request that
+ * asks for `-4` is answered **35** `UNSUPPORTED_VERSION` for that partition, see {@see OffsetsRequestV7}.
+ *
  * A target timestamp that no message matches - one above the timestamp of every message of the log, and any
  * timestamp on an empty log - is **not** an error: the broker answers the code 0 with
  * {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP} and {@see OffsetsResponsePartition::UNKNOWN_OFFSET}, i.e. -1
  * and -1 (`KafkaApis.fetchOffsetForTimestamp` @ 0.11.0.3).
  *
- * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v7), a.k.a. ListOffset",
+ * @see docs/protocol/3.9.md, sections "Offsets API (key 2, v0 to v8), a.k.a. ListOffset",
  *      "Quotas and throttle time" and "The leader epoch (KIP-320)"
  */
 class OffsetsResponse extends AbstractResponse
@@ -95,7 +103,7 @@ class OffsetsResponse extends AbstractResponse
     /**
      * @inheritdoc
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

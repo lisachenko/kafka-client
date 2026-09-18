@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * `last_fetched_epoch` of KIP-595 ({@see FetchRequestTopicPartition}), which is what {@see FetchRequestTopicV9}
  * does not carry.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v13)"
+ * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v15)"
  */
 final class FetchRequestTopicV12 extends FetchRequestTopic
 {

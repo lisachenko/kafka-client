@@ -589,9 +589,15 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 13, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
-        // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch
-        self::assertStringStartsWith('0001000d', $request, 'the Fetch api is spoken in version 13');
+        // ApiKey 1, ApiVersion 15, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch. A
+        // version 15 frame carries no `replica_id` at all (KIP-903), so `max_wait_ms` follows the header at once
+        self::assertStringStartsWith('0001000f', $request, 'the Fetch api is spoken in version 15');
+        self::assertStringNotContainsString(
+            '000974372d636c69656e7400' . 'ffffffff',
+            $request,
+            'the deprecated replica_id is not in the body of a version 15 request'
+        );
         self::assertStringContainsString(
             '00100000' . '00' . '00000000' . 'ffffffff',
             $request,

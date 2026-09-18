@@ -41,6 +41,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV7;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV1;
@@ -49,6 +50,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
+use Protocol\Kafka\Protocol\Request\OffsetsResponseV7;
 
 /**
  * Byte-exact tests for the Offsets (ListOffset) API, versions 0, 1 and 2.
@@ -62,16 +64,18 @@ use Protocol\Kafka\Protocol\Request\OffsetsResponseV6;
  *   ListOffsets Response (Version: 2) => throttle_time_ms [topic [partition error_code timestamp offset]]
  * </pre>
  *
- * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v7), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v8), a.k.a. ListOffset"
  */
 #[CoversClass(OffsetsRequest::class)]
 #[CoversClass(OffsetsRequestV0::class)]
 #[CoversClass(OffsetsRequestV1::class)]
 #[CoversClass(OffsetsRequestV6::class)]
+#[CoversClass(OffsetsRequestV7::class)]
 #[CoversClass(OffsetsResponse::class)]
 #[CoversClass(OffsetsResponseV0::class)]
 #[CoversClass(OffsetsResponseV1::class)]
 #[CoversClass(OffsetsResponseV6::class)]
+#[CoversClass(OffsetsResponseV7::class)]
 #[CoversClass(OffsetsRequestTopic::class)]
 #[CoversClass(OffsetsRequestTopicV0::class)]
 #[CoversClass(OffsetsRequestPartition::class)]
@@ -87,7 +91,7 @@ final class OffsetsApiTest extends TestCase
      *
      *   Size            => 00 00 00 2f (47 bytes)
      *   ApiKey          => 00 02
-     *   ApiVersion      => 00 07 (the version Kafka 3.0 added; the frame is the flexible one of KIP-482, v6)
+     *   ApiVersion      => 00 08 (the version Kafka 3.5 added; the frame is the flexible one of KIP-482, v6)
      *   CorrelationId   => 00 00 00 07
      *   ClientId        => 00 04 "test" (an int16 length, never compact), then the tag buffer of the header
      *   ReplicaId       => ff ff ff ff (-1, an ordinary consumer)
@@ -101,7 +105,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string LATEST_REQUEST_HEX = '0000002f'
         . '0002'
-        . '0007'
+        . '0008'
         . '00000007'
         . '0004' . '74657374'
         . '00'
@@ -119,7 +123,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string LATEST_COMMITTED_REQUEST_HEX = '0000002f'
         . '0002'
-        . '0007'
+        . '0008'
         . '00000007'
         . '0004' . '74657374'
         . '00'
@@ -137,7 +141,7 @@ final class OffsetsApiTest extends TestCase
      */
     private const string EARLIEST_REQUEST_HEX = '0000002f'
         . '0002'
-        . '0007'
+        . '0008'
         . '00000007'
         . '0004' . '74657374'
         . '00'
@@ -250,7 +254,7 @@ final class OffsetsApiTest extends TestCase
 
         self::assertSame(self::LATEST_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(47, $request->getMessageSize(), 'the compact encoding of KIP-482 is three bytes shorter');
-        self::assertSame(7, $request->getApiVersion(), 'the client sends the version Kafka 3.0 added');
+        self::assertSame(8, $request->getApiVersion(), 'the client sends the version Kafka 3.5 added');
     }
 
     public function testTheVersionsTwoAndThreeSendOneAndTheSameFrame(): void
@@ -319,8 +323,8 @@ final class OffsetsApiTest extends TestCase
         self::assertSame(-1, OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH);
         self::assertSame(4, OffsetsRequestV4::VERSION);
         self::assertSame(4, OffsetsResponseV4::VERSION);
-        self::assertSame(7, OffsetsRequest::VERSION);
-        self::assertSame(7, OffsetsResponse::VERSION);
+        self::assertSame(8, OffsetsRequest::VERSION);
+        self::assertSame(8, OffsetsResponse::VERSION);
     }
 
     public function testVersionFiveIsTheVersionFourFrameAndOneMoreErrorCode(): void
@@ -371,18 +375,44 @@ final class OffsetsApiTest extends TestCase
             'test',
             7,
         ];
-        $seven = bin2hex((string) new OffsetsRequest(...$arguments));
+        $seven = bin2hex((string) new OffsetsRequestV7(...$arguments));
         $six   = bin2hex((string) new OffsetsRequestV6(...$arguments));
 
         self::assertSame(substr($six, 2 * 8), substr($seven, 2 * 8), 'the bodies are the same bytes');
         self::assertSame('0006', substr($six, 2 * 6, 4), 'only the api version of the header differs');
         self::assertSame('0007', substr($seven, 2 * 6, 4));
-        self::assertSame(self::LATEST_REQUEST_HEX, $seven);
-        self::assertSame(OffsetsRequestV6::getScheme(), OffsetsRequest::getScheme());
-        self::assertSame(OffsetsResponseV6::getScheme(), OffsetsResponse::getScheme());
+        self::assertSame(OffsetsRequestV6::getScheme(), OffsetsRequestV7::getScheme());
+        self::assertSame(OffsetsResponseV6::getScheme(), OffsetsResponseV7::getScheme());
         self::assertSame(6, OffsetsRequestV6::VERSION);
         self::assertSame(6, OffsetsResponseV6::VERSION);
+        self::assertSame(7, OffsetsRequestV7::VERSION);
+        self::assertSame(7, OffsetsResponseV7::VERSION);
         self::assertTrue(OffsetsRequestV6::isFlexible(), 'version 6 is the first flexible one, and 7 stays flexible');
+        self::assertTrue(OffsetsRequestV7::isFlexible());
+    }
+
+    public function testVersionEightIsTheSameFrameOnceMoreAndTheLocalLogStartOffset(): void
+    {
+        // `ListOffsetsRequest.json` @ 3.5.2 says "Version 8 enables listing offsets by local log start offset
+        // (KIP-405)" and declares no field of it either: the version 8 this client sends is the version 7 frame
+        // with another number in its header, and what it buys is the fourth special target time -4
+        $arguments = [
+            ['topic' => [0 => OffsetsRequest::LATEST]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7,
+        ];
+        $eight = bin2hex((string) new OffsetsRequest(...$arguments));
+        $seven = bin2hex((string) new OffsetsRequestV7(...$arguments));
+
+        self::assertSame(substr($seven, 2 * 8), substr($eight, 2 * 8), 'the bodies are the same bytes');
+        self::assertSame('0008', substr($eight, 2 * 6, 4), 'only the api version of the header differs');
+        self::assertSame(self::LATEST_REQUEST_HEX, $eight);
+        self::assertSame(OffsetsRequestV7::getScheme(), OffsetsRequest::getScheme());
+        self::assertSame(OffsetsResponseV7::getScheme(), OffsetsResponse::getScheme());
+        self::assertSame(8, OffsetsRequest::VERSION);
+        self::assertSame(8, OffsetsResponse::VERSION);
         self::assertTrue(OffsetsRequest::isFlexible());
     }
 
@@ -401,6 +431,51 @@ final class OffsetsApiTest extends TestCase
             substr_replace(self::LATEST_REQUEST_HEX, 'fffffffffffffffd', 2 * 36 + 8, 16),
             bin2hex((string) $request),
             'the target time is the only byte range that differs from the -1 of the latest offset'
+        );
+    }
+
+    public function testTheLocalLogStartOffsetOfKip405IsTheTargetTimeMinusFour(): void
+    {
+        $request = new OffsetsRequest(
+            ['topic' => [0 => OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP]],
+            -1,
+            FetchRequest::READ_UNCOMMITTED,
+            'test',
+            7
+        );
+
+        self::assertSame(-4, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
+        self::assertSame(
+            substr_replace(self::LATEST_REQUEST_HEX, 'fffffffffffffffc', 2 * 36 + 8, 16),
+            bin2hex((string) $request),
+            'the target time is the only byte range that differs from the -1 of the latest offset'
+        );
+    }
+
+    public function testAVersionBelowEightIsAnsweredThirtyFiveForTheLocalLogStartOffset(): void
+    {
+        // What the 3.9.2 node answers a -4 that was asked with version 7: the code 35 for that PARTITION, with
+        // the timestamp, the offset and the leader epoch -1, exactly as it answers a -3 below version 7
+        // (`offsets.response.v7.earliest-local-unsupported`)
+        $frame = hex2bin(
+            '00000036' . '00000390' . '00'
+            . '00000000'
+            . '02' . '0e' . '74322d33352d766563746f7273'
+            . '02' . '00000000' . '0023' . 'ffffffffffffffff' . 'ffffffffffffffff' . 'ffffffff' . '00'
+            . '00' . '00'
+        );
+        self::assertIsString($frame);
+
+        $response = OffsetsResponseV7::unpack(new StringStream($frame));
+
+        $partition = $response->topics['t2-35-vectors']->partitions[0];
+        self::assertSame(KafkaException::UNSUPPORTED_VERSION, $partition->errorCode);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_TIMESTAMP, $partition->timestamp);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_OFFSET, $partition->offset);
+        self::assertSame(OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH, $partition->leaderEpoch);
+        self::assertInstanceOf(
+            UnsupportedVersionException::class,
+            KafkaException::fromCode($partition->errorCode, ['topic' => 't2-35-vectors'])
         );
     }
 
@@ -456,6 +531,8 @@ final class OffsetsApiTest extends TestCase
     {
         self::assertSame(-1, OffsetsRequest::LATEST);
         self::assertSame(-2, OffsetsRequest::EARLIEST);
+        self::assertSame(-3, OffsetsRequest::MAX_TIMESTAMP);
+        self::assertSame(-4, OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP);
         self::assertSame(-1, OffsetsRequest::CONSUMER_REPLICA_ID);
         self::assertSame(-2, OffsetsRequest::DEBUGGING_REPLICA_ID);
         self::assertSame(-1, OffsetsResponsePartition::UNKNOWN_TIMESTAMP);
@@ -537,7 +614,7 @@ final class OffsetsApiTest extends TestCase
 
         self::assertSame(
             '00000040'
-            . '0002' . '0007' . '00000007' . '0004' . '74657374' . '00'
+            . '0002' . '0008' . '00000007' . '0004' . '74657374' . '00'
             . 'ffffffff'
             . '00'
             . '02'

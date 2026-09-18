@@ -15,6 +15,8 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\OffsetMovedToTieredStorageException;
 use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Message;
@@ -26,6 +28,7 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopicV7;
+use Protocol\Kafka\Protocol\Data\FetchRequestReplicaState;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV0;
@@ -56,6 +59,8 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV10;
 use Protocol\Kafka\Protocol\Request\FetchRequestV11;
 use Protocol\Kafka\Protocol\Request\FetchRequestV12;
+use Protocol\Kafka\Protocol\Request\FetchRequestV13;
+use Protocol\Kafka\Protocol\Request\FetchRequestV14;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
@@ -70,6 +75,8 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV10;
 use Protocol\Kafka\Protocol\Request\FetchResponseV11;
 use Protocol\Kafka\Protocol\Request\FetchResponseV12;
+use Protocol\Kafka\Protocol\Request\FetchResponseV13;
+use Protocol\Kafka\Protocol\Request\FetchResponseV14;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
 use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
@@ -99,11 +106,14 @@ use Protocol\Kafka\Protocol\TaggedField;
  *   FetchResponse v7        => ThrottleTimeMs ErrorCode SessionId [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v13)", "Fetch sessions (v7, KIP-227)",
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)", "Fetch sessions (v7, KIP-227)",
  *      "The topic ids of the fetch path (v13, KIP-516)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestV12::class)]
+#[CoversClass(FetchRequestV13::class)]
+#[CoversClass(FetchRequestV14::class)]
+#[CoversClass(FetchRequestReplicaState::class)]
 #[CoversClass(FetchRequestV6::class)]
 #[CoversClass(FetchRequestV5::class)]
 #[CoversClass(FetchRequestV4::class)]
@@ -113,6 +123,8 @@ use Protocol\Kafka\Protocol\TaggedField;
 #[CoversClass(FetchRequestV0::class)]
 #[CoversClass(FetchResponse::class)]
 #[CoversClass(FetchResponseV12::class)]
+#[CoversClass(FetchResponseV13::class)]
+#[CoversClass(FetchResponseV14::class)]
 #[CoversClass(FetchResponseV6::class)]
 #[CoversClass(FetchResponseV5::class)]
 #[CoversClass(FetchResponseV4::class)]
@@ -727,8 +739,12 @@ final class FetchApiTest extends TestCase
         self::assertSame(11, FetchResponseV11::VERSION);
         self::assertSame(12, FetchRequestV12::VERSION);
         self::assertSame(12, FetchResponseV12::VERSION);
-        self::assertSame(13, FetchRequest::VERSION, 'the client sends the topic ids of Kafka 3.1');
-        self::assertSame(13, FetchResponse::VERSION);
+        self::assertSame(13, FetchRequestV13::VERSION, 'the topic ids of Kafka 3.1');
+        self::assertSame(13, FetchResponseV13::VERSION);
+        self::assertSame(14, FetchRequestV14::VERSION);
+        self::assertSame(14, FetchResponseV14::VERSION);
+        self::assertSame(15, FetchRequest::VERSION, 'the client sends the replica state of Kafka 3.5');
+        self::assertSame(15, FetchResponse::VERSION);
     }
 
     public function testTheIsolationLevelOfVersionFourIsWrittenBehindTheRequestLevelMaxBytes(): void
@@ -874,7 +890,7 @@ final class FetchApiTest extends TestCase
         // {@see self::FETCH_REQUEST_HEX} carries the 16 raw bytes of the id where version 12 carries the compact
         // string `topic` - four bytes more, and no name anywhere in the frame
         $topicId = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
-        $request = new FetchRequest(
+        $request = new FetchRequestV13(
             ['topic' => [0 => 0, 1 => 42]],
             100,
             1,
@@ -910,6 +926,178 @@ final class FetchApiTest extends TestCase
             strlen((string) $request),
             'a uuid is 16 raw bytes, the compact name of this topic was six'
         );
+    }
+
+    public function testVersionFourteenIsTheVersionThirteenFrameWithAnotherApiVersion(): void
+    {
+        // KIP-405 (Kafka 3.5): `FetchRequest.json` @ 3.5.2 declares no field of version 14 and says "Version 14
+        // is the same as version 13 but it also receives a new error called OffsetMovedToTieredStorageException",
+        // so the two frames differ in the api version of the header alone - what the version buys is the promise
+        // to understand the error code 109 in a partition entry of the answer
+        $topicId   = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $arguments = [
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            FetchRequest::NO_RACK,
+            null,
+            ['topic' => $topicId],
+        ];
+        $thirteen = bin2hex((string) new FetchRequestV13(...$arguments));
+        $fourteen = bin2hex((string) new FetchRequestV14(...$arguments));
+
+        self::assertSame($thirteen, substr_replace($fourteen, '000d', 12, 4));
+        self::assertSame('000e', substr($fourteen, 12, 4));
+        self::assertEquals(FetchRequestV13::getScheme(), FetchRequestV14::getScheme());
+        self::assertEquals(FetchResponseV13::getScheme(), FetchResponseV14::getScheme());
+        self::assertSame(
+            109,
+            KafkaException::OFFSET_MOVED_TO_TIERED_STORAGE,
+            'the error code the version exists for, declared at the foundation of this line'
+        );
+        self::assertInstanceOf(
+            OffsetMovedToTieredStorageException::class,
+            KafkaException::fromCode(KafkaException::OFFSET_MOVED_TO_TIERED_STORAGE, ['topic' => 'topic'])
+        );
+    }
+
+    public function testVersionFifteenReplacesTheReplicaIdWithTheTaggedReplicaState(): void
+    {
+        // KIP-903 (Kafka 3.5): `FetchRequest.json` @ 3.5.2 declares the top-level `ReplicaId` as
+        // `"versions": "0-14"` and puts a `ReplicaState` of a replica id and a replica epoch in its place, as the
+        // TAG 1 of the request. A consumer is the default -1 / -1 of that structure, and a tagged field whose
+        // value is its default is not written at all: a version 15 consumer fetch is the version 14 frame minus
+        // the four bytes of the old field
+        $topicId   = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $arguments = [
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            FetchRequest::NO_RACK,
+            null,
+            ['topic' => $topicId],
+        ];
+        $fourteen = bin2hex((string) new FetchRequestV14(...$arguments));
+        $fifteen  = bin2hex((string) new FetchRequest(...$arguments));
+
+        // The api version, the size and the four bytes of the replica id are the whole difference: the body of a
+        // version 15 request starts at `max_wait_ms`
+        $expected = substr_replace($fourteen, '000f', 12, 4);
+        $expected = str_replace('7465737400' . 'ffffffff' . '00000064', '7465737400' . '00000064', $expected);
+        $expected = substr_replace($expected, sprintf('%08x', (strlen($expected) - 8) / 2), 0, 8);
+
+        self::assertSame($expected, $fifteen);
+        self::assertSame(
+            strlen((string) hex2bin($fourteen)) - 4,
+            strlen((string) hex2bin($fifteen)),
+            'a consumer writes no replica state at all, so the frame is four bytes shorter'
+        );
+        self::assertStringEndsWith('0100', $fifteen, 'the empty rack of KIP-392 and an EMPTY tag buffer');
+        self::assertSame(-1, new FetchRequest(...$arguments)->getReplicaId());
+        self::assertNull(new FetchRequest(...$arguments)->getReplicaState());
+        self::assertNull(
+            new FetchRequestV14(...$arguments)->getReplicaState(),
+            'no version below 15 has a replica state at all'
+        );
+    }
+
+    public function testAFetchThatNamesAReplicaWritesTheStructureOfKip903(): void
+    {
+        $topicId   = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $arguments = [
+            ['topic' => [0 => 0]],
+            100,
+            1,
+            1024,
+            1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            FetchRequest::NO_RACK,
+            null,
+            ['topic' => $topicId],
+            7,
+        ];
+        $request  = new FetchRequest(...$arguments);
+        $consumer = new FetchRequest(...array_replace($arguments, [4 => -1, 14 => null]));
+
+        // One tagged field: the count 01, the tag 01, the size 0d, and the 13 bytes of the structure - an int32
+        // replica id, an int64 replica epoch and the tag buffer every structure of a flexible version ends in
+        self::assertStringEndsWith(
+            '01' . '01' . '0d' . '00000001' . '0000000000000007' . '00',
+            bin2hex((string) $request)
+        );
+        self::assertSame(
+            strlen((string) $consumer) + 15,
+            strlen((string) $request),
+            'the tagged field costs two bytes of framing, a length and thirteen of value, where the consumer'
+            . ' writes the single byte of an empty section'
+        );
+        self::assertSame(1, $request->getReplicaId());
+        self::assertSame(1, $request->getReplicaState()?->replicaId);
+        self::assertSame(7, $request->getReplicaState()?->replicaEpoch);
+        self::assertSame(
+            ['replicaId' => BinarySchema::TYPE_INT32, 'replicaEpoch' => BinarySchema::TYPE_INT64],
+            FetchRequestReplicaState::getScheme()
+        );
+        self::assertSame(-1, FetchRequestReplicaState::UNKNOWN);
+        self::assertSame(15, FetchRequestReplicaState::VERSION);
+
+        // The same request decoded again carries the structure, and re-encodes to the very same bytes
+        $decoded = FetchRequest::unpack(new StringStream((string) $request));
+        self::assertSame(1, $decoded->getReplicaState()?->replicaId);
+        self::assertSame(7, $decoded->getReplicaState()?->replicaEpoch);
+        self::assertSame(bin2hex((string) $request), bin2hex((string) $decoded));
+    }
+
+    public function testTheDebuggingReplicaIdTravelsInTheReplicaStateOfVersionFifteen(): void
+    {
+        // -2 is the "read like a follower" id of every version below 15; from version 15 on it is a replica state
+        // with the epoch -1, and the node serves such a fetch like a consumer's one, because
+        // `FetchRequest.isFromFollower` @ 3.9.2 is `replicaId >= 0`
+        $topicId = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $request = new FetchRequest(
+            ['topic' => [0 => 0]],
+            100,
+            1,
+            1024,
+            -2,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            FetchRequest::NO_RACK,
+            null,
+            ['topic' => $topicId]
+        );
+
+        self::assertStringEndsWith(
+            '01' . '01' . '0d' . 'fffffffe' . 'ffffffffffffffff' . '00',
+            bin2hex((string) $request)
+        );
+        self::assertSame(-2, $request->getReplicaId());
+        self::assertSame(-1, $request->getReplicaState()?->replicaEpoch);
     }
 
     public function testAVersionThirteenFetchOfATopicWithoutAnIdIsRefused(): void
@@ -1023,8 +1211,19 @@ final class FetchApiTest extends TestCase
         // the forgotten topics of v7 behind the whole topics array. Version 12 puts the tagged-field section of
         // the request header v2 behind the client id and the tagged `ClusterId` of KIP-595 at the very end.
         self::assertSame(
+            ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'headerTaggedFields', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'sessionId', 'epoch', 'topicPartitions', 'forgottenTopics', 'rackId', 'clusterId', 'replicaState'],
+            array_keys($scheme),
+            'version 15 (KIP-903) took the replica id out of the body and put the tagged replica state at its end'
+        );
+        self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'headerTaggedFields', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'sessionId', 'epoch', 'topicPartitions', 'forgottenTopics', 'rackId', 'clusterId'],
-            array_keys($scheme)
+            array_keys(FetchRequestV14::getScheme()),
+            'every version up to 14 carries the replica id as the first field of the body'
+        );
+        self::assertSame(
+            array_keys(FetchRequestV14::getScheme()),
+            array_keys(FetchRequestV13::getScheme()),
+            'version 14 (KIP-405) added no field at all'
         );
         self::assertSame(
             ['messageSize', 'apiKey', 'apiVersion', 'correlationId', 'clientId', 'replicaId', 'maxWaitTime', 'minBytes', 'maxBytes', 'isolationLevel', 'sessionId', 'epoch', 'topicPartitions', 'forgottenTopics', 'rackId'],
