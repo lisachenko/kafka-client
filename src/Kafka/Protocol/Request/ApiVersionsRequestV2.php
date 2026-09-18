@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * This class is what a client sends to a broker of Kafka 2.0 to 2.3, and it is the class the version 2 wire vectors
  * are replayed through.
  *
- * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 final class ApiVersionsRequestV2 extends ApiVersionsRequest
 {

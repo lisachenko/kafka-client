@@ -193,14 +193,16 @@ class AdminClient
      * instead of being reported with an empty range, and the KRaft apis of the controller listener (52-55, 58, 59,
      * 62-64) never appear on a ZooKeeper-backed broker at all.
      *
-     * The request goes out as version 3 ({@see ApiVersionsRequest}), the first flexible version of the protocol, so
-     * the answer carries the trailing `throttleTimeMs` of KIP-124 and the features of KIP-584 as tagged fields;
-     * only the whole {@see Client::apiVersions()} response exposes them, this method returns the api table alone.
+     * The request goes out as version 4 ({@see ApiVersionsRequest}), the frame of the first flexible version of
+     * the protocol with a 4 in its header (KAFKA-17011, Kafka 3.9), so the answer carries the trailing
+     * `throttleTimeMs` of KIP-124 and the features of KIP-584 as tagged fields - including the ones whose
+     * `min_version` is 0, which a request below the version 4 is not shown; only the whole
+     * {@see Client::apiVersions()} response exposes them, this method returns the api table alone.
      *
      * @param Node $node Broker to ask
      *
      * @throws KafkaException If the broker answered the error code 35 (UnsupportedVersion), i.e. it is older than
-     *                        Kafka 2.4 and does not serve version 3 of this api
+     *                        Kafka 3.9 and does not serve version 4 of this api
      *
      * @return array<int, ApiVersionsResponseMetadata> Version range of each api, indexed by the api key
      */
@@ -3171,18 +3173,25 @@ class AdminClient
      * that KIP-595 put in the place of ZooKeeper. The answer says who leads that quorum, in which epoch, how far
      * the log is replicated, and what the leader knows about every **voter** and **observer** of it.
      *
-     * **This client sends the version 1** (KIP-836, Kafka 3.3), whose replica states also carry *when* the leader
-     * last heard from a replica and how far back the data it has reaches - the two fields that tell a follower
-     * that lags from one that is gone. Against a broker that only serves the version 0 the two timestamps are
-     * simply not on the wire, and {@see ReplicaState::$lastFetchTimestamp} and
-     * {@see ReplicaState::$lastCaughtUpTimestamp} are null for every replica.
+     * **This client sends the version 2** (KIP-853, Kafka 3.9), which adds four things to the answer of the
+     * version 1: an error message next to the top-level code and next to the code of every partition, a
+     * **directory id** in every replica state, and the top-level **nodes** array - one entry per node of the
+     * quorum with the listener name, host and port it can be reached at ({@see QuorumInfo::$nodes},
+     * {@see QuorumNode}), which is the only place an id of a replica state can be resolved to an address.
+     *
+     * The version 1 (KIP-836, Kafka 3.3) is where the replica states gained *when* the leader last heard from a
+     * replica and how far back the data it has reaches - the two fields that tell a follower that lags from one
+     * that is gone. Against a broker that only serves the version 0 those two timestamps are simply not on the
+     * wire, and {@see ReplicaState::$lastFetchTimestamp} and {@see ReplicaState::$lastCaughtUpTimestamp} are null
+     * for every replica; against one below the version 2 {@see QuorumInfo::$nodes} is empty and every
+     * {@see ReplicaState::$replicaDirectoryId} is the zero uuid.
      *
      * A cluster that runs **with ZooKeeper** has no quorum to describe: a 2.8.2 broker does not serve the key 55
      * on a client listener at all, and every version of it is answered by closing the connection.
      *
      * @throws KafkaException If the request as a whole, or the partition of the metadata log, was refused
      *
-     * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 and v1)"
+     * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
      */
     public function describeMetadataQuorum(): QuorumInfo
     {
@@ -3216,12 +3225,26 @@ class AdminClient
             );
         }
 
+        $nodes = [];
+        foreach ($response->nodes as $node) {
+            $endpoints = [];
+            foreach ($node->listeners as $listener) {
+                $endpoints[$listener->name] = new RaftVoterEndpoint(
+                    $listener->name,
+                    $listener->host,
+                    $listener->port
+                );
+            }
+            $nodes[$node->nodeId] = new QuorumNode($node->nodeId, $endpoints);
+        }
+
         return new QuorumInfo(
             $partition->leaderId,
             $partition->leaderEpoch,
             $partition->highWatermark,
             array_map(self::replicaStateOf(...), array_values($partition->currentVoters)),
-            array_map(self::replicaStateOf(...), array_values($partition->observers))
+            array_map(self::replicaStateOf(...), array_values($partition->observers)),
+            $nodes
         );
     }
 
@@ -3230,7 +3253,8 @@ class AdminClient
      *
      * The -1 of a timestamp is "the leader does not know", which the Java client reports as an empty
      * `OptionalLong` and this one as null; a version 0 answer leaves both at that value, because it has no field
-     * for either of them.
+     * for either of them. The directory id of KIP-853 travels through unchanged: the zero uuid of an answer below
+     * the version 2 is the zero uuid of a replica that has none.
      */
     private static function replicaStateOf(DescribeQuorumResponseReplicaState $replica): ReplicaState
     {
@@ -3240,7 +3264,8 @@ class AdminClient
             $replica->replicaId,
             $replica->logEndOffset,
             $replica->lastFetchTimestamp === $unknown ? null : $replica->lastFetchTimestamp,
-            $replica->lastCaughtUpTimestamp === $unknown ? null : $replica->lastCaughtUpTimestamp
+            $replica->lastCaughtUpTimestamp === $unknown ? null : $replica->lastCaughtUpTimestamp,
+            $replica->replicaDirectoryId
         );
     }
 

@@ -236,7 +236,13 @@ class Client
      * its answer is compact as well, with the features of KIP-584 as tagged fields behind the `throttleTimeMs`
      * that version 1 added. The version 2 below it is the KIP-219 bump of Kafka 2.0, which says that this client
      * honours a throttle time itself because a broker answers a throttled request of a bumped version **before** it
-     * mutes the channel; version 3 inherits that promise.
+     * mutes the channel; the versions 3 and 4 inherit that promise.
+     *
+     * **The version this client sends is the 4** (Kafka 3.9), which declares no field of its own: it is the v3
+     * frame with a 4 in its header, and what it buys is in the answer - a supported feature whose `min_version` is
+     * **0** is only reported to a client that asks for it (KAFKA-17011), and on a KRaft node that is
+     * `kraft.version`. {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3} asks a peer of Kafka 2.4 to 3.8
+     * the same question.
      *
      * The client itself does **not** negotiate with the answer - like the `0.9.x` line it sends the fixed versions
      * that a broker of its own Kafka release serves - so this is an api for callers that want to know what they are
@@ -245,11 +251,12 @@ class Client
      * The request is the one frame of the protocol whose *unsupported version* is answered instead of costing the
      * connection: a broker that does not know the version answers the error code 35 (UnsupportedVersion), since
      * Kafka 2.4 with the single api row of ApiVersions itself (KIP-511) and before it with an empty array. That
-     * answer always arrives in the **version 0** layout, without the throttle time, so a peer older than Kafka 2.4
-     * has to be asked with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2},
+     * answer always arrives in the **version 0** layout, without the throttle time, so a peer older than Kafka 3.9
+     * has to be asked with an {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3},
+     * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2},
      * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1} or
      * {@see \Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0} and read with the response class of the same
-     * version; this line speaks to a 2.8.2 broker, which serves v0 to v3.
+     * version; this line speaks to a 3.9.2 node, which serves v0 to v4.
      *
      * @param Node $node Broker to ask; every broker of a cluster answers for itself
      *

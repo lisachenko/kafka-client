@@ -26,16 +26,17 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * </pre>
  *
  * The version of the api selects the shape of the partition entries and nothing else here
- * ({@see self::partitionClass()}), see {@see DescribeQuorumResponseTopicV0}.
+ * ({@see self::partitionClass()}), see {@see DescribeQuorumResponseTopicV1} and
+ * {@see DescribeQuorumResponseTopicV0}: neither KIP-836 nor KIP-853 gave this entry a field of its own.
  *
- * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 and v1)"
+ * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
  */
 class DescribeQuorumResponseTopic implements BinarySchemaInterface
 {
     /**
      * Version of the DescribeQuorum API that this DTO is unpacked from
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * Name of the topic this entry belongs to
@@ -67,8 +68,10 @@ class DescribeQuorumResponseTopic implements BinarySchemaInterface
      */
     protected static function partitionClass(): string
     {
-        return static::VERSION >= 1
-            ? DescribeQuorumResponsePartition::class
-            : DescribeQuorumResponsePartitionV0::class;
+        return match (true) {
+            static::VERSION >= 2 => DescribeQuorumResponsePartition::class,
+            static::VERSION >= 1 => DescribeQuorumResponsePartitionV1::class,
+            default              => DescribeQuorumResponsePartitionV0::class,
+        };
     }
 }

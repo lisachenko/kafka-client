@@ -20,10 +20,10 @@ use Protocol\Kafka\Protocol\Data\ApiVersionsSupportedFeature;
 use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * The api keys and versions one broker serves, version 3 (key 18)
+ * The api keys and versions one broker serves, version 4 (key 18)
  *
  * <pre>
- *   ApiVersions Response (Version: 3) => error_code [api_versions] throttle_time_ms TAG_BUFFER
+ *   ApiVersions Response (Version: 3 to 4) => error_code [api_versions] throttle_time_ms TAG_BUFFER
  *     error_code    => INT16
  *     api_versions  => api_key min_version max_version TAG_BUFFER   (COMPACT_ARRAY)
  *       api_key     => INT16
@@ -76,14 +76,27 @@ use Protocol\Kafka\Protocol\TaggedField;
  * 2.8.2, KIP-500), so the KRaft apis 52-55, 58, 59 and 62-64 of the controller listener never appear here, and an
  * api whose `minRequiredInterBrokerMagic` is above the message format of the broker is dropped as well.
  *
- * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v3)"
+ * **Version 4 (Kafka 3.9) adds no field either, and changes exactly one value.** The comment of
+ * `ApiVersionsRequest.json` @ 3.9.2 names the bug it fixes - *"Version 4 fixes KAFKA-17011, which blocked
+ * SupportedFeatures.MinVersion in the response from being 0"* - and the fix lives in
+ * `ApiVersionsResponse.maybeFilterSupportedFeatureKeys` @ 3.9.2: a broker that answers a request **below** the
+ * version 4 leaves every supported feature whose `min_version` is **0** out of the tagged field 0, because the
+ * clients of Kafka 3.0 to 3.8 read a 0 minimum as "the feature is not there" and would refuse to talk to the
+ * cluster. A client that asks for the version 4 declares that it can read such a feature, and gets it. On the
+ * 3.9.2 KRaft node of this line that is `kraft.version` (KIP-853), supported 0 to 1 and finalized at 0 because
+ * the quorum is the static `controller.quorum.voters`: the v3 answer lists **one** supported feature and the v4
+ * answer **two**, everything in front of the tagged section being the same bytes. The *finalized* features are
+ * the same in both, because a feature finalized at the level 0 is not finalized at all.
+ * {@see ApiVersionsResponseV3} reads the answer one version below.
+ *
+ * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 class ApiVersionsResponse extends AbstractResponse
 {
     /**
      * Version of the ApiVersions API that this class decodes the answer of
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * @inheritdoc
@@ -115,7 +128,9 @@ class ApiVersionsResponse extends AbstractResponse
      * Features the broker supports, indexed by their name (tagged field 0, KIP-584)
      *
      * Empty unless the broker declares a feature, which a ZooKeeper-backed 2.8.2 broker never does: the tagged
-     * field is then simply absent from the answer, which is what "empty" looks like on the wire.
+     * field is then simply absent from the answer, which is what "empty" looks like on the wire. A KRaft node
+     * declares `metadata.version` in every version of the answer and `kraft.version` only from the **version 4**
+     * on, because the minimum of that feature is 0 (KAFKA-17011).
      *
      * @var array<string, ApiVersionsSupportedFeature>
      *

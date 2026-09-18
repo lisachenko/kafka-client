@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * nothing here - and what this version selects is the shape of its voters and observers:
  * {@see DescribeQuorumResponseReplicaStateV0}, the replica state without the two timestamps.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 and v1)" and "The two timestamps of a
+ * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
  *      replica state (v1, KIP-836)"
  */
 final class DescribeQuorumResponsePartitionV0 extends DescribeQuorumResponsePartition

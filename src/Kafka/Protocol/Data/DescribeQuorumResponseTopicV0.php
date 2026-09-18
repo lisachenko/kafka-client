@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * The entry itself is the one of {@see DescribeQuorumResponseTopic} - the name and its partitions - and what this
  * version selects is {@see DescribeQuorumResponsePartitionV0}, whose voters and observers have no timestamps.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 and v1)" and "The two timestamps of a
+ * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
  *      replica state (v1, KIP-836)"
  */
 final class DescribeQuorumResponseTopicV0 extends DescribeQuorumResponseTopic

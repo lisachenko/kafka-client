@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
@@ -20,8 +21,9 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * What the leader of a raft quorum knows about one replica of it (key 55, Kafka 2.8, KIP-595)
  *
  * <pre>
- *   ReplicaState => ReplicaId LogEndOffset LastFetchTimestamp LastCaughtUpTimestamp
+ *   ReplicaState => ReplicaId ReplicaDirectoryId LogEndOffset LastFetchTimestamp LastCaughtUpTimestamp
  *     ReplicaId             => INT32
+ *     ReplicaDirectoryId    => UUID    -- since version 2
  *     LogEndOffset          => INT64
  *     LastFetchTimestamp    => INT64   -- since version 1
  *     LastCaughtUpTimestamp => INT64   -- since version 1
@@ -48,9 +50,18 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * leader's row carries a real millisecond in both fields. The -1 belongs to a *follower* the leader has not heard
  * from yet.
  *
- * {@see DescribeQuorumResponseReplicaStateV0} is the entry of the version below, which has neither field.
+ * **Version 2 (KIP-853, Kafka 3.9) put a `ReplicaDirectoryId` in front of the offset**, and it is the one field
+ * of this structure that is not appended: the uuid stands between the replica id and the log end offset, because
+ * the pair `(id, directory id)` is what KIP-853 calls the *key* of a voter - a node that loses its disk and comes
+ * back with a new directory is a different replica to the quorum, whatever its id says. A quorum that still runs
+ * the static `controller.quorum.voters` of KIP-595, i.e. with the feature `kraft.version` at the level **0**, has
+ * no directory ids to report and answers {@see Uuid::ZERO} for every replica - which is what the node of this line
+ * does, although its `meta.properties` carries a real `directory.id`.
  *
- * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 and v1)" and "The two timestamps of a
+ * {@see DescribeQuorumResponseReplicaStateV1} is the entry without that uuid, and
+ * {@see DescribeQuorumResponseReplicaStateV0} the entry of the version below that, which has no timestamp either.
+ *
+ * @see docs/protocol/3.9.md, sections "DescribeQuorum API (key 55, v0 to v2)" and "The two timestamps of a
  *      replica state (v1, KIP-836)"
  */
 class DescribeQuorumResponseReplicaState implements BinarySchemaInterface
@@ -58,7 +69,7 @@ class DescribeQuorumResponseReplicaState implements BinarySchemaInterface
     /**
      * Version of the DescribeQuorum API that this DTO is unpacked from
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * The value of a timestamp the leader does not know, and the `default` of both fields in the specification
@@ -69,6 +80,13 @@ class DescribeQuorumResponseReplicaState implements BinarySchemaInterface
      * Id of the replica this state belongs to
      */
     public int $replicaId;
+
+    /**
+     * The 16 raw bytes of the directory this replica keeps the metadata log in, the zero uuid when it has none
+     *
+     * @since Version 2 of protocol (Kafka 3.9, KIP-853)
+     */
+    public string $replicaDirectoryId = Uuid::ZERO;
 
     /**
      * Last log end offset the leader knows of this replica, -1 when it is unknown
@@ -94,10 +112,11 @@ class DescribeQuorumResponseReplicaState implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        $scheme = [
-            'replicaId'    => BinarySchema::TYPE_INT32,
-            'logEndOffset' => BinarySchema::TYPE_INT64,
-        ];
+        $scheme = ['replicaId' => BinarySchema::TYPE_INT32];
+        if (static::VERSION >= 2) {
+            $scheme['replicaDirectoryId'] = BinarySchema::TYPE_UUID;
+        }
+        $scheme['logEndOffset'] = BinarySchema::TYPE_INT64;
         if (static::VERSION >= 1) {
             $scheme['lastFetchTimestamp']    = BinarySchema::TYPE_INT64;
             $scheme['lastCaughtUpTimestamp'] = BinarySchema::TYPE_INT64;
