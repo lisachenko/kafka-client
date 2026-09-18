@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `GroupCoordinator.NoProtocol` when the answer carries an error.
  *
  * @see docs/protocol/3.9.md, section "The protocol type and name of KIP-559 (Kafka 2.5)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupResponseV6 extends JoinGroupResponse
 {

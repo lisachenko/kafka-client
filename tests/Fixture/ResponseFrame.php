@@ -666,18 +666,20 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a JoinGroup response (api key 11, v7 - the version this client sends)
+     * Builds a JoinGroup response (api key 11, v9 - the version this client sends)
      *
      * <pre>
-     *   JoinGroupResponse => ThrottleTimeMs ErrorCode GenerationId ProtocolType GroupProtocol LeaderId MemberId
-     *                          [Member]
+     *   JoinGroupResponse => ThrottleTimeMs ErrorCode GenerationId ProtocolType GroupProtocol LeaderId
+     *                          SkipAssignment MemberId [Member]
      *     Member => MemberId GroupInstanceId MemberMetadata
      * </pre>
      *
      * Every member entry carries the nullable `group_instance_id` that version 5 added (KIP-345, Kafka 2.3); the
      * `null` of a dynamic member is written, which is what every member of these fixtures is. Version 7 (KIP-559,
      * Kafka 2.5) put the nullable `protocol_type` in front of the protocol name and made the name nullable as
-     * well: an answer that reports an error carries `null` in both.
+     * well: an answer that reports an error carries `null` in both. **Version 9 (KIP-814, Kafka 3.2) put the
+     * single byte of `skip_assignment` between the leader id and the member id**, which is `false` for every
+     * answer but the one of a static leader that came back to a group the coordinator did not rebalance.
      *
      * @param array<string, string> $members Metadata of every member, by member id; filled for the leader only
      */
@@ -689,7 +691,8 @@ final class ResponseFrame
         string $leaderId = '',
         string $memberId = '',
         array $members = [],
-        ?string $protocolType = 'consumer'
+        ?string $protocolType = 'consumer',
+        bool $skipAssignment = false
     ): string {
         $body = pack('N', 0)
             . pack('n', $errorCode)
@@ -697,6 +700,7 @@ final class ResponseFrame
             . self::compactString($protocolType)
             . self::compactString($groupProtocol)
             . self::compactString($leaderId)
+            . pack('C', $skipAssignment ? 1 : 0)
             . self::compactString($memberId)
             . self::compactCount(count($members));
         foreach ($members as $member => $metadata) {

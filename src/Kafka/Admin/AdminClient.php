@@ -141,6 +141,15 @@ class AdminClient
     public const string CONSUMER_PROTOCOL_TYPE = 'consumer';
 
     /**
+     * The `reason` a batch leave of {@see self::removeMembersFromConsumerGroup()} carries when none is named
+     *
+     * `KafkaAdminClient.DEFAULT_LEAVE_GROUP_REASON` @ 3.2.3, word for word: the reasons of KIP-800 (LeaveGroup
+     * v5, Kafka 3.2) are read in a broker log, so a member an operator removed says so in the wording every
+     * other client uses.
+     */
+    public const string DEFAULT_LEAVE_GROUP_REASON = 'member was removed by an admin';
+
+    /**
      * Client configuration, with the defaults of {@see ClientConfig} filled in
      *
      * @var array<string, mixed>
@@ -1772,8 +1781,14 @@ class AdminClient
      * An **empty batch** is legal: it is sent, and the coordinator answers it with an empty member array, which is
      * how a caller can probe the group without removing anything.
      *
+     * **Version 5 (KIP-800, Kafka 3.2) gives every entry a `reason`**, which the coordinator logs with the member
+     * it removes. It is the one option the Java `RemoveMembersFromConsumerGroupOptions` has, and an empty one
+     * becomes {@see self::DEFAULT_LEAVE_GROUP_REASON} there, which is what this method sends as well.
+     *
      * @param string                          $groupId Name of the group
      * @param iterable<MemberToRemove|string> $members Members to remove; a plain string is a `group.instance.id`
+     * @param string|null                     $reason  Why the members are removed (KIP-800), null for
+     *        {@see self::DEFAULT_LEAVE_GROUP_REASON}
      *
      * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If the group moved to another coordinator
      *         between the lookup and this request
@@ -1782,8 +1797,12 @@ class AdminClient
      *
      * @return array<string, KafkaException|null> Error of every requested member, null when it was removed
      */
-    public function removeMembersFromConsumerGroup(string $groupId, iterable $members): array
-    {
+    public function removeMembersFromConsumerGroup(
+        string $groupId,
+        iterable $members,
+        ?string $reason = null
+    ): array {
+        $reason   = $reason === null || $reason === '' ? self::DEFAULT_LEAVE_GROUP_REASON : $reason;
         $toRemove = [];
         foreach ($members as $member) {
             $toRemove[] = $member instanceof MemberToRemove ? $member : MemberToRemove::byInstanceId($member);
@@ -1795,7 +1814,10 @@ class AdminClient
             $coordinator->getConnection($this->configuration),
             fn(int $correlationId): LeaveGroupRequest => new LeaveGroupRequest(
                 $groupId,
-                array_map(static fn(MemberToRemove $member): LeaveGroupRequestMember => $member->toRequestMember(), $toRemove),
+                array_map(
+                    static fn(MemberToRemove $member): LeaveGroupRequestMember => $member->toRequestMember($reason),
+                    $toRemove
+                ),
                 $this->clientId(),
                 $correlationId
             ),

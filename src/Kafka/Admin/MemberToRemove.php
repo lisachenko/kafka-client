@@ -77,9 +77,12 @@ final class MemberToRemove
 
     /**
      * Returns the wire entry of this member
+     *
+     * @param string|null $reason Why this member is removed, the `reason` of KIP-800 that LeaveGroup v5 carries;
+     *        null names none
      */
-    public function toRequestMember(): LeaveGroupRequestMember
+    public function toRequestMember(?string $reason = null): LeaveGroupRequestMember
     {
-        return new LeaveGroupRequestMember($this->memberId, $this->groupInstanceId);
+        return new LeaveGroupRequestMember($this->memberId, $this->groupInstanceId, $reason);
     }
 }

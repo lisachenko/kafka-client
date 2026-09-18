@@ -878,14 +878,22 @@ final class AdminClientTest extends TestCase
             self::requestFrame(new LeaveGroupRequest(
                 self::ADMIN_GROUP,
                 [
-                    new LeaveGroupRequestMember(LeaveGroupRequestMember::UNKNOWN_MEMBER_ID, 't10-instance'),
-                    new LeaveGroupRequestMember('member-9'),
+                    new LeaveGroupRequestMember(
+                        LeaveGroupRequestMember::UNKNOWN_MEMBER_ID,
+                        't10-instance',
+                        AdminClient::DEFAULT_LEAVE_GROUP_REASON
+                    ),
+                    new LeaveGroupRequestMember(
+                        'member-9',
+                        null,
+                        AdminClient::DEFAULT_LEAVE_GROUP_REASON
+                    ),
                 ],
                 't10',
                 $broker->getReceivedCorrelationIds()[1]
             )),
             $broker->getReceivedFrames()[1],
-            'one batch request removes both members'
+            'one batch request removes both members, each with the default reason of KIP-800'
         );
     }
 

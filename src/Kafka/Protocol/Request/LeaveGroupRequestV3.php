@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * are the same release: KIP-345 gave the api its batch and KIP-482 the flexible encoding.
  *
  * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "LeaveGroup API (key 13, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "LeaveGroup API (key 13, v0 to v5)"
  */
 final class LeaveGroupRequestV3 extends LeaveGroupRequest
 {

@@ -1,8 +1,8 @@
 {
     "api": "leave-group",
     "apiKey": 13,
-    "section": "LeaveGroup API (key 13, v0 to v4)",
-    "description": "Wire vectors of the LeaveGroup API (key 13, v0 to v4), replayed by tests/Compliance.",
+    "section": "LeaveGroup API (key 13, v0 to v5)",
+    "description": "Wire vectors of the LeaveGroup API (key 13, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "leavegroup.request.v0",
@@ -279,7 +279,7 @@
         {
             "id": "leavegroup.request.v4",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequestV4",
             "version": 4,
             "source": "broker",
             "description": "LeaveGroup request v4 (KIP-482): the batch of KIP-345 in the flexible encoding - a compact member array whose single entry names the static member by its member id and its instance id.",
@@ -303,7 +303,7 @@
         {
             "id": "leavegroup.response.v4",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The answer v4: the top-level error code 0 and one compact member entry, which carries the error code of that member alone.",
@@ -319,6 +319,112 @@
                         "memberId": "t3-24b-one-85e240e3-d068-4922-8b5d-cde662afa726",
                         "groupInstanceId": "t3-24b-one",
                         "errorCode": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "leavegroup.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "LeaveGroup request v5 (Kafka 3.2, KIP-800): the one-element batch of a member that removes itself, with the `reason` the version appended to every entry behind its instance id - the wording of `AbstractCoordinator.close` @ 3.2.3, which `KafkaConsumer::close()` sends.",
+            "hex": "0000008a000d0005000004b300126b61666b612d636c69656e742d74332d3332001474332d33322d766563746f72732d67726f757002386b61666b612d636c69656e742d74332d33322d36636634326162392d386266642d343630332d613166662d333539306332373438323963001d74686520636f6e73756d6572206973206265696e6720636c6f7365640000",
+            "fields": {
+                "messageSize": 138,
+                "apiKey": 13,
+                "apiVersion": 5,
+                "correlationId": 1203,
+                "clientId": "kafka-client-t3-32",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-32-vectors-group",
+                "members": [
+                    {
+                        "memberId": "kafka-client-t3-32-6cf42ab9-8bfd-4603-a1ff-3590c274829c",
+                        "groupInstanceId": null,
+                        "reason": "the consumer is being closed"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "leavegroup.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer v5, byte for byte the answer of version 4 - \"Version 5 is the same as version 4\" - with the top-level 0 and the one member entry that echoes the identity that was sent. The node writes the reason into its log: \"Member … has left group through explicit `LeaveGroup` request; client reason: the consumer is being closed\".",
+            "hex": "00000049000004b30000000000000002386b61666b612d636c69656e742d74332d33322d36636634326162392d386266642d343630332d613166662d3335393063323734383239630000000000",
+            "fields": {
+                "messageSize": 73,
+                "correlationId": 1203,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "members": [
+                    {
+                        "memberId": "kafka-client-t3-32-6cf42ab9-8bfd-4603-a1ff-3590c274829c",
+                        "groupInstanceId": null,
+                        "errorCode": 0
+                    }
+                ]
+            }
+        },
+        {
+            "id": "leavegroup.request.v5.batch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The batch of an administrator at version 5: the static instance named by its `group.instance.id` alone, with a reason of its own, and a member id the group does not have, whose reason is the compact **null** of an entry that names none. Every entry carries its own reason, the field is not one per request.",
+            "hex": "00000070000d0005000004bb00126b61666b612d636c69656e742d74332d3332001574332d33322d766563746f72732d73746174696303010a74332d33322d6f6e651874686520696e7374616e63652069732072657469726564001574332d33322d6e6f2d737563682d6d656d62657200000000",
+            "fields": {
+                "messageSize": 112,
+                "apiKey": 13,
+                "apiVersion": 5,
+                "correlationId": 1211,
+                "clientId": "kafka-client-t3-32",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-32-vectors-static",
+                "members": [
+                    {
+                        "memberId": "",
+                        "groupInstanceId": "t3-32-one",
+                        "reason": "the instance is retired"
+                    },
+                    {
+                        "memberId": "t3-32-no-such-member",
+                        "groupInstanceId": null,
+                        "reason": null
+                    }
+                ]
+            }
+        },
+        {
+            "id": "leavegroup.response.v5.batch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\LeaveGroupResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer: the top-level code stays 0 for a batch the coordinator could read, the static instance was removed (0) and the member the group does not have is answered 25 UnknownMemberId in its own entry. Each entry echoes the identity that was sent, not the one the coordinator resolved.",
+            "hex": "00000034000004bb0000000000000003010a74332d33322d6f6e650000001574332d33322d6e6f2d737563682d6d656d6265720000190000",
+            "fields": {
+                "messageSize": 52,
+                "correlationId": 1211,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "members": [
+                    {
+                        "memberId": "",
+                        "groupInstanceId": "t3-32-one",
+                        "errorCode": 0
+                    },
+                    {
+                        "memberId": "t3-32-no-such-member",
+                        "groupInstanceId": null,
+                        "errorCode": 25
                     }
                 ]
             }
