@@ -438,7 +438,6 @@ foreach ($group->members as $memberId => $member) {
 | `listGroups()` / `listAllGroups()`           | ListGroups v4           | A broker only knows its own groups; `listAllGroups()` merges them all  |
 | `describeGroup()` / `describeGroups()`       | DescribeGroups v5       | Sent to the coordinator of the group; an unknown group answers `Dead`, one whose last member left `Empty` |
 | `electLeaders()`                             | ElectLeaders v2         | Asks the **controller** to move partitions back to their preferred replica (KIP-183, Kafka 2.2); per-partition results, 84 for a partition that already has the right leader; `ElectionType::UNCLEAN` needs the v1 of KIP-460 |
-| `controlledShutdown()`                       | ControlledShutdown v3   | Moves every partition leader off a broker — it really does stop it; the `broker_epoch` of KIP-380 (Kafka 2.2) defaults to -1, `UNKNOWN_BROKER_EPOCH`, the only epoch that skips the controller's staleness check |
 | `deleteRecords()`                            | DeleteRecords v2        | Moves the **low watermark** of a partition forward (KIP-107); sent to the partition leader, answers a `DeletedRecords` per partition |
 | `describeConfigs()`                          | DescribeConfigs v4      | The configuration of a topic or a broker (KIP-133); every entry says which `ConfigSource` its value comes from and, with `$includeSynonyms`, every place the broker looked (KIP-226). A broker resource is only answered by that broker, and a sensitive value comes back `null` |
 | `alterConfigs()`                             | AlterConfigs v2         | **Replaces** the whole configuration of a resource (`Config::ownValues()` is the set to send back); a 1.1 broker takes a **broker** resource too — the dynamic options of KIP-226, per broker or cluster-wide with `ConfigResource::defaultBroker()` — and refuses the ones it cannot change at runtime with 42 |
@@ -569,8 +568,9 @@ the topic-partitions that did work and `getExceptions()` the exception of each o
 partition.
 
 The Admin API uses the same connections and the same correlation id checks; it does not retry, but every request that
-any broker can answer — Metadata, ControlledShutdown and the ZooKeeper-backed OffsetFetch v0 — is tried on the brokers
-of the cluster in turn until one of them answers.
+any broker can answer — Metadata and DescribeCluster — is tried on the brokers of the cluster in turn until one of
+them answers. `controlledShutdown()` is gone from this line: ControlledShutdown (key 7) is served on the controller
+listener of a KRaft node only, never on a client listener.
 
 PHP-specific configuration
 ---------------------------
@@ -585,18 +585,14 @@ process-per-request model:
 For publishing from web requests, enabling persistent connections together with a metadata
 cache file keeps producing as fast as possible.
 
-One more option matters on this branch: `offsets.storage` selects where the offsets of a
-consumer group live. `kafka` (the default) commits with OffsetCommit **v8** and fetches with
-OffsetFetch **v7**, both sent to the coordinator of the group and stored in the
-`__consumer_offsets` topic — the commit carries the member id, the generation and the
-`group.instance.id` of a group member and the leader epoch of every offset, but **no**
-`RetentionTime` any more (KIP-211 took the field out at version 5, so `offsets.retention.minutes`
-of the broker alone decides), and the fetch is the one that can ask for *every* topic the group
-committed and the one that can insist on **stable** offsets (KIP-447);
-`zookeeper` uses version 0 of both apis, which stores the offsets in ZooKeeper the way Kafka 0.8.1
-did and which any broker of the cluster answers. A consumer that joins a group (`subscribe()`)
-should keep `kafka`: a v0 commit carries no membership, so the coordinator could not refuse the
-commit of a member whose generation is over.
+The offsets of a consumer group always go to the coordinator of the group, with OffsetCommit **v8**
+and OffsetFetch **v7**, and live in the `__consumer_offsets` topic: the commit carries the member id,
+the generation and the `group.instance.id` of a group member and the leader epoch of every offset,
+but **no** `RetentionTime` any more (KIP-211 took the field out at version 5, so
+`offsets.retention.minutes` of the broker alone decides), and the fetch is the one that can ask for
+*every* topic the group committed and the one that can insist on **stable** offsets (KIP-447). The
+ZooKeeper storage of Kafka 0.8.1 (the version 0 of both apis, the `offsets.storage` option of the
+lines below) is gone from this line: a KRaft node answers both v0 requests with 35.
 
 Configuration reference
 ------------------------
@@ -623,7 +619,6 @@ marked **(0.10)**.
 | `retries` / `retry.backoff.ms` | 2 / 100 | retry budget for the codes 3, 5, 6 and a dropped connection |
 | `reconnect.backoff.ms` | 50 | pause before a reconnect |
 | `receive.buffer.bytes` / `send.buffer.bytes` | 32768 / 131072 | socket buffers |
-| `offsets.storage` | `kafka` | `kafka` (OffsetCommit v8 / OffsetFetch v7) or `zookeeper` (v0 of both) |
 | `metadata.cache.file`, `stream.async.connect`, `stream.persistent.connection` | – / false / false | the PHP-specific options above |
 
 **Consumer** (`Consumer\ConsumerConfig`)
@@ -777,9 +772,9 @@ it sends, and a version the node serves that the current milestone has not reach
 | 4 | LeaderAndIsr | not on the client listener of a KRaft node | broker→broker | no | no |
 | 5 | StopReplica | not on the client listener of a KRaft node | broker→broker | no | no |
 | 6 | UpdateMetadata | not on the client listener of a KRaft node | broker→broker | no | no |
-| 7 | ControlledShutdown | not on the client listener of a KRaft node | controller | v0 … v2, **v3** | v0 … v2, **v3** |
-| 8 | OffsetCommit | v0 … v9 | yes | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`); **v9 (3.6) not yet implemented on this line** |
-| 9 | OffsetFetch | v0 … v9 | yes | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`); **v8 (3.0), v9 (3.7) not yet implemented on this line** |
+| 7 | ControlledShutdown | not on the client listener of a KRaft node | controller | v0 … v2, **v3** | v0 … v2, **v3** — wire only: the classes and the vectors stay, `controlledShutdown()` is gone from the admin client |
+| 8 | OffsetCommit | v0 … v9 | yes | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8**; **v9 (3.6) not yet implemented on this line** |
+| 9 | OffsetFetch | v0 … v9 | yes | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) | v0 … v6, **v7**; **v8 (3.0), v9 (3.7) not yet implemented on this line** |
 | 10 | GroupCoordinator (FindCoordinator) | v0 … v6 | yes | v0 … v2, **v3** | v0 … v2, **v3**; **v4 (3.0), v5 (3.8), v6 (3.9) not yet implemented on this line** |
 | 11 | JoinGroup | v0 … v9 | yes | v0 … v6, **v7** | v0 … v6, **v7**; **v8 (3.2), v9 (3.2) not yet implemented on this line** |
 | 12 | Heartbeat | v0 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
@@ -837,9 +832,8 @@ it sends, and a version the node serves that the current milestone has not reach
 | 80 | AddRaftVoter | v0 | controller | – | no — a controller api, probed only (Kafka 3.9) |
 | 81 | RemoveRaftVoter | v0 | controller | – | no — a controller api, probed only (Kafka 3.9) |
 
-`offsets.storage = zookeeper` sends version 0 of OffsetCommit and OffsetFetch instead of the bold
-ones, and the lower versions of every api are kept because their frames are what the wire vectors
-of the lines below replay.
+The lower versions of every api are kept because their frames are what the wire vectors of the
+lines below replay.
 
 **The three ACL apis (29, 30, 31) are not implemented yet.** The lines below left them out because they do
 nothing on a broker without an `authorizer.class.name` (such a broker answers all three with the error code
@@ -907,7 +901,7 @@ current milestone):
 | **KIP-207: 78 `OffsetNotAvailable`** of ListOffsets v5   | 2.2        | –       | –       | –        | –        | –     | **yes** (documented from the sources: one broker never lags) | **yes** (documented from the sources: one broker never lags) |
 | **KIP-368: the SASL session lifetime** of SaslAuthenticate v1 | 2.2   | –       | –       | –        | –        | –     | **reported** (re-authentication is 2.5's) | **reported** (re-authentication is 2.5's) |
 | **KIP-183: `electLeaders()`** (ElectLeaders v0)         | 2.2        | –       | –       | –        | –        | –     | **yes** (preferred elections; unclean from v1) | **yes** (preferred elections; unclean from v1) |
-| **KIP-380: the broker epoch** of ControlledShutdown v2  | 2.2        | –       | –       | –        | –        | –     | **yes** (`controlledShutdown()`) | **yes** (`controlledShutdown()`) |
+| **KIP-380: the broker epoch** of ControlledShutdown v2  | 2.2        | –       | –       | –        | –        | –     | **yes** (`controlledShutdown()`) | **wire only** — the classes and the vectors stay, `controlledShutdown()` is gone: a KRaft node serves the api on its controller listener only |
 | **KIP-345: static membership** (`group.instance.id`, 82 fences the older instance) | 2.3 | – | – | – | – | – | **yes** — a static consumer keeps its partitions across a restart and does not leave on `close()` | **yes** — a static consumer keeps its partitions across a restart and does not leave on `close()` |
 | **KIP-430: authorized operations** of Metadata v8 and DescribeGroups v3 (`Common\AclOperation`) | 2.3 | – | – | – | – | – | **yes** (the supported operations on a broker without an authorizer) | **yes** (the supported operations on a broker without an authorizer) |
 | **KIP-392: reading from a follower** (`client.rack`, `preferred_read_replica` of Fetch v11) | 2.3 | – | – | – | – | – | **wire only** — one broker never names another replica | **wire only** — one broker never names another replica |
@@ -947,7 +941,8 @@ node serves is "not yet" until its milestone lands):
 | Share groups (76–79 and their state apis 83–87, KIP-932) | 3.9 | no — early access in 3.9, hidden without `unstable.api.versions.enable`; the 4.x line implements them |
 | Client metrics (71, 72, 74, KIP-714) | 3.7 | wire only — the classes and what a node without a telemetry plugin answers, no telemetry emitter |
 | Tiered storage (ListOffsets v8, the error code 109) | 3.5 | wire only — the container has no remote storage |
-| `offsets.storage = zookeeper` (OffsetCommit/OffsetFetch v0) | 0.8.1 | the classes stay for the wire vectors of the lines below, but a KRaft node answers both with 35 `UnsupportedVersion` |
+| `offsets.storage = zookeeper` (OffsetCommit/OffsetFetch v0) | 0.8.1 | removed from this line — the option and its code path are gone; the classes stay for the wire vectors of the lines below, and a KRaft node answers both v0 requests with 35 `UnsupportedVersion` |
+| `controlledShutdown()` (ControlledShutdown, key 7) | 0.8 | removed from this line — the method is gone from the admin client; the classes and the vectors stay, and a KRaft node serves the api on its controller listener only |
 
 Five properties of a 3.9.2 node (and of every broker since 1.0) regularly surprise clients, and this
 implementation deals with all of them explicitly:
@@ -999,10 +994,11 @@ Two changes against the 0.8.2.2 line show up in single apis, and both are worth 
 porting code between the branches. **OffsetFetch v1 no longer validates the partition**: asking
 for a partition the cluster does not host answers offset `-1` with the error code `0` —
 "nothing committed" — where 0.8.2.2 answered 3 (UnknownTopicOrPartition), so Metadata is the
-only api that says whether a partition exists. And `controlledShutdown()` for a broker id the
-controller does not know is now answered with **8 (BrokerNotAvailable)**, the code a 0.8.2.2
-broker turned into -1 (Unknown) by mapping the *cause* of an exception that has none. The
-protocol document has the details.
+only api that says whether a partition exists. And a ControlledShutdown for a broker id the
+controller does not know was answered with **8 (BrokerNotAvailable)** from 0.9 on, the code a 0.8.2.2
+broker turned into -1 (Unknown) by mapping the *cause* of an exception that has none — a measurement
+of the lines below, since a KRaft node does not serve the api on a client listener. The protocol
+document has the details.
 
 Testing & Contributing
 -----------------------

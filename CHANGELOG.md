@@ -18,7 +18,8 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: none yet — the foundation.**
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: none yet — the foundation and the re-baseline wave T0 (the inherited suite of the 2.x line
+green on the node: 723 integration tests, zero skips).**
 
 ### Added
 
@@ -54,8 +55,61 @@ complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x
 - **`docs/handoff/main.md` is the plan of the 3.x line** (the former `docs/handoff/3.x.md`); the record
   of the 2.x line is `docs/handoff/2.x.md`.
 - **A KRaft node answers OffsetCommit v0 and OffsetFetch v0 with 35** (`Unsupported when using a
-  Raft-based metadata quorum`): `offsets.storage = zookeeper` keeps its classes for the wire vectors of
-  the lines below, but cannot be used against the node of this line.
+  Raft-based metadata quorum`), in every partition and before any validation.
+
+### Changed (re-baseline wave T0, PRs #185, #186, #187, #188)
+
+- **The inherited integration suite of the 2.x line is green on the KRaft node** — every one of the 74 tests the
+  first run on `kafka-3-9-2` failed was measured on the node and either follows what it answers (the 2.8.2
+  behaviour stays in `docs/protocol/3.9.md` as "on the 2.8.2 ZooKeeper broker", the node's answer next to it as a
+  **(3.x)** item of "The 3.9.2 KRaft node of the 3.x line") or was dropped because a 3.x broker cannot do what it
+  exercised. No wire change: the 676 inherited vectors replay unchanged. In short:
+  - the record formats, Produce/Fetch, Metadata and the framing (#185): 61 rows in the api table, a `null` record
+    set in a refused Fetch partition, an empty answer instead of a truncated message below `max_bytes`, the code
+    **3** of an auto-created topic (no `LeaderNotAvailable` window: the controller elects the leader with the
+    creation), the node id **1**, the sharded fetch-session cache whose top eight ids answer -1, and the long
+    record-validation summary of `LogValidator`;
+  - the cluster admin, token, SCRAM, election and reassignment apis (#186): delegation tokens are records of the
+    metadata log (KIP-900, Kafka 3.6) that are renewable and describable a moment after the answer that created
+    them, an expired token can still be expired, token visibility follows `super.users`, two changes of one user in
+    one AlterUserScramCredentials request are 92 whatever the mechanism, the node finalizes `metadata.version` and
+    refuses a feature update with 95 instead of 42, the reassignment and election refusals name the topic and the
+    partition and an unknown partition is 3 where 2.8.2 answered 85;
+  - the topic, config and quota admin apis (#187): the refusals of the KRaft controller in its own words, a
+    `timeout_ms = 0` that no longer creates anything in the background (7 with a null message), the per-entry
+    validation of DeleteTopics, the config refusals that moved between 40, 42 and -1, `message.format.version` as a
+    default again, and a quota that reaches DescribeClientQuotas only after the broker replayed it, with the
+    entities of the answer in no order;
+  - the group apis, the offsets and the consumer on the new coordinator (#188): `group.initial.rebalance.delay.ms`
+    is the 3000 ms default of `config/kraft/server.properties` (the first JoinGroup of a group is answered after
+    3 s), a group the coordinator has just created is `Dead` for a moment before it is `Empty`, the `states_filter`
+    of ListGroups is matched without regard to case or spaces, an `Empty` group outlives its last committed offset
+    (a second OffsetDelete is 0, not 69), DescribeGroups answers the groups of a request in an order of its own,
+    and the 12 of an oversized offset metadata is a 35 on a v0 commit because the KRaft refusal comes before any
+    validation. `tests/Fixture/RawApiProbe::send()` takes a per-call timeout.
+- **The two admin examples read the broker id off the cluster** instead of assuming the broker 0, which the KRaft
+  node is not (`examples/create-topic.php`, `examples/admin-configs.php`); `examples/admin.php` says why
+  `controlledShutdown()` is gone.
+
+### Removed (re-baseline wave T0)
+
+- **`AdminClient::controlledShutdown()`** (#186). ControlledShutdown (api key 7) is declared `["zkBroker",
+  "controller"]` at Kafka 3.9.2: a KRaft node does not announce it on a client listener and closes the connection
+  for every one of its four versions, so the method can never work against a node of this line. The message
+  classes (`ControlledShutdownRequest`, `…RequestV0`, `…RequestV1`, `…RequestV2`, `…Response`, `…ResponseV2`,
+  `ControlledShutdownResponsePartition`) and all four wire vectors stay: the api is on the 3.9.2 wire, on the
+  controller listener, and `ApiVersionProbeTest` pins the refusal.
+- **`offsets.storage = zookeeper`** (#188): `ClientConfig::OFFSETS_STORAGE`, `OFFSETS_STORAGE_KAFKA` and
+  `OFFSETS_STORAGE_ZOOKEEPER`, the OffsetCommit v0 / OffsetFetch v0 branches of `Client::commitGroupOffsets()`,
+  `Client::fetchGroupOffsets()` and `AdminClient::listGroupOffsets()`, and the option in the examples. A KRaft node
+  answers both v0 requests with **35** in every partition (`requireZkOrThrow` @ 3.9.2), before any validation, so the
+  ZooKeeper storage of Kafka 0.8.1 can never work against a node of this line. `OffsetCommitRequestV0`,
+  `OffsetFetchRequestV0`, their responses and their vectors stay for the wire of the lines below.
+- **The three integration tests that made the broker store a message format v0 or v1 log** (#185): KIP-724
+  (Kafka 3.0) retired `message.format.version` and a 3.9.2 node stores the record batch v2 whatever the topic
+  asks for. The message-set codecs v0/v1 and the Produce v0–v2 / Fetch v0–v3 versions of the client are
+  **unchanged** — the node serves them and converts for them; only the direction changed: every conversion now
+  happens on the way out, never on append.
 
 Unreleased — the 2.x line (Kafka 2.8.2)
 ---------------------------------------
