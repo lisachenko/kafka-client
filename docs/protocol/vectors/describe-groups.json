@@ -384,6 +384,53 @@
                     }
                 }
             }
+        },
+        {
+            "id": "describegroups.v5.consumer-group.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The classic DescribeGroups (key 15, v5) asked for a group of the NEW consumer protocol.",
+            "hex": "00000035000f00050000214500136b61666b612d636c69656e742d74332d38343800021474332d3834382d7374617469632d67726f75700000",
+            "fields": {
+                "messageSize": 53,
+                "apiKey": 15,
+                "apiVersion": 5,
+                "correlationId": 8517,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groups": [
+                    "t3-848-static-group"
+                ],
+                "includeAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "describegroups.v5.consumer-group.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeGroupsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "What a classic describe answers for a KIP-848 group, which is the other half of the routing rule an admin client has to follow.",
+            "hex": "0000002e0000214500000000000200001474332d3834382d7374617469632d67726f75700544656164010101800000000000",
+            "fields": {
+                "messageSize": 46,
+                "correlationId": 8517,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-848-static-group": {
+                        "errorCode": 0,
+                        "groupId": "t3-848-static-group",
+                        "state": "Dead",
+                        "protocolType": "",
+                        "protocol": "",
+                        "members": [],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
         }
     ]
 }

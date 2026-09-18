@@ -81,7 +81,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
  *      "Consumer group protocol (protocol_type = consumer)"
  * @see \Protocol\Kafka\Consumer\KafkaConsumer::poll()
  */
-final class ConsumerCoordinator
+final class ConsumerCoordinator implements ConsumerCoordinatorInterface
 {
     /**
      * Protocol type of a consumer group, the only one Kafka itself defines
@@ -246,6 +246,30 @@ final class ConsumerCoordinator
     public function getRejoinReason(): string
     {
         return $this->rejoinReason;
+    }
+
+    /**
+     * The eager rebalance of the classic protocol gives **everything** up before it joins again
+     *
+     * `ConsumerCoordinator.onJoinPrepare` @ 3.9.2 revokes the whole assignment of a member whose assignor uses the
+     * EAGER protocol, which is what every assignor of this client does, and the JoinGroup is sent afterwards. The
+     * incremental revoke of {@see ConsumerGroupHeartbeatCoordinator} is the other half of this contract.
+     *
+     * @inheritdoc
+     */
+    public function partitionsToRevoke(array $ownedPartitions): array
+    {
+        return $ownedPartitions;
+    }
+
+    /**
+     * And the assignment it receives afterwards is announced whole, because nothing of it was kept
+     *
+     * @inheritdoc
+     */
+    public function partitionsToAssign(array $ownedPartitions, array $assignment): array
+    {
+        return $assignment;
     }
 
     /**

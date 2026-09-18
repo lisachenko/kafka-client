@@ -1,6 +1,6 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 3.x line has captured **416** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
+The 3.x line has captured **466** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
 the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
 `list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
 `group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — the 20 frames of Kafka 3.1, the
@@ -55,7 +55,16 @@ remote storage, with the version 8 refusal and the ordinary `-1` pair), the 4 of
 shorter because the `kraft.version` feature of KAFKA-17011 is hidden below the version 4) and the 8 of
 DescribeQuorum v2 in `describe-quorum.json` (the nodes, the directory ids and the two error messages of KIP-853:
 the metadata quorum, a topic no quorum replicates, the empty topic array and the 31 of the SASL user `acltest`,
-which now says `Cluster authorization failed.`) — next
+which now says `Cluster authorization failed.`) — and the 50 frames of the **KIP-848 consumer**, the last wave
+of the line: the 34 of ConsumerGroupHeartbeat (key 68) in the new file `consumer-group-heartbeat.json` — the join
+that creates a group and is answered every partition at once, the acknowledgement that echoes them back, the
+steady state of five nulls, the subscription that changes without a rejoin, the revoke of a two-member group, the
+server-side assignor `range`, the leave of the epoch -1, the static join with its instance id and its leave of the
+epoch -2, and the six refusals 42, 42, 110, 25, 112 and 69 — the 14 of ConsumerGroupDescribe (key 69) in the new
+file `consumer-group-describe.json`, with both assignments of every member, the authorized operations of KIP-430,
+the 69 of a classic group and of a group that does not exist, the -1 the empty group id crashes the answer builder
+with and the 30 of `acltest`, and the 2 of the classic DescribeGroups v5 asked for a KIP-848 group in
+`describe-groups.json`, which answers the state `Dead` rather than an error — next
 to the
 **669** vectors of the lines
 up to 2.x below, which are replayed unchanged against the classes of this line, because the 3.9.2 node still serves
@@ -63,7 +72,7 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1085** of them in **58** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **1135** of them in **60** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the

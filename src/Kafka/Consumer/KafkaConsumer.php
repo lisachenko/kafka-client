@@ -37,6 +37,8 @@ use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\Serialization\Deserializer;
 use Protocol\Kafka\Consumer\Internals\AbortedTransactionFilter;
 use Protocol\Kafka\Consumer\Internals\ConsumerCoordinator;
+use Protocol\Kafka\Consumer\Internals\ConsumerCoordinatorInterface;
+use Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator;
 use Protocol\Kafka\Consumer\Internals\SubscriptionState;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochRequestPartition;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
@@ -170,8 +172,11 @@ class KafkaConsumer
 
     /**
      * Membership of the configured consumer group, created when the consumer first needs its coordinator
+     *
+     * Which of the two membership protocols it speaks is {@see ConsumerConfig::GROUP_PROTOCOL}: the classic one
+     * of {@see ConsumerCoordinator} or the KIP-848 one of {@see ConsumerGroupHeartbeatCoordinator}.
      */
-    private ?ConsumerCoordinator $groupCoordinator = null;
+    private ?ConsumerCoordinatorInterface $groupCoordinator = null;
 
     /**
      * Assignor that this consumer offers as the group protocol of its JoinGroup requests
@@ -1430,7 +1435,11 @@ class KafkaConsumer
             $this->commitBeforeRebalance();
         }
 
-        $revokedPartitions = $this->assignedPartitionLists();
+        // The classic protocol gives its whole assignment up before it joins again (the eager rebalance), the
+        // KIP-848 one only the partitions the coordinator really took away: which of the two it is, is the answer
+        // of the coordinator itself, so that this method speaks neither protocol
+        $ownedPartitions   = $this->assignedPartitionLists();
+        $revokedPartitions = $groupCoordinator->partitionsToRevoke($ownedPartitions);
         if ($revokedPartitions !== []) {
             $this->rebalanceListener?->onPartitionsRevoked($revokedPartitions);
         }
@@ -1445,7 +1454,9 @@ class KafkaConsumer
             $this->refreshTopicPartitionOffsets($assignment);
         }
 
-        $this->rebalanceListener?->onPartitionsAssigned($this->assignedPartitionLists());
+        $this->rebalanceListener?->onPartitionsAssigned(
+            $groupCoordinator->partitionsToAssign($ownedPartitions, $this->assignedPartitionLists())
+        );
     }
 
     /**
@@ -1506,18 +1517,82 @@ class KafkaConsumer
 
     /**
      * Returns the membership of the configured consumer group, created on the first use
+     *
+     * `group.protocol` decides which of the two membership protocols this consumer speaks: `classic` is the one
+     * of every line below this one, `consumer` the one of KIP-848, where a single ConsumerGroupHeartbeat (key 68)
+     * replaces JoinGroup, SyncGroup, Heartbeat and LeaveGroup and the **coordinator** computes the assignment.
+     * Nothing else of the consumer is aware of the difference.
+     *
+     * @throws InvalidConfigurationException If `group.protocol` is neither `classic` nor `consumer`
      */
-    private function groupCoordinator(): ConsumerCoordinator
+    private function groupCoordinator(): ConsumerCoordinatorInterface
     {
-        return $this->groupCoordinator ??= new ConsumerCoordinator(
-            $this->getClient(),
-            $this->requireGroupId(),
-            $this->assignor,
-            (int) $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS],
-            (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
-            $this->rebalanceTimeoutMs(),
-            $this->groupInstanceId()
-        );
+        return $this->groupCoordinator ??= $this->usesConsumerGroupProtocol()
+            ? new ConsumerGroupHeartbeatCoordinator(
+                $this->getClient(),
+                $this->getCluster(),
+                $this->requireGroupId(),
+                $this->rebalanceTimeoutMs(),
+                (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
+                $this->groupInstanceId(),
+                $this->serverAssignor(),
+                $this->clientRack()
+            )
+            : new ConsumerCoordinator(
+                $this->getClient(),
+                $this->requireGroupId(),
+                $this->assignor,
+                (int) $this->configuration[ConsumerConfig::HEARTBEAT_INTERVAL_MS],
+                (int) ($this->configuration[ConsumerConfig::RETRY_BACKOFF_MS] ?? 100),
+                $this->rebalanceTimeoutMs(),
+                $this->groupInstanceId()
+            );
+    }
+
+    /**
+     * Tells whether this consumer speaks the new consumer protocol of KIP-848 (`group.protocol = consumer`)
+     *
+     * @throws InvalidConfigurationException If the option names neither of the two protocols
+     */
+    private function usesConsumerGroupProtocol(): bool
+    {
+        $protocol = $this->configuration[ConsumerConfig::GROUP_PROTOCOL] ?? ConsumerConfig::GROUP_PROTOCOL_CLASSIC;
+        if ($protocol === ConsumerConfig::GROUP_PROTOCOL_CONSUMER) {
+            return true;
+        }
+        if ($protocol === ConsumerConfig::GROUP_PROTOCOL_CLASSIC) {
+            return false;
+        }
+
+        throw new InvalidConfigurationException([
+            'error' => sprintf(
+                '%s must be either "%s" or "%s", "%s" given',
+                ConsumerConfig::GROUP_PROTOCOL,
+                ConsumerConfig::GROUP_PROTOCOL_CLASSIC,
+                ConsumerConfig::GROUP_PROTOCOL_CONSUMER,
+                is_scalar($protocol) ? (string) $protocol : get_debug_type($protocol)
+            ),
+        ]);
+    }
+
+    /**
+     * Returns the `group.remote.assignor` of a KIP-848 member, null to let the coordinator pick one (KIP-848)
+     */
+    private function serverAssignor(): ?string
+    {
+        $assignor = $this->configuration[ConsumerConfig::GROUP_REMOTE_ASSIGNOR] ?? null;
+
+        return is_string($assignor) && $assignor !== '' ? $assignor : null;
+    }
+
+    /**
+     * Returns the `client.rack` of this consumer, null when it names none (KIP-881)
+     */
+    private function clientRack(): ?string
+    {
+        $rack = $this->configuration[ConsumerConfig::CLIENT_RACK] ?? null;
+
+        return is_string($rack) && $rack !== '' ? $rack : null;
     }
 
     /**
