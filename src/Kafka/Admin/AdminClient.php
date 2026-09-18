@@ -847,11 +847,14 @@ class AdminClient
      * Nothing is thrown for a topic that could not be created: one failing topic of a request does not say anything
      * about the others, and a caller that wants an exception raises the one of the topic it cares about.
      *
-     * CAVEAT: `$timeoutMs` is the time the CONTROLLER waits for the topic to exist before it answers, so a value of
-     * 0 answers immediately, with the error code 7 (RequestTimedOut) for every topic - their creation has been
-     * scheduled and finishes shortly afterwards. With the default of 30 seconds a successful answer means that the
-     * topic exists on the controller; the other brokers learn about it with the next metadata update, so a Metadata
-     * request may still answer 5 (LeaderNotAvailable) for a moment.
+     * CAVEAT: `$timeoutMs` is the time the CONTROLLER gives itself to create the topic before it answers, so a
+     * value of 0 answers immediately with the error code 7 (RequestTimedOut) for every topic - and on a KRaft
+     * controller nothing is created at all, because the timeout is a DEADLINE that travels with the controller
+     * event and an event whose deadline has passed expires before its records are written. A ZooKeeper controller
+     * wrote the topic first and waited afterwards, so the same 7 was followed by the topic appearing; never rely
+     * on either. With the default of 30 seconds a successful answer means that the topic exists on the controller;
+     * the other brokers learn about it with the next metadata update, so a Metadata request may still answer 5
+     * (LeaderNotAvailable) for a moment.
      *
      * @param list<NewTopic> $newTopics    Topics to create
      * @param int            $timeoutMs    How long the controller waits for the topics to be created
@@ -918,13 +921,20 @@ class AdminClient
      * `null` when it was deleted, the exception of the error code otherwise - 3 UnknownTopicOrPartition for a topic
      * the cluster does not have, 29 TopicAuthorizationFailed when the client may not delete it.
      *
-     * CAVEAT: deleting a topic is ASYNCHRONOUS. The controller writes the topic into `/admin/delete_topics` in
-     * ZooKeeper and then removes its partitions from the brokers; `$timeoutMs` is how long it waits for that before
-     * it answers, and with a timeout of 0 every topic comes back with the error code 7 (RequestTimedOut) although
-     * its deletion is under way. Even a successful answer only means that the controller is done with it - the
-     * topic disappears from the metadata of the other brokers a moment later, so a caller that waits for it should
-     * poll {@see self::listTopics()}. A cluster whose brokers run with `delete.topic.enable=false` - the default of
+     * CAVEAT: deleting a topic is ASYNCHRONOUS. The controller records the deletion - in `/admin/delete_topics`
+     * on a ZooKeeper cluster, as a `RemoveTopicRecord` of the metadata log on a KRaft one - and then removes the
+     * partitions from the brokers; `$timeoutMs` is how long it gives itself for that before it answers, and with a
+     * timeout of 0 every topic comes back with the error code 7 (RequestTimedOut): under way on a ZooKeeper
+     * cluster, and not started at all on a KRaft one, where the timeout is a deadline the request never gets past.
+     * Even a successful answer only means that the controller is done with it - the topic disappears from the
+     * metadata of the other brokers a moment later, so a caller that waits for it should poll
+     * {@see self::listTopics()}. A cluster whose brokers run with `delete.topic.enable=false` - the default of
      * Kafka 0.10 - accepts the request and never carries the deletion out.
+     *
+     * A KRaft controller reads the entries of the request one by one and answers an entry it cannot use - a name
+     * and an id at once, neither of the two, a duplicate - with 42 (InvalidRequest) of its own while it deletes
+     * every entry it CAN use; a ZooKeeper controller failed the whole request for such an entry and deleted
+     * nothing. Read the result entry by entry.
      *
      * @param list<string> $topics    Names of the topics to delete
      * @param int          $timeoutMs How long the controller waits for the topics to be deleted
@@ -1229,13 +1239,16 @@ class AdminClient
      *    call of its own against an {@see AdminClient} whose cluster the node answers, or through the default
      *    resource below;
      *  - the resource `broker:` - the **empty** name - is the cluster-wide default of KIP-226: the value is stored
-     *    in ZooKeeper under `/config/brokers/<default>`, every broker of the cluster picks it up, and a
-     *    DescribeConfigs reports it with the source `DYNAMIC_DEFAULT_BROKER_CONFIG`;
+     *    in ZooKeeper under `/config/brokers/<default>`, or in the metadata log of a KRaft cluster, every broker of
+     *    the cluster picks it up, and a DescribeConfigs reports it with the source `DYNAMIC_DEFAULT_BROKER_CONFIG`;
      *  - only the options of `DynamicBrokerConfig.AllDynamicConfigs` can be changed at runtime. Everything else is
      *    answered with 42 and `Cannot update these configs dynamically: Set(…)`, which names the offending options,
      *    and the whole resource is refused - the entries are validated together.
      *
-     * Any broker of the cluster serves the request, there is no controller involved.
+     * Any broker of the cluster serves the request; on a KRaft cluster it validates what it can itself - a null
+     * value is refused there with 42 and `Null value not supported for : <names>` - and forwards the rest to the
+     * controller, which validates the values against the `ConfigDef` and answers 40 for one it cannot parse where
+     * a ZooKeeper broker answered 42 with a longer sentence.
      *
      * Every requested resource gets an entry in the result, keyed like the argument: `null` when its configuration
      * was replaced (or validated, with `$validateOnly`), the exception of its error code otherwise. Nothing is
@@ -1313,10 +1326,12 @@ class AdminClient
      * {@see AlterConfigOp::SET}, {@see AlterConfigOp::DELETE} - which resets the option to its default and is the
      * only one whose value may be null - and {@see AlterConfigOp::APPEND} / {@see AlterConfigOp::SUBTRACT}, which
      * work on a **list** option alone (`cleanup.policy`, `follower.replication.throttled.replicas` …) and are
-     * refused with the error code 42 for anything else.
+     * refused for anything else - with the error code 40 and `Can't APPEND to key … because its type is not LIST.`
+     * on a KRaft controller, which checks the schema before it looks the option up, so an option that does not
+     * exist gets that same answer; a ZooKeeper broker answered 42 and -1 for the two cases.
      *
-     * The changes of one resource are applied **together**: naming an option twice is 42 with `Error due to
-     * duplicate config keys : …`, and a resource whose changes do not validate is left untouched as a whole.
+     * The changes of one resource are applied **together**: naming an option twice is 42 (`Error due to duplicate
+     * config keys`), and a resource whose changes do not validate is left untouched as a whole.
      *
      * The remarks of {@see self::alterConfigs()} about a broker resource hold here as well: `broker:<id>` is served
      * by that broker alone and has to be altered through an {@see AdminClient} whose cluster answers it,
@@ -1454,10 +1469,13 @@ class AdminClient
      * </code>
      *
      * The api can only ever GROW a topic: a count that is not above the current one is answered with the error code
-     * 37 (InvalidPartitions) and the message `Topic already has 3 partitions.`, because Kafka cannot merge two logs
-     * and the keys of a compacted topic would change their partition. The optional assignment names the brokers of
-     * every partition that is ADDED, in order, and has to have as many entries as partitions are added and as many
-     * brokers per entry as the replication factor of the topic - anything else is 39 (InvalidReplicaAssignment).
+     * 37 (InvalidPartitions) and a message that says so (`Topic already has 3 partition(s).` on a KRaft controller),
+     * because Kafka cannot merge two logs and the keys of a compacted topic would change their partition. The
+     * optional assignment names the brokers of every partition that is ADDED, in order, and has to have as many
+     * entries as partitions are added and as many brokers per entry as the replication factor of the topic -
+     * anything else is 39 (InvalidReplicaAssignment), and so is a broker id the controller has no registration for.
+     * A topic the cluster does not have is 3 (UnknownTopicOrPartition); a KRaft controller sends that one with no
+     * `error_message` at all, so the name of the topic is only in the key of the result entry.
      *
      * The request is sent to the active controller ({@see self::findController()}), the only broker that serves it,
      * and is repeated ONCE against a freshly looked up controller when the answer says 41 (NotController), exactly
@@ -1465,10 +1483,11 @@ class AdminClient
      * count was raised (or validated, with `$validateOnly`), the exception of its error code otherwise - nothing is
      * thrown for a topic that was refused.
      *
-     * CAVEAT: `$timeoutMs` is the time the CONTROLLER waits for the new partitions to exist before it answers, as in
-     * `createTopics()`. A successful answer means the controller is done; the other brokers learn about the new
-     * partitions with their next metadata update, so a Metadata request may answer 5 (LeaderNotAvailable) for them
-     * for a moment.
+     * CAVEAT: `$timeoutMs` is the time the CONTROLLER gives itself for the new partitions before it answers, as in
+     * `createTopics()` - and a 0 adds nothing on a KRaft controller, where the timeout is a deadline that expires
+     * the event before its records are written. A successful answer means the controller is done; the other brokers
+     * learn about the new partitions with their next metadata update, so a Metadata request may answer 5
+     * (LeaderNotAvailable) for them for a moment.
      *
      * @param array<string, NewPartitions|int> $newPartitions Topics to grow, as topic name => new total count
      * @param int                              $timeoutMs     How long the controller waits for the new partitions
@@ -1779,12 +1798,14 @@ class AdminClient
      * attached to a `user` *and* a `client-id` is answered by a non-strict `client-id` filter and hidden by a
      * strict one.
      *
-     * The answer carries **every** quota of a matching entity, not only the ones the filter was interested in.
+     * The answer carries **every** quota of a matching entity, not only the ones the filter was interested in. The
+     * ENTITIES of the answer are in no particular order: a KRaft broker writes them out of a `HashMap`, where a
+     * ZooKeeper broker walked its sorted children - only the quotas inside one entity keep a stable order.
      *
      * @param ClientQuotaFilter $filter Which entities to describe
      *
-     * @throws KafkaException If the broker refused the filter, e.g. with 42 (InvalidRequest) for an entity type it
-     *         does not know
+     * @throws KafkaException If the broker refused the filter - 35 (UnsupportedVersion) for an entity type it does
+     *         not know, 42 (InvalidRequest) for a match type it does not know
      *
      * @return array<string, array<string, float>> Quotas per entity, indexed by the string form of
      *         {@see ClientQuotaEntity} (`client-id=t1-quota`, `user=<default>`) and by the quota name
@@ -1833,6 +1854,10 @@ class AdminClient
      *
      * A quota that was removed leaves the entity with whatever the `<default>` entity of its type says, and an
      * entity without a single quota left disappears from {@see self::describeClientQuotas()}.
+     *
+     * CAVEAT: on a KRaft cluster the answer means that the CONTROLLER committed the change to the metadata log; a
+     * broker fills the quota cache {@see self::describeClientQuotas()} reads when it replays that record, a moment
+     * later. A caller that reads its own write back has to repeat the read until it sees it.
      *
      * @param list<ClientQuotaAlteration> $alterations  Entities and the changes asked for them
      * @param bool                        $validateOnly Whether the broker only checks the request

@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Tests\Integration;
 
+use Closure;
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\ClientQuotaAlteration;
@@ -38,12 +39,12 @@ use Throwable;
 
 /**
  * Exercises the two client-quota apis of KIP-546 - DescribeClientQuotas (48) and AlterClientQuotas (49) - against
- * a real Kafka 2.8.2 broker.
+ * the Kafka 3.9.2 KRaft node of this line.
  *
  * Until Kafka 2.6 a client quota could only be written through **ZooKeeper**, which is why `tests/Fixture/ClientQuota`
- * shells `kafka-configs.sh` into the container and why the suites that came up the cascade still use it. This class
- * is the same thing over the protocol, in both the plain version 0 of Kafka 2.6 and the flexible version 1 of
- * Kafka 2.8.
+ * shelled `kafka-configs.sh --zookeeper` into the container of the lines below; the node of this line has no
+ * ZooKeeper at all and the fixture writes through these two apis. This class is the same thing over the protocol,
+ * in both the plain version 0 of Kafka 2.6 and the flexible version 1 of Kafka 2.8.
  *
  * **Every quota this class writes is attached to a `client-id` of its own**, generated per run, and every one of
  * them is removed again in {@see self::tearDownAfterClass()}. No test writes a `<default>` quota: it would apply to
@@ -63,6 +64,13 @@ use Throwable;
 #[CoversClass(ClientQuotaAlteration::class)]
 final class ClientQuotaApiTest extends IntegrationTestCase
 {
+    /**
+     * How long a quota the controller accepted may take to reach the broker that answers, in seconds
+     *
+     * @see self::describeUntil()
+     */
+    private const float QUOTA_TIMEOUT = 10.0;
+
     /**
      * Every entity this class attached a quota to, removed again when it is done
      *
@@ -111,6 +119,11 @@ final class ClientQuotaApiTest extends IntegrationTestCase
 
     /**
      * A quota that is set with the api is read back by it, and the values are doubles
+     *
+     * AlterClientQuotas is a CONTROLLER write on this line: the node answers it once the `ClientQuotaRecord` is
+     * committed to the metadata log, and the `ClientQuotaMetadataManager` of the broker fills the cache
+     * DescribeClientQuotas reads when it replays that record - a moment after the answer. Up to the io fix of #166
+     * every request of this client left some 40 ms late and covered that moment; the read is polled now.
      */
     public function testAQuotaIsWrittenAndReadBackWithTwoRequests(): void
     {
@@ -125,9 +138,12 @@ final class ClientQuotaApiTest extends IntegrationTestCase
 
         self::assertSame(["client-id={$clientId}" => null], $result, 'the broker accepted the entity');
 
-        $quotas = $this->admin->describeClientQuotas(ClientQuotaFilter::contains([
-            ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $clientId),
-        ]));
+        $quotas = $this->describeUntil(
+            ClientQuotaFilter::contains([
+                ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $clientId),
+            ]),
+            static fn(array $answer): bool => isset($answer["client-id={$clientId}"])
+        );
 
         self::assertSame(
             ["client-id={$clientId}" => ['request_percentage' => 12.5, 'producer_byte_rate' => 1048576.0]],
@@ -247,10 +263,17 @@ final class ClientQuotaApiTest extends IntegrationTestCase
 
         $component = ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $clientId);
 
-        $lenient = $this->admin->describeClientQuotas(ClientQuotaFilter::contains([$component]));
-        $strict  = $this->admin->describeClientQuotas(ClientQuotaFilter::containsOnly([$component]));
+        // Both `ClientQuotaRecord`s have to be replayed by the broker before the answer can hold both entities
+        $lenient = $this->describeUntil(
+            ClientQuotaFilter::contains([$component]),
+            static fn(array $answer): bool => count($answer) === 2
+        );
+        $strict = $this->admin->describeClientQuotas(ClientQuotaFilter::containsOnly([$component]));
 
-        self::assertSame(
+        // The ENTRIES of the answer are not ordered: `ClientQuotaCache.describeClientQuotas()` @ 3.9.2 collects
+        // them in a `HashMap<ClientQuotaEntity, Map<String, Double>>` and writes it out as it iterates, where the
+        // 2.8.2 broker walked the sorted ZooKeeper children and answered the shorter entity first
+        self::assertEqualsCanonicalizing(
             ["client-id={$clientId}", "client-id={$clientId},user={$user}"],
             array_keys($lenient),
             'a non-strict filter also answers the entity that carries a user part'
@@ -277,7 +300,16 @@ final class ClientQuotaApiTest extends IntegrationTestCase
         ]);
 
         self::assertSame(["client-id={$clientId}" => null], $result);
-        self::assertSame([], $this->quotasOf($clientId), 'the entity is gone from the answer with its last quota');
+        self::assertSame(
+            [],
+            $this->describeUntil(
+                ClientQuotaFilter::containsOnly([
+                    ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $clientId),
+                ]),
+                static fn(array $answer): bool => $answer === []
+            ),
+            'the entity is gone from the answer with its last quota'
+        );
 
         $again = $this->admin->alterClientQuotas([
             new ClientQuotaAlteration(ClientQuotaEntity::forClientId($clientId), [
@@ -347,7 +379,10 @@ final class ClientQuotaApiTest extends IntegrationTestCase
         ));
 
         self::assertSame(KafkaException::UNSUPPORTED_VERSION, $response->errorCode, 'the broker answers 35, not 42');
-        self::assertStringContainsString("Custom entity type 't1-nonsense' not supported", (string) $response->errorMessage);
+        // `QuotaConfigs.isClientOrUserQuotaType` @ 3.9.2 refuses the type with a sentence that names it plainly,
+        // where `ClientQuotaControlManager`/`AdminZkClient` @ 2.8.2 said "Custom entity type 't1-nonsense' not
+        // supported"
+        self::assertSame('Unsupported entity type t1-nonsense', $response->errorMessage);
         self::assertNull($response->entries, 'an error answer carries the null array, never the empty one');
 
         $this->expectException(UnsupportedVersionException::class);
@@ -357,13 +392,19 @@ final class ClientQuotaApiTest extends IntegrationTestCase
     }
 
     /**
-     * A match type the broker does not know escapes as an IllegalArgumentException and becomes the code -1
+     * A match type the broker does not know is the code **42** with a message, where 2.8.2 answered -1 without one
+     *
+     * `ClientQuotaCache`/`ZkAdminManager.describeClientQuotas()` @ 2.8.2 let the `IllegalArgumentException` of the
+     * match type escape, and the generic handler of `KafkaApis` sent the unknown server error with no message at
+     * all. `ClientQuotaMetadataManager`/`KafkaApis.handleDescribeClientQuotasRequest` @ 3.9.2 reads the filter
+     * through `ClientQuotaFilterComponent`, which refuses an unknown match type with an
+     * `InvalidRequestException` that names the number.
      *
      * There is no way to ask for this through {@see AdminClient::describeClientQuotas()} - the three match types
      * are the three factory methods of {@see ClientQuotaFilterComponent}, which has no other constructor - so the
      * quirk is measured on a hand-built request.
      */
-    public function testAnUnknownMatchTypeIsAnsweredWithTheCodeMinusOne(): void
+    public function testAnUnknownMatchTypeIsAnsweredWithInvalidRequest(): void
     {
         $response = $this->send(new DescribeClientQuotasRequest(
             [new ClientQuotaComponentData(ClientQuotaEntity::TYPE_CLIENT_ID, 7, 'x')],
@@ -372,9 +413,9 @@ final class ClientQuotaApiTest extends IntegrationTestCase
             7004
         ));
 
-        self::assertSame(KafkaException::UNKNOWN, $response->errorCode);
-        self::assertNull($response->errorMessage, 'the generic handler of KafkaApis sends no message at all');
-        self::assertNull($response->entries);
+        self::assertSame(KafkaException::INVALID_REQUEST, $response->errorCode);
+        self::assertSame('Unknown match type 7', $response->errorMessage);
+        self::assertNull($response->entries, 'an error answer carries the null array, never the empty one');
     }
 
     /**
@@ -409,7 +450,9 @@ final class ClientQuotaApiTest extends IntegrationTestCase
     }
 
     /**
-     * Sets one quota of one client id
+     * Sets one quota of one client id and waits until the broker that answers really holds it
+     *
+     * @see self::describeUntil() for why the wait is needed at all
      */
     private function setQuota(string $clientId, string $key, float $value): void
     {
@@ -419,6 +462,41 @@ final class ClientQuotaApiTest extends IntegrationTestCase
                 [ClientQuotaAlterationOp::set($key, $value)]
             ),
         ]);
+
+        $this->describeUntil(
+            ClientQuotaFilter::containsOnly([
+                ClientQuotaFilterComponent::ofEntity(ClientQuotaEntity::TYPE_CLIENT_ID, $clientId),
+            ]),
+            static fn(array $answer): bool => ($answer["client-id={$clientId}"][$key] ?? null) === $value
+        );
+    }
+
+    /**
+     * Describes the quotas of a filter until the answer satisfies the condition, or the timeout passes
+     *
+     * AlterClientQuotas is answered by the KRaft CONTROLLER when the `ClientQuotaRecord` is committed to the
+     * metadata log; the `ClientQuotaMetadataManager` of the BROKER fills the cache that DescribeClientQuotas reads
+     * when it replays that record, a moment later. A read that follows a write in the same process therefore has
+     * to be repeated - on the 2.8.2 broker the ZooKeeper watch had the same gap, and the 44 ms Nagle delay that
+     * every request of this client used to carry covered it. The last answer is returned either way, so that a
+     * failing assertion can say what the broker really holds.
+     *
+     * @param Closure(array<string, array<string, float>>): bool $isReady
+     *
+     * @return array<string, array<string, float>>
+     */
+    private function describeUntil(ClientQuotaFilter $filter, Closure $isReady): array
+    {
+        $deadline = microtime(true) + self::QUOTA_TIMEOUT;
+        do {
+            $answer = $this->admin->describeClientQuotas($filter);
+            if ($isReady($answer)) {
+                return $answer;
+            }
+            usleep(100000);
+        } while (microtime(true) < $deadline);
+
+        return $answer;
     }
 
     /**

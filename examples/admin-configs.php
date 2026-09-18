@@ -118,8 +118,11 @@ echo "\nalterConfigs(): " . ($altered[$topicKey] === null
 
 // Nothing is thrown for a resource that was refused: the result has one entry per resource, exactly like
 // createTopics(). A 1.1 broker takes a broker resource, but only for the options KIP-226 made dynamic - a static
-// one is answered with 42 and the names it cannot update at runtime.
-$brokerKey  = ConfigResource::broker(0)->key();
+// one is answered with 42 and the names it cannot update at runtime. A broker resource has to name the broker
+// that ANSWERS the request - the node of `docker-compose.yml` is the `node.id=1` of its KRaft image, not a 0 -
+// so the id is read off the cluster instead of written down.
+$brokerId   = array_key_first($admin->findAllBrokers());
+$brokerKey  = ConfigResource::broker($brokerId)->key();
 $refused    = $admin->alterConfigs([$brokerKey => ['log.retention.hours' => '1']]);
 echo 'A static broker option is refused with the code ' . ($refused[$brokerKey]?->getCode() ?? 0) . ': '
     . ($refused[$brokerKey]?->getContext()['error'] ?? 'accepted?!') . "\n";
@@ -136,11 +139,11 @@ echo 'A static broker option is refused with the code ' . ($refused[$brokerKey]?
 // The live KafkaConfig of a broker, which only that broker can answer. Since KIP-226 an entry is read-only when it
 // is NOT dynamically updatable, and the value of a sensitive option (a password) is never sent and arrives as null
 $brokerConfig = $admin->describeConfigs(
-    [ConfigResource::broker(0)],
+    [ConfigResource::broker($brokerId)],
     ['log.retention.hours', 'num.partitions', 'log.cleaner.backoff.ms', 'ssl.key.password'],
     true
 );
-echo "\nConfiguration of broker 0\n";
+echo "\nConfiguration of broker {$brokerId}\n";
 foreach ($brokerConfig[$brokerKey]->entries as $entry) {
     printf(
         "  %-24s = %-12s %s%s%s",
