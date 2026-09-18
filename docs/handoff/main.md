@@ -30,7 +30,7 @@ filled in as the milestones land.
 
 | Tag | Kafka | Milestone commit | Merged PRs |
 |---|---|---|---|
-| `3.0.2` | 3.0 | _pending_ | |
+| `3.0.2` | 3.0 | MILESTONE_SHA | #185, #186, #187, #188 (the re-baseline wave T0), #189, #190, #191, #192 |
 | `3.1.2` | 3.1 | _pending_ | |
 | `3.2.3` | 3.2 | _pending_ | |
 | `3.3.2` | 3.3 | _pending_ | |

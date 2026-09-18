@@ -18,8 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: none yet — the foundation and the re-baseline wave T0 (the inherited suite of the 2.x line
-green on the node: 723 integration tests, zero skips).**
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.0** (the foundation, the re-baseline wave T0 and the 3.0 wave are in).
 
 ### Added
 
@@ -110,6 +109,63 @@ green on the node: 723 integration tests, zero skips).**
   asks for. The message-set codecs v0/v1 and the Produce v0–v2 / Fetch v0–v3 versions of the client are
   **unchanged** — the node serves them and converts for them; only the direction changed: every conversion now
   happens on the way out, never on append.
+
+### Kafka 3.0 — Added
+
+The first milestone of the line (PRs #189, #190, #191, #192): what Kafka 3.0 added to the wire that a client
+sends — two api keys, three version bumps — measured on the 3.9.2 KRaft node, with the KRaft re-measurement of the
+admin, transaction and SASL surface next to it.
+
+- **DescribeTransactions (key 65, v0) and ListTransactions (key 66, v0)** — the coordinator half of the KIP-664
+  tooling that DescribeProducers (Kafka 2.8) opened: which transactional ids exist, in which state, and which
+  partitions an open transaction still holds. `AdminClient::describeTransactions(array $transactionalIds)` looks
+  every id up at its transaction coordinator (one frame per coordinator, the entries in request order, a per-entry
+  error as the exception of its code in the place of the description) and answers `Admin\TransactionDescription`;
+  `AdminClient::listTransactions(array $stateFilters = [], array $producerIdFilters = [], ?array
+  &$unknownStateFilters = null)` asks every broker for the transactions of its own `__transaction_state`
+  partitions and merges them into `Admin\TransactionListing`s; `Admin\TransactionState` is the string enum of the
+  eight coordinator states plus `Unknown`. ListTransactions **v1** (the duration filter, Kafka 3.8) waits for its
+  wave. Measured on the node: an id the coordinator does not know is **105** `TransactionalIdNotFoundException`
+  per entry, an id the principal may not describe is **53** (answered by the coordinator lookup first), an empty
+  id is **42** per entry, `beginTransaction()` never reaches the coordinator (an id is `Empty` until its first
+  `AddPartitionsToTxn`), `transaction_start_time_ms` outlives the transaction it timed, the `state_filters` are
+  matched **verbatim** where the `states_filter` of ListGroups is lower-cased, and the authorizer removes entries
+  from a listing silently. 19 wire vectors in the two new files `describe-transactions.json` and
+  `list-transactions.json`.
+- **Offsets (ListOffsets) v7 (KIP-734)** — the special target time `OffsetsRequest::MAX_TIMESTAMP` (`-3`) asks for
+  the offset of the record with the **largest timestamp** of a partition, which is the end of the log only while
+  the timestamps of a log rise with its offsets; the answer is the one lookup of the api that carries a real
+  timestamp next to the offset. `Consumer\KafkaConsumer::maxTimestampOffsets()` and
+  `Admin\AdminClient::listMaxTimestampOffsets()` (the `OffsetSpec.maxTimestamp()` of the Java admin client) answer
+  an `OffsetAndTimestamp` per partition, `null` for an empty log; the frame is the flexible v6 frame, kept by the
+  new `OffsetsRequestV6`/`OffsetsResponseV6`. Measured on the node: a `-3` asked below version 7 — and any other
+  negative target time the broker does not serve at that version (`-4`, `-5`) — is the per-partition **35** with
+  the connection open (`timestampMinSupportedVersion` of `KafkaApis` @ 3.9.2, a check a 3.0 broker did not have),
+  and `-3` on an empty log is the code 0 with `-1`/`-1`. 10 wire vectors.
+- **OffsetFetch v8 and FindCoordinator v4 — the batched group apis of Kafka 3.0.** One OffsetFetch v8 asks for
+  the committed offsets of **several consumer groups**, each with its own topic array and its own group-level
+  error code (`Client::fetchOffsetsOfGroups()`, `AdminClient::listConsumerGroupOffsets()`; one group still travels
+  as a one-element batch, and `OffsetFetchRequestV7`/`OffsetFetchResponseV7` keep the single-group frame); one
+  FindCoordinator v4 (KIP-699) looks **several coordinators of one type** up and is answered one entry per key
+  (`Client::getGroupCoordinators()`, `Client::getTransactionCoordinators()`,
+  `Common\CoordinatorLookup::findCoordinators()`; `GroupCoordinatorRequestV3`/`GroupCoordinatorResponseV3` keep the
+  single-key frame; key 10 keeps its published name and the coordinator struct takes the Java name
+  `FindCoordinatorResponseCoordinator`). Measured on the node: a v4 answer carries **no** `error_message` (the
+  versions below still answer `NONE`), the coordinator type 2 of the share groups (KIP-932) is **42** below
+  version 6, an unknown group is not an error at v8 either, and an OffsetFetch v8 with an **empty** `groups`
+  array is answered with **nothing at all** and strands the connection — the client refuses it with
+  `InvalidRequestException` before it is sent. 20 wire vectors, and the new `BatchedGroupApiTest`.
+- **The KRaft measurement of the admin, transaction and SASL surface** (documentation only): DescribeLogDirs
+  applies the partition selection again (Kafka 3.7) and never reports the raft log, a log directory carries a
+  KIP-858 `directory.id` and a replica move is a controller write, the KIP-890 partition verification refuses a
+  transactional batch for a partition that was not added (48), `__transaction_state` and the producer id blocks
+  come from the controller, DescribeCluster answers every principal and refuses with an empty operation bit
+  field, DescribeProducers distinguishes three error messages, and the SASL exchange is unchanged while the
+  `StandardAuthorizer` decides what follows it — plus the DescribeAcls v3 measurement the 3.3 ACL wave builds on
+  (what the super users and the SASL user `acltest` are answered, and an annotated dump of a non-empty answer).
+- **The load-sensitive tests of the suite wait for the node**: the fetch-session cache of a 3.9.2 node places a
+  new session round-robin over eight shards, so `FetchSessionConsumerTest` fills it until eight requests in a row
+  are refused; a ListOffsets and a DescribeConfigs of a fresh topic retry the retriable codes.
 
 Unreleased — the 2.x line (Kafka 2.8.2)
 ---------------------------------------

@@ -432,9 +432,11 @@ foreach ($group->members as $memberId => $member) {
 | `findController()`                           | Metadata v11             | The `controller_id` of the answer; the two topic apis below need it   |
 | `createTopics()`                             | CreateTopics v7         | `NewTopic` with partitions/factor or an explicit assignment, plus topic configs; `validateOnly` checks without creating |
 | `deleteTopics()`                             | DeleteTopics v6         | Needs `delete.topic.enable=true` on the broker                        |
-| `listOffsets()`                              | Offsets v6              | Earliest, latest or by message timestamp; **one** offset per partition, sent to the partition leader, with the isolation level `read_uncommitted` |
-| `findCoordinator()`                          | GroupCoordinator v3     | Retries the codes 15 and 14 while the coordinator warms up; version 1 also looks a **transactional id** up (`coordinator_type = 1`) |
-| `listGroupOffsets()`                         | OffsetFetch v7          | Without a partition list it asks for **every** topic the group committed (`null` topics of v2) |
+| `listOffsets()`                              | Offsets v7              | Earliest, latest, by message timestamp or `OffsetsRequest::MAX_TIMESTAMP`; **one** offset per partition, sent to the partition leader, with the isolation level `read_uncommitted` |
+| `listMaxTimestampOffsets()`                  | Offsets v7              | The offset **and the timestamp** of the record with the largest timestamp of every partition (KIP-734, Kafka 3.0), `null` for an empty log — the end of the log only while a log's timestamps rise with its offsets |
+| `findCoordinator()`                          | GroupCoordinator v4     | Retries the codes 15 and 14 while the coordinator warms up; version 1 also looks a **transactional id** up (`coordinator_type = 1`); one key travels as a one-element batch of the v4 of KIP-699 (Kafka 3.0), and `Client::getGroupCoordinators()` / `getTransactionCoordinators()` look several up at once |
+| `listGroupOffsets()`                         | OffsetFetch v8          | Without a partition list it asks for **every** topic the group committed (`null` topics of v2); one group travels as a one-element batch of v8 (Kafka 3.0) |
+| `listConsumerGroupOffsets()`                 | OffsetFetch v8          | The committed offsets of **several** groups in one request per coordinator (Kafka 3.0), each group with its own topic array and its own error code; an empty batch is refused client-side, because a 3.9.2 node answers it with nothing at all |
 | `listGroups()` / `listAllGroups()`           | ListGroups v4           | A broker only knows its own groups; `listAllGroups()` merges them all  |
 | `describeGroup()` / `describeGroups()`       | DescribeGroups v5       | Sent to the coordinator of the group; an unknown group answers `Dead`, one whose last member left `Empty` |
 | `electLeaders()`                             | ElectLeaders v2         | Asks the **controller** to move partitions back to their preferred replica (KIP-183, Kafka 2.2); per-partition results, 84 for a partition that already has the right leader; `ElectionType::UNCLEAN` needs the v1 of KIP-460 |
@@ -449,6 +451,8 @@ foreach ($group->members as $memberId => $member) {
 | `alterUserScramCredentials()`                | AlterUserScramCredentials v0 | Upserts and deletes SCRAM credentials of users (KIP-554); the salted password is computed by the client, one error per user |
 | `describeFeatures()` / `updateFeatures()`    | ApiVersions v3 / UpdateFeatures v0 | The finalized and supported feature versions of the cluster and their upgrade or downgrade on the **controller** (KIP-584, Kafka 2.7) |
 | `describeCluster()`                          | DescribeCluster v0 | The brokers, the controller and the cluster id of a cluster, with the authorized operations of KIP-430 on request (KIP-700, Kafka 2.8); `describeClusterFromMetadata()` asks Metadata instead, as every line below did |
+| `describeTransactions()`                     | DescribeTransactions v0 | The state, producer id and epoch, timeout, start time and partitions of transactional ids, each from its transaction coordinator (Kafka 3.0); an id the coordinator does not know is `TransactionalIdNotFoundException` (105) in its place |
+| `listTransactions()`                         | ListTransactions v0 | The transactions of the cluster, asked of every broker and merged, filtered by state and by producer id (Kafka 3.0); the state filters no coordinator knew come back through the last parameter |
 | `describeProducers()`                        | DescribeProducers v0 | The active producers of partitions: producer id, epoch, last sequence and timestamp, and the start offset of an open transaction (KIP-664, Kafka 2.8) |
 | `createTopicsWithResults()`                  | CreateTopics v7 | The same creation, answered with what the broker made of it (KIP-525, Kafka 2.4): `CreatedTopic` with the partition count, the replication factor and every configuration entry of the new topic; `NewTopic::withBrokerDefaults()` asks for `num.partitions` and `default.replication.factor` (KIP-464) |
 | `alterPartitionReassignments()`              | AlterPartitionReassignments v0 | Moves the replicas of partitions to other brokers, or cancels a move with `null` (KIP-455, Kafka 2.4); sent to the **controller**, one error per partition |
@@ -767,15 +771,15 @@ it sends, and a version the node serves that the current milestone has not reach
 |---|---|---|---|---|---|
 | 0 | Produce | v0 … v11 | yes | v0 … v8, **v9** (**v2** for `message.format.version` below 0.11.0) | v0 … v8, **v9** (**v2** for `message.format.version` below 0.11.0); **v10 (3.7), v11 (3.8) not yet implemented on this line** |
 | 1 | Fetch | v0 … v17 | yes | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer) | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer); **v13 (3.1), v14 (3.5), v15 (3.5), v16 (3.7), v17 (3.9) not yet implemented on this line** |
-| 2 | Offsets (ListOffsets) | v0 … v9 | yes | v0 … v5, **v6** | v0 … v5, **v6**; **v7 (3.0), v8 (3.5), v9 (3.9) not yet implemented on this line** |
+| 2 | Offsets (ListOffsets) | v0 … v9 | yes | v0 … v5, **v6** | v0 … v6, **v7** (the max timestamp `-3` of KIP-734, Kafka 3.0); **v8 (3.5), v9 (3.9) not yet implemented on this line** |
 | 3 | Metadata | v0 … v12 | yes | v0 … v10, **v11** (v10 with the topic ids of KIP-516) | v0 … v10, **v11** (v10 with the topic ids of KIP-516); **v12 (3.1) not yet implemented on this line** |
 | 4 | LeaderAndIsr | not on the client listener of a KRaft node | broker→broker | no | no |
 | 5 | StopReplica | not on the client listener of a KRaft node | broker→broker | no | no |
 | 6 | UpdateMetadata | not on the client listener of a KRaft node | broker→broker | no | no |
 | 7 | ControlledShutdown | not on the client listener of a KRaft node | controller | v0 … v2, **v3** | v0 … v2, **v3** — wire only: the classes and the vectors stay, `controlledShutdown()` is gone from the admin client |
 | 8 | OffsetCommit | v0 … v9 | yes | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8**; **v9 (3.6) not yet implemented on this line** |
-| 9 | OffsetFetch | v0 … v9 | yes | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) | v0 … v6, **v7**; **v8 (3.0), v9 (3.7) not yet implemented on this line** |
-| 10 | GroupCoordinator (FindCoordinator) | v0 … v6 | yes | v0 … v2, **v3** | v0 … v2, **v3**; **v4 (3.0), v5 (3.8), v6 (3.9) not yet implemented on this line** |
+| 9 | OffsetFetch | v0 … v9 | yes | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8** (several groups in one request, Kafka 3.0); **v9 (3.7) not yet implemented on this line** |
+| 10 | GroupCoordinator (FindCoordinator) | v0 … v6 | yes | v0 … v2, **v3** | v0 … v3, **v4** (several keys in one request, KIP-699, Kafka 3.0); **v5 (3.8), v6 (3.9) not yet implemented on this line** |
 | 11 | JoinGroup | v0 … v9 | yes | v0 … v6, **v7** | v0 … v6, **v7**; **v8 (3.2), v9 (3.2) not yet implemented on this line** |
 | 12 | Heartbeat | v0 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
 | 13 | LeaveGroup | v0 … v5 | yes | v0 … v3, **v4** | v0 … v3, **v4**; **v5 (3.2) not yet implemented on this line** |
@@ -823,8 +827,8 @@ it sends, and a version the node serves that the current milestone has not reach
 | 60 | DescribeCluster | v0, v1 | yes | **v0** (Kafka 2.8) | **v0** (Kafka 2.8); **v1 (3.7) not yet implemented on this line** |
 | 61 | DescribeProducers | v0 | yes | **v0** (Kafka 2.8) | **v0** (Kafka 2.8) |
 | 64 | UnregisterBroker | v0 | controller | – | no — a controller api, probed only (Kafka 2.8) |
-| 65 | DescribeTransactions | v0 | yes | – | **v0 not yet implemented on this line** (Kafka 3.0) |
-| 66 | ListTransactions | v0, v1 | yes | – | **v0, v1 not yet implemented on this line** (v0 Kafka 3.0, v1 3.8) |
+| 65 | DescribeTransactions | v0 | yes | – | **v0** (`AdminClient::describeTransactions()`, Kafka 3.0) |
+| 66 | ListTransactions | v0, v1 | yes | – | **v0** (`AdminClient::listTransactions()`, Kafka 3.0); **v1 (3.8) not yet implemented on this line** |
 | 68 | ConsumerGroupHeartbeat | v0 | yes | – | **v0 not yet implemented on this line** (Kafka 3.5, the KIP-848 consumer protocol) |
 | 69 | ConsumerGroupDescribe | v0 | yes | – | **v0 not yet implemented on this line** (Kafka 3.7, the KIP-848 consumer protocol) |
 | 74 | ListClientMetricsResources | v0 | yes | – | **v0 not yet implemented on this line** (Kafka 3.7, wire only by decision) |
@@ -927,6 +931,9 @@ current milestone):
 | **KIP-516: topic ids** (`Common\Uuid`, Metadata v10 and v11, `TopicMetadata::$topicId`, CreateTopics v7 and DeleteTopics v6 with `CreatedTopic::$topicId` and the 100 `UnknownTopicId`) | 2.8 | – | – | – | – | – | **yes** — a deleted and re-created topic of the same name gets a new id | **yes** — a deleted and re-created topic of the same name gets a new id |
 | **KIP-482 on the last plain apis** (the flexible v3 of AddPartitionsToTxn, AddOffsetsToTxn and EndTxn, DescribeConfigs v4, AlterConfigs v2, AlterReplicaLogDirs v2, WriteTxnMarkers v1) | 2.8 | – | – | – | – | – | **yes** | **yes** |
 | **KIP-700: the cluster-wide authorized operations leave Metadata** (gone from the request and the answer of Metadata v11, asked with `describeCluster()`) and **KIP-664: `describeProducers()`** | 2.8 | – | – | – | – | – | **yes** | **yes** |
+| **KIP-664: `describeTransactions()` / `listTransactions()`** (DescribeTransactions v0, ListTransactions v0) | 3.0 | – | – | – | – | – | – | **yes** |
+| **KIP-734: the max timestamp** (`OffsetsRequest::MAX_TIMESTAMP`, ListOffsets v7) | 3.0 | – | – | – | – | – | – | **yes** (`maxTimestampOffsets()`, `listMaxTimestampOffsets()`) |
+| **KIP-699: several coordinators in one FindCoordinator** (v4) and **several groups in one OffsetFetch** (v8) | 3.0 | – | – | – | – | – | – | **yes** (`getGroupCoordinators()`, `listConsumerGroupOffsets()`) |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 127** (the constants of 3.9.2, declared by the foundation; 105 is 3.0's) |
 
 What this line leaves out **by design** (the owner's decisions for the 3.x line; everything else the 3.9.2
