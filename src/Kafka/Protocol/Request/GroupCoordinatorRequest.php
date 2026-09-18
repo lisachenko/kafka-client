@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * GroupCoordinator, version 4: asks any broker which broker coordinates a group or a transactional id (key 10)
+ * GroupCoordinator, version 5: asks any broker which broker coordinates a group or a transactional id (key 10)
  *
  * The offsets for a given consumer group are maintained by a specific broker called the group coordinator. i.e., a
  * consumer needs to issue its offset commit and fetch requests to this specific broker.
@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *     coordinator_key  => STRING
  *     coordinator_type => INT8      -- since version 1
  *
- *   FindCoordinator Request (Version: 4)      => coordinator_type [coordinator_keys]
+ *   FindCoordinator Request (Version: 4 to 5) => coordinator_type [coordinator_keys]
  *     coordinator_type => INT8
  *     coordinator_keys => COMPACT_STRING      -- since version 4, in place of the single key
  * </pre>
@@ -63,13 +63,20 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (and a one-element batch back into a single key for the versions below 4). {@see GroupCoordinatorRequestV3} is
  * the same lookup with the single key of the versions below.
  *
+ * **Version 5 (KIP-890, Kafka 3.8) added no field**: *"Version 5 adds support for new error code
+ * TRANSACTION_ABORTABLE (KIP-890)"* (`FindCoordinatorRequest.json` @ 3.8.1), and the same sentence stands over
+ * the answer. What the number buys is the promise that the client understands the error code **120**
+ * {@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}, which the transaction verification of
+ * KIP-890 gives the producer apis; a coordinator lookup itself never produces it - a version 5 frame is the
+ * version 4 frame with the number 5 in its header, and {@see GroupCoordinatorRequestV4} sends the one below.
+ *
  * The two types are looked up in two different internal topics - `__consumer_offsets` for a group and
  * `__transaction_state` for a transactional id, `KafkaApis.handleFindCoordinatorRequest` @ 0.11.0.3 - and both
  * topics are created lazily by the first lookup that needs them, which is why that first request is answered with
  * the error code 15 (GroupCoordinatorNotAvailable) and the lookup has to be retried, see
  * {@see \Protocol\Kafka\Common\CoordinatorLookup}.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
  */
 class GroupCoordinatorRequest extends AbstractRequest
 {
@@ -81,7 +88,7 @@ class GroupCoordinatorRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it

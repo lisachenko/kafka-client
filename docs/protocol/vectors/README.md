@@ -1,6 +1,6 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 3.x line has captured **316** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
+The 3.x line has captured **338** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
 the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
 `list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
 `group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — the 20 frames of Kafka 3.1, the
@@ -23,25 +23,28 @@ member epoch, the 25 of an unknown member id and the -1 a null member id with a 
 and the 13 of the leader discovery of KIP-951: the 5 of Produce v10 in `produce.json`, one of them the
 constructed answer that names the current leader of a refused partition, and the 8 of Fetch v16 in `fetch.json`,
 among them the follower fetch the node really answers with the `current_leader` and the `node_endpoints` — and
-the 30 frames of Kafka 3.8, all of them the abortable transaction error of KIP-890: the 6 of Produce v11 in
-`produce.json` — the accepted pair, the pair of a transactional batch for a partition the coordinator has not
-verified, which is the **120** `TransactionAbortable`, and the pair of the very same request at version 10,
-which is answered the **48** instead — and the 24 of the five transaction apis, whose version bumps declare no
-field at all: the 4 of InitProducerId v5 in `init-producer-id.json` (with the 90 of an epoch that is neither the current nor the last
-one), the 4 of AddOffsetsToTxn v4 in `add-offsets-to-txn.json` (with the 49 of an unknown producer id), the 8 of
-TxnOffsetCommit in `txn-offset-commit.json` (the v4 with the 25 of a member the group does not hold, and the
-v4/v3 pair of the same commit answered the **120** and the **48** — the partition verification of KIP-890 part 1
-reporting itself through the version gate), the 4 of the broker version AddPartitionsToTxn v5 in
+the 52 frames of Kafka 3.8, the 6 of Produce v11 in `produce.json`: the accepted pair, the pair of a
+transactional batch for a partition the coordinator has not verified, which is the **120** `TransactionAbortable`
+of KIP-890, and the pair of the very same request at version 10, which is answered the **48** instead, and the 22 of the group apis: the 16 of ListGroups v5 in `list-groups.json`
+(the group types `classic` and `consumer` of KIP-848, the types filter with its case-insensitive parse and its empty
+answer for a type the enum does not know, and the version 4 pair of the same question without a type) and the 6 of
+FindCoordinator v5 in `group-coordinator.json` (KIP-890: the version 4 frames with another number in their header,
+because no FindCoordinator ever answers the 120 the version exists for), and the 24 of the five transaction apis, whose version bumps declare no field at all:
+the 4 of InitProducerId v5 in `init-producer-id.json` (with the 90 of an epoch that is neither the current nor
+the last one), the 4 of AddOffsetsToTxn v4 in `add-offsets-to-txn.json` (with the 49 of an unknown producer id),
+the 8 of TxnOffsetCommit in `txn-offset-commit.json` (the v4 with the 25 of a member the group does not hold, and
+the v4/v3 pair of the same commit answered the **120** and the **48** — the partition verification of KIP-890
+part 1 reporting itself through the version gate), the 4 of the broker version AddPartitionsToTxn v5 in
 `add-partitions-to-txn.json` (with the 120 of a `verify_only` and the top-level 31 of `acltest`) and the 4 of
-EndTxn v4 in `end-txn.json` (with the 48 of an abort after a commit) —
-next to the
+EndTxn v4 in `end-txn.json` (with the 48 of an abort after a commit) — next
+to the
 **669** vectors of the lines
 up to 2.x below, which are replayed unchanged against the classes of this line, because the 3.9.2 node still serves
 every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **985** of them in **57** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **1007** of them in **57** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the

@@ -562,18 +562,26 @@ class AdminClient
      * group, and a state no group is in is an empty answer and not an error - so is a name that is not a state at
      * all, because the coordinator compares strings and never validates them.
      *
+     * `$types` does the same for the **type** of the group since version 5 (KIP-848, Kafka 3.8): the `TYPE_*`
+     * constants of {@see ListGroupResponseProtocol}, which are the `Group.GroupType` of the new group
+     * coordinator - `classic` for a group of the membership protocol of Kafka 0.9 and `consumer` for one of the
+     * KIP-848 protocol. That filter is parsed rather than compared, case-insensitively, and a type the enum does
+     * not know matches no group at all, so it is an empty answer and never an error. The two filters are combined
+     * with **and**, and every group entry of the answer names its type.
+     *
      * A group appears here as soon as it has a member and stays until the coordinator forgets it, which happens once
      * the last member is gone and the retention of its committed offsets has expired.
      *
      * @param Node         $node   Broker to ask
      * @param list<string> $states States to list, empty for every group (KIP-518, version 4)
+     * @param list<string> $types  Types to list, empty for every type (KIP-848, version 5)
      *
      * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If the coordinator is shutting down
      * @throws \Protocol\Kafka\Common\Errors\GroupLoadInProgressException If it is still reading `__consumer_offsets`
      *
      * @return array<string, ListGroupResponseProtocol> Groups of that broker, indexed by the group id
      */
-    public function listGroups(Node $node, array $states = []): array
+    public function listGroups(Node $node, array $states = [], array $types = []): array
     {
         /** @var ListGroupsResponse $response */
         $response = $this->sendTo(
@@ -581,7 +589,8 @@ class AdminClient
             fn(int $correlationId): ListGroupsRequest => new ListGroupsRequest(
                 $this->clientId(),
                 $correlationId,
-                $states
+                $states,
+                $types
             ),
             ListGroupsResponse::class,
             ['node' => $node->nodeId]
@@ -604,16 +613,17 @@ class AdminClient
      * one by one with {@see self::listGroups()} when a partial answer is good enough.
      *
      * @param list<string> $states States to list, empty for every group (KIP-518, version 4)
+     * @param list<string> $types  Types to list, empty for every type (KIP-848, version 5)
      *
      * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
      *
      * @return array<string, ListGroupResponseProtocol> Groups of the cluster, indexed by the group id
      */
-    public function listAllGroups(array $states = []): array
+    public function listAllGroups(array $states = [], array $types = []): array
     {
         $groups = [];
         foreach ($this->findAllBrokers() as $node) {
-            $groups += $this->listGroups($node, $states);
+            $groups += $this->listGroups($node, $states, $types);
         }
 
         return $groups;
@@ -626,18 +636,25 @@ class AdminClient
      * in one thing: a group of another protocol type - a Kafka Connect worker group, a Streams group of another
      * kind, anything a client of this package did not create - is left out, because the api lists *every* group of
      * the coordinator and not only the ones a consumer would recognise. The state of each group comes with the
-     * listing since KIP-518 (Kafka 2.6), so a caller no longer has to describe every group to find the empty ones.
+     * listing since KIP-518 (Kafka 2.6), so a caller no longer has to describe every group to find the empty ones,
+     * and its **type** since KIP-848 (Kafka 3.8), which is the only thing that tells a classic consumer group and
+     * a group of the new consumer protocol apart - the `protocol_type` of both is `consumer`.
+     *
+     * `$types` is the `withTypes()` of the Java `ListGroupsOptions`: it is the filter the *coordinator* applies,
+     * so `listConsumerGroups([], [ListGroupResponseProtocol::TYPE_CONSUMER])` asks the brokers for the KIP-848
+     * groups alone instead of listing everything and sorting it out here.
      *
      * @param list<string> $states States to list, empty for every consumer group (KIP-518, version 4)
+     * @param list<string> $types  Types to list, empty for every type (KIP-848, version 5)
      *
      * @throws AllBrokersNotAvailableException If not a single broker answered the metadata request
      *
      * @return array<string, ListGroupResponseProtocol> Consumer groups of the cluster, indexed by the group id
      */
-    public function listConsumerGroups(array $states = []): array
+    public function listConsumerGroups(array $states = [], array $types = []): array
     {
         return array_filter(
-            $this->listAllGroups($states),
+            $this->listAllGroups($states, $types),
             static fn(ListGroupResponseProtocol $group): bool => $group->protocolType === self::CONSUMER_PROTOCOL_TYPE
         );
     }

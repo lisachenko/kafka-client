@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see GroupCoordinatorResponse}.
  *
  * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
  */
 final class GroupCoordinatorResponseV2 extends GroupCoordinatorResponse
 {
