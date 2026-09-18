@@ -150,10 +150,13 @@ final class GroupMembershipApiTest extends IntegrationTestCase
     {
         $admin = new AdminClient($this->cluster(), $this->configuration());
 
-        // The coordinator's `cleanupGroupMetadata` runs every `offsets.retention.check.interval.ms` (ten minutes
-        // by default) and removes an Empty group that holds no offset - which is exactly what a group with nothing
-        // but a pending member is. It is a rare neighbour of this exchange on the shared container, and the only
-        // answer it can produce is the `Dead` of a group that is gone, so the exchange is simply done again
+        // Two things answer `Dead` here, and both are transient. The new group coordinator of KIP-848 appends the
+        // empty group metadata of a group it has just created *after* it has answered the 79, and DescribeGroups
+        // reads the committed state, so a describe that follows the refusal at once still finds no group at all
+        // (measured: `Dead` at +1 ms, `Empty` at +100 ms). And the coordinator's `cleanupGroupMetadata` runs every
+        // `offsets.retention.check.interval.ms` (ten minutes by default) and removes an Empty group that holds no
+        // offset - which is exactly what a group with nothing but a pending member is. The first is polled out
+        // below, the second is rare on the shared container and the exchange is simply done again
         for ($attempt = 1; ; ++$attempt) {
             $groupId = self::uniqueGroupName();
             $stream  = $this->coordinatorStream($groupId);
@@ -176,7 +179,7 @@ final class GroupMembershipApiTest extends IntegrationTestCase
             );
 
             // The group exists, but the pending member is not a member of it: it holds no rebalance up
-            $description = $admin->describeGroup($groupId);
+            $description = $this->describeUntilTheGroupIsThere($admin, $groupId);
 
             if ($description->state !== DescribeGroupResponseMetadata::STATE_DEAD || $attempt === 3) {
                 break;
@@ -990,6 +993,29 @@ final class GroupMembershipApiTest extends IntegrationTestCase
         self::assertSame(KafkaException::NO_ERROR, $response->errorCode, 'The broker refused the sync');
 
         return $response;
+    }
+
+    /**
+     * Describes a group until the coordinator reports a state other than `Dead`, or until the deadline elapses
+     *
+     * A group the new coordinator has just created is `Dead` - i.e. unknown - until the record that creates it is
+     * committed, which happens after the request that created it was answered.
+     */
+    private function describeUntilTheGroupIsThere(
+        AdminClient $admin,
+        string $groupId
+    ): DescribeGroupResponseMetadata {
+        $deadline = microtime(true) + self::REBALANCE_TIMEOUT;
+
+        do {
+            $description = $admin->describeGroup($groupId);
+            if ($description->state !== DescribeGroupResponseMetadata::STATE_DEAD) {
+                return $description;
+            }
+            usleep(100000);
+        } while (microtime(true) < $deadline);
+
+        return $description;
     }
 
     /**

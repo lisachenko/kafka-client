@@ -1395,25 +1395,6 @@ final class ClientTest extends TestCase
         self::assertSame(7, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 7');
     }
 
-    public function testZookeeperOffsetStorageSpeaksVersionZero(): void
-    {
-        $anyNode = new BrokerConnection(
-            ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
-            ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => 0]])
-        );
-        $this->brokers
-            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
-            ->on(self::FIRST_LEADER, $anyNode)
-            ->install();
-
-        $client      = $this->client([ClientConfig::OFFSETS_STORAGE => ClientConfig::OFFSETS_STORAGE_ZOOKEEPER]);
-        $coordinator = $client->getGroupCoordinator('t7-group');
-
-        $client->commitGroupOffsets($coordinator, 't7-group', '', -1, [self::TOPIC => [0 => 21]], -1);
-
-        self::assertSame(0, $this->apiVersionOf($anyNode->getReceivedFrames()[1]));
-    }
-
     public function testACommitErrorOfAPartitionIsReported(): void
     {
         $this->brokers
@@ -2146,7 +2127,6 @@ final class ClientTest extends TestCase
             ClientConfig::METADATA_MAX_AGE_MS       => 300000,
             ClientConfig::RETRY_BACKOFF_MS          => 1,
             ClientConfig::RETRIES                   => 0,
-            ClientConfig::OFFSETS_STORAGE           => ClientConfig::OFFSETS_STORAGE_KAFKA,
 
             ProducerConfig::ACKS       => 1,
             ProducerConfig::TIMEOUT_MS => 100,

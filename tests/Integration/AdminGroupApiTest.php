@@ -198,6 +198,16 @@ final class AdminGroupApiTest extends IntegrationTestCase
         self::assertSame([], $group->members);
     }
 
+    /**
+     * The answer holds every group of the request, in an order of the coordinator's own
+     *
+     * `GroupCoordinatorService.describeGroups` @ 3.9.2 buckets the requested ids into a
+     * `HashMap<TopicPartition, List<String>>` of the `__consumer_offsets` partition each group is coordinated in
+     * and concatenates the per-partition answers in the iteration order of that map, so the answer is in neither
+     * the request order nor the partition order - the 2.8.2 coordinator walked the request itself and answered in
+     * its order. The order is stable for a given set of ids and is not part of the contract either way, so this
+     * asserts the groups and not their sequence.
+     */
     public function testDescribeGroupsDescribesSeveralGroupsWithOneRequest(): void
     {
         $first  = $this->uniqueGroupId();
@@ -206,8 +216,12 @@ final class AdminGroupApiTest extends IntegrationTestCase
         $this->joinGroup($second, 't4-batch-member-b');
 
         $groups = $this->admin->describeGroups([$first, $second]);
+        $keys   = array_keys($groups);
+        sort($keys);
+        $expected = [$first, $second];
+        sort($expected);
 
-        self::assertSame([$first, $second], array_keys($groups));
+        self::assertSame($expected, $keys);
         self::assertSame(DescribeGroupResponseMetadata::STATE_STABLE, $groups[$first]->state);
         self::assertSame(DescribeGroupResponseMetadata::STATE_STABLE, $groups[$second]->state);
     }

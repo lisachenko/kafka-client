@@ -44,8 +44,6 @@ $groupId = $argv[2] ?? 'example-group';
 $configuration = [
     ClientConfig::BOOTSTRAP_SERVERS => ['tcp://' . (getenv('KAFKA_BOOTSTRAP_SERVERS') ?: '127.0.0.1:9092')],
     ClientConfig::CLIENT_ID         => 'admin-example',
-    // Where the group offsets live: `kafka` uses OffsetFetch v2, `zookeeper` the ZooKeeper-backed v0
-    ClientConfig::OFFSETS_STORAGE   => ClientConfig::OFFSETS_STORAGE_KAFKA,
 ];
 
 $cluster = Cluster::bootstrap($configuration);

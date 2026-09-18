@@ -93,9 +93,7 @@ use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
-use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
-use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
@@ -380,15 +378,12 @@ class AdminClient
      * array of the version 2 of the api (Kafka 0.10.2, KIP-88) made possible; an **empty** iterable is a different
      * request that names no topic at all and comes back empty.
      *
-     * The version of the request follows the `offsets.storage` option: `kafka` (the default) reads the offsets that
-     * version 4 stored in the `__consumer_offsets` topic and has to be sent to the coordinator of the group, while
-     * `zookeeper` reads with version 0 from ZooKeeper, which every broker of the cluster can answer - and which has
-     * no nullable topic array, so it refuses a null with an
-     * {@see \Protocol\Kafka\Common\Errors\UnsupportedVersionException}.
+     * The request reads the offsets that version 4 stored in the `__consumer_offsets` topic, so it has to be sent
+     * to the coordinator of the group.
      *
-     * A topic-partition without a committed offset is not an error: version 4 answers it with the offset -1 and the
-     * error code 0, version 0 with the offset -1 and the error code 3 (UnknownTopicOrPartition). Both are returned
-     * as they are, any other error code is thrown - including the group-level error code that version 2 appends
+     * A topic-partition without a committed offset is not an error: it is answered with the offset -1 and the
+     * error code 0, which is returned as it is; any other error code is thrown - including the group-level error
+     * code that version 2 appends
      * after the topics, which reports that this broker is not the coordinator of the group (16), that it is still
      * loading its offsets (14) or that the group may not be read (30).
      *
@@ -404,22 +399,16 @@ class AdminClient
     public function listGroupOffsets(string $groupId, ?iterable $topicPartitions = null): array
     {
         $partitions    = $topicPartitions === null ? null : self::normalizeTopicPartitions($topicPartitions);
-        $isInKafka     = $this->isOffsetStorageKafka();
-        $createRequest = fn(int $correlationId): OffsetFetchRequest => $isInKafka
-            ? new OffsetFetchRequest($groupId, $partitions, $this->clientId(), $correlationId)
-            : new OffsetFetchRequestV0($groupId, $partitions, $this->clientId(), $correlationId);
+        $createRequest = fn(int $correlationId): OffsetFetchRequest =>
+            new OffsetFetchRequest($groupId, $partitions, $this->clientId(), $correlationId);
 
-        /** @var OffsetFetchResponse $response */
-        $response = $isInKafka
-            // Version 2 reads the offsets out of __consumer_offsets, which only the coordinator of the group serves
-            ? $this->sendTo(
-                $this->findCoordinator($groupId)->getConnection($this->configuration),
-                $createRequest,
-                OffsetFetchResponse::class,
-                ['groupId' => $groupId]
-            )
-            // Version 0 reads them from ZooKeeper, which every broker of the cluster can answer
-            : $this->sendAnyNode($createRequest, OffsetFetchResponseV0::class);
+        // Version 2 reads the offsets out of __consumer_offsets, which only the coordinator of the group serves
+        $response = $this->sendTo(
+            $this->findCoordinator($groupId)->getConnection($this->configuration),
+            $createRequest,
+            OffsetFetchResponse::class,
+            ['groupId' => $groupId]
+        );
 
         if ($response->errorCode !== KafkaException::NO_ERROR) {
             throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
@@ -832,16 +821,6 @@ class AdminClient
     private function clientId(): string
     {
         return (string) ($this->configuration[ClientConfig::CLIENT_ID] ?? '');
-    }
-
-    /**
-     * Checks whether the offsets of a group are stored in Kafka (OffsetCommit/OffsetFetch v1) or in ZooKeeper (v0)
-     */
-    private function isOffsetStorageKafka(): bool
-    {
-        $storage = $this->configuration[ClientConfig::OFFSETS_STORAGE] ?? ClientConfig::OFFSETS_STORAGE_KAFKA;
-
-        return $storage === ClientConfig::OFFSETS_STORAGE_KAFKA;
     }
 
     /**
