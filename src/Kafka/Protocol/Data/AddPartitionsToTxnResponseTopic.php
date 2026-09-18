@@ -29,7 +29,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * one `partition_errors`, although both hold the result of *every* requested partition and not only of the ones
  * that failed - the coordinator answers a partition it accepted with the error code 0.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 class AddPartitionsToTxnResponseTopic implements BinarySchemaInterface
 {

@@ -1,8 +1,8 @@
 {
     "api": "init-producer-id",
     "apiKey": 22,
-    "section": "InitProducerId API (key 22, v0 to v4)",
-    "description": "Wire vectors of the InitProducerId API (key 22, v0 to v4), replayed by tests/Compliance.",
+    "section": "InitProducerId API (key 22, v0 to v5)",
+    "description": "Wire vectors of the InitProducerId API (key 22, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "initproducerid.request.v0",
@@ -280,7 +280,7 @@
         {
             "id": "initproducerid.request.v4",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequestV4",
             "version": 4,
             "source": "broker",
             "description": "InitProducerId request v4 (Kafka 2.7, KIP-588): the four fields of the version 3, with the promise that the client understands the error code 90 `ProducerFenced` where the version 3 is answered the 47.",
@@ -301,7 +301,7 @@
         {
             "id": "initproducerid.response.v4",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponseV4",
             "version": 4,
             "source": "broker",
             "description": "InitProducerId answer v4 of a fresh pair: the producer id of the transactional id with its next epoch.",
@@ -319,7 +319,7 @@
         {
             "id": "initproducerid.response.v4.fenced",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponseV4",
             "version": 4,
             "source": "broker",
             "description": "InitProducerId answer v4 to a producer whose epoch the coordinator has left behind: the error code **90** `ProducerFenced` that KIP-588 put in place of the 47 `InvalidProducerEpoch` of the versions below, with the id -1 and the epoch -1. `TransactionalProducerFencedException` is the 90 here, because the published name `ProducerFencedException` belongs to the 47.",
@@ -327,6 +327,84 @@
             "fields": {
                 "messageSize": 22,
                 "correlationId": 964,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 90,
+                "producerId": -1,
+                "producerEpoch": -1
+            }
+        },
+        {
+            "id": "initproducerid.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "InitProducerId request v5 (Kafka 3.8, KIP-890): the four fields of the version 3 in the flexible encoding of the version 2, byte for byte the frame of the version 4 with a 5 in the version field - \"Verison 5 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)\" is the whole comment the typo included, `InitProducerIdRequest.json` @ 3.8.1 declares no field of it. The -1/-1 asks the coordinator of `t4-38-vectors-tx` for its producer id instead of bumping an epoch the caller holds.",
+            "hex": "0000003d0016000500000ee200126b61666b612d636c69656e742d74342d3338001174342d33382d766563746f72732d74780000ea60ffffffffffffffffffff00",
+            "fields": {
+                "messageSize": 61,
+                "apiKey": 22,
+                "apiVersion": 5,
+                "correlationId": 3810,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-tx",
+                "transactionTimeoutMs": 60000,
+                "producerId": -1,
+                "producerEpoch": -1
+            }
+        },
+        {
+            "id": "initproducerid.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "InitProducerId answer v5: the producer id 68 and the epoch 1 that `__transaction_state` holds for `t4-38-vectors-tx`, in the 22 bytes the version 2 has had. The version 5 adds no field to the answer either.",
+            "hex": "0000001600000ee2000000000000000000000000000044000100",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 3810,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "producerId": 68,
+                "producerEpoch": 1
+            }
+        },
+        {
+            "id": "initproducerid.request.v5.fenced",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "InitProducerId request v5 that names an epoch which is neither the current one of the transactional id nor the last one: the epoch of `t4-38-vectors-fenced-tx` was bumped twice (2 to 3 to 4) before this frame asked for the epoch 2 again. A request that carries the **last** epoch is a retry of the bump and is answered the current pair with the code 0, which is what makes the second bump necessary to see a refusal at all.",
+            "hex": "000000440016000500000ee500126b61666b612d636c69656e742d74342d3338001874342d33382d766563746f72732d66656e6365642d74780000ea600000000000000045000200",
+            "fields": {
+                "messageSize": 68,
+                "apiKey": 22,
+                "apiVersion": 5,
+                "correlationId": 3813,
+                "clientId": "kafka-client-t4-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t4-38-vectors-fenced-tx",
+                "transactionTimeoutMs": 60000,
+                "producerId": 69,
+                "producerEpoch": 2
+            }
+        },
+        {
+            "id": "initproducerid.response.v5.fenced",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\InitProducerIdResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The refusal: the **90** `TransactionalProducerFenced` of KIP-588 - not the 120 the version 5 is named after - with -1 as the producer id and -1 as the epoch. A 3.9.2 coordinator writes the 120 in exactly one place, `handleVerifyPartitionsInTransaction`, so no version of this api ever carries it on this node. An unknown producer id for a known transactional id answers the same 90.",
+            "hex": "0000001600000ee50000000000005affffffffffffffffffff00",
+            "fields": {
+                "messageSize": 22,
+                "correlationId": 3813,
                 "headerTaggedFields": [],
                 "throttleTimeMs": 0,
                 "errorCode": 90,

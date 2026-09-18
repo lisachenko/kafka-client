@@ -482,6 +482,11 @@ class Client
      * writes under the old epoch is fenced, and a producer that hit an abortable error can carry on with it
      * instead of being finished. The -1/-1 of `InitProducerIdRequest::NO_PRODUCER_ID` is the old "give me an id".
      *
+     * **The version sent is the 5 of Kafka 3.8** (KIP-890), which declares no field and only promises that the
+     * client understands the error code 120; a 3.9.2 coordinator refuses this api with the **90** of KIP-588 - an
+     * epoch below the *last* one it holds, or a producer id it does not hold for the id - and reads a request that
+     * carries the last epoch as the retry of a bump, which it answers with the current pair and the code 0.
+     *
      * @param string|null $transactionalId      Transactional id of the producer, `null` for an idempotent one
      * @param int         $transactionTimeoutMs `transaction.timeout.ms` of the producer, ignored without an id
      * @param int         $producerId           Producer id whose epoch should be bumped (KIP-360), or -1
@@ -3133,8 +3138,10 @@ class Client
      * transactional id and of the topics that a client needs, and its per-partition codes are the 120 and the 90
      * that the requesting broker maps back to the 48 and the 47 a producer expects. The classes and the wire
      * vectors of the version 4 exist
-     * ({@see \Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest::forTransactions()}); the first version
-     * above 3 that a client may send is the 5 of Kafka 3.8.
+     * ({@see \Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest::forTransactions()}), and so do those of
+     * the **version 5** Kafka 3.8 added: the authorization reads `if (version >= 4)`, so the node answers a
+     * version 5 of a principal that is not a broker the same top-level 31, and this method keeps the version 3 for
+     * the whole line.
      *
      * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
      * @param string             $transactionalId    `transactional.id` of the producer
@@ -3185,6 +3192,11 @@ class Client
      * so that the commit marker reaches it as well. The offsets themselves travel in the
      * {@see self::txnOffsetCommit()} that has to follow it, and that goes to the group coordinator instead.
      *
+     * **The version sent is the 4 of Kafka 3.8** (KIP-890), which declares no field and only promises the error
+     * code 120; on a 3.9.2 node this api still answers the 49 of a producer id the coordinator does not hold,
+     * and it never carries the 120 itself - it adds the `__consumer_offsets` partition to the transaction
+     * instead of writing into it, so nothing is verified here.
+     *
      * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
      * @param string             $transactionalId    `transactional.id` of the producer
      * @param ProducerIdAndEpoch $producerIdAndEpoch Producer id and epoch of the open transaction
@@ -3227,6 +3239,11 @@ class Client
      * coordinator has *decided* the outcome and written it into `__transaction_state`, not that the control batches
      * are in the partitions: those are written afterwards, with a `WriteTxnMarkers` request per partition leader, so
      * a `read_committed` consumer sees the records of a committed transaction a moment after this call returns.
+     *
+     * **The version sent is the 4 of Kafka 3.8** (KIP-890), which declares no field and only promises the error
+     * code 120; a 3.9.2 coordinator still answers an abort of a committed transaction the 48 and a fenced producer
+     * the 90. The producer id and the epoch that the **version 5** of Kafka 3.9 puts into the answer are the next
+     * wave of this line.
      *
      * @param Node               $coordinatorNode    Transaction coordinator of the transactional id
      * @param string             $transactionalId    `transactional.id` of the producer
@@ -3276,6 +3293,15 @@ class Client
      * aborted transaction leaves the group with the offsets it had before. As in
      * {@see self::addPartitionsToTxn()} there is no top-level error code, so the first error code of the answer is
      * the one that is reported here.
+     *
+     * **The version sent is the 4 of Kafka 3.8** (KIP-890), which declares no field - and this is the one api of
+     * the five where the version really changes an answer on a 3.9.2 node. The group coordinator verifies the
+     * `__consumer_offsets` partition of the group against the transaction coordinator before it writes the
+     * offsets (KIP-890 part 1), and `handleTxnCommitOffsets` @ 3.9.2 passes the verification failure through as
+     * the **120** `TransactionAbortable` from the version 4 on, where a version 3 is answered the **48**
+     * `InvalidTxnState`: a commit without a preceding {@see self::addOffsetsToTxn()} is exactly that case. The
+     * other per-partition codes stay the three of KIP-447, and the member id is checked before the generation,
+     * so an unknown member is the 25 and never the 22.
      *
      * @param Node               $coordinatorNode    **Group** coordinator of `$groupId`
      * @param string             $transactionalId    `transactional.id` of the producer

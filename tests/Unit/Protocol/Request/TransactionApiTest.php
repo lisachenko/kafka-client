@@ -38,34 +38,42 @@ use Protocol\Kafka\Protocol\Data\WriteTxnMarkersResponseTopic;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequestV1;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnRequestV3;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV1;
 use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV2;
+use Protocol\Kafka\Protocol\Request\AddOffsetsToTxnResponseV3;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV1;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV3;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV4;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV1;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV2;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV3;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV4;
 use Protocol\Kafka\Protocol\Request\EndTxnRequest;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV0;
 use Protocol\Kafka\Protocol\Request\EndTxnRequestV1;
+use Protocol\Kafka\Protocol\Request\EndTxnRequestV3;
 use Protocol\Kafka\Protocol\Request\EndTxnResponse;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV0;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV1;
 use Protocol\Kafka\Protocol\Request\EndTxnResponseV2;
+use Protocol\Kafka\Protocol\Request\EndTxnResponseV3;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV1;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV2;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequestV3;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV1;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV2;
+use Protocol\Kafka\Protocol\Request\TxnOffsetCommitResponseV3;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequest;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersRequestV0;
 use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponse;
@@ -74,14 +82,16 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
 /**
  * Byte-exact tests for the five transaction APIs of Kafka 0.11 (api keys 24 to 28, v0 each).
  *
- * @see docs/protocol/3.9.md, sections "AddPartitionsToTxn API (key 24, v0 to v4)", "AddOffsetsToTxn API (key 25, v0 to v3)",
- *      "EndTxn API (key 26, v0 to v3)", "WriteTxnMarkers API (key 27, v0 and v1)" and "TxnOffsetCommit API (key 28, v0 to v3)"
+ * @see docs/protocol/3.9.md, sections "AddPartitionsToTxn API (key 24, v0 to v5)", "AddOffsetsToTxn API (key 25, v0 to v4)",
+ *      "EndTxn API (key 26, v0 to v4)", "WriteTxnMarkers API (key 27, v0 and v1)" and "TxnOffsetCommit API (key 28, v0 to v4)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
+#[CoversClass(AddPartitionsToTxnRequestV4::class)]
 #[CoversClass(AddPartitionsToTxnRequestV3::class)]
 #[CoversClass(AddPartitionsToTxnRequestV1::class)]
 #[CoversClass(AddPartitionsToTxnRequestV0::class)]
 #[CoversClass(AddPartitionsToTxnResponse::class)]
+#[CoversClass(AddPartitionsToTxnResponseV4::class)]
 #[CoversClass(AddPartitionsToTxnResponseV3::class)]
 #[CoversClass(AddPartitionsToTxnResponseV2::class)]
 #[CoversClass(AddPartitionsToTxnTransaction::class)]
@@ -91,16 +101,20 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
 #[CoversClass(AddPartitionsToTxnResponseTopic::class)]
 #[CoversClass(AddPartitionsToTxnResponsePartition::class)]
 #[CoversClass(AddOffsetsToTxnRequest::class)]
+#[CoversClass(AddOffsetsToTxnRequestV3::class)]
 #[CoversClass(AddOffsetsToTxnRequestV1::class)]
 #[CoversClass(AddOffsetsToTxnRequestV0::class)]
 #[CoversClass(AddOffsetsToTxnResponse::class)]
+#[CoversClass(AddOffsetsToTxnResponseV3::class)]
 #[CoversClass(AddOffsetsToTxnResponseV2::class)]
 #[CoversClass(AddOffsetsToTxnResponseV1::class)]
 #[CoversClass(AddOffsetsToTxnResponseV0::class)]
 #[CoversClass(EndTxnRequest::class)]
+#[CoversClass(EndTxnRequestV3::class)]
 #[CoversClass(EndTxnRequestV1::class)]
 #[CoversClass(EndTxnRequestV0::class)]
 #[CoversClass(EndTxnResponse::class)]
+#[CoversClass(EndTxnResponseV3::class)]
 #[CoversClass(EndTxnResponseV2::class)]
 #[CoversClass(EndTxnResponseV1::class)]
 #[CoversClass(EndTxnResponseV0::class)]
@@ -122,7 +136,9 @@ use Protocol\Kafka\Protocol\Request\WriteTxnMarkersResponseV0;
 #[CoversClass(TxnOffsetCommitRequestPartition::class)]
 #[CoversClass(TxnOffsetCommitResponseTopic::class)]
 #[CoversClass(TxnOffsetCommitResponsePartition::class)]
+#[CoversClass(TxnOffsetCommitRequestV3::class)]
 #[CoversClass(TxnOffsetCommitRequestV2::class)]
+#[CoversClass(TxnOffsetCommitResponseV3::class)]
 #[CoversClass(TxnOffsetCommitResponseV2::class)]
 final class TransactionApiTest extends TestCase
 {
@@ -436,7 +452,7 @@ final class TransactionApiTest extends TestCase
 
     public function testAddPartitionsToTxnV4PutsTheTransactionIntoTheBatchArray(): void
     {
-        $request = new AddPartitionsToTxnRequest('tx-1', 42, 3, ['topic' => [0, 1]], 'test', 7, true);
+        $request = new AddPartitionsToTxnRequestV4('tx-1', 42, 3, ['topic' => [0, 1]], 'test', 7, true);
 
         self::assertSame(4, $request->getApiVersion(), 'Kafka 3.5 added the version 4 of KIP-890');
         self::assertSame(self::ADD_PARTITIONS_V4_REQUEST_HEX, bin2hex((string) $request));
@@ -444,7 +460,7 @@ final class TransactionApiTest extends TestCase
 
     public function testAddPartitionsToTxnV4BatchesSeveralTransactionsInOneFrame(): void
     {
-        $request = AddPartitionsToTxnRequest::forTransactions(
+        $request = AddPartitionsToTxnRequestV4::forTransactions(
             [
                 new AddPartitionsToTxnTransaction('tx-1', 42, 3, ['topic' => [0, 1]], true),
                 new AddPartitionsToTxnTransaction('tx-2', 43, 1, ['topic' => new PartitionsForTopic('topic', [0])]),
@@ -762,7 +778,7 @@ final class TransactionApiTest extends TestCase
      */
     public function testTheVersionThreeOfTxnOffsetCommitCarriesTheConsumerGroupMetadata(): void
     {
-        $request = new TxnOffsetCommitRequest(
+        $request = new TxnOffsetCommitRequestV3(
             'tx-1',
             'my-group',
             42,
@@ -774,7 +790,7 @@ final class TransactionApiTest extends TestCase
         );
 
         self::assertSame(3, $request->getApiVersion(), 'Kafka 2.5 raised the api to the version 3 of KIP-447');
-        self::assertTrue(TxnOffsetCommitRequest::isFlexible(), 'which is the first flexible one as well');
+        self::assertTrue(TxnOffsetCommitRequestV3::isFlexible(), 'which is the first flexible one as well');
 
         $hex = bin2hex((string) $request);
 
@@ -784,7 +800,7 @@ final class TransactionApiTest extends TestCase
             '0000002a' . '0003' . '00000007' . '09' . bin2hex('member-1') . '0b' . bin2hex('instance-1'),
             $hex
         );
-        self::assertSame($hex, bin2hex((string) TxnOffsetCommitRequest::unpack(new StringStream((string) $request))));
+        self::assertSame($hex, bin2hex((string) TxnOffsetCommitRequestV3::unpack(new StringStream((string) $request))));
     }
 
     /**
@@ -848,4 +864,108 @@ final class TransactionApiTest extends TestCase
         }
     }
 
+    /**
+     * Kafka 3.8, KIP-890: the four version bumps of this file declare no field at all
+     *
+     * "adds support for new error code TRANSACTION_ABORTABLE (KIP-890)" is the whole comment of every one of them
+     * in the message specifications @ 3.8.1, so the frame of the new version has to be the frame of the version
+     * below it with another number in the header - which is what the keep-behind classes are compared against.
+     */
+    public function testTheKip890VersionsOfKafka38AreTheFramesBelowThemWithAHigherVersionField(): void
+    {
+        $frames = [
+            'AddPartitionsToTxn' => [
+                new AddPartitionsToTxnRequest('tx-1', 42, 3, ['topic' => [0, 1]], 'test', 7, true),
+                new AddPartitionsToTxnRequestV4('tx-1', 42, 3, ['topic' => [0, 1]], 'test', 7, true),
+                5,
+            ],
+            'AddOffsetsToTxn' => [
+                new AddOffsetsToTxnRequest('tx-1', 42, 3, 'my-group', 'test', 7),
+                new AddOffsetsToTxnRequestV3('tx-1', 42, 3, 'my-group', 'test', 7),
+                4,
+            ],
+            'EndTxn' => [
+                new EndTxnRequest('tx-1', 42, 3, EndTxnRequest::COMMIT, 'test', 7),
+                new EndTxnRequestV3('tx-1', 42, 3, EndTxnRequest::COMMIT, 'test', 7),
+                4,
+            ],
+            'TxnOffsetCommit' => [
+                new TxnOffsetCommitRequest('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
+                new TxnOffsetCommitRequestV3('tx-1', 'my-group', 42, 3, ['topic' => [0 => 17]], null, 'test', 7),
+                4,
+            ],
+        ];
+
+        foreach ($frames as $api => [$current, $keptBehind, $version]) {
+            self::assertSame($version, $current->getApiVersion(), "{$api} is at the version Kafka 3.8 added");
+            self::assertSame($version - 1, $keptBehind->getApiVersion(), "{$api} keeps the version below it");
+
+            $new = bin2hex((string) $current);
+            $old = bin2hex((string) $keptBehind);
+
+            // The version field is the third int16 of the request header, bytes 8 and 9 of the frame
+            self::assertSame(
+                substr($old, 0, 12) . sprintf('%04x', $version) . substr($old, 16),
+                $new,
+                "the {$api} frame of Kafka 3.8 differs from the one below it in the version field alone"
+            );
+        }
+    }
+
+    /**
+     * And so do the answers, which none of the four versions touches either
+     */
+    public function testTheKip890AnswersOfKafka38AreReadByTheClassesOfTheVersionBelowThem(): void
+    {
+        $answers = [
+            AddPartitionsToTxnResponse::class => [AddPartitionsToTxnResponseV4::class, self::ADD_PARTITIONS_V4_RESPONSE_HEX],
+            AddOffsetsToTxnResponse::class    => [AddOffsetsToTxnResponseV3::class, '0000000c000000070000000000000000'],
+            EndTxnResponse::class             => [EndTxnResponseV3::class, '0000000c000000070000000000003000'],
+            TxnOffsetCommitResponse::class    => [
+                TxnOffsetCommitResponseV3::class,
+                '0000001a' . '00000007' . '00' . '00000000' . '02' . '06746f706963' . '02' . '00000000' . '0019' . '00' . '00' . '00',
+            ],
+        ];
+
+        foreach ($answers as $current => [$keptBehind, $hex]) {
+            $new = $current::unpack(new StringStream((string) hex2bin($hex)));
+            $old = $keptBehind::unpack(new StringStream((string) hex2bin($hex)));
+
+            self::assertSame($hex, bin2hex((string) $new), "{$current} does not survive a round trip");
+            self::assertSame(bin2hex((string) $old), bin2hex((string) $new), 'both versions read the same bytes');
+        }
+    }
+
+    /**
+     * The version 5 of AddPartitionsToTxn is a broker version as the version 4 is, so no client method sends it
+     */
+    public function testTheAddPartitionsToTxnVersionFiveStaysABrokerVersion(): void
+    {
+        self::assertSame(5, AddPartitionsToTxnRequest::VERSION, 'the class of the version Kafka 3.8 added');
+        self::assertSame(3, AddPartitionsToTxnRequestV3::VERSION, 'the version Client::addPartitionsToTxn() sends');
+        self::assertSame(
+            AddPartitionsToTxnRequest::MIN_BATCHED_VERSION,
+            4,
+            'the batch arrived with the version 4 and the version 5 keeps it'
+        );
+
+        $batch = AddPartitionsToTxnRequest::forTransactions(
+            [new AddPartitionsToTxnTransaction('tx-1', 42, 3, ['topic' => [0]], true)],
+            'test',
+            7
+        );
+
+        self::assertSame(5, $batch->getApiVersion());
+        self::assertStringStartsWith('0000002f' . '0018' . '0005', bin2hex((string) $batch));
+
+        $this->expectException(UnsupportedVersionException::class);
+        AddPartitionsToTxnRequestV3::forTransactions(
+            [
+                new AddPartitionsToTxnTransaction('tx-1', 42, 3, ['topic' => [0]]),
+                new AddPartitionsToTxnTransaction('tx-2', 43, 1, ['topic' => [0]]),
+            ],
+            'test',
+            7
+        );
+    }
 }

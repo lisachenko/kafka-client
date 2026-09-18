@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Kafka 2.7 added with KIP-588 changes no byte of the request. The api is **not** flexible in this version -
  * `"flexibleVersions": "none"` at the 2.7.2 tag - and only became one with the version 3 of Kafka 2.8.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 final class AddPartitionsToTxnRequestV1 extends AddPartitionsToTxnRequest
 {

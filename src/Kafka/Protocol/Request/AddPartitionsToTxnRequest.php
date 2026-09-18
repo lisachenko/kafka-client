@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnTransaction;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
- * AddPartitionsToTxn, version 4: enrols topic-partitions into the open transaction (ApiKey 24, Kafka 0.11, KIP-98)
+ * AddPartitionsToTxn, version 5: enrols topic-partitions into the open transaction (ApiKey 24, Kafka 0.11, KIP-98)
  *
  * <pre>
  *   AddPartitionsToTxn Request (Version: 0 to 3) => transactional_id producer_id producer_epoch [topics]
@@ -91,11 +91,17 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  *   top-level 31 to a 48 as well, "The client should not be exposed to CLUSTER_AUTHORIZATION_FAILED").
  *
  * {@see \Protocol\Kafka\Client::addPartitionsToTxn()} therefore keeps sending {@see AddPartitionsToTxnRequestV3},
- * the frame of Kafka 2.8, and the version 4 lives here for the wire: its vectors are the frames the node answered.
- * The version **5** of Kafka 3.8, which only promises that the sender understands the code 120, is the first one a
- * client may send again, and it belongs to the KIP-890 wave of this line.
+ * the frame of Kafka 2.8, and the versions above it live here for the wire: their vectors are the frames the node
+ * answered.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v4)"
+ * **Kafka 3.8 added the version 5** (KIP-890): *"Version 5 adds support for new error code TRANSACTION_ABORTABLE"*
+ * (`AddPartitionsToTxnRequest.json` @ 3.8.1), no field, and the `"latestVersionUnstable"` flag the version 4
+ * carried at the 3.5.2 tag turned to `false`, which is why a 3.9.2 node announces the whole range 0 to 5 for this
+ * key. It is **not** a client version either: the authorization above reads `if (version >= 4)`, and the node
+ * answers a version 5 of the SASL user `acltest` the same top-level 31. {@see AddPartitionsToTxnRequestV4} keeps
+ * the frame of Kafka 3.5.
+ *
+ * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 class AddPartitionsToTxnRequest extends AbstractRequest
 {
@@ -107,7 +113,7 @@ class AddPartitionsToTxnRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The version 3 of Kafka 2.8 is the first flexible one of this api (KIP-482)

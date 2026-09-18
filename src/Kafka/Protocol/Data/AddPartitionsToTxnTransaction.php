@@ -42,7 +42,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * **120** (`TransactionAbortable`) for one it does not, see
  * {@see \Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest}.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 class AddPartitionsToTxnTransaction implements BinarySchemaInterface
 {

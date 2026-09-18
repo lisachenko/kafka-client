@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * AddOffsetsToTxn, version 1: enrols the offsets of a consumer group into the transaction (key 25, Kafka 0.11)
+ * AddOffsetsToTxn, version 4: enrols the offsets of a consumer group into the transaction (key 25, Kafka 0.11)
  *
  * <pre>
  *   AddOffsetsToTxn Request (Version: 0 and 1) => transactional_id producer_id producer_epoch consumer_group_id
@@ -47,7 +47,14 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see AddOffsetsToTxnRequestV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v3)"
+ * **Kafka 2.7 added the version 2** (KIP-588), the promise that the client understands the code 90, and **Kafka
+ * 2.8 the version 3**, the first flexible one of this api; {@see AddOffsetsToTxnRequestV2} keeps the plain frame.
+ *
+ * **Kafka 3.8 added the version 4** (KIP-890): *"Version 4 adds support for new error code TRANSACTION_ABORTABLE"*
+ * (`AddOffsetsToTxnRequest.json` @ 3.8.1) and no field. It is the version this client sends;
+ * {@see AddOffsetsToTxnRequestV3} is the same frame with the version field of Kafka 2.8.
+ *
+ * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
  */
 class AddOffsetsToTxnRequest extends AbstractRequest
 {
@@ -59,7 +66,7 @@ class AddOffsetsToTxnRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * The version 3 of Kafka 2.8 is the first flexible one of this api (KIP-482)
