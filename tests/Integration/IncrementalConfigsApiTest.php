@@ -22,7 +22,6 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\InvalidConfigException;
 use Protocol\Kafka\Common\Errors\InvalidRequestException;
-use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestAlterableConfig;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsResponseResource;
@@ -30,7 +29,7 @@ use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsRequest;
 use Protocol\Kafka\Protocol\Request\IncrementalAlterConfigsResponse;
 
 /**
- * Exercises the IncrementalAlterConfigs api (key 44, v0) against a real Kafka 2.8.2 broker.
+ * Exercises the IncrementalAlterConfigs api (key 44, v0) against the Kafka 3.9.2 KRaft node of this line.
  *
  * KIP-339 added the api in Kafka 2.3 to replace the AlterConfigs of KIP-133, whose request carries the WHOLE
  * configuration a resource should have afterwards. Every test of this class works on a topic of its own, so that
@@ -169,8 +168,14 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 
     /**
      * An APPEND is only allowed for an option whose `ConfigDef.Type` is LIST - `retention.ms` is a long
+     *
+     * The code is the **40** of the KRaft controller, where 2.8.2 answered 42: `ZkAdminManager.
+     * prepareIncrementalConfigs()` @ 2.8.2 threw an `InvalidRequestException` ("Config value append is not allowed
+     * for config key: retention.ms") and `ConfigurationControlManager.incrementalAlterConfigResource()` @ 3.9.2
+     * answers `new ApiError(INVALID_CONFIG, "Can't APPEND to key … because its type is not LIST.")` - the sentence
+     * names the operation, so a SUBTRACT gets the same one with SUBTRACT in it.
      */
-    public function testAnAppendToAnOptionThatIsNotAListIsRefusedWithFortyTwo(): void
+    public function testAnAppendToAnOptionThatIsNotAListIsRefusedWithForty(): void
     {
         $topic = $this->topic('append-scalar');
         $key   = ConfigResource::topic($topic)->key();
@@ -178,9 +183,9 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 
         $error = $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::append('retention.ms', '1000')]])[$key];
 
-        self::assertInstanceOf(InvalidRequestException::class, $error);
+        self::assertInstanceOf(InvalidConfigException::class, $error);
         self::assertSame(
-            'Config value append is not allowed for config key: retention.ms',
+            "Can't APPEND to key retention.ms because its type is not LIST.",
             $error->getContext()['error']
         );
         self::assertSame($before, $this->valueOf($topic, 'retention.ms'), 'and nothing of the resource was applied');
@@ -202,7 +207,10 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         ])[$key];
 
         self::assertInstanceOf(InvalidRequestException::class, $error);
-        self::assertSame('Error due to duplicate config keys : retention.ms', $error->getContext()['error']);
+        // `ConfigAdminManager.validateIncrementalAlterConfigs()` @ 3.9.2 - the broker-side validation that runs
+        // before the request is forwarded to the controller - names no key any more, where `ZkAdminManager`
+        // @ 2.8.2 appended " : retention.ms"
+        self::assertSame('Error due to duplicate config keys', $error->getContext()['error']);
     }
 
     /**
@@ -218,13 +226,20 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         ])[$key];
 
         self::assertInstanceOf(InvalidRequestException::class, $error);
-        self::assertSame('Null value not supported for : SET:retention.ms', $error->getContext()['error']);
+        // The same validation as above lists the plain NAMES of the entries whose value is null;
+        // `ZkAdminManager` @ 2.8.2 listed them as "<OP>:<name>", i.e. "SET:retention.ms"
+        self::assertSame('Null value not supported for : retention.ms', $error->getContext()['error']);
     }
 
     /**
-     * An unknown option name is 40 for a SET - and the **unknown server error** for an APPEND, see the document
+     * An unknown option name is the code 40 for a SET and for an APPEND alike - with two different sentences
+     *
+     * On a 2.8.2 broker the APPEND was the **unknown server error**: `ZkAdminManager` reached
+     * `ConfigDef.listType()` for the unknown key and the `NoSuchElementException` escaped without a message. The
+     * KRaft controller asks its `KafkaConfigSchema` whether the key is splittable BEFORE it looks the key up, so
+     * an unknown name is refused with the LIST sentence of the operation and the option is never validated at all.
      */
-    public function testAnUnknownOptionNameIsFortyForASetAndMinusOneForAnAppend(): void
+    public function testAnUnknownOptionNameIsFortyForASetAndForAnAppend(): void
     {
         $topic = $this->topic('unknown-option');
         $key   = ConfigResource::topic($topic)->key();
@@ -236,11 +251,11 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 
         $append = $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::append('not.an.option', '1')]])[$key];
 
-        self::assertInstanceOf(UnknownErrorException::class, $append);
-        self::assertArrayNotHasKey(
-            'error',
-            $append->getContext(),
-            'the NoSuchElementException of `listType()` reaches the client without a message at all'
+        self::assertInstanceOf(InvalidConfigException::class, $append);
+        self::assertSame(
+            "Can't APPEND to key not.an.option because its type is not LIST.",
+            $append->getContext()['error'],
+            'an unknown key is "not a LIST" to the controller, which never gets to the name itself'
         );
     }
 
