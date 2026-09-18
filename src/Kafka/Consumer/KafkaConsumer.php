@@ -649,7 +649,7 @@ class KafkaConsumer
 
         $this->rebalanceListener = $listener;
         $this->subscriptionState->subscribeByTopics($topicNames);
-        $this->groupCoordinator()->requestRejoin();
+        $this->groupCoordinator()->requestRejoin(ConsumerCoordinator::REJOIN_REASON_SUBSCRIPTION);
     }
 
     /**
@@ -668,11 +668,15 @@ class KafkaConsumer
      * A member of a group leaves it with a LeaveGroup request, so that the coordinator rebalances the group right
      * away instead of waiting for the session timeout of a member that simply stopped answering. Nothing else is
      * sent to the broker, and the committed offsets of the group stay where they are.
+     *
+     * @param string|null $reason Why the member leaves, which the request carries since KIP-800 (LeaveGroup v5,
+     *        Kafka 3.2); null is {@see ConsumerCoordinator::LEAVE_REASON_UNSUBSCRIBED}, and {@see self::close()}
+     *        names {@see ConsumerCoordinator::LEAVE_REASON_CLOSED} instead
      */
-    public function unsubscribe(): void
+    public function unsubscribe(?string $reason = null): void
     {
         if ($this->subscriptionState->partitionsAutoAssigned() && $this->groupCoordinator !== null) {
-            $this->groupCoordinator->leaveGroup();
+            $this->groupCoordinator->leaveGroup($reason ?? ConsumerCoordinator::LEAVE_REASON_UNSUBSCRIBED);
         }
 
         $this->subscriptionState->unsubscribe();
@@ -702,7 +706,7 @@ class KafkaConsumer
             }
         }
 
-        $this->unsubscribe();
+        $this->unsubscribe(ConsumerCoordinator::LEAVE_REASON_CLOSED);
     }
 
     /**

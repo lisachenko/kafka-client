@@ -588,7 +588,8 @@ final class FakeClient extends Client
         string $protocolType,
         array $groupProtocols,
         ?int $rebalanceTimeoutMs = null,
-        ?string $groupInstanceId = null
+        ?string $groupInstanceId = null,
+        ?string $reason = null
     ): JoinGroupResponse {
         $this->joins[] = [
             'groupId'          => $groupId,
@@ -597,6 +598,7 @@ final class FakeClient extends Client
             'protocols'        => $groupProtocols,
             'rebalanceTimeout' => $rebalanceTimeoutMs,
             'instanceId'       => $groupInstanceId,
+            'reason'           => $reason,
         ];
 
         $failure = array_shift($this->joinFailures);
@@ -703,9 +705,15 @@ final class FakeClient extends Client
         Node $coordinatorNode,
         string $groupId,
         string $memberId,
-        ?string $groupInstanceId = null
+        ?string $groupInstanceId = null,
+        ?string $reason = null
     ): void {
-        $this->leaves[] = ['groupId' => $groupId, 'memberId' => $memberId, 'instanceId' => $groupInstanceId];
+        $this->leaves[] = [
+            'groupId'    => $groupId,
+            'memberId'   => $memberId,
+            'instanceId' => $groupInstanceId,
+            'reason'     => $reason,
+        ];
 
         unset($this->groupMembers[$memberId], $this->memberAssignments[$memberId]);
 

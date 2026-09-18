@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `LEAVE_GROUP_REQUEST_V1 = LEAVE_GROUP_REQUEST_V0` in `Protocol.java` @ 0.11.0.3: only the answer of version 1 is
  * different ({@see LeaveGroupResponseV0}).
  *
- * @see docs/protocol/3.9.md, section "LeaveGroup API (key 13, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "LeaveGroup API (key 13, v0 to v5)"
  */
 final class LeaveGroupRequestV0 extends LeaveGroupRequest
 {

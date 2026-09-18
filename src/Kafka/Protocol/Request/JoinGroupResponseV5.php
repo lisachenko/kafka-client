@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Version 6 (Kafka 2.4, KIP-482) is the same answer in the flexible encoding, see {@see JoinGroupResponse}.
  *
  * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupResponseV5 extends JoinGroupResponse
 {

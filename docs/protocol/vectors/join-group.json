@@ -1,8 +1,8 @@
 {
     "api": "join-group",
     "apiKey": 11,
-    "section": "JoinGroup API (key 11, v0 to v7)",
-    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v7), replayed by tests/Compliance.",
+    "section": "JoinGroup API (key 11, v0 to v9)",
+    "description": "Wire vectors of the JoinGroup API (key 11, v0 to v9), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "joingroup.request.v1",
@@ -498,7 +498,7 @@
         {
             "id": "joingroup.request.v7",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV7",
             "version": 7,
             "source": "broker",
             "description": "JoinGroup request v7 (Kafka 2.5, KIP-559): byte for byte the flexible version 6 frame with the version field 7 - \"Version 7 is the same as version 6\" in `JoinGroupRequest.json` @ 2.8.2 - sent with the member id the coordinator had just assigned. What the version states is that the client understands the two protocol fields of the answer.",
@@ -529,7 +529,7 @@
         {
             "id": "joingroup.response.v7",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer v7 of an accepted join: the nullable `protocol_type` of KIP-559 stands in front of the protocol name, both as compact strings - `consumer` and the `range` the coordinator selected - so a member can check that the group it joined is of the kind it asked for.",
@@ -559,7 +559,7 @@
         {
             "id": "joingroup.request.v7.member-id-required",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV7",
             "version": 7,
             "source": "broker",
             "description": "The first join of a dynamic member, with an **empty** member id: the 79 of KIP-394 is answered to a version 7 exactly as it is to a version 4, and the frame is the one above with a zero-length compact member id.",
@@ -590,7 +590,7 @@
         {
             "id": "joingroup.response.v7.member-id-required",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The refusal: the error code **79** with the member id the coordinator generated - and, from version 7 on, a **null** `protocol_type` and a **null** `protocol_name`, both the single byte `00` of a null compact string, where a version 6 answer carries the empty string of `GroupCoordinator.NoProtocol` in the name and has no type at all.",
@@ -607,6 +607,366 @@
                 "leaderId": "",
                 "memberId": "kafka-client-t3-25-b0900014-0ee5-46ce-a019-c650476927c5",
                 "members": []
+            }
+        },
+        {
+            "id": "joingroup.request.v8.member-id-required",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV8",
+            "version": 8,
+            "source": "broker",
+            "description": "JoinGroup request v8 (Kafka 3.2, KIP-800): the first join of a dynamic member, which carries no member id yet, with the `reason` the version added behind the protocol array - a compact string, the last field of the body in front of its tag buffer.",
+            "hex": "0000007c000b0008000004b000126b61666b612d636c69656e742d74332d3332001474332d33322d766563746f72732d67726f75700000271000004e20010009636f6e73756d6572020672616e67651a000000000001000d74332d33322d766563746f727300000000001574686520636f6e73756d6572207374617274656400",
+            "fields": {
+                "messageSize": 124,
+                "apiKey": 11,
+                "apiVersion": 8,
+                "correlationId": 1200,
+                "clientId": "kafka-client-t3-32",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-32-vectors-group",
+                "sessionTimeout": 10000,
+                "rebalanceTimeout": 20000,
+                "memberId": "",
+                "groupInstanceId": null,
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                },
+                "reason": "the consumer started"
+            }
+        },
+        {
+            "id": "joingroup.response.v8.member-id-required",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV8",
+            "version": 8,
+            "source": "broker",
+            "description": "The 79 MemberIdRequired of KIP-394 at version 8: the answer is the one of version 7, field for field - \"Version 8 is the same as version 7\" - with the generation -1, a null protocol type and name, an empty leader and the member id the coordinator assigned. The reason of the refused join is NOT logged by the node: only the join that follows it names one in the broker log.",
+            "hex": "0000004c000004b00000000000004fffffffff000001386b61666b612d636c69656e742d74332d33322d36636634326162392d386266642d343630332d613166662d3335393063323734383239630100",
+            "fields": {
+                "messageSize": 76,
+                "correlationId": 1200,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 79,
+                "generationId": -1,
+                "protocolType": null,
+                "groupProtocol": null,
+                "leaderId": "",
+                "memberId": "kafka-client-t3-32-6cf42ab9-8bfd-4603-a1ff-3590c274829c",
+                "members": []
+            }
+        },
+        {
+            "id": "joingroup.request.v8",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequestV8",
+            "version": 8,
+            "source": "broker",
+            "description": "The join that follows, with the assigned member id and the reason the Java consumer sends for it. The node logs it: \"Preparing to rebalance group … client reason: need to re-join with the given member-id: …\".",
+            "hex": "00000100000b0008000004b100126b61666b612d636c69656e742d74332d3332001474332d33322d766563746f72732d67726f75700000271000004e20386b61666b612d636c69656e742d74332d33322d36636634326162392d386266642d343630332d613166662d3335393063323734383239630009636f6e73756d6572020672616e67651a000000000001000d74332d33322d766563746f72730000000000626e65656420746f2072652d6a6f696e20776974682074686520676976656e206d656d6265722d69643a206b61666b612d636c69656e742d74332d33322d36636634326162392d386266642d343630332d613166662d33353930633237343832396300",
+            "fields": {
+                "messageSize": 256,
+                "apiKey": 11,
+                "apiVersion": 8,
+                "correlationId": 1201,
+                "clientId": "kafka-client-t3-32",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-32-vectors-group",
+                "sessionTimeout": 10000,
+                "rebalanceTimeout": 20000,
+                "memberId": "kafka-client-t3-32-6cf42ab9-8bfd-4603-a1ff-3590c274829c",
+                "groupInstanceId": null,
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                },
+                "reason": "need to re-join with the given member-id: kafka-client-t3-32-6cf42ab9-8bfd-4603-a1ff-3590c274829c"
+            }
+        },
+        {
+            "id": "joingroup.response.v8",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponseV8",
+            "version": 8,
+            "source": "broker",
+            "description": "The accepted answer v8, held for the 3 s of `group.initial.rebalance.delay.ms`: the generation 1, the protocol type and name of KIP-559 and the one member of the group, because this member is its leader. There is no `skip_assignment` byte anywhere in it - that is what version 9 adds.",
+            "hex": "000000e4000004b1000000000000000000000109636f6e73756d65720672616e6765386b61666b612d636c69656e742d74332d33322d36636634326162392d386266642d343630332d613166662d333539306332373438323963386b61666b612d636c69656e742d74332d33322d36636634326162392d386266642d343630332d613166662d33353930633237343832396302386b61666b612d636c69656e742d74332d33322d36636634326162392d386266642d343630332d613166662d333539306332373438323963001a000000000001000d74332d33322d766563746f7273000000000000",
+            "fields": {
+                "messageSize": 228,
+                "correlationId": 1201,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 1,
+                "protocolType": "consumer",
+                "groupProtocol": "range",
+                "leaderId": "kafka-client-t3-32-6cf42ab9-8bfd-4603-a1ff-3590c274829c",
+                "memberId": "kafka-client-t3-32-6cf42ab9-8bfd-4603-a1ff-3590c274829c",
+                "members": {
+                    "kafka-client-t3-32-6cf42ab9-8bfd-4603-a1ff-3590c274829c": {
+                        "memberId": "kafka-client-t3-32-6cf42ab9-8bfd-4603-a1ff-3590c274829c",
+                        "groupInstanceId": null,
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.request.v9.member-id-required",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 9,
+            "source": "broker",
+            "description": "JoinGroup request v9 (Kafka 3.2, KIP-814), the version this client sends: the frame of version 8, field for field - \"Version 9 is the same as version 8\" - with the api version 9 in the header, because what the version buys sits in the answer.",
+            "hex": "0000007c000b0009000004b400126b61666b612d636c69656e742d74332d3332001474332d33322d766563746f72732d67726f75700000271000004e20010009636f6e73756d6572020672616e67651a000000000001000d74332d33322d766563746f727300000000001574686520636f6e73756d6572207374617274656400",
+            "fields": {
+                "messageSize": 124,
+                "apiKey": 11,
+                "apiVersion": 9,
+                "correlationId": 1204,
+                "clientId": "kafka-client-t3-32",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-32-vectors-group",
+                "sessionTimeout": 10000,
+                "rebalanceTimeout": 20000,
+                "memberId": "",
+                "groupInstanceId": null,
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                },
+                "reason": "the consumer started"
+            }
+        },
+        {
+            "id": "joingroup.response.v9.member-id-required",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 9,
+            "source": "broker",
+            "description": "The 79 of KIP-394 at version 9: the one byte of `skip_assignment` stands between the empty leader id and the member id the coordinator assigned, and it is **false**, as it is in every error answer of the api.",
+            "hex": "0000004d000004b40000000000004fffffffff00000100386b61666b612d636c69656e742d74332d33322d64343639346664352d393231312d346364632d613035652d3966333365346362366266650100",
+            "fields": {
+                "messageSize": 77,
+                "correlationId": 1204,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 79,
+                "generationId": -1,
+                "protocolType": null,
+                "groupProtocol": null,
+                "leaderId": "",
+                "skipAssignment": false,
+                "memberId": "kafka-client-t3-32-d4694fd5-9211-4cdc-a05e-9f33e4cb6bfe",
+                "members": []
+            }
+        },
+        {
+            "id": "joingroup.request.v9",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 9,
+            "source": "broker",
+            "description": "The join that follows at version 9, with the assigned member id and the reason of the Java consumer.",
+            "hex": "00000100000b0009000004b500126b61666b612d636c69656e742d74332d3332001474332d33322d766563746f72732d67726f75700000271000004e20386b61666b612d636c69656e742d74332d33322d64343639346664352d393231312d346364632d613035652d3966333365346362366266650009636f6e73756d6572020672616e67651a000000000001000d74332d33322d766563746f72730000000000626e65656420746f2072652d6a6f696e20776974682074686520676976656e206d656d6265722d69643a206b61666b612d636c69656e742d74332d33322d64343639346664352d393231312d346364632d613035652d39663333653463623662666500",
+            "fields": {
+                "messageSize": 256,
+                "apiKey": 11,
+                "apiVersion": 9,
+                "correlationId": 1205,
+                "clientId": "kafka-client-t3-32",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-32-vectors-group",
+                "sessionTimeout": 10000,
+                "rebalanceTimeout": 20000,
+                "memberId": "kafka-client-t3-32-d4694fd5-9211-4cdc-a05e-9f33e4cb6bfe",
+                "groupInstanceId": null,
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                },
+                "reason": "need to re-join with the given member-id: kafka-client-t3-32-d4694fd5-9211-4cdc-a05e-9f33e4cb6bfe"
+            }
+        },
+        {
+            "id": "joingroup.response.v9",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 9,
+            "source": "broker",
+            "description": "The accepted answer v9 of the leader of a fresh generation: `skip_assignment` is **false**, so this leader computes the assignment out of the member array that follows it and publishes it with a SyncGroup.",
+            "hex": "000000e5000004b5000000000000000000000309636f6e73756d65720672616e6765386b61666b612d636c69656e742d74332d33322d64343639346664352d393231312d346364632d613035652d39663333653463623662666500386b61666b612d636c69656e742d74332d33322d64343639346664352d393231312d346364632d613035652d39663333653463623662666502386b61666b612d636c69656e742d74332d33322d64343639346664352d393231312d346364632d613035652d396633336534636236626665001a000000000001000d74332d33322d766563746f7273000000000000",
+            "fields": {
+                "messageSize": 229,
+                "correlationId": 1205,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 3,
+                "protocolType": "consumer",
+                "groupProtocol": "range",
+                "leaderId": "kafka-client-t3-32-d4694fd5-9211-4cdc-a05e-9f33e4cb6bfe",
+                "skipAssignment": false,
+                "memberId": "kafka-client-t3-32-d4694fd5-9211-4cdc-a05e-9f33e4cb6bfe",
+                "members": {
+                    "kafka-client-t3-32-d4694fd5-9211-4cdc-a05e-9f33e4cb6bfe": {
+                        "memberId": "kafka-client-t3-32-d4694fd5-9211-4cdc-a05e-9f33e4cb6bfe",
+                        "groupInstanceId": null,
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.request.v9.static",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 9,
+            "source": "broker",
+            "description": "The first join of a STATIC member at version 9, which names its `group.instance.id` and **no reason at all**: the null reason is the single byte 00 of a compact null, the last field of the body in front of its tag buffer. A join that carries an instance id is never refused with the 79 of KIP-394.",
+            "hex": "00000072000b0009000004b700126b61666b612d636c69656e742d74332d3332001574332d33322d766563746f72732d7374617469630000271000004e20010a74332d33322d6f6e6509636f6e73756d6572020672616e67651a000000000001000d74332d33322d766563746f727300000000000000",
+            "fields": {
+                "messageSize": 114,
+                "apiKey": 11,
+                "apiVersion": 9,
+                "correlationId": 1207,
+                "clientId": "kafka-client-t3-32",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-32-vectors-static",
+                "sessionTimeout": 10000,
+                "rebalanceTimeout": 20000,
+                "memberId": "",
+                "groupInstanceId": "t3-32-one",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                },
+                "reason": null
+            }
+        },
+        {
+            "id": "joingroup.response.v9.static",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 9,
+            "source": "broker",
+            "description": "Its answer, held for the 3 s of `group.initial.rebalance.delay.ms`: the generation 1, the member id the coordinator built out of the instance id and a uuid, and `skip_assignment` **false** - the group had no assignment yet, so its leader has to compute one.",
+            "hex": "000000d3000004b7000000000000000000000109636f6e73756d65720672616e67652f74332d33322d6f6e652d35396466646539322d393838622d346534652d616561312d303861323934633737326561002f74332d33322d6f6e652d35396466646539322d393838622d346534652d616561312d303861323934633737326561022f74332d33322d6f6e652d35396466646539322d393838622d346534652d616561312d3038613239346337373265610a74332d33322d6f6e651a000000000001000d74332d33322d766563746f7273000000000000",
+            "fields": {
+                "messageSize": 211,
+                "correlationId": 1207,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 1,
+                "protocolType": "consumer",
+                "groupProtocol": "range",
+                "leaderId": "t3-32-one-59dfde92-988b-4e4e-aea1-08a294c772ea",
+                "skipAssignment": false,
+                "memberId": "t3-32-one-59dfde92-988b-4e4e-aea1-08a294c772ea",
+                "members": {
+                    "t3-32-one-59dfde92-988b-4e4e-aea1-08a294c772ea": {
+                        "memberId": "t3-32-one-59dfde92-988b-4e4e-aea1-08a294c772ea",
+                        "groupInstanceId": "t3-32-one",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "joingroup.request.v9.static-return",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupRequest",
+            "version": 9,
+            "source": "broker",
+            "description": "The frame KIP-814 exists for: the same static instance comes back after a restart with an EMPTY member id - it lost the one of the previous generation - and the `group.instance.id` that the group still holds.",
+            "hex": "00000088000b0009000004b900126b61666b612d636c69656e742d74332d3332001574332d33322d766563746f72732d7374617469630000271000004e20010a74332d33322d6f6e6509636f6e73756d6572020672616e67651a000000000001000d74332d33322d766563746f727300000000001774686520636f6e73756d65722072657374617274656400",
+            "fields": {
+                "messageSize": 136,
+                "apiKey": 11,
+                "apiVersion": 9,
+                "correlationId": 1209,
+                "clientId": "kafka-client-t3-32",
+                "headerTaggedFields": [],
+                "consumerGroup": "t3-32-vectors-static",
+                "sessionTimeout": 10000,
+                "rebalanceTimeout": 20000,
+                "memberId": "",
+                "groupInstanceId": "t3-32-one",
+                "protocolType": "consumer",
+                "groupProtocols": {
+                    "range": {
+                        "name": "range",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                },
+                "reason": "the consumer restarted"
+            }
+        },
+        {
+            "id": "joingroup.response.v9.static-return",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\JoinGroupResponse",
+            "version": 9,
+            "source": "broker",
+            "description": "The answer that carries `skip_assignment` = **true** (the byte 01 behind the leader id): the coordinator did not rebalance the group at all - it answered in milliseconds, the generation is still 1 - it only replaced the member id of that instance, and this member is the leader. The leader must therefore NOT compute an assignment: it sends a SyncGroup with an empty assignment array and is answered the assignment the generation already agreed on.",
+            "hex": "000000d3000004b9000000000000000000000109636f6e73756d65720672616e67652f74332d33322d6f6e652d61383032323431362d373539362d343563312d616266392d383164613464326331343434012f74332d33322d6f6e652d61383032323431362d373539362d343563312d616266392d383164613464326331343434022f74332d33322d6f6e652d61383032323431362d373539362d343563312d616266392d3831646134643263313434340a74332d33322d6f6e651a000000000001000d74332d33322d766563746f7273000000000000",
+            "fields": {
+                "messageSize": 211,
+                "correlationId": 1209,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "generationId": 1,
+                "protocolType": "consumer",
+                "groupProtocol": "range",
+                "leaderId": "t3-32-one-a8022416-7596-45c1-abf9-81da4d2c1444",
+                "skipAssignment": true,
+                "memberId": "t3-32-one-a8022416-7596-45c1-abf9-81da4d2c1444",
+                "members": {
+                    "t3-32-one-a8022416-7596-45c1-abf9-81da4d2c1444": {
+                        "memberId": "t3-32-one-a8022416-7596-45c1-abf9-81da4d2c1444",
+                        "groupInstanceId": "t3-32-one",
+                        "metadata": {
+                            "$bytes": "000000000001000d74332d33322d766563746f727300000000"
+                        }
+                    }
+                }
             }
         }
     ]

@@ -1,10 +1,13 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 3.x line has captured **69** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
+The 3.x line has captured **94** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
 the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
 `list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
-`group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — and the 20 frames of Kafka 3.1, the
-10 of Fetch v13 in `fetch.json` and the 10 of Metadata v12 in `metadata.json` — next to the **669** vectors of the lines
+`group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — the 20 frames of Kafka 3.1, the
+10 of Fetch v13 in `fetch.json` and the 10 of Metadata v12 in `metadata.json` — and the 25 frames of Kafka 3.2,
+the 12 of JoinGroup v8 and v9 in `join-group.json`, the 4 of LeaveGroup v5 in `leave-group.json` and the 9 of
+DescribeLogDirs v3 in `describe-log-dirs.json` — next to the
+**669** vectors of the lines
 up to 2.x below, which are replayed unchanged against the classes of this line, because the 3.9.2 node still serves
 every version they were captured at.
 
@@ -86,7 +89,12 @@ commit of that partition is still open. What **Kafka 2.6** added: the `states_fi
 added: the batch LeaveGroup **v3** of KIP-345 and the **flexible** version of every one of the ten apis (KIP-482) -
 one request/response pair per api, with the compact strings and arrays, the tagged-field section of every
 structure, the request header v2 and the response header v1, plus the plain DescribeGroups v4 whose members carry
-their `group_instance_id`.
+their `group_instance_id`. What **Kafka 3.2** added, captured on the KRaft node: the `reason` of KIP-800 in
+JoinGroup **v8** and in every entry of a LeaveGroup **v5** batch - as a compact string and, for a member that
+names none, as the compact null - and the `skip_assignment` of KIP-814 in the JoinGroup **v9** answer, `false`
+for the 79 of a first join and for the leader of a fresh generation, and **true** for the one frame it exists
+for: a static instance that comes back to a `Stable` group with an empty member id and is told to keep the
+assignment the group already has.
 
 What **Kafka 2.1 and 2.2** added to the admin, transaction and SASL apis, captured with the client id `t4-vectors`
 and the topics `t4-21-vectors` and `t4-22-vectors`:

@@ -1569,7 +1569,7 @@ final class ClientTest extends TestCase
         $frame = $coordinator->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::JOIN_GROUP, $this->apiKeyOf($frame));
-        self::assertSame(7, $this->apiVersionOf($frame), 'JoinGroup v7 is the version of KIP-559');
+        self::assertSame(9, $this->apiVersionOf($frame), 'JoinGroup v9 is the version of KIP-814');
         $sent = JoinGroupRequest::unpack(new StringStream(pack('N', strlen($frame)) . $frame));
 
         self::assertSame(

@@ -1547,6 +1547,8 @@ class Client
      *        rebalance, null for the configured `max.poll.interval.ms`
      * @param string|null           $groupInstanceId   `group.instance.id` of a static member (KIP-345, version 5),
      *        null for a dynamic one
+     * @param string|null           $reason            Why this member (re-)joins the group (KIP-800, version 8),
+     *        null when it names none; the coordinator logs the text and does nothing else with it
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -1564,7 +1566,8 @@ class Client
         string $protocolType,
         array $groupProtocols,
         ?int $rebalanceTimeoutMs = null,
-        ?string $groupInstanceId = null
+        ?string $groupInstanceId = null,
+        ?string $reason = null
     ): JoinGroupResponse {
         $clientId         = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
         $sessionTimeout   = (int) $this->configuration[ConsumerConfig::SESSION_TIMEOUT_MS];
@@ -1583,7 +1586,8 @@ class Client
                 $groupProtocols,
                 $clientId,
                 $correlationId,
-                $groupInstanceId
+                $groupInstanceId,
+                $reason
             ),
             JoinGroupResponse::class,
             static function (JoinGroupResponse $response) use ($groupId, $memberId, $protocolType): JoinGroupResponse {
@@ -1759,6 +1763,8 @@ class Client
      * @param string      $memberId        Name of the group member
      * @param string|null $groupInstanceId `group.instance.id` of a static member (KIP-345, version 3), null for a
      *        dynamic one; naming both makes the coordinator check that the member id belongs to that instance
+     * @param string|null $reason          Why the member leaves the group (KIP-800, version 5), null when it names
+     *        none; the coordinator logs the text and does nothing else with it
      *
      * @throws Common\Errors\GroupLoadInProgressException
      * @throws Common\Errors\GroupCoordinatorNotAvailableException
@@ -1771,7 +1777,8 @@ class Client
         Node $coordinatorNode,
         string $groupId,
         string $memberId,
-        ?string $groupInstanceId = null
+        ?string $groupInstanceId = null,
+        ?string $reason = null
     ): void {
         $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
 
@@ -1779,7 +1786,7 @@ class Client
             $coordinatorNode,
             fn(int $correlationId): AbstractRequest => new LeaveGroupRequest(
                 $groupId,
-                [new LeaveGroupRequestMember($memberId, $groupInstanceId)],
+                [new LeaveGroupRequestMember($memberId, $groupInstanceId, $reason)],
                 $clientId,
                 $correlationId
             ),

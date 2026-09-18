@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * tagged-field section per structure, which {@see JoinGroupRequestV6} sends.
  *
  * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
- * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "JoinGroup API (key 11, v0 to v9)"
  */
 final class JoinGroupRequestV5 extends JoinGroupRequest
 {
