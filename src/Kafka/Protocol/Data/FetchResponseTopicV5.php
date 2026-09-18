@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * partition entry, i.e. the entry without the `preferred_read_replica` that version 11 (Kafka 2.3, KIP-392)
  * added, see {@see FetchResponseTopic}.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v12)"
+ * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v13)"
  */
 final class FetchResponseTopicV5 extends FetchResponseTopic
 {

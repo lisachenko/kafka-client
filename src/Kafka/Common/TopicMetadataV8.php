@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Common;
  * `topic_authorized_operations` bitfield. **Version 10 (Kafka 2.8, KIP-516)** inserted the `topic_id` between
  * the name and `is_internal`, see {@see TopicMetadata::$topicId}; this class is the entry without it.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v11)"
+ * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
  */
 final class TopicMetadataV8 extends TopicMetadata
 {

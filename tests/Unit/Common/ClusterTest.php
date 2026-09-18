@@ -25,6 +25,7 @@ use Protocol\Kafka\Common\Errors\LeaderNotAvailableException;
 use Protocol\Kafka\Common\Errors\UnknownErrorException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Node;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
 use Protocol\Kafka\Tests\Fixture\ResponseFrame;
 use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
@@ -32,7 +33,7 @@ use Protocol\Kafka\Tests\Fixture\ScriptedConnections;
 /**
  * Tests the cluster metadata against a scripted broker.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v11)" and "Cluster readiness"
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Cluster readiness"
  */
 #[CoversClass(Cluster::class)]
 #[CoversClass(AllBrokersNotAvailableException::class)]
@@ -374,6 +375,44 @@ final class ClusterTest extends TestCase
         } finally {
             @unlink($cacheFile);
         }
+    }
+
+    public function testTheClusterKeepsTheNameToIdMapOfKip516(): void
+    {
+        $this->script(new BrokerConnection(ResponseFrame::metadata(
+            0,
+            [[0, 'kafka-1', 9092]],
+            ['orders' => [0 => 0], 'payments' => [0 => 0]],
+            topicIds: ['orders' => $orders = str_repeat("\x11", 16)]
+        )));
+
+        $cluster = Cluster::bootstrap($this->configuration());
+
+        // Fetch v13 (Kafka 3.1, KIP-516) can only name a topic by this id, so the map is both ways
+        self::assertSame($orders, $cluster->topicIdOf('orders'));
+        self::assertSame('orders', $cluster->topicNameById($orders));
+        self::assertSame(
+            ['orders' => $orders, 'payments' => ResponseFrame::topicIdOf('payments')],
+            $cluster->topicIdsOf(['orders', 'payments'])
+        );
+        self::assertNull($cluster->topicNameById(Uuid::ZERO), 'the zero uuid never names a topic');
+        self::assertNull($cluster->topicNameById(str_repeat("\x22", 16)), 'and neither does an id nobody has');
+    }
+
+    public function testATopicWhoseAnswerCarriesTheZeroIdHasNoIdAtAll(): void
+    {
+        $this->script(new BrokerConnection(ResponseFrame::metadata(
+            0,
+            [[0, 'kafka-1', 9092]],
+            ['orders' => [0 => 0]],
+            topicIds: ['orders' => Uuid::ZERO]
+        )));
+
+        $cluster = Cluster::bootstrap($this->configuration());
+
+        // "No topic id" is not an id a version 13 fetch may send: the caller refreshes its metadata instead
+        self::assertNull($cluster->topicIdOf('orders'));
+        self::assertSame([], $cluster->topicIdsOf(['orders']));
     }
 
     public function testTheLeaderEpochOfEveryPartitionOfAMetadataAnswerIsRemembered(): void

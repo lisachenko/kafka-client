@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * {@see \Protocol\Kafka\Protocol\Data\MetadataRequestTopic::$topicId}. The two booleans of KIP-430 are both
  * still on the wire here, which version 11 (KIP-700) is not, see {@see MetadataRequest}.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v11)" and "Topic ids (v10, KIP-516)"
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Topic ids (v10, KIP-516)"
  */
 final class MetadataRequestV9 extends MetadataRequest
 {

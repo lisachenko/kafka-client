@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Data;
 
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\BinarySchemaInterface;
 
@@ -35,15 +36,34 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * FORGOTTEN_TOPIC_DATA` @ 1.1.1 is the entry of that array; the field itself is spelled `forgetten_topics_data`
  * in `FetchRequest.java`, a typo that never reached the wire because a Kafka request header carries no field names.
  *
+ * **Version 13 (Kafka 3.1, KIP-516) names the topic by its id here as well**: `FetchRequest.json` @ 3.1.2
+ * declares the `Topic` of this entry as `versions 7-12` and its `TopicId` as `13+`, exactly as it does for the
+ * topics array, because a session of that version is keyed by ids and a partition can only be dropped from it
+ * under the name the session knows it by. {@see FetchRequestForgottenTopicV7} keeps the entry that names it by
+ * its name.
+ *
  * @see \Protocol\Kafka\Protocol\Request\FetchMetadata
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v13)", "Fetch sessions (v7, KIP-227)" and
+ *      "The topic ids of the fetch path (v13, KIP-516)"
  */
-final class FetchRequestForgottenTopic implements BinarySchemaInterface
+class FetchRequestForgottenTopic implements BinarySchemaInterface
 {
+    /**
+     * Version of the Fetch API that this DTO is packed for
+     */
+    public const int VERSION = 13;
+
     /**
      * Name of the topic whose partitions the session should forget
      */
     public string $topic;
+
+    /**
+     * Id of that topic, the 16 raw bytes of the `uuid` of KIP-516, {@see Uuid::ZERO} below version 13
+     *
+     * @since Version 13 of protocol (Kafka 3.1, KIP-516)
+     */
+    public string $topicId = Uuid::ZERO;
 
     /**
      * Partitions of that topic to remove from the session
@@ -55,10 +75,11 @@ final class FetchRequestForgottenTopic implements BinarySchemaInterface
     /**
      * @param list<int> $partitions Partitions to remove from the fetch session
      */
-    public function __construct(string $topic, array $partitions = [])
+    public function __construct(string $topic, array $partitions = [], string $topicId = Uuid::ZERO)
     {
         $this->topic      = $topic;
         $this->partitions = $partitions;
+        $this->topicId    = $topicId;
     }
 
     /**
@@ -66,9 +87,12 @@ final class FetchRequestForgottenTopic implements BinarySchemaInterface
      */
     public static function getScheme(): array
     {
-        return [
-            'topic'      => BinarySchema::TYPE_STRING,
-            'partitions' => [BinarySchema::TYPE_INT32],
-        ];
+        $scheme = static::VERSION >= 13
+            ? ['topicId' => BinarySchema::TYPE_UUID]
+            : ['topic' => BinarySchema::TYPE_STRING];
+
+        $scheme['partitions'] = [BinarySchema::TYPE_INT32];
+
+        return $scheme;
     }
 }

@@ -291,7 +291,9 @@ final class QuotaThrottleTest extends IntegrationTestCase
                     -1,
                     $this->clientId,
                     500 + $attempt,
-                    2 * self::RECORD_SIZE
+                    2 * self::RECORD_SIZE,
+                    // Version 13 names the topic by its id and by nothing else (KIP-516)
+                    topicIds: [$this->topic => self::topicIdOf($this->topic)]
                 )->writeTo($stream);
                 $response    = FetchResponse::unpack($stream);
                 $roundTripMs = (microtime(true) - $started) * 1000;

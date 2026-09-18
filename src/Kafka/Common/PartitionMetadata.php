@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `MetadataResponse.java` @ 1.1.1 - and {@see PartitionMetadataV0} is the shape those five versions share.
  * **Version 5 of the api (Kafka 1.0, KIP-112/113) appended `OfflineReplicas`**, see {@see self::$offlineReplicas}.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v11)"
+ * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
  */
 class PartitionMetadata implements BinarySchemaInterface
 {

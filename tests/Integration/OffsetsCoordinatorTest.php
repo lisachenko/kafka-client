@@ -736,12 +736,14 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
             1048576,
             -1,
             $configuration[ClientConfig::CLIENT_ID],
-            3
+            3,
+            // Version 13 names the topic by its id, the internal `__consumer_offsets` included (KIP-516)
+            topicIds: [self::OFFSETS_TOPIC => self::topicIdOf(self::OFFSETS_TOPIC)]
         )->writeTo($stream);
         $response = FetchResponse::unpack($stream);
 
         $entries = [];
-        foreach ($response->topics[self::OFFSETS_TOPIC]->partitions ?? [] as $responsePartition) {
+        foreach (self::fetchedTopic($response, self::OFFSETS_TOPIC)->partitions as $responsePartition) {
             // The internal topic is written in the `log.message.format.version` of the broker, 0.11.0 here, so
             // its entries are record batches: the reader has to be the one that takes any of the three formats
             foreach (MemoryRecords::fromBuffer((string) $responsePartition->messageSet, false)->getRecords() as $record) {

@@ -83,6 +83,14 @@ final class ClientTest extends TestCase
 {
     private const string TOPIC = 'orders';
 
+    /**
+     * Hex of the topic id {@see \Protocol\Kafka\Tests\Fixture\ResponseFrame::topicIdOf()} gives {@see self::TOPIC}
+     *
+     * Fetch v13 (Kafka 3.1, KIP-516) names every topic of the request and of the answer by these 16 raw bytes
+     * and never by its name, so this is what a fetch frame of this test carries where it used to carry `orders`.
+     */
+    private const string TOPIC_ID = '12c500ed0b7879105fb46af0f246be87';
+
     private const string BOOTSTRAP_ADDRESS = 'tcp://bootstrap:9092';
 
     private const string FIRST_LEADER = 'tcp://kafka-1:9092';
@@ -581,9 +589,9 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 12, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // ApiKey 1, ApiVersion 13, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
         // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch
-        self::assertStringStartsWith('0001000c', $request, 'the Fetch api is spoken in version 12');
+        self::assertStringStartsWith('0001000d', $request, 'the Fetch api is spoken in version 13');
         self::assertStringContainsString(
             '00100000' . '00' . '00000000' . 'ffffffff',
             $request,
@@ -1218,13 +1226,14 @@ final class ClientTest extends TestCase
         [$full, $incremental] = array_map(bin2hex(...), $connection->getReceivedFrames());
 
         // The first request carries the session id 0 with the epoch 0 - "open a session" - and both partitions;
-        // the topics array and the topic name are compact ones, because version 12 is a flexible version
-        self::assertStringContainsString('00000000' . '00000000' . '02' . '076f7264657273', $full);
+        // the topics array is a compact one, because version 12 is a flexible version, and the topic itself is
+        // named by the 16 raw bytes of its id, because version 13 (KIP-516) took the name off the wire
+        self::assertStringContainsString('00000000' . '00000000' . '02' . self::TOPIC_ID, $full);
         // The second one carries the session id of the answer, the epoch 1, the partition whose offset moved and
         // nothing else; the trailing empty compact array is the forgotten_topics_data
         self::assertStringContainsString('00001267' . '00000001', $incremental, 'the session id and the epoch 1');
         self::assertStringEndsWith(
-            '02' . '076f7264657273' . '02'
+            '02' . self::TOPIC_ID . '02'
             . '00000000' . 'ffffffff' . '0000000000000001' . 'ffffffff' . 'ffffffffffffffff' . '00010000' . '00'
             . '00'
             . '01'
@@ -1265,7 +1274,7 @@ final class ClientTest extends TestCase
 
         self::assertStringEndsWith(
             '01'                                   // topicPartitions: nothing moved (the empty compact array)
-            . '02' . '076f7264657273' . '02'       // forgottenTopics: one topic ...
+            . '02' . self::TOPIC_ID . '02'         // forgottenTopics: one topic, by its id since v13 ...
             . '00000001'                           // ... with the partition 1
             . '00'                                 // TAG_BUFFER of that forgotten topic
             . '01'                                 // rackId: the empty rack of KIP-392, compact since v12
@@ -1305,7 +1314,7 @@ final class ClientTest extends TestCase
         // The recovery is a full fetch with the epoch 0 and the session id 0, because a 70 says that the id is gone
         $recovery = bin2hex($connection->getReceivedFrames()[2]);
 
-        self::assertStringContainsString('00000000' . '00000000' . '02' . '076f7264657273', $recovery);
+        self::assertStringContainsString('00000000' . '00000000' . '02' . self::TOPIC_ID, $recovery);
     }
 
     public function testEveryBrokerOfTheClusterGetsAFetchSessionOfItsOwn(): void

@@ -87,8 +87,17 @@ use Protocol\Kafka\Protocol\Data\MetadataRequestTopicV9;
  * KIP-516)** put a `topic_id` into every topic entry of the request and of the answer - and left the server side
  * of it unimplemented, see {@see MetadataRequestTopic::$topicId} - and **version 11 (Kafka 2.8, KIP-700) took
  * `include_cluster_authorized_operations` out again**: the cluster-wide question moved to the new DescribeCluster
- * api (key 60), and the answer of version 11 carries no `cluster_authorized_operations` either. This class is
- * version 11; a caller that wants that bitfield from the Metadata api asks with {@see MetadataRequestV10}.
+ * api (key 60), and the answer of version 11 carries no `cluster_authorized_operations` either. A caller that
+ * wants that bitfield from the Metadata api asks with {@see MetadataRequestV10}.
+ *
+ * **Version 12 (Kafka 3.1) is the version at which the `topic_id` of the request really works.** The frame is
+ * the version 11 one, field for field - `MetadataRequest.json` @ 3.1.2 adds no field with version 12 and its
+ * comment is the single line "Version 12 supports topic Id" - but until then the server ignored the id and the
+ * specification said so ("Versions 10 and 11 should not use the topicId field or set topic name to null").
+ * From version 12 an entry may carry a real id with a `null` name and the broker resolves it, which is what
+ * {@see self::byTopicIds()} sends and what the Java `describeTopics(TopicCollection.ofTopicIds(...))` does; the
+ * ANSWER of the same version makes its topic name nullable for the entry of an id it could not resolve, see
+ * {@see MetadataResponse}. This class is version 12; {@see MetadataRequestV11} keeps the version below it.
  *
  * The flag is `true` by default here, which is the behaviour of every version below 4 and of
  * {@see \Protocol\Kafka\Common\Cluster}, whose consumers and producers expect a named topic to spring into
@@ -96,7 +105,7 @@ use Protocol\Kafka\Protocol\Data\MetadataRequestTopicV9;
  * and {@see \Protocol\Kafka\Admin\AdminClient::listTopics()} must be able to report that a topic is not there
  * without bringing it into being.
  *
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v11)"
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Metadata by topic id (v12, KIP-516)"
  */
 class MetadataRequest extends AbstractRequest
 {
@@ -108,12 +117,12 @@ class MetadataRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 11;
+    public const int VERSION = 12;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
      *
-     * `MetadataRequest.json` @ 2.8.2 declares `"flexibleVersions": "9+"`, so a version 9 request carries the
+     * `MetadataRequest.json` @ 3.1.2 declares `"flexibleVersions": "9+"`, so a version 9 request carries the
      * request header **v2** - the tag buffer behind the client id - every string as a compact one and a
      * tagged-field section at the end of the body and of every topic entry. Nothing else about the frame
      * changes: version 9 is the version 8 question in the other encoding.
@@ -121,7 +130,36 @@ class MetadataRequest extends AbstractRequest
     public const int FLEXIBLE_VERSION = 9;
 
     /**
-     * @param list<string>|null $topics                    Topics to fetch the metadata for, null asks for every topic
+     * Asks for the metadata of the topics with these **ids**, which a broker resolves from version 12 on (KIP-516)
+     *
+     * Every entry names the topic by the 16 raw bytes of its id and carries a `null` name, the shape the Java
+     * `describeTopics(TopicCollection.ofTopicIds(...))` sends. An id the cluster does not host is not an error of
+     * the request: that topic entry of the answer carries the error code **100** `UnknownTopicId`, a `null` name
+     * and no partition, see {@see MetadataResponse}.
+     *
+     * The ids are **not** auto-created either, whatever `$allowAutoTopicCreation` says: a topic can only be
+     * created under a name.
+     *
+     * @param list<string> $topicIds The 16 raw bytes of every topic id, {@see \Protocol\Kafka\Common\Uuid}
+     */
+    public static function byTopicIds(
+        array $topicIds,
+        string $clientId = '',
+        int $correlationId = 0,
+        bool $includeTopicAuthorizedOperations = false
+    ): static {
+        return new static(
+            array_map(MetadataRequestTopic::byId(...), $topicIds),
+            false,
+            $clientId,
+            $correlationId,
+            false,
+            $includeTopicAuthorizedOperations
+        );
+    }
+
+    /**
+     * @param list<string|MetadataRequestTopic>|null $topics Topics to fetch the metadata for, null asks for every topic
      * @param bool              $allowAutoTopicCreation    Whether the broker may create a named topic that does not
      *        exist yet; not on the wire below version 4, where a broker always behaves as if it were true
      * @param string            $clientId                  A user specified identifier for the client
@@ -219,7 +257,10 @@ class MetadataRequest extends AbstractRequest
     /**
      * Returns the list of topics this request asks the metadata for, null means "every topic"
      *
-     * @return list<string>|null
+     * An entry that names its topic by the id alone ({@see self::byTopicIds()}) has no name and is `null` here;
+     * {@see self::getTopicIds()} is the other half of such a request.
+     *
+     * @return list<string|null>|null
      */
     public function getTopics(): ?array
     {
@@ -228,10 +269,34 @@ class MetadataRequest extends AbstractRequest
         }
 
         return array_map(
-            static fn(MetadataRequestTopic|string $topic): string
+            static fn(MetadataRequestTopic|string $topic): ?string
                 => $topic instanceof MetadataRequestTopic ? $topic->name : $topic,
             array_values($this->topics)
         );
+    }
+
+    /**
+     * Returns the id every topic entry of this request carries, as the 16 raw bytes of its uuid
+     *
+     * A request that names its topics by name carries {@see \Protocol\Kafka\Common\Uuid::ZERO} in every entry,
+     * and a request below version 10 has no such field at all, so the list is empty there.
+     *
+     * @return list<string>
+     */
+    public function getTopicIds(): array
+    {
+        if ($this->topics === null) {
+            return [];
+        }
+
+        $ids = [];
+        foreach (array_values($this->topics) as $topic) {
+            if ($topic instanceof MetadataRequestTopic) {
+                $ids[] = $topic->topicId;
+            }
+        }
+
+        return $ids;
     }
 
     /**

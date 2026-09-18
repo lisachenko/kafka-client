@@ -46,6 +46,7 @@ use Protocol\Kafka\Common\Record\MessageSet;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Consumer\ConsumerConfig as ConsumerConfig;
 use Protocol\Kafka\Consumer\ConsumerGroupMetadata;
 use Protocol\Kafka\Consumer\Internals\FetchSessionHandler;
@@ -731,27 +732,51 @@ class Client
         $checkCrcs      = (bool) ($this->configuration[ConsumerConfig::CHECK_CRCS] ?? true);
         $isolationLevel = $this->isolationLevel();
 
+        // Fetch v13 (KIP-516) names every topic by its id, so the names of the request are resolved against the
+        // cluster before every round - a reload between two attempts is what gives a re-created topic its new id
+        $topicIds = [];
+
         return $this->clusterRequest(
             $topicPartitionOffsets,
-            fn(array $nodeTopicRequest, int $correlationId): FetchRequest => new FetchRequest(
-                $nodeTopicRequest,
+            function (array $nodeTopicRequest, int $correlationId) use (
+                &$topicIds,
                 $timeout,
-                $this->configuration[ConsumerConfig::FETCH_MIN_BYTES],
-                $this->configuration[ConsumerConfig::MAX_PARTITION_FETCH_BYTES],
-                -1,
-                $this->configuration[ConsumerConfig::CLIENT_ID],
-                $correlationId,
-                (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES] ?? FetchRequest::DEFAULT_MAX_BYTES),
                 $isolationLevel
-            ),
+            ): FetchRequest {
+                $topicIds = $this->cluster->topicIdsOf(array_keys($nodeTopicRequest)) + $topicIds;
+
+                return new FetchRequest(
+                    $nodeTopicRequest,
+                    $timeout,
+                    $this->configuration[ConsumerConfig::FETCH_MIN_BYTES],
+                    $this->configuration[ConsumerConfig::MAX_PARTITION_FETCH_BYTES],
+                    -1,
+                    $this->configuration[ConsumerConfig::CLIENT_ID],
+                    $correlationId,
+                    (int) ($this->configuration[ConsumerConfig::FETCH_MAX_BYTES] ?? FetchRequest::DEFAULT_MAX_BYTES),
+                    $isolationLevel,
+                    null,
+                    [],
+                    FetchRequest::NO_RACK,
+                    null,
+                    $topicIds
+                );
+            },
             FetchResponse::class,
-            static fn(array $result, FetchResponse $response, array &$errors): array => self::collectFetchedPartitions(
-                $result,
-                $response,
+            static function (array $result, FetchResponse $response, array &$errors) use (
+                &$topicIds,
                 $topicPartitionOffsets,
-                $checkCrcs,
-                $errors
-            ),
+                $checkCrcs
+            ): array {
+                return self::collectFetchedPartitions(
+                    $result,
+                    $response,
+                    $topicPartitionOffsets,
+                    $checkCrcs,
+                    $errors,
+                    array_flip($topicIds)
+                );
+            },
             $timeout
         );
     }
@@ -806,6 +831,8 @@ class Client
         $pending         = $topicPartitionOffsets;
         $attempt         = 1;
         $sessionAttempts = self::SESSION_ERROR_ATTEMPTS;
+        // The name -> id map of KIP-516, refilled from the cluster before every round, see self::fetchPartitions()
+        $topicIds = [];
 
         while (true) {
             $errors         = [];
@@ -817,6 +844,7 @@ class Client
                 $pending,
                 function (array $nodeTopicRequest, int $correlationId, int $nodeId) use (
                     &$requestedNodes,
+                    &$topicIds,
                     $timeout,
                     $isolationLevel
                 ): FetchRequest {
@@ -835,6 +863,19 @@ class Client
                     }
                     $requestData             = $builder->build();
                     $requestedNodes[$nodeId] = true;
+                    // KIP-516: a version 13 frame names every topic of the session - the ones it sends and the
+                    // ones it forgets - by the id the cluster last reported for it. The whole set of the session
+                    // is resolved, not only what this round sends: an incremental fetch that moved no offset
+                    // sends nothing at all and is still answered for every partition the session holds.
+                    $topicIds = $this->cluster->topicIdsOf(
+                        array_map(
+                            strval(...),
+                            array_keys(
+                                $requestData->toSend + $requestData->toForget + $requestData->sessionPartitions
+                            )
+                        )
+                    ) + $topicIds;
+                    $handler->rememberTopicIds($topicIds);
 
                     return new FetchRequest(
                         $requestData->toSend,
@@ -848,7 +889,10 @@ class Client
                             ?? FetchRequest::DEFAULT_MAX_BYTES),
                         $isolationLevel,
                         $requestData->metadata,
-                        $requestData->toForget
+                        $requestData->toForget,
+                        FetchRequest::NO_RACK,
+                        null,
+                        $topicIds
                     );
                 },
                 FetchResponse::class,
@@ -856,7 +900,8 @@ class Client
                     $pending,
                     $checkCrcs,
                     &$answeredNodes,
-                    &$sessionErrors
+                    &$sessionErrors,
+                    &$topicIds
                 ): array {
                     $answeredNodes[$nodeId] = true;
                     $handler                = $this->fetchSessionHandlers[$nodeId] ?? null;
@@ -868,7 +913,16 @@ class Client
                         return $result;
                     }
 
-                    return self::collectFetchedPartitions($result, $response, $pending, $checkCrcs, $errors);
+                    return self::collectFetchedPartitions(
+                        $result,
+                        $response,
+                        $pending,
+                        $checkCrcs,
+                        $errors,
+                        // The session knows the name of every id it ever named, which is more than this round
+                        // resolved: an answer may carry a partition that no request of this call mentioned
+                        array_flip($topicIds) + ($handler?->getSessionTopicNames() ?? [])
+                    );
                 },
                 $timeout,
                 $errors
@@ -940,6 +994,9 @@ class Client
      * @param array<string, array<int, int>>              $topicPartitionOffsets Offset every partition was asked at
      * @param bool                                        $checkCrcs             Whether to verify every checksum
      * @param array<string, array<int, Exception>>        $errors                Collects the error of each partition
+     * @param array<string, string>                       $topicNamesById        Name of every topic the request
+     *        named, indexed by the 16 raw bytes of its id: an answer of **Fetch v13** (Kafka 3.1, KIP-516) carries
+     *        the ids alone and is read back through this map, see {@see \Protocol\Kafka\Common\Cluster::topicNameById()}
      *
      * @return array<string, array<int, FetchedPartition>>
      */
@@ -948,9 +1005,15 @@ class Client
         FetchResponse $response,
         array $topicPartitionOffsets,
         bool $checkCrcs,
-        array &$errors
+        array &$errors,
+        array $topicNamesById = []
     ): array {
-        foreach ($response->topics as $topic => $topicResponse) {
+        foreach ($response->topics as $topicResponse) {
+            // Below version 13 the entry carries the name; from version 13 it carries the id and nothing else,
+            // and an id that this client did not ask for - which can not happen - keeps its printable form
+            $topic = $topicResponse->topic !== '' && $topicResponse->topic !== null
+                ? $topicResponse->topic
+                : ($topicNamesById[$topicResponse->topicId] ?? Uuid::toString($topicResponse->topicId));
             /** @var FetchResponsePartition $responsePartition */
             foreach ($topicResponse->partitions as $partitionId => $responsePartition) {
                 if ($responsePartition->errorCode !== KafkaException::NO_ERROR) {

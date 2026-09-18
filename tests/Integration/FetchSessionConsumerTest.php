@@ -698,7 +698,9 @@ final class FetchSessionConsumerTest extends IntegrationTestCase
             FetchRequest::DEFAULT_MAX_BYTES,
             FetchRequest::READ_UNCOMMITTED,
             $metadata,
-            $forgotten
+            $forgotten,
+            // Version 13 names every topic of a session by its id and by nothing else (KIP-516)
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         );
 
         $socket = $this->rawSocket();

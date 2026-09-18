@@ -445,10 +445,13 @@ final class KafkaProducerTest extends IntegrationTestCase
             self::FETCH_MAX_BYTES,
             -1,
             self::CLIENT_ID,
-            1
+            1,
+            // Version 13 names the topic by its id and by nothing else (KIP-516)
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         )->writeTo($stream);
 
-        $partitionResponse = FetchResponse::unpack($stream)->topics[$this->topic]->partitions[$partition];
+        $partitionResponse = self::fetchedTopic(FetchResponse::unpack($stream), $this->topic)
+            ->partitions[$partition];
         if ($partitionResponse->errorCode !== 0) {
             throw KafkaException::fromCode(
                 $partitionResponse->errorCode,

@@ -1,8 +1,8 @@
 {
     "api": "metadata",
     "apiKey": 3,
-    "section": "Metadata API (key 3, v0 to v11)",
-    "description": "Wire vectors of the Metadata API (key 3, v0 to v11), replayed by tests/Compliance.",
+    "section": "Metadata API (key 3, v0 to v12)",
+    "description": "Wire vectors of the Metadata API (key 3, v0 to v12), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "metadata.request.v0.all-topics",
@@ -1051,7 +1051,7 @@
         {
             "id": "metadata.request.v11",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV11",
             "version": 11,
             "source": "broker",
             "description": "Metadata request v11 (Kafka 2.8, KIP-700), the version this client sends: every topic entry carries the topic_id of KIP-516 IN FRONT of its name - the zero uuid, because the server side of naming a topic by its id is not implemented - and the body ends with allow_auto_topic_creation and include_topic_authorized_operations alone: KIP-700 took include_cluster_authorized_operations out and gave the question to the DescribeCluster api.",
@@ -1078,7 +1078,7 @@
         {
             "id": "metadata.response.v11",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV11",
             "version": 11,
             "source": "broker",
             "description": "The answer v11: the topic entry carries the 16 raw bytes of the topic id between its name and its is_internal flag, and the frame ends with the tagged-field section of the body - there is no cluster_authorized_operations behind the topics any more.",
@@ -1204,6 +1204,367 @@
                     }
                 },
                 "clusterAuthorizedOperations": 8096
+            }
+        },
+        {
+            "id": "metadata.request.v12",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 12,
+            "source": "broker",
+            "description": "Metadata request v12 (Kafka 3.1, KIP-516), the version this client sends: the frame is the version 11 one, field for field - the topic entry carries the zero topic_id in front of its name, because this request names the topic by name - and what version 12 changes is that the server now resolves a topic_id.",
+            "hex": "000000400003000c000003a300126b61666b612d636c69656e742d74322d33310002000000000000000000000000000000000e74322d33312d766563746f727300000000",
+            "fields": {
+                "messageSize": 64,
+                "apiKey": 3,
+                "apiVersion": 12,
+                "correlationId": 931,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "name": "t2-31-vectors"
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeTopicAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "metadata.response.v12",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 12,
+            "source": "broker",
+            "description": "The answer v12 of a request by name: the same frame as version 11, with the topic id of the topic between its name and its is_internal flag.",
+            "hex": "0000007c000003a3000000000002000000010a3132372e302e302e310000238400001745505f413274626d51674b7277416879627738794567000000010200000e74322d33312d766563746f7273fc56b939cfc14adabeaeb6ff36fc9af900020000000000000000000100000000020000000102000000010100800000000000",
+            "fields": {
+                "messageSize": 124,
+                "correlationId": 931,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": {
+                    "1": {
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                },
+                "clusterId": "EP_A2tbmQgKrwAhybw8yEg",
+                "controllerId": 1,
+                "topics": {
+                    "t2-31-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-31-vectors",
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 1,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    1
+                                ],
+                                "isr": [
+                                    1
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v12.by-topic-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 12,
+            "source": "broker",
+            "description": "The question KIP-516 wrote the version for: the topic entry carries a real topic id and a NULL name (the compact null 00), which is what describeTopics(TopicCollection.ofTopicIds(...)) of the Java admin client sends. The versions 10 and 11 carry the same two fields and the server ignores them.",
+            "hex": "000000330003000c000003a400126b61666b612d636c69656e742d74322d33310002fc56b939cfc14adabeaeb6ff36fc9af90000000000",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 3,
+                "apiVersion": 12,
+                "correlationId": 932,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "name": null
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeTopicAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "metadata.response.v12.by-topic-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 12,
+            "source": "broker",
+            "description": "What the node answers it: the entry of the resolved topic, with its NAME filled in - an answer never leaves the name out for a topic it could resolve - so this frame is byte for byte the answer of the request by name, except for its correlation id.",
+            "hex": "0000007c000003a4000000000002000000010a3132372e302e302e310000238400001745505f413274626d51674b7277416879627738794567000000010200000e74322d33312d766563746f7273fc56b939cfc14adabeaeb6ff36fc9af900020000000000000000000100000000020000000102000000010100800000000000",
+            "fields": {
+                "messageSize": 124,
+                "correlationId": 932,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": {
+                    "1": {
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                },
+                "clusterId": "EP_A2tbmQgKrwAhybw8yEg",
+                "controllerId": 1,
+                "topics": {
+                    "t2-31-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-31-vectors",
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 1,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    1
+                                ],
+                                "isr": [
+                                    1
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v12.unknown-topic-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 12,
+            "source": "broker",
+            "description": "The same question with a topic id the cluster does not host, 16 bytes of 0x7f.",
+            "hex": "000000330003000c000003a500126b61666b612d636c69656e742d74322d333100027f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f0000000000",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 3,
+                "apiVersion": 12,
+                "correlationId": 933,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f"
+                        },
+                        "name": null
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeTopicAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "metadata.response.v12.unknown-topic-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 12,
+            "source": "broker",
+            "description": "The answer that the nullable name of version 12 exists for: the topic entry carries the error code 100 UnknownTopicId, the id that was asked for, a NULL name (the compact null 00 where a name would be) and no partition at all. The brokers of the cluster are reported as usual.",
+            "hex": "00000055000003a5000000000002000000010a3132372e302e302e310000238400001745505f413274626d51674b727741687962773879456700000001020064007f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f0001800000000000",
+            "fields": {
+                "messageSize": 85,
+                "correlationId": 933,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": {
+                    "1": {
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                },
+                "clusterId": "EP_A2tbmQgKrwAhybw8yEg",
+                "controllerId": 1,
+                "topics": [
+                    {
+                        "topicErrorCode": 100,
+                        "topic": null,
+                        "topicId": {
+                            "$bytes": "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f"
+                        },
+                        "isInternal": false,
+                        "partitions": [],
+                        "authorizedOperations": -2147483648
+                    }
+                ]
+            }
+        },
+        {
+            "id": "metadata.request.v12.mixed",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequest",
+            "version": 12,
+            "source": "broker",
+            "description": "One request that names one topic by its id and another one by its name: the two entries of the array carry the two shapes next to each other, the id of the first and the compact name of the second.",
+            "hex": "000000500003000c000003a600126b61666b612d636c69656e742d74322d33310003fc56b939cfc14adabeaeb6ff36fc9af90000000000000000000000000000000000000c74322d33312d6f7468657200000000",
+            "fields": {
+                "messageSize": 80,
+                "apiKey": 3,
+                "apiVersion": 12,
+                "correlationId": 934,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "name": null
+                    },
+                    {
+                        "topicId": {
+                            "$bytes": "00000000000000000000000000000000"
+                        },
+                        "name": "t2-31-other"
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeTopicAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "metadata.response.v12.mixed",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponse",
+            "version": 12,
+            "source": "broker",
+            "description": "What the node really answers: the topic that was named by its ID, and that one alone. KafkaApis @ 3.9.2 sets useTopicId as soon as ONE entry carries a non-zero id and then serves the ids of the request and nothing else (handleTopicMetadataRequest: topics = knownTopicNames), so the entry that named its topic by name is dropped without a word. A client asks by id or by name, never in one request.",
+            "hex": "0000007c000003a6000000000002000000010a3132372e302e302e310000238400001745505f413274626d51674b7277416879627738794567000000010200000e74322d33312d766563746f7273fc56b939cfc14adabeaeb6ff36fc9af900020000000000000000000100000000020000000102000000010100800000000000",
+            "fields": {
+                "messageSize": 124,
+                "correlationId": 934,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": {
+                    "1": {
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                },
+                "clusterId": "EP_A2tbmQgKrwAhybw8yEg",
+                "controllerId": 1,
+                "topics": {
+                    "t2-31-vectors": {
+                        "topicErrorCode": 0,
+                        "topic": "t2-31-vectors",
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "isInternal": false,
+                        "partitions": [
+                            {
+                                "partitionErrorCode": 0,
+                                "partitionId": 0,
+                                "leader": 1,
+                                "leaderEpoch": 0,
+                                "replicas": [
+                                    1
+                                ],
+                                "isr": [
+                                    1
+                                ],
+                                "offlineReplicas": []
+                            }
+                        ],
+                        "authorizedOperations": -2147483648
+                    }
+                }
+            }
+        },
+        {
+            "id": "metadata.request.v11.by-topic-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataRequestV11",
+            "version": 11,
+            "source": "broker",
+            "description": "The same by-id question asked with version 11, which MetadataRequest.json @ 3.1.2 says must not be asked (\"Versions 10 and 11 should not use the topicId field or set topic name to null\").",
+            "hex": "000000330003000b000003a700126b61666b612d636c69656e742d74322d33310002fc56b939cfc14adabeaeb6ff36fc9af90000000000",
+            "fields": {
+                "messageSize": 51,
+                "apiKey": 3,
+                "apiVersion": 11,
+                "correlationId": 935,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "name": null
+                    }
+                ],
+                "allowAutoTopicCreation": false,
+                "includeTopicAuthorizedOperations": false
+            }
+        },
+        {
+            "id": "metadata.response.v11.by-topic-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\MetadataResponseV11",
+            "version": 11,
+            "source": "broker",
+            "description": "What the node answers it: not the topic, but a whole ERROR response - zero brokers, a null cluster id, the controller id -1 and one topic entry with the error code 42 InvalidRequest, an empty name and the id that was asked for. An empty broker array is what this client reads as \"the metadata cache is not filled yet\", so a version below 12 must never be asked by id.",
+            "hex": "0000002b000003a700000000000100ffffffff02002a01fc56b939cfc14adabeaeb6ff36fc9af90001800000000000",
+            "fields": {
+                "messageSize": 43,
+                "correlationId": 935,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "brokers": [],
+                "clusterId": null,
+                "controllerId": -1,
+                "topics": {
+                    "": {
+                        "topicErrorCode": 42,
+                        "topic": "",
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "isInternal": false,
+                        "partitions": [],
+                        "authorizedOperations": -2147483648
+                    }
+                }
             }
         }
     ]

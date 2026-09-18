@@ -151,9 +151,19 @@ final class SslTransportTest extends IntegrationTestCase
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->errorCode);
         self::assertSame(0, $produced->topics[$topic]->partitions[0]->baseOffset);
 
-        new FetchRequest([$topic => [0 => 0]], 1000, 1, 65536, -1, self::CLIENT_ID, 202)->writeTo($stream);
+        new FetchRequest(
+            [$topic => [0 => 0]],
+            1000,
+            1,
+            65536,
+            -1,
+            self::CLIENT_ID,
+            202,
+            // Version 13 names the topic by its id and by nothing else (KIP-516)
+            topicIds: [$topic => self::topicIdOf($topic)]
+        )->writeTo($stream);
 
-        $fetched   = FetchResponse::unpack($stream)->topics[$topic]->partitions[0];
+        $fetched   = self::fetchedTopic(FetchResponse::unpack($stream), $topic)->partitions[0];
         $messages  = $fetched->getRecords()->getRecords();
         $delivered = [];
         foreach ($messages as $message) {
