@@ -18,10 +18,10 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * Version 8 (Kafka 3.0) moved both of them into a `groups` array, one entry per group of the request, and left the
  * answer without a top-level error code; this version answers the one group its request named.
- * {@see OffsetFetchResponse} decodes the batched answer.
+ * {@see OffsetFetchResponseV8} and {@see OffsetFetchResponse} decode the batched answer.
  *
  * @see docs/protocol/3.9.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v8)"
+ * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 final class OffsetFetchResponseV7 extends OffsetFetchResponse
 {

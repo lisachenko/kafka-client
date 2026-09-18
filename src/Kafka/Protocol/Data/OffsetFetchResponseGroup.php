@@ -39,7 +39,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * (`GroupAuthorizationFailed`) - and an entry that carries one has an empty topics array. A group the coordinator
  * does not know is **not** an error here either: it is answered with an empty topics array and the code 0.
  *
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v8)"
+ * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v9)"
  */
 class OffsetFetchResponseGroup implements BinarySchemaInterface
 {

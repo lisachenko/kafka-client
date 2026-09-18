@@ -1310,6 +1310,11 @@ class Client
      * for, which the nullable topic array of the version 2 (Kafka 0.10.2) makes possible; an **empty** array names no
      * topic at all and is answered with an empty result.
      *
+     * The request is the **version 9** of the api (Kafka 3.7) with a one-element batch, whose `member_id` and
+     * `member_epoch` of KIP-848 stay at `null` and `-1` - the values a classic member and every administrative
+     * reader send, and the ones the coordinator accepts without looking a member up.
+     * {@see self::fetchGroupOffsetsAsMember()} is the read of a member of a KIP-848 group.
+     *
      * @param Node                                $coordinatorNode Current offset coordinator for $groupId
      * @param string                              $groupId         Name of the group
      * @param array<string, array<int, int>>|null $topicPartitions List of topic => partitions for fetching
@@ -3302,6 +3307,63 @@ class Client
                     }
                 }
             }
+        );
+    }
+
+    /**
+     * Fetches the committed offsets of a group **as one of its KIP-848 members** (version 9, Kafka 3.7)
+     *
+     * Version 9 of the api added a nullable `member_id` and a `member_epoch` to every group entry of the request,
+     * "filled in and validated when the new consumer protocol is used" (`OffsetFetchRequest.json` @ 3.7.2): a member
+     * of a group of the **new consumer group protocol** names itself with them and the coordinator refuses the read
+     * with the group-level **25** `UnknownMemberId` for an id it does not hold and the **113** `StaleMemberEpoch`
+     * for an epoch that is not the one it holds for that member - an epoch *above* the current one included.
+     *
+     * {@see self::fetchGroupOffsets()} is the read of everyone else and leaves the two fields at `null` and `-1`,
+     * which the coordinator accepts without looking a member up at all; a **classic** group ignores the two fields
+     * whatever they hold, so this method never changes the answer of one.
+     *
+     * @param Node                                $coordinatorNode Current offset coordinator for $groupId
+     * @param string                              $groupId         Name of the KIP-848 group
+     * @param array<string, array<int, int>>|null $topicPartitions List of topic => partitions to read, or null for
+     *        every topic-partition the group has committed an offset for
+     * @param string                              $memberId        Member id the coordinator assigned to this member
+     * @param int                                 $memberEpoch     Member epoch the coordinator last answered with
+     * @param bool                                $requireStable   Whether the coordinator has to hold back an offset
+     *        whose transaction has not been committed yet and answer that partition with the retriable 88 (KIP-447)
+     *
+     * @return array<string, array<int, int>> Committed offsets in the form [topic => [partition => offset]]
+     *
+     * @throws Common\Errors\UnknownMemberIdException If the group does not hold a member of that id
+     * @throws Common\Errors\StaleMemberEpochException If the epoch is not the one the coordinator holds
+     * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     */
+    public function fetchGroupOffsetsAsMember(
+        Node $coordinatorNode,
+        string $groupId,
+        ?array $topicPartitions,
+        string $memberId,
+        int $memberEpoch,
+        bool $requireStable = false
+    ): array {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        return $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => OffsetFetchRequest::forMember(
+                $groupId,
+                $topicPartitions,
+                $memberId,
+                $memberEpoch,
+                $clientId,
+                $correlationId,
+                $requireStable
+            ),
+            OffsetFetchResponse::class,
+            static fn(OffsetFetchResponse $response): array => self::offsetsOfGroup($response, $groupId)
         );
     }
 }
