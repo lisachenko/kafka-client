@@ -26,12 +26,14 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV1;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV2;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV3;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV4;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV5;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV0;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV1;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV2;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV3;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV4;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV5;
 use UnexpectedValueException;
 
 /**
@@ -40,7 +42,7 @@ use UnexpectedValueException;
  * Version 2 (KIP-219, Kafka 2.0) is the version 1 frame with a higher api version and nothing else, so it is the
  * version this client sends and {@see GroupCoordinatorRequestV1} keeps the version 1 number for a lower broker.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 #[CoversClass(GroupCoordinatorRequest::class)]
 #[CoversClass(GroupCoordinatorRequestV0::class)]
@@ -48,9 +50,11 @@ use UnexpectedValueException;
 #[CoversClass(GroupCoordinatorRequestV2::class)]
 #[CoversClass(GroupCoordinatorRequestV3::class)]
 #[CoversClass(GroupCoordinatorRequestV4::class)]
+#[CoversClass(GroupCoordinatorRequestV5::class)]
 #[CoversClass(GroupCoordinatorResponse::class)]
 #[CoversClass(GroupCoordinatorResponseV3::class)]
 #[CoversClass(GroupCoordinatorResponseV4::class)]
+#[CoversClass(GroupCoordinatorResponseV5::class)]
 #[CoversClass(FindCoordinatorResponseCoordinator::class)]
 #[CoversClass(GroupCoordinatorResponseV0::class)]
 #[CoversClass(GroupCoordinatorResponseV1::class)]
@@ -218,6 +222,21 @@ final class GroupCoordinatorTest extends TestCase
     private const string REQUEST_V5_HEX = '0000001b'
         . '000a'
         . '0005'
+        . '00000001'
+        . '0004' . '74657374'
+        . '00'
+        . '00'
+        . '02'
+        . '09' . '6d792d67726f7570'
+        . '00';
+
+    /**
+     * The very same lookup once more as a version 6 frame (Kafka 3.9, KIP-932), the version this client sends:
+     * the share groups the version was added for changed no field either, only what `coordinator_type` may say.
+     */
+    private const string REQUEST_V6_HEX = '0000001b'
+        . '000a'
+        . '0006'
         . '00000001'
         . '0004' . '74657374'
         . '00'
@@ -458,10 +477,10 @@ final class GroupCoordinatorTest extends TestCase
      */
     public function testVersionFiveIsTheVersionFourFrameWithAnotherNumberInItsHeader(): void
     {
-        $request = GroupCoordinatorRequest::forKeys(['my-group'], GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP, 'test', 1);
+        $request = GroupCoordinatorRequestV5::forKeys(['my-group'], GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP, 'test', 1);
 
         self::assertSame(self::REQUEST_V5_HEX, bin2hex((string) $request));
-        self::assertSame(5, $request->getApiVersion(), 'the version this client sends');
+        self::assertSame(5, $request->getApiVersion());
         self::assertSame(
             substr(self::REQUEST_V4_HEX, 16),
             substr(self::REQUEST_V5_HEX, 16),
@@ -469,8 +488,63 @@ final class GroupCoordinatorTest extends TestCase
         );
         self::assertSame(
             GroupCoordinatorRequestV4::getScheme(),
+            GroupCoordinatorRequestV5::getScheme(),
+            'the two versions declare the very same body'
+        );
+    }
+
+    /**
+     * Version 6 (Kafka 3.9, KIP-932) added no field either: what it buys is the coordinator type 2, which
+     * `KafkaApis.getCoordinator` @ 3.9.2 refuses with the error code 42 while `apiVersion < 6`
+     */
+    public function testVersionSixIsTheSameFrameOnceMoreAndIsTheVersionThisClientSends(): void
+    {
+        $request = GroupCoordinatorRequest::forKeys(['my-group'], GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP, 'test', 1);
+
+        self::assertSame(self::REQUEST_V6_HEX, bin2hex((string) $request));
+        self::assertSame(6, $request->getApiVersion(), 'the version this client sends');
+        self::assertSame(
+            substr(self::REQUEST_V5_HEX, 16),
+            substr(self::REQUEST_V6_HEX, 16),
+            'only the api version field of the header separates the two frames'
+        );
+        self::assertSame(
+            GroupCoordinatorRequestV5::getScheme(),
             GroupCoordinatorRequest::getScheme(),
             'the two versions declare the very same body'
+        );
+        self::assertSame(
+            GroupCoordinatorResponseV5::getScheme(),
+            GroupCoordinatorResponse::getScheme(),
+            'and so do the two answers'
+        );
+    }
+
+    /**
+     * The coordinator type 2 of KIP-932 is a constant of this client and nothing more: share groups are out of
+     * this line, and the type is only ever *asked* for by the measurements of the protocol document
+     */
+    public function testTheShareCoordinatorTypeIsOnTheWireLikeAnyOther(): void
+    {
+        $request = GroupCoordinatorRequest::forKeys(
+            ['my-group'],
+            GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE,
+            'test',
+            1
+        );
+
+        self::assertSame(2, GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE);
+        self::assertSame(6, GroupCoordinatorRequest::MIN_SHARE_VERSION, 'the first version that may ask for it');
+        self::assertSame(
+            '0000001b' . '000a' . '0006' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '02'
+            . '02'
+            . '09' . '6d792d67726f7570'
+            . '00',
+            bin2hex((string) $request),
+            'the type is the one byte in front of the batch, whatever it says'
         );
     }
 
@@ -480,8 +554,12 @@ final class GroupCoordinatorTest extends TestCase
     public function testTheSingleKeyConstructorSendsTheOneElementBatch(): void
     {
         self::assertSame(
-            self::REQUEST_V5_HEX,
+            self::REQUEST_V6_HEX,
             bin2hex((string) new GroupCoordinatorRequest('my-group', clientId: 'test', correlationId: 1))
+        );
+        self::assertSame(
+            self::REQUEST_V5_HEX,
+            bin2hex((string) new GroupCoordinatorRequestV5('my-group', clientId: 'test', correlationId: 1))
         );
         self::assertSame(
             self::REQUEST_V4_HEX,
@@ -494,7 +572,7 @@ final class GroupCoordinatorTest extends TestCase
         $request = GroupCoordinatorRequest::forKeys(['my-group', 'other'], 0, 'test', 1);
 
         self::assertSame(
-            '00000021' . '000a' . '0005' . '00000001'
+            '00000021' . '000a' . '0006' . '00000001'
             . '0004' . '74657374'
             . '00'
             . '00'
@@ -512,7 +590,7 @@ final class GroupCoordinatorTest extends TestCase
         $request = GroupCoordinatorRequest::forKeys([], 0, 'test', 1);
 
         self::assertSame(
-            '00000012' . '000a' . '0005' . '00000001'
+            '00000012' . '000a' . '0006' . '00000001'
             . '0004' . '74657374'
             . '00'
             . '00'

@@ -59,7 +59,7 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * node cannot serve - it answers every v0 partition with the error code 35 - so this line has no `offsets.storage`
  * option any more and this suite exercises the versions the coordinator answers (1 and up).
  *
- * @see docs/protocol/3.9.md, sections "GroupCoordinator API (key 10, v0 to v5)",
+ * @see docs/protocol/3.9.md, sections "GroupCoordinator API (key 10, v0 to v6)",
  *      "OffsetCommit API (key 8, v0 to v9)" and "OffsetFetch API (key 9, v0 to v9)"
  */
 #[CoversClass(Client::class)]

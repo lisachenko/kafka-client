@@ -30,8 +30,10 @@ use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV4;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV5;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV4;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV5;
 use Protocol\Kafka\Protocol\Request\JoinGroupRequest;
 use Protocol\Kafka\Protocol\Request\JoinGroupResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
@@ -78,7 +80,7 @@ use RuntimeException;
  *
  * @see docs/protocol/3.9.md, section "The group types of KIP-848 (Kafka 3.8)"
  * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(ListGroupsRequest::class)]
@@ -90,6 +92,8 @@ use RuntimeException;
 #[CoversClass(GroupCoordinatorRequestV4::class)]
 #[CoversClass(GroupCoordinatorResponse::class)]
 #[CoversClass(GroupCoordinatorResponseV4::class)]
+#[CoversClass(GroupCoordinatorRequestV5::class)]
+#[CoversClass(GroupCoordinatorResponseV5::class)]
 final class GroupTypeListingApiTest extends IntegrationTestCase
 {
     private const string CLIENT_ID = 'kafka-client-t3-38';
@@ -372,7 +376,11 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
     }
 
     /**
-     * Every coordinator lookup of this client is the version 5 of KIP-890, which added no field at all
+     * The version 5 of KIP-890 added no field at all, which is why the version 4 pair still declares its body
+     *
+     * The version this client sends has moved on since - Kafka 3.9 raised the api once more, for the share
+     * coordinator type of KIP-932, see {@see ShareCoordinatorTypeApiTest} - and the body of every one of those
+     * versions is the one version 4 introduced.
      */
     public function testTheCoordinatorLookupIsTheVersionFiveOfKip890(): void
     {
@@ -380,12 +388,17 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
         $classic = $this->uniqueGroupName();
         $this->classicGroup($classic, $topic);
 
-        self::assertSame(5, GroupCoordinatorRequest::VERSION, 'the version this client sends since Kafka 3.8');
-        self::assertSame(5, GroupCoordinatorResponse::VERSION);
+        self::assertSame(5, GroupCoordinatorRequestV5::VERSION, 'the version Kafka 3.8 added');
+        self::assertSame(5, GroupCoordinatorResponseV5::VERSION);
         self::assertSame(
             GroupCoordinatorRequestV4::getScheme(),
-            GroupCoordinatorRequest::getScheme(),
+            GroupCoordinatorRequestV5::getScheme(),
             'KIP-890 raised the number and not the body'
+        );
+        self::assertSame(
+            GroupCoordinatorRequestV5::getScheme(),
+            GroupCoordinatorRequest::getScheme(),
+            'and KIP-932 did the same one version later'
         );
 
         $node = $this->coordinator($classic);

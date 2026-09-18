@@ -1,6 +1,6 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 3.x line has captured **374** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
+The 3.x line has captured **388** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
 the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
 `list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
 `group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — the 20 frames of Kafka 3.1, the
@@ -41,7 +41,11 @@ unknown producer id), the 8 of TxnOffsetCommit in `txn-offset-commit.json` (the 
 group does not hold, and the v4/v3 pair of the same commit answered the **120** and the **48** — the partition
 verification of KIP-890 part 1 reporting itself through the version gate), the 4 of the broker version
 AddPartitionsToTxn v5 in `add-partitions-to-txn.json` (with the 120 of a `verify_only` and the top-level 31 of
-`acltest`) and the 4 of EndTxn v4 in `end-txn.json` (with the 48 of an abort after a commit) — next
+`acltest`) and the 4 of EndTxn v4 in `end-txn.json` (with the 48 of an abort after a commit), and the 14 frames of
+Kafka 3.9, all of them FindCoordinator v6 in `group-coordinator.json` (KIP-932: the version 5 frames with another
+number in their header, the coordinator type **2** that is the 42 of the version gate at v4 and v5 and the 15 of a
+node without a share coordinator at v6, the type 99 that stays the 42 of the error path, and the 31 of the SASL
+user `acltest`, who may not ask where a share coordinator is) — next
 to the
 **669** vectors of the lines
 up to 2.x below, which are replayed unchanged against the classes of this line, because the 3.9.2 node still serves
@@ -49,7 +53,7 @@ every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **1043** of them in **58** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **1057** of them in **58** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the

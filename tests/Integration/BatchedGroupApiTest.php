@@ -29,7 +29,9 @@ use Protocol\Kafka\Protocol\Data\FindCoordinatorResponseCoordinator;
 use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroup;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseGroup;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV4;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -47,11 +49,13 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * Every topic, group and transactional id of this class is named `t3-30-…`, so that it can run next to the other
  * suites on the shared node.
  *
- * @see docs/protocol/3.9.md, sections "GroupCoordinator API (key 10, v0 to v5)" and "OffsetFetch API (key 9,
+ * @see docs/protocol/3.9.md, sections "GroupCoordinator API (key 10, v0 to v6)" and "OffsetFetch API (key 9,
  *      v0 to v8)"
  */
 #[CoversClass(GroupCoordinatorRequest::class)]
 #[CoversClass(GroupCoordinatorResponse::class)]
+#[CoversClass(GroupCoordinatorRequestV4::class)]
+#[CoversClass(GroupCoordinatorResponseV4::class)]
 #[CoversClass(FindCoordinatorResponseCoordinator::class)]
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchResponse::class)]
@@ -175,18 +179,24 @@ final class BatchedGroupApiTest extends IntegrationTestCase
 
     /**
      * A coordinator type this node does not serve is refused per key with the error code 42
+     *
+     * The type 2 is the `SHARE` coordinator of KIP-932, which `KafkaApis.getCoordinator` @ 3.9.2 refuses below
+     * the version 6 of the api - so the version 4 of this section is one of the versions that refuse it, and
+     * `GroupCoordinatorRequestV4` is what asks here; what the version 6 answers the same frame is measured by
+     * {@see ShareCoordinatorTypeApiTest}. The type 99 is one the enum does not know at any version.
      */
     public function testAnUnknownCoordinatorTypeIsRefusedPerKey(): void
     {
         $stream  = $this->connect([ClientConfig::REQUEST_TIMEOUT_MS => self::REQUEST_TIMEOUT_MS]);
         $groupId = self::uniqueGroupName();
 
-        // The type 2 is the `SHARE` coordinator of KIP-932, which `KafkaApis.getCoordinator` @ 3.9.2 refuses
-        // below the version 6 of the api; 99 is a type the enum does not know at all
-        foreach ([2, 99] as $coordinatorType) {
-            GroupCoordinatorRequest::forKeys([$groupId], $coordinatorType, self::CLIENT_ID, 3102)
-                ->writeTo($stream);
-            $entry = GroupCoordinatorResponse::unpack($stream)->coordinatorOf($groupId);
+        $frames = [
+            [2, GroupCoordinatorRequestV4::class, GroupCoordinatorResponseV4::class],
+            [99, GroupCoordinatorRequest::class, GroupCoordinatorResponse::class],
+        ];
+        foreach ($frames as [$coordinatorType, $requestClass, $responseClass]) {
+            $requestClass::forKeys([$groupId], $coordinatorType, self::CLIENT_ID, 3102)->writeTo($stream);
+            $entry = $responseClass::unpack($stream)->coordinatorOf($groupId);
 
             self::assertSame(
                 KafkaException::INVALID_REQUEST,
