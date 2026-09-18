@@ -323,7 +323,7 @@ does not.
 of a record batch v2 carries the headers the producer wrote (`ConsumerRecord::$headers`, a list of
 `Common\Record\Header`), next to the key, the value, the timestamp and its type; a topic whose
 `message.format.version` is older simply has none. `ConsumerConfig::ISOLATION_LEVEL`
-(`isolation.level`, `read_uncommitted` by default) is sent as the isolation level of the Fetch v12
+(`isolation.level`, `read_uncommitted` by default) is sent as the isolation level of the Fetch v15
 request: with `read_committed` the broker answers only up to the **last stable offset** — the first
 record of a transaction that has neither committed nor aborted — and names the aborted transactions
 of the answer, whose records the consumer drops. The control batches of the transaction protocol are
@@ -433,8 +433,9 @@ foreach ($group->members as $memberId => $member) {
 | `findController()`                           | Metadata v12             | The `controller_id` of the answer; the two topic apis below need it   |
 | `createTopics()`                             | CreateTopics v7         | `NewTopic` with partitions/factor or an explicit assignment, plus topic configs; `validateOnly` checks without creating |
 | `deleteTopics()`                             | DeleteTopics v6         | Needs `delete.topic.enable=true` on the broker                        |
-| `listOffsets()`                              | Offsets v7              | Earliest, latest, by message timestamp or `OffsetsRequest::MAX_TIMESTAMP`; **one** offset per partition, sent to the partition leader, with the isolation level `read_uncommitted` |
-| `listMaxTimestampOffsets()`                  | Offsets v7              | The offset **and the timestamp** of the record with the largest timestamp of every partition (KIP-734, Kafka 3.0), `null` for an empty log — the end of the log only while a log's timestamps rise with its offsets |
+| `listOffsets()`                              | Offsets v8              | Earliest, latest, by message timestamp, `OffsetsRequest::MAX_TIMESTAMP` or `OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP`; **one** offset per partition, sent to the partition leader, with the isolation level `read_uncommitted` |
+| `listMaxTimestampOffsets()`                  | Offsets v8              | The offset **and the timestamp** of the record with the largest timestamp of every partition (KIP-734, Kafka 3.0), `null` for an empty log — the end of the log only while a log's timestamps rise with its offsets |
+| `listEarliestLocalOffsets()`                 | Offsets v8              | The **local log start offset** of every partition (the target time `-4` of KIP-405, Kafka 3.5): the first offset still on the broker's own disk once older segments moved to tiered storage; on a broker without remote storage it equals the earliest offset (the node answers `0` with the timestamp `-1` for an empty log) |
 | `findCoordinator()`                          | GroupCoordinator v4     | Retries the codes 15 and 14 while the coordinator warms up; version 1 also looks a **transactional id** up (`coordinator_type = 1`); one key travels as a one-element batch of the v4 of KIP-699 (Kafka 3.0), and `Client::getGroupCoordinators()` / `getTransactionCoordinators()` look several up at once |
 | `listGroupOffsets()`                         | OffsetFetch v8          | Without a partition list it asks for **every** topic the group committed (`null` topics of v2); one group travels as a one-element batch of v8 (Kafka 3.0) |
 | `listConsumerGroupOffsets()`                 | OffsetFetch v8          | The committed offsets of **several** groups in one request per coordinator (Kafka 3.0), each group with its own topic array and its own error code; an empty batch is refused client-side, because a 3.9.2 node answers it with nothing at all |
@@ -773,8 +774,8 @@ it sends, and a version the node serves that the current milestone has not reach
 | Api key | API | Versions in 3.9.2 | Client-facing | `2.x` | `main` (3.x, towards Kafka 3.9.2) |
 |---|---|---|---|---|---|
 | 0 | Produce | v0 … v11 | yes | v0 … v8, **v9** (**v2** for `message.format.version` below 0.11.0) | v0 … v8, **v9** (**v2** for `message.format.version` below 0.11.0); **v10 (3.7), v11 (3.8) not yet implemented on this line** |
-| 1 | Fetch | v0 … v17 | yes | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer) | v0 … v12, **v13** (every topic named by its **topic id**, KIP-516, Kafka 3.1; session-less in `fetchPartitions()`, with an incremental fetch session per broker in the consumer; `FetchRequestV12` keeps the frame that names its topics); **v14 (3.5), v15 (3.5), v16 (3.7), v17 (3.9) not yet implemented on this line** |
-| 2 | Offsets (ListOffsets) | v0 … v9 | yes | v0 … v5, **v6** | v0 … v6, **v7** (the max timestamp `-3` of KIP-734, Kafka 3.0); **v8 (3.5), v9 (3.9) not yet implemented on this line** |
+| 1 | Fetch | v0 … v17 | yes | v0 … v11, **v12** (session-less in `fetchPartitions()`, with an **incremental fetch session per broker** in the consumer) | v0 … v13, **v14** (the promise to understand the 109 of KIP-405, Kafka 3.5) and **v15** (the tagged `replica_state` of KIP-903, Kafka 3.5, left off the wire by a consumer; every topic named by its **topic id**, KIP-516, Kafka 3.1; session-less in `fetchPartitions()`, with an incremental fetch session per broker in the consumer; `FetchRequestV12` keeps the frame that names its topics, `FetchRequestV13` and `FetchRequestV14` the versions below); **v16 (3.7), v17 (3.9) not yet implemented on this line** |
+| 2 | Offsets (ListOffsets) | v0 … v9 | yes | v0 … v5, **v6** | v0 … v7, **v8** (the local log start offset `-4` of KIP-405, Kafka 3.5, `AdminClient::listEarliestLocalOffsets()`; `OffsetsRequestV7` keeps the version of the max timestamp `-3` of KIP-734, Kafka 3.0); **v9 (3.9) not yet implemented on this line** |
 | 3 | Metadata | v0 … v12 | yes | v0 … v10, **v11** (v10 with the topic ids of KIP-516) | v0 … v11, **v12** (a request **by topic id**, `MetadataRequest::byTopicIds()`, KIP-516, Kafka 3.1; `MetadataRequestV11` keeps the version below it) |
 | 4 | LeaderAndIsr | not on the client listener of a KRaft node | broker→broker | no | no |
 | 5 | StopReplica | not on the client listener of a KRaft node | broker→broker | no | no |
@@ -796,7 +797,7 @@ it sends, and a version the node serves that the current milestone has not reach
 | 21 | DeleteRecords | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 22 | InitProducerId | v0 … v5 | yes | v0 … v3, **v4** | v0 … v3, **v4**; **v5 (3.8) not yet implemented on this line** |
 | 23 | OffsetForLeaderEpoch | v0 … v4 | broker→broker | v0 … v3, **v4** (classes, vectors and the consumer's truncation detection) | v0 … v3, **v4** (classes, vectors and the consumer's truncation detection) |
-| 24 | AddPartitionsToTxn | v0 … v5 | yes | v0 … v2, **v3** | v0 … v2, **v3**; **v4 (3.5), v5 (3.8) not yet implemented on this line** |
+| 24 | AddPartitionsToTxn | v0 … v5 | yes up to v3, **broker→broker from v4** | v0 … v2, **v3** | v0 … v2, **v3** (the frame `Client::addPartitionsToTxn()` sends), **v4** (classes and vectors only — Kafka 3.5/KIP-890 made it a broker api: the node authorizes it as `CLUSTER_ACTION` and answers a client the top-level 31); **v5 (3.8) not yet implemented on this line** |
 | 25 | AddOffsetsToTxn | v0 … v4 | yes | v0 … v2, **v3** | v0 … v2, **v3**; **v4 (3.8) not yet implemented on this line** |
 | 26 | EndTxn | v0 … v4 | yes | v0 … v2, **v3** | v0 … v2, **v3**; **v4 (3.8) not yet implemented on this line** |
 | 27 | WriteTxnMarkers | v0, v1 | broker→broker | v0, **v1** (classes and vectors; a broker→broker api, probed only) | v0, **v1** (classes and vectors; a broker→broker api, probed only) |
@@ -940,6 +941,9 @@ current milestone):
 | **KIP-778: the upgrade type and the dry run of a feature update** (`Admin\UpgradeType`, `updateFeatures(..., validateOnly: true)`, UpdateFeatures v1) | 3.3 | – | – | – | – | – | – | **yes** — the safe and the unsafe downgrade are two frames, and a dry run writes nothing |
 | **KIP-836: the lag of a voter** (`describeMetadataQuorum()`, the `LastFetchTimestamp` and `LastCaughtUpTimestamp` of DescribeQuorum v1) | 3.3 | – | – | – | – | – | – | **yes** — the one-node quorum reports the leader's own current time in both |
 | **KIP-827: the volume sizes of a log directory** (DescribeLogDirs v4, `LogDirInfo::$totalBytes`/`$usableBytes`) and **KIP-373: a token for another principal** (CreateDelegationToken v3, DescribeDelegationToken v3, `createDelegationToken(..., $owner)`, `TokenInformation::$tokenRequester`) | 3.3 | – | – | – | – | – | – | **yes** |
+| **KIP-405, the client side of tiered storage** (Fetch v14 and the error code 109, ListOffsets v8 and the target time `-4`; `OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP`, `listEarliestLocalOffsets()`) | 3.5 | – | – | – | – | – | – | **yes** — the wire; the node has no remote storage, so `-4` is the earliest offset and the 109 stays declared |
+| **KIP-903: the replica state of a follower fetch** (Fetch v15, the tagged `replica_state` in the place of the top-level `replica_id`; `Data\FetchRequestReplicaState`, `FetchRequest::$replicaEpoch`) | 3.5 | – | – | – | – | – | – | **yes** — a consumer writes nothing and its frame is four bytes shorter; a one-node cluster answers a follower 75 or 6 before the epoch is looked at |
+| **KIP-890, part 1: AddPartitionsToTxn v4, the batched broker version** (`AddPartitionsToTxnRequest::forTransactions()`, `Data\AddPartitionsToTxnTransaction`, `Data\AddPartitionsToTxnResult`) | 3.5 | – | – | – | – | – | – | **wire only** — the node answers a client the 31 of `CLUSTER_ACTION`; `Client::addPartitionsToTxn()` keeps the v3 until the v5 of Kafka 3.8 |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 127** (the constants of 3.9.2, declared by the foundation; 105 is 3.0's) |
 
 What this line leaves out **by design** (the owner's decisions for the 3.x line; everything else the 3.9.2
@@ -953,7 +957,7 @@ node serves is "not yet" until its milestone lands):
 | The KRaft controller apis (52–55, 58, 59, 62–64, 67, 70, 73, 80–82) | 2.7 … 3.9 | no — probed only; the ones a KRaft node lists on its client listeners (55, 64, 80, 81) are answered, the rest live on the controller listener |
 | Share groups (76–79 and their state apis 83–87, KIP-932) | 3.9 | no — early access in 3.9, hidden without `unstable.api.versions.enable`; the 4.x line implements them |
 | Client metrics (71, 72, 74, KIP-714) | 3.7 | wire only — the classes and what a node without a telemetry plugin answers, no telemetry emitter |
-| Tiered storage (ListOffsets v8, the error code 109) | 3.5 | wire only — the container has no remote storage |
+| Tiered storage (KIP-405) | 3.5 | **the wire halves are implemented** — Fetch **v14** (the error code 109 `OffsetMovedToTieredStorage`, `Errors\OffsetMovedToTieredStorageException`) and ListOffsets **v8** (the target time `-4`, `AdminClient::listEarliestLocalOffsets()`); the container has no remote storage, so the 109 is declared and `-4` equals `-2` on it; the remote-storage apis themselves (74, 75) and the `-5` of ListOffsets v9 (KIP-1005, Kafka 3.9) are out of this line |
 | `offsets.storage = zookeeper` (OffsetCommit/OffsetFetch v0) | 0.8.1 | removed from this line — the option and its code path are gone; the classes stay for the wire vectors of the lines below, and a KRaft node answers both v0 requests with 35 `UnsupportedVersion` |
 | `controlledShutdown()` (ControlledShutdown, key 7) | 0.8 | removed from this line — the method is gone from the admin client; the classes and the vectors stay, and a KRaft node serves the api on its controller listener only |
 

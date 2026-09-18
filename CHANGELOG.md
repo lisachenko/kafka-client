@@ -18,7 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.4** (the foundation, the re-baseline wave T0 and the 3.0 to 3.3 waves are in; Kafka 3.4 adds nothing a client sends).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.5** (the foundation, the re-baseline wave T0 and the 3.0 to 3.5 waves are in; Kafka 3.4 added nothing a client sends).
 
 ### Added
 
@@ -291,6 +291,54 @@ ACL apis, measured against a real authorizer for the first time.
 - The error codes **107** `IneligibleReplica` and **108** `NewLeaderElected` of Kafka 3.3 belong to AlterPartition
   (56), a broker-to-controller api a client listener does not serve: declared at the foundation, never observed.
   73 wire vectors in all (26 of T1, 47 of T4): 836 in 54 files.
+
+### Kafka 3.5 — Added
+
+The fifth milestone of the line (PRs #198, #199): the two wire halves of tiered storage, the replica state of a
+follower fetch, and the first version of an api that a client does not send.
+
+- **Fetch v14 (KIP-405)** — the frame of the version 13, field for field and byte for byte; the version is the
+  promise to understand the error code **109** `OffsetMovedToTieredStorage`, with which a tiered broker answers a
+  fetch of an offset that only the remote log still holds. Not producible on the node of this line (a container
+  without remote storage answers the ordinary **1** at v13, v14 and v15 alike), so the code stays declared, and
+  `Errors\OffsetMovedToTieredStorageException` is what a client sees on a tiered broker.
+  `FetchRequestV13`/`FetchResponseV13` keep the version below it.
+- **Fetch v15 (KIP-903)** — the first version of this api that takes a field out of the frame: the deprecated
+  top-level `replica_id` (`versions: 0-14`) is replaced by the tagged `replica_state` of a replica id and a replica
+  epoch (`Data\FetchRequestReplicaState`, `FetchRequest::$replicaEpoch`, `getReplicaId()`/`getReplicaState()`),
+  written as the tag 1 of the body and left off the wire by a consumer (`-1`/`-1`), whose v15 frame is four bytes
+  shorter than its v14 one; a follower's tagged structure is 13 bytes. Measured on the node: a follower fetch is
+  authorized here (`super.users` contains `User:ANONYMOUS`) and the one broker is the leader, so
+  `Partition.followerReplicaOrThrow` @ 3.9.2 answers **75** when the partition named a `current_leader_epoch` and
+  **6** when it did not, for every replica id and epoch alike — the replica epoch is never reached, so a one-node
+  cluster cannot show the fencing of KIP-903 itself; a `replica_state` of `-1` with an epoch and the debugging
+  replica id `-2` are served as ordinary consumer fetches; and a fetch session opened at v13 continues at v15 with
+  the same session id (the 106 fences the kind of name, not the version). `FetchRequestV14`/`FetchResponseV14`
+  keep the version below it.
+- **ListOffsets v8 (KIP-405)** — no field, and a fourth special target time: **`-4`**, the local log start offset
+  (`OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP`, accepted by `Client::fetchTopicPartitionOffsets()`,
+  `KafkaConsumer::offsetsForTimes()` and `AdminClient::listOffsets()`; `AdminClient::listEarliestLocalOffsets()`
+  asks it for a set of partitions). Measured on the node: without remote storage `-4` equals `-2` exactly on a
+  filled log, and answers the offset **0** with the timestamp `-1` and the leader epoch 0 on an empty partition,
+  where the `-3` of the max timestamp answers `-1`/`-1`; a `-4` at v7 and a `-5` (KIP-1005, Kafka 3.9) at v8 are
+  both the per-partition **35**. `OffsetsRequestV7`/`OffsetsResponseV7` keep the version of the max timestamp.
+- **AddPartitionsToTxn v4 (KIP-890) — the wire, not the client.** The version moves the transactional id, the
+  producer id, the epoch and the topics into a `transactions` array with a `verify_only` flag per entry, and the
+  answer into a top-level `error_code` plus one `results_by_transaction` entry per transaction
+  (`AddPartitionsToTxnRequest.json` @ 3.5.2: *"Versions 3 and below will be exclusively used by clients and
+  versions 4 and above will be used by brokers"*). `AddPartitionsToTxnRequest`/`Response` speak it, with the new
+  structures `Data\AddPartitionsToTxnTransaction` and `Data\AddPartitionsToTxnResult`, `forTransactions()` (which
+  refuses an empty batch — a 3.9.2 node never answers one, at v4 as at the OffsetFetch v8 of Kafka 3.0) and
+  `resultOf()`, which reads one transaction out of either shape; `AddPartitionsToTxnRequestV3`/`ResponseV3` keep
+  the frame **this client sends** — `Client::addPartitionsToTxn()` stays at v3 until the v5 of Kafka 3.8.
+  Measured on the node: the key is announced `0-5` on the client listeners, a principal without `CLUSTER_ACTION`
+  is refused the whole request with the **31**, a `verify_only` of a partition the transaction does not hold (or
+  with no open transaction at all) is answered **120** `TransactionAbortable` — the code declared for Kafka 3.8,
+  observed here for the first time — a stale epoch **90**, an unknown topic **3**, and a batch is answered in
+  completion order; codes the requesting broker maps to the 48 and the 47 before a producer sees them.
+- The error codes **110** `FencedMemberEpoch`, **111** `UnreleasedInstanceId` and **112** `UnsupportedAssignor` of
+  Kafka 3.5 belong to ConsumerGroupHeartbeat (68), the KIP-848 api that is the last wave of the line: declared at
+  the foundation, observed with that wave. 30 wire vectors in all (10 of T4, 20 of T2): 866 in 54 files.
 
 ### Kafka 3.4 — nothing on the wire a client sends
 

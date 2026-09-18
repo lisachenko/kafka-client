@@ -35,7 +35,7 @@ filled in as the milestones land.
 | `3.2.3` | 3.2 | 5e9bd7d | #194, #195 |
 | `3.3.2` | 3.3 | fb9c5d0 | #196, #197 |
 | `3.4.1` | 3.4 | 2c3793d | — (nothing a client sends: KIP-866 raised LeaderAndIsr, StopReplica, UpdateMetadata and BrokerRegistration only, verified at the tag) |
-| `3.5.2` | 3.5 | _pending_ | |
+| `3.5.2` | 3.5 | MILESTONE_SHA | #198, #199 |
 | `3.6.2` | 3.6 | _pending_ | |
 | `3.7.2` | 3.7 | _pending_ | |
 | `3.8.1` | 3.8 | _pending_ | |
