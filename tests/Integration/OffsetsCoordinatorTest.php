@@ -30,6 +30,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartition;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestPartitionV1;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseGroup;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -58,8 +59,8 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
  * node cannot serve - it answers every v0 partition with the error code 35 - so this line has no `offsets.storage`
  * option any more and this suite exercises the versions the coordinator answers (1 and up).
  *
- * @see docs/protocol/3.9.md, sections "GroupCoordinator API (key 10, v0 to v3)",
- *      "OffsetCommit API (key 8, v0 to v8)" and "OffsetFetch API (key 9, v0 to v7)"
+ * @see docs/protocol/3.9.md, sections "GroupCoordinator API (key 10, v0 to v4)",
+ *      "OffsetCommit API (key 8, v0 to v8)" and "OffsetFetch API (key 9, v0 to v8)"
  */
 #[CoversClass(Client::class)]
 #[CoversClass(CoordinatorLookup::class)]
@@ -213,10 +214,10 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         $groupId = self::uniqueGroupName();
         $stream  = $this->coordinatorStream($groupId);
 
-        $response = $this->fetchInKafkaResponse($stream, $groupId, null);
+        $group = $this->fetchGroupEntry($stream, $groupId, null);
 
-        self::assertSame([], $response->topics);
-        self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
+        self::assertSame([], $group->topics);
+        self::assertSame(KafkaException::NO_ERROR, $group->errorCode);
     }
 
     /**
@@ -675,15 +676,15 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
      */
     private function fetchInKafka(Stream $stream, string $groupId, ?array $topicPartitions): array
     {
-        $response = $this->fetchInKafkaResponse($stream, $groupId, $topicPartitions);
+        $group = $this->fetchInKafkaResponse($stream, $groupId, $topicPartitions)->groupOf($groupId);
 
         self::assertSame(
             KafkaException::NO_ERROR,
-            $response->errorCode,
-            'the group-level error code of the version 2 answer'
+            $group->errorCode,
+            'the group-level error code, which version 8 carries inside the entry of the group'
         );
 
-        return $response->topics;
+        return $group->topics;
     }
 
     /**
@@ -699,6 +700,17 @@ final class OffsetsCoordinatorTest extends IntegrationTestCase
         new OffsetFetchRequest($groupId, $topicPartitions, 'kafka-client-t6', 2)->writeTo($stream);
 
         return OffsetFetchResponse::unpack($stream);
+    }
+
+    /**
+     * The group entry of an OffsetFetch answer, which version 8 carries in its `groups` array
+     */
+    private function fetchGroupEntry(
+        Stream $stream,
+        string $groupId,
+        ?array $topicPartitions
+    ): OffsetFetchResponseGroup {
+        return $this->fetchInKafkaResponse($stream, $groupId, $topicPartitions)->groupOf($groupId);
     }
 
     /**

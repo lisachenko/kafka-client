@@ -14,19 +14,19 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 /**
- * OffsetFetch request of version 6 (Kafka 2.4, KIP-482): the flexible frame without the flag of KIP-447
+ * OffsetFetch answer of version 7 (Kafka 2.5, KIP-447): the topics and the group error at the top level
  *
- * Version 7 (Kafka 2.5) appended the boolean `require_stable` behind the topic array, with which a consumer asks
- * the coordinator to hold back an offset whose transaction is still open. This version always reads the offset of
- * the last commit, pending or not.
+ * Version 8 (Kafka 3.0) moved both of them into a `groups` array, one entry per group of the request, and left the
+ * answer without a top-level error code; this version answers the one group its request named.
+ * {@see OffsetFetchResponse} decodes the batched answer.
  *
  * @see docs/protocol/3.9.md, section "Stable offsets and the 88 of KIP-447 (Kafka 2.5)"
  * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v8)"
  */
-final class OffsetFetchRequestV6 extends OffsetFetchRequest
+final class OffsetFetchResponseV7 extends OffsetFetchResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 6;
+    public const int VERSION = 7;
 }

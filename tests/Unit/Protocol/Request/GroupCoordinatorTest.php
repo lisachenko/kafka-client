@@ -15,17 +15,22 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
+use Protocol\Kafka\Protocol\Data\FindCoordinatorResponseCoordinator;
 use Protocol\Kafka\Protocol\Data\GroupCoordinatorResponseMetadata;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequest;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV0;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV1;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV2;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV3;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV0;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV1;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV2;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV3;
+use UnexpectedValueException;
 
 /**
  * Byte-exact tests for the GroupCoordinator API, called ConsumerMetadata in Kafka 0.8.2 and FindCoordinator in 0.11.
@@ -33,13 +38,16 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV2;
  * Version 2 (KIP-219, Kafka 2.0) is the version 1 frame with a higher api version and nothing else, so it is the
  * version this client sends and {@see GroupCoordinatorRequestV1} keeps the version 1 number for a lower broker.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v4)"
  */
 #[CoversClass(GroupCoordinatorRequest::class)]
 #[CoversClass(GroupCoordinatorRequestV0::class)]
 #[CoversClass(GroupCoordinatorRequestV1::class)]
 #[CoversClass(GroupCoordinatorRequestV2::class)]
+#[CoversClass(GroupCoordinatorRequestV3::class)]
 #[CoversClass(GroupCoordinatorResponse::class)]
+#[CoversClass(GroupCoordinatorResponseV3::class)]
+#[CoversClass(FindCoordinatorResponseCoordinator::class)]
 #[CoversClass(GroupCoordinatorResponseV0::class)]
 #[CoversClass(GroupCoordinatorResponseV1::class)]
 #[CoversClass(GroupCoordinatorResponseV2::class)]
@@ -174,6 +182,49 @@ final class GroupCoordinatorTest extends TestCase
         . '0000'
         . 'ffffffff';
 
+    /**
+     * The same lookup as a version 4 frame (Kafka 3.0, KIP-699): the coordinator type stands in front of the
+     * compact array of keys, and the single key of the versions below is gone.
+     *
+     *   Size             => 00 00 00 1b (27 bytes)
+     *   ApiKey           => 00 0a
+     *   ApiVersion       => 00 04
+     *   CorrelationId    => 00 00 00 01
+     *   ClientId         => 00 04 "test" (never compact)
+     *   TAG_BUFFER       => 00
+     *   CoordinatorType  => 00
+     *   CoordinatorKeys  => 02 (one item) 09 "my-group"
+     *   TAG_BUFFER       => 00
+     */
+    private const string REQUEST_V4_HEX = '0000001b'
+        . '000a'
+        . '0004'
+        . '00000001'
+        . '0004' . '74657374'
+        . '00'
+        . '00'
+        . '02'
+        . '09' . '6d792d67726f7570'
+        . '00';
+
+    /**
+     * The version 4 answer of a single lookup: the throttle time and one entry of the `coordinators` array,
+     * which names the key it answers and carries the empty error message a 3.9.2 node writes.
+     */
+    private const string RESPONSE_V4_HEX = '0000002a'
+        . '00000001'
+        . '00'
+        . '00000000'
+        . '02'
+        . '09' . '6d792d67726f7570'
+        . '00000001'
+        . '0a' . '3132372e302e302e31'
+        . '00002384'
+        . '0000'
+        . '01'
+        . '00'
+        . '00';
+
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
         $request = new GroupCoordinatorRequestV0('my-group', GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP, 'test', 1);
@@ -221,18 +272,23 @@ final class GroupCoordinatorTest extends TestCase
      */
     public function testVersionThreeIsTheFlexibleEncodingOfTheSameFields(): void
     {
-        $request = new GroupCoordinatorRequest('my-group', GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP, 'test', 1);
+        $request = new GroupCoordinatorRequestV3(
+            'my-group',
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP,
+            'test',
+            1
+        );
 
         self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $request));
-        self::assertSame(3, $request->getApiVersion(), 'the version this client sends');
-        self::assertTrue(GroupCoordinatorRequest::isFlexible());
+        self::assertSame(3, $request->getApiVersion(), 'the last version with a single key');
+        self::assertTrue(GroupCoordinatorRequestV3::isFlexible());
     }
 
     public function testTheGroupTypeIsTheDefaultOfTheRequest(): void
     {
         self::assertSame(
             self::REQUEST_V3_HEX,
-            bin2hex((string) new GroupCoordinatorRequest('my-group', clientId: 'test', correlationId: 1))
+            bin2hex((string) new GroupCoordinatorRequestV3('my-group', clientId: 'test', correlationId: 1))
         );
     }
 
@@ -336,7 +392,7 @@ final class GroupCoordinatorTest extends TestCase
             . '00002384'
             . '00';
 
-        $response = GroupCoordinatorResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = GroupCoordinatorResponseV3::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(1, $response->getCorrelationId());
         self::assertSame(0, $response->errorCode);
@@ -345,7 +401,12 @@ final class GroupCoordinatorTest extends TestCase
         self::assertSame('127.0.0.1', $response->coordinator->host);
         self::assertSame(9092, $response->coordinator->port);
         self::assertSame($frame, bin2hex((string) $response), 'the answer survives the round trip');
-        self::assertTrue(GroupCoordinatorResponse::isFlexible());
+        self::assertTrue(GroupCoordinatorResponseV3::isFlexible());
+        self::assertSame(
+            $response->coordinatorOf('my-group')->nodeId,
+            $response->coordinator->nodeId,
+            'a version below 4 answers coordinatorOf() from its single top-level coordinator'
+        );
     }
 
     public function testCoordinatorNotAvailableIsReportedWithASignedErrorCode(): void
@@ -357,5 +418,159 @@ final class GroupCoordinatorTest extends TestCase
         self::assertSame(-1, $response->coordinator->nodeId);
         self::assertSame('', $response->coordinator->host);
         self::assertSame(-1, $response->coordinator->port, 'the port is an INT32 and is read as a signed value');
+    }
+
+    /**
+     * Version 4 (Kafka 3.0, KIP-699) replaced the single `key` with an array of `coordinator_keys`, behind the
+     * coordinator type: a single lookup is the one-element batch this client sends for every lookup
+     */
+    public function testVersionFourReplacesTheSingleKeyWithABatchedArray(): void
+    {
+        $request = GroupCoordinatorRequest::forKeys(['my-group'], GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP, 'test', 1);
+
+        self::assertSame(self::REQUEST_V4_HEX, bin2hex((string) $request));
+        self::assertSame(4, $request->getApiVersion(), 'the version this client sends');
+        self::assertTrue(GroupCoordinatorRequest::isFlexible());
+    }
+
+    /**
+     * The published constructor keeps naming one key and sends exactly the same one-element batch
+     */
+    public function testTheSingleKeyConstructorSendsTheOneElementBatch(): void
+    {
+        self::assertSame(
+            self::REQUEST_V4_HEX,
+            bin2hex((string) new GroupCoordinatorRequest('my-group', clientId: 'test', correlationId: 1))
+        );
+    }
+
+    public function testSeveralKeysOfOneTypeTravelInOneRequest(): void
+    {
+        $request = GroupCoordinatorRequest::forKeys(['my-group', 'other'], 0, 'test', 1);
+
+        self::assertSame(
+            '00000021' . '000a' . '0004' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '00'
+            . '03'
+            . '09' . '6d792d67726f7570'
+            . '06' . '6f74686572'
+            . '00',
+            bin2hex((string) $request),
+            'one coordinator type in front of the array, then the compact keys'
+        );
+    }
+
+    public function testAnEmptyBatchIsALegalFrameOfVersionFour(): void
+    {
+        $request = GroupCoordinatorRequest::forKeys([], 0, 'test', 1);
+
+        self::assertSame(
+            '00000012' . '000a' . '0004' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '00'
+            . '01'
+            . '00',
+            bin2hex((string) $request),
+            'the compact count 01 is the EMPTY array, which a 3.9.2 node answers with an empty coordinators array'
+        );
+    }
+
+    /**
+     * A version below 4 has no array to put a batch into, exactly as `FindCoordinatorRequest.Builder.build()`
+     * @ 3.9.2 refuses it with its own `NoBatchedFindCoordinatorsException`
+     */
+    public function testAVersionBelowFourRefusesMoreThanOneKey(): void
+    {
+        $this->expectException(UnsupportedVersionException::class);
+
+        GroupCoordinatorRequestV3::forKeys(['my-group', 'other'], 0, 'test', 1);
+    }
+
+    public function testAVersionBelowFourStillSendsAOneElementBatchAsItsSingleKey(): void
+    {
+        self::assertSame(
+            self::REQUEST_V3_HEX,
+            bin2hex((string) GroupCoordinatorRequestV3::forKeys(['my-group'], 0, 'test', 1))
+        );
+    }
+
+    /**
+     * The answer of a batch carries one entry per key, each with the key it answers and an error code of its own
+     */
+    public function testEveryKeyOfABatchedAnswerIsReadByItsKey(): void
+    {
+        $frame = '0000003d'
+            . '00000001'
+            . '00'
+            . '00000000'
+            . '03'
+            . '09' . '6d792d67726f7570'
+            . '00000001'
+            . '0a' . '3132372e302e302e31'
+            . '00002384'
+            . '0000'
+            . '01'
+            . '00'
+            . '06' . '6f74686572'
+            . 'ffffffff'
+            . '01'
+            . 'ffffffff'
+            . '000f'
+            . '01'
+            . '00'
+            . '00';
+
+        $response = GroupCoordinatorResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(['my-group', 'other'], array_keys($response->coordinators));
+        self::assertSame(1, $response->coordinatorOf('my-group')->nodeId);
+        self::assertSame(0, $response->coordinatorOf('my-group')->errorCode);
+        self::assertSame('', $response->coordinatorOf('my-group')->errorMessage, 'a 3.9.2 node leaves it empty');
+        self::assertSame(15, $response->coordinatorOf('other')->errorCode, 'every key carries an error of its own');
+        self::assertSame(-1, $response->coordinatorOf('other')->nodeId);
+        self::assertSame($frame, bin2hex((string) $response), 'the answer survives the round trip');
+    }
+
+    /**
+     * An answer with exactly one coordinator answers whatever key was asked, which is what
+     * `AbstractCoordinator.FindCoordinatorResponseHandler` @ 3.9.2 does with a single lookup as well
+     */
+    public function testAnAnswerWithOneCoordinatorAnswersTheKeyThatWasAsked(): void
+    {
+        $response = GroupCoordinatorResponse::unpack(new StringStream((string) hex2bin(self::RESPONSE_V4_HEX)));
+
+        self::assertSame(1, $response->coordinatorOf('a-group-that-is-not-the-key-of-the-entry')->nodeId);
+    }
+
+    public function testABatchedAnswerWithoutTheKeyIsRefused(): void
+    {
+        $frame = '0000003d'
+            . '00000001'
+            . '00'
+            . '00000000'
+            . '03'
+            . '09' . '6d792d67726f7570'
+            . '00000001'
+            . '0a' . '3132372e302e302e31'
+            . '00002384'
+            . '0000'
+            . '01'
+            . '00'
+            . '06' . '6f74686572'
+            . 'ffffffff'
+            . '01'
+            . 'ffffffff'
+            . '000f'
+            . '01'
+            . '00'
+            . '00';
+
+        $response = GroupCoordinatorResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        $this->expectException(UnexpectedValueException::class);
+        $response->coordinatorOf('a-third-group');
     }
 }

@@ -1267,30 +1267,100 @@ class Client
                 $requireStable
             ),
             OffsetFetchResponse::class,
-            static function (OffsetFetchResponse $response) use ($groupId): array {
-                if ($response->errorCode !== KafkaException::NO_ERROR) {
-                    // Version 2 reports what is wrong with the group itself here, and answers no topic at all
-                    throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
-                }
+            static fn(OffsetFetchResponse $response): array => self::offsetsOfGroup($response, $groupId)
+        );
+    }
 
+    /**
+     * Fetches the committed offsets of several consumer groups in ONE request (version 8, Kafka 3.0)
+     *
+     * Version 8 of the api replaced the single group id and topic array of the request with an array of groups and
+     * answers one entry per group, each with its own group-level error code. The batch is one request to one
+     * coordinator, so every group of it has to be coordinated by `$coordinatorNode` - which is what
+     * {@see self::getGroupCoordinators()} finds out for a whole list of groups in one round trip.
+     *
+     * The rules of a single group hold for every entry of the batch: a `null` topic array asks for every
+     * topic-partition that group committed an offset for, an empty one names no topic at all, a partition without a
+     * committed offset comes back with the offset -1 and the error code 0, and the one `$requireStable` of the
+     * request holds for every group of it.
+     *
+     * **An empty batch is refused** before a byte leaves the client: a 3.9.2 node answers a `groups = []` frame
+     * with nothing at all and leaves the connection owing an answer that never comes, see
+     * {@see OffsetFetchRequest::forGroups()}.
+     *
+     * @param Node $coordinatorNode Coordinator of every group of the batch
+     * @param array<string, array<string, array<int, int>>|null> $groupTopicPartitions Partitions to read per topic,
+     *        per group; a `null` value asks for every topic-partition of that group
+     * @param bool $requireStable Whether the coordinator has to hold back the offsets of an open transaction and
+     *        answer those partitions with the retriable 88 instead (KIP-447), for every group of the batch
+     *
+     * @return array<string, array<string, array<int, int>>> Committed offsets per group, in the form
+     *         [group => [topic => [partition => offset]]]
+     *
+     * @throws Common\Errors\InvalidRequestException If the batch is empty
+     * @throws Common\Errors\GroupLoadInProgressException
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     */
+    public function fetchOffsetsOfGroups(
+        Node $coordinatorNode,
+        array $groupTopicPartitions,
+        bool $requireStable = false
+    ): array {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+        $groupIds = array_keys($groupTopicPartitions);
+
+        return $this->coordinatorRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => OffsetFetchRequest::forGroups(
+                $groupTopicPartitions,
+                $clientId,
+                $correlationId,
+                $requireStable
+            ),
+            OffsetFetchResponse::class,
+            static function (OffsetFetchResponse $response) use ($groupIds): array {
                 $result = [];
-                foreach ($response->topics as $topic => $topicResponse) {
-                    /** @var OffsetFetchResponsePartition $partition */
-                    foreach ($topicResponse->partitions as $partitionId => $partition) {
-                        $isUnknownTopicPartition = $partition->errorCode === KafkaException::UNKNOWN_TOPIC_OR_PARTITION;
-                        if ($partition->errorCode !== KafkaException::NO_ERROR && !$isUnknownTopicPartition) {
-                            throw KafkaException::fromCode(
-                                $partition->errorCode,
-                                ['groupId' => $groupId, 'topic' => $topic, 'partitionId' => $partitionId]
-                            );
-                        }
-                        $result[$topic][$partitionId] = $partition->offset;
-                    }
+                foreach ($groupIds as $groupId) {
+                    $result[$groupId] = self::offsetsOfGroup($response, (string) $groupId);
                 }
 
                 return $result;
             }
         );
+    }
+
+    /**
+     * Reads the offsets of one group out of an OffsetFetch answer of any version
+     *
+     * @return array<string, array<int, int>> Committed offsets in the form [topic => [partition => offset]]
+     */
+    private static function offsetsOfGroup(OffsetFetchResponse $response, string $groupId): array
+    {
+        $group = $response->groupOf($groupId);
+        if ($group->errorCode !== KafkaException::NO_ERROR) {
+            // The group-level error code reports what is wrong with the group itself, and the entry that carries
+            // it names no topic at all - version 2 has it behind the topics, version 8 inside the group entry
+            throw KafkaException::fromCode($group->errorCode, ['groupId' => $groupId]);
+        }
+
+        $result = [];
+        foreach ($group->topics as $topic => $topicResponse) {
+            /** @var OffsetFetchResponsePartition $partition */
+            foreach ($topicResponse->partitions as $partitionId => $partition) {
+                $isUnknownTopicPartition = $partition->errorCode === KafkaException::UNKNOWN_TOPIC_OR_PARTITION;
+                if ($partition->errorCode !== KafkaException::NO_ERROR && !$isUnknownTopicPartition) {
+                    throw KafkaException::fromCode(
+                        $partition->errorCode,
+                        ['groupId' => $groupId, 'topic' => $topic, 'partitionId' => $partitionId]
+                    );
+                }
+                $result[$topic][$partitionId] = $partition->offset;
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -1699,6 +1769,54 @@ class Client
     {
         return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinator(
             $transactionalId,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION
+        );
+    }
+
+    /**
+     * Discovers the coordinator node of several consumer groups in ONE request (ApiKey 10 v4, Kafka 3.0, KIP-699)
+     *
+     * Version 4 of the api carries an array of `coordinator_keys` and answers one entry per key, so the
+     * coordinators of a whole list of groups are found in a single round trip instead of one per group. The
+     * coordinator type is a single field in front of the array, which is why a batch never mixes groups and
+     * transactional ids; {@see self::getTransactionCoordinators()} is the same lookup for the type 1.
+     *
+     * Every key of the batch keeps the retry rules of a single lookup: the request is repeated while any of them
+     * answers 14 (GroupLoadInProgress) or 15 (GroupCoordinatorNotAvailable), and the first key that ends with any
+     * other error code fails the whole call.
+     *
+     * @param list<string> $groupIds Names of the groups
+     *
+     * @return array<string, Node> The coordinator of every group, indexed by the group id
+     *
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     */
+    public function getGroupCoordinators(array $groupIds): array
+    {
+        return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinators(
+            $groupIds,
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP
+        );
+    }
+
+    /**
+     * Discovers the coordinator node of several transactional ids in ONE request (ApiKey 10 v4, KIP-699)
+     *
+     * The batched lookup of {@see self::getGroupCoordinators()} with the coordinator type 1: every key is hashed
+     * onto a partition of `__transaction_state` and answered with the broker that owns it. Looking an id up does
+     * not register it, so an id that was never used is a legal question with a normal answer.
+     *
+     * @param list<string> $transactionalIds The `transactional.id` of every producer to look up
+     *
+     * @return array<string, Node> The transaction coordinator of every id, indexed by that id
+     *
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\InvalidRequestException If the broker refuses the coordinator type
+     */
+    public function getTransactionCoordinators(array $transactionalIds): array
+    {
+        return new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinators(
+            $transactionalIds,
             GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION
         );
     }

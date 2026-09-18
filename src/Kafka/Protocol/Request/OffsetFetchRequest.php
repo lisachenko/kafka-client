@@ -13,13 +13,15 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Common\Errors\InvalidRequestException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroup;
 use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
 
 /**
- * OffsetFetch, version 7: the offsets that a consumer group committed, read from `__consumer_offsets`
+ * OffsetFetch, version 8: the offsets that consumer groups committed, read from `__consumer_offsets`
  *
  * This API reads back the offsets that were committed for a consumer group with the OffsetCommit API, so it has to
  * be sent to the coordinator of that group.
@@ -32,6 +34,10 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  *       partitions => partition
  *         partition => INT32
  *     require_stable => BOOLEAN            -- since version 7
+ *
+ *   OffsetFetch Request (Version: 8)      => [groups] require_stable
+ *     groups         => group_id [topics]  -- since version 8, in place of the two top-level fields
+ *     require_stable => BOOLEAN            -- one flag for the whole batch
  * </pre>
  *
  * Version 2 (KIP-88, Kafka 0.10.2) made the topic array **nullable**, and that is the only change of the request:
@@ -64,13 +70,25 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  * version below - answers the offset of the last commit whatever its transaction is doing.
  * {@see OffsetFetchRequestV6} is the same frame without the flag.
  *
+ * **Version 8 (Kafka 3.0) asks for several groups at once.** `OffsetFetchRequest.json` @ 3.0.2 - *"Version 8 is
+ * adding support for fetching offsets for multiple groups at a time"* - ends `GroupId` and `Topics` at the version
+ * 7 and puts an array of {@see OffsetFetchRequestGroup} in their place, each entry with a group id and a topic
+ * array of its own, while the single `require_stable` behind the array holds for the whole batch. The published
+ * constructor keeps naming one group and sends it as a one-element batch; {@see self::forGroups()} builds the real
+ * batch, and {@see OffsetFetchRequestV7} is the same lookup with one group at the top level.
+ *
+ * **An empty batch is refused here.** A 3.9.2 node answers `groups = []` with **nothing at all** - the handler
+ * dies in `NoSuchElementException: key not found: null` and the connection is left without the answer it owes, so
+ * every later request on it waits forever - and this client therefore never puts such a frame on the wire, see
+ * {@see self::forGroups()}.
+ *
  * Versions 0 and 1 have no nullable array ({@see OffsetFetchRequestV1}, {@see OffsetFetchRequestV0}) and are
  * identical to each other on the wire: they only differ in where the broker reads the offsets from - ZooKeeper for
  * version 0, the `__consumer_offsets` topic of the cluster for version 1 and above. Asking those versions for all
  * topics is refused here with an {@see UnsupportedVersionException}, exactly as `OffsetFetchRequest.Builder.build()`
  * @ 0.11.0.3 does; sending a `-1` topic array with version 1 makes the broker close the connection.
  *
- * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v7)" and "Stable offsets and the 88 of
+ * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v8)" and "Stable offsets and the 88 of
  *      KIP-447 (Kafka 2.5)"
  */
 class OffsetFetchRequest extends AbstractRequest
@@ -83,7 +101,7 @@ class OffsetFetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -92,11 +110,27 @@ class OffsetFetchRequest extends AbstractRequest
     public const int FLEXIBLE_VERSION = 6;
 
     /**
+     * The first version that asks for several groups in one request (Kafka 3.0)
+     */
+    public const int MIN_BATCHED_VERSION = 8;
+
+    /**
      * Partitions whose offsets are requested, indexed by the topic they belong to, or null for every topic
+     *
+     * Only the versions below 8 carry it; a batched request names the topics of each group of its batch instead.
      *
      * @var array<string, PartitionsForTopic>|null
      */
     protected readonly ?array $topicPartitions;
+
+    /**
+     * The groups whose offsets are requested, indexed by the group id
+     *
+     * @since Version 8 of protocol
+     *
+     * @var array<string, OffsetFetchRequestGroup>
+     */
+    protected readonly array $groups;
 
     /**
      * @param string $consumerGroup   Name of the consumer group
@@ -104,6 +138,8 @@ class OffsetFetchRequest extends AbstractRequest
      *        null to ask for every topic-partition the group has committed an offset for (version 2 and above)
      * @param string $clientId        Unique client identifier
      * @param int    $correlationId   Correlated request id
+     * @param array<string, OffsetFetchRequestGroup>|null $groups The batch of version 8; null - the default -
+     *        asks for `$consumerGroup` alone, see {@see self::forGroups()}
      */
     public function __construct(
         protected readonly string $consumerGroup,
@@ -115,11 +151,13 @@ class OffsetFetchRequest extends AbstractRequest
          *
          * `false` - the default and every version below 7 - answers the offset of the last commit, committed or
          * not; `true` (KIP-447, Kafka 2.5) makes the coordinator answer the partition with the **retriable** error
-         * code 88 (`UnstableOffsetCommit`) instead, until the transaction that wrote the pending offset ends.
+         * code 88 (`UnstableOffsetCommit`) instead, until the transaction that wrote the pending offset ends. One
+         * flag holds for every group of a version 8 batch.
          *
          * @since Version 7 of protocol
          */
-        protected readonly bool $requireStable = false
+        protected readonly bool $requireStable = false,
+        ?array $groups = null
     ) {
         if ($topicPartitions === null) {
             if (static::VERSION < 2) {
@@ -145,6 +183,9 @@ class OffsetFetchRequest extends AbstractRequest
             $this->topicPartitions = $packedTopicPartitions;
         }
 
+        $this->groups = $groups
+            ?? [$consumerGroup => new OffsetFetchRequestGroup($consumerGroup, $this->topicPartitions)];
+
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
 
@@ -163,20 +204,91 @@ class OffsetFetchRequest extends AbstractRequest
     }
 
     /**
+     * Builds the batched request of version 8 (Kafka 3.0): the committed offsets of several groups at once
+     *
+     * The batch is a map of the group id to the partitions that group is asked for - a `null` value asks for every
+     * topic-partition that group has a committed offset for, an empty array names no topic at all, exactly as the
+     * single-group request does. The answer carries one entry per group, each with its own error code, see
+     * {@see OffsetFetchResponse::groupOf()}.
+     *
+     * **An empty batch is refused.** A 3.9.2 node answers a `groups = []` frame with nothing at all - the request
+     * dies in `NoSuchElementException: key not found: null` inside the broker and the connection is left owing an
+     * answer that never comes, which strands every later request on it - so this client never sends one.
+     *
+     * @param array<string, array<string, list<int>|PartitionsForTopic>|null> $groupTopicPartitions Partitions to
+     *        fetch per topic, per group; a `null` value asks for every topic of that group
+     * @param string $clientId      Unique client identifier
+     * @param int    $correlationId Correlated request id
+     * @param bool   $requireStable Whether the coordinator has to hold back the offsets of an open transaction,
+     *        for every group of the batch (KIP-447)
+     *
+     * @throws InvalidRequestException If the batch is empty
+     * @throws UnsupportedVersionException If a version below 8 is asked for more than one group
+     */
+    public static function forGroups(
+        array $groupTopicPartitions,
+        string $clientId = '',
+        int $correlationId = 0,
+        bool $requireStable = false
+    ): static {
+        if ($groupTopicPartitions === []) {
+            throw new InvalidRequestException(
+                [
+                    'error' => 'An OffsetFetch request has to name at least one group: a broker of Kafka 3.9.2 '
+                        . 'answers an empty `groups` array with nothing at all and strands the connection',
+                ]
+            );
+        }
+        if (static::VERSION < self::MIN_BATCHED_VERSION && count($groupTopicPartitions) > 1) {
+            throw new UnsupportedVersionException(
+                [
+                    'error' => sprintf(
+                        'The version %d of the OffsetFetch api asks for one group per request, the `groups` '
+                        . 'array arrived with the version %d in Kafka 3.0',
+                        static::VERSION,
+                        self::MIN_BATCHED_VERSION
+                    ),
+                    'groups' => implode(', ', array_keys($groupTopicPartitions)),
+                ]
+            );
+        }
+
+        $groups = [];
+        foreach ($groupTopicPartitions as $groupId => $topicPartitions) {
+            $groups[(string) $groupId] = new OffsetFetchRequestGroup((string) $groupId, $topicPartitions);
+        }
+        $firstGroup = array_key_first($groups);
+
+        return new static(
+            (string) $firstGroup,
+            $groups[$firstGroup]->topicPartitions,
+            $clientId,
+            $correlationId,
+            $requireStable,
+            $groups
+        );
+    }
+
+    /**
      * @inheritdoc
      */
     public static function getScheme(): array
     {
-        $header          = parent::getScheme();
-        $topicPartitions = ['topic' => PartitionsForTopic::class];
-        if (static::VERSION >= 2) {
-            $topicPartitions[BinarySchema::FLAG_NULLABLE] = true;
+        $header = parent::getScheme();
+        $body   = [];
+
+        if (static::VERSION < self::MIN_BATCHED_VERSION) {
+            $topicPartitions = ['topic' => PartitionsForTopic::class];
+            if (static::VERSION >= 2) {
+                $topicPartitions[BinarySchema::FLAG_NULLABLE] = true;
+            }
+
+            $body['consumerGroup']   = BinarySchema::TYPE_STRING;
+            $body['topicPartitions'] = $topicPartitions;
+        } else {
+            $body['groups'] = ['groupId' => OffsetFetchRequestGroup::class];
         }
 
-        $body = [
-            'consumerGroup'   => BinarySchema::TYPE_STRING,
-            'topicPartitions' => $topicPartitions,
-        ];
         if (static::VERSION >= 7) {
             $body['requireStable'] = BinarySchema::TYPE_BOOLEAN;
         }
