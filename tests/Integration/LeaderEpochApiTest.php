@@ -53,6 +53,7 @@ use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetsRequestV5;
+use Protocol\Kafka\Protocol\Request\OffsetsRequestV6;
 use Protocol\Kafka\Protocol\Request\OffsetsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetsResponseV5;
@@ -70,7 +71,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * version of each api does not have.
  *
  * @see docs/protocol/3.9.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v11)" and
- *      "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
+ *      "Offsets API (key 2, v0 to v7), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
@@ -263,7 +264,8 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         self::assertSame($four->getMessageSize(), $five->getMessageSize());
         self::assertSame(4, OffsetsRequestV4::VERSION, 'the version Kafka 2.1 added');
         self::assertSame(5, OffsetsRequestV5::VERSION, 'the version Kafka 2.2 added');
-        self::assertSame(6, OffsetsRequest::VERSION, 'and the client sends the flexible version Kafka 2.8 added');
+        self::assertSame(6, OffsetsRequestV6::VERSION, 'the flexible version Kafka 2.8 added');
+        self::assertSame(7, OffsetsRequest::VERSION, 'and the client sends the version Kafka 3.0 added');
 
         $partitionFour = $four->topics[$this->topic]->partitions[0];
         $partitionFive = $five->topics[$this->topic]->partitions[0];

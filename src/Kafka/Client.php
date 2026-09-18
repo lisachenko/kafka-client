@@ -1043,6 +1043,14 @@ class Client
      * answers them with the timestamp {@see OffsetsResponsePartition::UNKNOWN_TIMESTAMP}, because it does not read
      * the message the offset points at.
      *
+     * The target time {@see OffsetsRequest::MAX_TIMESTAMP} (`-3`, Kafka 3.0, KIP-734) is accepted here as well and
+     * asks a different question: not "the first record at or after `t`" but "the record with the **largest**
+     * timestamp of this partition", which is answered with that timestamp and the offset that carries it - and
+     * which is the end of the log only while the timestamps of the records rise with their offsets. It is the
+     * request that {@see \Protocol\Kafka\Consumer\KafkaConsumer::maxTimestampOffsets()} and
+     * {@see \Protocol\Kafka\Admin\AdminClient::listMaxTimestampOffsets()} send, and a cluster below Kafka 3.0
+     * refuses it per partition with the error code 35.
+     *
      * @param array<string, array<int, int>> $topicPartitionTimestamps Target times of each topic partition
      *
      * @return array<string, array<int, OffsetAndTimestamp|null>> [topic => [partition => offset and timestamp]]

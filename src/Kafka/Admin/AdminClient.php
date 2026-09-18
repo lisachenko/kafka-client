@@ -32,6 +32,7 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
 use Protocol\Kafka\Network\ResponseValidator;
@@ -2825,5 +2826,84 @@ class AdminClient
         }
 
         return $partitions;
+    }
+    /**
+     * Looks the offset of the record with the **largest timestamp** up, for every one of the given partitions
+     *
+     * This is `OffsetSpec.maxTimestamp()` of the Java admin client, the question that **Kafka 3.0** added with
+     * **KIP-734** and that version 7 of the Offsets api carries as the special target time
+     * {@see OffsetsRequest::MAX_TIMESTAMP} (`-3`). It is not {@see self::listOffsets()} with the default `$time`:
+     * that one answers the *end of the log*, while this one answers *where the largest timestamp is*, and the two
+     * differ as soon as the timestamps of a log do not rise with its offsets - a producer that stamps its own
+     * records, a batch assembled out of order, or two producers whose clocks disagree.
+     *
+     * The answer carries both halves, which is why this method returns an {@see OffsetAndTimestamp} instead of the
+     * plain offset of {@see self::listOffsets()}: the largest timestamp of the partition and the offset of the
+     * record that holds it. A partition whose log is **empty** has no largest timestamp and is answered with the
+     * error code 0 and the offset -1, which arrives here as `null`.
+     *
+     * The request goes to the leader of each partition, as every request of this api does, and it is sent as
+     * version 7. A broker that only serves version 6 - anything below Kafka 3.0 - answers the partition with the
+     * error code 35, which is thrown as an {@see UnsupportedVersionException}.
+     *
+     * @param array<string, list<int>>|iterable<TopicPartition> $topicPartitions Partitions to look up
+     *
+     * @throws \Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException If the cluster does not host one of the partitions
+     * @throws \Protocol\Kafka\Common\Errors\NotLeaderForPartitionException If the leader of a partition changed in the meantime
+     * @throws UnsupportedVersionException If the cluster does not know the target time -3, i.e. below Kafka 3.0
+     *
+     * @return array<string, array<int, OffsetAndTimestamp|null>> Largest timestamp and its offset, as
+     *         topic => partition => answer, `null` for a partition whose log is empty
+     */
+    public function listMaxTimestampOffsets(iterable $topicPartitions): array
+    {
+        $partitionTimes = [];
+        foreach (self::normalizeTopicPartitions($topicPartitions) as $topic => $partitions) {
+            foreach ($partitions as $partition) {
+                $partitionTimes[$topic][$partition] = OffsetsRequest::MAX_TIMESTAMP;
+            }
+        }
+
+        $result = [];
+        foreach ($this->groupByLeader($partitionTimes) as [$leader, $nodePartitionTimes]) {
+            /** @var OffsetsResponse $response */
+            $response = $this->sendTo(
+                $leader->getConnection($this->configuration),
+                fn(int $correlationId): OffsetsRequest => new OffsetsRequest(
+                    $nodePartitionTimes,
+                    OffsetsRequest::CONSUMER_REPLICA_ID,
+                    // An administrator asks what is in the log, not what a `read_committed` reader may see, the
+                    // same choice {@see self::listOffsets()} makes
+                    FetchRequest::READ_UNCOMMITTED,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                OffsetsResponse::class,
+                ['node' => $leader->nodeId]
+            );
+
+            foreach ($response->topics as $topic => $topicResponse) {
+                /** @var OffsetsResponsePartition $partitionOffsets */
+                foreach ($topicResponse->partitions as $partitionId => $partitionOffsets) {
+                    if ($partitionOffsets->errorCode !== KafkaException::NO_ERROR) {
+                        throw KafkaException::fromCode(
+                            $partitionOffsets->errorCode,
+                            ['topic' => $topic, 'partition' => $partitionId]
+                        );
+                    }
+                    $result[$topic][$partitionId] = $partitionOffsets->offset === OffsetsResponsePartition::UNKNOWN_OFFSET
+                        ? null
+                        : new OffsetAndTimestamp(
+                            $partitionOffsets->offset,
+                            $partitionOffsets->timestamp,
+                            $partitionOffsets->leaderEpoch === OffsetsResponsePartition::UNKNOWN_LEADER_EPOCH
+                                ? null
+                                : $partitionOffsets->leaderEpoch
+                        );
+                }
+            }
+        }
+
+        return $result;
     }
 }
