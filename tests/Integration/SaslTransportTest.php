@@ -47,7 +47,7 @@ use Protocol\Kafka\Tests\Fixture\SpecMessageSet;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
- * Verifies the SASL/PLAIN authentication against the SASL listeners of a real Kafka 1.1.1 broker.
+ * Verifies the SASL/PLAIN authentication against the SASL listeners of the 3.9.2 KRaft node.
  *
  * Kafka 0.10.0 (KIP-43) put the mechanism negotiation into the protocol - `SaslHandshake`, api key 17 - and added
  * the PLAIN mechanism, whose token is a user name and a password rather than a Kerberos ticket. Kafka 1.0
@@ -56,6 +56,12 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * on both SASL listeners of the test broker: the handshake, the tokens in either framing, the ordinary traffic
  * afterwards, and every way a broker can refuse - the 58 with a message after a v1 handshake, and the connection
  * that simply goes away after a v0 one.
+ *
+ * The node answers every one of those exactly as the 2.8.2 broker did, down to the wording of the refusals and
+ * the `session_lifetime_ms` 0 of a listener without a `connections.max.reauth.ms`. What it adds is the
+ * `StandardAuthorizer` behind the authentication: the credentials this class uses belong to `kafkatest`, one of
+ * the `super.users` of the node, while the SASL user `acltest` authenticates just as well and is then refused by
+ * every api it asks for. Authentication is what this suite measures; authorization belongs to the ACL apis.
  *
  * @see docs/protocol/3.9.md, sections "SaslHandshake API (key 17, v0 and v1)" and "SaslAuthenticate API (key 36, v0 to v2)"
  * @see \Protocol\Kafka\Tests\Unit\IO\SocketStreamSaslTest for the same exchange against a scripted listener
@@ -698,7 +704,7 @@ final class SaslTransportTest extends IntegrationTestCase
     }
 
     /**
-     * The certificate the 0.10.2.2 test broker presents on its SSL and SASL_SSL listeners
+     * The certificate the test broker of this branch presents on its SSL and SASL_SSL listeners
      */
     private static function saslBrokerCertificateFile(): string
     {
