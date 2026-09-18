@@ -41,6 +41,8 @@ final class BinarySchemaTest extends TestCase
             'int8 negative'  => [BinarySchema::TYPE_INT8, -1],
             'int16 positive' => [BinarySchema::TYPE_INT16, 1000],
             'int16 negative' => [BinarySchema::TYPE_INT16, -1000],
+            'uint16 port'    => [BinarySchema::TYPE_UINT16, 9096],
+            'uint16 high'    => [BinarySchema::TYPE_UINT16, 50_000],
             'int32 positive' => [BinarySchema::TYPE_INT32, 100_000],
             'int32 negative' => [BinarySchema::TYPE_INT32, -100_000],
             'int64'          => [BinarySchema::TYPE_INT64, 9_000_000_000],
@@ -81,6 +83,13 @@ final class BinarySchemaTest extends TestCase
         yield 'int16 max'          => [BinarySchema::TYPE_INT16, 32767, '7fff'];
         yield 'int16 minus one'    => [BinarySchema::TYPE_INT16, -1, 'ffff'];
         yield 'int16 min'          => [BinarySchema::TYPE_INT16, -32768, '8000'];
+
+        // The `uint16` of KIP-853: the two bytes of an int16 without the sign, the Port of a DescribeQuorum v2
+        yield 'uint16 zero'        => [BinarySchema::TYPE_UINT16, 0, '0000'];
+        yield 'uint16 9092'        => [BinarySchema::TYPE_UINT16, 9092, '2384'];
+        yield 'uint16 int16 max'   => [BinarySchema::TYPE_UINT16, 32767, '7fff'];
+        yield 'uint16 above int16' => [BinarySchema::TYPE_UINT16, 32768, '8000'];
+        yield 'uint16 max'         => [BinarySchema::TYPE_UINT16, 65535, 'ffff'];
 
         yield 'int32 one'          => [BinarySchema::TYPE_INT32, 1, '00000001'];
         yield 'int32 max'          => [BinarySchema::TYPE_INT32, 2147483647, '7fffffff'];
@@ -165,6 +174,27 @@ final class BinarySchemaTest extends TestCase
         self::assertTrue(BinarySchema::readSingleType(BinarySchema::TYPE_BOOLEAN, new StringStream("\x01")));
         self::assertTrue(BinarySchema::readSingleType(BinarySchema::TYPE_BOOLEAN, new StringStream("\xFF")));
         self::assertFalse(BinarySchema::readSingleType(BinarySchema::TYPE_BOOLEAN, new StringStream("\x00")));
+    }
+
+    /**
+     * The one difference between `uint16` and `int16` is the sign, and it is a difference of the reader alone
+     *
+     * `Type.UINT16` of the Java client (KIP-853, Kafka 3.9) writes the same two big-endian bytes an int16 writes;
+     * the port 50000 of a raft voter endpoint would come back as -15536 from the signed type.
+     */
+    public function testUint16IsReadWithoutTheSignOfAnInt16(): void
+    {
+        $bytes = "\xC3\x50";
+
+        self::assertSame(50000, BinarySchema::readSingleType(BinarySchema::TYPE_UINT16, new StringStream($bytes)));
+        self::assertSame(-15536, BinarySchema::readSingleType(BinarySchema::TYPE_INT16, new StringStream($bytes)));
+        self::assertSame(65535, BinarySchema::readSingleType(BinarySchema::TYPE_UINT16, new StringStream("\xFF\xFF")));
+        self::assertSame(2, BinarySchema::getSingleTypeSize(BinarySchema::TYPE_UINT16, 50000));
+
+        $stream = new StringStream();
+        BinarySchema::writeSingleType(BinarySchema::TYPE_UINT16, 50000, $stream);
+
+        self::assertSame($bytes, $stream->getBuffer(), 'and it writes what an int16 of the same bits writes');
     }
 
     public function testInt8IsReadAsASignedValue(): void

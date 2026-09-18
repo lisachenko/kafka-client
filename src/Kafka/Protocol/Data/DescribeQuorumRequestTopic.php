@@ -25,7 +25,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *     Partitions => COMPACT_ARRAY of {@see DescribeQuorumRequestPartition}
  * </pre>
  *
- * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 and v1)"
+ * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
  */
 class DescribeQuorumRequestTopic implements BinarySchemaInterface
 {

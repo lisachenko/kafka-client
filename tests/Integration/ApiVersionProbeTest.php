@@ -27,10 +27,12 @@ use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV1;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV2;
+use Protocol\Kafka\Protocol\Request\ApiVersionsRequestV3;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV0;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV1;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV2;
+use Protocol\Kafka\Protocol\Request\ApiVersionsResponseV3;
 use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 
 /**
@@ -93,10 +95,12 @@ use Protocol\Kafka\Tests\Fixture\RawApiProbe;
 #[CoversClass(ApiVersionsRequestV0::class)]
 #[CoversClass(ApiVersionsRequestV1::class)]
 #[CoversClass(ApiVersionsRequestV2::class)]
+#[CoversClass(ApiVersionsRequestV3::class)]
 #[CoversClass(ApiVersionsResponse::class)]
 #[CoversClass(ApiVersionsResponseV0::class)]
 #[CoversClass(ApiVersionsResponseV1::class)]
 #[CoversClass(ApiVersionsResponseV2::class)]
+#[CoversClass(ApiVersionsResponseV3::class)]
 #[CoversClass(ApiVersionsResponseMetadata::class)]
 final class ApiVersionProbeTest extends IntegrationTestCase
 {
@@ -114,6 +118,14 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * The name of the one feature a 3.9.2 node finalizes (KIP-584); its level 21 is `3.9-IV0` (`MetadataVersion.java`)
      */
     private const string METADATA_VERSION_FEATURE = 'metadata.version';
+
+    /**
+     * The feature of KIP-853 that a node only reports to an **ApiVersions v4**, because its minimum is 0
+     *
+     * `kraft.version` 0 is the static voter set of KIP-595 (`controller.quorum.voters`) and 1 the reconfigurable
+     * one the raft-voter apis 80 and 81 change. The node supports 0 to 1 and has finalized 0 (KAFKA-17011).
+     */
+    private const string KRAFT_VERSION_FEATURE = 'kraft.version';
 
     /**
      * The api table of the client listener of a Kafka 3.9.2 KRaft node, as `api key => [minimum, maximum]`
@@ -338,6 +350,8 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * them, `toApiVersion` drops them from the table and `isVersionEnabled(0, false)` refuses every frame while
      * `unstable.api.versions.enable` is off - which it is in the container - with the same closed connection as a
      * key of another listener: `Received request api key SHARE_FETCH with version 0 which is not enabled`.
+     *
+     * @see docs/protocol/3.9.md, section "The raft-voter apis (keys 80 and 81) and the share groups — probe only"
      */
     private const array UNSTABLE_KEYS = [
         ApiKeys::SHARE_GROUP_HEARTBEAT,
@@ -405,13 +419,14 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     }
 
     /**
-     * The client sends version 3, and every version of the answer closes with the throttle time
+     * The client sends version 4, and every version of the answer closes with the throttle time
      */
     public function testTheAnswerCarriesTheTrailingThrottleTimeInEveryVersion(): void
     {
         $response = $this->client()->apiVersions($this->anyNode());
 
-        self::assertSame(3, ApiVersionsRequest::VERSION, 'this line sends the flexible ApiVersions v3 (KIP-511)');
+        self::assertSame(4, ApiVersionsRequest::VERSION, 'this line sends the ApiVersions v4 of KAFKA-17011');
+        self::assertSame(3, ApiVersionsRequestV3::VERSION, 'the flexible frame of KIP-511 it is built on');
         self::assertSame(2, ApiVersionsRequestV2::VERSION);
         self::assertSame(1, ApiVersionsRequestV1::VERSION);
         self::assertSame(0, ApiVersionsRequestV0::VERSION);
@@ -436,21 +451,35 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * The ZooKeeper broker of the 2.x line answered one tagged field, the finalized-features epoch 0. A KRaft node
      * keeps its features in the metadata log and answers all three: the features it **supports** (tag 0), the
      * epoch of the finalized ones (tag 1, the offset of the metadata log and therefore never the same twice) and
-     * the features the cluster has **finalized** (tag 2). The container supports and finalizes exactly one
-     * feature in the v3 answer, `metadata.version` at the level **21**, which is `3.9-IV0` in `MetadataVersion.java`
-     * @ 3.9.2, the `LATEST_PRODUCTION` of the release; the minimum it supports is level 1, `3.0-IV1`. The fourth
-     * tag of the specification, `zk_migration_ready` (3), stays at its default `false` and is therefore not written
-     * at all.
+     * the features the cluster has **finalized** (tag 2). The **version 4** of Kafka 3.9 is what this client sends,
+     * and it sees **two** supported features - `kraft.version` 0 to 1 and `metadata.version` 1 to 21 - where a v3
+     * request is shown one: a feature whose minimum is 0 is filtered out of every answer below the version 4
+     * (KAFKA-17011, {@see self::testApiVersionsVersionFourUnhidesTheSupportedFeaturesWithAMinimumOfZero()}).
+     * `metadata.version` is finalized at the level **21**, which is `3.9-IV0` in `MetadataVersion.java` @ 3.9.2,
+     * the `LATEST_PRODUCTION` of the release; the minimum it supports is level 1, `3.0-IV1`. `kraft.version` is
+     * finalized at **0**, and a feature at the level 0 is not in the finalized map at all - which is why the static
+     * `controller.quorum.voters` of KIP-595 still govern this quorum. The fourth tag of the specification,
+     * `zk_migration_ready` (3), stays at its default `false` and is therefore not written at all.
      */
     public function testTheTaggedFieldsOfTheAnswerCarryTheFinalizedFeaturesOfTheKRaftNode(): void
     {
         $response = $this->client()->apiVersions($this->anyNode());
 
         self::assertGreaterThanOrEqual(0, $response->finalizedFeaturesEpoch, 'a KRaft node knows its epoch');
-        self::assertSame([self::METADATA_VERSION_FEATURE], array_keys($response->supportedFeatures));
+        self::assertSame(
+            [self::KRAFT_VERSION_FEATURE, self::METADATA_VERSION_FEATURE],
+            array_keys($response->supportedFeatures),
+            'the version 4 sees the feature whose minimum is 0 as well'
+        );
+        self::assertSame(0, $response->supportedFeatures[self::KRAFT_VERSION_FEATURE]->minVersion, 'KAFKA-17011');
+        self::assertSame(1, $response->supportedFeatures[self::KRAFT_VERSION_FEATURE]->maxVersion, 'KIP-853');
         self::assertSame(1, $response->supportedFeatures[self::METADATA_VERSION_FEATURE]->minVersion, '3.0-IV1');
         self::assertSame(21, $response->supportedFeatures[self::METADATA_VERSION_FEATURE]->maxVersion, '3.9-IV0');
-        self::assertSame([self::METADATA_VERSION_FEATURE], array_keys($response->finalizedFeatures));
+        self::assertSame(
+            [self::METADATA_VERSION_FEATURE],
+            array_keys($response->finalizedFeatures),
+            'kraft.version is finalized at the level 0, and a feature at the level 0 is not finalized at all'
+        );
         self::assertSame(21, $response->finalizedFeatures[self::METADATA_VERSION_FEATURE]->maxVersionLevel);
         self::assertSame(21, $response->finalizedFeatures[self::METADATA_VERSION_FEATURE]->minVersionLevel);
     }
@@ -609,7 +638,15 @@ final class ApiVersionProbeTest extends IntegrationTestCase
     }
 
     /**
-     * The nine unstable api keys of `ApiKeys.java` @ 3.9.2
+     * The nine unstable api keys of `ApiKeys.java` @ 3.9.2: the share groups of KIP-932 (76 to 79, 83 to 87)
+     *
+     * Share groups are early access in Kafka 3.9 and **out of this line by decision of the owner**, and this is
+     * the measurement that decision rests on: a ShareGroupHeartbeat v0 - or any of the other eight - does not get
+     * an error code, it gets the connection closed, exactly like a key of another listener, because
+     * `ApiKeys.toApiVersion(false)` leaves an api whose only version is `latestVersionUnstable` out of the table
+     * and `isApiEnabled` then refuses every version of it. The node logs `Received request api key
+     * SHARE_GROUP_HEARTBEAT with version 0 which is not enabled`. The four share-group error codes 121 to 124 are
+     * therefore declared on this line and unreachable on this node.
      *
      * @return array<string, array{int}>
      */
@@ -1360,8 +1397,9 @@ final class ApiVersionProbeTest extends IntegrationTestCase
      * (InconsistentClusterId) with `The given id "not-this-cluster" doesn't match the cluster id "<id>"`, and
      * the same for the removal. With the real cluster id - or a null one, which the check accepts - the same
      * frame is refused one step later with **42** (InvalidRequest) and `Add voter request didn't include a
-     * valid voter`, because the all-zero directory id is not a directory id; and with a real voter the static
-     * quorum of `controller.quorum.voters` (`kraft.version` 0) could not be reconfigured anyway. The quorum of the
+     * valid voter`, because the all-zero directory id is not a directory id; and a frame that names a *valid*
+     * voter never reaches the quorum either, see
+     * {@see self::testTheRaftVoterApisAreRefusedBecauseTheKraftVersionFeatureIsZero()}. The quorum of the
      * container stays `[{id: 1, endpoints: [CONTROLLER://localhost:9096]}]` in every case.
      *
      * @return array<string, array{int}>
@@ -1387,6 +1425,92 @@ final class ApiVersionProbeTest extends IntegrationTestCase
             'The given id "' . self::FOREIGN_CLUSTER_ID . '" doesn\'t match the cluster id "',
             $body
         );
+    }
+
+    /**
+     * A well-formed AddRaftVoter or RemoveRaftVoter is refused **35**, and the three voter codes stay unreachable
+     *
+     * This is the measurement the error codes 125 to 127 (`InvalidVoterKey`, `DuplicateVoter`, `VoterNotFound`)
+     * hang on, and the answer is that a 3.9.2 node with the default configuration never writes one of them. The
+     * reconfiguration of KIP-853 is gated on the **`kraft.version` feature**: the node supports 0 to 1 and has
+     * finalized **0**, which is the static `controller.quorum.voters` of KIP-595, and `KafkaRaftClient` refuses
+     * every reconfiguration of such a quorum before it compares a voter at all:
+     *
+     * * with the **foreign** cluster id, the **104** of the test above - the cluster id is checked first;
+     * * with the real cluster id (or a **null** one, which `hasValidClusterId` accepts) and a voter whose
+     *   directory id is the zero uuid or whose listener array is empty, **42** (`InvalidRequest`) and
+     *   `Add voter request didn't include a valid voter` / `Remove voter request didn't include a valid voter`;
+     * * with the real cluster id and a **valid** voter key - a random directory id and one endpoint - **35**
+     *   (`UnsupportedVersion`) and `Cluster doesn't support adding voter because the kraft.version feature is 0`,
+     *   the removal saying `removing voter` in the same sentence.
+     *
+     * The voter named here is {@see self::UNKNOWN_BROKER_ID} with a directory id drawn at random, so the frame
+     * could not describe a node of this cluster even if the feature allowed it; the request changes nothing.
+     */
+    #[DataProvider('raftVoterApiProvider')]
+    public function testTheRaftVoterApisAreRefusedBecauseTheKraftVersionFeatureIsZero(int $apiKey): void
+    {
+        $clusterId  = $this->admin()->describeCluster()->clusterId;
+        $verb       = $apiKey === ApiKeys::ADD_RAFT_VOTER ? 'adding' : 'removing';
+        $directory  = random_bytes(16);
+        $wellFormed = $apiKey === ApiKeys::ADD_RAFT_VOTER
+            ? RawApiProbe::compactString($clusterId) . RawApiProbe::int32(1000)
+                . RawApiProbe::int32(self::UNKNOWN_BROKER_ID) . $directory
+                . RawApiProbe::compactArray(1) . RawApiProbe::compactString('CONTROLLER')
+                . RawApiProbe::compactString('localhost') . pack('n', 9097) . RawApiProbe::tagBuffer()
+                . RawApiProbe::tagBuffer()
+            : RawApiProbe::compactString($clusterId) . RawApiProbe::int32(self::UNKNOWN_BROKER_ID) . $directory
+                . RawApiProbe::tagBuffer();
+
+        $probe  = new RawApiProbe(self::firstBootstrapServer());
+        $result = $probe->send($apiKey, 0, $wellFormed, 9300 + $apiKey, RawApiProbe::HEADER_V2);
+        $probe->close();
+
+        $body = $this->responseBody($result['body'], $apiKey, 0);
+
+        self::assertSame(RawApiProbe::ANSWERED, $result['status']);
+        self::assertSame(0, self::throttleTimeOf($body));
+        self::assertSame(
+            KafkaException::UNSUPPORTED_VERSION,
+            self::errorCodeBehindTheThrottleTimeOf($body),
+            'the reconfiguration of KIP-853 needs the kraft.version feature at the level 1'
+        );
+        self::assertStringContainsString(
+            "Cluster doesn't support {$verb} voter because the kraft.version feature is 0",
+            $body,
+            'the codes 125 to 127 are never reached on a quorum with a static voter set'
+        );
+    }
+
+    /**
+     * A voter key the api cannot read is the 42, and it is checked before the feature
+     *
+     * The zero directory id and the empty listener array of {@see self::body()} are what `VoterSet.VoterNode`
+     * @ 3.9.2 refuses to build, so `handleAddVoterRequest` answers `Add voter request didn't include a valid
+     * voter` before it asks whether the quorum could be reconfigured at all.
+     */
+    #[DataProvider('raftVoterApiProvider')]
+    public function testAVoterKeyTheApiCannotReadIsTheFortyTwo(int $apiKey): void
+    {
+        $clusterId = $this->admin()->describeCluster()->clusterId;
+        $verb      = $apiKey === ApiKeys::ADD_RAFT_VOTER ? 'Add' : 'Remove';
+        $zeroUuid  = str_repeat("\x00", 16);
+        $body      = $apiKey === ApiKeys::ADD_RAFT_VOTER
+            ? RawApiProbe::compactString($clusterId) . RawApiProbe::int32(1000)
+                . RawApiProbe::int32(self::UNKNOWN_BROKER_ID) . $zeroUuid
+                . RawApiProbe::compactArray(0) . RawApiProbe::tagBuffer()
+            : RawApiProbe::compactString($clusterId) . RawApiProbe::int32(self::UNKNOWN_BROKER_ID) . $zeroUuid
+                . RawApiProbe::tagBuffer();
+
+        $probe  = new RawApiProbe(self::firstBootstrapServer());
+        $result = $probe->send($apiKey, 0, $body, 9400 + $apiKey, RawApiProbe::HEADER_V2);
+        $probe->close();
+
+        $answer = $this->responseBody($result['body'], $apiKey, 0);
+
+        self::assertSame(RawApiProbe::ANSWERED, $result['status']);
+        self::assertSame(KafkaException::INVALID_REQUEST, self::errorCodeBehindTheThrottleTimeOf($answer));
+        self::assertStringContainsString("{$verb} voter request didn't include a valid voter", $answer);
     }
 
     /**

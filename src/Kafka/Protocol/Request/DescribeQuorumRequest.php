@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeQuorumRequestTopic;
 
 /**
- * DescribeQuorum, version 1: the state of a raft quorum (ApiKey 55, Kafka 2.8, KIP-595)
+ * DescribeQuorum, version 2: the state of a raft quorum (ApiKey 55, Kafka 2.8, KIP-595)
  *
  * <pre>
- *   DescribeQuorum Request (Version: 0 to 1) => [topics]
+ *   DescribeQuorum Request (Version: 0 to 2) => [topics]
  *     topics => topic_name [partitions]
  *       topic_name => COMPACT_STRING
  *       partitions => partition_index
@@ -36,12 +36,15 @@ use Protocol\Kafka\Protocol\Data\DescribeQuorumRequestTopic;
  * `"listeners": ["broker", "controller"]`, while `Vote` (52), `BeginQuorumEpoch` (53) and `EndQuorumEpoch` (54)
  * are `controller` apis and never answered on a client listener.
  *
- * **Version 1 (KIP-836, Kafka 3.3) did not change this half**: "Version 1 adds additional fields in the response.
- * The request is unchanged (KIP-836)" is the comment above its `validVersions` in the specification, so
- * {@see DescribeQuorumRequestV0} sends these very bytes one api version lower and is answered with
- * {@see DescribeQuorumResponseV0}, whose replica states have no timestamps.
+ * **Neither of its two bumps changed this half.** "Version 1 adds additional fields in the response. The request
+ * is unchanged (KIP-836)" and "Version 2 adds additional fields in the response. The request is unchanged
+ * (KIP-853)" are the two comments above its `validVersions` @ 3.9.2, so all three versions of the request are the
+ * same bytes with another number in the header: {@see DescribeQuorumRequestV1} is answered with
+ * {@see DescribeQuorumResponseV1}, whose replica states have no directory id and whose partitions have no error
+ * message, and {@see DescribeQuorumRequestV0} with {@see DescribeQuorumResponseV0}, which has no timestamps
+ * either.
  *
- * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 and v1)"
+ * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 to v2)"
  */
 class DescribeQuorumRequest extends AbstractRequest
 {
@@ -63,7 +66,7 @@ class DescribeQuorumRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     /**
      * @inheritdoc

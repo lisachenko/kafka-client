@@ -32,7 +32,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * `UpdateFeatures` api (key 57). The container of this line finalizes nothing, so the tagged field is absent from
  * its answer.
  *
- * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "ApiVersions API (key 18, v0 to v4)"
  */
 class ApiVersionsFinalizedFeature implements BinarySchemaInterface
 {
