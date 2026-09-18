@@ -40,16 +40,26 @@ use Protocol\Kafka\Protocol\Request\RenewDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\RenewDelegationTokenResponse;
 
 /**
- * Exercises the four delegation token apis (keys 38 to 41) against a real Kafka 1.1.1 broker.
+ * Exercises the four delegation token apis (keys 38 to 41) against the Kafka 3.9.2 KRaft node of this line.
  *
  * KIP-48 issues a token to the principal of the **connection**, so every one of these tests runs over a SASL
  * listener of the container, where that principal is the SASL/PLAIN user - `User:kafkatest` for the client under
  * test and `User:admin` for the second one, which is what the owner-mismatch cases need. The container carries a
- * `delegation.token.master.key`; without it every call would be the error code 61 instead.
+ * `delegation.token.secret.key`; without it every call would be the error code 61 instead.
  *
- * Every token this class creates is expired again, with the one documented exception of the token whose maximum
- * lifetime is a single millisecond: a token that is past its expiry can no longer be expired through the protocol
- * at all (the broker answers 66 for that too), and only the broker's own sweeper removes it.
+ * **KIP-900 moved the four apis to the KRaft controller** (Kafka 3.6): `DelegationTokenControlManager` writes a
+ * `DelegationTokenRecord` or a `RemoveDelegationTokenRecord` to the metadata log, and the token cache that every
+ * later request is answered from - the controller's own and the one of every broker - is filled by the
+ * `DelegationTokenPublisher` when that record is *replayed*, which happens after the answer of the request that
+ * wrote it has already reached the client. A token is therefore **not yet there for a moment**: measured on the
+ * node, a create is followed by about 66 ms in which a renew or an expire of that very token answers 62
+ * (`DelegationTokenNotFound`) and about 77 ms in which a describe does not list it. Every test of this class waits
+ * for the token instead of assuming it ({@see self::awaitToken()}, {@see self::awaitRenewable()}); a fixed sleep
+ * would be a guess, and the container is shared with three other suites.
+ *
+ * Every token this class creates is expired again. The token whose maximum lifetime is a single millisecond can be
+ * expired as well on this node, where a 2.8.2 broker answered 66 for it - see
+ * {@see self::testATokenThatRanOutOfItsMaximumLifetimeCanNotBeRenewedButCanStillBeExpired()}.
  *
  * @see docs/protocol/3.9.md, sections "Delegation tokens (KIP-48)", "CreateDelegationToken API (key 38, v0 to v2)",
  *      "RenewDelegationToken API (key 39, v0 to v2)", "ExpireDelegationToken API (key 40, v0 to v2)" and
@@ -85,6 +95,13 @@ final class DelegationTokenApiTest extends IntegrationTestCase
     private const string OTHER_USER = 'admin';
 
     private const string OTHER_PASSWORD = 'admin-secret';
+
+    /**
+     * The one SASL user of the node that `super.users` does not list, i.e. the one the authorizer really decides for
+     */
+    private const string UNPRIVILEGED_USER = 'acltest';
+
+    private const string UNPRIVILEGED_PASSWORD = 'acltest-secret';
 
     /**
      * `delegation.token.expiry.time.ms` of a broker that configures none, i.e. the default renewal period
@@ -181,7 +198,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
             'and the first expiry is the earlier of that maximum and the default renewal period of the broker'
         );
 
-        $described = $admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]);
+        $described = self::awaitToken($admin, $information->tokenId, [KafkaPrincipal::user(self::OWNER_USER)]);
         self::assertArrayHasKey($information->tokenId, $described);
         self::assertSame(
             $token->hmac,
@@ -195,7 +212,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
         );
 
         $beforeRenew = self::now();
-        $expiry      = $admin->renewDelegationToken($token->hmac, 600000);
+        $expiry      = self::awaitRenewable($admin, $token->hmac, 600000);
         $afterRenew  = self::now();
 
         self::assertGreaterThanOrEqual($beforeRenew + 600000, $expiry, 'the expiry is now plus the period asked for');
@@ -210,8 +227,8 @@ final class DelegationTokenApiTest extends IntegrationTestCase
         self::assertLessThanOrEqual($afterExpire, $expired);
         self::assertArrayNotHasKey(
             $information->tokenId,
-            $admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]),
-            'the token is gone from the cache of the broker'
+            self::awaitTokenGone($admin, $information->tokenId, [KafkaPrincipal::user(self::OWNER_USER)]),
+            'the token is gone from the token cache of the node once the removal record is replayed'
         );
     }
 
@@ -225,7 +242,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
 
         self::assertSame(
             $maximum,
-            $admin->renewDelegationToken($token->hmac, self::DEFAULT_MAX_LIFETIME_MS),
+            self::awaitRenewable($admin, $token->hmac, self::DEFAULT_MAX_LIFETIME_MS),
             'a renewal for seven days on a token whose maximum is an hour away stops at that maximum'
         );
         self::assertSame(
@@ -241,6 +258,8 @@ final class DelegationTokenApiTest extends IntegrationTestCase
         $token = $admin->createDelegationToken([], self::MAX_LIFETIME_MS);
         $this->createdTokens[] = $token->hmac;
 
+        self::awaitRenewable($admin, $token->hmac, 600000);
+
         $before = self::now();
         $expiry = $admin->expireDelegationToken($token->hmac, 120000);
         $after  = self::now();
@@ -248,7 +267,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
         self::assertGreaterThanOrEqual($before + 120000, $expiry);
         self::assertLessThanOrEqual($after + 120000, $expiry);
 
-        $described = $admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]);
+        $described = self::awaitExpiry($admin, $token->tokenId(), $expiry);
         self::assertArrayHasKey($token->tokenId(), $described, 'the token is still there');
         self::assertSame(
             $expiry,
@@ -262,9 +281,11 @@ final class DelegationTokenApiTest extends IntegrationTestCase
         $admin = $this->adminClient();
         $token = $admin->createDelegationToken([], self::MAX_LIFETIME_MS);
 
+        self::awaitRenewable($admin, $token->hmac, 600000);
         $admin->expireDelegationToken($token->hmac);
 
-        // 62, not 66: for the broker the token is not "expired", it is gone from ZooKeeper and from the cache
+        // 62, not 66: for the controller the token is not "expired", the RemoveDelegationTokenRecord took it out
+        // of the metadata log and out of the token cache
         $this->expectException(DelegationTokenNotFoundException::class);
 
         $admin->expireDelegationToken($token->hmac);
@@ -299,32 +320,48 @@ final class DelegationTokenApiTest extends IntegrationTestCase
         $other->renewDelegationToken($withoutOne->hmac, 600000);
     }
 
-    public function testATokenThatRanOutOfItsMaximumLifetimeCanNeitherBeRenewedNorExpired(): void
+    public function testATokenThatRanOutOfItsMaximumLifetimeCanNotBeRenewedButCanStillBeExpired(): void
     {
-        // A maximum lifetime of one millisecond: the token is past its expiry before the answer arrives here, and
-        // there is no api call that removes it afterwards - only the sweeper of the broker does, every
-        // `delegation.token.expiry.check.interval.ms`
-        $token = $this->adminClient()->createDelegationToken([], 1);
+        // A maximum lifetime of one millisecond: the token is past its expiry before the answer arrives here. On
+        // the 2.8.2 ZooKeeper broker it was then beyond the reach of the protocol altogether - a renew and an
+        // expire both answered 66 - and only the sweeper removed it. `DelegationTokenControlManager` @ 3.9.2
+        // orders the checks of `expireDelegationToken` differently: the **negative** period is handled before the
+        // expiry test, so an immediate expiry of an expired token writes the RemoveDelegationTokenRecord and
+        // answers the clock of the node. A renew still answers 66, which is checked before the ownership.
+        $admin = $this->adminClient();
+        $token = $admin->createDelegationToken([], 1);
 
         self::assertSame(
             $token->tokenInformation->issueTimestamp + 1,
             $token->tokenInformation->maxTimestamp,
-            'the broker accepts a maximum lifetime of a single millisecond'
+            'the node accepts a maximum lifetime of a single millisecond'
         );
         self::assertSame($token->tokenInformation->maxTimestamp, $token->tokenInformation->expiryTimestamp);
 
-        usleep(50000);
+        $deadline = microtime(true) + 15.0;
+        do {
+            try {
+                $admin->renewDelegationToken($token->hmac, 600000);
+                self::fail('a token that ran out of its maximum lifetime can not be renewed');
+            } catch (DelegationTokenExpiredException) {
+                break;
+            } catch (DelegationTokenNotFoundException) {
+                // The DelegationTokenRecord of the create has not been replayed yet - see the class docblock
+                usleep(20000);
+            }
+        } while (microtime(true) < $deadline);
 
-        try {
-            $this->adminClient()->renewDelegationToken($token->hmac, 600000);
-            self::fail('a token that ran out of its maximum lifetime can not be renewed');
-        } catch (DelegationTokenExpiredException) {
-            self::assertTrue(true);
-        }
+        $expired = $admin->expireDelegationToken($token->hmac);
 
-        $this->expectException(DelegationTokenExpiredException::class);
+        self::assertGreaterThan(
+            $token->tokenInformation->maxTimestamp,
+            $expired,
+            'an immediate expiry of an expired token is accepted on a KRaft node and answers the clock of the node'
+        );
 
-        $this->adminClient()->expireDelegationToken($token->hmac);
+        $this->expectException(DelegationTokenNotFoundException::class);
+
+        $admin->expireDelegationToken($token->hmac);
     }
 
     public function testARenewerWhoseTypeIsNotUserIsRefusedAndNoTokenIsCreated(): void
@@ -356,6 +393,7 @@ final class DelegationTokenApiTest extends IntegrationTestCase
         $admin = $this->adminClient();
         $token = $admin->createDelegationToken([], self::MAX_LIFETIME_MS);
         $this->createdTokens[] = $token->hmac;
+        self::awaitToken($admin, $token->tokenId(), [KafkaPrincipal::user(self::OWNER_USER)]);
 
         self::assertSame([], $admin->describeDelegationToken([]), 'an empty array asks for no token at all');
         self::assertArrayHasKey(
@@ -371,27 +409,49 @@ final class DelegationTokenApiTest extends IntegrationTestCase
     }
 
     /**
-     * Without an authorizer the broker lets every authenticated principal describe every token, hmac included.
+     * A super user describes every token of the node, an ordinary principal only the ones it owns or may renew.
      *
-     * `DelegationTokenManager.filterToken` falls back to `authorize(session, Describe, DelegationToken(tokenId))`,
-     * and `KafkaApis.authorize` is `authorizer.forall(...)` - which is `true` when the broker has no authorizer at
-     * all, as the container has none. Renewing is not affected: it checks owner-or-renewer only.
+     * The 2.x line measured this on a broker **without an authorizer**, where `KafkaApis.authorize` is
+     * `authorizer.forall(...)` and therefore `true` for everybody, so every authenticated principal saw every
+     * token. The node of this line runs the `StandardAuthorizer`, and
+     * `DelegationTokenManager.filterToken` @ 3.9.2 asks it for `DESCRIBE_TOKENS` on the `User` resource of the
+     * owner first and falls back to "owner or renewer" only when that is refused. `super.users` decides the
+     * question here: `admin` and `kafkatest` are super users and see everything, while `acltest` - the one SASL
+     * user of `docker/kafka-3.9.2/jaas.conf` that is not listed there - sees its own tokens and nothing else, and
+     * is answered with an **empty array rather than an error** for a foreign owner.
+     *
+     * Renewing is not affected by any of it: it checks owner-or-renewer only.
      */
-    public function testWithoutAnAuthorizerEveryPrincipalCanDescribeEveryToken(): void
+    public function testASuperUserDescribesEveryTokenAndAnOrdinaryPrincipalOnlyItsOwn(): void
     {
         $token = $this->adminClient()->createDelegationToken([], self::MAX_LIFETIME_MS);
         $this->createdTokens[] = $token->hmac;
 
-        $other = $this->adminClient(SecurityProtocol::SASL_PLAINTEXT, self::OTHER_USER, self::OTHER_PASSWORD);
+        $superUser = $this->adminClient(SecurityProtocol::SASL_PLAINTEXT, self::OTHER_USER, self::OTHER_PASSWORD);
 
-        $visible = $other->describeDelegationToken();
-        self::assertArrayHasKey($token->tokenId(), $visible, 'a foreign token is visible without an authorizer');
-        self::assertSame($token->hmac, $visible[$token->tokenId()]->hmac);
+        $visible = self::awaitToken($superUser, $token->tokenId());
+        self::assertArrayHasKey($token->tokenId(), $visible, 'a super user sees a token of another owner');
+        self::assertSame($token->hmac, $visible[$token->tokenId()]->hmac, 'with its hmac');
 
+        self::assertArrayNotHasKey(
+            $token->tokenId(),
+            $superUser->describeDelegationToken([KafkaPrincipal::user(self::OTHER_USER)]),
+            'naming itself as the owner filters a token it neither owns nor may renew out again - a superset'
+            . ' assertion, because the tokens of the SASL users are shared with every other suite of the node'
+        );
+
+        $ordinary = $this->adminClient(SecurityProtocol::SASL_PLAINTEXT, self::UNPRIVILEGED_USER, self::UNPRIVILEGED_PASSWORD);
+
+        self::assertArrayNotHasKey(
+            $token->tokenId(),
+            $ordinary->describeDelegationToken(),
+            'a principal the authorizer applies to does not see a token it neither owns nor may renew'
+        );
         self::assertSame(
             [],
-            $other->describeDelegationToken([KafkaPrincipal::user(self::OTHER_USER)]),
-            'naming itself as the owner filters the foreign token out again'
+            $ordinary->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]),
+            'and asking for a foreign owner is an empty array, not an error - `acltest` neither owns nor may renew'
+            . ' a token of `kafkatest`, so nothing of the shared set can show up here'
         );
     }
 
@@ -492,6 +552,93 @@ final class DelegationTokenApiTest extends IntegrationTestCase
         }
 
         return self::saslSslBootstrapServer();
+    }
+
+    /**
+     * Waits until the node lists the token of the given id and returns every token the client may see
+     *
+     * The create answer of a KRaft node arrives before the `DelegationTokenRecord` it wrote has been replayed into
+     * the token caches, so a describe that follows it immediately does not list the token yet - about 77 ms of it,
+     * measured on this node. The read is repeated until it does; nothing here sleeps for a fixed time.
+     *
+     * @return array<string, DelegationToken>
+     */
+    private static function awaitToken(AdminClient $admin, string $tokenId, ?array $owners = null): array
+    {
+        $deadline = microtime(true) + 15.0;
+        do {
+            $tokens = $admin->describeDelegationToken($owners);
+            if (isset($tokens[$tokenId])) {
+                return $tokens;
+            }
+            usleep(20000);
+        } while (microtime(true) < $deadline);
+
+        self::fail("The node did not list the token {$tokenId} in time");
+    }
+
+    /**
+     * Waits until the node no longer lists the token of the given id and returns what it does list
+     *
+     * The mirror image of {@see self::awaitToken()}: a `RemoveDelegationTokenRecord` reaches the caches after the
+     * answer of the expire request that wrote it.
+     *
+     * @param list<KafkaPrincipal|string>|null $owners Owners to ask for, null for every token the client may see
+     *
+     * @return array<string, DelegationToken>
+     */
+    private static function awaitTokenGone(AdminClient $admin, string $tokenId, ?array $owners = null): array
+    {
+        $deadline = microtime(true) + 15.0;
+        do {
+            $tokens = $admin->describeDelegationToken($owners);
+            if (!isset($tokens[$tokenId])) {
+                return $tokens;
+            }
+            usleep(20000);
+        } while (microtime(true) < $deadline);
+
+        self::fail("The node still listed the token {$tokenId} after it was expired");
+    }
+
+    /**
+     * Renews a token as soon as the controller knows it, and returns the expiry it answered
+     *
+     * A renew of a token that was just created is answered with 62 until the controller has replayed its own
+     * record - about 66 ms on this node - and that 62 is indistinguishable from the one of an hmac that names no
+     * token at all, so it is the only code this retries.
+     */
+    private static function awaitRenewable(AdminClient $admin, string $hmac, int $renewTimePeriodMs): int
+    {
+        $deadline = microtime(true) + 15.0;
+        do {
+            try {
+                return $admin->renewDelegationToken($hmac, $renewTimePeriodMs);
+            } catch (DelegationTokenNotFoundException) {
+                usleep(20000);
+            }
+        } while (microtime(true) < $deadline);
+
+        self::fail('The controller did not accept a renewal of the token it had just issued');
+    }
+
+    /**
+     * Waits until the token of the given id carries the expiry the answer of the api reported
+     *
+     * @return array<string, DelegationToken>
+     */
+    private static function awaitExpiry(AdminClient $admin, string $tokenId, int $expiryTimestamp): array
+    {
+        $deadline = microtime(true) + 15.0;
+        do {
+            $tokens = $admin->describeDelegationToken([KafkaPrincipal::user(self::OWNER_USER)]);
+            if (($tokens[$tokenId] ?? null)?->tokenInformation->expiryTimestamp === $expiryTimestamp) {
+                return $tokens;
+            }
+            usleep(20000);
+        } while (microtime(true) < $deadline);
+
+        self::fail("The node did not report the new expiry of the token {$tokenId} in time");
     }
 
     /**

@@ -38,7 +38,6 @@ use Protocol\Kafka\Network\ResponseValidator;
 use Protocol\Kafka\Network\RetryPolicy;
 use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
-use Protocol\Kafka\Protocol\Data\ControlledShutdownResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
@@ -60,8 +59,6 @@ use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsRequest;
 use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
-use Protocol\Kafka\Protocol\Request\ControlledShutdownRequest;
-use Protocol\Kafka\Protocol\Request\ControlledShutdownResponse;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenResponse;
 use Protocol\Kafka\Protocol\Request\DeleteGroupsRequest;
@@ -625,54 +622,6 @@ class AdminClient
         }
 
         return $descriptions;
-    }
-
-    /**
-     * Asks the controller to move every leader and every replica off the given broker
-     *
-     * This is what `kafka-server-stop.sh` triggers through `controlled.shutdown.enable`; a client normally has no
-     * reason to send it. Only the active controller serves the request - and 0.9 metadata does not tell which broker
-     * that is - so it is sent to the brokers of the cluster until one of them answers. The request goes out as
-     * version 1, the version Kafka 0.9 added, which is the first one whose header carries the client id;
-     * {@see \Protocol\Kafka\Protocol\Request\ControlledShutdownRequestV0} sends the header-less version 0 of a
-     * 0.8 broker.
-     *
-     * @param int $brokerId Identifier of the broker to shut down
-     *
-     * @throws \Protocol\Kafka\Common\Errors\BrokerNotAvailableException If the controller does not know that
-     *         broker id - a 0.10.2.2 broker answers the error code 8 for it, where 0.8.2.2 answered -1, see
-     *         {@see ControlledShutdownRequest}
-     *
-     * The request goes out as **version 2**, the version Kafka 2.2 added with KIP-380: it carries a `broker_epoch`,
-     * and `$brokerEpoch` is what goes into it. The default is the
-     * {@see ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH} -1, for which the controller skips the staleness
-     * check altogether - only the broker itself knows its own registration epoch, and a controller that is asked
-     * with an epoch **below** the one it has cached answers 77 (StaleBrokerEpoch). Measured on the container: an
-     * unknown broker id with the -1 is the 8 below, while an unknown broker id **with** an epoch is answered -1
-     * (Unknown), because the epoch check looks that broker up in a map it is not in.
-     *
-     * @param int $brokerId    Id of the broker that should hand its partitions over
-     * @param int $brokerEpoch Registration epoch of that broker, -1 to skip the staleness check of KIP-380
-     *
-     * @return list<ControlledShutdownResponsePartition> Partitions that still live on the broker, empty when it is
-     *                                                   safe to stop it
-     */
-    public function controlledShutdown(
-        int $brokerId,
-        int $brokerEpoch = ControlledShutdownRequest::UNKNOWN_BROKER_EPOCH
-    ): array {
-        /** @var ControlledShutdownResponse $response */
-        $response = $this->sendAnyNode(
-            fn(int $correlationId): ControlledShutdownRequest
-                => new ControlledShutdownRequest($brokerId, $brokerEpoch, $this->clientId(), $correlationId),
-            ControlledShutdownResponse::class
-        );
-
-        if ($response->errorCode !== KafkaException::NO_ERROR) {
-            throw KafkaException::fromCode($response->errorCode, ['brokerId' => $brokerId]);
-        }
-
-        return $response->remainingTopicPartitions;
     }
 
     /**
