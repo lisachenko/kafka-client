@@ -18,7 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.2** (the foundation, the re-baseline wave T0 and the 3.0 to 3.2 waves are in).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.3** (the foundation, the re-baseline wave T0 and the 3.0 to 3.3 waves are in).
 
 ### Added
 
@@ -236,6 +236,61 @@ each half of the group membership protocol, and one on the answer of DescribeLog
   directory array at v3 (17 bytes), the empty array alone at v2 (15 bytes) and at v0/v1 (16 bytes) — below the
   version 3 a refusal and a broker without a single log directory are the same bytes, which is why the Java admin
   client guessed the 31 from an empty map and, at 3.2.3, still does whenever the new field is 0. Nine wire vectors.
+
+### Kafka 3.3 — Added
+
+The fourth milestone of the line (PRs #196, #197), and the one that brings an api this package never had: the
+ACL apis, measured against a real authorizer for the first time.
+
+- **DescribeAcls (29), CreateAcls (30) and DeleteAcls (31) at the version 3 of Kafka 3.3**, the first line of this
+  package to implement them — the lines below left them out because a broker without an `authorizer.class.name`
+  answers all three with 54, and the 3.9.2 node of this line runs the `StandardAuthorizer` of KRaft with
+  `super.users=User:ANONYMOUS;User:admin;User:kafkatest`, the SASL user `acltest` being the principal the acls
+  are written for. `AdminClient::describeAcls()`, `createAcls()` and `deleteAcls()` with `Common\AclBinding`,
+  `AclBindingFilter`, `ResourcePattern(Filter)`, `AccessControlEntry(Filter)` and the enumerations
+  `ResourceType` (with the `USER` resource of KIP-373), `PatternType` and `AclPermissionType`;
+  `Common\AclOperation` gains `CREATE_TOKENS` and `DESCRIBE_TOKENS`. The client sends the version 3 and keeps no
+  lower one: an api that starts on this line gets the versions the node was measured at. Measured on the node:
+  a write of an acl is a controller write forwarded in an Envelope (58), so a refused CreateAcls or DeleteAcls
+  is worded with a request object of the controller listener (31 in every entry, where the DescribeAcls refusal
+  is a top-level 31 naming the client's listener); a creation with the filter pattern type `ANY` is -1 with a
+  null message, an empty resource name or a `CLUSTER` resource under another name the ordinary 42; a successful
+  creation carries the empty error message, a successful deletion filter a null one; and one integration test
+  proves an acl works — `acltest` is refused the Metadata of a topic with 29 until a `DESCRIBE` acl for it exists.
+  30 wire vectors in the three new files `describe-acls.json`, `create-acls.json` and `delete-acls.json`.
+- **UpdateFeatures v1 (KIP-778)** — the `upgrade_type` of a feature update in the place of the `allow_downgrade`
+  boolean (`Admin\UpgradeType`: upgrade, safe downgrade, unsafe downgrade) and the top-level `validate_only`,
+  with which the controller answers what it would do and writes nothing — `AdminClient::updateFeatures()` takes
+  both and keeps its published signature (a boolean `true` is the safe downgrade, as the deprecated Java
+  constructor reads it). Measured on the node without ever lowering its finalized `metadata.version`: the dry
+  run really writes nothing, the upgrade type 0 has a refusal of its own (95, `The controller does not support
+  the given upgrade type.`), a KRaft broker forwards the api to the controller (KIP-590), so the 41 of a
+  non-controller is not producible and the 31 of an unprivileged principal carries the forwarded request, and the
+  top-level `error_message` of the answer is the empty string on the node where the 2.8.2 broker wrote a null.
+- **DescribeQuorum v0 and v1 (key 55, KIP-595 and KIP-836)**, implemented for the first time — the 2.8.2 broker
+  of the line below did not serve the key on a client listener and the foundation only probed it:
+  `AdminClient::describeMetadataQuorum()` answers the leader, the epoch, the high watermark and the state of
+  every voter and observer of the metadata quorum, with the two timestamps KIP-836 added to a replica state
+  (`Admin\QuorumInfo`, `Admin\ReplicaState`; the -1 of the wire is `null`). Measured on the node: the combined
+  node is one voter and no observer, and the leader reports the **current time** in both of its own timestamps
+  where the specification text announces -1 — `LeaderState.describeReplicaState` @ 3.3.2 sets both for the local
+  id; an ordinary topic is 3 per partition with `leader_id` 0, an empty topic array nine bytes of answer, an
+  unprivileged principal a top-level 31 with no topic.
+- **DescribeLogDirs v4 (KIP-827)** — the `total_bytes` and `usable_bytes` of the volume each log directory sits
+  on, at the end of every directory entry, as `Admin\LogDirInfo::$totalBytes`/`$usableBytes` with
+  `hasVolumeSizes()` (-1 below v4); the two directories of the node are two paths of one filesystem and answer
+  the same pair. `DescribeLogDirsRequestV3`/`ResponseV3` keep the frame of Kafka 3.2.
+- **CreateDelegationToken v3 and DescribeDelegationToken v3 (KIP-373)** — a token for another principal
+  (`AdminClient::createDelegationToken(..., $owner)`, the owner principal in front of the renewers) and the
+  requester of a token in both answers (`Admin\TokenInformation::$tokenRequester`,
+  `isIssuedForAnotherPrincipal()`); `TokenInformation::ownerOrRenewer()` counts the requester, as Kafka 3.3
+  does. Measured on the node: asking for a token of another owner without the `CREATE_TOKENS` acl is **65**
+  (`DelegationTokenAuthorizationFailed`), not 31; the requester sees the token in a describe but a renew or an
+  expire by the requester is still **63** — the controller's `allowedToRenew` @ 3.9.2 counts the owner and the
+  renewers only. The keep-behind `…RequestV2`/`…ResponseV2` classes keep the frames of Kafka 2.4 and 2.5.
+- The error codes **107** `IneligibleReplica` and **108** `NewLeaderElected` of Kafka 3.3 belong to AlterPartition
+  (56), a broker-to-controller api a client listener does not serve: declared at the foundation, never observed.
+  73 wire vectors in all (26 of T1, 47 of T4): 836 in 54 files.
 
 Unreleased — the 2.x line (Kafka 2.8.2)
 ---------------------------------------

@@ -450,7 +450,8 @@ foreach ($group->members as $memberId => $member) {
 | `listConsumerGroups()`                       | ListGroups v4 | The groups of the `consumer` protocol type of every broker, with their state and an optional state filter (KIP-518, Kafka 2.6) |
 | `describeUserScramCredentials()`             | DescribeUserScramCredentials v0 | The SCRAM mechanisms and iteration counts of users (KIP-554, Kafka 2.7); the credentials themselves never travel |
 | `alterUserScramCredentials()`                | AlterUserScramCredentials v0 | Upserts and deletes SCRAM credentials of users (KIP-554); the salted password is computed by the client, one error per user |
-| `describeFeatures()` / `updateFeatures()`    | ApiVersions v3 / UpdateFeatures v0 | The finalized and supported feature versions of the cluster and their upgrade or downgrade on the **controller** (KIP-584, Kafka 2.7) |
+| `describeFeatures()` / `updateFeatures()`    | ApiVersions v3 / UpdateFeatures v1 | The finalized and supported feature versions of the cluster and their upgrade or downgrade on the **controller** (KIP-584, Kafka 2.7; the `UpgradeType` and the `validateOnly` dry run of KIP-778, Kafka 3.3) |
+| `describeMetadataQuorum()`                   | DescribeQuorum v1 | The leader, the epoch, the high watermark and every voter and observer of the metadata quorum of a KRaft cluster (KIP-595, Kafka 2.7; the two replica timestamps of KIP-836, Kafka 3.3) |
 | `describeCluster()`                          | DescribeCluster v0 | The brokers, the controller and the cluster id of a cluster, with the authorized operations of KIP-430 on request (KIP-700, Kafka 2.8); `describeClusterFromMetadata()` asks Metadata instead, as every line below did |
 | `describeTransactions()`                     | DescribeTransactions v0 | The state, producer id and epoch, timeout, start time and partitions of transactional ids, each from its transaction coordinator (Kafka 3.0); an id the coordinator does not know is `TransactionalIdNotFoundException` (105) in its place |
 | `listTransactions()`                         | ListTransactions v0 | The transactions of the cluster, asked of every broker and merged, filtered by state and by producer id (Kafka 3.0); the state filters no coordinator knew come back through the last parameter |
@@ -460,11 +461,12 @@ foreach ($group->members as $memberId => $member) {
 | `listPartitionReassignments()`               | ListPartitionReassignments v0 | The reassignments in flight, with the target, adding and removing replica lists of each partition (KIP-455) |
 | `removeMembersFromConsumerGroup()`           | LeaveGroup v5 | Removes members of a group by hand, a static one by its `group.instance.id` (KIP-345, Kafka 2.4); one error per member, `MemberToRemove::byInstanceId()`/`byMemberId()`; since v5 (Kafka 3.2) every entry names a `reason`, `member was removed by an admin` unless the caller gives one |
 | `deleteConsumerGroupOffsets()`               | OffsetDelete v0 | Deletes the committed offsets of single partitions of a group (KIP-496, Kafka 2.4); an `Empty` group hands over everything, a live consumer group answers 86 for the topics it consumes, another protocol type 68 and an unknown group 69 |
-| `describeLogDirs()`                          | DescribeLogDirs v3      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories; since v3 (Kafka 3.2) a refusal of the whole request is a **top-level error code** and is thrown (31 for a principal that may not describe the cluster) |
+| `describeLogDirs()`                          | DescribeLogDirs v4      | What each **log directory** of a broker holds (KIP-113); broker-local, so it takes a list of broker ids — a `null` selection asks for every replica, an empty one only for the directories; since v3 (Kafka 3.2) a refusal of the whole request is a **top-level error code** and is thrown (31 for a principal that may not describe the cluster); since v4 (Kafka 3.3) every directory reports the **total and usable bytes** of its volume (KIP-827) |
+| `describeAcls()` / `createAcls()` / `deleteAcls()` | DescribeAcls v3 / CreateAcls v3 / DeleteAcls v3 | The acls of the cluster (Kafka 3.3, the first line of this package to speak them): a `Common\AclBinding` is a resource pattern (`LITERAL` or `PREFIXED`, the `USER` resource of KIP-373 included) and an access control entry; a describe or a delete names an `AclBindingFilter` whose fields may be wildcards, `MATCH` asks which acls apply to a resource; measured against the `StandardAuthorizer` of the node with the principal `acltest` |
 | `alterReplicaLogDirs()`                      | AlterReplicaLogDirs v2  | Moves a replica to another log directory of the broker that hosts it (KIP-113); the answer only says the move was **accepted**, `describeLogDirs()` says when it is done |
 | `createPartitions()`                         | CreatePartitions v3     | Raises the partition count of topics that exist (KIP-195); controller-only like `createTopics()`, and it can only ever grow a topic (37 otherwise) |
 | `deleteConsumerGroups()`                     | DeleteGroups v2         | Makes the coordinator forget groups and their committed offsets (KIP-229); a group with a live member is 68, one the coordinator does not know 69 |
-| `createDelegationToken()`                    | CreateDelegationToken v2   | Issues a token to the principal of the connection (KIP-48); needs an **authenticated** channel, otherwise 64 |
+| `createDelegationToken()`                    | CreateDelegationToken v3   | Issues a token to the principal of the connection (KIP-48), or to another principal with the `$owner` of KIP-373 (Kafka 3.3; 65 without the `CREATE_TOKENS` acl); needs an **authenticated** channel, otherwise 64 |
 | `renewDelegationToken()`                     | RenewDelegationToken v2    | Extends a token named by its raw HMAC; only its owner or one of its renewers may, otherwise 63 |
 | `expireDelegationToken()`                    | ExpireDelegationToken v2   | Moves the expiry forward, or **removes** the token when the period is negative |
 | `describeDelegationToken()`                  | DescribeDelegationToken v2 | The tokens of the given owners, `null` for every token the principal may see; the answer carries their HMACs |
@@ -799,19 +801,19 @@ it sends, and a version the node serves that the current milestone has not reach
 | 26 | EndTxn | v0 … v4 | yes | v0 … v2, **v3** | v0 … v2, **v3**; **v4 (3.8) not yet implemented on this line** |
 | 27 | WriteTxnMarkers | v0, v1 | broker→broker | v0, **v1** (classes and vectors; a broker→broker api, probed only) | v0, **v1** (classes and vectors; a broker→broker api, probed only) |
 | 28 | TxnOffsetCommit | v0 … v4 | yes | v0 … v2, **v3** | v0 … v2, **v3**; **v4 (3.8) not yet implemented on this line** |
-| 29 | DescribeAcls | v0 … v3 | yes | no, see below | no, see below; v3 (3.3) not yet implemented either |
-| 30 | CreateAcls | v0 … v3 | yes | no, see below | no, see below; v3 (3.3) not yet implemented either |
-| 31 | DeleteAcls | v0 … v3 | yes | no, see below | no, see below; v3 (3.3) not yet implemented either |
+| 29 | DescribeAcls | v0 … v3 | yes | no, see below | **v3** (Kafka 3.3, `AdminClient::describeAcls()`) |
+| 30 | CreateAcls | v0 … v3 | yes | no, see below | **v3** (Kafka 3.3, `AdminClient::createAcls()`) |
+| 31 | DeleteAcls | v0 … v3 | yes | no, see below | **v3** (Kafka 3.3, `AdminClient::deleteAcls()`) |
 | 32 | DescribeConfigs | v0 … v4 | yes | v0 … v3, **v4** | v0 … v3, **v4** |
 | 33 | AlterConfigs | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 34 | AlterReplicaLogDirs | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
-| 35 | DescribeLogDirs | v0 … v4 | yes | v0, v1, **v2** | v0, v1, v2, **v3** (the top-level error code of the answer, Kafka 3.2); **v4 (3.3) not yet implemented on this line** |
+| 35 | DescribeLogDirs | v0 … v4 | yes | v0, v1, **v2** | v0 … v3, **v4** (the top-level error code of Kafka 3.2, the volume sizes of KIP-827, Kafka 3.3) |
 | 36 | SaslAuthenticate | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 37 | CreatePartitions | v0 … v3 | controller | v0 … v2, **v3** | v0 … v2, **v3** |
-| 38 | CreateDelegationToken | v0 … v3 | yes | v0, v1, **v2** | v0, v1, **v2**; **v3 (3.3) not yet implemented on this line** |
+| 38 | CreateDelegationToken | v0 … v3 | yes | v0, v1, **v2** | v0, v1, v2, **v3** (a token for another principal, KIP-373, Kafka 3.3) |
 | 39 | RenewDelegationToken | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 40 | ExpireDelegationToken | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
-| 41 | DescribeDelegationToken | v0 … v3 | yes | v0, v1, **v2** | v0, v1, **v2**; **v3 (3.3) not yet implemented on this line** |
+| 41 | DescribeDelegationToken | v0 … v3 | yes | v0, v1, **v2** | v0, v1, v2, **v3** (the token requester, KIP-373, Kafka 3.3) |
 | 42 | DeleteGroups | v0, v1, v2 | yes | v0, v1, **v2** | v0, v1, **v2** |
 | 43 | ElectLeaders | v0, v1, v2 | controller | v0, v1, **v2** | v0, v1, **v2** |
 | 44 | IncrementalAlterConfigs | v0, v1 | yes | v0 (Kafka 2.3), **v1** | v0 (Kafka 2.3), **v1** |
@@ -822,9 +824,9 @@ it sends, and a version the node serves that the current milestone has not reach
 | 49 | AlterClientQuotas | v0, v1 | yes | v0, **v1** | v0, **v1** |
 | 50 | DescribeUserScramCredentials | v0 | yes | **v0** (Kafka 2.7) | **v0** (Kafka 2.7) |
 | 51 | AlterUserScramCredentials | v0 | yes | **v0** (Kafka 2.7) | **v0** (Kafka 2.7) |
-| 55 | DescribeQuorum | v0, v1, v2 | controller | – | no — a controller api, probed only (v0 Kafka 2.7, v1 3.3, v2 3.9) |
+| 55 | DescribeQuorum | v0, v1, v2 | broker (a raft api the client listener serves) | – | **v0, v1** (`AdminClient::describeMetadataQuorum()`, Kafka 2.7 / 3.3); **v2 (3.9) not yet implemented on this line** |
 | 56 | AlterIsr | not on the client listener of a KRaft node | broker→controller | no — broker→controller, probed only | no — broker→controller, probed only |
-| 57 | UpdateFeatures | v0, v1 | controller | **v0** (Kafka 2.7) | **v0** (Kafka 2.7); **v1 (3.3) not yet implemented on this line** |
+| 57 | UpdateFeatures | v0, v1 | controller | **v0** (Kafka 2.7) | **v0, v1** (Kafka 2.7 / 3.3, the `upgrade_type` and the `validate_only` of KIP-778) |
 | 60 | DescribeCluster | v0, v1 | yes | **v0** (Kafka 2.8) | **v0** (Kafka 2.8); **v1 (3.7) not yet implemented on this line** |
 | 61 | DescribeProducers | v0 | yes | **v0** (Kafka 2.8) | **v0** (Kafka 2.8) |
 | 64 | UnregisterBroker | v0 | controller | – | no — a controller api, probed only (Kafka 2.8) |
@@ -840,11 +842,7 @@ it sends, and a version the node serves that the current milestone has not reach
 The lower versions of every api are kept because their frames are what the wire vectors of the
 lines below replay.
 
-**The three ACL apis (29, 30, 31) are not implemented yet.** The lines below left them out because they do
-nothing on a broker without an `authorizer.class.name` (such a broker answers all three with the error code
-54, `SecurityDisabled`) and every wire vector of this repository is captured from a real broker; the 3.9.2
-node of this line runs the `StandardAuthorizer` of KRaft, so the 3.x line implements them for the first time,
-at the Kafka 3.3 milestone.
+**The three ACL apis (29, 30, 31) are implemented on this line, at the version 3 of Kafka 3.3.** The lines below left them out because they do nothing on a broker without an `authorizer.class.name` (such a broker answers all three with the error code 54, `SecurityDisabled`) and every wire vector of this repository is captured from a real broker. The 3.9.2 node of this line runs the `StandardAuthorizer` of KRaft with `super.users=User:ANONYMOUS;User:admin;User:kafkatest`, so `AdminClient::describeAcls()`, `createAcls()` and `deleteAcls()` were measured against a real authorizer: an acl is a `Common\AclBinding` — a `ResourcePattern` (`LITERAL` or `PREFIXED`, with the `USER` resource type that Kafka 3.3 added for KIP-373) and an `AccessControlEntry` (a principal, a host, an `AclOperation` and `ALLOW`/`DENY`) — and a describe or a delete names an `AclBindingFilter`, in which every field may be a wildcard and the pattern type `MATCH` asks which acls apply to a resource. The client sends the version 3 and keeps no lower one: an api that starts on this line gets the versions the node was measured at.
 
 **The four delegation-token apis (38 to 41) are implemented, and a token cannot be used to
 authenticate.** `AdminClient::createDelegationToken()`, `renewDelegationToken()`,
@@ -938,6 +936,10 @@ current milestone):
 | **KIP-516, the request side: topics named by their id** (Fetch v13, Metadata v12; `Cluster::topicIdOf()`/`topicNameById()`, `describeTopicsByIds()`; the 106 of a fetch session that mixes ids and names) | 3.1 | – | – | – | – | – | – | **yes** |
 | **KIP-800: the `reason` of a join and of a leave** (JoinGroup v8, LeaveGroup v5; `Client::joinGroup()`/`leaveGroup()`, `KafkaConsumer::unsubscribe()`, `removeMembersFromConsumerGroup()`) and **KIP-814: `skip_assignment`** (JoinGroup v9; a static leader that returns to a `Stable` group keeps its assignment) | 3.2 | – | – | – | – | – | – | **yes** |
 | **DescribeLogDirs v3: the top-level error code** of a refused request (thrown by `describeLogDirs()`) | 3.2 | – | – | – | – | – | – | **yes** |
+| **The ACL apis at v3** (DescribeAcls, CreateAcls, DeleteAcls; `describeAcls()`, `createAcls()`, `deleteAcls()`, `Common\AclBinding`) | 3.3 | – | – | – | – | – | – | **yes** — the first line of this package to speak them, against a real authorizer |
+| **KIP-778: the upgrade type and the dry run of a feature update** (`Admin\UpgradeType`, `updateFeatures(..., validateOnly: true)`, UpdateFeatures v1) | 3.3 | – | – | – | – | – | – | **yes** — the safe and the unsafe downgrade are two frames, and a dry run writes nothing |
+| **KIP-836: the lag of a voter** (`describeMetadataQuorum()`, the `LastFetchTimestamp` and `LastCaughtUpTimestamp` of DescribeQuorum v1) | 3.3 | – | – | – | – | – | – | **yes** — the one-node quorum reports the leader's own current time in both |
+| **KIP-827: the volume sizes of a log directory** (DescribeLogDirs v4, `LogDirInfo::$totalBytes`/`$usableBytes`) and **KIP-373: a token for another principal** (CreateDelegationToken v3, DescribeDelegationToken v3, `createDelegationToken(..., $owner)`, `TokenInformation::$tokenRequester`) | 3.3 | – | – | – | – | – | – | **yes** |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 127** (the constants of 3.9.2, declared by the foundation; 105 is 3.0's) |
 
 What this line leaves out **by design** (the owner's decisions for the 3.x line; everything else the 3.9.2
@@ -946,7 +948,7 @@ node serves is "not yet" until its milestone lands):
 | Feature                                          | Arrived in | On this branch                        |
 |--------------------------------------------------|------------|---------------------------------------|
 | SASL/SCRAM, SASL/GSSAPI and SASL/OAUTHBEARER    | 0.10.2 / 0.9 / 2.0 | no — PLAIN only, which is why a delegation token can be issued but not used |
-| ACL apis `DescribeAcls`/`CreateAcls`/`DeleteAcls` | 0.11       | not yet — the 3.9.2 node runs the `StandardAuthorizer` of KRaft, and the 3.x line implements them at its Kafka 3.3 milestone |
+| ACL apis `DescribeAcls`/`CreateAcls`/`DeleteAcls` | 0.11       | **yes** — at the version 3 of Kafka 3.3, against the `StandardAuthorizer` of the 3.9.2 KRaft node (`AdminClient::describeAcls()`, `createAcls()`, `deleteAcls()`) |
 | Replication apis `LeaderAndIsr`/`StopReplica`/`UpdateMetadata`/`AlterIsr` | 0.8 / 2.7 | no — only a ZooKeeper controller sends them, and a KRaft node does not even list them on its client listeners |
 | The KRaft controller apis (52–55, 58, 59, 62–64, 67, 70, 73, 80–82) | 2.7 … 3.9 | no — probed only; the ones a KRaft node lists on its client listeners (55, 64, 80, 81) are answered, the rest live on the controller listener |
 | Share groups (76–79 and their state apis 83–87, KIP-932) | 3.9 | no — early access in 3.9, hidden without `unstable.api.versions.enable`; the 4.x line implements them |
