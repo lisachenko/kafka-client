@@ -21,7 +21,9 @@ namespace Protocol\Kafka\Admin;
  * flexible version already knows it without another request.
  *
  * A ZooKeeper-backed Kafka 2.8.2 cluster finalizes no feature at all: `supportedFeatures` names what the broker
- * could agree to, `finalizedFeatures` is empty and `finalizedFeaturesEpoch` is `0`.
+ * could agree to, `finalizedFeatures` is empty and `finalizedFeaturesEpoch` is `0`. A **KRaft** node finalizes
+ * `metadata.version` - 21, i.e. `3.9-IV0`, on the node of this line - and answers the offset of its metadata log
+ * as the epoch, so neither array is empty there and the epoch grows with every write of the cluster.
  *
  * @see docs/protocol/3.9.md, sections "ApiVersions API (key 18, v0 to v3)" and "UpdateFeatures API (key 57, v0)"
  */
