@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  *
  * The answer of version 3 is the one of version 4 as well, so it is read with {@see OffsetCommitResponseV3}.
  *
- * @see docs/protocol/3.9.md, sections "OffsetCommit API (key 8, v0 to v8)" and "Quotas and throttle time"
+ * @see docs/protocol/3.9.md, sections "OffsetCommit API (key 8, v0 to v9)" and "Quotas and throttle time"
  */
 final class OffsetCommitRequestV3 extends OffsetCommitRequest
 {

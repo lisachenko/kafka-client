@@ -1372,7 +1372,7 @@ final class ClientTest extends TestCase
         self::assertSame(FetchMetadata::INITIAL_EPOCH, $metadata->epoch);
     }
 
-    public function testACommitIsRoutedToTheCoordinatorAsVersionSix(): void
+    public function testACommitIsRoutedToTheCoordinatorAsVersionNine(): void
     {
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
@@ -1405,7 +1405,11 @@ final class ClientTest extends TestCase
         $frames = $coordinator->getReceivedFrames();
 
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
-        self::assertSame(8, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 8');
+        self::assertSame(
+            9,
+            $this->apiVersionOf($frames[0]),
+            'the client commits with OffsetCommit version 9 since Kafka 3.6 (KIP-848)'
+        );
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
         self::assertSame(8, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 8');
     }

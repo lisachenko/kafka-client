@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * Byte for byte the answer of {@see OffsetCommitResponseV2} and {@see OffsetCommitResponseV0}; the class exists so
  * that the version of an answer matches the version of the request that asked for it.
  *
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v8)"
+ * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 final class OffsetCommitResponseV1 extends OffsetCommitResponse
 {
