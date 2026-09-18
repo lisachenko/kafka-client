@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * version constant. The answer of the versions 0 and 1 is one and the same frame; what the version 1 changed is
  * *when* a throttled answer arrives, not what is in it (KIP-219).
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v3)"
  */
 final class DescribeLogDirsResponseV1 extends DescribeLogDirsResponse
 {

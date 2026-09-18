@@ -1,8 +1,8 @@
 {
     "api": "describe-log-dirs",
     "apiKey": 35,
-    "section": "DescribeLogDirs API (key 35, v0 to v2)",
-    "description": "Wire vectors of the DescribeLogDirs API (key 35, v0 to v2), replayed by tests/Compliance.",
+    "section": "DescribeLogDirs API (key 35, v0 to v3)",
+    "description": "Wire vectors of the DescribeLogDirs API (key 35, v0 to v3), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "describelogdirs.request.v0",
@@ -241,7 +241,7 @@
         {
             "id": "describelogdirs.request.v2",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "DescribeLogDirs request v2, the first **flexible** version of the api (KIP-482, Kafka 2.6): the same two fields in the compact encoding, with the request header v2 and a tagged-field section at the end of the header, of the topic entry and of the body. One named partition of one topic.",
@@ -266,7 +266,7 @@
         {
             "id": "describelogdirs.response.v2",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV2",
             "version": 2,
             "source": "constructed",
             "description": "DescribeLogDirs answer v2 for one named partition: both log directories of the container, the one that holds the replica with its size and its offset lag and the other one with an empty topic array, every structure closed by its tagged-field section. Like its version 1 counterpart this is a **constructed** frame: a 2.8.2 broker groups every topic of a log directory into the answer, whatever the request asked for (11 493 bytes and 406 topics when it was captured), so the topics of the other suites were removed from it.",
@@ -305,7 +305,7 @@
         {
             "id": "describelogdirs.request.v2.no-partitions",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "DescribeLogDirs request v2 with an EMPTY topic array, which asks for no replica at all: the cheapest way to ask which directories a broker has. The empty compact array is the single byte `01`, where the version 1 wrote the four bytes `00 00 00 00`.",
@@ -323,7 +323,7 @@
         {
             "id": "describelogdirs.request.v2.all-partitions",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV2",
             "version": 2,
             "source": "broker",
             "description": "DescribeLogDirs request v2 with a NULL topic array, which asks for every replica of every directory - the request the Java admin client always sends. The compact null is the single byte `00`, so the whole frame is 15 bytes; its answer names every topic of the container and is not a vector of this document.",
@@ -336,6 +336,218 @@
                 "clientId": "t4-vectors",
                 "headerTaggedFields": [],
                 "topics": null
+            }
+        },
+        {
+            "id": "describelogdirs.request.v2.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequestV2",
+            "version": 2,
+            "source": "broker",
+            "description": "The same request of the version 2, sent by the same unauthorized principal, to measure how a broker below Kafka 3.2 words the refusal.",
+            "hex": "0000002e0023000200000ce8000d74342d33322d766563746f727300020e74342d33322d6c6f676469727302000000000000",
+            "fields": {
+                "messageSize": 46,
+                "apiKey": 35,
+                "apiVersion": 2,
+                "correlationId": 3304,
+                "clientId": "t4-32-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-32-logdirs": {
+                        "topic": "t4-32-logdirs",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v2.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponseV2",
+            "version": 2,
+            "source": "broker",
+            "description": "The refusal below the version 3: the answer has no top-level error code at all, so the node reports it as the EMPTY directory array alone - two bytes less than the version 3 frame, and indistinguishable from a broker that has no log directory at all. That is the gap the field of the version 3 closed.",
+            "hex": "0000000b00000ce800000000000100",
+            "fields": {
+                "messageSize": 11,
+                "correlationId": 3304,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "logDirs": []
+            }
+        },
+        {
+            "id": "describelogdirs.request.v3",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "DescribeLogDirs request v3 (Kafka 3.2) that asks for one partition of one topic. The request is the flexible frame of the version 2 byte for byte - \"Version 3 is the same as version 2 (new field in response)\" of `DescribeLogDirsRequest.json` @ 3.2.3 - and the higher version alone is what asks the broker for the top-level error code of the answer.",
+            "hex": "0000002e0023000300000ce4000d74342d33322d766563746f727300020e74342d33322d6c6f676469727302000000000000",
+            "fields": {
+                "messageSize": 46,
+                "apiKey": 35,
+                "apiVersion": 3,
+                "correlationId": 3300,
+                "clientId": "t4-32-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-32-logdirs": {
+                        "topic": "t4-32-logdirs",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v3",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "DescribeLogDirs answer v3 of the KRaft node for one named partition: the top-level error code of Kafka 3.2 is 0 between the throttle time and the directories, both log directories of the node are reported and only the one that holds the replica names the topic, because `ReplicaManager.describeLogDirs` @ 3.9.2 drops every topic entry that keeps no partition.",
+            "hex": "0000005d00000ce400000000000000030000102f746d702f6b61666b612d6c6f6773020e74342d33322d6c6f6764697273020000000000000000000000000000000000000000000000000000122f746d702f6b61666b612d6c6f67732d32010000",
+            "fields": {
+                "messageSize": 93,
+                "correlationId": 3300,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": {
+                            "t4-32-logdirs": {
+                                "topic": "t4-32-logdirs",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "size": 0,
+                                        "offsetLag": 0,
+                                        "isFuture": false
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v3.no-partitions",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "DescribeLogDirs request v3 with an EMPTY topic array, which asks for no replica at all: the empty compact array is the single byte `01`.",
+            "hex": "0000001a0023000300000ce5000d74342d33322d766563746f7273000100",
+            "fields": {
+                "messageSize": 26,
+                "apiKey": 35,
+                "apiVersion": 3,
+                "correlationId": 3301,
+                "clientId": "t4-32-vectors",
+                "headerTaggedFields": [],
+                "topics": []
+            }
+        },
+        {
+            "id": "describelogdirs.response.v3.no-partitions",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "DescribeLogDirs answer v3 to an empty topic array: the top-level error code 0, then the two log directories of the node, both online and both with an empty topic array.",
+            "hex": "0000003700000ce500000000000000030000102f746d702f6b61666b612d6c6f677301000000122f746d702f6b61666b612d6c6f67732d32010000",
+            "fields": {
+                "messageSize": 55,
+                "correlationId": 3301,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "logDirs": {
+                    "/tmp/kafka-logs": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs",
+                        "topics": []
+                    },
+                    "/tmp/kafka-logs-2": {
+                        "errorCode": 0,
+                        "logDir": "/tmp/kafka-logs-2",
+                        "topics": []
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.request.v3.all-partitions",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "DescribeLogDirs request v3 with a NULL topic array, which asks for every replica of every directory - the request the Java admin client always sends. The compact null is the single byte `00`; its answer names every topic of the node and is not a vector of this document.",
+            "hex": "0000001a0023000300000ce6000d74342d33322d766563746f7273000000",
+            "fields": {
+                "messageSize": 26,
+                "apiKey": 35,
+                "apiVersion": 3,
+                "correlationId": 3302,
+                "clientId": "t4-32-vectors",
+                "headerTaggedFields": [],
+                "topics": null
+            }
+        },
+        {
+            "id": "describelogdirs.request.v3.unauthorized",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsRequest",
+            "version": 3,
+            "source": "broker",
+            "description": "The same v3 request for one named partition, sent over a SASL_PLAINTEXT connection of the user `acltest` - the one principal of the node that is not in `super.users` and that no acl names.",
+            "hex": "0000002e0023000300000ce7000d74342d33322d766563746f727300020e74342d33322d6c6f676469727302000000000000",
+            "fields": {
+                "messageSize": 46,
+                "apiKey": 35,
+                "apiVersion": 3,
+                "correlationId": 3303,
+                "clientId": "t4-32-vectors",
+                "headerTaggedFields": [],
+                "topics": {
+                    "t4-32-logdirs": {
+                        "topic": "t4-32-logdirs",
+                        "partitions": [
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "describelogdirs.response.v3.unauthorized",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\DescribeLogDirsResponse",
+            "version": 3,
+            "source": "broker",
+            "description": "What the node answers that principal: the top-level error code 31 (ClusterAuthorizationFailed) of Kafka 3.2 and an empty directory array. `KafkaApis.handleDescribeLogDirsRequest` @ 3.9.2 asks the authorizer for DESCRIBE on CLUSTER before it reads the topics of the request.",
+            "hex": "0000000d00000ce70000000000001f0100",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 3303,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 31,
+                "logDirs": []
             }
         }
     ]

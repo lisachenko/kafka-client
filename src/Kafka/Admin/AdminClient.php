@@ -2392,14 +2392,23 @@ class AdminClient
      * carries one {@see LogDirInfo} per topic of the broker - the ones that were not asked for with an empty
      * replica list. A 1.1.1 broker answered the requested topics alone. The map is handed on as the broker sent
      * it: a caller reads the replicas it asked for out of it by name and may not assume that it holds nothing
-     * else. The request goes out as **version 1**, the version Kafka 2.0 added (KIP-219), whose frame is the
-     * version 0 of KIP-113.
+     * else. **The 3.9.2 KRaft node applies the selection again** - `ReplicaManager.describeLogDirs` @ 3.9.2 drops
+     * every topic entry that keeps no partition, a filter Kafka 3.7 added - so a request that names one partition
+     * is answered with that one topic there.
+     *
+     * The request goes out as **version 3**, the version Kafka 3.2 added: its answer carries a **top-level error
+     * code** ("Version 3 adds the top-level ErrorCode field" of `DescribeLogDirsResponse.json` @ 3.2.3), which is
+     * the refusal of the whole request and is thrown from here. On the node that code is 31
+     * ({@see \Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException}) for a principal that may not `Describe` the
+     * `CLUSTER` resource; a broker below Kafka 3.2 answers the same refusal with an empty directory map and no
+     * code at all, which a caller cannot tell from a broker without any log directory.
      *
      * @param list<int>                                              $brokerIds       Brokers to ask, by node id
      * @param array<string, list<int>>|iterable<TopicPartition>|null $topicPartitions Replicas to report, null for
      *        every replica of every log directory
      *
      * @throws BrokerNotAvailableException If a requested broker id is not a node of the cluster
+     * @throws KafkaException If the broker refuses the whole request, since the version 3 of Kafka 3.2
      *
      * @return array<int, array<string, LogDirInfo>> Directories of every asked broker, as broker id => path => info
      */
@@ -2421,6 +2430,10 @@ class AdminClient
                 ),
                 DescribeLogDirsResponse::class
             );
+
+            if ($response->errorCode !== KafkaException::NO_ERROR) {
+                throw KafkaException::fromCode($response->errorCode, ['node' => $brokerId]);
+            }
 
             $directories = [];
             foreach ($response->logDirs as $logDir) {

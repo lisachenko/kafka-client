@@ -25,19 +25,24 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseTopic;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV1;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV1;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV2;
 
 /**
- * Byte-exact tests for the DescribeLogDirs API of Kafka 1.0 (api key 35, v0, KIP-113).
+ * Byte-exact tests for the DescribeLogDirs API of Kafka 1.0 (api key 35, v0, KIP-113) and for the top-level error
+ * code its version 3 gained in Kafka 3.2.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v3)"
  */
 #[CoversClass(DescribeLogDirsRequest::class)]
+#[CoversClass(DescribeLogDirsRequestV2::class)]
 #[CoversClass(DescribeLogDirsRequestV1::class)]
 #[CoversClass(DescribeLogDirsRequestV0::class)]
 #[CoversClass(DescribeLogDirsResponse::class)]
+#[CoversClass(DescribeLogDirsResponseV2::class)]
 #[CoversClass(DescribeLogDirsResponseV1::class)]
 #[CoversClass(DescribeLogDirsResponseV0::class)]
 #[CoversClass(DescribeLogDirsRequestTopic::class)]
@@ -234,6 +239,61 @@ final class DescribeLogDirsTest extends TestCase
     {
         // `DescribeLogDirsResponse.INVALID_OFFSET_LAG` @ 1.1.1, the lag of a replica the broker does not have
         self::assertSame(-1, DescribeLogDirsResponsePartition::INVALID_OFFSET_LAG);
+    }
+
+    /**
+     * The refusal of the whole request the version 3 of Kafka 3.2 added, as the node answered it to `acltest`.
+     *
+     *   Size           => 00 00 00 0d (13 bytes)
+     *   CorrelationId  => 00 00 0c e7, then the tag buffer of the response header v1
+     *   ThrottleTimeMs => 00 00 00 00
+     *   ErrorCode      => 00 1f (31, ClusterAuthorizationFailed)   -- the field of the version 3
+     *   LogDirs        => 01 (the empty compact array), then the tag buffer of the body
+     */
+    private const string REFUSAL_V3_HEX = '0000000d' . '00000ce7' . '00' . '00000000' . '001f' . '01' . '00';
+
+    /**
+     * The same refusal of the version 2, which has no field for it: the empty directory array alone.
+     */
+    private const string REFUSAL_V2_HEX = '0000000b' . '00000ce8' . '00' . '00000000' . '01' . '00';
+
+    public function testTheVersionThreeRequestIsTheVersionTwoFrameWithAHigherVersionField(): void
+    {
+        // "Version 3 is the same as version 2 (new field in response)" of `DescribeLogDirsRequest.json` @ 3.2.3
+        $version3 = bin2hex((string) new DescribeLogDirsRequest(['topic' => [0, 1]], 'test', 5));
+        $version2 = bin2hex((string) new DescribeLogDirsRequestV2(['topic' => [0, 1]], 'test', 5));
+
+        self::assertSame($version2, substr_replace($version3, '0002', 12, 4));
+        self::assertSame(3, new DescribeLogDirsRequest(clientId: 'test')->getApiVersion());
+        self::assertSame(2, new DescribeLogDirsRequestV2(clientId: 'test')->getApiVersion());
+    }
+
+    public function testTheVersionThreeAnswerCarriesTheErrorCodeOfTheWholeRequest(): void
+    {
+        $refused = DescribeLogDirsResponse::unpack(new StringStream((string) hex2bin(self::REFUSAL_V3_HEX)));
+
+        self::assertSame(KafkaException::CLUSTER_AUTHORIZATION_FAILED, $refused->errorCode);
+        self::assertSame([], $refused->logDirs, 'a refusal carries no directory at all');
+        self::assertSame(0, $refused->throttleTimeMs);
+        self::assertSame(self::REFUSAL_V3_HEX, bin2hex((string) $refused), 'and the frame survives a round trip');
+    }
+
+    public function testTheVersionTwoAnswerHasNoFieldForThatErrorCode(): void
+    {
+        $refused = DescribeLogDirsResponseV2::unpack(new StringStream((string) hex2bin(self::REFUSAL_V2_HEX)));
+
+        self::assertSame([], $refused->logDirs);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $refused->errorCode,
+            'the property stays at its default: below the version 3 the refusal is the empty array alone'
+        );
+        self::assertSame(self::REFUSAL_V2_HEX, bin2hex((string) $refused));
+        self::assertSame(
+            strlen(self::REFUSAL_V3_HEX) - 4,
+            strlen(self::REFUSAL_V2_HEX),
+            'which is exactly the two bytes of the int16 less'
+        );
     }
 
     public function testTheVersionZeroFrameIsTheSameBodyWithALowerVersionField(): void
