@@ -502,6 +502,14 @@ final class ProtocolVectorTest extends TestCase
     }
 
     /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function describeTopicPartitionsVectors(): iterable
+    {
+        return VectorFile::provideFor(__FUNCTION__);
+    }
+
+    /**
      * @param array<string, mixed> $vector
      */
     #[DataProvider('apiVersionsVectors')]
@@ -1122,6 +1130,15 @@ final class ProtocolVectorTest extends TestCase
      */
     #[DataProvider('listClientMetricsResourcesVectors')]
     public function testListClientMetricsResourcesApi(array $vector): void
+    {
+        $this->assertVectorIsReplayed($vector);
+    }
+
+    /**
+     * @param array<string, mixed> $vector
+     */
+    #[DataProvider('describeTopicPartitionsVectors')]
+    public function testDescribeTopicPartitionsApi(array $vector): void
     {
         $this->assertVectorIsReplayed($vector);
     }
