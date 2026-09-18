@@ -3427,9 +3427,10 @@ class AdminClient
      * It is deliberately an **admin** method and has no counterpart on the consumer, exactly as in the Java client:
      * a consumer reads records, and where the records of a partition are stored is an operational question.
      *
-     * The request goes to the leader of each partition, as every request of this api does, and it is sent as
-     * version 8. A broker that only serves version 7 - anything below Kafka 3.5 - answers the partition with the
-     * error code 35, which is thrown as an {@see UnsupportedVersionException}.
+     * The request goes to the leader of each partition, as every request of this api does, and it is sent as the
+     * version this client speaks, **9** since Kafka 3.9. A broker that only serves version 7 - anything below
+     * Kafka 3.5 - answers the partition that asks for the `-4` with the error code 35, which is thrown as an
+     * {@see UnsupportedVersionException}.
      *
      * @param array<string, list<int>>|iterable<TopicPartition> $topicPartitions Partitions to look up
      *
