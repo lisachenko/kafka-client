@@ -50,7 +50,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
 
 /**
- * Exercises the transactional producer of KIP-98 against a real Kafka 1.1.1 broker.
+ * Exercises the transactional producer of KIP-98 against the 3.9.2 KRaft node.
  *
  * What can only be seen against a broker is checked here: that a committed transaction really becomes visible to a
  * `read_committed` reader and an aborted one never does, that the last stable offset of a partition stays behind
@@ -61,6 +61,14 @@ use Protocol\Kafka\Protocol\Request\TxnOffsetCommitRequest;
  * The 1.1.1 coordinator answers every one of those exactly as the 0.11.0.3 one did - the api block 24-28 is
  * unchanged at v0 and so is `TransactionCoordinator` - with a single addition of the 1.x line: the **59**
  * `UnknownProducerId` of a producer whose records were deleted under it does not end its transaction.
+ *
+ * The KRaft node of this line answers the same block with two things behind it that a client only notices when it
+ * builds the frames by hand: the producer id comes out of a block the controller handed the broker
+ * (`AllocateProducerIds`, key 67, controller listener) instead of out of a ZooKeeper counter, and the partition
+ * verification of KIP-890 - `transaction.partition.verification.enable`, true by default since Kafka 3.6 - makes
+ * the leader refuse a transactional batch for a partition that was never added to the transaction with the error
+ * code 48 and `Partition was not added to the transaction`. Every test here adds its partitions first, as the
+ * {@see TransactionManager} does.
  *
  * @see docs/protocol/3.9.md, section "Transactions"
  */
