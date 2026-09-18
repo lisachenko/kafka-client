@@ -60,6 +60,22 @@ final class OffsetDeleteApiTest extends IntegrationTestCase
     private const int SESSION_TIMEOUT_MS = 30000;
 
     /**
+     * Error codes of a topic that the cluster metadata does not serve yet
+     *
+     * A topic the metadata of this broker does not carry at all is the {@see InvalidTopicException} (17) that
+     * `Cluster::partitionsForTopic()` throws for it; a topic the node has just created answers 3
+     * (`UnknownTopicOrPartition`), and one whose leader is not elected yet 5 or 6.
+     *
+     * @var list<int>
+     */
+    private const array NOT_SERVABLE_YET = [
+        KafkaException::UNKNOWN_TOPIC_OR_PARTITION,
+        KafkaException::LEADER_NOT_AVAILABLE,
+        KafkaException::NOT_LEADER_FOR_PARTITION,
+        KafkaException::INVALID_TOPIC_EXCEPTION,
+    ];
+
+    /**
      * Topic of this class, created once by {@see self::topic()}
      */
     private static ?string $topic = null;
@@ -327,8 +343,9 @@ final class OffsetDeleteApiTest extends IntegrationTestCase
     /**
      * Waits until the cluster metadata knows the partitions of a freshly created topic
      *
-     * A topic the metadata does not carry at all is an {@see InvalidTopicException} of the cluster, not an empty
-     * partition list, so the lookup is retried on it as well.
+     * A topic the metadata does not carry at all is an {@see InvalidTopicException} of the cluster rather than an
+     * empty partition list, and a topic the node has only just created answers 3, 5 or 6 for a moment, so the
+     * lookup is retried on all of them.
      */
     private function awaitTopic(string $topic): void
     {
@@ -339,7 +356,10 @@ final class OffsetDeleteApiTest extends IntegrationTestCase
                 if ($cluster->partitionsForTopic($topic) !== []) {
                     return;
                 }
-            } catch (InvalidTopicException) {
+            } catch (KafkaException $exception) {
+                if (!in_array($exception->getCode(), self::NOT_SERVABLE_YET, true)) {
+                    throw $exception;
+                }
                 // The creation has not reached the metadata of this broker yet
             }
             usleep(250000);
