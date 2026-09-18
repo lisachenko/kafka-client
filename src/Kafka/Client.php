@@ -62,12 +62,16 @@ use Protocol\Kafka\Producer\Internals\TransactionManager;
 use Protocol\Kafka\Producer\ProducerConfig as ProducerConfig;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResponsePartition;
 use Protocol\Kafka\Protocol\Data\DeleteRecordsResponsePartition;
+use Protocol\Kafka\Protocol\Data\FetchResponseCurrentLeader;
+use Protocol\Kafka\Protocol\Data\FetchResponseNodeEndpoint;
 use Protocol\Kafka\Protocol\Data\FetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetForLeaderEpochResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetsResponsePartition;
+use Protocol\Kafka\Protocol\Data\ProduceResponseCurrentLeader;
+use Protocol\Kafka\Protocol\Data\ProduceResponseNodeEndpoint;
 use Protocol\Kafka\Protocol\Data\ProduceResponsePartition;
 use Protocol\Kafka\Protocol\Data\ProduceResponseRecordError;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitResponsePartition;
@@ -643,6 +647,10 @@ class Client
                                     $partitionInfo->recordErrors
                                 );
                             }
+                            // The leader discovery of KIP-951 (Produce v10): the node and the epoch the partition
+                            // is really led with, and where that node can be reached. A broker writes them for
+                            // the error code 6 alone, which is the one a producer has to move for
+                            $context += self::leaderHintOf($partitionInfo->currentLeader, $response->nodeEndpoints);
 
                             $errors[$topic][$partitionId] = KafkaException::fromCode(
                                 $partitionInfo->errorCode,
@@ -1021,6 +1029,7 @@ class Client
                     $errors[$topic][$partitionId] = KafkaException::fromCode(
                         $responsePartition->errorCode,
                         ['topic' => $topic, 'partitionId' => $partitionId]
+                            + self::leaderHintOf($responsePartition->currentLeader, $response->nodeEndpoints)
                     );
                     continue;
                 }
@@ -3365,5 +3374,52 @@ class Client
             OffsetFetchResponse::class,
             static fn(OffsetFetchResponse $response): array => self::offsetsOfGroup($response, $groupId)
         );
+    }
+
+    /**
+     * Turns the leader hint of KIP-951 into the context of the exception of a refused partition
+     *
+     * **Kafka 3.7** gave the Produce answer (v10) and the Fetch answer (v16) two tagged fields that say where a
+     * partition really is: the `current_leader` of a partition entry - the node id and the leader epoch - and the
+     * top-level `node_endpoints`, which names the host and the port of every node such an entry points at. A
+     * broker writes them for the codes a client has to **move** for and for no other: **6**
+     * `NotLeaderForPartition` in a produce answer, 6 and **74** `FencedLeaderEpoch` in a fetch answer
+     * ({@see \Protocol\Kafka\Protocol\Data\ProduceResponseCurrentLeader},
+     * {@see \Protocol\Kafka\Protocol\Data\FetchResponseCurrentLeader}).
+     *
+     * They travel into the context of the exception of that partition - `currentLeaderId`, `currentLeaderEpoch`
+     * and, when the answer named the address as well, `currentLeaderHost` and `currentLeaderPort` - so that an
+     * application that catches the error knows where the partition went without asking Metadata. The client
+     * itself still corrects its picture of the cluster with a metadata refresh, as it did before the KIP; an
+     * answer that carries no hint, which is every answer of a version below 10 or 16 and every answer of a
+     * one-broker cluster, adds nothing to the context.
+     *
+     * @param ProduceResponseCurrentLeader|FetchResponseCurrentLeader|null                   $currentLeader
+     * @param array<int, ProduceResponseNodeEndpoint|FetchResponseNodeEndpoint>              $nodeEndpoints
+     *
+     * @return array<string, int|string>
+     *
+     * @see docs/protocol/3.9.md, sections "The leader discovery of KIP-951 (v10)" and "The leader discovery of
+     *      KIP-951 (v16)"
+     */
+    private static function leaderHintOf(
+        ProduceResponseCurrentLeader|FetchResponseCurrentLeader|null $currentLeader,
+        array $nodeEndpoints
+    ): array {
+        if ($currentLeader === null) {
+            return [];
+        }
+
+        $hint = [
+            'currentLeaderId'    => $currentLeader->leaderId,
+            'currentLeaderEpoch' => $currentLeader->leaderEpoch,
+        ];
+        $endpoint = $nodeEndpoints[$currentLeader->leaderId] ?? null;
+        if ($endpoint !== null) {
+            $hint['currentLeaderHost'] = $endpoint->host;
+            $hint['currentLeaderPort'] = $endpoint->port;
+        }
+
+        return $hint;
     }
 }

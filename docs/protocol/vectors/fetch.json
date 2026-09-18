@@ -1,8 +1,8 @@
 {
     "api": "fetch",
     "apiKey": 1,
-    "section": "Fetch API (key 1, v0 to v15)",
-    "description": "Wire vectors of the Fetch API (key 1, v0 to v15), replayed by tests/Compliance.",
+    "section": "Fetch API (key 1, v0 to v16)",
+    "description": "Wire vectors of the Fetch API (key 1, v0 to v16), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "fetch.request.v4",
@@ -2260,7 +2260,7 @@
         {
             "id": "fetch.request.v15",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV15",
             "version": 15,
             "source": "broker",
             "description": "Fetch request v15 (Kafka 3.5, KIP-903), the version this client sends: the version 14 frame MINUS the four bytes of the top-level replica_id, which FetchRequest.json @ 3.5.2 declares as \"versions\": \"0-14\" and replaces with the tagged replica_state (tag 1) of a replica id and a replica epoch. A consumer is the default -1 / -1 of that structure, and a tagged field whose value is its default is not written at all, so the body starts at max_wait_ms and the tag buffer of the request stays empty.",
@@ -2304,7 +2304,7 @@
         {
             "id": "fetch.response.v15",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV15",
             "version": 15,
             "source": "broker",
             "description": "The answer v15: \"Version 15 is the same as version 14 (KIP-903)\" - the same answer as the version 14 and the version 13 one, with the api version of the request in its correlation alone.",
@@ -2430,7 +2430,7 @@
         {
             "id": "fetch.request.v15.replica-state",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV15",
             "version": 15,
             "source": "broker",
             "description": "A version 15 fetch that really carries the replica_state of KIP-903: the replica id 1 - the one broker of the node - and the replica epoch 0. The structure is the tag 1 of the request tag buffer and 13 bytes long: the int32 replica id, the int64 replica epoch and the tag buffer every structure of a flexible version ends in.",
@@ -2477,7 +2477,7 @@
         {
             "id": "fetch.response.v15.replica-state",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV15",
             "version": 15,
             "source": "broker",
             "description": "The answer of the node: the top-level error code 0 and the partition error 6 NotLeaderForPartition, with the high water mark and the log start offset -1 and an empty record set. A fetch whose replica id is not negative is a FOLLOWER fetch (FetchRequest.isFromFollower), the caller is authorized for it because ANONYMOUS is a super user of this node - and the broker 1 is the LEADER of the partition, not one of its followers, so Partition.followerReplicaOrThrow @ 3.9.2 finds no replica 1 to record a position for. The replica epoch is never even looked at.",
@@ -2518,7 +2518,7 @@
         {
             "id": "fetch.request.v15.replica-state-leader-epoch",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV15",
             "version": 15,
             "source": "broker",
             "description": "The same follower fetch with the current_leader_epoch 0 of KIP-320 named in its partition entry, which is the epoch the partition really is led with.",
@@ -2565,7 +2565,7 @@
         {
             "id": "fetch.response.v15.replica-state-leader-epoch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV15",
             "version": 15,
             "source": "broker",
             "description": "The second shape of the same refusal: 75 UnknownLeaderEpoch instead of the 6. Partition.followerReplicaOrThrow @ 3.9.2 answers 75 when the request named a leader epoch and NotLeaderOrFollower when it did not - \"the tuple (replicaId, leaderEpoch) is not yet recognized as valid\", which is what a KRaft reassignment looks like to a follower that fetches too early.",
@@ -2606,7 +2606,7 @@
         {
             "id": "fetch.request.v15.session",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV15",
             "version": 15,
             "source": "broker",
             "description": "The incremental fetch of a session that was opened by a version 13 full fetch, sent as a version 15 request: the session id the broker handed out, the epoch 1 and the partition at the offset 3, where the log ends.",
@@ -2650,7 +2650,7 @@
         {
             "id": "fetch.response.v15.session",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV15",
             "version": 15,
             "source": "broker",
             "description": "The node serves it: the top-level error code 0, the same session id and an EMPTY topics array, because nothing changed since the full fetch. Raising the version inside a session is not the 106 FetchSessionTopicIdError of Kafka 3.1 - what that code fences is a session that changes the KIND of name its topics travel under, and the versions 13, 14 and 15 all name them by id.",
@@ -2663,6 +2663,340 @@
                 "errorCode": 0,
                 "sessionId": 1732042505,
                 "topics": []
+            }
+        },
+        {
+            "id": "fetch.request.v16",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 16,
+            "source": "broker",
+            "description": "Fetch request v16 (Kafka 3.7, KIP-951), the version this client sends: the version 15 frame of KIP-903, field for field and byte for byte - FetchRequest.json @ 3.7.2 declares no field of the version and comments \"Version 16 is the same as version 15 (KIP-951)\". The body still starts at max_wait_ms, because the replica_id has been gone since version 15 and a consumer writes no replica_state at all.",
+            "hex": "000000690001001000000e7e00126b61666b612d636c69656e742d74322d333700000000fa00000001032000000000000000ffffffff0258382a4ecb9e40779f804d70a91cd9030200000000ffffffff0000000000000000ffffffffffffffffffffffff001000000000010100",
+            "fields": {
+                "messageSize": 105,
+                "apiKey": 1,
+                "apiVersion": 16,
+                "correlationId": 3710,
+                "clientId": "kafka-client-t2-37",
+                "headerTaggedFields": [],
+                "maxWaitTime": 250,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "58382a4ecb9e40779f804d70a91cd903"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 0,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null,
+                "replicaState": null
+            }
+        },
+        {
+            "id": "fetch.response.v16",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 16,
+            "source": "broker",
+            "description": "The answer v16 of a topic the node hosts: the version 15 answer with the record batch of the two records of t2-37-vectors, and an EMPTY tagged-field section at the end of the body. The node_endpoints of KIP-951 is a tagged field whose default is the empty array, and an answer that refused no partition names no leader.",
+            "hex": "000000a600000e7e00000000000000000000000258382a4ecb9e40779f804d70a91cd9030200000000000000000000000000020000000000000002000000000000000000ffffffff5f0000000000000000000000520000000002e46020430000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3337206f6e65002000d00f02011274322d33372074776f00000000",
+            "fields": {
+                "messageSize": 166,
+                "correlationId": 3710,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "58382a4ecb9e40779f804d70a91cd903"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": 2,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "preferredReadReplica": -1,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000520000000002e46020430000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3337206f6e65002000d00f02011274322d33372074776f00"
+                                },
+                                "divergingEpoch": null,
+                                "currentLeader": null,
+                                "snapshotId": null
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "fetch.request.v16.replica-state",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 16,
+            "source": "broker",
+            "description": "A version 16 fetch that claims to be the FOLLOWER 1 with the broker epoch 0, i.e. the version 15 frame of KIP-903 with the tagged replica_state at its end and the api version 16 in its header. The one broker of this node is the leader of the partition and not one of its followers, so this is the one way a client of a one-broker cluster can make it answer 6 NotLeaderForPartition - and with it the leader discovery of KIP-951.",
+            "hex": "000000780001001000000e7f00126b61666b612d636c69656e742d74322d333700000000fa00000001032000000000000000ffffffff0258382a4ecb9e40779f804d70a91cd9030200000000ffffffff0000000000000000ffffffffffffffffffffffff001000000000010101010d00000001000000000000000000",
+            "fields": {
+                "messageSize": 120,
+                "apiKey": 1,
+                "apiVersion": 16,
+                "correlationId": 3711,
+                "clientId": "kafka-client-t2-37",
+                "headerTaggedFields": [],
+                "maxWaitTime": 250,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "58382a4ecb9e40779f804d70a91cd903"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 0,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null,
+                "replicaState": {
+                    "replicaId": 1,
+                    "replicaEpoch": 0
+                }
+            }
+        },
+        {
+            "id": "fetch.response.v16.replica-state",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 16,
+            "source": "broker",
+            "description": "The answer, and the leader hint of KIP-951 as a 3.9.2 node really writes it: the partition entry carries the error code 6, the three -1 of a refusal and the tagged current_leader (tag 1 of the entry, on the wire since version 12) that names the leader id 1 and the leader epoch 0, and the body ends in the tagged node_endpoints (tag 0) with the node 1, the host 127.0.0.1, the port 9092 and the null rack. The very same request at version 15 (fetch.response.v15.replica-state above) is answered the same 6 in 76 bytes and names neither: KafkaApis.handleFetchRequest @ 3.9.2 fills the current_leader in behind an \"if (versionId >= 16)\", although the field itself is four versions older.",
+            "hex": "0000006a00000e7f00000000000000000000000258382a4ecb9e40779f804d70a91cd90302000000000006ffffffffffffffffffffffffffffffffffffffffffffffff00ffffffff010101090000000100000000000001001502000000010a3132372e302e302e31000023840000",
+            "fields": {
+                "messageSize": 106,
+                "correlationId": 3711,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "58382a4ecb9e40779f804d70a91cd903"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 6,
+                                "highWaterMarkOffset": -1,
+                                "lastStableOffset": -1,
+                                "logStartOffset": -1,
+                                "abortedTransactions": null,
+                                "preferredReadReplica": -1,
+                                "messageSet": {
+                                    "$bytes": ""
+                                },
+                                "divergingEpoch": null,
+                                "currentLeader": {
+                                    "leaderId": 1,
+                                    "leaderEpoch": 0
+                                },
+                                "snapshotId": null
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": {
+                    "1": {
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "rack": null
+                    }
+                }
+            }
+        },
+        {
+            "id": "fetch.request.v16.unknown-leader-epoch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 16,
+            "source": "broker",
+            "description": "A version 16 consumer fetch whose partition entry names the current_leader_epoch 5 of a partition that is led in the epoch 0 - a belief from the future, which KIP-320 answers 75 UnknownLeaderEpoch.",
+            "hex": "000000690001001000000e8000126b61666b612d636c69656e742d74322d333700000000fa00000001032000000000000000ffffffff0258382a4ecb9e40779f804d70a91cd9030200000000000000050000000000000000ffffffffffffffffffffffff001000000000010100",
+            "fields": {
+                "messageSize": 105,
+                "apiKey": 1,
+                "apiVersion": 16,
+                "correlationId": 3712,
+                "clientId": "kafka-client-t2-37",
+                "headerTaggedFields": [],
+                "maxWaitTime": 250,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "58382a4ecb9e40779f804d70a91cd903"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": 5,
+                                "fetchOffset": 0,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null,
+                "replicaState": null
+            }
+        },
+        {
+            "id": "fetch.response.v16.unknown-leader-epoch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 16,
+            "source": "broker",
+            "description": "The answer: the per-partition 75 with the high water mark -1 and no tagged field anywhere. The 75 is not one of the two codes the KIP writes the hint for - \"with errors NOT_LEADER_OR_FOLLOWER & FENCED_LEADER_EPOCH\" says FetchResponse.json @ 3.7.2, and the match of KafkaApis @ 3.9.2 names exactly those two - so a client whose metadata is ahead of the broker learns nothing here and has to wait instead of moving.",
+            "hex": "0000004800000e8000000000000000000000000258382a4ecb9e40779f804d70a91cd9030200000000004bffffffffffffffffffffffffffffffffffffffffffffffff00ffffffff01000000",
+            "fields": {
+                "messageSize": 72,
+                "correlationId": 3712,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "58382a4ecb9e40779f804d70a91cd903"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 75,
+                                "highWaterMarkOffset": -1,
+                                "lastStableOffset": -1,
+                                "logStartOffset": -1,
+                                "abortedTransactions": null,
+                                "preferredReadReplica": -1,
+                                "messageSet": {
+                                    "$bytes": ""
+                                },
+                                "divergingEpoch": null,
+                                "currentLeader": null,
+                                "snapshotId": null
+                            }
+                        ]
+                    }
+                ],
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "fetch.request.v16.session",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 16,
+            "source": "broker",
+            "description": "An incremental fetch of version 16 that continues a session a version 15 full fetch opened on the same connection: the session id the node handed out and the epoch 1 of the first incremental request, with the partition at the offset the full fetch read to.",
+            "hex": "000000690001001000000e8200126b61666b612d636c69656e742d74322d333700000000fa00000001032000000000bdc22e000000010258382a4ecb9e40779f804d70a91cd9030200000000ffffffff0000000000000002ffffffffffffffffffffffff001000000000010100",
+            "fields": {
+                "messageSize": 105,
+                "apiKey": 1,
+                "apiVersion": 16,
+                "correlationId": 3714,
+                "clientId": "kafka-client-t2-37",
+                "headerTaggedFields": [],
+                "maxWaitTime": 250,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 12436014,
+                "epoch": 1,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "58382a4ecb9e40779f804d70a91cd903"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 2,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null,
+                "replicaState": null
+            }
+        },
+        {
+            "id": "fetch.response.v16.session",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 16,
+            "source": "broker",
+            "description": "The node serves it: the top-level error code 0, the same session id and an empty topics array, because nothing has changed since the full fetch. Raising the version inside a session is not an error at 15 -> 16 any more than it was at 13 -> 15; what the 106 FetchSessionTopicIdError of Kafka 3.1 fences is a session that changes the KIND of name its topics travel under.",
+            "hex": "0000001100000e820000000000000000bdc22e0100",
+            "fields": {
+                "messageSize": 17,
+                "correlationId": 3714,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 12436014,
+                "topics": [],
+                "nodeEndpoints": []
             }
         }
     ]

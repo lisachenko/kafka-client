@@ -382,7 +382,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             $flexible,
             'the empty compact rack, and the tag buffer of the body behind it'
         );
-        self::assertSame(15, FetchRequest::VERSION, 'the version the replica state of KIP-903 reached');
+        self::assertSame(16, FetchRequest::VERSION, 'the version the leader discovery of KIP-951 reached');
         self::assertSame(11, FetchRequestV11::VERSION, 'the version the Kafka 2.3 part of this line sent');
         self::assertSame(10, FetchRequestV10::VERSION, 'and the version the Kafka 2.1 part sent');
     }

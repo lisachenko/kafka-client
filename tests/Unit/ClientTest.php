@@ -589,14 +589,15 @@ final class ClientTest extends TestCase
 
         $request = bin2hex($connection->getReceivedFrames()[0]);
 
-        // ApiKey 1, ApiVersion 15, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
+        // ApiKey 1, ApiVersion 16, then - behind MinBytes - the request-level MaxBytes of `fetch.max.bytes`, the
         // isolation level `read_uncommitted` and the session id 0 with the epoch -1 of a session-less fetch. A
-        // version 15 frame carries no `replica_id` at all (KIP-903), so `max_wait_ms` follows the header at once
-        self::assertStringStartsWith('0001000f', $request, 'the Fetch api is spoken in version 15');
+        // version 16 frame carries no `replica_id` at all (KIP-903 deprecated it in 15), so `max_wait_ms` follows
+        // the header at once, and KIP-951 added nothing to the request of version 16
+        self::assertStringStartsWith('00010010', $request, 'the Fetch api is spoken in version 16');
         self::assertStringNotContainsString(
             '000974372d636c69656e7400' . 'ffffffff',
             $request,
-            'the deprecated replica_id is not in the body of a version 15 request'
+            'the deprecated replica_id is not in the body of a version 16 request'
         );
         self::assertStringContainsString(
             '00100000' . '00' . '00000000' . 'ffffffff',
@@ -692,9 +693,9 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 9, correlation id, client id, the tag buffer of the request header v2 and then
+        // ApiKey 0, ApiVersion 10, correlation id, client id, the tag buffer of the request header v2 and then
         // the null transactional id of a plain producer, which a flexible frame writes as the single byte 00
-        self::assertStringStartsWith('00000009', $frame, 'the Produce api is spoken in version 9');
+        self::assertStringStartsWith('0000000a', $frame, 'the Produce api is spoken in version 10');
         self::assertStringContainsString('74372d636c69656e74' . '00' . '00', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));
@@ -1183,6 +1184,63 @@ final class ClientTest extends TestCase
         } catch (TopicPartitionRequestException $exception) {
             self::assertInstanceOf(OffsetOutOfRangeException::class, $exception->getExceptions()[self::TOPIC][0]);
             self::assertSame([], $exception->getPartialResult());
+        }
+    }
+
+    public function testTheLeaderHintOfKip951TravelsIntoTheContextOfTheRefusedPartition(): void
+    {
+        // Fetch v16 (Kafka 3.7, KIP-951): a partition that is refused 6 NotLeaderForPartition or 74
+        // FencedLeaderEpoch carries the tagged `current_leader` - the node and the epoch it is really led with -
+        // and the body the tagged `node_endpoints` that says where that node listens. Both travel into the
+        // context of the exception of the partition, so that the caller can go there without a Metadata round trip
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::fetch(
+                0,
+                [self::TOPIC => [0 => [KafkaException::FENCED_LEADER_EPOCH, -1, '']]],
+                0,
+                [],
+                0,
+                0,
+                [],
+                [self::TOPIC => [0 => [2, 9]]],
+                [2 => ['kafka-2', 9192, null]]
+            )))
+            ->install();
+
+        try {
+            $this->client()->fetch([self::TOPIC => [0 => 0]], 200);
+            self::fail('A fenced leader epoch is expected to be reported');
+        } catch (TopicPartitionRequestException $exception) {
+            $context = $exception->getExceptions()[self::TOPIC][0]->getContext();
+
+            self::assertSame(2, $context['currentLeaderId'], 'the node the partition is really led by');
+            self::assertSame(9, $context['currentLeaderEpoch']);
+            self::assertSame('kafka-2', $context['currentLeaderHost'], 'and where that node listens');
+            self::assertSame(9192, $context['currentLeaderPort']);
+        }
+    }
+
+    public function testAFetchAnswerWithoutTheHintOfKip951AddsNothingToTheContext(): void
+    {
+        // Every answer of an ordinary consumer fetch, and every answer of a version below 16: the tagged fields
+        // are at their default and are not on the wire at all, so the context is the one of the lines below
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
+            ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::fetch(0, [
+                self::TOPIC => [0 => [KafkaException::NOT_LEADER_FOR_PARTITION, -1, '']],
+            ])))
+            ->install();
+
+        try {
+            $this->client()->fetch([self::TOPIC => [0 => 0]], 200);
+            self::fail('The refusal of the partition is expected to be reported');
+        } catch (TopicPartitionRequestException $exception) {
+            $context = $exception->getExceptions()[self::TOPIC][0]->getContext();
+
+            self::assertSame([self::TOPIC, 0], [$context['topic'], $context['partitionId']]);
+            self::assertArrayNotHasKey('currentLeaderId', $context, 'the broker named no leader');
+            self::assertArrayNotHasKey('currentLeaderHost', $context);
         }
     }
 

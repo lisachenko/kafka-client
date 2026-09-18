@@ -37,7 +37,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * {@see FetchRequestTopicPartitionV9} keeps the entry of the versions 9 to 11. A version 12 entry also ends in
  * the tagged-field section of a flexible structure, which the schema engine writes on its own.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)", "The leader epoch (KIP-320)" and
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)", "The leader epoch (KIP-320)" and
  *      "Epoch validation in the fetch itself (v12, KIP-595)"
  */
 class FetchRequestTopicPartition implements BinarySchemaInterface

@@ -30,7 +30,7 @@ use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
 use Protocol\Kafka\Protocol\TaggedField;
 
 /**
- * Fetch API (key 1), version 15
+ * Fetch API (key 1), version 16
  *
  * The fetch API is used to fetch a chunk of one or more logs for some topic-partitions. Logically one specifies the
  * topics, partitions, and starting offset at which to begin the fetch and gets back a chunk of messages. In general,
@@ -45,7 +45,7 @@ use Protocol\Kafka\Protocol\TaggedField;
  * handle this case.
  *
  * <pre>
- *   FetchRequest (Version: 15) => MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
+ *   FetchRequest (Version: 16) => MaxWaitTime MinBytes MaxBytes IsolationLevel SessionId Epoch
  *                                 [TopicId [Partition CurrentLeaderEpoch FetchOffset LastFetchedEpoch
  *                                           LogStartOffset MaxBytes TAG_BUFFER] TAG_BUFFER]
  *                                 [TopicId [Partition] TAG_BUFFER] RackId TAG_BUFFER
@@ -143,21 +143,28 @@ use Protocol\Kafka\Protocol\TaggedField;
  *   release on - and puts a tagged `replica_state` of a replica id **and a replica epoch** in its place, see
  *   {@see self::$replicaState} and {@see \Protocol\Kafka\Protocol\Data\FetchRequestReplicaState}. A consumer's
  *   state is the default `-1` / `-1`, which a tagged field does not write at all, so a version 15 consumer fetch
- *   is the version 14 frame **minus** the four bytes of the old field. This class is that version.
+ *   is the version 14 frame **minus** the four bytes of the old field ({@see FetchRequestV15} keeps it);
+ * * **v16** (Kafka 3.7, KIP-951) is byte-identical to v15 in the request - `FetchRequest.json` @ 3.7.2 has no
+ *   field of it and its whole comment is "Version 16 is the same as version 15 (KIP-951)" - and states that the
+ *   client understands the **leader discovery** of the answer: the top-level tagged `node_endpoints` that names
+ *   where the leader of a partition refused with **6** `NotLeaderForPartition` or **74** `FencedLeaderEpoch` can
+ *   be reached, next to the `current_leader` that partition entry has carried since v12, see
+ *   {@see FetchResponse::$nodeEndpoints}. This class is that version.
  *
  * A request of version 7 and above **without** a session - the `session_id 0` / `epoch -1` of {@see FetchMetadata::legacy()},
  * which is what this class sends when it is given no metadata - is served exactly like a version 6 request: the
  * whole requested set comes back and the answer reports `session_id = 0`. That is what
  * {@see \Protocol\Kafka\Client::fetchPartitions()} sends today.
  *
- * {@see FetchRequestV14}, {@see FetchRequestV13}, {@see FetchRequestV12}, {@see FetchRequestV11},
+ * {@see FetchRequestV15}, {@see FetchRequestV14}, {@see FetchRequestV13}, {@see FetchRequestV12}, {@see FetchRequestV11},
  * {@see FetchRequestV10}, {@see FetchRequestV9}, {@see FetchRequestV8},
  * {@see FetchRequestV7}, {@see FetchRequestV6}, {@see FetchRequestV5}, {@see FetchRequestV4},
  * {@see FetchRequestV3}, {@see FetchRequestV2}, {@see FetchRequestV1} and {@see FetchRequestV0} keep the lower
  * versions available.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v15)", "Fetch sessions (v7, KIP-227)",
- *      "The topic ids of the fetch path (v13, KIP-516)" and "The replica state of KIP-903 (v15)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)", "Fetch sessions (v7, KIP-227)",
+ *      "The topic ids of the fetch path (v13, KIP-516)", "The replica state of KIP-903 (v15)" and
+ *      "The leader discovery of KIP-951 (v16)"
  */
 class FetchRequest extends AbstractRequest
 {
@@ -169,7 +176,7 @@ class FetchRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 15;
+    public const int VERSION = 16;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482

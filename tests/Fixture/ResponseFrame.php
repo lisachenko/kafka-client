@@ -428,6 +428,11 @@ final class ResponseFrame
      *        partition => [lastStableOffset, logStartOffset, aborted transactions as [producerId, firstOffset]]
      * @param int                                                $sessionErrorCode Top-level error code of version 7
      * @param int                                                $sessionId        Fetch session id of version 7
+     * @param array<string, array<int, array{int, int}>>          $currentLeaders   The leader hint of KIP-951
+     *        (version 16), as topic => partition => [leaderId, leaderEpoch]: the tagged `current_leader` of a
+     *        partition entry, which a broker writes for a partition it refused 6 or 74
+     * @param array<int, array{string, int, string|null}>         $nodeEndpoints    The other half of the same
+     *        hint, as node id => [host, port, rack]: the tagged `node_endpoints` of the body
      */
     public static function fetch(
         int $correlationId,
@@ -436,7 +441,9 @@ final class ResponseFrame
         array $transactionState = [],
         int $sessionErrorCode = 0,
         int $sessionId = 0,
-        array $preferredReadReplicas = []
+        array $preferredReadReplicas = [],
+        array $currentLeaders = [],
+        array $nodeEndpoints = []
     ): string {
         // Version 12 (Kafka 2.7) is the first FLEXIBLE version of this api (KIP-482): compact strings, compact
         // arrays, a COMPACT record set and a tagged-field section at the end of every structure - which is also
@@ -465,12 +472,56 @@ final class ResponseFrame
                     // without a `replica.selector.class` answers
                     . pack('N', $preferredReadReplicas[$topic][$partitionId] ?? 0xFFFFFFFF)
                     . self::compactBytes($messageSet)
-                    . self::tagBuffer();
+                    // The tagged `current_leader` of version 12 (tag 1), which a 3.9.2 node fills in from
+                    // version 16 on (KIP-951): the node and the epoch the partition is really led with
+                    . self::currentLeaderTag($currentLeaders[$topic][$partitionId] ?? null);
             }
             $body .= self::tagBuffer();
         }
-        // The `forgotten_topics_data` of a request has no counterpart here; what closes the body is its section
-        return self::flexible($correlationId, $body);
+        // The `forgotten_topics_data` of a request has no counterpart here; what closes the body is its section -
+        // which is where the `node_endpoints` of version 16 travels, as the tag 0 of the body (KIP-951)
+        return self::flexible($correlationId, $body . self::nodeEndpointsTag($nodeEndpoints));
+    }
+
+    /**
+     * Encodes the tagged-field section of a partition entry that carries the `current_leader` of KIP-951
+     *
+     * @param array{int, int}|null $currentLeader The leader id and the leader epoch, or null for the empty
+     *        section every partition entry that names no leader ends in
+     */
+    private static function currentLeaderTag(?array $currentLeader): string
+    {
+        if ($currentLeader === null) {
+            return self::tagBuffer();
+        }
+
+        [$leaderId, $leaderEpoch] = $currentLeader;
+        $value = pack('N', $leaderId) . pack('N', $leaderEpoch) . self::tagBuffer();
+
+        return self::unsignedVarint(1) . self::unsignedVarint(1) . self::unsignedVarint(strlen($value)) . $value;
+    }
+
+    /**
+     * Encodes the tagged-field section of the body that carries the `node_endpoints` of KIP-951 (Fetch v16)
+     *
+     * @param array<int, array{string, int, string|null}> $nodeEndpoints node id => [host, port, rack]
+     */
+    private static function nodeEndpointsTag(array $nodeEndpoints): string
+    {
+        if ($nodeEndpoints === []) {
+            return self::tagBuffer();
+        }
+
+        $value = self::compactCount(count($nodeEndpoints));
+        foreach ($nodeEndpoints as $nodeId => [$host, $port, $rack]) {
+            $value .= pack('N', $nodeId)
+                . self::compactString($host)
+                . pack('N', $port)
+                . ($rack === null ? self::unsignedVarint(0) : self::compactString($rack))
+                . self::tagBuffer();
+        }
+
+        return self::unsignedVarint(1) . self::unsignedVarint(0) . self::unsignedVarint(strlen($value)) . $value;
     }
 
     /**
