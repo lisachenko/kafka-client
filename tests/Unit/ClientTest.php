@@ -804,10 +804,10 @@ final class ClientTest extends TestCase
         $lookupFrame = $lookupNode->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::GROUP_COORDINATOR, $this->apiKeyOf($lookupFrame));
-        self::assertSame(3, $this->apiVersionOf($lookupFrame), 'the flexible FindCoordinator of KIP-482');
-        // The key "tx-1" and the CoordinatorType 1 of a transactional id
+        self::assertSame(4, $this->apiVersionOf($lookupFrame), 'the batched FindCoordinator of KIP-699');
+        // The CoordinatorType 1 of a transactional id and the one-key batch that carries "tx-1"
         self::assertStringEndsWith(
-            '05' . '74782d31' . '01' . '00',
+            '01' . '02' . '05' . '74782d31' . '00',
             bin2hex($lookupFrame),
             'the compact key is the transactional id, the type 1, and the body ends in its tag buffer'
         );
@@ -1362,7 +1362,7 @@ final class ClientTest extends TestCase
         // The coordinator lookup itself is answered by the first node of the cluster, it points at the second one
         $coordinator = new BrokerConnection(
             ResponseFrame::offsetCommit(0, [self::TOPIC => [0 => 0]]),
-            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, 'by the client']]])
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, 'by the client']]], 0, 't7-group')
         );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -1392,7 +1392,7 @@ final class ClientTest extends TestCase
         self::assertSame(ApiKeys::OFFSET_COMMIT, $this->apiKeyOf($frames[0]));
         self::assertSame(8, $this->apiVersionOf($frames[0]), 'kafka offset storage speaks OffsetCommit version 8');
         self::assertSame(ApiKeys::OFFSET_FETCH, $this->apiKeyOf($frames[1]));
-        self::assertSame(7, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 7');
+        self::assertSame(8, $this->apiVersionOf($frames[1]), 'kafka offset storage speaks OffsetFetch version 8');
     }
 
     public function testACommitErrorOfAPartitionIsReported(): void
@@ -1415,7 +1415,7 @@ final class ClientTest extends TestCase
     public function testEveryCommittedOffsetOfAGroupIsFetchedWithTheNullTopicArray(): void
     {
         $coordinator = new BrokerConnection(
-            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]])
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]], 0, 't7-group')
         );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -1429,7 +1429,7 @@ final class ClientTest extends TestCase
         self::assertSame([self::TOPIC => [0 => 21]], $client->fetchGroupOffsets($node, 't7-group', null));
 
         $frame = $coordinator->getReceivedFrames()[0];
-        self::assertSame(7, $this->apiVersionOf($frame), 'the nullable topic array needs OffsetFetch v2 or above');
+        self::assertSame(8, $this->apiVersionOf($frame), 'the nullable topic array of the one group of the batch');
         self::assertStringEndsWith(
             '0000',
             bin2hex($frame),
@@ -1443,8 +1443,8 @@ final class ClientTest extends TestCase
     public function testStableOffsetsAreAskedForWithTheFlagOfVersionSeven(): void
     {
         $coordinator = new BrokerConnection(
-            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]]),
-            ResponseFrame::offsetFetch(1, [self::TOPIC => [0 => [0, 21, '']]])
+            ResponseFrame::offsetFetch(0, [self::TOPIC => [0 => [0, 21, '']]], 0, 't7-group'),
+            ResponseFrame::offsetFetch(1, [self::TOPIC => [0 => [0, 21, '']]], 0, 't7-group')
         );
         $this->brokers
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
@@ -1460,7 +1460,7 @@ final class ClientTest extends TestCase
 
         [$plain, $stable] = $coordinator->getReceivedFrames();
 
-        self::assertSame(7, $this->apiVersionOf($plain));
+        self::assertSame(8, $this->apiVersionOf($plain));
         self::assertStringEndsWith('0000', bin2hex($plain), 'false, then the tag buffer of the body');
         self::assertStringEndsWith('0100', bin2hex($stable), 'true, then the tag buffer of the body');
         self::assertSame(
@@ -1480,7 +1480,9 @@ final class ClientTest extends TestCase
             ->on(self::FIRST_LEADER, new BrokerConnection(ResponseFrame::groupCoordinator(0, 0, 1, 'kafka-2', 9093)))
             ->on(self::SECOND_LEADER, new BrokerConnection(ResponseFrame::offsetFetch(
                 0,
-                [self::TOPIC => [0 => [KafkaException::UNSTABLE_OFFSET_COMMIT, -1, '']]]
+                [self::TOPIC => [0 => [KafkaException::UNSTABLE_OFFSET_COMMIT, -1, '']]],
+                0,
+                't7-group'
             )))
             ->install();
 
@@ -1497,7 +1499,7 @@ final class ClientTest extends TestCase
             ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection($this->clusterMetadata()))
             ->on(self::FIRST_LEADER, new BrokerConnection(
                 ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
-                ResponseFrame::offsetFetch(0, [], KafkaException::GROUP_AUTHORIZATION_FAILED)
+                ResponseFrame::offsetFetch(0, [], KafkaException::GROUP_AUTHORIZATION_FAILED, 't7-group')
             ))
             ->install();
 
@@ -1515,7 +1517,7 @@ final class ClientTest extends TestCase
                 ResponseFrame::groupCoordinator(0, 0, 0, 'kafka-1', 9092),
                 ResponseFrame::offsetFetch(0, [
                     self::TOPIC => [0 => [KafkaException::UNKNOWN_TOPIC_OR_PARTITION, -1, '']],
-                ])
+                ], 0, 't7-group')
             ))
             ->install();
 

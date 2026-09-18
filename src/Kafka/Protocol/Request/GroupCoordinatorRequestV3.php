@@ -14,18 +14,20 @@ declare(strict_types=1);
 namespace Protocol\Kafka\Protocol\Request;
 
 /**
- * FindCoordinator request of version 2 (Kafka 2.0, KIP-219): the last version with the plain encoding
+ * FindCoordinator request of version 3 (Kafka 2.4, KIP-482): one key per request, flexibly encoded
  *
- * Version 3 (Kafka 2.4, KIP-482) added no field: it is the version 1 frame - the key and its type - written
- * with the **compact** types and a tagged-field section, which {@see GroupCoordinatorRequest} sends.
+ * Version 4 (Kafka 3.0, KIP-699) replaced the single `key` with an array of `coordinator_keys`, so that one
+ * request can look several coordinators of the same type up at once; this version is the last one that carries a
+ * single key and the highest one a broker below Kafka 3.0 serves. {@see GroupCoordinatorRequest} sends the batched
+ * frame.
  *
  * @see docs/protocol/3.9.md, section "The flexible versions of the group apis (Kafka 2.4)"
  * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v4)"
  */
-final class GroupCoordinatorRequestV2 extends GroupCoordinatorRequest
+final class GroupCoordinatorRequestV3 extends GroupCoordinatorRequest
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 2;
+    public const int VERSION = 3;
 }

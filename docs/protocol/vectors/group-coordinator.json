@@ -1,8 +1,8 @@
 {
     "api": "group-coordinator",
     "apiKey": 10,
-    "section": "GroupCoordinator API (key 10, v0 to v3)",
-    "description": "Wire vectors of the GroupCoordinator API (key 10, v0 to v3), replayed by tests/Compliance.",
+    "section": "GroupCoordinator API (key 10, v0 to v4)",
+    "description": "Wire vectors of the GroupCoordinator API (key 10, v0 to v4), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "groupcoordinator.request.v0",
@@ -160,7 +160,7 @@
         {
             "id": "groupcoordinator.request.v3",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequestV3",
             "version": 3,
             "source": "broker",
             "description": "FindCoordinator request v3 (Kafka 2.4, KIP-482), the first **flexible** frame of the group apis: the header is the request header **v2** and ends in a tagged-field section, the group id is a `compact_string` whose length is the unsigned varint `20 + 1`, and the body closes with a tag buffer of its own. The `client_id` of the header stays an `int16`-prefixed string in every version - `\"flexibleVersions\": \"none\"` in `RequestHeader.json` @ 2.8.2.",
@@ -179,7 +179,7 @@
         {
             "id": "groupcoordinator.response.v3",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponseV3",
             "version": 3,
             "source": "broker",
             "description": "The answer: the response header **v1**, whose tag buffer follows the correlation id, and the four fields of the version 1 answer in the compact encoding. The `node_id`, `host` and `port` of the coordinator are three ordinary fields of the answer and **not** a structure of their own, so the frame carries exactly one more tag buffer - the one that closes the body.",
@@ -196,6 +196,280 @@
                     "host": "127.0.0.1",
                     "port": 9092
                 }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v4",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "FindCoordinator request v4 (Kafka 3.0, KIP-699), the first **batched** frame of the api: the single `key` of the versions below is gone and the `coordinator_type` is followed by the compact array `coordinator_keys`, here with the one group `t3-30-vectors-group`. This is the frame this client sends for every single lookup as well.",
+            "hex": "00000034000a000400000bb900126b61666b612d636c69656e742d74332d33300000021474332d33302d766563746f72732d67726f757000",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 10,
+                "apiVersion": 4,
+                "correlationId": 3001,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "coordinatorType": 0,
+                "coordinatorKeys": [
+                    "t3-30-vectors-group"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v4",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer: the throttle time and a `coordinators` array with one entry, which names the key it answers before the node id, the host and the port. The trailing `error_code` is 0 and the `error_message` is the **empty string** - `KafkaApis.handleFindCoordinatorRequestV4AndAbove` @ 3.9.2 never sets that field, where a 2.8.2 broker wrote the name of the error code (`\"NONE\"`) into the answer of a successful lookup.",
+            "hex": "0000003500000bb90000000000021474332d33302d766563746f72732d67726f7570000000010a3132372e302e302e31000023840000010000",
+            "fields": {
+                "messageSize": 53,
+                "correlationId": 3001,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-30-vectors-group": {
+                        "key": "t3-30-vectors-group",
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v4.batch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "Two group keys in one request, which is what version 4 exists for: the array carries `t3-30-vectors-group` and `t3-30-vectors-other`, and the single `coordinator_type` in front of it holds for both of them.",
+            "hex": "00000048000a000400000bba00126b61666b612d636c69656e742d74332d33300000031474332d33302d766563746f72732d67726f75701474332d33302d766563746f72732d6f7468657200",
+            "fields": {
+                "messageSize": 72,
+                "apiKey": 10,
+                "apiVersion": 4,
+                "correlationId": 3002,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "coordinatorType": 0,
+                "coordinatorKeys": [
+                    "t3-30-vectors-group",
+                    "t3-30-vectors-other"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v4.batch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "Two entries in the answer, one per key and in the order of the request, each with the key it answers and an error code of its own. Both name the only broker of the node, the id **1**.",
+            "hex": "0000005f00000bba0000000000031474332d33302d766563746f72732d67726f7570000000010a3132372e302e302e3100002384000001001474332d33302d766563746f72732d6f74686572000000010a3132372e302e302e31000023840000010000",
+            "fields": {
+                "messageSize": 95,
+                "correlationId": 3002,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-30-vectors-group": {
+                        "key": "t3-30-vectors-group",
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    },
+                    "t3-30-vectors-other": {
+                        "key": "t3-30-vectors-other",
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v4.transaction",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The same frame with the coordinator type **1**: the key `t3-30-vectors-tx` is looked up as a `transactional.id` in `__transaction_state` instead of as a group in `__consumer_offsets` (KIP-98).",
+            "hex": "00000031000a000400000bbb00126b61666b612d636c69656e742d74332d33300001021174332d33302d766563746f72732d747800",
+            "fields": {
+                "messageSize": 49,
+                "apiKey": 10,
+                "apiVersion": 4,
+                "correlationId": 3003,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "coordinatorType": 1,
+                "coordinatorKeys": [
+                    "t3-30-vectors-tx"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v4.transaction",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The transaction coordinator of that id. Looking an id up does not register it, so an id that no producer has ever used is a legal question with a normal answer.",
+            "hex": "0000003200000bbb0000000000021174332d33302d766563746f72732d7478000000010a3132372e302e302e31000023840000010000",
+            "fields": {
+                "messageSize": 50,
+                "correlationId": 3003,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-30-vectors-tx": {
+                        "key": "t3-30-vectors-tx",
+                        "nodeId": 1,
+                        "host": "127.0.0.1",
+                        "port": 9092,
+                        "errorCode": 0,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v4.share-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "The coordinator type **2**, which Kafka 3.9.2 knows as `CoordinatorType.SHARE` of KIP-932 and serves from version 6 on only.",
+            "hex": "00000034000a000400000bbc00126b61666b612d636c69656e742d74332d33300002021474332d33302d766563746f72732d67726f757000",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 10,
+                "apiVersion": 4,
+                "correlationId": 3004,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "coordinatorType": 2,
+                "coordinatorKeys": [
+                    "t3-30-vectors-group"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v4.share-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The answer of the node: the error code **42** (InvalidRequest) with the coordinator `-1:\"\":-1` and an **empty** error message - `KafkaApis.getCoordinator` @ 3.9.2 refuses the share type below the version 6 and the version 4 handler never fills a message.",
+            "hex": "0000002c00000bbc0000000000021474332d33302d766563746f72732d67726f7570ffffffff01ffffffff002a010000",
+            "fields": {
+                "messageSize": 44,
+                "correlationId": 3004,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-30-vectors-group": {
+                        "key": "t3-30-vectors-group",
+                        "nodeId": -1,
+                        "host": "",
+                        "port": -1,
+                        "errorCode": 42,
+                        "errorMessage": ""
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v4.unknown-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "A coordinator type the broker does not know at all, 99: `FindCoordinatorRequest.CoordinatorType.forId()` @ 3.9.2 knows 0, 1 and 2 and throws an `InvalidRequestException` for anything else.",
+            "hex": "00000034000a000400000bbd00126b61666b612d636c69656e742d74332d33300063021474332d33302d766563746f72732d67726f757000",
+            "fields": {
+                "messageSize": 52,
+                "apiKey": 10,
+                "apiVersion": 4,
+                "correlationId": 3005,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "coordinatorType": 99,
+                "coordinatorKeys": [
+                    "t3-30-vectors-group"
+                ]
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v4.unknown-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The same error code 42 through a different path: the request dies in the handler and the answer is built by `FindCoordinatorRequest.getErrorResponse()`, which fills the `error_message` from `Errors.message()` - the one version 4 answer of this document that carries a message at all.",
+            "hex": "000000d800000bbd0000000000021474332d33302d766563746f72732d67726f7570ffffffff01ffffffff002aac0154686973206d6f7374206c696b656c79206f63637572732062656361757365206f6620612072657175657374206265696e67206d616c666f726d65642062792074686520636c69656e74206c696272617279206f7220746865206d657373616765207761732073656e7420746f20616e20696e636f6d70617469626c652062726f6b65722e20536565207468652062726f6b6572206c6f677320666f72206d6f72652064657461696c732e0000",
+            "fields": {
+                "messageSize": 216,
+                "correlationId": 3005,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": {
+                    "t3-30-vectors-group": {
+                        "key": "t3-30-vectors-group",
+                        "nodeId": -1,
+                        "host": "",
+                        "port": -1,
+                        "errorCode": 42,
+                        "errorMessage": "This most likely occurs because of a request being malformed by the client library or the message was sent to an incompatible broker. See the broker logs for more details."
+                    }
+                }
+            }
+        },
+        {
+            "id": "groupcoordinator.request.v4.no-keys",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorRequest",
+            "version": 4,
+            "source": "broker",
+            "description": "An **empty** batch: the compact array count `01` and no key at all. The frame is 32 bytes, header included.",
+            "hex": "00000020000a000400000bbe00126b61666b612d636c69656e742d74332d333000000100",
+            "fields": {
+                "messageSize": 32,
+                "apiKey": 10,
+                "apiVersion": 4,
+                "correlationId": 3006,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "coordinatorType": 0,
+                "coordinatorKeys": []
+            }
+        },
+        {
+            "id": "groupcoordinator.response.v4.no-keys",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\GroupCoordinatorResponse",
+            "version": 4,
+            "source": "broker",
+            "description": "The node answers it with an empty `coordinators` array and nothing else, 11 bytes - unlike the empty `groups` array of an OffsetFetch v8, which it does not answer at all (see the OffsetFetch section).",
+            "hex": "0000000b00000bbe00000000000100",
+            "fields": {
+                "messageSize": 11,
+                "correlationId": 3006,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "coordinators": []
             }
         }
     ]

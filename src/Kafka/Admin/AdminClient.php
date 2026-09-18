@@ -416,11 +416,99 @@ class AdminClient
             ['groupId' => $groupId]
         );
 
-        if ($response->errorCode !== KafkaException::NO_ERROR) {
-            throw KafkaException::fromCode($response->errorCode, ['groupId' => $groupId]);
+        return self::checkedTopicsOfGroup($response, $groupId);
+    }
+
+    /**
+     * Lists the committed offsets of SEVERAL consumer groups in one request (version 8, Kafka 3.0)
+     *
+     * The batched half of {@see self::listGroupOffsets()}, and the shape of
+     * `Admin.listConsumerGroupOffsets(Map<String, ListConsumerGroupOffsetsSpec>)` @ 3.9.2: version 8 of the api
+     * carries an array of groups and answers one entry per group, each with its own group-level error code. Every
+     * group is asked for the partitions its value names, and a `null` value - the default shape of the
+     * single-group method - asks for every topic-partition that group has committed an offset for.
+     *
+     * The groups are split by their coordinator first: the coordinators of every group are looked up in **one**
+     * FindCoordinator v4 request ({@see Client::getGroupCoordinators()}), and one OffsetFetch v8 request goes to
+     * each of the coordinators that came back, so a cluster with several brokers costs one round trip per
+     * coordinator instead of two per group.
+     *
+     * An **empty** batch answers an empty array without sending anything: a 3.9.2 node answers a `groups = []`
+     * frame with nothing at all and strands the connection.
+     *
+     * @param array<string, array<string, list<int>>|iterable<TopicPartition>|null> $groupTopicPartitions Partitions
+     *        to read the offsets of, per group; a `null` value asks for every topic-partition of that group
+     *
+     * @return array<string, array<string, OffsetFetchResponseTopic>> Committed offsets per group, indexed by the
+     *         group id and then by the topic name
+     *
+     * @throws \Protocol\Kafka\Common\Errors\GroupLoadInProgressException If a coordinator is still loading offsets
+     * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If a group moved to another coordinator
+     */
+    public function listConsumerGroupOffsets(array $groupTopicPartitions): array
+    {
+        if ($groupTopicPartitions === []) {
+            return [];
         }
 
-        foreach ($response->topics as $topic => $topicResponse) {
+        $partitionsOfGroup = [];
+        foreach ($groupTopicPartitions as $groupId => $topicPartitions) {
+            $partitionsOfGroup[(string) $groupId] = $topicPartitions === null
+                ? null
+                : self::normalizeTopicPartitions($topicPartitions);
+        }
+
+        $coordinators = new CoordinatorLookup($this->cluster, $this->configuration)->findCoordinators(
+            array_keys($partitionsOfGroup),
+            GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP
+        );
+
+        /** @var array<int, array{0: Node, 1: array<string, array<string, list<int>>|null>}> $batches */
+        $batches = [];
+        foreach ($partitionsOfGroup as $groupId => $partitions) {
+            $node                            = $coordinators[$groupId];
+            $batches[$node->nodeId][0]       = $node;
+            $batches[$node->nodeId][1][$groupId] = $partitions;
+        }
+
+        $result = [];
+        foreach ($batches as [$node, $groupsOfNode]) {
+            $response = $this->sendTo(
+                $node->getConnection($this->configuration),
+                fn(int $correlationId): OffsetFetchRequest => OffsetFetchRequest::forGroups(
+                    $groupsOfNode,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                OffsetFetchResponse::class,
+                ['groupId' => implode(', ', array_keys($groupsOfNode))]
+            );
+
+            foreach (array_keys($groupsOfNode) as $groupId) {
+                $result[$groupId] = self::checkedTopicsOfGroup($response, (string) $groupId);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns the topics of one group of an OffsetFetch answer, with every error code of it checked
+     *
+     * A topic-partition without a committed offset is not an error - it comes back with the offset -1 and the
+     * error code 3 on the versions that report one - and is returned as it is; every other per-partition code and
+     * every group-level code is thrown.
+     *
+     * @return array<string, OffsetFetchResponseTopic> Committed offsets, indexed by the topic name
+     */
+    private static function checkedTopicsOfGroup(OffsetFetchResponse $response, string $groupId): array
+    {
+        $group = $response->groupOf($groupId);
+        if ($group->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode($group->errorCode, ['groupId' => $groupId]);
+        }
+
+        foreach ($group->topics as $topic => $topicResponse) {
             /** @var OffsetFetchResponsePartition $partition */
             foreach ($topicResponse->partitions as $partitionId => $partition) {
                 $isMissingOffset = $partition->errorCode === KafkaException::UNKNOWN_TOPIC_OR_PARTITION;
@@ -433,7 +521,7 @@ class AdminClient
             }
         }
 
-        return $response->topics;
+        return $group->topics;
     }
 
     /**

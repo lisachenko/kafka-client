@@ -27,7 +27,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  *   CoordinatorPort => int32
  * </pre>
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v4)"
  */
 class GroupCoordinatorResponseMetadata implements BinarySchemaInterface
 {

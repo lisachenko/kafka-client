@@ -26,7 +26,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * a transactional id can only be asked for with version 1 - and the answer to it carries neither the throttle time
  * nor the error message of version 1, see {@see GroupCoordinatorResponseV0}.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v3)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v4)"
  */
 final class GroupCoordinatorRequestV0 extends GroupCoordinatorRequest
 {

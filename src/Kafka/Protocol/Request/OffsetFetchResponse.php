@@ -15,11 +15,13 @@ namespace Protocol\Kafka\Protocol\Request;
 
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseGroup;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
+use UnexpectedValueException;
 
 /**
- * OffsetFetch response object, version 7
+ * OffsetFetch response object, version 8
  *
  * <pre>
  *   OffsetFetch Response (Version: 5 to 7) => throttle_time_ms [responses] error_code
@@ -33,6 +35,9 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
  *         metadata     => NULLABLE_STRING
  *         error_code   => INT16
  *     error_code => INT16           -- since version 2
+ *
+ *   OffsetFetch Response (Version: 8)     => throttle_time_ms [groups]
+ *     groups => group_id [responses] error_code   -- since version 8, one entry per group of the request
  * </pre>
  *
  * Version 2 appended a **group-level** `error_code` **after** the topics array. It reports what is wrong with the
@@ -59,7 +64,15 @@ use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopicV0;
  * offsets and the last commit of that partition belongs to a transaction that is still open.
  * {@see OffsetFetchResponseV6} decodes the same bytes one api version lower.
  *
- * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v7)", "Stable offsets and the 88 of KIP-447
+ * **Version 8 (Kafka 3.0) answers one entry per group.** `OffsetFetchResponse.json` @ 3.0.2 ends `Topics` and the
+ * top-level `ErrorCode` at the version 7 and puts an array of {@see OffsetFetchResponseGroup} behind the throttle
+ * time instead, each entry with the group id it answers, the topics of that group and a group-level error code of
+ * its own - so a batch of three groups reports three error codes and **no** top-level one at all. The topics and
+ * the partitions inside an entry are byte for byte the ones of version 7, `committed_leader_epoch` included.
+ * {@see self::groupOf()} reads one group out of either shape, and {@see OffsetFetchResponseV7} decodes the answer
+ * of the versions below.
+ *
+ * @see docs/protocol/3.9.md, sections "OffsetFetch API (key 9, v0 to v8)", "Stable offsets and the 88 of KIP-447
  *      (Kafka 2.5)" and "Quotas and throttle time"
  */
 class OffsetFetchResponse extends AbstractResponse
@@ -67,7 +80,7 @@ class OffsetFetchResponse extends AbstractResponse
     /**
      * Version of the OffsetFetch API that this class decodes the answer of
      */
-    public const int VERSION = 7;
+    public const int VERSION = 8;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -85,6 +98,9 @@ class OffsetFetchResponse extends AbstractResponse
     /**
      * List of topic responses
      *
+     * Only the versions below 8 carry it at the top level; a batched answer names the topics of each group of its
+     * `groups` array instead.
+     *
      * @var array<string, OffsetFetchResponseTopic>
      */
     public array $topics = [];
@@ -92,9 +108,40 @@ class OffsetFetchResponse extends AbstractResponse
     /**
      * Error of the group itself, which the coordinator reports instead of any topic at all
      *
+     * A version 8 answer has no top-level error code at all: every group of the batch carries its own.
+     *
      * @since Version 2 of protocol
      */
     public int $errorCode = KafkaException::NO_ERROR;
+
+    /**
+     * The answer of every group of a batched request, indexed by the group id
+     *
+     * @since Version 8 of protocol
+     *
+     * @var array<string, OffsetFetchResponseGroup>
+     */
+    public array $groups = [];
+
+    /**
+     * Returns the answer for one group, whatever version of the api this answer is
+     *
+     * A version 8 answer is asked for the entry of that group; anything below it answers one group at its top
+     * level and the given id only fills {@see OffsetFetchResponseGroup::$groupId} of the entry this builds, so
+     * that a caller reads both shapes the same way.
+     *
+     * @throws UnexpectedValueException If a batched answer carries no entry for the given group
+     */
+    public function groupOf(string $groupId): OffsetFetchResponseGroup
+    {
+        if (static::VERSION >= OffsetFetchRequest::MIN_BATCHED_VERSION) {
+            return $this->groups[$groupId] ?? throw new UnexpectedValueException(
+                "The OffsetFetch answer carries no entry for the group '{$groupId}'"
+            );
+        }
+
+        return OffsetFetchResponseGroup::of($groupId, $this->topics, $this->errorCode);
+    }
 
     /**
      * @inheritdoc
@@ -106,6 +153,12 @@ class OffsetFetchResponse extends AbstractResponse
         if (static::VERSION >= 3) {
             $body['throttleTimeMs'] = BinarySchema::TYPE_INT32;
         }
+        if (static::VERSION >= OffsetFetchRequest::MIN_BATCHED_VERSION) {
+            $body['groups'] = ['groupId' => OffsetFetchResponseGroup::class];
+
+            return $header + $body;
+        }
+
         $body['topics'] = ['topic' => static::topicClass()];
         if (static::VERSION >= 2) {
             $body['errorCode'] = BinarySchema::TYPE_INT16;

@@ -567,59 +567,84 @@ final class ResponseFrame
     }
 
     /**
-     * Builds an OffsetFetch response (api key 9, v5 - the version this client sends)
+     * Builds an OffsetFetch response (api key 9, v8 - the version this client sends)
      *
      * v0 and v1 share the response format, v2 appended the group-level error code, v3 (KIP-124) put the throttle
-     * time in front of the topics - the answer therefore carries a number at each of its ends - and v5 (KIP-320)
-     * inserted the `committed_leader_epoch` of every partition between its offset and its metadata.
+     * time in front of the topics - the answer therefore carries a number at each of its ends - v5 (KIP-320)
+     * inserted the `committed_leader_epoch` of every partition between its offset and its metadata, and **v8**
+     * (Kafka 3.0) moved the topics and the group-level error code into a `groups` array, one entry per group of
+     * the request. This fixture answers the one group it is given, which is what a single-group request gets.
      *
      * @param array<string, array<int, array{int, int, string}|array{int, int, string, int}>> $topics topic =>
      *        partition => [errorCode, offset, metadata] with an optional fourth element, the committed leader
      *        epoch, which defaults to the -1 of an offset that was committed without one
-     * @param int|null $groupErrorCode The group-level error code of version 2 and above, null for v0 or v1
+     * @param int    $groupErrorCode The group-level error code, inside the group entry since version 8
+     * @param string $groupId        The group this entry answers for (version 8 and above)
      */
-    public static function offsetFetch(int $correlationId, array $topics, ?int $groupErrorCode = 0): string
+    public static function offsetFetch(
+        int $correlationId,
+        array $topics,
+        int $groupErrorCode = 0,
+        string $groupId = ''
+    ): string {
+        return self::offsetFetchOfGroups($correlationId, [$groupId => [$topics, $groupErrorCode]]);
+    }
+
+    /**
+     * Builds a batched OffsetFetch response (api key 9, v8): one entry per group of the request
+     *
+     * @param array<string, array{array<string, array<int, array{int, int, string}|array{int, int, string, int}>>,
+     *         int}> $groups group id => [topics as {@see self::offsetFetch()} takes them, group-level error code]
+     */
+    public static function offsetFetchOfGroups(int $correlationId, array $groups): string
     {
-        $body = pack('N', 0) . self::compactCount(count($topics));
-        foreach ($topics as $topic => $partitions) {
-            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
-            foreach ($partitions as $partitionId => $partition) {
-                [$errorCode, $offset, $metadata] = $partition;
-                $body .= pack('N', $partitionId)
-                    . pack('J', $offset)
-                    . pack('N', $partition[3] ?? -1)
-                    . self::compactString($metadata)
-                    . pack('n', $errorCode)
-                    . self::tagBuffer();
+        $body = pack('N', 0) . self::compactCount(count($groups));
+        foreach ($groups as $groupId => [$topics, $groupErrorCode]) {
+            $body .= self::compactString((string) $groupId) . self::compactCount(count($topics));
+            foreach ($topics as $topic => $partitions) {
+                $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
+                foreach ($partitions as $partitionId => $partition) {
+                    [$errorCode, $offset, $metadata] = $partition;
+                    $body .= pack('N', $partitionId)
+                        . pack('J', $offset)
+                        . pack('N', $partition[3] ?? -1)
+                        . self::compactString($metadata)
+                        . pack('n', $errorCode)
+                        . self::tagBuffer();
+                }
+                $body .= self::tagBuffer();
             }
-            $body .= self::tagBuffer();
-        }
-        if ($groupErrorCode !== null) {
-            $body .= pack('n', $groupErrorCode);
+            $body .= pack('n', $groupErrorCode) . self::tagBuffer();
         }
 
         return self::flexible($correlationId, $body);
     }
 
     /**
-     * Builds a GroupCoordinator response (api key 10, v1 - FindCoordinator in the 0.11 sources)
+     * Builds a GroupCoordinator response (api key 10, v4 - FindCoordinator in the 0.11 sources)
      *
-     * Version 1 surrounds the error code with the `ThrottleTimeMs` of KIP-124 and a nullable `ErrorMessage`; a
-     * 0.11.0.3 broker leaves that message null in every answer, which is what this fixture reproduces.
+     * Version 1 surrounded the error code with the `ThrottleTimeMs` of KIP-124 and a nullable `ErrorMessage`, and
+     * **version 4** (KIP-699, Kafka 3.0) moved that error code, that message and the three fields of the
+     * coordinator into a `coordinators` array with one entry per key of the request. The entry of this fixture
+     * carries the empty `error_message` that a 3.9.2 node writes into every version 4 answer, successful or not.
      */
     public static function groupCoordinator(
         int $correlationId,
         int $errorCode,
         int $nodeId = 0,
         string $host = '127.0.0.1',
-        int $port = 9092
+        int $port = 9092,
+        string $key = ''
     ): string {
         $body = pack('N', 0)
-            . pack('n', $errorCode)
-            . self::compactString(null)
+            . self::compactCount(1)
+            . self::compactString($key)
             . pack('N', $nodeId)
             . self::compactString($host)
-            . pack('N', $port);
+            . pack('N', $port)
+            . pack('n', $errorCode)
+            . self::compactString('')
+            . self::tagBuffer();
 
         return self::flexible($correlationId, $body);
     }

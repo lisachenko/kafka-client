@@ -272,8 +272,8 @@ final class AdminClientTest extends TestCase
     public function testListGroupOffsetsAsksTheCoordinatorAndReturnsTheCommittedOffsets(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
-            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]])
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
         );
 
         $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [0]]);
@@ -302,8 +302,8 @@ final class AdminClientTest extends TestCase
     public function testListGroupOffsetsAsksForEveryTopicOfTheGroupWithoutPartitions(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
-            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]])
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [0 => [0, 1, '']]], 0, self::GROUP)
         );
 
         // main's shape: the group alone, which the nullable topic array of the version 2 makes possible
@@ -323,8 +323,8 @@ final class AdminClientTest extends TestCase
     public function testListGroupOffsetsReportsTheGroupLevelErrorOfVersionTwo(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
-            ResponseFrame::offsetFetch(0, [], KafkaException::NOT_COORDINATOR_FOR_GROUP)
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::offsetFetch(0, [], KafkaException::NOT_COORDINATOR_FOR_GROUP, self::GROUP)
         );
 
         $this->expectException(NotCoordinatorForGroupException::class);
@@ -337,8 +337,8 @@ final class AdminClientTest extends TestCase
         // A partition the group never committed is not an error: the coordinator answers it with the offset -1 and
         // the error code 0, and the entry is handed back as it is
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
-            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [1 => [0, -1, '']]])
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [1 => [0, -1, '']]], 0, self::GROUP)
         );
 
         $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [1]]);
@@ -349,11 +349,20 @@ final class AdminClientTest extends TestCase
 
     public function testFindCoordinatorResolvesTheNodeOfTheCluster(): void
     {
-        $this->scriptBroker(self::vector('group-coordinator', 'groupcoordinator.response.v3'));
+        // The captured version 4 answer of the 3.9.2 node, which names the broker 1 as the coordinator of its
+        // one entry: the cluster of this test therefore carries that broker id
+        $this->brokers
+            ->on(self::BOOTSTRAP_ADDRESS, new BrokerConnection(
+                ResponseFrame::metadata(0, [[1, '127.0.0.1', 9092]], [self::TOPIC => [0 => 1]])
+            ))
+            ->on(self::BROKER_ADDRESS, new BrokerConnection(
+                self::vector('group-coordinator', 'groupcoordinator.response.v4')
+            ))
+            ->install();
 
         $coordinator = $this->adminClient()->findCoordinator(self::GROUP);
 
-        self::assertSame(0, $coordinator->nodeId);
+        self::assertSame(1, $coordinator->nodeId);
         self::assertSame('127.0.0.1', $coordinator->host);
         self::assertSame(9092, $coordinator->port);
     }
@@ -462,7 +471,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupAsksTheCoordinatorOfTheGroup(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             self::stableGroup(self::ADMIN_GROUP)
         );
 
@@ -493,7 +502,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupReportsAnUnknownGroupAsDead(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             ResponseFrame::describeGroups(0, [self::UNKNOWN_GROUP => [0, 'Dead', '', '', []]])
         );
 
@@ -507,7 +516,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupThrowsTheErrorCodeOfTheGroup(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             (string) hex2bin(self::NOT_COORDINATOR_RESPONSE)
         );
 
@@ -519,7 +528,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupThrowsWhenTheAnswerHasNoEntryForTheGroup(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             (string) hex2bin(self::EMPTY_GROUPS_RESPONSE)
         );
 
@@ -531,7 +540,7 @@ final class AdminClientTest extends TestCase
     public function testDescribeGroupsAsksTheGroupsOfOneCoordinatorWithASingleRequest(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             self::stableGroup(self::ADMIN_GROUP)
         );
 
@@ -846,7 +855,7 @@ final class AdminClientTest extends TestCase
     public function testRemoveMembersFromConsumerGroupReportsEveryMemberOfTheBatch(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             ResponseFrame::leaveGroup(0, KafkaException::NO_ERROR, [
                 ''         => ['t10-instance', KafkaException::NO_ERROR],
                 'member-9' => [null, KafkaException::UNKNOWN_MEMBER_ID],
@@ -886,7 +895,7 @@ final class AdminClientTest extends TestCase
     public function testRemoveMembersFromConsumerGroupThrowsTheErrorOfTheRequestItself(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             ResponseFrame::leaveGroup(0, KafkaException::GROUP_AUTHORIZATION_FAILED, [])
         );
 
@@ -899,8 +908,8 @@ final class AdminClientTest extends TestCase
     {
         // A coordinator is looked up for every group of the call, and the groups that share one travel together
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             self::deleteGroupsResponse([
                 self::ADMIN_GROUP   => KafkaException::NO_ERROR,
                 self::UNKNOWN_GROUP => KafkaException::GROUP_ID_NOT_FOUND,
@@ -938,7 +947,7 @@ final class AdminClientTest extends TestCase
     public function testDeleteConsumerGroupsReportsAGroupThatStillHasMembers(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             self::deleteGroupsResponse([self::ADMIN_GROUP => KafkaException::NON_EMPTY_GROUP])
         );
 
@@ -955,7 +964,7 @@ final class AdminClientTest extends TestCase
     public function testDeleteConsumerGroupsLooksACoordinatorUpOnlyOncePerGroup(): void
     {
         $broker = $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             self::deleteGroupsResponse([self::ADMIN_GROUP => KafkaException::NO_ERROR])
         );
 
@@ -968,7 +977,7 @@ final class AdminClientTest extends TestCase
     public function testAGroupTheCoordinatorDidNotAnswerForIsAnUnknownError(): void
     {
         $this->scriptBroker(
-            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::groupCoordinator(0, 0, 0, '127.0.0.1', 9092, self::GROUP),
             self::deleteGroupsResponse([])
         );
 

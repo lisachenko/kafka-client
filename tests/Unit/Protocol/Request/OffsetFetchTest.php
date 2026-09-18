@@ -15,10 +15,14 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\InvalidRequestException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
+use Protocol\Kafka\Protocol\Data\OffsetFetchRequestGroup;
+use Protocol\Kafka\Protocol\Data\OffsetFetchResponseGroup;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartition;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponsePartitionV0;
 use Protocol\Kafka\Protocol\Data\OffsetFetchResponseTopic;
@@ -32,6 +36,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV3;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV5;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV6;
+use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV7;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV1;
@@ -39,6 +44,8 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV2;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV3;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV5;
+use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV7;
+use UnexpectedValueException;
 
 /**
  * Byte-exact tests for the OffsetFetch API (key 9), versions 0 to 5.
@@ -49,7 +56,7 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV5;
  * the ANSWER again: every partition entry of it carries a `committed_leader_epoch` behind the committed offset.
  * The request of v5 is still the body of v2, and v5 is the version this client sends.
  *
- * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v7)"
+ * @see docs/protocol/3.9.md, section "OffsetFetch API (key 9, v0 to v8)"
  */
 #[CoversClass(OffsetFetchRequest::class)]
 #[CoversClass(OffsetFetchRequestV0::class)]
@@ -58,7 +65,11 @@ use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV5;
 #[CoversClass(OffsetFetchRequestV3::class)]
 #[CoversClass(OffsetFetchRequestV4::class)]
 #[CoversClass(OffsetFetchRequestV5::class)]
+#[CoversClass(OffsetFetchRequestV7::class)]
 #[CoversClass(OffsetFetchResponse::class)]
+#[CoversClass(OffsetFetchResponseV7::class)]
+#[CoversClass(OffsetFetchRequestGroup::class)]
+#[CoversClass(OffsetFetchResponseGroup::class)]
 #[CoversClass(OffsetFetchResponseV0::class)]
 #[CoversClass(OffsetFetchResponseV1::class)]
 #[CoversClass(OffsetFetchResponseV2::class)]
@@ -242,7 +253,7 @@ final class OffsetFetchTest extends TestCase
      */
     public function testVersion7AppendsTheRequireStableFlagBehindTheTopicArray(): void
     {
-        $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1, true);
+        $request = new OffsetFetchRequestV7('my-group', ['topic' => [0, 1]], 'test', 1, true);
 
         self::assertSame(
             '0000002b' . '0009' . '0007' . '00000001'
@@ -266,7 +277,7 @@ final class OffsetFetchTest extends TestCase
      */
     public function testTheRequireStableFlagIsFalseByDefault(): void
     {
-        $request = new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1);
+        $request = new OffsetFetchRequestV7('my-group', ['topic' => [0, 1]], 'test', 1);
         $below   = new OffsetFetchRequestV6('my-group', ['topic' => [0, 1]], 'test', 1);
 
         self::assertStringEndsWith('00' . '00' . '00', bin2hex((string) $request));
@@ -301,7 +312,7 @@ final class OffsetFetchTest extends TestCase
      */
     public function testEveryTopicOfAGroupCanBeAskedForWithStableOffsetsOnly(): void
     {
-        $request = OffsetFetchRequest::forAllTopics('my-group', 'test', 1, true);
+        $request = OffsetFetchRequestV7::forAllTopics('my-group', 'test', 1, true);
 
         self::assertSame(
             '0000001b' . '0009' . '0007' . '00000001'
@@ -379,7 +390,12 @@ final class OffsetFetchTest extends TestCase
     {
         self::assertSame(
             ['topic' => PartitionsForTopic::class, BinarySchema::FLAG_NULLABLE => true],
-            OffsetFetchRequest::getScheme()['topicPartitions']
+            OffsetFetchRequestV7::getScheme()['topicPartitions']
+        );
+        self::assertArrayNotHasKey(
+            'topicPartitions',
+            OffsetFetchRequest::getScheme(),
+            'version 8 has no topic array of its own at all: every group of the batch carries one'
         );
         self::assertSame(
             ['topic' => PartitionsForTopic::class],
@@ -645,5 +661,198 @@ final class OffsetFetchTest extends TestCase
         $response = OffsetFetchResponseV2::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame('', $response->topics['topic']->partitions[0]->metadata);
+    }
+
+    /**
+     * Version 8 (Kafka 3.0) moved the group id and the topic array into a `groups` array, one entry per group,
+     * and left the single `require_stable` of KIP-447 behind it
+     */
+    public function testVersionEightMovesTheGroupAndItsTopicsIntoTheGroupsArray(): void
+    {
+        $request = OffsetFetchRequest::forGroups(['my-group' => ['topic' => [0, 1]]], 'test', 1);
+
+        self::assertSame(
+            '0000002d' . '0009' . '0008' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '02'
+            . '09' . '6d792d67726f7570'
+            . '02'
+            . '06' . '746f706963'
+            . '03' . '00000000' . '00000001'
+            . '00'
+            . '00'
+            . '00'
+            . '00',
+            bin2hex((string) $request),
+            'the group entry closes with a tag buffer of its own, then require_stable and the one of the body'
+        );
+        self::assertSame(8, $request->getApiVersion(), 'the version this client sends');
+        self::assertTrue(OffsetFetchRequest::isFlexible());
+    }
+
+    /**
+     * The published constructor keeps naming one group and sends exactly the same one-element batch
+     */
+    public function testTheSingleGroupConstructorSendsTheOneElementBatch(): void
+    {
+        self::assertSame(
+            bin2hex((string) OffsetFetchRequest::forGroups(['my-group' => ['topic' => [0, 1]]], 'test', 1)),
+            bin2hex((string) new OffsetFetchRequest('my-group', ['topic' => [0, 1]], 'test', 1))
+        );
+    }
+
+    public function testSeveralGroupsTravelInOneRequest(): void
+    {
+        $request = OffsetFetchRequest::forGroups(
+            ['my-group' => ['topic' => [0]], 'other' => null],
+            'test',
+            1
+        );
+
+        self::assertSame(
+            '00000031' . '0009' . '0008' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '03'
+            . '09' . '6d792d67726f7570'
+            . '02'
+            . '06' . '746f706963'
+            . '02' . '00000000'
+            . '00'
+            . '00'
+            . '06' . '6f74686572'
+            . '00'
+            . '00'
+            . '00'
+            . '00',
+            bin2hex((string) $request),
+            'the second group asks for every topic it committed, which is the compact null array 00'
+        );
+    }
+
+    /**
+     * A 3.9.2 node answers a `groups = []` frame with nothing at all - the handler dies in a
+     * `NoSuchElementException` and the connection is left owing an answer - so the client never sends one
+     */
+    public function testAnEmptyBatchIsRefusedBeforeItReachesTheBroker(): void
+    {
+        $this->expectException(InvalidRequestException::class);
+
+        OffsetFetchRequest::forGroups([], 'test', 1);
+    }
+
+    public function testAVersionBelowEightRefusesMoreThanOneGroup(): void
+    {
+        $this->expectException(UnsupportedVersionException::class);
+
+        OffsetFetchRequestV7::forGroups(['my-group' => null, 'other' => null], 'test', 1);
+    }
+
+    public function testAVersionBelowEightStillSendsAOneElementBatchAsItsSingleGroup(): void
+    {
+        self::assertSame(
+            bin2hex((string) new OffsetFetchRequestV7('my-group', ['topic' => [0, 1]], 'test', 1)),
+            bin2hex((string) OffsetFetchRequestV7::forGroups(['my-group' => ['topic' => [0, 1]]], 'test', 1))
+        );
+    }
+
+    public function testTheRequireStableFlagOfVersionEightStandsBehindTheGroupsArray(): void
+    {
+        $plain  = OffsetFetchRequest::forGroups(['my-group' => null], 'test', 1);
+        $stable = OffsetFetchRequest::forGroups(['my-group' => null], 'test', 1, true);
+
+        self::assertStringEndsWith('0000', bin2hex((string) $plain), 'false, then the tag buffer of the body');
+        self::assertStringEndsWith('0100', bin2hex((string) $stable), 'true, then the tag buffer of the body');
+        self::assertSame(strlen((string) $plain), strlen((string) $stable), 'one flag for the whole batch');
+    }
+
+    /**
+     * The answer of a batch carries one entry per group, each with its topics and its own group-level error code
+     */
+    public function testEveryGroupOfABatchedAnswerIsReadByItsGroupId(): void
+    {
+        $frame = '0000003e'
+            . '00000001'
+            . '00'
+            . '00000000'
+            . '03'
+            . '09' . '6d792d67726f7570'
+            . '02'
+            . '06' . '746f706963'
+            . '02'
+            . '00000000' . '0000000000000015' . 'ffffffff' . '01' . '0000'
+            . '00'
+            . '00'
+            . '0000'
+            . '00'
+            . '06' . '6f74686572'
+            . '01'
+            . '0010'
+            . '00'
+            . '00';
+
+        $response = OffsetFetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(['my-group', 'other'], array_keys($response->groups));
+        self::assertSame(21, $response->groupOf('my-group')->topics['topic']->partitions[0]->offset);
+        self::assertSame(0, $response->groupOf('my-group')->errorCode);
+        self::assertSame([], $response->groupOf('other')->topics, 'a group-level error answers no topic at all');
+        self::assertSame(16, $response->groupOf('other')->errorCode, 'every group carries an error of its own');
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $response->errorCode,
+            'a version 8 answer has no top-level error code at all'
+        );
+        self::assertSame($frame, bin2hex((string) $response), 'the answer survives the round trip');
+    }
+
+    public function testABatchedAnswerWithoutTheGroupIsRefused(): void
+    {
+        $response = OffsetFetchResponse::unpack(
+            new StringStream((string) hex2bin(self::batchedAnswerFrame()))
+        );
+
+        $this->expectException(UnexpectedValueException::class);
+        $response->groupOf('a-third-group');
+    }
+
+    /**
+     * An answer below version 8 is read the same way: the top-level topics and error code become its one entry
+     */
+    public function testGroupOfBuildsTheEntryOfAVersionBelowEight(): void
+    {
+        $response = OffsetFetchResponseV2::unpack(new StringStream((string) hex2bin(self::RESPONSE_V2_HEX)));
+        $group    = $response->groupOf('my-group');
+
+        self::assertSame('my-group', $group->groupId);
+        self::assertSame($response->topics, $group->topics);
+        self::assertSame($response->errorCode, $group->errorCode);
+    }
+
+    /**
+     * The frame of {@see self::testEveryGroupOfABatchedAnswerIsReadByItsGroupId()}
+     */
+    private static function batchedAnswerFrame(): string
+    {
+        return '0000003e'
+            . '00000001'
+            . '00'
+            . '00000000'
+            . '03'
+            . '09' . '6d792d67726f7570'
+            . '02'
+            . '06' . '746f706963'
+            . '02'
+            . '00000000' . '0000000000000015' . 'ffffffff' . '01' . '0000'
+            . '00'
+            . '00'
+            . '0000'
+            . '00'
+            . '06' . '6f74686572'
+            . '01'
+            . '0010'
+            . '00'
+            . '00';
     }
 }

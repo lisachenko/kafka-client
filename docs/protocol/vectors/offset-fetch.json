@@ -1,8 +1,8 @@
 {
     "api": "offset-fetch",
     "apiKey": 9,
-    "section": "OffsetFetch API (key 9, v0 to v7)",
-    "description": "Wire vectors of the OffsetFetch API (key 9, v0 to v7), replayed by tests/Compliance.",
+    "section": "OffsetFetch API (key 9, v0 to v8)",
+    "description": "Wire vectors of the OffsetFetch API (key 9, v0 to v8), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "offsetfetch.request.v2",
@@ -522,7 +522,7 @@
         {
             "id": "offsetfetch.request.v7",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV7",
             "version": 7,
             "source": "broker",
             "description": "OffsetFetch request v7 (Kafka 2.5, KIP-447): the flexible version 6 frame with one field more, the boolean `require_stable` behind the topic array - here `00`, false, which is what every version below 7 asks for implicitly.",
@@ -549,7 +549,7 @@
         {
             "id": "offsetfetch.response.v7",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer of that request while a transaction holds a newer offset for the very same partition: `require_stable = false` answers the **last stable** offset, 25, with the error code 0 - the pending 42 of the open transaction is not visible here and not an error either.",
@@ -579,7 +579,7 @@
         {
             "id": "offsetfetch.request.v7.require-stable",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV7",
             "version": 7,
             "source": "broker",
             "description": "The same frame with `require_stable = true`, the `01` of KIP-447: the coordinator may only answer an offset no open transaction can still change.",
@@ -606,7 +606,7 @@
         {
             "id": "offsetfetch.response.v7.require-stable",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer when nothing is pending: the committed offset 25 with the error code 0, byte for byte the answer of the request without the flag.",
@@ -636,7 +636,7 @@
         {
             "id": "offsetfetch.request.v7.unstable",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequestV7",
             "version": 7,
             "source": "broker",
             "description": "The same `require_stable = true` request once a transactional producer has written an offset for that partition without committing its transaction.",
@@ -663,7 +663,7 @@
         {
             "id": "offsetfetch.response.v7.unstable",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponseV7",
             "version": 7,
             "source": "broker",
             "description": "The answer that KIP-447 was written for: the partition carries the offset **-1**, an empty metadata and the **retriable** error code **88** `UnstableOffsetCommit`, while the group-level error code stays 0. A client waits and asks again; when the transaction has committed, the very same request answers the offset it wrote.",
@@ -688,6 +688,292 @@
                     }
                 },
                 "errorCode": 0
+            }
+        },
+        {
+            "id": "offsetfetch.request.v8",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "OffsetFetch request v8 (Kafka 3.0): the group id and the topic array of the versions below moved into the `groups` array, one entry per group, and the single `require_stable` of KIP-447 behind it holds for the whole batch. This one group names the partition 0 of `t3-30-vectors` explicitly.",
+            "hex": "0000004a0009000800000bc300126b61666b612d636c69656e742d74332d333000021474332d33302d766563746f72732d67726f7570020e74332d33302d766563746f7273020000000000000000",
+            "fields": {
+                "messageSize": 74,
+                "apiKey": 9,
+                "apiVersion": 8,
+                "correlationId": 3011,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t3-30-vectors-group": {
+                        "groupId": "t3-30-vectors-group",
+                        "topicPartitions": {
+                            "t3-30-vectors": {
+                                "topic": "t3-30-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                },
+                "requireStable": false
+            }
+        },
+        {
+            "id": "offsetfetch.response.v8",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer: the throttle time and one `groups` entry, which carries the group id, its topics and its own group-level error code. There is **no top-level error code** any more. The partition entry is the one of version 7, `committed_leader_epoch` included: the committed offset 25 (`19`), the epoch -1 of an offset that was committed without one, the empty metadata and the error code 0.",
+            "hex": "0000004700000bc30000000000021474332d33302d766563746f72732d67726f7570020e74332d33302d766563746f727302000000000000000000000019ffffffff010000000000000000",
+            "fields": {
+                "messageSize": 71,
+                "correlationId": 3011,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-30-vectors-group": {
+                        "groupId": "t3-30-vectors-group",
+                        "topics": {
+                            "t3-30-vectors": {
+                                "topic": "t3-30-vectors",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": 25,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        },
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.request.v8.all-topics",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "The same group with a **null** topic array - the compact `00` - which asks for every topic-partition the group has a committed offset for, exactly as the nullable array of version 2 does at the top level.",
+            "hex": "000000360009000800000bc400126b61666b612d636c69656e742d74332d333000021474332d33302d766563746f72732d67726f757000000000",
+            "fields": {
+                "messageSize": 54,
+                "apiKey": 9,
+                "apiVersion": 8,
+                "correlationId": 3012,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t3-30-vectors-group": {
+                        "groupId": "t3-30-vectors-group",
+                        "topicPartitions": null
+                    }
+                },
+                "requireStable": false
+            }
+        },
+        {
+            "id": "offsetfetch.response.v8.all-topics",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The answer is byte for byte the one of the explicit request, apart from the correlation id: the group has committed exactly this one partition.",
+            "hex": "0000004700000bc40000000000021474332d33302d766563746f72732d67726f7570020e74332d33302d766563746f727302000000000000000000000019ffffffff010000000000000000",
+            "fields": {
+                "messageSize": 71,
+                "correlationId": 3012,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-30-vectors-group": {
+                        "groupId": "t3-30-vectors-group",
+                        "topics": {
+                            "t3-30-vectors": {
+                                "topic": "t3-30-vectors",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": 25,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        },
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.request.v8.batch",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "Two groups in one request, which is what version 8 exists for: `t3-30-vectors-group`, which committed the offset 25, and `t3-30-vectors-other`, which the coordinator has never heard of. Both ask for the same partition.",
+            "hex": "000000740009000800000bc500126b61666b612d636c69656e742d74332d333000031474332d33302d766563746f72732d67726f7570020e74332d33302d766563746f7273020000000000001474332d33302d766563746f72732d6f74686572020e74332d33302d766563746f7273020000000000000000",
+            "fields": {
+                "messageSize": 116,
+                "apiKey": 9,
+                "apiVersion": 8,
+                "correlationId": 3013,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t3-30-vectors-group": {
+                        "groupId": "t3-30-vectors-group",
+                        "topicPartitions": {
+                            "t3-30-vectors": {
+                                "topic": "t3-30-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    },
+                    "t3-30-vectors-other": {
+                        "groupId": "t3-30-vectors-other",
+                        "topicPartitions": {
+                            "t3-30-vectors": {
+                                "topic": "t3-30-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                },
+                "requireStable": false
+            }
+        },
+        {
+            "id": "offsetfetch.response.v8.batch",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "One entry per group, in the order of the request. The known group answers its offset 25; the unknown one answers the offset -1 with the error code 0 in the partition **and** the group-level error code 0 - a group the coordinator does not know is not an error here either, exactly as it was at the top level of a version 2 answer.",
+            "hex": "0000008300000bc50000000000031474332d33302d766563746f72732d67726f7570020e74332d33302d766563746f727302000000000000000000000019ffffffff01000000000000001474332d33302d766563746f72732d6f74686572020e74332d33302d766563746f72730200000000ffffffffffffffffffffffff010000000000000000",
+            "fields": {
+                "messageSize": 131,
+                "correlationId": 3013,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-30-vectors-group": {
+                        "groupId": "t3-30-vectors-group",
+                        "topics": {
+                            "t3-30-vectors": {
+                                "topic": "t3-30-vectors",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": 25,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        },
+                        "errorCode": 0
+                    },
+                    "t3-30-vectors-other": {
+                        "groupId": "t3-30-vectors-other",
+                        "topics": {
+                            "t3-30-vectors": {
+                                "topic": "t3-30-vectors",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": -1,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 0
+                                    }
+                                ]
+                            }
+                        },
+                        "errorCode": 0
+                    }
+                }
+            }
+        },
+        {
+            "id": "offsetfetch.request.v8.unstable",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchRequest",
+            "version": 8,
+            "source": "broker",
+            "description": "The same one-group request with `require_stable = true` (`01` behind the array) while a transactional commit of that very partition is still open.",
+            "hex": "0000004a0009000800000bc600126b61666b612d636c69656e742d74332d333000021474332d33302d766563746f72732d67726f7570020e74332d33302d766563746f7273020000000000000100",
+            "fields": {
+                "messageSize": 74,
+                "apiKey": 9,
+                "apiVersion": 8,
+                "correlationId": 3014,
+                "clientId": "kafka-client-t3-30",
+                "headerTaggedFields": [],
+                "groups": {
+                    "t3-30-vectors-group": {
+                        "groupId": "t3-30-vectors-group",
+                        "topicPartitions": {
+                            "t3-30-vectors": {
+                                "topic": "t3-30-vectors",
+                                "partitions": [
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                },
+                "requireStable": true
+            }
+        },
+        {
+            "id": "offsetfetch.response.v8.unstable",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\OffsetFetchResponse",
+            "version": 8,
+            "source": "broker",
+            "description": "The **88** (UnstableOffsetCommit) of KIP-447 at version 8: the partition answers the offset -1, the empty metadata and the retriable code 88, while the group-level error code of the entry stays **0**. The flag and the code sit in the new shape exactly where they sat in the old one.",
+            "hex": "0000004700000bc60000000000021474332d33302d766563746f72732d67726f7570020e74332d33302d766563746f72730200000000ffffffffffffffffffffffff010058000000000000",
+            "fields": {
+                "messageSize": 71,
+                "correlationId": 3014,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "groups": {
+                    "t3-30-vectors-group": {
+                        "groupId": "t3-30-vectors-group",
+                        "topics": {
+                            "t3-30-vectors": {
+                                "topic": "t3-30-vectors",
+                                "partitions": [
+                                    {
+                                        "partition": 0,
+                                        "offset": -1,
+                                        "leaderEpoch": -1,
+                                        "metadata": "",
+                                        "errorCode": 88
+                                    }
+                                ]
+                            }
+                        },
+                        "errorCode": 0
+                    }
+                }
             }
         }
     ]
