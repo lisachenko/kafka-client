@@ -110,7 +110,10 @@ final class ZstdCodecTest extends IntegrationTestCase
             KafkaException::fromCode($refused->errorCode, ['topic' => $this->zstdTopic])
         );
         self::assertSame(-1, $refused->highWaterMarkOffset, 'the refused partition carries no high water mark');
-        self::assertSame('', $refused->messageSet, 'and no records at all');
+
+        // `FetchResponse.partitionResponse(tp, error)` @ 3.9.2 leaves `Records` at the `"default": "null"` of
+        // `FetchResponse.json`, so the node writes the length -1 where the 2.8.2 broker wrote an empty byte array
+        self::assertNull($refused->messageSet, 'and no records at all, as a null record set');
     }
 
     public function testTheSamePartitionIsServedToAFetchOfVersionTen(): void

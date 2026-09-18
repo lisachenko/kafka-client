@@ -127,7 +127,7 @@ final class DownConversionTest extends IntegrationTestCase
 
         $refused = $this->fetch($this->refusingTopic, FetchRequestV3::class, FetchResponseV3::class, 820);
 
-        // **35 UNSUPPORTED_VERSION, not 43.** `KafkaApis.handleFetchRequest` @ 2.8.2: "if down-conversion is
+        // **35 UNSUPPORTED_VERSION, not 43.** `KafkaApis.handleFetchRequest` @ 3.9.2: "if down-conversion is
         // disabled for the particular partition ... sending unsupported version response". 43
         // UNSUPPORTED_FOR_MESSAGE_FORMAT is the code of a timestamp lookup on a log below magic 1 and never
         // appears here.
@@ -138,7 +138,12 @@ final class DownConversionTest extends IntegrationTestCase
             KafkaException::fromCode($refused->errorCode, ['topic' => $this->refusingTopic])
         );
         self::assertSame(-1, $refused->highWaterMarkOffset, 'the error carries no high water mark either');
-        self::assertSame('', $refused->messageSet, 'and an empty record set, not a converted one');
+
+        // A refused partition is built by `FetchResponse.partitionResponse(tp, error)` @ 3.9.2, which sets the
+        // partition index, the error code and the high water mark and leaves `Records` at the `"default": "null"`
+        // of `FetchResponse.json`: the node writes the length **-1**, not the empty byte array the 2.8.2 broker
+        // sent. The record layer reads both as "no records at all"
+        self::assertNull($refused->messageSet, 'a null record set, not an empty one and not a converted one');
         self::assertSame([], $refused->getRecords()->getRecords());
     }
 

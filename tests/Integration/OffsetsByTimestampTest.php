@@ -21,7 +21,6 @@ use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
-use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Common\Record\CompressionCodec;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Consumer\ConsumerConfig;
@@ -41,6 +40,12 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * largest timestamp it holds: a segment stamped with a date years in the past is removed at the next retention
  * check of the broker (every five minutes), in the middle of the run. What the tests assert is the table of
  * "What the broker answers" in the protocol document.
+ *
+ * The one answer the node cannot be made to give any more is the **43 UNSUPPORTED_FOR_MESSAGE_FORMAT** of a
+ * timestamp lookup on a log without timestamps: that needed a message format v0 log, and KIP-724 (Kafka 3.0)
+ * retired `message.format.version`, so every log of this node is a record batch v2 and every partition has a time
+ * index. The code stays in {@see KafkaException} and in the error table, it is simply not reachable from a client
+ * of a 3.x broker.
  *
  * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v6), a.k.a. ListOffset"
  */
@@ -158,26 +163,6 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
         self::assertSame(0, $this->lookUp($topic, OffsetsRequest::EARLIEST)?->offset);
     }
 
-    public function testATopicWithoutMessageTimestampsRefusesATimestampLookupButKeepsTheSpecialTimes(): void
-    {
-        // message.format.version=0.9.0 makes the broker store the records in message format v0, which has no
-        // timestamps at all, so there is nothing for the time index to search
-        $topic = $this->preparedTopic('legacy-format');
-
-        self::assertSame(self::RECORD_COUNT, $this->lookUp($topic, OffsetsRequest::LATEST)?->offset);
-        self::assertSame(0, $this->lookUp($topic, OffsetsRequest::EARLIEST)?->offset);
-
-        try {
-            $this->lookUp($topic, self::firstTimestamp() + 1500);
-            self::fail('A timestamp lookup on a message format v0 topic is expected to fail');
-        } catch (TopicPartitionRequestException $exception) {
-            $error = $exception->getExceptions()[$topic][self::PARTITION];
-
-            self::assertInstanceOf(UnsupportedForMessageFormatException::class, $error);
-            self::assertSame(KafkaException::UNSUPPORTED_FOR_MESSAGE_FORMAT, $error->getCode());
-        }
-    }
-
     public function testACompressedBatchIsResolvedToTheInnerRecord(): void
     {
         // The whole batch is one wrapper message on disk, and the broker still answers the offset of the single
@@ -285,7 +270,6 @@ final class OffsetsByTimestampTest extends IntegrationTestCase
 
         $topic   = self::uniqueTopicName('t5-timestamps-' . $key);
         $configs = match ($key) {
-            'legacy-format'   => ['message.format.version' => '0.9.0'],
             'log-append-time' => ['message.timestamp.type' => 'LogAppendTime'],
             default           => [],
         };

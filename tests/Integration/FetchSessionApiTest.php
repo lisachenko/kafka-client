@@ -60,6 +60,18 @@ final class FetchSessionApiTest extends IntegrationTestCase
     private const int FETCH_MAX_WAIT_MS = 500;
 
     /**
+     * A session id the node never hands out, inside the range its sharded session cache can look up
+     */
+    private const int UNKNOWN_SESSION_ID = 2147483639;
+
+    /**
+     * The lowest session id no shard of the node's session cache owns, `8 * (Int.MaxValue / 8)`
+     *
+     * @see self::testTheHighestEightSessionIdsFallOutsideTheShardedCacheOfTheNode()
+     */
+    private const int FIRST_UNSHARDED_SESSION_ID = 2147483640;
+
+    /**
      * Topic of the current test, three partitions, created and given a leader by {@see self::setUp()}
      */
     private string $topic;
@@ -216,7 +228,7 @@ final class FetchSessionApiTest extends IntegrationTestCase
     {
         $this->produce(0, ['a-one']);
 
-        $answer = $this->fetch([], new FetchMetadata(2147483646, 1));
+        $answer = $this->fetch([], new FetchMetadata(self::UNKNOWN_SESSION_ID, 1));
 
         self::assertSame(KafkaException::FETCH_SESSION_ID_NOT_FOUND, $answer->errorCode);
         self::assertSame(70, KafkaException::FETCH_SESSION_ID_NOT_FOUND);
@@ -226,6 +238,39 @@ final class FetchSessionApiTest extends IntegrationTestCase
             'the answer of a session error carries the session id 0, not the one that was asked for'
         );
         self::assertSame([], $answer->topics, 'a session error is answered with an empty topics array');
+    }
+
+    /**
+     * The eight highest session ids of the int32 range fall outside the sharded session cache of the node
+     *
+     * A 3.9.2 node splits the fetch-session cache into `KafkaBroker.NumFetchSessionCacheShards = 8` shards and
+     * picks one with `sessionId / (Int.MaxValue / 8)` ({@see FetchSessionCache.getCacheShard}), which for every
+     * id from `8 * (Int.MaxValue / 8) = 2147483640` up to `Int.MaxValue` is the shard **8** of a sequence of
+     * eight: the `IndexOutOfBoundsException` reaches the generic handler of `KafkaApis`, and the client gets the
+     * error code **-1 UNKNOWN_SERVER_ERROR** with the session id of the *request* echoed back, instead of the 70
+     * that the very same request with any lower id is answered. A 2.8.2 broker had one unsharded cache and
+     * answered 70 for the whole range. This is not something a client can provoke by itself - the ids it uses
+     * are the ones the broker handed out - but it is what the node does, so it is measured here.
+     */
+    public function testTheHighestEightSessionIdsFallOutsideTheShardedCacheOfTheNode(): void
+    {
+        $this->produce(0, ['a-one']);
+
+        $answer = $this->fetch([], new FetchMetadata(self::FIRST_UNSHARDED_SESSION_ID, 1));
+
+        self::assertSame(KafkaException::UNKNOWN, $answer->errorCode);
+        self::assertSame(-1, KafkaException::UNKNOWN);
+        self::assertSame(
+            self::FIRST_UNSHARDED_SESSION_ID,
+            $answer->sessionId,
+            'the generic error answer repeats the session id of the request instead of the 0 of a session error'
+        );
+
+        // The id one below it is inside the last shard and is answered as an unknown session, as it should be
+        $known = $this->fetch([], new FetchMetadata(self::FIRST_UNSHARDED_SESSION_ID - 1, 1));
+
+        self::assertSame(KafkaException::FETCH_SESSION_ID_NOT_FOUND, $known->errorCode);
+        self::assertSame(FetchMetadata::INVALID_SESSION_ID, $known->sessionId);
     }
 
     public function testAWrongEpochIsTheErrorSeventyOneAndTheSessionSurvivesIt(): void
