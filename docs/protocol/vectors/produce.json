@@ -1,8 +1,8 @@
 {
     "api": "produce",
     "apiKey": 0,
-    "section": "Produce API (key 0, v0 to v10)",
-    "description": "Wire vectors of the Produce API (key 0, v0 to v10), replayed by tests/Compliance.",
+    "section": "Produce API (key 0, v0 to v11)",
+    "description": "Wire vectors of the Produce API (key 0, v0 to v11), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "produce.request.v3",
@@ -1107,10 +1107,10 @@
         {
             "id": "produce.request.v10",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV10",
             "version": 10,
             "source": "broker",
-            "description": "Produce request v10 (Kafka 3.7, KIP-951), the version this client sends: the flexible frame of version 9, field for field and byte for byte - ProduceRequest.json @ 3.7.2 declares no field of the version and comments \"Version 10 is the same as version 9 (KIP-951)\". What the version states is that the client understands the two tagged fields the ANSWER gained, so the request of the version this client sends and the request of the version below it differ in the two bytes of the api version alone.",
+            "description": "Produce request v10 (Kafka 3.7, KIP-951), the version below the one this client sends since Kafka 3.8: the flexible frame of version 9, field for field and byte for byte - ProduceRequest.json @ 3.7.2 declares no field of the version and comments \"Version 10 is the same as version 9 (KIP-951)\". What the version states is that the client understands the two tagged fields the ANSWER gained, so this request and the request of the version below it differ in the two bytes of the api version alone.",
             "hex": "0000009a0000000a00000e7400126b61666b612d636c69656e742d74322d33370000000100001388020e74322d33372d766563746f727302000000005f000000000000000000000052ffffffff02e46020430000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3337206f6e65002000d00f02011274322d33372074776f00000000",
             "fields": {
                 "messageSize": 154,
@@ -1140,7 +1140,7 @@
         {
             "id": "produce.response.v10",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV10",
             "version": 10,
             "source": "broker",
             "description": "The answer v10 of an accepted batch: the version 9 answer, byte for byte. Both fields KIP-951 added are TAGGED and both are at their default here - the current_leader of the partition entry is the pair -1 / -1 and the node_endpoints of the body is the empty array - so the tagged-field sections of the entry, of the topic and of the body are the three empty 00 bytes they have been since version 9. The node writes the hint for a partition refused 6 NotLeaderForPartition alone, which its one broker, the leader of every partition it hosts, can never answer.",
@@ -1173,7 +1173,7 @@
         {
             "id": "produce.request.v10.unknown-partition",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV10",
             "version": 10,
             "source": "broker",
             "description": "The same version 10 frame for the partition 99 of a topic that has one partition. It is the only produce error a client of a one-broker node can provoke by itself.",
@@ -1206,7 +1206,7 @@
         {
             "id": "produce.response.v10.unknown-partition",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV10",
             "version": 10,
             "source": "broker",
             "description": "The answer: the per-partition 3 UnknownTopicOrPartition with the base offset -1 and, in every one of its three tagged-field sections, nothing at all. KafkaApis.handleProduceRequest @ 3.9.2 asks getCurrentLeader for the error code 6 NotLeaderOrFollower and for no other, so a produce that is refused for any other reason carries neither the current_leader nor the node_endpoints of KIP-951.",
@@ -1239,7 +1239,7 @@
         {
             "id": "produce.response.v10.current-leader",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV10",
             "version": 10,
             "source": "constructed",
             "description": "The shape KIP-951 exists for, CONSTRUCTED: the one broker of this node is the leader of every partition it hosts, so it can never answer a produce with 6 NotLeaderForPartition and never writes the hint into a Produce answer. These are the bytes a 3.9.2 broker writes when the partition has moved to another node: the partition entry carries the error code 6 and the tagged current_leader (tag 0 of the ENTRY, the count 01, the tag 00, the size 09 and the leader id 2 with the leader epoch 4), and the body carries the tagged node_endpoints (tag 0 of the BODY) that names where the node 2 can be reached. The two structures are the ones the same node really writes into a Fetch v16 answer of the very same condition (fetch.response.v16.replica-state below), with the leader that is not this broker.",
@@ -1277,6 +1277,204 @@
                         "rack": null
                     }
                 }
+            }
+        },
+        {
+            "id": "produce.request.v11",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 11,
+            "source": "broker",
+            "description": "Produce request v11 (Kafka 3.8, KIP-890), the version this client sends: the flexible frame of version 9 an eighth time - ProduceRequest.json @ 3.8.1 declares no field of the version and its whole comment is \"Version 11 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)\". What the version states is that the client understands the error code 120 in a partition of the ANSWER, so this frame and the version 10 frame of the same batch differ in the two bytes of the api version alone.",
+            "hex": "0000009a0000000b00000ed800126b61666b612d636c69656e742d74322d33380000000100001388020e74322d33382d766563746f727302000000005f000000000000000000000052ffffffff02ee53787b0000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3338206f6e65002000d00f02011274322d33382074776f00000000",
+            "fields": {
+                "messageSize": 154,
+                "apiKey": 0,
+                "apiVersion": 11,
+                "correlationId": 3800,
+                "clientId": "kafka-client-t2-38",
+                "headerTaggedFields": [],
+                "transactionalId": null,
+                "requiredAcks": 1,
+                "timeout": 5000,
+                "topicMessages": {
+                    "t2-38-vectors": {
+                        "topic": "t2-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000052ffffffff02ee53787b0000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3338206f6e65002000d00f02011274322d33382074776f00"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v11",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 11,
+            "source": "broker",
+            "description": "The answer v11 of an accepted batch: the version 10 answer byte for byte, and with it the version 9 one - three empty tagged sections and 60 bytes of body. Nothing of KIP-890 travels on the wire for a produce that was accepted, and nothing of KIP-951 either; the version only decides which error code a refused transactional partition is answered with.",
+            "hex": "0000003c00000ed800020e74322d33382d766563746f7273020000000000000000000000000000ffffffffffffffff0000000000000000010000000000000000",
+            "fields": {
+                "messageSize": 60,
+                "correlationId": 3800,
+                "headerTaggedFields": [],
+                "topics": {
+                    "t2-38-vectors": {
+                        "topic": "t2-38-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "baseOffset": 0,
+                                "logAppendTime": -1,
+                                "logStartOffset": 0,
+                                "recordErrors": [],
+                                "errorMessage": null,
+                                "currentLeader": null
+                            }
+                        ]
+                    }
+                },
+                "throttleTime": 0,
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "produce.request.v11.unverified-partition",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
+            "version": 11,
+            "source": "broker",
+            "description": "A transactional produce v11 for the partition 1 of a topic whose partition 0 alone was added to the open transaction of t2-38-vectors-tx: acks = -1, the compact transactional id, and a record batch of the message format v2 whose attributes carry the transactional bit (0x0010) with the producer id 67 and the epoch 0 that InitProducerId handed out. This is the request the partition verification of KIP-890 refuses.",
+            "hex": "000000a00000000b00000ed900126b61666b612d636c69656e742d74322d3338001174322d33382d766563746f72732d7478ffff00001388020e74322d33382d766563746f7273020000000155000000000000000000000048ffffffff0207acaa9a0010000000000000018bcfe568000000018bcfe568000000000000000043000000000000000000012c000000012074322d333820756e766572696669656400000000",
+            "fields": {
+                "messageSize": 160,
+                "apiKey": 0,
+                "apiVersion": 11,
+                "correlationId": 3801,
+                "clientId": "kafka-client-t2-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t2-38-vectors-tx",
+                "requiredAcks": -1,
+                "timeout": 5000,
+                "topicMessages": {
+                    "t2-38-vectors": {
+                        "topic": "t2-38-vectors",
+                        "partitions": {
+                            "1": {
+                                "partition": 1,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000048ffffffff0207acaa9a0010000000000000018bcfe568000000018bcfe568000000000000000043000000000000000000012c000000012074322d333820756e766572696669656400"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v11.unverified-partition",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponse",
+            "version": 11,
+            "source": "broker",
+            "description": "The answer: the per-partition 120 TransactionAbortable (0x0078) with the base offset, the log append time and the log start offset all -1, no record errors and no error_message at all. KafkaApis.handleProduceRequest @ 3.9.2 picks the genericError operation for every api version above 10, so AddPartitionsToTxnManager hands the 120 of the coordinator through untouched, and ReplicaManager.handleProduceAppend replaces the message of the 48 alone - which is why this frame carries the null.",
+            "hex": "0000003c00000ed900020e74322d33382d766563746f727302000000010078ffffffffffffffffffffffffffffffffffffffffffffffff010000000000000000",
+            "fields": {
+                "messageSize": 60,
+                "correlationId": 3801,
+                "headerTaggedFields": [],
+                "topics": {
+                    "t2-38-vectors": {
+                        "topic": "t2-38-vectors",
+                        "partitions": {
+                            "1": {
+                                "partition": 1,
+                                "errorCode": 120,
+                                "baseOffset": -1,
+                                "logAppendTime": -1,
+                                "logStartOffset": -1,
+                                "recordErrors": [],
+                                "errorMessage": null,
+                                "currentLeader": null
+                            }
+                        }
+                    }
+                },
+                "throttleTime": 0,
+                "nodeEndpoints": []
+            }
+        },
+        {
+            "id": "produce.request.v10.unverified-partition",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequestV10",
+            "version": 10,
+            "source": "broker",
+            "description": "The very same frame at version 10, sent inside the very same transaction: the same transactional id, the same producer id and epoch, the same record batch byte for byte. The api version 0a and the correlation id are the whole difference between the two requests.",
+            "hex": "000000a00000000a00000eda00126b61666b612d636c69656e742d74322d3338001174322d33382d766563746f72732d7478ffff00001388020e74322d33382d766563746f7273020000000155000000000000000000000048ffffffff0207acaa9a0010000000000000018bcfe568000000018bcfe568000000000000000043000000000000000000012c000000012074322d333820756e766572696669656400000000",
+            "fields": {
+                "messageSize": 160,
+                "apiKey": 0,
+                "apiVersion": 10,
+                "correlationId": 3802,
+                "clientId": "kafka-client-t2-38",
+                "headerTaggedFields": [],
+                "transactionalId": "t2-38-vectors-tx",
+                "requiredAcks": -1,
+                "timeout": 5000,
+                "topicMessages": {
+                    "t2-38-vectors": {
+                        "topic": "t2-38-vectors",
+                        "partitions": {
+                            "1": {
+                                "partition": 1,
+                                "messageSet": {
+                                    "$bytes": "000000000000000000000048ffffffff0207acaa9a0010000000000000018bcfe568000000018bcfe568000000000000000043000000000000000000012c000000012074322d333820756e766572696669656400"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "id": "produce.response.v10.unverified-partition",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceResponseV10",
+            "version": 10,
+            "source": "broker",
+            "description": "And the answer below KIP-890: the 48 InvalidTxnState (0x0030) with the error_message \"Partition was not added to the transaction\" that ReplicaManager.handleProduceAppend @ 3.9.2 writes for that code alone. AddPartitionsToTxnManager @ 3.9.2 maps the 120 of the coordinator back to the 48 for every version below 11 - \"For backward compatibility with clients\" - so one and the same condition is one and the same refusal under another code, in 102 bytes of body instead of 60.",
+            "hex": "0000006600000eda00020e74322d33382d766563746f727302000000010030ffffffffffffffffffffffffffffffffffffffffffffffff012b506172746974696f6e20776173206e6f7420616464656420746f20746865207472616e73616374696f6e00000000000000",
+            "fields": {
+                "messageSize": 102,
+                "correlationId": 3802,
+                "headerTaggedFields": [],
+                "topics": {
+                    "t2-38-vectors": {
+                        "topic": "t2-38-vectors",
+                        "partitions": {
+                            "1": {
+                                "partition": 1,
+                                "errorCode": 48,
+                                "baseOffset": -1,
+                                "logAppendTime": -1,
+                                "logStartOffset": -1,
+                                "recordErrors": [],
+                                "errorMessage": "Partition was not added to the transaction",
+                                "currentLeader": null
+                            }
+                        }
+                    }
+                },
+                "throttleTime": 0,
+                "nodeEndpoints": []
             }
         }
     ]

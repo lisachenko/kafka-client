@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `LogStartOffset` that version 5 added to every partition of the answer, so this class only lowers the version
  * constant that {@see ProduceResponse::topicClass()} follows on the answering side.
  *
- * @see docs/protocol/3.9.md, section "Produce API (key 0, v0 to v10)"
+ * @see docs/protocol/3.9.md, section "Produce API (key 0, v0 to v11)"
  */
 final class ProduceRequestV4 extends ProduceRequest
 {
