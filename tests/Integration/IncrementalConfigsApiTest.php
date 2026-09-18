@@ -50,6 +50,11 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 {
     private const string CLIENT_ID = 't4-incremental';
 
+    /**
+     * How long a read-back waits for the broker to replay the controller write it follows, in seconds
+     */
+    private const float REPLAY_TIMEOUT = 20.0;
+
     private Cluster $cluster;
 
     private AdminClient $admin;
@@ -133,15 +138,15 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         ]);
 
         self::assertSame([$key => null], $result, 'the whole resource was applied');
-        self::assertSame('3600000', $this->valueOf($topic, 'retention.ms'), 'the SET');
+        self::assertSame('3600000', $this->valueOf($topic, 'retention.ms', '3600000'), 'the SET');
         self::assertSame(
             'delete,compact',
-            $this->valueOf($topic, 'cleanup.policy'),
+            $this->valueOf($topic, 'cleanup.policy', 'delete,compact'),
             'the APPEND started from the default of the option, which is `delete`'
         );
         self::assertSame(
             $before,
-            $this->valueOf($topic, 'max.message.bytes'),
+            $this->valueOf($topic, 'max.message.bytes', $before),
             'and an option the request never named kept the value it had'
         );
     }
@@ -155,12 +160,12 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         $key   = ConfigResource::topic($topic)->key();
 
         $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::append('cleanup.policy', 'compact')]]);
-        self::assertSame('delete,compact', $this->valueOf($topic, 'cleanup.policy'));
+        self::assertSame('delete,compact', $this->valueOf($topic, 'cleanup.policy', 'delete,compact'));
 
         $result = $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::subtract('cleanup.policy', 'compact')]]);
 
         self::assertSame([$key => null], $result);
-        self::assertSame('delete', $this->valueOf($topic, 'cleanup.policy'));
+        self::assertSame('delete', $this->valueOf($topic, 'cleanup.policy', 'delete'));
     }
 
     /**
@@ -173,12 +178,12 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
         $inherited = $this->valueOf($topic, 'retention.ms');
 
         $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::set('retention.ms', '7200000')]]);
-        self::assertSame('7200000', $this->valueOf($topic, 'retention.ms'));
+        self::assertSame('7200000', $this->valueOf($topic, 'retention.ms', '7200000'));
 
         $result = $this->admin->incrementalAlterConfigs([$key => [AlterConfigOp::delete('retention.ms')]]);
 
         self::assertSame([$key => null], $result);
-        self::assertSame($inherited, $this->valueOf($topic, 'retention.ms'));
+        self::assertSame($inherited, $this->valueOf($topic, 'retention.ms', $inherited));
     }
 
     /**
@@ -320,11 +325,26 @@ final class IncrementalConfigsApiTest extends IntegrationTestCase
 
     /**
      * Reads one option of a topic back through DescribeConfigs
+     *
+     * An incremental alter is a controller write that the broker answers from its own image only once it has
+     * replayed the record: a DescribeConfigs that follows the alter at once reaches the broker before that, and
+     * reports the value the option had. The lag is milliseconds on an idle node and seconds on a loaded CI runner,
+     * so a read that expects a value polls for it, bounded, and returns the last value it saw.
+     *
+     * @param string|null $until The value the read waits for, `null` for a plain read
      */
-    private function valueOf(string $topic, string $option): ?string
+    private function valueOf(string $topic, string $option, ?string $until = null): ?string
     {
-        $key = ConfigResource::topic($topic)->key();
+        $key      = ConfigResource::topic($topic)->key();
+        $deadline = microtime(true) + self::REPLAY_TIMEOUT;
+        do {
+            $value = $this->admin->describeConfigs([ConfigResource::topic($topic)])[$key]->get($option)?->value;
+            if ($until === null || $value === $until) {
+                return $value;
+            }
+            usleep(50_000);
+        } while (microtime(true) < $deadline);
 
-        return $this->admin->describeConfigs([ConfigResource::topic($topic)])[$key]->get($option)?->value;
+        return $value;
     }
 }
