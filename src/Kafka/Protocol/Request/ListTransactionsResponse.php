@@ -17,10 +17,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\ListTransactionsResponseTransactionState;
 
 /**
- * ListTransactions response object, version 0 (key 66, Kafka 3.0)
+ * ListTransactions response object, version 1 (key 66, Kafka 3.0)
  *
  * <pre>
- *   ListTransactions Response (Version: 0) => throttle_time_ms error_code [unknown_state_filters]
+ *   ListTransactions Response (Version: 0 to 1) => throttle_time_ms error_code [unknown_state_filters]
  *                                             [transaction_states]
  *     throttle_time_ms      => INT32
  *     error_code            => INT16
@@ -37,14 +37,19 @@ use Protocol\Kafka\Protocol\Data\ListTransactionsResponseTransactionState;
  * (`TransactionState.fromName` @ 3.9.2 returned nothing for them). It is a *report*, not an error: the error code
  * stays 0, and the filter is applied with the states it did understand.
  *
- * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0)"
+ * **Version 1 (Kafka 3.8, KIP-994) writes the same bytes as version 0** - "Version 1 is the same as version 0
+ * (KIP-994)" says `ListTransactionsResponse.json` @ 3.8.1 - because the `duration_filter` of the request changed
+ * what the coordinator selects, not what it reports; {@see ListTransactionsResponseV0} is that identical frame
+ * read at the version below.
+ *
+ * @see docs/protocol/3.9.md, section "ListTransactions API (key 66, v0 and v1)"
  */
 class ListTransactionsResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc
