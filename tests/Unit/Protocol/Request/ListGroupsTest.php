@@ -19,16 +19,19 @@ use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
+use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocolV4;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequestV0;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequestV1;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequestV2;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequestV3;
+use Protocol\Kafka\Protocol\Request\ListGroupsRequestV4;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponseV0;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponseV1;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponseV2;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponseV3;
+use Protocol\Kafka\Protocol\Request\ListGroupsResponseV4;
 
 /**
  * Byte-exact tests for the ListGroups API of Kafka 0.9 (api key 16), raised to version 1 by KIP-124.
@@ -36,7 +39,7 @@ use Protocol\Kafka\Protocol\Request\ListGroupsResponseV3;
  * The request of version 1 is the request of version 0 - the bare header - and only the answer gained the leading
  * `ThrottleTimeMs`, which is why the two versions need a response class each.
  *
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
  */
 #[CoversClass(ListGroupsRequest::class)]
 #[CoversClass(ListGroupsRequestV0::class)]
@@ -46,21 +49,39 @@ use Protocol\Kafka\Protocol\Request\ListGroupsResponseV3;
 #[CoversClass(ListGroupsResponseV0::class)]
 #[CoversClass(ListGroupsResponseV1::class)]
 #[CoversClass(ListGroupsResponseV2::class)]
+#[CoversClass(ListGroupsRequestV4::class)]
+#[CoversClass(ListGroupsResponseV4::class)]
 #[CoversClass(ListGroupResponseProtocol::class)]
+#[CoversClass(ListGroupResponseProtocolV4::class)]
 final class ListGroupsTest extends TestCase
 {
     /**
-     * ListGroups request v3 (Kafka 2.4, KIP-482), the flexible frame this client sends.
+     * ListGroups request v5 (Kafka 3.8, KIP-848), the frame this client sends.
      *
-     *   Size          => 00 00 00 10 (16 bytes)
+     *   Size          => 00 00 00 12 (18 bytes)
      *   ApiKey        => 00 10 (16)
-     *   ApiVersion    => 00 03
+     *   ApiVersion    => 00 05
      *   CorrelationId => 00 00 00 01
      *   ClientId      => 00 04 "test" (never compact)
      *   TAG_BUFFER    => 00 (of the request header v2)
-     *   TAG_BUFFER    => 00 (of the body, which has no field at all)
+     *   StatesFilter  => 01 (the empty compact array of KIP-518)
+     *   TypesFilter   => 01 (the empty compact array of KIP-848)
+     *   TAG_BUFFER    => 00 (of the body)
      */
-    private const string REQUEST_HEX = '00000011'
+    private const string REQUEST_HEX = '00000012'
+        . '0010'
+        . '0005'
+        . '00000001'
+        . '0004' . '74657374'
+        . '00'
+        . '01'
+        . '01'
+        . '00';
+
+    /**
+     * The same "every group" question as a version 4 frame, which has the states filter and no types filter.
+     */
+    private const string REQUEST_V4_HEX = '00000011'
         . '0010'
         . '0004'
         . '00000001'
@@ -142,13 +163,76 @@ final class ListGroupsTest extends TestCase
 
         self::assertSame(self::REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::LIST_GROUPS, $request->getApiKey());
-        self::assertSame(4, $request->getApiVersion(), 'KIP-518 makes the version this client sends 4');
+        self::assertSame(5, $request->getApiVersion(), 'KIP-848 makes the version this client sends 5');
         self::assertSame([], $request->getStatesFilter(), 'an empty filter is every group of the coordinator');
+        self::assertSame([], $request->getTypesFilter(), 'an empty filter is every type the coordinator knows');
         self::assertSame(
-            17,
+            18,
             $request->getMessageSize(),
-            'the empty states filter is one byte more than the version 3 body of two empty tagged sections'
+            'the empty types filter is one byte more than the version 4 body'
         );
+    }
+
+    /**
+     * KIP-848 (Kafka 3.8): the types the answer is bounded to are a second compact array behind the states
+     */
+    public function testTheTypesFilterOfVersionFiveIsWrittenBehindTheStatesFilter(): void
+    {
+        $request = new ListGroupsRequest('test', 1, [], [ListGroupResponseProtocol::TYPE_CONSUMER]);
+
+        self::assertSame(
+            '0000001b' . '0010' . '0005' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '01'
+            . '02'
+            . '09' . '636f6e73756d6572'
+            . '00',
+            bin2hex((string) $request),
+            'one entry is the unsigned varint 2, and the name is its length plus one'
+        );
+        self::assertSame([ListGroupResponseProtocol::TYPE_CONSUMER], $request->getTypesFilter());
+        self::assertSame([], $request->getStatesFilter());
+    }
+
+    /**
+     * Both filters of version 5 travel in one frame, states first, and the coordinator combines them with `and`
+     */
+    public function testBothFiltersOfVersionFiveTravelInOneFrame(): void
+    {
+        $request = new ListGroupsRequest(
+            'test',
+            1,
+            ['Stable'],
+            [ListGroupResponseProtocol::TYPE_CLASSIC, ListGroupResponseProtocol::TYPE_CONSUMER]
+        );
+
+        self::assertSame(
+            '0000002a' . '0010' . '0005' . '00000001'
+            . '0004' . '74657374'
+            . '00'
+            . '02'
+            . '07' . '537461626c65'
+            . '03'
+            . '08' . '636c6173736963'
+            . '09' . '636f6e73756d6572'
+            . '00',
+            bin2hex((string) $request)
+        );
+    }
+
+    /**
+     * The version below has no types filter, so its body ends after the states of KIP-518
+     */
+    public function testTheVersionFourRequestHasNoTypesFilter(): void
+    {
+        $request = new ListGroupsRequestV4('test', 1);
+
+        self::assertSame(self::REQUEST_V4_HEX, bin2hex((string) $request));
+        self::assertSame(4, $request->getApiVersion());
+        self::assertArrayNotHasKey('typesFilter', ListGroupsRequestV4::getScheme());
+        self::assertArrayHasKey('statesFilter', ListGroupsRequestV4::getScheme());
+        self::assertArrayHasKey('typesFilter', ListGroupsRequest::getScheme());
     }
 
     /**
@@ -156,7 +240,7 @@ final class ListGroupsTest extends TestCase
      */
     public function testTheStatesFilterOfVersionFourIsWrittenAsACompactArray(): void
     {
-        $request = new ListGroupsRequest('test', 1, ['Empty', 'Stable']);
+        $request = new ListGroupsRequestV4('test', 1, ['Empty', 'Stable']);
 
         self::assertSame(
             '0000001e' . '0010' . '0004' . '00000001'
@@ -182,7 +266,7 @@ final class ListGroupsTest extends TestCase
         self::assertSame(self::REQUEST_V3_HEX, bin2hex((string) $request));
         self::assertSame(3, $request->getApiVersion());
         self::assertArrayNotHasKey('statesFilter', ListGroupsRequestV3::getScheme());
-        self::assertArrayHasKey('statesFilter', ListGroupsRequest::getScheme());
+        self::assertArrayHasKey('statesFilter', ListGroupsRequestV4::getScheme());
     }
 
     public function testTheVersionTwoRequestIsTheHeaderAndNothingElse(): void
@@ -295,7 +379,7 @@ final class ListGroupsTest extends TestCase
             . '0b' . '6f746865722d67726f75' . '09' . '636f6e73756d6572' . '06' . '456d707479' . '00'
             . '00';
 
-        $response = ListGroupsResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response = ListGroupsResponseV4::unpack(new StringStream((string) hex2bin($frame)));
 
         self::assertSame(['my-group', 'other-grou'], array_keys($response->groups));
         self::assertSame(
@@ -307,7 +391,48 @@ final class ListGroupsTest extends TestCase
             $response->groups['other-grou']->groupState,
             'the state is the very name a DescribeGroups answer reports'
         );
+        self::assertNull($response->groups['my-group']->groupType, 'the versions below 5 report no type');
         self::assertSame($frame, bin2hex((string) $response), 'the answer survives the round trip');
+    }
+
+    /**
+     * KIP-848 (Kafka 3.8): every entry of a version 5 answer ends in the type of that group
+     */
+    public function testTheVersionFiveAnswerCarriesTheTypeOfEveryGroup(): void
+    {
+        $frame = '00000053'
+            . '00000001'
+            . '00'
+            . '00000000'
+            . '0000'
+            . '03'
+            . '09' . '6d792d67726f7570' . '09' . '636f6e73756d6572' . '07' . '537461626c65'
+            . '08' . '636c6173736963' . '00'
+            . '0b' . '6f746865722d67726f75' . '09' . '636f6e73756d6572' . '06' . '456d707479'
+            . '09' . '636f6e73756d6572' . '00'
+            . '00';
+
+        $response = ListGroupsResponse::unpack(new StringStream((string) hex2bin($frame)));
+
+        self::assertSame(['my-group', 'other-grou'], array_keys($response->groups));
+        self::assertSame(
+            ListGroupResponseProtocol::TYPE_CLASSIC,
+            $response->groups['my-group']->groupType,
+            'the classic membership protocol of Kafka 0.9'
+        );
+        self::assertSame(
+            ListGroupResponseProtocol::TYPE_CONSUMER,
+            $response->groups['other-grou']->groupType,
+            'the consumer protocol of KIP-848 - the `protocol_type` of both groups is the same `consumer`'
+        );
+        self::assertSame('consumer', $response->groups['my-group']->protocolType);
+        self::assertSame(
+            DescribeGroupResponseMetadata::STATE_STABLE,
+            $response->groups['my-group']->groupState
+        );
+        self::assertSame($frame, bin2hex((string) $response), 'the answer survives the round trip');
+        self::assertArrayNotHasKey('groupType', ListGroupResponseProtocolV4::getScheme());
+        self::assertArrayHasKey('groupType', ListGroupResponseProtocol::getScheme());
     }
 
     public function testAnErrorIsReportedForTheWholeRequestWithoutGroups(): void

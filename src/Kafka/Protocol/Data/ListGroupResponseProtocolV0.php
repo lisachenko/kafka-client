@@ -23,7 +23,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * Version 4 (Kafka 2.6, KIP-518) appended the `group_state` of the group, see {@see ListGroupResponseProtocol};
  * this is the entry without it, whose {@see ListGroupResponseProtocol::$groupState} stays null.
  *
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
  */
 final class ListGroupResponseProtocolV0 extends ListGroupResponseProtocol
 {

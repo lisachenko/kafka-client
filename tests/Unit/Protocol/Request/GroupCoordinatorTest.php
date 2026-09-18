@@ -25,11 +25,13 @@ use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV0;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV1;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV2;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV3;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorRequestV4;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponse;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV0;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV1;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV2;
 use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV3;
+use Protocol\Kafka\Protocol\Request\GroupCoordinatorResponseV4;
 use UnexpectedValueException;
 
 /**
@@ -38,15 +40,17 @@ use UnexpectedValueException;
  * Version 2 (KIP-219, Kafka 2.0) is the version 1 frame with a higher api version and nothing else, so it is the
  * version this client sends and {@see GroupCoordinatorRequestV1} keeps the version 1 number for a lower broker.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
  */
 #[CoversClass(GroupCoordinatorRequest::class)]
 #[CoversClass(GroupCoordinatorRequestV0::class)]
 #[CoversClass(GroupCoordinatorRequestV1::class)]
 #[CoversClass(GroupCoordinatorRequestV2::class)]
 #[CoversClass(GroupCoordinatorRequestV3::class)]
+#[CoversClass(GroupCoordinatorRequestV4::class)]
 #[CoversClass(GroupCoordinatorResponse::class)]
 #[CoversClass(GroupCoordinatorResponseV3::class)]
+#[CoversClass(GroupCoordinatorResponseV4::class)]
 #[CoversClass(FindCoordinatorResponseCoordinator::class)]
 #[CoversClass(GroupCoordinatorResponseV0::class)]
 #[CoversClass(GroupCoordinatorResponseV1::class)]
@@ -199,6 +203,21 @@ final class GroupCoordinatorTest extends TestCase
     private const string REQUEST_V4_HEX = '0000001b'
         . '000a'
         . '0004'
+        . '00000001'
+        . '0004' . '74657374'
+        . '00'
+        . '00'
+        . '02'
+        . '09' . '6d792d67726f7570'
+        . '00';
+
+    /**
+     * The very same lookup as a version 5 frame (Kafka 3.8, KIP-890), which added no field at all: only the
+     * api version of the header separates it from the version 4 frame above.
+     */
+    private const string REQUEST_V5_HEX = '0000001b'
+        . '000a'
+        . '0005'
         . '00000001'
         . '0004' . '74657374'
         . '00'
@@ -426,11 +445,33 @@ final class GroupCoordinatorTest extends TestCase
      */
     public function testVersionFourReplacesTheSingleKeyWithABatchedArray(): void
     {
-        $request = GroupCoordinatorRequest::forKeys(['my-group'], GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP, 'test', 1);
+        $request = GroupCoordinatorRequestV4::forKeys(['my-group'], GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP, 'test', 1);
 
         self::assertSame(self::REQUEST_V4_HEX, bin2hex((string) $request));
-        self::assertSame(4, $request->getApiVersion(), 'the version this client sends');
-        self::assertTrue(GroupCoordinatorRequest::isFlexible());
+        self::assertSame(4, $request->getApiVersion());
+        self::assertTrue(GroupCoordinatorRequestV4::isFlexible());
+    }
+
+    /**
+     * Version 5 (Kafka 3.8, KIP-890) added no field to either half of the api: it is the promise of the error
+     * code 120 `TransactionAbortable`, and its frame is the version 4 frame with another number in its header
+     */
+    public function testVersionFiveIsTheVersionFourFrameWithAnotherNumberInItsHeader(): void
+    {
+        $request = GroupCoordinatorRequest::forKeys(['my-group'], GroupCoordinatorRequest::COORDINATOR_TYPE_GROUP, 'test', 1);
+
+        self::assertSame(self::REQUEST_V5_HEX, bin2hex((string) $request));
+        self::assertSame(5, $request->getApiVersion(), 'the version this client sends');
+        self::assertSame(
+            substr(self::REQUEST_V4_HEX, 16),
+            substr(self::REQUEST_V5_HEX, 16),
+            'only the api version field of the header separates the two frames'
+        );
+        self::assertSame(
+            GroupCoordinatorRequestV4::getScheme(),
+            GroupCoordinatorRequest::getScheme(),
+            'the two versions declare the very same body'
+        );
     }
 
     /**
@@ -439,8 +480,12 @@ final class GroupCoordinatorTest extends TestCase
     public function testTheSingleKeyConstructorSendsTheOneElementBatch(): void
     {
         self::assertSame(
-            self::REQUEST_V4_HEX,
+            self::REQUEST_V5_HEX,
             bin2hex((string) new GroupCoordinatorRequest('my-group', clientId: 'test', correlationId: 1))
+        );
+        self::assertSame(
+            self::REQUEST_V4_HEX,
+            bin2hex((string) new GroupCoordinatorRequestV4('my-group', clientId: 'test', correlationId: 1))
         );
     }
 
@@ -449,7 +494,7 @@ final class GroupCoordinatorTest extends TestCase
         $request = GroupCoordinatorRequest::forKeys(['my-group', 'other'], 0, 'test', 1);
 
         self::assertSame(
-            '00000021' . '000a' . '0004' . '00000001'
+            '00000021' . '000a' . '0005' . '00000001'
             . '0004' . '74657374'
             . '00'
             . '00'
@@ -467,7 +512,7 @@ final class GroupCoordinatorTest extends TestCase
         $request = GroupCoordinatorRequest::forKeys([], 0, 'test', 1);
 
         self::assertSame(
-            '00000012' . '000a' . '0004' . '00000001'
+            '00000012' . '000a' . '0005' . '00000001'
             . '0004' . '74657374'
             . '00'
             . '00'

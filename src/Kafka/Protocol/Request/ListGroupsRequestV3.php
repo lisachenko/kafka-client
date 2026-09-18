@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `group_state`; this is the version without either, whose request body is nothing but one empty tag buffer.
  *
  * @see docs/protocol/3.9.md, section "The group states of KIP-518 (Kafka 2.6)"
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
  */
 final class ListGroupsRequestV3 extends ListGroupsRequest
 {

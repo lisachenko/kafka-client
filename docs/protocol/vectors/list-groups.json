@@ -1,8 +1,8 @@
 {
     "api": "list-groups",
     "apiKey": 16,
-    "section": "ListGroups API (key 16, v0 to v4)",
-    "description": "Wire vectors of the ListGroups API (key 16, v0 to v4), replayed by tests/Compliance.",
+    "section": "ListGroups API (key 16, v0 to v5)",
+    "description": "Wire vectors of the ListGroups API (key 16, v0 to v5), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "listgroups.request.v0",
@@ -280,7 +280,7 @@
         {
             "id": "listgroups.request.v4",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequestV4",
             "version": 4,
             "source": "broker",
             "description": "ListGroups request v4 (Kafka 2.6, KIP-518): the first frame of this api with a field of its own, the `states_filter` - here one entry, `Stable`, as a compact array of compact strings. Every version below 4 has an empty body and asks for every group the broker coordinates, which is what an empty filter asks for here.",
@@ -300,7 +300,7 @@
         {
             "id": "listgroups.response.v4",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The answer: the groups of the coordinator that are in one of the named states, each with the `group_state` that version 4 appended to its entry. The container held 176 groups when this was captured and exactly one of them was `Stable`, the group of the capture itself - the filter is what makes the frame this small.",
@@ -323,7 +323,7 @@
         {
             "id": "listgroups.request.v4.unknown-state",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequestV4",
             "version": 4,
             "source": "broker",
             "description": "The same request with the state `stable` in lower case. `GroupCoordinator.handleListGroups` @ 2.8.2 compares the names with `states.contains(g.summary.state)`, a plain string comparison, so the filter is **case sensitive** and a name that is not a state is not an error.",
@@ -343,7 +343,7 @@
         {
             "id": "listgroups.response.v4.unknown-state",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponseV4",
             "version": 4,
             "source": "broker",
             "description": "The answer to it: the error code **0** and an **empty** group array - a state nothing is in and a state that does not exist are the same answer, which is why a client can not use this api to validate a state name.",
@@ -355,6 +355,381 @@
                 "throttleTimeMs": 0,
                 "errorCode": 0,
                 "groups": []
+            }
+        },
+        {
+            "id": "listgroups.request.v5",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "ListGroups request v5 (Kafka 3.8, KIP-848): the `states_filter` of KIP-518 followed by the new `types_filter`, here the one state `Stable` and the empty type array `01` - \"every type\". The filter on the states is what keeps the answer of a shared node this small; the version this client sends is 5, whatever the two filters hold.",
+            "hex": "0000002700100005000020d000126b61666b612d636c69656e742d74332d3338000207537461626c650100",
+            "fields": {
+                "messageSize": 39,
+                "apiKey": 16,
+                "apiVersion": 5,
+                "correlationId": 8400,
+                "clientId": "kafka-client-t3-38",
+                "headerTaggedFields": [],
+                "statesFilter": [
+                    "Stable"
+                ],
+                "typesFilter": []
+            }
+        },
+        {
+            "id": "listgroups.response.v5",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The answer: two groups of the same `protocol_type` `consumer` whose **`group_type`** is what tells them apart - `classic` for the group that joined with JoinGroup/SyncGroup and `consumer` for the group a ConsumerGroupHeartbeat (key 68) created. The type is the last field of every entry, behind the `group_state` of KIP-518, and it is the only thing version 5 added to the answer.",
+            "hex": "00000069000020d000000000000000031474332d33382d766563746f72732d67726f757009636f6e73756d657207537461626c6508636c6173736963001574332d33382d766563746f72732d6d6f6465726e09636f6e73756d657207537461626c6509636f6e73756d65720000",
+            "fields": {
+                "messageSize": 105,
+                "correlationId": 8400,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-38-vectors-group": {
+                        "groupId": "t3-38-vectors-group",
+                        "protocolType": "consumer",
+                        "groupState": "Stable",
+                        "groupType": "classic"
+                    },
+                    "t3-38-vectors-modern": {
+                        "groupId": "t3-38-vectors-modern",
+                        "protocolType": "consumer",
+                        "groupState": "Stable",
+                        "groupType": "consumer"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v5.consumer-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The `types_filter` alone, with the empty states array in front of it: the groups of the **KIP-848** consumer protocol of the whole coordinator, whatever state they are in.",
+            "hex": "0000002900100005000020d100126b61666b612d636c69656e742d74332d333800010209636f6e73756d657200",
+            "fields": {
+                "messageSize": 41,
+                "apiKey": 16,
+                "apiVersion": 5,
+                "correlationId": 8401,
+                "clientId": "kafka-client-t3-38",
+                "headerTaggedFields": [],
+                "statesFilter": [],
+                "typesFilter": [
+                    "consumer"
+                ]
+            }
+        },
+        {
+            "id": "listgroups.response.v5.consumer-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The one group of that type. The types filter is what makes an unfiltered listing usable again on a node that runs both protocols, and it is applied by the coordinator, not by the client.",
+            "hex": "0000003c000020d100000000000000021574332d33382d766563746f72732d6d6f6465726e09636f6e73756d657207537461626c6509636f6e73756d65720000",
+            "fields": {
+                "messageSize": 60,
+                "correlationId": 8401,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-38-vectors-modern": {
+                        "groupId": "t3-38-vectors-modern",
+                        "protocolType": "consumer",
+                        "groupState": "Stable",
+                        "groupType": "consumer"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v5.classic-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "Both filters at once, `Stable` and `classic`: the states filter of KIP-518 and the types filter of KIP-848 are combined with **and** in `GroupMetadataManager.listGroups` @ 3.9.2.",
+            "hex": "0000002f00100005000020d200126b61666b612d636c69656e742d74332d3338000207537461626c650208636c617373696300",
+            "fields": {
+                "messageSize": 47,
+                "apiKey": 16,
+                "apiVersion": 5,
+                "correlationId": 8402,
+                "clientId": "kafka-client-t3-38",
+                "headerTaggedFields": [],
+                "statesFilter": [
+                    "Stable"
+                ],
+                "typesFilter": [
+                    "classic"
+                ]
+            }
+        },
+        {
+            "id": "listgroups.response.v5.classic-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The classic group alone - the KIP-848 group of the same state is filtered out by the type.",
+            "hex": "0000003a000020d200000000000000021474332d33382d766563746f72732d67726f757009636f6e73756d657207537461626c6508636c61737369630000",
+            "fields": {
+                "messageSize": 58,
+                "correlationId": 8402,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-38-vectors-group": {
+                        "groupId": "t3-38-vectors-group",
+                        "protocolType": "consumer",
+                        "groupState": "Stable",
+                        "groupType": "classic"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v5.both-types",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The same states filter with **two** types, the compact count `03` in front of the two compact names: the filter is a set, and naming every type the node knows is the same question as naming none.",
+            "hex": "0000003800100005000020d300126b61666b612d636c69656e742d74332d3338000207537461626c650308636c617373696309636f6e73756d657200",
+            "fields": {
+                "messageSize": 56,
+                "apiKey": 16,
+                "apiVersion": 5,
+                "correlationId": 8403,
+                "clientId": "kafka-client-t3-38",
+                "headerTaggedFields": [],
+                "statesFilter": [
+                    "Stable"
+                ],
+                "typesFilter": [
+                    "classic",
+                    "consumer"
+                ]
+            }
+        },
+        {
+            "id": "listgroups.response.v5.both-types",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "Both groups again, in the order the coordinator walks its groups - the answer of the unfiltered types is reproduced by the filter that names them all.",
+            "hex": "00000069000020d300000000000000031474332d33382d766563746f72732d67726f757009636f6e73756d657207537461626c6508636c6173736963001574332d33382d766563746f72732d6d6f6465726e09636f6e73756d657207537461626c6509636f6e73756d65720000",
+            "fields": {
+                "messageSize": 105,
+                "correlationId": 8403,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-38-vectors-group": {
+                        "groupId": "t3-38-vectors-group",
+                        "protocolType": "consumer",
+                        "groupState": "Stable",
+                        "groupType": "classic"
+                    },
+                    "t3-38-vectors-modern": {
+                        "groupId": "t3-38-vectors-modern",
+                        "protocolType": "consumer",
+                        "groupState": "Stable",
+                        "groupType": "consumer"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v5.upper-case-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The type `CONSUMER` in upper case. Unlike the states filter, which is a plain string comparison, the types filter is **parsed**: `Group.GroupType.parse()` @ 3.9.2 lower-cases the name before it looks the enum up.",
+            "hex": "0000002900100005000020d400126b61666b612d636c69656e742d74332d333800010209434f4e53554d455200",
+            "fields": {
+                "messageSize": 41,
+                "apiKey": 16,
+                "apiVersion": 5,
+                "correlationId": 8404,
+                "clientId": "kafka-client-t3-38",
+                "headerTaggedFields": [],
+                "statesFilter": [],
+                "typesFilter": [
+                    "CONSUMER"
+                ]
+            }
+        },
+        {
+            "id": "listgroups.response.v5.upper-case-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The KIP-848 group again: the filter matched. The `group_type` of the entry is still the lower-case `consumer` the enum prints - the case of the request never reaches the answer.",
+            "hex": "0000003c000020d400000000000000021574332d33382d766563746f72732d6d6f6465726e09636f6e73756d657207537461626c6509636f6e73756d65720000",
+            "fields": {
+                "messageSize": 60,
+                "correlationId": 8404,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-38-vectors-modern": {
+                        "groupId": "t3-38-vectors-modern",
+                        "protocolType": "consumer",
+                        "groupState": "Stable",
+                        "groupType": "consumer"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v5.unknown-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "A type the enum does not define. `Group.GroupType` @ 3.9.2 is `consumer`, `classic`, `share` and `unknown`, and `parse()` maps everything else - a misspelling, an empty string, a type of a later release - to `UNKNOWN`.",
+            "hex": "0000002800100005000020d500126b61666b612d636c69656e742d74332d33380001020873747265616d7300",
+            "fields": {
+                "messageSize": 40,
+                "apiKey": 16,
+                "apiVersion": 5,
+                "correlationId": 8405,
+                "clientId": "kafka-client-t3-38",
+                "headerTaggedFields": [],
+                "statesFilter": [],
+                "typesFilter": [
+                    "streams"
+                ]
+            }
+        },
+        {
+            "id": "listgroups.response.v5.unknown-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The error code **0** and an **empty** group array: `UNKNOWN` is a type no group ever has, so an unknown type is a filter nothing matches and never an error. A client can not use this api to validate a type name, exactly as it can not use it to validate a state name.",
+            "hex": "0000000d000020d5000000000000000100",
+            "fields": {
+                "messageSize": 13,
+                "correlationId": 8405,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": []
+            }
+        },
+        {
+            "id": "listgroups.request.v4.without-the-type",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequestV4",
+            "version": 4,
+            "source": "broker",
+            "description": "The very same question as `listgroups.request.v5` at **version 4**, on the same node: the body ends after the states filter, because the `types_filter` is not on the wire of this version.",
+            "hex": "0000002600100004000020d600126b61666b612d636c69656e742d74332d3338000207537461626c6500",
+            "fields": {
+                "messageSize": 38,
+                "apiKey": 16,
+                "apiVersion": 4,
+                "correlationId": 8406,
+                "clientId": "kafka-client-t3-38",
+                "headerTaggedFields": [],
+                "statesFilter": [
+                    "Stable"
+                ]
+            }
+        },
+        {
+            "id": "listgroups.response.v4.without-the-type",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponseV4",
+            "version": 4,
+            "source": "broker",
+            "description": "The same two groups without a `group_type` anywhere - the cheapest proof of what version 5 added. A client that speaks version 4 sees two groups of the protocol type `consumer` and can not tell the classic one from the KIP-848 one at all.",
+            "hex": "00000058000020d600000000000000031474332d33382d766563746f72732d67726f757009636f6e73756d657207537461626c65001574332d33382d766563746f72732d6d6f6465726e09636f6e73756d657207537461626c650000",
+            "fields": {
+                "messageSize": 88,
+                "correlationId": 8406,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-38-vectors-group": {
+                        "groupId": "t3-38-vectors-group",
+                        "protocolType": "consumer",
+                        "groupState": "Stable"
+                    },
+                    "t3-38-vectors-modern": {
+                        "groupId": "t3-38-vectors-modern",
+                        "protocolType": "consumer",
+                        "groupState": "Stable"
+                    }
+                }
+            }
+        },
+        {
+            "id": "listgroups.request.v5.empty-group",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsRequest",
+            "version": 5,
+            "source": "broker",
+            "description": "The states filter `Empty` and the types filter `consumer` together, sent once the member of the KIP-848 group has left with the member epoch -1.",
+            "hex": "0000002f00100005000020d800126b61666b612d636c69656e742d74332d3338000206456d7074790209636f6e73756d657200",
+            "fields": {
+                "messageSize": 47,
+                "apiKey": 16,
+                "apiVersion": 5,
+                "correlationId": 8408,
+                "clientId": "kafka-client-t3-38",
+                "headerTaggedFields": [],
+                "statesFilter": [
+                    "Empty"
+                ],
+                "typesFilter": [
+                    "consumer"
+                ]
+            }
+        },
+        {
+            "id": "listgroups.response.v5.empty-group",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ListGroupsResponse",
+            "version": 5,
+            "source": "broker",
+            "description": "The group is still listed, now in the state `Empty` - it outlives its last member as long as its committed offsets do - and its **type is still `consumer`**: the type is a property of the group and not of its membership, so an empty group of the new protocol stays a `consumer` group until the coordinator forgets it.",
+            "hex": "0000003b000020d800000000000000021574332d33382d766563746f72732d6d6f6465726e09636f6e73756d657206456d70747909636f6e73756d65720000",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 8408,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "groups": {
+                    "t3-38-vectors-modern": {
+                        "groupId": "t3-38-vectors-modern",
+                        "protocolType": "consumer",
+                        "groupState": "Empty",
+                        "groupType": "consumer"
+                    }
+                }
             }
         }
     ]
