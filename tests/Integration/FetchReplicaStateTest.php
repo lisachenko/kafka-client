@@ -62,7 +62,7 @@ use Protocol\Kafka\Protocol\Request\ProduceResponse;
  * Every topic of this class is named `t2-35-…`, so that it can run next to the other suites on the shared node.
  *
  * @see docs/protocol/3.9.md, sections "The tiered-storage error of KIP-405 (v14)", "The replica state of KIP-903
- *      (v15)" and "Fetch API (key 1, v0 to v16)"
+ *      (v15)" and "Fetch API (key 1, v0 to v17)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -362,10 +362,11 @@ final class FetchReplicaStateTest extends IntegrationTestCase
         $client  = new Client($this->cluster(), $this->configuration());
         $fetched = $client->fetchPartitions([$this->topic => [self::PARTITION => 0]], 250);
 
-        // Kafka 3.7 raised the version this client sends to 16 (KIP-951), which is the version 15 frame of this
-        // test with another number in its header; `FetchRequestV15` keeps the version the class measures
+        // Kafka 3.7 raised the version this client sends to 16 (KIP-951) and Kafka 3.9 to 17 (KIP-853), both
+        // of them the version 15 frame of this test with another number in its header; `FetchRequestV15`
+        // keeps the version the class measures
         self::assertSame(15, FetchRequestV15::VERSION);
-        self::assertSame(16, FetchRequest::VERSION);
+        self::assertSame(17, FetchRequest::VERSION);
         self::assertSame(
             self::RECORDS,
             array_map(

@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `LogStartOffset` that version 5 inserted between the two does not exist here, so this class only lowers the
  * version constant that {@see FetchResponse::getScheme()} and {@see FetchResponse::topicClass()} follow.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v16)"
+ * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v17)"
  */
 final class FetchResponseV4 extends FetchResponse
 {

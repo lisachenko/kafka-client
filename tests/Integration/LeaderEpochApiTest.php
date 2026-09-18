@@ -71,7 +71,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * version of each api does not have.
  *
  * @see docs/protocol/3.9.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v12)" and
- *      "Offsets API (key 2, v0 to v8), a.k.a. ListOffset"
+ *      "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchRequestTopicPartition::class)]
@@ -265,7 +265,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         self::assertSame(4, OffsetsRequestV4::VERSION, 'the version Kafka 2.1 added');
         self::assertSame(5, OffsetsRequestV5::VERSION, 'the version Kafka 2.2 added');
         self::assertSame(6, OffsetsRequestV6::VERSION, 'the flexible version Kafka 2.8 added');
-        self::assertSame(8, OffsetsRequest::VERSION, 'and the client sends the version Kafka 3.5 added');
+        self::assertSame(9, OffsetsRequest::VERSION, 'and the client sends the version Kafka 3.9 added');
 
         $partitionFour = $four->topics[$this->topic]->partitions[0];
         $partitionFive = $five->topics[$this->topic]->partitions[0];
@@ -382,7 +382,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             $flexible,
             'the empty compact rack, and the tag buffer of the body behind it'
         );
-        self::assertSame(16, FetchRequest::VERSION, 'the version the leader discovery of KIP-951 reached');
+        self::assertSame(17, FetchRequest::VERSION, 'the version the directory id of KIP-853 reached');
         self::assertSame(11, FetchRequestV11::VERSION, 'the version the Kafka 2.3 part of this line sent');
         self::assertSame(10, FetchRequestV10::VERSION, 'and the version the Kafka 2.1 part sent');
     }

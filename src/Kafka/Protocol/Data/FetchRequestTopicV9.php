@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * partition entry, i.e. the entry without the `last_fetched_epoch` that version 12 (Kafka 2.7, KIP-595) added,
  * see {@see FetchRequestTopic}.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v16)"
+ * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v17)"
  */
 final class FetchRequestTopicV9 extends FetchRequestTopic
 {
