@@ -34,9 +34,10 @@ use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
  * Byte-exact tests for the two apis Kafka 2.8 added to the admin surface: DescribeCluster (key 60, KIP-700) and
  * DescribeProducers (key 61, KIP-664).
  *
- * Both are flexible from their version 0. The first was the **smallest request of this protocol** until Kafka 3.7
- * gave ListClientMetricsResources (74) an empty body - a single boolean - and the second is the producer state of
- * a log made visible, which is the only place in this protocol where a producer epoch is an `int32`. The frames
+ * Both are flexible from their version 0. The body of the first is a **single boolean**, which was the shortest
+ * of this protocol until Kafka 3.7 gave ListClientMetricsResources (74) none at all, and the second is the
+ * producer state of a log made visible, which is the only place in this protocol where a producer epoch is an
+ * `int32`. The frames
  * below are the version 0 ones, i.e. {@see DescribeClusterRequestV0} and {@see DescribeClusterResponseV0}; the
  * `endpoint_type` that KIP-919 added to the version 1 is {@see ClientMetricsAndEndpointTypeTest}.
  *

@@ -305,7 +305,7 @@ final class ClientMetricsAndEndpointTypeTest extends TestCase
     }
 
     /**
-     * The answer of a push is the smallest of this protocol
+     * The answer of a push is a throttle time and an error code, and nothing else
      */
     public function testThePushAnswerIsAThrottleTimeAndAnErrorCode(): void
     {

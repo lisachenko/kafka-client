@@ -36,7 +36,7 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\PushTelemetryResponse",
             "version": 0,
             "source": "broker",
-            "description": "The **smallest answer of this protocol**: a throttle time, the code 0 and the two tag buffers, twelve bytes behind the size field. The node accepts the push although no receiver plugin is configured - `ClientMetricsManager.processPushTelemetryRequest` @ 3.9.2 only calls the plugin when the blob is non-empty, and an empty plugin list exports nothing - so 0 here means \"taken\", not \"stored\".",
+            "description": "**A throttle time, the code 0 and the two tag buffers**, twelve bytes behind the size field - among the shortest answers this protocol has. The node accepts the push although no receiver plugin is configured - `ClientMetricsManager.processPushTelemetryRequest` @ 3.9.2 only calls the plugin when the blob is non-empty, and an empty plugin list exports nothing - so 0 here means \"taken\", not \"stored\".",
             "hex": "0000000c00000e920000000000000000",
             "fields": {
                 "messageSize": 12,

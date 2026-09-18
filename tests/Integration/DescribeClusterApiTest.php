@@ -201,7 +201,7 @@ final class DescribeClusterApiTest extends IntegrationTestCase
     }
 
     /**
-     * The request was the smallest of this protocol: the two frames differ in exactly one byte
+     * The acl flag is the only field of the version 0 body: the two frames differ in exactly one byte
      */
     public function testTheTwoRequestsDifferInOneByte(): void
     {

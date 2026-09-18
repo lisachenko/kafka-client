@@ -23,10 +23,12 @@ use Protocol\Kafka\Protocol\ApiKeys;
  *     (no fields at all)
  * </pre>
  *
- * **The only request of this protocol with an empty body.** `ListClientMetricsResourcesRequest.json` @ 3.7.2
- * declares `"fields": []`, so the whole frame is the request header v2 and the tag buffer that every flexible
- * structure ends in - the question is the api key itself. DescribeCluster v0 used to be the smallest request
- * ({@see DescribeClusterRequestV0}) with its single boolean; this one is smaller.
+ * **The request has no body at all.** `ListClientMetricsResourcesRequest.json` @ 3.7.2 declares `"fields": []`,
+ * so the whole frame is the request header v2 and the tag buffer that every flexible structure ends in - the
+ * question is the api key itself. Two older apis have empty-bodied *versions* - ApiVersions v0 to v2 and
+ * ListGroups v0 to v3, both below their first flexible version - and both grew fields later; this is a flexible
+ * frame that carries nothing but its two tag buffers, one byte less than the single boolean of
+ * {@see DescribeClusterRequestV0}.
  *
  * It answers the **names** of the `client-metrics` configuration resources of the cluster, i.e. the
  * subscriptions an operator wrote with `kafka-configs.sh --entity-type client-metrics`, which is what

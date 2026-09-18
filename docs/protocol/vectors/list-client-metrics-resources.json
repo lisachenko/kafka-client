@@ -10,7 +10,7 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\ListClientMetricsResourcesRequest",
             "version": 0,
             "source": "broker",
-            "description": "ListClientMetricsResources request v0 (Kafka 3.7, KIP-714), the **only request of this protocol with an empty body**: the request header v2 and the tag buffer of the body, and nothing else at all.",
+            "description": "ListClientMetricsResources request v0 (Kafka 3.7, KIP-714), whose body is **empty**: the request header v2 and the tag buffer of the body, and nothing else at all.",
             "hex": "0000001e004a000000000e7e00126b61666b612d636c69656e742d74312d33370000",
             "fields": {
                 "messageSize": 30,

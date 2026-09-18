@@ -117,7 +117,7 @@ final class ClientMetricsApiTest extends IntegrationTestCase
 
         self::assertSame(KafkaException::NO_ERROR, $empty->errorCode, 'an empty blob never reaches a plugin');
         self::assertSame(0, $empty->throttleTimeMs);
-        self::assertSame(12, $empty->getMessageSize(), 'the smallest answer of this protocol');
+        self::assertSame(12, $empty->getMessageSize(), 'a throttle time, an error code and the two tag buffers');
 
         $second = $this->subscribe(7106);
         $blob   = $this->push(7107, $second->clientInstanceId, $second->subscriptionId, "\x0a\x00");

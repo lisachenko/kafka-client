@@ -24,9 +24,10 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *     error_code       => INT16
  * </pre>
  *
- * The **smallest answer of this protocol**: a throttle time, an error code and the two tag buffers of a flexible
- * frame - eleven bytes behind the size field. The broker says nothing about what it did with the metrics, only
- * whether it took them; everything else a client needs is in the subscription it already has.
+ * **A throttle time, an error code and the two tag buffers of a flexible frame**: twelve bytes behind the size
+ * field, and among the shortest answers this protocol has (a DescribeQuorum that names no topic is nine). The
+ * broker says nothing about what it did with the metrics, only whether it took them; everything else a client
+ * needs is in the subscription it already has.
  *
  * @see docs/protocol/3.9.md, section "PushTelemetry API (key 72, v0)"
  */
