@@ -152,11 +152,20 @@ final class MessageSetProduceFetchTest extends IntegrationTestCase
     {
         $baseOffset = $this->produce(MessageSet::fromRecords([new Record(str_repeat('x', 4096))]));
 
-        // MaxBytes below the size of the first message: the broker answers with a message it cut short
+        // MaxBytes below the size of the first message, on a Fetch v1: `hardMaxBytesLimit` is still true for a
+        // version below 3, so `ReplicaManager.readFromLog` @ 3.9.2 keeps the incomplete first entry of the log
+        // instead of replacing it with an empty set - but the log is a **record batch v2** on this node and the
+        // answer of a v1 fetch has to be down-converted. `LazyDownConversionRecords` converts whole batches only,
+        // and the slice holds no whole batch, so what reaches the client is an **empty** record set. A 2.8.2
+        // broker handed the truncated bytes of that one message out instead.
         $partition = $this->fetchPartition($baseOffset, 64);
 
         self::assertSame([], $partition->getRecords()->getRecords(), 'the partial message is dropped');
-        self::assertTrue($partition->getRecords()->hasPartialTrailingRecord());
+        self::assertSame('', $partition->messageSet, 'nothing at all comes back, not even a truncated message');
+        self::assertFalse($partition->getRecords()->hasPartialTrailingRecord());
+
+        // The state the client has to recognise is unchanged: no complete message below a high water mark that
+        // has one, i.e. "raise max.partition.fetch.bytes", not "fetch the same offset again"
         self::assertTrue($partition->isSingleMessageTooLarge($baseOffset));
         self::assertCount(1, $this->fetch($baseOffset));
     }
