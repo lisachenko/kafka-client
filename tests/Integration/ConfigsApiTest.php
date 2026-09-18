@@ -438,7 +438,7 @@ final class ConfigsApiTest extends IntegrationTestCase
         self::assertSame([$resource->key() => null], $first);
         self::assertEqualsCanonicalizing(
             ['retention.ms' => '3600000', 'cleanup.policy' => 'compact'],
-            $this->ownValues($resource),
+            $this->ownValuesUntil($resource, ['retention.ms' => '3600000', 'cleanup.policy' => 'compact']),
             'both options are the topic\'s own now'
         );
 
@@ -446,11 +446,11 @@ final class ConfigsApiTest extends IntegrationTestCase
         // REPLACES the whole configuration of the topic instead of patching it
         $second = $this->admin->alterConfigs([$resource->key() => ['retention.ms' => '7200000']]);
         self::assertSame([$resource->key() => null], $second);
-        self::assertSame(['retention.ms' => '7200000'], $this->ownValues($resource));
+        self::assertSame(['retention.ms' => '7200000'], $this->ownValuesUntil($resource, ['retention.ms' => '7200000']));
 
         // And an empty entry list resets every option of the topic
         self::assertSame([$resource->key() => null], $this->admin->alterConfigs([$resource->key() => []]));
-        self::assertSame([], $this->ownValues($resource));
+        self::assertSame([], $this->ownValuesUntil($resource, []));
         self::assertSame(
             self::STATIC_BROKER_TOPIC_OPTIONS,
             $this->nonDefaults($resource),
@@ -822,6 +822,29 @@ final class ConfigsApiTest extends IntegrationTestCase
     }
 
     /**
+     * Returns the options of a resource that are its own once they are the expected ones, or whatever they are
+     * when the wait is over: a write goes through the controller and reaches the brokers only when its record is
+     * replayed, so a read that follows a write has to give the node that moment
+     *
+     * @param array<string, string|null> $expected
+     *
+     * @return array<string, string|null>
+     */
+    private function ownValuesUntil(ConfigResource $resource, array $expected): array
+    {
+        $deadline = microtime(true) + self::DYNAMIC_OPTION_TIMEOUT;
+        do {
+            $own = $this->ownValues($resource);
+            if (count($own) === count($expected) && array_diff_assoc($own, $expected) === []) {
+                return $own;
+            }
+            usleep(50_000);
+        } while (microtime(true) < $deadline);
+
+        return $own;
+    }
+
+    /**
      * Creates a topic of one partition and remembers it for the cleanup
      *
      * @param array<string, string> $configs Topic-level options of the new topic
@@ -944,7 +967,21 @@ final class ConfigsApiTest extends IntegrationTestCase
             $this->admin->createTopics([new NewTopic($topic, 1, 1, configs: $configs)])
         );
 
-        return $topic;
+        // A KRaft node answers the topic it has just created with 3 until the brokers have replayed its records:
+        // the first DescribeConfigs of the test must not be the one that meets that moment
+        $deadline = microtime(true) + 5.0;
+        while (true) {
+            try {
+                $this->admin->describeConfigs([ConfigResource::topic($topic)]);
+
+                return $topic;
+            } catch (UnknownTopicOrPartitionException $notYet) {
+                if (microtime(true) > $deadline) {
+                    throw $notYet;
+                }
+                usleep(50_000);
+            }
+        }
     }
 
     /**
