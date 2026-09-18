@@ -54,7 +54,6 @@ use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
-use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Tests\Compliance\VectorFile;
 use Protocol\Kafka\Tests\Fixture\BrokerConnection;
@@ -337,22 +336,17 @@ final class AdminClientTest extends TestCase
 
     public function testListGroupOffsetsAcceptsAPartitionThatWasNeverCommitted(): void
     {
-        // Version 0 reads from ZooKeeper: any broker answers it, and a partition without a committed offset comes
-        // back with the offset -1 and the error code 3
-        $broker = $this->scriptBroker(self::vector('offset-fetch', 'offsetfetch.response.v0.no-committed-offset'));
-        $admin  = $this->adminClient([ClientConfig::OFFSETS_STORAGE => ClientConfig::OFFSETS_STORAGE_ZOOKEEPER]);
-
-        $topics = $admin->listGroupOffsets(self::GROUP, [self::TOPIC => [1]]);
-
-        self::assertSame(-1, $topics[self::TOPIC]->partitions[1]->offset);
-        self::assertSame(3, $topics[self::TOPIC]->partitions[1]->errorCode);
-        self::assertSame(
-            [self::requestFrame(
-                new OffsetFetchRequestV0(self::GROUP, [self::TOPIC => [1]], 't10', $broker->getReceivedCorrelationIds()[0])
-            )],
-            $broker->getReceivedFrames(),
-            'the ZooKeeper-backed version 0 needs no coordinator lookup'
+        // A partition the group never committed is not an error: the coordinator answers it with the offset -1 and
+        // the error code 0, and the entry is handed back as it is
+        $this->scriptBroker(
+            self::vector('group-coordinator', 'groupcoordinator.response.v3'),
+            ResponseFrame::offsetFetch(0, [self::VECTOR_TOPIC => [1 => [0, -1, '']]])
         );
+
+        $topics = $this->adminClient()->listGroupOffsets(self::GROUP, [self::VECTOR_TOPIC => [1]]);
+
+        self::assertSame(-1, $topics[self::VECTOR_TOPIC]->partitions[1]->offset);
+        self::assertSame(0, $topics[self::VECTOR_TOPIC]->partitions[1]->errorCode);
     }
 
     public function testFindCoordinatorResolvesTheNodeOfTheCluster(): void

@@ -101,10 +101,10 @@ use Throwable;
  * `max.poll.interval.ms` therefore buys here is the time the *rest* of the group is willing to wait for this member
  * in a rebalance - and the requirement that `request.timeout.ms` exceed it, because a JoinGroup blocks that long.
  *
- * Where the committed offsets are kept is chosen with `offsets.storage`: `kafka` commits them to the coordinator
- * of the group with the version 2 of the OffsetCommit api, which carries the member id and the generation of this
- * consumer, `zookeeper` uses the version 0, which is what the consumers of Kafka 0.8.1 did. The two storages are
- * independent, so a group has one position per storage.
+ * The committed offsets are kept by the coordinator of the group, in the `__consumer_offsets` topic of the
+ * cluster: this consumer commits them with the OffsetCommit api, which carries the member id and the generation of
+ * this consumer. The ZooKeeper storage of Kafka 0.8.1 (the version 0 of the offset apis) is gone from this line -
+ * a KRaft node answers both v0 requests with the error code 35.
  *
  * The records are fetched with **Fetch v7**, and every broker this consumer reads from holds an **incremental
  * fetch session** for it (KIP-227, Kafka 1.1, {@see \Protocol\Kafka\Consumer\Internals\FetchSessionHandler}): the
@@ -374,8 +374,7 @@ class KafkaConsumer
     /**
      * Get the last committed offset of every given topic-partition, whether this consumer committed it or not.
      *
-     * A topic-partition that the group has never committed comes back with the offset -1, whichever storage the
-     * `offsets.storage` option selects.
+     * A topic-partition that the group has never committed comes back with the offset -1 and the error code 0.
      *
      * The partitions are always named explicitly here, as they are in the Java consumer. "Every topic the group
      * committed" is what the nullable topic array of OffsetFetch v2 asks for, and it is an administrative question

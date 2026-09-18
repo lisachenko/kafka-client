@@ -52,6 +52,17 @@ final class ConsumerProtocolTest extends IntegrationTestCase
     private const int SESSION_TIMEOUT_MS = 6000;
 
     /**
+     * How long a JoinGroup that opens the rebalance of a fresh group may take, in seconds
+     *
+     * The coordinator holds the first join of an empty group back for `group.initial.rebalance.delay.ms` so that
+     * the members that follow join the same generation (KIP-134). The KRaft node of this line starts from
+     * `config/kraft/server.properties`, which does not set the option, so the default of **3000 ms** applies - the
+     * `config/server.properties` of a ZooKeeper broker shipped `group.initial.rebalance.delay.ms=0` and answered
+     * the same join at once. The two seconds {@see RawApiProbe} waits by default are therefore not enough here.
+     */
+    private const float JOIN_TIMEOUT = 15.0;
+
+    /**
      * Topic that this test class subscribes to, with a unique name so that other suites do not disturb it
      */
     private static string $topic = '';
@@ -170,7 +181,7 @@ final class ConsumerProtocolTest extends IntegrationTestCase
             . RawApiProbe::string($protocolName)
             . RawApiProbe::bytes($subscription->pack());
 
-        $reader = self::reader($probe->send(ApiKeys::JOIN_GROUP, 0, $body, 1));
+        $reader = self::reader($probe->send(ApiKeys::JOIN_GROUP, 0, $body, 1, RawApiProbe::HEADER_V1, self::JOIN_TIMEOUT));
 
         $response = [
             'errorCode'     => $reader('int16'),

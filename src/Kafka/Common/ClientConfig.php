@@ -61,7 +61,6 @@ class ClientConfig
         ClientConfig::RECONNECT_BACKOFF_MS      => 50,
         ClientConfig::RETRY_BACKOFF_MS          => 100,
         ClientConfig::RETRIES                   => 2,
-        ClientConfig::OFFSETS_STORAGE           => 'kafka',
         ClientConfig::THROTTLE_WAIT             => true,
     ];
 
@@ -85,25 +84,6 @@ class ClientConfig
      * fail the request if retries are exhausted.
      */
     public const REQUEST_TIMEOUT_MS = 'request.timeout.ms';
-
-    /**
-     * Where the consumer offsets are stored: in Kafka itself or in ZooKeeper.
-     *
-     * Kafka 0.8.2 introduced Kafka-based offset storage (OffsetCommit/OffsetFetch v1) while keeping the ZooKeeper
-     * storage of 0.8.1 available through v0 of the same requests. This option selects the storage that the client
-     * uses; only the `kafka` value is meaningful for a broker-only client.
-     */
-    public const OFFSETS_STORAGE = 'offsets.storage';
-
-    /**
-     * Offsets are committed to and fetched from the offset coordinator (OffsetCommit/OffsetFetch v1)
-     */
-    public const OFFSETS_STORAGE_KAFKA = 'kafka';
-
-    /**
-     * Offsets are committed to and fetched from ZooKeeper (OffsetCommit/OffsetFetch v0)
-     */
-    public const OFFSETS_STORAGE_ZOOKEEPER = 'zookeeper';
 
     /**
      * Should client use persistent connection to the cluster or not

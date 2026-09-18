@@ -107,16 +107,12 @@ use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsRequest;
 use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
-use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
-use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetDeleteRequest;
 use Protocol\Kafka\Protocol\Request\OffsetDeleteResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
-use Protocol\Kafka\Protocol\Request\OffsetFetchRequestV0;
 use Protocol\Kafka\Protocol\Request\OffsetFetchResponse;
-use Protocol\Kafka\Protocol\Request\OffsetFetchResponseV0;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochRequest;
 use Protocol\Kafka\Protocol\Request\OffsetForLeaderEpochResponse;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
@@ -150,8 +146,7 @@ use Throwable;
  * Everything else is unchanged: Produce carries a record batch of the message format v2 and the transactional id of
  * its producer and its answer reports the `LogAppendTime` and the `LogStartOffset` of every partition, Fetch asks
  * for the log as it lies, bounds the whole answer with `fetch.max.bytes`, states the isolation level of the
- * consumer and can open an incremental fetch session, and OffsetCommit v0 is used when the offsets are stored in
- * ZooKeeper. The lower version classes of every api stay usable directly,
+ * consumer and can open an incremental fetch session. The lower version classes of every api stay usable directly,
  * for a client that has to talk to an older broker - and `message.format.version` lowers the Produce request to v2
  * by itself, because a message set of the formats v0 and v1 has no place in a version 3 or higher request.
  *
@@ -1155,9 +1150,8 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option: version 6 stores the offsets in the
-     * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group, version 0 stores
-     * them in ZooKeeper and is answered by any broker. An offset may be given as a plain integer or as an
+     * The request is the version 6 of the api: it stores the offsets in the `__consumer_offsets` topic of the
+     * cluster and has to be sent to the coordinator of the group. An offset may be given as a plain integer or as an
      * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch - and whose
      * `leaderEpoch` travels in the `committed_leader_epoch` of the v6 partition entry (KIP-320, Kafka 2.1); a
      * plain integer, or an {@see OffsetAndMetadata} without an epoch, commits
@@ -1166,8 +1160,8 @@ class Client
      * **`$retentionTimeMs` no longer reaches the wire.** It is the `retention_time` field of the versions 2 to 4,
      * and KIP-211 (Kafka 2.1) removed it from version 5 on, because the committed offsets of a group expire
      * `offsets.retention.minutes` after the **group** became empty from that release on. Pass it to
-     * {@see OffsetCommitRequestV4} directly to reach a broker that still reads it; the ZooKeeper version never had
-     * the field either. A client that is not a member of a group commits with
+     * {@see OffsetCommitRequestV4} directly to reach a broker that still reads it. A client that is not a member of
+     * a group commits with
      * {@see OffsetCommitRequest::DEFAULT_GENERATION_ID} and {@see OffsetCommitRequest::DEFAULT_MEMBER_NAME}; a member
      * of a group has to pass the generation and the member id the coordinator assigned to it, otherwise the
      * coordinator answers with 22 (IllegalGeneration) or 25 (UnknownMemberId).
@@ -1200,20 +1194,17 @@ class Client
 
         $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
-                ? new OffsetCommitRequest(
-                    $groupId,
-                    $generationId,
-                    $memberId,
-                    $retentionTimeMs,
-                    $topicPartitionOffsets,
-                    $clientId,
-                    $correlationId,
-                    $groupInstanceId
-                )
-                : new OffsetCommitRequestV0($groupId, $topicPartitionOffsets, $clientId, $correlationId),
-            // The version 3 answer opens with the throttle time of KIP-124, which a version 0 one does not have
-            $this->isOffsetStorageKafka() ? OffsetCommitResponse::class : OffsetCommitResponseV0::class,
+            fn(int $correlationId): AbstractRequest => new OffsetCommitRequest(
+                $groupId,
+                $generationId,
+                $memberId,
+                $retentionTimeMs,
+                $topicPartitionOffsets,
+                $clientId,
+                $correlationId,
+                $groupInstanceId
+            ),
+            OffsetCommitResponse::class,
             static function (OffsetCommitResponse $response) use ($groupId): void {
                 foreach ($response->topics as $topic => $topicResponse) {
                     /** @var OffsetCommitResponsePartition $partition */
@@ -1233,15 +1224,13 @@ class Client
     /**
      * Fetches the offsets for topic partition for the concrete consumer group
      *
-     * The version of the request follows the `offsets.storage` option, exactly like {@see self::commitGroupOffsets()}
-     * - `kafka` reads them out of `__consumer_offsets` with the version 4 of the api, `zookeeper` with the version 0.
-     * A topic-partition that has never been committed comes back with the offset -1: as the error code 0 from the
-     * `__consumer_offsets` topic (v1 and v2), and as the error code 3 from ZooKeeper (v0).
+     * The request goes to the coordinator of the group, exactly like {@see self::commitGroupOffsets()}, and reads
+     * the offsets out of `__consumer_offsets`. A topic-partition that has never been committed comes back with the
+     * offset -1 and the error code 0.
      *
      * `$topicPartitions` of **null** asks the coordinator for every topic-partition the group has a committed offset
      * for, which the nullable topic array of the version 2 (Kafka 0.10.2) makes possible; an **empty** array names no
-     * topic at all and is answered with an empty result. Reading all topics needs the Kafka storage: version 0 has no
-     * nullable array and refuses it with an {@see Common\Errors\UnsupportedVersionException}.
+     * topic at all and is answered with an empty result.
      *
      * @param Node                                $coordinatorNode Current offset coordinator for $groupId
      * @param string                              $groupId         Name of the group
@@ -1270,10 +1259,14 @@ class Client
 
         return $this->coordinatorRequest(
             $coordinatorNode,
-            fn(int $correlationId): AbstractRequest => $this->isOffsetStorageKafka()
-                ? new OffsetFetchRequest($groupId, $topicPartitions, $clientId, $correlationId, $requireStable)
-                : new OffsetFetchRequestV0($groupId, $topicPartitions, $clientId, $correlationId),
-            $this->isOffsetStorageKafka() ? OffsetFetchResponse::class : OffsetFetchResponseV0::class,
+            fn(int $correlationId): AbstractRequest => new OffsetFetchRequest(
+                $groupId,
+                $topicPartitions,
+                $clientId,
+                $correlationId,
+                $requireStable
+            ),
+            OffsetFetchResponse::class,
             static function (OffsetFetchResponse $response) use ($groupId): array {
                 if ($response->errorCode !== KafkaException::NO_ERROR) {
                     // Version 2 reports what is wrong with the group itself here, and answers no topic at all
@@ -1852,16 +1845,6 @@ class Client
         return strtolower(trim((string) $configured)) === ConsumerConfig::ISOLATION_LEVEL_READ_COMMITTED
             ? FetchRequest::READ_COMMITTED
             : FetchRequest::READ_UNCOMMITTED;
-    }
-
-    /**
-     * Checks whether the consumer offsets are stored in Kafka itself (OffsetCommit v4) instead of ZooKeeper (v0)
-     */
-    private function isOffsetStorageKafka(): bool
-    {
-        $storage = $this->configuration[ClientConfig::OFFSETS_STORAGE] ?? ClientConfig::OFFSETS_STORAGE_KAFKA;
-
-        return $storage === ClientConfig::OFFSETS_STORAGE_KAFKA;
     }
 
     /**

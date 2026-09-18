@@ -144,23 +144,31 @@ final class GroupStatesApiTest extends IntegrationTestCase
     }
 
     /**
-     * A name that is not a state is not an error: the coordinator compares strings and finds no match
+     * The filter is matched without regard to case or surrounding space, and a name that is no state is no error
+     *
+     * `GroupMetadataManager.listGroups` @ 3.9.2 lower-cases and trims every entry of the filter and compares it
+     * against the lower-cased state of the group, so `stable` and ` STABLE ` name the same state as `Stable`.
      */
-    public function testAStateThatIsSpelledDifferentlyIsSimplyNoMatch(): void
+    public function testTheStatesFilterIsMatchedWithoutRegardToCaseOrSpace(): void
     {
         $groupId     = $this->uniqueGroupId();
         $coordinator = $this->admin->findCoordinator($groupId);
         $this->joinGroup($groupId);
 
-        self::assertArrayNotHasKey(
+        self::assertArrayHasKey(
             $groupId,
             $this->admin->listGroups($coordinator, ['stable']),
-            'the comparison is case sensitive'
+            'the comparison is case insensitive'
+        );
+        self::assertArrayHasKey(
+            $groupId,
+            $this->admin->listGroups($coordinator, ['  STABLE  ']),
+            'and the entry of the filter is trimmed before it is compared'
         );
         self::assertSame(
             [],
             $this->admin->listGroups($coordinator, ['NotAState']),
-            'and a name no group can ever be in answers an empty list with the error code 0'
+            'a name no group can ever be in answers an empty list with the error code 0'
         );
     }
 

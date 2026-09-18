@@ -22,6 +22,7 @@ use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\GroupIdNotFoundException;
 use Protocol\Kafka\Common\Errors\GroupNotEmptyException;
 use Protocol\Kafka\Common\Errors\GroupSubscribedToTopicException;
+use Protocol\Kafka\Common\Errors\InvalidTopicException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\MemberIdRequiredException;
 use Protocol\Kafka\Common\Errors\RebalanceInProgressException;
@@ -145,9 +146,15 @@ final class OffsetDeleteApiTest extends IntegrationTestCase
     }
 
     /**
-     * Deleting the last committed offset of an `Empty` group deletes the group itself
+     * An `Empty` group outlives its last committed offset on the new group coordinator
+     *
+     * `OffsetMetadataManager.deleteOffsets` @ 3.9.2 writes the offset tombstones of the request and nothing else -
+     * it never asks how many offsets the group has left - so the group stays `Empty` until the expiration check of
+     * the coordinator (`offsets.retention.check.interval.ms`, ten minutes) removes an empty group without offsets.
+     * `GroupCoordinator.handleDeleteOffsets` @ 2.8.2 ran `cleanupGroupMetadata` on every delete instead, and the
+     * group was `Dead` and gone the moment its last offset was.
      */
-    public function testTheLastOffsetOfAnEmptyGroupTakesTheGroupWithIt(): void
+    public function testTheLastOffsetOfAnEmptyGroupLeavesTheGroupBehind(): void
     {
         $topic   = $this->topic();
         $groupId = $this->emptyGroupWithOffsets($topic, [0 => 1, 1 => 2]);
@@ -163,12 +170,20 @@ final class OffsetDeleteApiTest extends IntegrationTestCase
         $this->admin->deleteConsumerGroupOffsets($groupId, [new TopicPartition($topic, 1)]);
 
         self::assertSame(
-            DescribeGroupResponseMetadata::STATE_DEAD,
+            DescribeGroupResponseMetadata::STATE_EMPTY,
             $this->admin->describeGroup($groupId)->state,
-            'an Empty group without a single offset left is transitioned to Dead and dropped from the cache'
+            'and the group without a single offset left is Empty all the same'
         );
-        $this->expectException(GroupIdNotFoundException::class);
-        $this->admin->deleteConsumerGroupOffsets($groupId, [new TopicPartition($topic, 1)]);
+        self::assertSame(
+            [$topic => [1 => null]],
+            $this->admin->deleteConsumerGroupOffsets($groupId, [new TopicPartition($topic, 1)]),
+            'so the very same delete again is answered with the code 0, and not with a group that is not found'
+        );
+        self::assertSame(
+            [$topic => [0 => -1, 1 => -1]],
+            $this->client->fetchGroupOffsets($this->coordinator($groupId), $groupId, [$topic => [0, 1]]),
+            'both offsets are really gone'
+        );
     }
 
     /**
@@ -311,20 +326,28 @@ final class OffsetDeleteApiTest extends IntegrationTestCase
 
     /**
      * Waits until the cluster metadata knows the partitions of a freshly created topic
+     *
+     * A topic the metadata does not carry at all is an {@see InvalidTopicException} of the cluster, not an empty
+     * partition list, so the lookup is retried on it as well.
      */
     private function awaitTopic(string $topic): void
     {
         $cluster = Cluster::bootstrap($this->configuration());
         for ($attempt = 0; $attempt < 40; $attempt++) {
             $cluster->reload();
-            if ($cluster->partitionsForTopic($topic) !== []) {
-                return;
+            try {
+                if ($cluster->partitionsForTopic($topic) !== []) {
+                    return;
+                }
+            } catch (InvalidTopicException) {
+                // The creation has not reached the metadata of this broker yet
             }
             usleep(250000);
         }
 
         self::fail("The topic {$topic} did not appear in the metadata of the cluster");
     }
+
 
     /**
      * Creates a group that has committed the given offsets and has no member left
