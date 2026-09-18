@@ -206,8 +206,10 @@ final class PartitionReassignmentApiTest extends IntegrationTestCase
     {
         $topic = $this->topic();
 
+        $brokerId = array_key_first($this->admin->findAllBrokers());
+
         $cancellation = $this->admin->alterPartitionReassignments([$topic => [42 => null]]);
-        $reassignment = $this->admin->alterPartitionReassignments([$topic => [42 => [0]]]);
+        $reassignment = $this->admin->alterPartitionReassignments([$topic => [42 => [$brokerId]]]);
 
         self::assertInstanceOf(UnknownTopicOrPartitionException::class, $cancellation[$topic][42]);
         self::assertSame(
@@ -276,7 +278,21 @@ final class PartitionReassignmentApiTest extends IntegrationTestCase
         $topic = self::uniqueTopicName('t1-reassign');
         $this->admin->createTopics([new NewTopic($topic, 3, 1)]);
 
-        return self::$topic = $topic;
+        // A KRaft controller elects the leaders with the creation, so a fresh topic is either unknown - the error
+        // code **3**, never the 5 (`LeaderNotAvailable`) of a ZooKeeper broker - or complete; a reassignment of a
+        // partition it does not know yet would be that 3
+        $deadline = microtime(true) + 30.0;
+        do {
+            $metadata = $this->admin->describeTopics([$topic])[$topic] ?? null;
+            if ($metadata !== null
+                && $metadata->topicErrorCode === KafkaException::NO_ERROR
+                && count($metadata->partitions) === 3) {
+                return self::$topic = $topic;
+            }
+            usleep(200000);
+        } while (microtime(true) < $deadline);
+
+        self::fail("The topic {$topic} did not become available in time");
     }
 
     /**

@@ -21,7 +21,7 @@ use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\ElectionNotNeededException;
-use Protocol\Kafka\Common\Errors\InvalidTopicException;
+use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Errors\UnsupportedVersionException;
 use Protocol\Kafka\Common\TopicPartition;
@@ -225,15 +225,18 @@ final class ElectLeadersApiTest extends IntegrationTestCase
         self::assertSame([$topic => null], $this->admin->createTopics([new NewTopic($topic, 2, 1)]));
 
         // A fresh topic is not in the metadata cache of the node for a moment, and an election of a partition it
-        // does not know yet would be the 3 of an unknown partition. `Cluster::partitionsForTopic()` throws for a
-        // topic the metadata answer does not carry, which is exactly that moment, so the exception is part of the
-        // wait: since the io fix of #166 the create answer comes back fast enough for the first read to miss it.
+        // does not know yet would be the 3 of an unknown partition. `Cluster::partitionsForTopic()` raises for
+        // exactly that moment - an `InvalidTopicException` when the metadata answer does not carry the topic at
+        // all and the exception of the topic error code when it carries it with one - so both are part of the
+        // wait. A KRaft node answers **3** there, never the 5 (`LeaderNotAvailable`) of a ZooKeeper broker: the
+        // leader is elected with the creation, so the topic is either unknown or complete. Since the io fix of
+        // #166 the create answer comes back fast enough for the first read to miss it.
         $deadline = microtime(true) + 30.0;
         do {
             $this->cluster->reload();
             try {
                 $partitions = $this->cluster->partitionsForTopic($topic);
-            } catch (InvalidTopicException) {
+            } catch (KafkaException) {
                 $partitions = [];
             }
             if (count($partitions) === 2) {
