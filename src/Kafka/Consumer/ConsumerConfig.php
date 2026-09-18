@@ -50,6 +50,8 @@ final class ConsumerConfig extends GeneralConfig
         /* Used configs */
         ConsumerConfig::GROUP_ID                      => '',
         ConsumerConfig::GROUP_INSTANCE_ID             => null,
+        ConsumerConfig::GROUP_PROTOCOL                => ConsumerConfig::GROUP_PROTOCOL_CLASSIC,
+        ConsumerConfig::GROUP_REMOTE_ASSIGNOR         => null,
         ConsumerConfig::PARTITION_ASSIGNMENT_STRATEGY => 'range',
         // Larger than both timeouts below, as in the Java consumer of 0.10.1 and above: the coordinator answers a
         // JoinGroup only once the whole rebalance is over, which can take a full rebalance timeout
@@ -97,6 +99,54 @@ final class ConsumerConfig extends GeneralConfig
      * OffsetCommit v7 (Kafka 2.3), which are the versions this client sends.
      */
     public const string GROUP_INSTANCE_ID = 'group.instance.id';
+
+    /**
+     * Membership protocol this consumer speaks: `classic` (the default) or `consumer` (KIP-848, Kafka 3.5)
+     *
+     * `classic` is the protocol of every line below this one - JoinGroup, SyncGroup, Heartbeat and LeaveGroup,
+     * with the assignment computed by the **leader of the group**, i.e. by one of the consumers.
+     * {@see self::GROUP_PROTOCOL_CONSUMER} is the new consumer protocol of KIP-848, where those four apis are
+     * replaced by the single ConsumerGroupHeartbeat (key 68) and the assignment is computed by the **coordinator**:
+     *
+     * * the heartbeat interval is dictated by the broker (`group.consumer.heartbeat.interval.ms`) and
+     *   `heartbeat.interval.ms` of this configuration is not sent anywhere;
+     * * {@see self::PARTITION_ASSIGNMENT_STRATEGY} is not used at all - there is no client-side assignor on this
+     *   path - and {@see self::GROUP_REMOTE_ASSIGNOR} names the server-side one instead;
+     * * a rebalance is **incremental**: a member gives up only the partitions it really loses, and the listener
+     *   of {@see ConsumerRebalanceListener} sees exactly those, never the whole assignment;
+     * * the `session.timeout.ms` of the client is not sent either - `group.consumer.session.timeout.ms` of the
+     *   broker holds for every member of such a group.
+     *
+     * A group is of one protocol or the other, never of both: a classic JoinGroup for a group of the type
+     * `consumer` is refused, and a ConsumerGroupHeartbeat for a classic group as well.
+     *
+     * @see \Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator
+     * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     */
+    public const string GROUP_PROTOCOL = 'group.protocol';
+
+    /**
+     * Server-side assignor a `group.protocol=consumer` member asks the coordinator for (KIP-848)
+     *
+     * The `group.remote.assignor` of the Java consumer: the name of one of the assignors the broker offers in
+     * `group.consumer.assignors`, `uniform` and `range` on a 3.9.2 node. The default **null** names none, which
+     * lets the coordinator take the first of its list; a name the broker does not have is answered **112**
+     * `UnsupportedAssignor`, which is fatal for the configuration and never retried.
+     *
+     * Every member of a group has to ask for the same assignor, exactly as every member of a classic group has to
+     * offer the same {@see self::PARTITION_ASSIGNMENT_STRATEGY}.
+     */
+    public const string GROUP_REMOTE_ASSIGNOR = 'group.remote.assignor';
+
+    /**
+     * `group.protocol` of a consumer that speaks the classic membership protocol, the default
+     */
+    public const string GROUP_PROTOCOL_CLASSIC = 'classic';
+
+    /**
+     * `group.protocol` of a consumer that speaks the new consumer protocol of KIP-848
+     */
+    public const string GROUP_PROTOCOL_CONSUMER = 'consumer';
 
     /**
      * The partition assignment strategy that the client will use to distribute partition ownership amongst consumer

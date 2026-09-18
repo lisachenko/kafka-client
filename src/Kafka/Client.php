@@ -85,6 +85,8 @@ use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsRequest;
 use Protocol\Kafka\Protocol\Request\AlterPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
+use Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatRequest;
+use Protocol\Kafka\Protocol\Request\ConsumerGroupHeartbeatResponse;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsResponse;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
@@ -3461,5 +3463,199 @@ class Client
         }
 
         return $hint;
+    }
+
+    /**
+     * Joins - or re-joins - a group of the new consumer protocol (ApiKey 68, Kafka 3.5, KIP-848)
+     *
+     * The first heartbeat of a member **is** its join: it carries the member epoch 0, the whole subscription, a
+     * rebalance timeout and the **empty** `topic_partitions` array that
+     * {@see ConsumerGroupHeartbeatRequest::forJoin()} puts there - a null one is refused with 42 and the message
+     * "TopicPartitions must be empty when (re-)joining." The answer names the epoch the group gave this member,
+     * the interval at which the coordinator wants to hear from it again and, once the coordinator has computed
+     * one, its assignment.
+     *
+     * A member that was fenced (110, 113 or 25) joins again with this very request and a **fresh member id**.
+     *
+     * @param Node          $coordinatorNode    Coordinator of the group
+     * @param string        $groupId            Name of the group
+     * @param string        $memberId           Member id of this member, the uuid it generated for itself
+     * @param list<string>  $topics             Subscription of the member, which a join has to carry
+     * @param int           $rebalanceTimeoutMs `max.poll.interval.ms`, how long the coordinator waits for a revoke
+     * @param string|null   $instanceId         `group.instance.id` of a static member (KIP-345)
+     * @param string|null   $rackId             `client.rack` of the member (KIP-881), null for none
+     * @param string|null   $serverAssignor     Server-side assignor to ask for, null for the coordinator's choice
+     *
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     * @throws Common\Errors\UnsupportedAssignorException If the node has no assignor of that name
+     * @throws Common\Errors\UnreleasedInstanceIdException If another member still holds the instance id
+     * @throws Common\Errors\GroupMaxSizeReachedException If the group is full (`group.consumer.max.size`)
+     * @throws Common\Errors\InvalidRequestException If the frame breaks one of the rules of a (re-)join
+     *
+     * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     */
+    public function joinConsumerGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        array $topics,
+        int $rebalanceTimeoutMs,
+        ?string $instanceId = null,
+        ?string $rackId = null,
+        ?string $serverAssignor = null
+    ): ConsumerGroupHeartbeatResponse {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        return $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => ConsumerGroupHeartbeatRequest::forJoin(
+                $groupId,
+                $memberId,
+                $topics,
+                $rebalanceTimeoutMs,
+                $instanceId,
+                $rackId,
+                $serverAssignor,
+                $clientId,
+                $correlationId
+            ),
+            ConsumerGroupHeartbeatResponse::class,
+            static fn(ConsumerGroupHeartbeatResponse $response): ConsumerGroupHeartbeatResponse
+                => self::checkedHeartbeat($response, $groupId, $memberId)
+        );
+    }
+
+    /**
+     * Keeps a member of a KIP-848 group alive and acknowledges what it owns (ApiKey 68, Kafka 3.5)
+     *
+     * Everything this request does not name is *unchanged since the last heartbeat*: the two nullable arrays and
+     * the -1 of the rebalance timeout are the delta encoding of the api, and the steady state of a member is the
+     * group id, the member id, its epoch and five nulls. `$topicPartitions` is how a member **acknowledges** an
+     * assignment - it echoes the partitions it owns now, and the coordinator moves the reconciliation on.
+     *
+     * @param Node                          $coordinatorNode    Coordinator of the group
+     * @param string                        $groupId            Name of the group
+     * @param string                        $memberId           Member id of this member
+     * @param int                           $memberEpoch        Epoch of the last answer of the coordinator
+     * @param list<string>|null             $topics             New subscription, null when it did not change
+     * @param array<string, list<int>>|null $topicPartitions    Partitions the member owns now, as the raw 16 bytes
+     *        of the topic id => its partitions, null when they did not change
+     * @param int                           $rebalanceTimeoutMs New rebalance timeout, -1 when it did not change
+     * @param string|null                   $serverAssignor     New server-side assignor, null when unchanged
+     *
+     * @throws Common\Errors\FencedMemberEpochException If the coordinator fenced this member (110)
+     * @throws Common\Errors\StaleMemberEpochException If the epoch is not the one the coordinator holds (113)
+     * @throws Common\Errors\UnknownMemberIdException If the group does not know this member (25)
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     *
+     * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     */
+    public function consumerGroupHeartbeat(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        int $memberEpoch,
+        ?array $topics = null,
+        ?array $topicPartitions = null,
+        int $rebalanceTimeoutMs = ConsumerGroupHeartbeatRequest::UNCHANGED_REBALANCE_TIMEOUT_MS,
+        ?string $serverAssignor = null
+    ): ConsumerGroupHeartbeatResponse {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        return $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => ConsumerGroupHeartbeatRequest::forHeartbeat(
+                $groupId,
+                $memberId,
+                $memberEpoch,
+                $topics,
+                $topicPartitions,
+                $rebalanceTimeoutMs,
+                $serverAssignor,
+                $clientId,
+                $correlationId
+            ),
+            ConsumerGroupHeartbeatResponse::class,
+            static fn(ConsumerGroupHeartbeatResponse $response): ConsumerGroupHeartbeatResponse
+                => self::checkedHeartbeat($response, $groupId, $memberId, $memberEpoch)
+        );
+    }
+
+    /**
+     * Takes a member out of its KIP-848 group again (ApiKey 68, Kafka 3.5)
+     *
+     * The leave is the heartbeat of the epoch **-1**, and of the epoch **-2** for a static member that announces
+     * it will come back - the coordinator then keeps its instance id and its assignment instead of handing them
+     * to somebody else. There is no LeaveGroup and no `reason` of KIP-800 in this protocol: the api has no field
+     * for one.
+     *
+     * @param Node        $coordinatorNode Coordinator of the group
+     * @param string      $groupId         Name of the group
+     * @param string      $memberId        Member id of the member that leaves
+     * @param bool        $rejoining       Whether this is the leave of a static member that will rejoin (epoch -2)
+     * @param string|null $instanceId      `group.instance.id` of a static member
+     *
+     * @throws Common\Errors\GroupCoordinatorNotAvailableException
+     * @throws Common\Errors\NotCoordinatorForGroupException
+     * @throws Common\Errors\GroupAuthorizationFailedException
+     *
+     * @see docs/protocol/3.9.md, section "ConsumerGroupHeartbeat API (key 68, v0)"
+     */
+    public function leaveConsumerGroup(
+        Node $coordinatorNode,
+        string $groupId,
+        string $memberId,
+        bool $rejoining = false,
+        ?string $instanceId = null
+    ): ConsumerGroupHeartbeatResponse {
+        $clientId = (string) $this->configuration[ConsumerConfig::CLIENT_ID];
+
+        return $this->groupRequest(
+            $coordinatorNode,
+            fn(int $correlationId): AbstractRequest => ConsumerGroupHeartbeatRequest::forLeave(
+                $groupId,
+                $memberId,
+                $rejoining,
+                $instanceId,
+                $clientId,
+                $correlationId
+            ),
+            ConsumerGroupHeartbeatResponse::class,
+            static fn(ConsumerGroupHeartbeatResponse $response): ConsumerGroupHeartbeatResponse
+                => self::checkedHeartbeat($response, $groupId, $memberId)
+        );
+    }
+
+    /**
+     * Turns the error code of a ConsumerGroupHeartbeat answer into the exception of this client
+     *
+     * The api reports **everything** in its top-level error code - there is no per-entry error anywhere in the
+     * frame - and it is the one group api that also carries an `error_message`, which the coordinator fills with
+     * the sentence that says *which* rule was broken. That message travels into the context of the exception,
+     * because a 42 `InvalidRequest` without it says nothing at all.
+     */
+    private static function checkedHeartbeat(
+        ConsumerGroupHeartbeatResponse $response,
+        string $groupId,
+        string $memberId,
+        ?int $memberEpoch = null
+    ): ConsumerGroupHeartbeatResponse {
+        if ($response->errorCode === KafkaException::NO_ERROR) {
+            return $response;
+        }
+
+        $context = ['groupId' => $groupId, 'memberId' => $memberId];
+        if ($memberEpoch !== null) {
+            $context['memberEpoch'] = $memberEpoch;
+        }
+        if ($response->errorMessage !== null) {
+            $context['error'] = $response->errorMessage;
+        }
+
+        throw KafkaException::fromCode($response->errorCode, $context);
     }
 }

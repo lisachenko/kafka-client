@@ -34,7 +34,6 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponseV8;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
-use Protocol\Kafka\Tests\Fixture\ConsumerGroupHeartbeatProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
 
 /**
@@ -47,10 +46,9 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * the one the coordinator holds for it. Every code of that promise is driven here against the node, at the
  * version 9 and at the version 8 next to it.
  *
- * The KIP-848 group of the last two tests is created with a hand-built **ConsumerGroupHeartbeat** (key 68,
- * {@see ConsumerGroupHeartbeatProbe}): the api itself is the last wave of this line and has no classes yet, but
- * without a group of the new protocol neither the 113 nor the 35 of a member that sends a version below 9 can be
- * produced at all.
+ * The KIP-848 group of the last two tests is created with a **ConsumerGroupHeartbeat** (key 68,
+ * `Client::joinConsumerGroup()` of the KIP-848 wave): without a group of the new protocol neither the 113 nor the
+ * 35 of a member that sends a version below 9 can be produced at all.
  *
  * Every group and topic of this class carries the `t3-36-` prefix of the Kafka 3.6 wave and is removed again in
  * {@see self::tearDownAfterClass()}.
@@ -506,12 +504,18 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
      */
     private function joinWithAHeartbeat(string $groupId, string $memberId, string $topic): int
     {
-        $epoch = new ConsumerGroupHeartbeatProbe(self::firstBootstrapServer())
-            ->join($groupId, $memberId, [$topic], self::REBALANCE_TIMEOUT_MS, 3693);
+        $answer = $this->client()->joinConsumerGroup(
+            $this->coordinator($groupId),
+            $groupId,
+            $memberId,
+            [$topic],
+            self::REBALANCE_TIMEOUT_MS
+        );
 
-        self::assertGreaterThan(0, $epoch, 'a member that joined holds an epoch above zero');
+        self::assertSame(KafkaException::NO_ERROR, $answer->errorCode, 'The node refused the heartbeat');
+        self::assertGreaterThan(0, $answer->memberEpoch, 'a member that joined holds an epoch above zero');
 
-        return $epoch;
+        return $answer->memberEpoch;
     }
 
     /**
@@ -519,9 +523,9 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
      */
     private function leaveWithAHeartbeat(string $groupId, string $memberId): void
     {
-        $answer = new ConsumerGroupHeartbeatProbe(self::firstBootstrapServer())->leave($groupId, $memberId, 3694);
+        $answer = $this->client()->leaveConsumerGroup($this->coordinator($groupId), $groupId, $memberId);
 
-        self::assertSame(KafkaException::NO_ERROR, $answer['errorCode'], 'The node refused the leave');
+        self::assertSame(KafkaException::NO_ERROR, $answer->errorCode, 'The node refused the leave');
     }
 
     /**
@@ -536,6 +540,16 @@ final class MemberEpochCommitApiTest extends IntegrationTestCase
             ->awaitTopicWithLeaders($topic);
 
         return $topic;
+    }
+
+    private function client(): Client
+    {
+        return new Client($this->cluster(), $this->configuration());
+    }
+
+    private function coordinator(string $groupId): \Protocol\Kafka\Common\Node
+    {
+        return new CoordinatorLookup($this->cluster(), $this->configuration())->findCoordinator($groupId);
     }
 
     private function coordinatorStream(string $groupId): Stream

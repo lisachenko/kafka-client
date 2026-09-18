@@ -1,0 +1,885 @@
+{
+    "api": "consumer-group-heartbeat",
+    "apiKey": 68,
+    "section": "ConsumerGroupHeartbeat API (key 68, v0)",
+    "description": "Wire vectors of the ConsumerGroupHeartbeat API (key 68, v0, KIP-848), replayed by tests/Compliance.",
+    "vectors": [
+        {
+            "id": "consumergroupheartbeat.v0.join.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The heartbeat that CREATES the group and joins it: the member epoch 0, the member id the consumer generated for itself, a subscription of one topic, the rebalance timeout of `max.poll.interval.ms` and the EMPTY `topic_partitions` array a (re-)join has to carry - `01` in the compact encoding, where the `00` of a null array is refused. The three nullable strings in front of it are the `00` of \"not provided\".",
+            "hex": "00000075004400000000212000136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702561623632653061632d393761312d346534392d626163632d613266313136326138323430000000000000000493e0020f74332d3834382d766563746f7273000100",
+            "fields": {
+                "messageSize": 117,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8480,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 0,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": 300000,
+                "subscribedTopicNames": [
+                    "t3-848-vectors"
+                ],
+                "serverAssignor": null,
+                "topicPartitions": []
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.join.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the coordinator: the member id back (it is only filled for a join), the member epoch of the group, the `heartbeat_interval_ms` the broker dictates and an assignment that already names every partition of the topic - a one-member group is reconciled in the very frame that created it.",
+            "hex": "0000005b0000212000000000000000002561623632653061632d393761312d346534392d626163632d613266313136326138323430000000010000138801024e1809809dc642af96e83c551cef8ee404000000000000000100000002000000",
+            "fields": {
+                "messageSize": 91,
+                "correlationId": 8480,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 1,
+                "heartbeatIntervalMs": 5000,
+                "assignment": {
+                    "topicPartitions": [
+                        {
+                            "topicId": {
+                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                            },
+                            "partitions": [
+                                0,
+                                1,
+                                2
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.acknowledge.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The heartbeat that ACKNOWLEDGES the assignment: the epoch of the last answer and the `topic_partitions` the member owns now, named by the 16 raw bytes of the topic id. Everything else is null, which is the delta encoding of the api: \"unchanged since the last heartbeat\".",
+            "hex": "00000084004400000000212100136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702561623632653061632d393761312d346534392d626163632d613266313136326138323430000000010000ffffffff0000024e1809809dc642af96e83c551cef8ee4040000000000000001000000020000",
+            "fields": {
+                "messageSize": 132,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8481,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 1,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": -1,
+                "subscribedTopicNames": null,
+                "serverAssignor": null,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                        },
+                        "partitions": [
+                            0,
+                            1,
+                            2
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.acknowledge.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The coordinator has nothing to add: the `ff` of a NULL assignment, which means \"nothing changed\" and is not the same as an assignment with an empty array.",
+            "hex": "0000003b0000212100000000000000002561623632653061632d393761312d346534392d626163632d6132663131363261383234300000000100001388ff00",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 8481,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 1,
+                "heartbeatIntervalMs": 5000,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.steady.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The steady state of a KIP-848 member: the group id, the member id, its epoch and FIVE nulls, plus the -1 of a rebalance timeout that did not change. This is the whole frame a consumer sends every `group.consumer.heartbeat.interval.ms`.",
+            "hex": "00000066004400000000212200136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702561623632653061632d393761312d346534392d626163632d613266313136326138323430000000010000ffffffff00000000",
+            "fields": {
+                "messageSize": 102,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8482,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 1,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": -1,
+                "subscribedTopicNames": null,
+                "serverAssignor": null,
+                "topicPartitions": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.steady.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "And the whole answer to it: the epoch it holds, the interval again and the null assignment.",
+            "hex": "0000003b0000212200000000000000002561623632653061632d393761312d346534392d626163632d6132663131363261383234300000000100001388ff00",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 8482,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 1,
+                "heartbeatIntervalMs": 5000,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.resubscribe.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A subscription that changed travels in an ordinary heartbeat - there is nothing to re-join for in this protocol: the `subscribed_topic_names` array names both topics and every other field stays null.",
+            "hex": "0000008b004400000000212300136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702561623632653061632d393761312d346534392d626163632d613266313136326138323430000000010000ffffffff030f74332d3834382d766563746f72731674332d3834382d766563746f72732d7365636f6e64000000",
+            "fields": {
+                "messageSize": 139,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8483,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 1,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": -1,
+                "subscribedTopicNames": [
+                    "t3-848-vectors",
+                    "t3-848-vectors-second"
+                ],
+                "serverAssignor": null,
+                "topicPartitions": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.resubscribe.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the coordinator to the new subscription.",
+            "hex": "0000003b0000212300000000000000002561623632653061632d393761312d346534392d626163632d6132663131363261383234300000000200001388ff00",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 8483,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 2,
+                "heartbeatIntervalMs": 5000,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.join-with-partitions.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The same join with a `topic_partitions` array that is NOT empty: one topic id with the partition 0.",
+            "hex": "0000008b004400000000212500136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702563663763363166322d353636322d346236612d383662312d316330663338363764373362000000000000000493e0020f74332d3834382d766563746f727300024e1809809dc642af96e83c551cef8ee402000000000000",
+            "fields": {
+                "messageSize": 139,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8485,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "cf7c61f2-5662-4b6a-86b1-1c0f3867d73b",
+                "memberEpoch": 0,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": 300000,
+                "subscribedTopicNames": [
+                    "t3-848-vectors"
+                ],
+                "serverAssignor": null,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                        },
+                        "partitions": [
+                            0
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.join-with-partitions.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The coordinator refuses it with the 42 `InvalidRequest` and says why in the `error_message` the api carries.",
+            "hex": "00000047000021250000000000002a31546f706963506172746974696f6e73206d75737420626520656d707479207768656e202872652d296a6f696e696e672e000000000000000000ff00",
+            "fields": {
+                "messageSize": 71,
+                "correlationId": 8485,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42,
+                "errorMessage": "TopicPartitions must be empty when (re-)joining.",
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.join-null-partitions.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "And the same join with the NULL `topic_partitions` of the specification default, the `00` of a null compact array in place of the `01` of an empty one.",
+            "hex": "00000075004400000000212600136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702565353535346262372d626333612d343966652d386465392d333931653536653066383664000000000000000493e0020f74332d3834382d766563746f7273000000",
+            "fields": {
+                "messageSize": 117,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8486,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "e5554bb7-bc3a-49fe-8de9-391e56e0f86d",
+                "memberEpoch": 0,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": 300000,
+                "subscribedTopicNames": [
+                    "t3-848-vectors"
+                ],
+                "serverAssignor": null,
+                "topicPartitions": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.join-null-partitions.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "Which is the very same 42: \"TopicPartitions must be empty when (re-)joining.\" is what separates a null array from an empty one in this api.",
+            "hex": "00000047000021260000000000002a31546f706963506172746974696f6e73206d75737420626520656d707479207768656e202872652d296a6f696e696e672e000000000000000000ff00",
+            "fields": {
+                "messageSize": 71,
+                "correlationId": 8486,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 42,
+                "errorMessage": "TopicPartitions must be empty when (re-)joining.",
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.fenced-epoch.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A heartbeat whose member epoch is not the one the coordinator holds for this member.",
+            "hex": "00000066004400000000212700136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702561623632653061632d393761312d346534392d626163632d613266313136326138323430000000080000ffffffff00000000",
+            "fields": {
+                "messageSize": 102,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8487,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 8,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": -1,
+                "subscribedTopicNames": null,
+                "serverAssignor": null,
+                "topicPartitions": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.fenced-epoch.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The 110 `FencedMemberEpoch` with the message that names both epochs; the member has to abandon its partitions and join again with the epoch 0.",
+            "hex": "000000b8000021270000000000006ea10154686520636f6e73756d65722067726f7570206d656d6265722068617320612067726561746572206d656d6265722065706f636820283829207468616e20746865206f6e65206b6e6f776e206279207468652067726f757020636f6f7264696e61746f72202833292e20546865206d656d626572206d757374206162616e646f6e20616c6c2069747320706172746974696f6e7320616e642072656a6f696e2e000000000000000000ff00",
+            "fields": {
+                "messageSize": 184,
+                "correlationId": 8487,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 110,
+                "errorMessage": "The consumer group member has a greater member epoch (8) than the one known by the group coordinator (3). The member must abandon all its partitions and rejoin.",
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.unknown-member.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A heartbeat of a member id the group does not hold, with an epoch above zero.",
+            "hex": "0000005f004400000000212900136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75701e612d6d656d6265722d746869732d67726f75702d6e657665722d686164000000010000ffffffff00000000",
+            "fields": {
+                "messageSize": 95,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8489,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "a-member-this-group-never-had",
+                "memberEpoch": 1,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": -1,
+                "subscribedTopicNames": null,
+                "serverAssignor": null,
+                "topicPartitions": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.unknown-member.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The 25 `UnknownMemberId` and the message that names the member and the group.",
+            "hex": "0000006a0000212900000000000019544d656d62657220612d6d656d6265722d746869732d67726f75702d6e657665722d686164206973206e6f742061206d656d626572206f662067726f75702074332d3834382d766563746f72732d67726f75702e000000000000000000ff00",
+            "fields": {
+                "messageSize": 106,
+                "correlationId": 8489,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 25,
+                "errorMessage": "Member a-member-this-group-never-had is not a member of group t3-848-vectors-group.",
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.unsupported-assignor.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A join that asks for a `server_assignor` the broker does not have - `sticky` is a CLIENT-side assignor of the classic protocol, and `group.consumer.assignors` holds `uniform` and `range`.",
+            "hex": "0000007b004400000000212a00136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702566383962653562652d333933652d346136662d623130382d393965303238386635303832000000000000000493e0020f74332d3834382d766563746f727307737469636b790100",
+            "fields": {
+                "messageSize": 123,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8490,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "f89be5be-393e-4a6f-b108-99e0288f5082",
+                "memberEpoch": 0,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": 300000,
+                "subscribedTopicNames": [
+                    "t3-848-vectors"
+                ],
+                "serverAssignor": "sticky",
+                "topicPartitions": []
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.unsupported-assignor.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The 112 `UnsupportedAssignor`, which is a configuration error: no retry helps.",
+            "hex": "000000630000212a000000000000704d53657276657241737369676e6f7220737469636b79206973206e6f7420737570706f727465642e20537570706f727465642061737369676e6f72733a20756e69666f726d2c2072616e67652e000000000000000000ff00",
+            "fields": {
+                "messageSize": 99,
+                "correlationId": 8490,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 112,
+                "errorMessage": "ServerAssignor sticky is not supported. Supported assignors: uniform, range.",
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.server-assignor.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A join that names the server-side assignor `range`, one of the two the node offers in `group.consumer.assignors`; this is the `group.remote.assignor` of the consumer.",
+            "hex": "0000007a004400000000212b00136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702539353033363663632d366131322d346262312d616464372d643737383031323663353937000000000000000493e0020f74332d3834382d766563746f72730672616e67650100",
+            "fields": {
+                "messageSize": 122,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8491,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "950366cc-6a12-4bb1-add7-d7780126c597",
+                "memberEpoch": 0,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": 300000,
+                "subscribedTopicNames": [
+                    "t3-848-vectors"
+                ],
+                "serverAssignor": "range",
+                "topicPartitions": []
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.server-assignor.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the coordinator, which lets the member in and assigns it nothing yet - the first member holds every partition of the topic until it acknowledges what it lost.",
+            "hex": "0000003d0000212b00000000000000002539353033363663632d366131322d346262312d616464372d643737383031323663353937000000040000138801010000",
+            "fields": {
+                "messageSize": 61,
+                "correlationId": 8491,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "950366cc-6a12-4bb1-add7-d7780126c597",
+                "memberEpoch": 4,
+                "heartbeatIntervalMs": 5000,
+                "assignment": {
+                    "topicPartitions": []
+                }
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.revoke-acknowledge.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The acknowledgement of a REVOKE: the second member of the group made the coordinator take two partitions away from this one, and the member echoes the single partition it kept. Only now may the coordinator hand the other two over.",
+            "hex": "0000007c004400000000212d00136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702561623632653061632d393761312d346534392d626163632d613266313136326138323430000000030000ffffffff0000024e1809809dc642af96e83c551cef8ee402000000020000",
+            "fields": {
+                "messageSize": 124,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8493,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 3,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": -1,
+                "subscribedTopicNames": null,
+                "serverAssignor": null,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                        },
+                        "partitions": [
+                            2
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.revoke-acknowledge.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer that closes the revocation, with the member epoch the acknowledgement earned.",
+            "hex": "0000003b0000212d00000000000000002561623632653061632d393761312d346534392d626163632d6132663131363261383234300000000400001388ff00",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 8493,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "ab62e0ac-97a1-4e49-bacc-a2f1162a8240",
+                "memberEpoch": 4,
+                "heartbeatIntervalMs": 5000,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.leave.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The leave of a dynamic member: the epoch -1 and nothing else, which is what replaces LeaveGroup in this protocol - there is no `reason` of KIP-800 to send here.",
+            "hex": "00000066004400000000213600136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702539353033363663632d366131322d346262312d616464372d643737383031323663353937ffffffff0000ffffffff00000000",
+            "fields": {
+                "messageSize": 102,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8502,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "950366cc-6a12-4bb1-add7-d7780126c597",
+                "memberEpoch": -1,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": -1,
+                "subscribedTopicNames": null,
+                "serverAssignor": null,
+                "topicPartitions": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.leave.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The coordinator answers the epoch -1 back, with a heartbeat interval of 0 and no assignment.",
+            "hex": "0000003b0000213600000000000000002539353033363663632d366131322d346262312d616464372d643737383031323663353937ffffffff00000000ff00",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 8502,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "950366cc-6a12-4bb1-add7-d7780126c597",
+                "memberEpoch": -1,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.static-join.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The join of a STATIC member (KIP-345): the same frame with the `instance_id` filled in, which no join of the classic protocol could carry without a JoinGroup v5.",
+            "hex": "0000007e004400000000213e00136b61666b612d636c69656e742d74332d383438001474332d3834382d7374617469632d67726f75702564633365653764302d616363352d346333622d386439312d613737363861653538326363000000000b74332d3834382d6f6e6500000493e0020f74332d3834382d766563746f7273000100",
+            "fields": {
+                "messageSize": 126,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8510,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-static-group",
+                "memberId": "dc3ee7d0-acc5-4c3b-8d91-a7768ae582cc",
+                "memberEpoch": 0,
+                "instanceId": "t3-848-one",
+                "rackId": null,
+                "rebalanceTimeoutMs": 300000,
+                "subscribedTopicNames": [
+                    "t3-848-vectors"
+                ],
+                "serverAssignor": null,
+                "topicPartitions": []
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.static-join.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the coordinator, which stores the instance id next to the member id.",
+            "hex": "0000005b0000213e00000000000000002564633365653764302d616363352d346333622d386439312d613737363861653538326363000000010000138801024e1809809dc642af96e83c551cef8ee404000000000000000100000002000000",
+            "fields": {
+                "messageSize": 91,
+                "correlationId": 8510,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "dc3ee7d0-acc5-4c3b-8d91-a7768ae582cc",
+                "memberEpoch": 1,
+                "heartbeatIntervalMs": 5000,
+                "assignment": {
+                    "topicPartitions": [
+                        {
+                            "topicId": {
+                                "$bytes": "4e1809809dc642af96e83c551cef8ee4"
+                            },
+                            "partitions": [
+                                0,
+                                1,
+                                2
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.unreleased-instance.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A second member that joins under the `group.instance.id` the first one still holds, with a member id of its own.",
+            "hex": "0000007e004400000000213f00136b61666b612d636c69656e742d74332d383438001474332d3834382d7374617469632d67726f75702530316166666264342d663666322d346237612d626231362d303262633737383461366566000000000b74332d3834382d6f6e6500000493e0020f74332d3834382d766563746f7273000100",
+            "fields": {
+                "messageSize": 126,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8511,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-static-group",
+                "memberId": "01affbd4-f6f2-4b7a-bb16-02bc7784a6ef",
+                "memberEpoch": 0,
+                "instanceId": "t3-848-one",
+                "rackId": null,
+                "rebalanceTimeoutMs": 300000,
+                "subscribedTopicNames": [
+                    "t3-848-vectors"
+                ],
+                "serverAssignor": null,
+                "topicPartitions": []
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.unreleased-instance.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The 111 `UnreleasedInstanceId`: the instance is taken, and the member that holds it has to leave first.",
+            "hex": "000000cd0000213f0000000000006fb601537461746963206d656d6265722030316166666264342d663666322d346237612d626231362d303262633737383461366566207769746820696e7374616e63652069642074332d3834382d6f6e652063616e6e6f74206a6f696e207468652067726f757020626563617573652074686520696e7374616e6365206964206973206f776e65642062792064633365653764302d616363352d346333622d386439312d613737363861653538326363206d656d6265722e000000000000000000ff00",
+            "fields": {
+                "messageSize": 205,
+                "correlationId": 8511,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 111,
+                "errorMessage": "Static member 01affbd4-f6f2-4b7a-bb16-02bc7784a6ef with instance id t3-848-one cannot join the group because the instance id is owned by dc3ee7d0-acc5-4c3b-8d91-a7768ae582cc member.",
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.static-leave.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The leave of a static member that will come back: the member epoch **-2**, which has no equivalent in the classic protocol - there a static member simply sends no LeaveGroup at all.",
+            "hex": "0000006f004400000000214000136b61666b612d636c69656e742d74332d383438001474332d3834382d7374617469632d67726f75702564633365653764302d616363352d346333622d386439312d613737363861653538326363fffffffe0b74332d3834382d6f6e6500ffffffff00000000",
+            "fields": {
+                "messageSize": 111,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8512,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-static-group",
+                "memberId": "dc3ee7d0-acc5-4c3b-8d91-a7768ae582cc",
+                "memberEpoch": -2,
+                "instanceId": "t3-848-one",
+                "rackId": null,
+                "rebalanceTimeoutMs": -1,
+                "subscribedTopicNames": null,
+                "serverAssignor": null,
+                "topicPartitions": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.static-leave.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The answer of the coordinator, which keeps the instance id and the assignment of that member.",
+            "hex": "0000003b0000214000000000000000002564633365653764302d616363352d346333622d386439312d613737363861653538326363fffffffe00000000ff00",
+            "fields": {
+                "messageSize": 59,
+                "correlationId": 8512,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "errorMessage": null,
+                "memberId": "dc3ee7d0-acc5-4c3b-8d91-a7768ae582cc",
+                "memberEpoch": -2,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.classic-group.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "A ConsumerGroupHeartbeat that joins a group the CLASSIC protocol created - the migration question of KIP-848, asked on a node that runs both protocols on one coordinator.",
+            "hex": "00000075004400000000214300136b61666b612d636c69656e742d74332d383438001574332d3834382d636c61737369632d67726f75702564333239663030642d656436382d343534382d393630332d383632366330373738326565000000000000000493e0020f74332d3834382d766563746f7273000100",
+            "fields": {
+                "messageSize": 117,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8515,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-classic-group",
+                "memberId": "d329f00d-ed68-4548-9603-8626c07782ee",
+                "memberEpoch": 0,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": 300000,
+                "subscribedTopicNames": [
+                    "t3-848-vectors"
+                ],
+                "serverAssignor": null,
+                "topicPartitions": []
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.classic-group.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "What the coordinator answers to it.",
+            "hex": "0000004a00002143000000000000453447726f75702074332d3834382d636c61737369632d67726f7570206973206e6f74206120636f6e73756d65722067726f75702e000000000000000000ff00",
+            "fields": {
+                "messageSize": 74,
+                "correlationId": 8515,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 69,
+                "errorMessage": "Group t3-848-classic-group is not a consumer group.",
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.unauthorized.request",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatRequest",
+            "version": 0,
+            "source": "broker",
+            "description": "The join of the one principal outside `super.users`, `acltest`, on the SASL_PLAINTEXT listener.",
+            "hex": "00000075004400000000214800136b61666b612d636c69656e742d74332d383438001574332d3834382d766563746f72732d67726f75702530613230386435342d663236322d343439642d393866652d366331386436333466303434000000000000000493e0020f74332d3834382d766563746f7273000100",
+            "fields": {
+                "messageSize": 117,
+                "apiKey": 68,
+                "apiVersion": 0,
+                "correlationId": 8520,
+                "clientId": "kafka-client-t3-848",
+                "headerTaggedFields": [],
+                "groupId": "t3-848-vectors-group",
+                "memberId": "0a208d54-f262-449d-98fe-6c18d634f044",
+                "memberEpoch": 0,
+                "instanceId": null,
+                "rackId": null,
+                "rebalanceTimeoutMs": 300000,
+                "subscribedTopicNames": [
+                    "t3-848-vectors"
+                ],
+                "serverAssignor": null,
+                "topicPartitions": []
+            }
+        },
+        {
+            "id": "consumergroupheartbeat.v0.unauthorized.response",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\ConsumerGroupHeartbeatResponse",
+            "version": 0,
+            "source": "broker",
+            "description": "The refusal of the `StandardAuthorizer`, which the api reports in its top-level error code like everything else.",
+            "hex": "00000017000021480000000000001e00000000000000000000ff00",
+            "fields": {
+                "messageSize": 23,
+                "correlationId": 8520,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 30,
+                "errorMessage": null,
+                "memberId": null,
+                "memberEpoch": 0,
+                "heartbeatIntervalMs": 0,
+                "assignment": null
+            }
+        }
+    ]
+}

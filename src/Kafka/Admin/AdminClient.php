@@ -66,6 +66,8 @@ use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsRequest;
 use Protocol\Kafka\Protocol\Request\AlterUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\ApiVersionsRequest;
 use Protocol\Kafka\Protocol\Request\ApiVersionsResponse;
+use Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeRequest;
+use Protocol\Kafka\Protocol\Request\ConsumerGroupDescribeResponse;
 use Protocol\Kafka\Protocol\Request\CreateAclsRequest;
 use Protocol\Kafka\Protocol\Request\CreateAclsResponse;
 use Protocol\Kafka\Protocol\Request\CreateDelegationTokenRequest;
@@ -3605,5 +3607,93 @@ class AdminClient
     public function listLatestTieredOffsets(iterable $topicPartitions): array
     {
         return $this->listOffsets($topicPartitions, OffsetsRequest::LATEST_TIERED_TIMESTAMP);
+    }
+
+    /**
+     * Describes groups of the **new consumer protocol** of KIP-848 (ApiKey 69, Kafka 3.7)
+     *
+     * This is `describeConsumerGroups()` of the Java admin client as it answers for a group of the type
+     * `consumer`, and it is a **second** api next to {@see self::describeGroups()} (key 15), not a replacement of
+     * it: the two never describe the same group. A classic group asked of key 69 is answered the **69**
+     * `GroupIdNotFound` inside its own entry, and a KIP-848 group asked of key 15 the very same code - the type
+     * of a group is what {@see self::listGroups()} reports since ListGroups v5, and it is what decides which of
+     * the two apis a caller has to send.
+     *
+     * The answer carries what the classic one has no field for: the group epoch and the assignment epoch, the
+     * name of the server-side assignor the coordinator ran, and per member its member epoch, its subscription as
+     * plain topic names and **both** assignments - the partitions it owns and the ones it is meant to own, whose
+     * difference is a reconciliation in flight ({@see ConsumerGroupDescription}).
+     *
+     * Groups that share a coordinator are described with one request, exactly as in {@see self::describeGroups()},
+     * and the error of a group is reported by throwing the exception of its code, as there as well.
+     *
+     * @param list<string> $groupIds                    Names of the groups, duplicates are collapsed
+     * @param bool         $includeAuthorizedOperations Whether the answer names the operations this client may
+     *        perform on every group (KIP-430)
+     *
+     * @throws \Protocol\Kafka\Common\Errors\GroupIdNotFoundException If a group is not one of the new protocol
+     * @throws \Protocol\Kafka\Common\Errors\NotCoordinatorForGroupException If a group moved to another coordinator
+     * @throws \Protocol\Kafka\Common\Errors\GroupAuthorizationFailedException If the client may not describe a group
+     *
+     * @return array<string, ConsumerGroupDescription> Descriptions, indexed by the group id
+     *
+     * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+     */
+    public function describeConsumerGroups(array $groupIds, bool $includeAuthorizedOperations = false): array
+    {
+        $coordinators  = [];
+        $groupsPerNode = [];
+        foreach (array_unique($groupIds) as $groupId) {
+            $coordinator                           = $this->findCoordinator($groupId);
+            $coordinators[$coordinator->nodeId]    = $coordinator;
+            $groupsPerNode[$coordinator->nodeId][] = $groupId;
+        }
+
+        $descriptions = [];
+        foreach ($groupsPerNode as $nodeId => $groups) {
+            /** @var ConsumerGroupDescribeResponse $response */
+            $response = $this->sendTo(
+                $coordinators[$nodeId]->getConnection($this->configuration),
+                fn(int $correlationId): ConsumerGroupDescribeRequest => new ConsumerGroupDescribeRequest(
+                    $groups,
+                    $includeAuthorizedOperations,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                ConsumerGroupDescribeResponse::class,
+                ['node' => $nodeId, 'groups' => $groups]
+            );
+
+            foreach ($response->groups as $groupId => $description) {
+                if ($description->errorCode !== KafkaException::NO_ERROR) {
+                    throw KafkaException::fromCode(
+                        $description->errorCode,
+                        ['groupId' => $groupId] + ($description->errorMessage === null
+                            ? []
+                            : ['error' => $description->errorMessage])
+                    );
+                }
+                $descriptions[(string) $groupId] = ConsumerGroupDescription::fromDescribedGroup($description);
+            }
+        }
+
+        return $descriptions;
+    }
+
+    /**
+     * Describes one group of the new consumer protocol, see {@see self::describeConsumerGroups()}
+     *
+     * @throws InvalidGroupIdException If the coordinator answered with no description of the group at all
+     *
+     * @see docs/protocol/3.9.md, section "ConsumerGroupDescribe API (key 69, v0)"
+     */
+    public function describeConsumerGroup(
+        string $groupId,
+        bool $includeAuthorizedOperations = false
+    ): ConsumerGroupDescription {
+        return $this->describeConsumerGroups([$groupId], $includeAuthorizedOperations)[$groupId]
+            ?? throw new InvalidGroupIdException(
+                ['groupId' => $groupId, 'error' => "The coordinator answered with no description of {$groupId}"]
+            );
     }
 }

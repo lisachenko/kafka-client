@@ -23,6 +23,7 @@ use Protocol\Kafka\Common\CoordinatorLookup;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\Consumer\Internals\ConsumerGroupHeartbeatCoordinator;
 use Protocol\Kafka\Consumer\MemberAssignment;
 use Protocol\Kafka\Consumer\Subscription;
 use Protocol\Kafka\IO\Stream;
@@ -44,9 +45,7 @@ use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\SyncGroupRequest;
 use Protocol\Kafka\Protocol\Request\SyncGroupResponse;
-use Protocol\Kafka\Tests\Fixture\ConsumerGroupHeartbeatProbe;
 use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
-use RuntimeException;
 
 /**
  * What Kafka 3.8 added to the group apis, against the 3.9.2 KRaft node: **ListGroups v5** and **FindCoordinator v5**.
@@ -68,9 +67,9 @@ use RuntimeException;
  * sends is 5, that the batch of KIP-699 and the transaction lookup still work at it, and that the two classes of
  * the versions 4 and 5 declare the very same body.
  *
- * The KIP-848 group is created with a hand-built **ConsumerGroupHeartbeat** (key 68,
- * {@see ConsumerGroupHeartbeatProbe}, shared with the 3.6 and 3.7 waves): the api itself is the last wave of this
- * line and has no classes yet.
+ * The KIP-848 group is created with a **ConsumerGroupHeartbeat** (key 68, `Client::joinConsumerGroup()` of the
+ * KIP-848 wave, with the member id {@see ConsumerGroupHeartbeatCoordinator::newMemberId()} generates), as the 3.6
+ * and 3.7 waves create one.
  *
  * The node is shared with three other agents, so every listing is asserted as a **superset**: the groups of this
  * class have to be in it with the right type, and the ones a filter excludes have to be out of it. Every group
@@ -348,7 +347,7 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
         $modern = $this->uniqueGroupName();
         [$memberId] = $this->modernGroup($modern, $topic);
 
-        new ConsumerGroupHeartbeatProbe(self::firstBootstrapServer())->leave($modern, $memberId, 3811);
+        $this->client()->leaveConsumerGroup($this->coordinator($modern), $modern, $memberId);
 
         $node  = $this->coordinator($modern);
         $entry = null;
@@ -526,12 +525,19 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
      */
     private function modernGroup(string $groupId, string $topic): array
     {
-        $memberId = ConsumerGroupHeartbeatProbe::newMemberId();
-        $epoch    = new ConsumerGroupHeartbeatProbe(self::firstBootstrapServer())
-            ->join($groupId, $memberId, [$topic], self::REBALANCE_TIMEOUT_MS, 3804);
+        $memberId = ConsumerGroupHeartbeatCoordinator::newMemberId();
+        $answer   = $this->client()->joinConsumerGroup(
+            $this->coordinator($groupId),
+            $groupId,
+            $memberId,
+            [$topic],
+            self::REBALANCE_TIMEOUT_MS
+        );
+        $epoch    = $answer->memberEpoch;
 
         self::$modernMembers[] = [$groupId, $memberId];
 
+        self::assertSame(KafkaException::NO_ERROR, $answer->errorCode, 'The node refused the heartbeat');
         self::assertGreaterThan(0, $epoch, 'a member that joined holds an epoch above zero');
 
         $this->commit($this->coordinatorStream($groupId), $groupId, $epoch, $memberId, $topic, 3805);
@@ -585,6 +591,11 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
     private function admin(): AdminClient
     {
         return new AdminClient($this->cluster(), $this->configuration());
+    }
+
+    private function client(): Client
+    {
+        return new Client($this->cluster(), $this->configuration());
     }
 
     private function coordinator(string $groupId): Node
@@ -662,8 +673,15 @@ final class GroupTypeListingApiTest extends IntegrationTestCase
     private static function leaveModernQuietly(string $groupId, string $memberId): void
     {
         try {
-            new ConsumerGroupHeartbeatProbe(self::firstBootstrapServer())->leave($groupId, $memberId, 3899);
-        } catch (RuntimeException) {
+            $configuration = self::cleanupConfiguration();
+            $cluster       = Cluster::bootstrap($configuration);
+
+            new Client($cluster, $configuration)->leaveConsumerGroup(
+                new CoordinatorLookup($cluster, $configuration)->findCoordinator($groupId),
+                $groupId,
+                $memberId
+            );
+        } catch (KafkaException) {
             // A member the session timeout has already reaped must not fail the suite
         }
     }
