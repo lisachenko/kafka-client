@@ -87,11 +87,14 @@ report(
 report("\nCreating {$topic} a second time", $admin->createTopics([new NewTopic($topic, 3, 1)]));
 
 // An explicit assignment names the brokers of every partition itself, the preferred leader first. Partitions and a
-// replication factor may not be given at the same time - the broker answers 42 (InvalidRequest) for that.
+// replication factor may not be given at the same time - the broker answers 42 (InvalidRequest) for that. The ids
+// are the ones the cluster really has: the node of `docker-compose.yml` is the `node.id=1` of its KRaft image, and
+// a KRaft controller refuses an assignment that names a broker it has no registration for with 39.
 $assigned = $topic . '-assigned';
+$brokerId = array_key_first($admin->findAllBrokers());
 report(
     "\nCreating {$assigned} with an explicit replica assignment",
-    $admin->createTopics([NewTopic::withReplicaAssignment($assigned, [0 => [0], 1 => [0]])])
+    $admin->createTopics([NewTopic::withReplicaAssignment($assigned, [0 => [$brokerId], 1 => [$brokerId]])])
 );
 
 $cluster->reload();
@@ -109,14 +112,15 @@ report("\nAsking for four partitions again", $admin->createPartitions([$topic =>
 // NewPartitions::increaseTo() also names the brokers of every ADDED partition, the preferred leader first
 report(
     "\nAdding a partition on a named broker",
-    $admin->createPartitions([$topic => NewPartitions::increaseTo(6, [[0]])])
+    $admin->createPartitions([$topic => NewPartitions::increaseTo(6, [[$brokerId]])])
 );
 
 $cluster->reload();
 echo '  ' . $topic . ' now has ' . count($admin->describeTopics([$topic])[$topic]->partitions) . " partition(s)\n";
 
-// A deletion needs `delete.topic.enable=true` on the broker; with a timeout of 0 the answer is 7 (RequestTimedOut)
-// although the deletion is under way and finishes a moment later.
+// A deletion needs `delete.topic.enable=true` on the broker. A timeout of 0 is answered with 7 (RequestTimedOut)
+// and, on a KRaft node, does nothing at all: the timeout is a DEADLINE the controller hands to its event, and one
+// that has already passed expires the event before its records are written.
 report("\nDeleting both topics", $admin->deleteTopics([$topic, $assigned]));
 
 // A topic the cluster does not have is answered with 3 (UnknownTopicOrPartition), and nothing is created for it
