@@ -20,7 +20,7 @@ use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnResult;
 use UnexpectedValueException;
 
 /**
- * AddPartitionsToTxn response object, version 4 (key 24)
+ * AddPartitionsToTxn response object, version 5 (key 24)
  *
  * <pre>
  *   AddPartitionsToTxn Response (Version: 0 to 3) => throttle_time_ms [errors]
@@ -66,14 +66,19 @@ use UnexpectedValueException;
  * producer the 48 and the 47 (or the 90 from the version 2 on). {@see self::resultOf()} reads one transaction out
  * of either shape, and {@see AddPartitionsToTxnResponseV3} decodes the answer of the versions a client sends.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v4)"
+ * **Kafka 3.8 added the version 5** (KIP-890), which declares no field either - *"Version 5 adds support for new
+ * error code TRANSACTION_ABORTABLE"* (`AddPartitionsToTxnResponse.json` @ 3.8.1) - and is answered exactly like
+ * the version 4 on a 3.9.2 node, the 120 of a `verify_only` included: the code belongs to the coordinator, not to
+ * the version. {@see AddPartitionsToTxnResponseV4} keeps the frame of Kafka 3.5.
+ *
+ * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 class AddPartitionsToTxnResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The version 3 of Kafka 2.8 is the first flexible one of this api (KIP-482)

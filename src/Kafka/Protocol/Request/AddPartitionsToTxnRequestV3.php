@@ -22,7 +22,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * error code 31 ({@see AddPartitionsToTxnRequest}). This version is the last one a client may send, and the one
  * {@see \Protocol\Kafka\Client::addPartitionsToTxn()} does send.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 final class AddPartitionsToTxnRequestV3 extends AddPartitionsToTxnRequest
 {

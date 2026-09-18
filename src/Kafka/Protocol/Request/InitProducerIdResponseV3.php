@@ -19,7 +19,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * The version 4 of KIP-588 adds no field: the same four values, with the error code 90 `ProducerFenced` where a
  * version 3 answer carries the 47.
  *
- * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 final class InitProducerIdResponseV3 extends InitProducerIdResponse
 {

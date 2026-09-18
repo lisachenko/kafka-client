@@ -20,7 +20,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `AddPartitionsToTxnResponse.json` @ 2.8.2) and changed no field, so this class only lowers the version constant: the version
  * 2 is the frame a broker below Kafka 2.8 speaks.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 final class AddPartitionsToTxnResponseV2 extends AddPartitionsToTxnResponse
 {

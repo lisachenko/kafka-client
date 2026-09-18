@@ -23,15 +23,17 @@ use Protocol\Kafka\Protocol\Request\InitProducerIdRequest;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV0;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV1;
 use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV2;
+use Protocol\Kafka\Protocol\Request\InitProducerIdRequestV4;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponse;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV0;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV1;
 use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV2;
+use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV4;
 
 /**
  * Byte-exact tests for the InitProducerId API of Kafka 0.11 (api key 22, v0).
  *
- * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "InitProducerId API (key 22, v0 to v5)"
  */
 #[CoversClass(InitProducerIdRequest::class)]
 #[CoversClass(InitProducerIdRequestV0::class)]
@@ -39,6 +41,8 @@ use Protocol\Kafka\Protocol\Request\InitProducerIdResponseV2;
 #[CoversClass(InitProducerIdResponseV0::class)]
 #[CoversClass(InitProducerIdRequestV2::class)]
 #[CoversClass(InitProducerIdResponseV2::class)]
+#[CoversClass(InitProducerIdRequestV4::class)]
+#[CoversClass(InitProducerIdResponseV4::class)]
 final class InitProducerIdTest extends TestCase
 {
     /**
@@ -173,7 +177,7 @@ final class InitProducerIdTest extends TestCase
     {
         $fresh = new InitProducerIdRequest('tx-42', 30000, clientId: 'test', correlationId: 8);
 
-        self::assertSame(4, $fresh->getApiVersion(), 'Kafka 2.7 raised the api to the version 4 of KIP-588');
+        self::assertSame(5, $fresh->getApiVersion(), 'Kafka 3.8 raised the api to the version 5 of KIP-890');
         self::assertSame(InitProducerIdRequest::NO_PRODUCER_ID, $fresh->getProducerId());
         self::assertSame(InitProducerIdRequest::NO_PRODUCER_EPOCH, $fresh->getProducerEpoch());
         self::assertStringEndsWith(
@@ -296,4 +300,38 @@ final class InitProducerIdTest extends TestCase
         self::assertSame(self::RESPONSE_HEX, bin2hex((string) $response));
     }
 
+    /**
+     * Kafka 3.8, KIP-890: the version 5 declares no field, so it is the version 4 frame with a higher number
+     *
+     * "Verison 5 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)" is the whole comment of
+     * `InitProducerIdRequest.json` @ 3.8.1, typo included, and the response file says the same.
+     */
+    public function testTheVersionFiveOfKip890IsTheVersionFourFrameWithAHigherVersionField(): void
+    {
+        $current    = new InitProducerIdRequest('tx-42', 30000, 361, 10, 'test', 8);
+        $keptBehind = new InitProducerIdRequestV4('tx-42', 30000, 361, 10, 'test', 8);
+
+        self::assertSame(5, $current->getApiVersion(), 'Kafka 3.8 raised the api to the version 5 of KIP-890');
+        self::assertSame(4, $keptBehind->getApiVersion(), 'and the version 4 of KIP-588 is kept behind it');
+
+        $new = bin2hex((string) $current);
+        $old = bin2hex((string) $keptBehind);
+
+        // The version field is the third int16 of the request header, bytes 8 and 9 of the frame
+        self::assertSame(substr_replace($old, '0005', 12, 4), $new, 'the version field is the whole difference');
+
+        // The 90 `TransactionalProducerFenced` of KIP-588 is what a 3.9.2 coordinator really refuses this api with
+        $fenced = '00000016' . '00000008' . '00' . '00000000' . '005a' . 'ffffffffffffffff' . 'ffff' . '00';
+        $answer = InitProducerIdResponse::unpack(new StringStream((string) hex2bin($fenced)));
+
+        self::assertSame(90, $answer->errorCode);
+        self::assertSame(RecordBatch::NO_PRODUCER_ID, $answer->producerId);
+        self::assertSame(RecordBatch::NO_PRODUCER_EPOCH, $answer->producerEpoch);
+        self::assertSame($fenced, bin2hex((string) $answer));
+        self::assertSame(
+            bin2hex((string) InitProducerIdResponseV4::unpack(new StringStream((string) hex2bin($fenced)))),
+            $fenced,
+            'and the version 4 reads the very same bytes'
+        );
+    }
 }

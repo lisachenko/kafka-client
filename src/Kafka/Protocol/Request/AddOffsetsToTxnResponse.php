@@ -16,7 +16,7 @@ namespace Protocol\Kafka\Protocol\Request;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * AddOffsetsToTxn response object, version 1 (key 25)
+ * AddOffsetsToTxn response object, version 4 (key 25)
  *
  * <pre>
  *   AddOffsetsToTxn Response (Version: 0 and 1) => throttle_time_ms error_code
@@ -48,14 +48,21 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * (`RequestHandlerHelper.sendResponseMaybeThrottle` @ 2.8.2).
  * {@see AddOffsetsToTxnResponseV0} is the same frame with the version field of Kafka 0.11.
  *
- * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v3)"
+ * **Kafka 3.8 added the version 4** (KIP-890) and gave the answer nothing: the throttle time and the one error
+ * code of the whole request. A 3.9.2 coordinator answers this api the codes it always did - a producer id it does
+ * not hold for the transactional id is the **49** `InvalidProducerIdMapping` - and never the 120: this request
+ * *adds* the `__consumer_offsets` partition to the transaction instead of writing into it, so there is nothing
+ * to verify. The 120 of the offsets belongs to the {@see TxnOffsetCommitResponse} that follows.
+ * {@see AddOffsetsToTxnResponseV3} is the frame of Kafka 2.8.
+ *
+ * @see docs/protocol/3.9.md, section "AddOffsetsToTxn API (key 25, v0 to v4)"
  */
 class AddOffsetsToTxnResponse extends AbstractResponse
 {
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * The version 3 of Kafka 2.8 is the first flexible one of this api (KIP-482)

@@ -30,7 +30,9 @@ use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Data\AddPartitionsToTxnTransaction;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequest;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV3;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnRequestV4;
 use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponse;
+use Protocol\Kafka\Protocol\Request\AddPartitionsToTxnResponseV4;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 
 /**
@@ -58,11 +60,17 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * Every transaction of this class is opened with the version 3 the client sends, so the two halves are measured
  * against each other, and aborted again in the teardown.
  *
- * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v4)"
+ * The frames are built with {@see AddPartitionsToTxnRequestV4}, the keep-behind class of the version 4, since the
+ * version **5** Kafka 3.8 added moved the base class one number up; the version 5 is measured by
+ * {@see Kip890TransactionVersionsTest}, which finds the same answers.
+ *
+ * @see docs/protocol/3.9.md, section "AddPartitionsToTxn API (key 24, v0 to v5)"
  */
 #[CoversClass(AddPartitionsToTxnRequest::class)]
+#[CoversClass(AddPartitionsToTxnRequestV4::class)]
 #[CoversClass(AddPartitionsToTxnRequestV3::class)]
 #[CoversClass(AddPartitionsToTxnResponse::class)]
+#[CoversClass(AddPartitionsToTxnResponseV4::class)]
 #[CoversClass(AddPartitionsToTxnTransaction::class)]
 final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
 {
@@ -146,7 +154,7 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
         $idAndEpoch     = $this->openTransaction($transactionalId, [$topic => [0]]);
 
         $answer = $this->exchange(
-            new AddPartitionsToTxnRequest(
+            new AddPartitionsToTxnRequestV4(
                 $transactionalId,
                 $idAndEpoch->producerId,
                 $idAndEpoch->epoch,
@@ -173,7 +181,7 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
 
         // and the verification changed nothing at all: the same question is answered the same way
         $again = $this->exchange(
-            new AddPartitionsToTxnRequest(
+            new AddPartitionsToTxnRequestV4(
                 $transactionalId,
                 $idAndEpoch->producerId,
                 $idAndEpoch->epoch,
@@ -199,7 +207,7 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
         $idAndEpoch      = $this->openTransaction($transactionalId, [$topic => [0]]);
 
         $added = $this->exchange(
-            new AddPartitionsToTxnRequest(
+            new AddPartitionsToTxnRequestV4(
                 $transactionalId,
                 $idAndEpoch->producerId,
                 $idAndEpoch->epoch,
@@ -214,7 +222,7 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
         );
 
         $verified = $this->exchange(
-            new AddPartitionsToTxnRequest(
+            new AddPartitionsToTxnRequestV4(
                 $transactionalId,
                 $idAndEpoch->producerId,
                 $idAndEpoch->epoch,
@@ -245,7 +253,7 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
         $secondProducer = $this->openTransaction($second, [$topic => [0]]);
 
         $answer = $this->exchange(
-            AddPartitionsToTxnRequest::forTransactions(
+            AddPartitionsToTxnRequestV4::forTransactions(
                 [
                     new AddPartitionsToTxnTransaction(
                         $first,
@@ -290,7 +298,7 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
         $idAndEpoch      = $this->openTransaction($transactionalId, [$topic => [0]]);
 
         $unprivileged = $this->unprivilegedStream();
-        new AddPartitionsToTxnRequest(
+        new AddPartitionsToTxnRequestV4(
             $transactionalId,
             $idAndEpoch->producerId,
             $idAndEpoch->epoch,
@@ -299,7 +307,7 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
             3545,
             true
         )->writeTo($unprivileged);
-        $refused = AddPartitionsToTxnResponse::unpack($unprivileged);
+        $refused = AddPartitionsToTxnResponseV4::unpack($unprivileged);
 
         self::assertSame(3545, $refused->getCorrelationId());
         self::assertSame(
@@ -316,7 +324,8 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
     public function testTheClientKeepsSendingTheVersionThree(): void
     {
         self::assertSame(3, AddPartitionsToTxnRequestV3::VERSION);
-        self::assertSame(4, AddPartitionsToTxnRequest::VERSION, 'the class of the version 4 exists for the wire');
+        self::assertSame(4, AddPartitionsToTxnRequestV4::VERSION, 'the class of the version 4 exists for the wire');
+        self::assertSame(5, AddPartitionsToTxnRequest::VERSION, 'and the version 5 of Kafka 3.8 above it');
 
         $topic           = $this->topic('v3', 1);
         $transactionalId = self::transactionalId('v3');
@@ -324,7 +333,7 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
 
         // `Client::addPartitionsToTxn()` sent the version 3 above, and the version 4 confirms what it did
         $answer = $this->exchange(
-            new AddPartitionsToTxnRequest(
+            new AddPartitionsToTxnRequestV4(
                 $transactionalId,
                 $idAndEpoch->producerId,
                 $idAndEpoch->epoch,
@@ -344,12 +353,12 @@ final class VerifyPartitionsInTxnApiTest extends IntegrationTestCase
     /**
      * Sends one frame on a fresh PLAINTEXT connection and decodes the answer
      */
-    private function exchange(AddPartitionsToTxnRequest $request): AddPartitionsToTxnResponse
+    private function exchange(AddPartitionsToTxnRequestV4 $request): AddPartitionsToTxnResponseV4
     {
         $stream = $this->connect();
         $request->writeTo($stream);
 
-        return AddPartitionsToTxnResponse::unpack($stream);
+        return AddPartitionsToTxnResponseV4::unpack($stream);
     }
 
     /**

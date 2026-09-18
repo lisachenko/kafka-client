@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopic;
 use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
 
 /**
- * TxnOffsetCommit, version 2: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
+ * TxnOffsetCommit, version 4: commits consumer offsets inside a transaction (key 28, Kafka 0.11, KIP-98)
  *
  * <pre>
  *   TxnOffsetCommit Request (Version: 2) => transactional_id consumer_group_id producer_id producer_epoch [topics]
@@ -76,7 +76,11 @@ use Protocol\Kafka\Protocol\Data\TxnOffsetCommitRequestTopicV0;
  * {@see ConsumerGroupMetadata::forGroup()} builds. The version 3 is also the first **flexible** one of this api.
  * {@see TxnOffsetCommitRequestV2} is the frame of Kafka 2.1.
  *
- * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v3)"
+ * **Kafka 3.8 added the version 4** (KIP-890): *"Version 4 adds support for new error code TRANSACTION_ABORTABLE"*
+ * (`TxnOffsetCommitRequest.json` @ 3.8.1), no field, the version 3 frame of KIP-447 unchanged. It is the version
+ * this client sends; {@see TxnOffsetCommitRequestV3} is the same frame with the version field of Kafka 2.5.
+ *
+ * @see docs/protocol/3.9.md, section "TxnOffsetCommit API (key 28, v0 to v4)"
  */
 class TxnOffsetCommitRequest extends AbstractRequest
 {
@@ -88,7 +92,7 @@ class TxnOffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 3;
+    public const int VERSION = 4;
 
     /**
      * @inheritdoc
