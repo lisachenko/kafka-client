@@ -18,7 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.5** (the foundation, the re-baseline wave T0 and the 3.0 to 3.5 waves are in; Kafka 3.4 added nothing a client sends).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.6** (the foundation, the re-baseline wave T0 and the 3.0 to 3.6 waves are in; Kafka 3.4 added nothing a client sends).
 
 ### Added
 
@@ -291,6 +291,34 @@ ACL apis, measured against a real authorizer for the first time.
 - The error codes **107** `IneligibleReplica` and **108** `NewLeaderElected` of Kafka 3.3 belong to AlterPartition
   (56), a broker-to-controller api a client listener does not serve: declared at the foundation, never observed.
   73 wire vectors in all (26 of T1, 47 of T4): 836 in 54 files.
+
+### Kafka 3.6 — Added
+
+The sixth milestone of the line (PR #200): one version, raised without touching a byte, and the first code of the
+KIP-848 protocol this package has observed.
+
+- **OffsetCommit v9 (KIP-848)** — `OffsetCommitRequest.json` @ 3.6.2: "Version 9 is the first version that can be
+  used with the new consumer group protocol (KIP-848). The request is the same as version 8"; the answer "is the
+  same as version 8 but can return STALE_MEMBER_EPOCH when the new consumer group protocol is used and
+  GROUP_ID_NOT_FOUND when the group does not exist for both protocols". The version is a promise about the answer:
+  the same release renamed the second field of the request from `generation_id` to
+  `generation_id_or_member_epoch` — the same four bytes with a second meaning — and a published identifier is
+  never renamed for a rename in the Java client, so the field stays `OffsetCommitRequest::$generationId` and a
+  classic member goes on writing its generation into it. `Client::commitGroupOffsets()`, and with it
+  `KafkaConsumer::commitSync()`, the auto-commit and every offset the consumer's coordinator commits, send v9;
+  `OffsetCommitRequestV8`/`OffsetCommitResponseV8` keep the flexible frame of Kafka 2.4 for a broker that does not
+  serve 9. Measured on the node, with a classic group and a KIP-848 group created by a hand-built
+  ConsumerGroupHeartbeat (key 68, the api of the last wave of this line): a classic member's own generation is
+  **0** at v8 and v9 alike, a wrong generation the **22** at both — the branch of KIP-848 is chosen by the group
+  type, never by the api version — an unknown member the **25**, and a group the coordinator does not know
+  answers **22** at v8 but **69** `GroupIdNotFound` at v9, unless the frame carries the generation -1 and an empty
+  member id, for which both versions create a *simple* group and answer 0. A member of a KIP-848 group commits
+  its member epoch: the current one is **0**, an epoch below **or above** it the **113** `StaleMemberEpoch`
+  (`validateMemberEpoch` @ 3.9.2 compares for equality), and a v8 commit of such a member is a **per-partition 35**
+  ("OffsetCommit version 9 or above must be used by members using the modern group protocol"). 18 wire vectors:
+  884 in 54 files.
+- The error code **113** `StaleMemberEpoch` of Kafka 3.6 is **observed**, the one code of the KIP-848 protocol a
+  classic client can be answered before the protocol itself is implemented.
 
 ### Kafka 3.5 — Added
 

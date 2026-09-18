@@ -593,7 +593,7 @@ process-per-request model:
 For publishing from web requests, enabling persistent connections together with a metadata
 cache file keeps producing as fast as possible.
 
-The offsets of a consumer group always go to the coordinator of the group, with OffsetCommit **v8**
+The offsets of a consumer group always go to the coordinator of the group, with OffsetCommit **v9**
 and OffsetFetch **v7**, and live in the `__consumer_offsets` topic: the commit carries the member id,
 the generation and the `group.instance.id` of a group member and the leader epoch of every offset,
 but **no** `RetentionTime` any more (KIP-211 took the field out at version 5, so
@@ -781,7 +781,7 @@ it sends, and a version the node serves that the current milestone has not reach
 | 5 | StopReplica | not on the client listener of a KRaft node | broker→broker | no | no |
 | 6 | UpdateMetadata | not on the client listener of a KRaft node | broker→broker | no | no |
 | 7 | ControlledShutdown | not on the client listener of a KRaft node | controller | v0 … v2, **v3** | v0 … v2, **v3** — wire only: the classes and the vectors stay, `controlledShutdown()` is gone from the admin client |
-| 8 | OffsetCommit | v0 … v9 | yes | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8**; **v9 (3.6) not yet implemented on this line** |
+| 8 | OffsetCommit | v0 … v9 | yes | v0 … v7, **v8** (**v0** for `offsets.storage = zookeeper`) | v0 … v8, **v9** (Kafka 3.6, the v8 frame that may carry the 69 of an unknown group and the 113 of a KIP-848 member epoch; `OffsetCommitRequestV8` keeps the flexible v8) |
 | 9 | OffsetFetch | v0 … v9 | yes | v0 … v6, **v7** (**v0** for `offsets.storage = zookeeper`) | v0 … v7, **v8** (several groups in one request, Kafka 3.0); **v9 (3.7) not yet implemented on this line** |
 | 10 | GroupCoordinator (FindCoordinator) | v0 … v6 | yes | v0 … v2, **v3** | v0 … v3, **v4** (several keys in one request, KIP-699, Kafka 3.0); **v5 (3.8), v6 (3.9) not yet implemented on this line** |
 | 11 | JoinGroup | v0 … v9 | yes | v0 … v6, **v7** | v0 … v8, **v9** (the `reason` of KIP-800 at v8, the `skip_assignment` of KIP-814 at v9, Kafka 3.2; `JoinGroupRequestV7`/`V8` keep the versions below) |
@@ -944,6 +944,7 @@ current milestone):
 | **KIP-405, the client side of tiered storage** (Fetch v14 and the error code 109, ListOffsets v8 and the target time `-4`; `OffsetsRequest::EARLIEST_LOCAL_TIMESTAMP`, `listEarliestLocalOffsets()`) | 3.5 | – | – | – | – | – | – | **yes** — the wire; the node has no remote storage, so `-4` is the earliest offset and the 109 stays declared |
 | **KIP-903: the replica state of a follower fetch** (Fetch v15, the tagged `replica_state` in the place of the top-level `replica_id`; `Data\FetchRequestReplicaState`, `FetchRequest::$replicaEpoch`) | 3.5 | – | – | – | – | – | – | **yes** — a consumer writes nothing and its frame is four bytes shorter; a one-node cluster answers a follower 75 or 6 before the epoch is looked at |
 | **KIP-890, part 1: AddPartitionsToTxn v4, the batched broker version** (`AddPartitionsToTxnRequest::forTransactions()`, `Data\AddPartitionsToTxnTransaction`, `Data\AddPartitionsToTxnResult`) | 3.5 | – | – | – | – | – | – | **wire only** — the node answers a client the 31 of `CLUSTER_ACTION`; `Client::addPartitionsToTxn()` keeps the v3 until the v5 of Kafka 3.8 |
+| **KIP-848, the first version a classic client sends: OffsetCommit v9** (the v8 frame; the 69 `GroupIdNotFound` of an unknown group and the 113 `StaleMemberEpoch` of a member epoch; `OffsetCommitRequestV8`/`ResponseV8` keep the v8) | 3.6 | – | – | – | – | – | – | **yes** — the 113 observed with a hand-built KIP-848 member; the consumer protocol itself is the last wave of the line |
 | Error codes                                            | –          | -1 … 20 | -1 … 31 | -1 … 44  | -1 … 55  | -1 … 71 | **-1 … 104** (the constants of 2.8.2; 72 is 2.0's) | **-1 … 127** (the constants of 3.9.2, declared by the foundation; 105 is 3.0's) |
 
 What this line leaves out **by design** (the owner's decisions for the 3.x line; everything else the 3.9.2
