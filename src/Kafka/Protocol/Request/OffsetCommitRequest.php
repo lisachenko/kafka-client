@@ -23,7 +23,7 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV1;
 use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
 
 /**
- * OffsetCommit, version 7: the offsets are stored in the `__consumer_offsets` topic of the cluster.
+ * OffsetCommit, version 9: the offsets are stored in the `__consumer_offsets` topic of the cluster.
  *
  * This api saves out the consumer's position in the stream for one or more partitions. In the scala API this happens
  * when the consumer calls commit() or in the background if "autocommit" is enabled. This is the position the consumer
@@ -63,8 +63,8 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
  * `retention_time` at version 5 (KIP-211, Kafka 2.1). What the higher number means is the throttling contract of
  * KIP-219: a broker that throttles a version 4 request sends the answer **first** and mutes the channel for the
  * delay afterwards, so a client that sends this version has to wait out `throttle_time_ms` itself. Version 4 is the
- * highest **non-flexible** version of the api - versions 5 to 8 belong to the later releases of the 2.x major - and
- * is what this client sends.
+ * highest **non-flexible** version of the api - the versions 5 to 8 belong to the later releases of the 2.x major
+ * and the version 9 to Kafka 3.6.
  *
  * The lower versions differ in their scheme, and a scheme is a static property of a class, so each of them has a
  * class of its own that only lowers {@see OffsetCommitRequest::VERSION}: {@see OffsetCommitRequestV3},
@@ -87,7 +87,20 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitRequestTopicV2;
  * of a member whose instance id has been taken over by another consumer with 82 (`FencedInstanceId`). A dynamic
  * member sends `null` here, which is the frame of {@see OffsetCommitRequestV6} with one more field.
  *
- * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v8)"
+ * **Version 9 (Kafka 3.6, KIP-848) is the version 8 frame with another number in its header** - "Version 9 is the
+ * first version that can be used with the new consumer group protocol (KIP-848). The request is the same as
+ * version 8" in `OffsetCommitRequest.json` @ 3.6.2 - and it is the version this client sends.
+ * {@see OffsetCommitRequestV8} keeps the version below it. What the number buys is a promise about the *answer*:
+ * a commit of a group the coordinator does not know is refused **69** `GroupIdNotFound` instead of the **22**
+ * `IllegalGeneration` the versions below it are answered, and a member of a KIP-848 group may be told **113**
+ * `StaleMemberEpoch` - the code the same release added - when the epoch it commits with is behind the one the
+ * coordinator holds. The same release renamed the second field of the frame from `generation_id` to
+ * `generation_id_or_member_epoch`, "the generation of the group if using the generic group protocol or the member
+ * epoch if using the consumer protocol": the same four bytes with a second meaning, so {@see self::$generationId}
+ * keeps its published name and a classic member goes on writing its generation into it.
+ *
+ * @see docs/protocol/3.9.md, section "The member epoch of KIP-848 (v9)"
+ * @see docs/protocol/3.9.md, section "OffsetCommit API (key 8, v0 to v9)"
  */
 class OffsetCommitRequest extends AbstractRequest
 {
@@ -119,7 +132,7 @@ class OffsetCommitRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 8;
+    public const int VERSION = 9;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -154,7 +167,11 @@ class OffsetCommitRequest extends AbstractRequest
          */
         protected readonly string $consumerGroup,
         /**
-         * The generation of the group.
+         * The generation of the group, or the member epoch of a member of a KIP-848 group.
+         *
+         * The field is called `generation_id_or_member_epoch` from Kafka 3.6 on - the release that made the
+         * version 9 of this api usable with the new consumer group protocol - and carries the generation of the
+         * group for every classic member, which is what this client is.
          *
          * @since Version 1 of protocol
          */

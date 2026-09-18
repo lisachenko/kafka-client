@@ -17,7 +17,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
 
 /**
- * Offset commit response object, version 6
+ * Offset commit response object, version 9
  *
  * <pre>
  *   OffsetCommit Response (Version: 3 to 6) => throttle_time_ms [responses]
@@ -37,14 +37,20 @@ use Protocol\Kafka\Protocol\Data\OffsetCommitResponseTopic;
  * constant this scheme follows, and so do {@see OffsetCommitResponseV4} and {@see OffsetCommitResponseV5}: the
  * answer is one and the same layout from version 3 on, because neither KIP-211 nor KIP-320 touched it.
  *
- * @see docs/protocol/3.9.md, sections "OffsetCommit API (key 8, v0 to v8)" and "Quotas and throttle time"
+ * **Version 9 (Kafka 3.6, KIP-848) does not touch it either** - "the response is the same as version 8" in
+ * `OffsetCommitResponse.json` @ 3.6.2 - but it carries two error codes the versions below it cannot: the **69**
+ * `GroupIdNotFound` of a group the coordinator does not know, which a version 8 answer reports as the **22**
+ * `IllegalGeneration`, and the **113** `StaleMemberEpoch` of a member of a KIP-848 group whose member epoch is
+ * behind the one the coordinator holds. {@see OffsetCommitResponseV8} keeps the version below it.
+ *
+ * @see docs/protocol/3.9.md, sections "OffsetCommit API (key 8, v0 to v9)" and "Quotas and throttle time"
  */
 class OffsetCommitResponse extends AbstractResponse
 {
     /**
      * Version of the OffsetCommit API that this class decodes the answer of
      */
-    public const int VERSION = 8;
+    public const int VERSION = 9;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it

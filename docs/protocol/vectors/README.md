@@ -1,6 +1,6 @@
 Wire vectors of the Kafka 3.9.2 protocol
 ========================================
-The 3.x line has captured **197** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
+The 3.x line has captured **215** vectors of its own so far, on the `kafka-3-9-2` KRaft node — the 49 frames of Kafka 3.0:
 the 19 of DescribeTransactions and ListTransactions in the two new files `describe-transactions.json` and
 `list-transactions.json`, the 10 of ListOffsets v7 in `offsets.json`, the 12 of FindCoordinator v4 in
 `group-coordinator.json` and the 8 of OffsetFetch v8 in `offset-fetch.json` — the 20 frames of Kafka 3.1, the
@@ -12,14 +12,16 @@ three ACL apis in the three new files `describe-acls.json`, `create-acls.json` a
 DescribeLogDirs v4 in `describe-log-dirs.json` and the 10 of the two delegation-token apis of KIP-373 in
 `delegation-tokens.json` — and the 30 frames of Kafka 3.5, the 10 of the broker version AddPartitionsToTxn v4 in
 `add-partitions-to-txn.json`, the 12 of Fetch v14 and v15 in `fetch.json` and the 8 of ListOffsets v8 in
-`offsets.json` — next to the
+`offsets.json` — and the 18 frames of Kafka 3.6, the OffsetCommit v9 of KIP-848 in `offset-commit.json`, with
+the 69 of a group that does not exist, the 113 of a stale member epoch and the two version 8 frames that answer
+the same questions with the 22 and the 35 — next to the
 **669** vectors of the lines
 up to 2.x below, which are replayed unchanged against the classes of this line, because the 3.9.2 node still serves
 every version they were captured at.
 
 One file per api, each holding frames that a real Apache Kafka broker sent or accepted. They are the
 machine-readable half of [`../3.9.md`](../3.9.md), whose "Wire vectors" section shows the same bytes as annotated
-hex dumps. There are **866** of them in **54** files: **351** were captured on the `kafka-2-8-2` container of the
+hex dumps. There are **884** of them in **54** files: **351** were captured on the `kafka-2-8-2` container of the
 **2.x** line - the request and the answer of every version Kafka **2.0** added to the producer and consumer apis
 (14 frames), to the admin, the transaction and the delegation-token apis (34 frames), to the ten group apis
 (20 frames) and to ApiVersions (2 frames), nearly all of them KIP-219 bumps, plus what Kafka **2.1** added: the

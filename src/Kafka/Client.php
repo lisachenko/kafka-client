@@ -109,6 +109,7 @@ use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsRequest;
 use Protocol\Kafka\Protocol\Request\ListPartitionReassignmentsResponse;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequest;
 use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV4;
+use Protocol\Kafka\Protocol\Request\OffsetCommitRequestV8;
 use Protocol\Kafka\Protocol\Request\OffsetCommitResponse;
 use Protocol\Kafka\Protocol\Request\OffsetDeleteRequest;
 use Protocol\Kafka\Protocol\Request\OffsetDeleteResponse;
@@ -1221,8 +1222,13 @@ class Client
     /**
      * Commits the offsets for topic partitions for the concrete consumer group
      *
-     * The request is the version 6 of the api: it stores the offsets in the `__consumer_offsets` topic of the
-     * cluster and has to be sent to the coordinator of the group. An offset may be given as a plain integer or as an
+     * The request is the version 9 of the api (Kafka 3.6, KIP-848): it stores the offsets in the
+     * `__consumer_offsets` topic of the cluster and has to be sent to the coordinator of the group. Its frame is
+     * the flexible version 8 frame, byte for byte - {@see OffsetCommitRequestV8} sends the same bytes one number
+     * lower - and what the version buys is the **answer**: a commit of a group the coordinator does not know is
+     * refused with the 69 (`GroupIdNotFound`) instead of the 22 (`IllegalGeneration`) of the versions below it,
+     * and a member of a KIP-848 group may be told 113 (`StaleMemberEpoch`) that the epoch it committed with is
+     * behind the one the coordinator holds. An offset may be given as a plain integer or as an
      * {@see OffsetAndMetadata}, which the broker keeps and hands back with the next OffsetFetch - and whose
      * `leaderEpoch` travels in the `committed_leader_epoch` of the v6 partition entry (KIP-320, Kafka 2.1); a
      * plain integer, or an {@see OffsetAndMetadata} without an epoch, commits
@@ -1235,7 +1241,8 @@ class Client
      * a group commits with
      * {@see OffsetCommitRequest::DEFAULT_GENERATION_ID} and {@see OffsetCommitRequest::DEFAULT_MEMBER_NAME}; a member
      * of a group has to pass the generation and the member id the coordinator assigned to it, otherwise the
-     * coordinator answers with 22 (IllegalGeneration) or 25 (UnknownMemberId).
+     * coordinator answers with 22 (IllegalGeneration) or 25 (UnknownMemberId) - which is what a **classic** group
+     * answers at this version too, because the 113 belongs to the members of a KIP-848 group alone.
      *
      * @param Node                                             $coordinatorNode       Current offset coordinator for
      *        $groupId
