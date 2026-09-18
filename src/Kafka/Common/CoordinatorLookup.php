@@ -33,19 +33,24 @@ use UnexpectedValueException;
  * coordinator is still reading the state out of that topic and is just as temporary. Both are retried with
  * `retry.backoff.ms` between the attempts, until the given timeout runs out.
  *
- * **The lookup is sent as version 4** (KIP-699, Kafka 3.0), which carries an array of `coordinator_keys` and
- * answers one entry per key: {@see self::findCoordinators()} looks several keys of one type up in a single round
- * trip, and {@see self::findCoordinator()} is the same request with a batch of one. The coordinator *type* is a
- * single field in front of the array and holds for every key of the batch, which is why a batch never mixes groups
- * and transactional ids ({@see GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION}); a type the broker does not
+ * **The lookup is sent as the highest version this client speaks**, the 6 of Kafka 3.9, whose frame is the one
+ * version 4 (KIP-699, Kafka 3.0) introduced: an array of `coordinator_keys` that is answered one entry per key.
+ * {@see self::findCoordinators()} looks several keys of one type up in a single round trip, and
+ * {@see self::findCoordinator()} is the same request with a batch of one. The coordinator *type* is a single
+ * field in front of the array and holds for every key of the batch, which is why a batch never mixes groups and
+ * transactional ids ({@see GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION}); a type the broker does not
  * know is refused with the error code 42 (InvalidRequest) - per key, since version 4 - which this class turns into
  * the exception of that code.
+ *
+ * The third type of Kafka 3.9, {@see GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE}, has no caller here: share
+ * groups are out of this line by the owner's decision, and a node that does not run the share coordinator answers
+ * that type with the **retriable** 15, which this class would retry until the timeout.
  *
  * A batch is retried as a whole while **any** of its keys answers 14 or 15, because the api has no way to ask for
  * the rest of a batch only; the keys that are already answered are answered again, which costs nothing but the
  * bytes.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 final class CoordinatorLookup
 {

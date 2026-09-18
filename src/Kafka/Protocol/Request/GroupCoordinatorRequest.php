@@ -18,7 +18,7 @@ use Protocol\Kafka\Protocol\ApiKeys;
 use Protocol\Kafka\Protocol\BinarySchema;
 
 /**
- * GroupCoordinator, version 5: asks any broker which broker coordinates a group or a transactional id (key 10)
+ * GroupCoordinator, version 6: asks any broker which broker coordinates a group or a transactional id (key 10)
  *
  * The offsets for a given consumer group are maintained by a specific broker called the group coordinator. i.e., a
  * consumer needs to issue its offset commit and fetch requests to this specific broker.
@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchema;
  *     coordinator_key  => STRING
  *     coordinator_type => INT8      -- since version 1
  *
- *   FindCoordinator Request (Version: 4 to 5) => coordinator_type [coordinator_keys]
+ *   FindCoordinator Request (Version: 4 to 6) => coordinator_type [coordinator_keys]
  *     coordinator_type => INT8
  *     coordinator_keys => COMPACT_STRING      -- since version 4, in place of the single key
  * </pre>
@@ -70,13 +70,20 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * KIP-890 gives the producer apis; a coordinator lookup itself never produces it - a version 5 frame is the
  * version 4 frame with the number 5 in its header, and {@see GroupCoordinatorRequestV4} sends the one below.
  *
+ * **Version 6 (KIP-932, Kafka 3.9) added no field either**: *"Version 6 adds support for share groups
+ * (KIP-932)"* (`FindCoordinatorRequest.json` @ 3.9.2), over the request and over the answer alike. What the
+ * number buys is a third coordinator *type*: `KafkaApis.getCoordinator` @ 3.9.2 refuses
+ * {@see self::COORDINATOR_TYPE_SHARE} with the error code 42 (InvalidRequest) while `apiVersion < 6` and looks
+ * it up from the version 6 on. Share groups are out of this line by the owner's decision, so the constant and
+ * the version are all this client has of them; {@see GroupCoordinatorRequestV5} sends the version below.
+ *
  * The two types are looked up in two different internal topics - `__consumer_offsets` for a group and
  * `__transaction_state` for a transactional id, `KafkaApis.handleFindCoordinatorRequest` @ 0.11.0.3 - and both
  * topics are created lazily by the first lookup that needs them, which is why that first request is answered with
  * the error code 15 (GroupCoordinatorNotAvailable) and the lookup has to be retried, see
  * {@see \Protocol\Kafka\Common\CoordinatorLookup}.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 class GroupCoordinatorRequest extends AbstractRequest
 {
@@ -88,7 +95,7 @@ class GroupCoordinatorRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 5;
+    public const int VERSION = 6;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -119,6 +126,32 @@ class GroupCoordinatorRequest extends AbstractRequest
      * @since Version 1 of protocol
      */
     public const int COORDINATOR_TYPE_TRANSACTION = 1;
+
+    /**
+     * Look the key up as a share group id, `CoordinatorType.SHARE` @ 3.9.2 (KIP-932)
+     *
+     * Share groups are **out of this line by the owner's decision**: the client has no api that speaks them, and
+     * this constant exists so that the type the version 6 of the api was added for can be named - and measured.
+     * `KafkaApis.getCoordinator` @ 3.9.2 answers it with the error code 42 (InvalidRequest) below
+     * {@see self::MIN_SHARE_VERSION}, with the code 31 (ClusterAuthorizationFailed) for a principal that has no
+     * `CLUSTER_ACTION` on the cluster, and, on a node whose `group.coordinator.rebalance.protocols` does not
+     * name `share`, with the code 15 (CoordinatorNotAvailable) from a `return` that carries the comment *"When
+     * share coordinator support is implemented in KIP-932, a proper check will go here"*. The 15 is retriable
+     * for {@see \Protocol\Kafka\Common\CoordinatorLookup}, so a lookup of this type on such a node retries until
+     * its timeout runs out.
+     *
+     * @since Version 6 of protocol
+     */
+    public const int COORDINATOR_TYPE_SHARE = 2;
+
+    /**
+     * The first version that may ask for {@see self::COORDINATOR_TYPE_SHARE} (KIP-932, Kafka 3.9)
+     *
+     * Below it `KafkaApis.getCoordinator` @ 3.9.2 answers the type 2 with the error code 42 (InvalidRequest) and
+     * the coordinator `-1:"":-1`, whatever the key is: the check is `keyType == CoordinatorType.SHARE.id &&
+     * request.context.apiVersion < 6`.
+     */
+    public const int MIN_SHARE_VERSION = 6;
 
     /**
      * The keys of a batched lookup, all of them of {@see self::$coordinatorType}

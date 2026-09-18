@@ -48,7 +48,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * the one the *error path* builds, `FindCoordinatorRequest.getErrorResponse()`, which fills it from
  * `Errors.message()`. A client acts on {@see self::$errorCode} alone, as it does on every line below.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v6)"
  */
 class FindCoordinatorResponseCoordinator implements BinarySchemaInterface
 {
