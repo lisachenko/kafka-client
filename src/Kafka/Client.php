@@ -271,11 +271,17 @@ class Client
     /**
      * Produce messages to the specific topic partition
      *
-     * The request goes out as **Produce v6** for the message format v2 (`message.format.version=0.11.0` and every
+     * The request goes out as **Produce v11** for the message format v2 (`message.format.version=0.11.0` and every
      * value above it, the default) and as Produce v2 for the legacy message sets of the formats v0 and v1, which
-     * a version 3 request has no place for. Version 6 (Kafka 2.0, KIP-219) is the version 5 frame with another
-     * number in its header; what it changes is that a throttled answer arrives immediately and the channel is
-     * muted afterwards, which {@see self::awaitThrottle()} waits out.
+     * a version 3 request has no place for. Every version from 9 on sends the same body; what the number states is
+     * what the *client* understands of the answer - the leader discovery of KIP-951 at version 10 and, at version
+     * **11** (Kafka 3.8, KIP-890), the error code **120** `TransactionAbortable`
+     * ({@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}), which a transactional produce is
+     * refused with where a version 10 request is answered the **48** `InvalidTxnState`. A batch that comes back
+     * with it makes the transaction abortable and nothing more:
+     * {@see TransactionManager::batchFailed()} moves the producer into
+     * {@see \Protocol\Kafka\Producer\Internals\TransactionState::ABORTABLE_ERROR}, from which
+     * {@see \Protocol\Kafka\Producer\KafkaProducer::abortTransaction()} leads out with the same transactional id.
      *
      * Every accepted partition carries three values the broker reported next to its base offset: the `logAppendTime` it stamped on the whole batch, which is -1 unless the topic is configured
      * with `message.timestamp.type=LogAppendTime`, the `logStartOffset` of the partition, which version 5 (Kafka
@@ -592,9 +598,10 @@ class Client
         }
 
         // A message set of the formats v0 and v1 can only be sent with a version below 3, which is also the
-        // highest version that has no place for a transactional id; the message format v2 goes out as Produce v6,
-        // the version Kafka 2.0 bumped the api to (KIP-219), whose answer is the version 5 frame - the first one
-        // that reports the log start offset of every partition
+        // highest version that has no place for a transactional id; the message format v2 goes out as Produce
+        // v11, the version Kafka 3.8 bumped the api to (KIP-890), whose body is the flexible one of version 9 and
+        // whose answer carries the log start offset of every partition, the record errors of KIP-467, the leader
+        // hint of KIP-951 and the 120 `TransactionAbortable` of KIP-890
         $requestClass  = $messageFormatMagic >= RecordBatch::MAGIC ? ProduceRequest::class : ProduceRequestV2::class;
         $createRequest = fn(array $nodeTopicPartitionRecordSets, int $correlationId): ProduceRequest
             => new $requestClass(

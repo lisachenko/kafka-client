@@ -552,6 +552,16 @@ class TransactionManager
      * goes into {@see TransactionState::ABORTABLE_ERROR}, from which only
      * {@see TransactionManager::abortTransaction()} leads out. That is what `Sender.failBatch()` @ 1.1.1 does
      * with `transactionManager.transitionToAbortableError()`.
+     *
+     * **Kafka 3.8 gave that rule a code of its own.** A Produce **v11** request (KIP-890) says that the client
+     * understands **120** `TransactionAbortable`
+     * ({@see \Protocol\Kafka\Common\Errors\TransactionAbortableException}), and the broker then
+     * answers exactly this condition with it instead of the fatal-looking **48** `InvalidTxnState` of the
+     * versions below: "the server encountered an error with the transaction, the client can abort the transaction
+     * to continue using this transactional id". It needs no branch of its own here - it is one of the "every
+     * other error" codes and takes the abortable path they all take - but it is the one the broker *means* that
+     * way, so a producer that catches it may abort and begin the next transaction with the same id instead of
+     * throwing the producer away.
      */
     public function batchFailed(
         TopicPartition $topicPartition,

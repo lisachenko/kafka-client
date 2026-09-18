@@ -693,9 +693,9 @@ final class ClientTest extends TestCase
         $this->client()->produce([self::TOPIC => [0 => [$record]]]);
 
         $frame = bin2hex($leader->getReceivedFrames()[0]);
-        // ApiKey 0, ApiVersion 10, correlation id, client id, the tag buffer of the request header v2 and then
+        // ApiKey 0, ApiVersion 11, correlation id, client id, the tag buffer of the request header v2 and then
         // the null transactional id of a plain producer, which a flexible frame writes as the single byte 00
-        self::assertStringStartsWith('0000000a', $frame, 'the Produce api is spoken in version 10');
+        self::assertStringStartsWith('0000000b', $frame, 'the Produce api is spoken in version 11');
         self::assertStringContainsString('74372d636c69656e74' . '00' . '00', $frame, 'no transactional id is sent');
 
         $records = MemoryRecords::fromBuffer(self::messageSetOf($leader->getReceivedFrames()[0]));

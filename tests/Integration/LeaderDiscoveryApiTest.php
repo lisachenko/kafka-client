@@ -39,8 +39,10 @@ use Protocol\Kafka\Protocol\Request\FetchResponse;
 use Protocol\Kafka\Protocol\Request\FetchResponseV15;
 use Protocol\Kafka\Protocol\Request\OffsetsRequest;
 use Protocol\Kafka\Protocol\Request\ProduceRequest;
+use Protocol\Kafka\Protocol\Request\ProduceRequestV10;
 use Protocol\Kafka\Protocol\Request\ProduceRequestV9;
 use Protocol\Kafka\Protocol\Request\ProduceResponse;
+use Protocol\Kafka\Protocol\Request\ProduceResponseV10;
 use Protocol\Kafka\Protocol\Request\ProduceResponseV9;
 
 /**
@@ -61,12 +63,14 @@ use Protocol\Kafka\Protocol\Request\ProduceResponseV9;
  * Every topic of this class is named `t2-37-…`, so that it can run next to the other suites on the shared node.
  *
  * @see docs/protocol/3.9.md, sections "The leader discovery of KIP-951 (v10)", "The leader discovery of KIP-951
- *      (v16)", "Produce API (key 0, v0 to v10)" and "Fetch API (key 1, v0 to v16)"
+ *      (v16)", "Produce API (key 0, v0 to v11)" and "Fetch API (key 1, v0 to v16)"
  */
 #[CoversClass(ProduceRequest::class)]
 #[CoversClass(ProduceResponse::class)]
 #[CoversClass(ProduceRequestV9::class)]
 #[CoversClass(ProduceResponseV9::class)]
+#[CoversClass(ProduceRequestV10::class)]
+#[CoversClass(ProduceResponseV10::class)]
 #[CoversClass(ProduceResponseCurrentLeader::class)]
 #[CoversClass(ProduceResponseNodeEndpoint::class)]
 #[CoversClass(FetchRequest::class)]
@@ -138,7 +142,7 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
     public function testAVersionTenProduceIsTheVersionNineFrameWithAnotherApiVersion(): void
     {
         $nine = $this->produceRequest(ProduceRequestV9::class, 3760);
-        $ten  = $this->produceRequest(ProduceRequest::class, 3760);
+        $ten  = $this->produceRequest(ProduceRequestV10::class, 3760);
 
         self::assertSame(
             bin2hex((string) $nine),
@@ -146,7 +150,7 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
             'KIP-951 added no field to the request: the api version of the header is the whole difference'
         );
 
-        $answer    = $this->send($ten, ProduceResponse::class);
+        $answer    = $this->send($ten, ProduceResponseV10::class);
         $partition = $answer->topics[$this->topic]->partitions[self::PARTITION];
 
         self::assertSame(KafkaException::NO_ERROR, $partition->errorCode);
@@ -167,8 +171,8 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
         // the hint for. What a client can provoke is the 3 of a partition that does not exist - and it carries
         // nothing in any of its three tagged-field sections
         $answer = $this->send(
-            $this->produceRequest(ProduceRequest::class, 3762, self::MISSING_PARTITION),
-            ProduceResponse::class
+            $this->produceRequest(ProduceRequestV10::class, 3762, self::MISSING_PARTITION),
+            ProduceResponseV10::class
         );
         $partition = $answer->topics[$this->topic]->partitions[self::MISSING_PARTITION];
 
@@ -176,8 +180,8 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
         self::assertSame(-1, $partition->baseOffset);
         self::assertNull($partition->currentLeader, 'the 6 is the only produce error the hint is written for');
         self::assertSame([], $answer->nodeEndpoints);
-        self::assertSame(10, ProduceRequest::VERSION);
-        self::assertSame(10, ProduceResponse::VERSION);
+        self::assertSame(10, ProduceRequestV10::VERSION);
+        self::assertSame(10, ProduceResponseV10::VERSION);
     }
 
     public function testAVersionSixteenFetchIsTheVersionFifteenFrameWithAnotherApiVersion(): void
@@ -329,7 +333,7 @@ final class LeaderDiscoveryApiTest extends IntegrationTestCase
         $fetched  = $client->fetchPartitions([$this->topic => [self::PARTITION => 0]], 250);
 
         self::assertSame(16, FetchRequest::VERSION);
-        self::assertSame(10, ProduceRequest::VERSION);
+        self::assertSame(10, ProduceRequestV10::VERSION);
         self::assertSame(
             count(self::RECORDS),
             $produced[$this->topic][self::PARTITION]->baseOffset,

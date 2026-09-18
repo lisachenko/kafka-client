@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * KIP-467 ({@see ProduceResponseTopicV8} is the entry of the versions 8 and 9) and version 10 (Kafka 3.7,
  * KIP-951) the tagged `current_leader` this class picks.
  *
- * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v10)" and "The leader discovery of KIP-951 (v10)"
+ * @see docs/protocol/3.9.md, sections "Produce API (key 0, v0 to v11)" and "The leader discovery of KIP-951 (v10)"
  */
 class ProduceResponseTopic implements BinarySchemaInterface
 {
