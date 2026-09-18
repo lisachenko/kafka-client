@@ -22,7 +22,7 @@ use Protocol\Kafka\Protocol\Request\DescribeClusterRequest;
 use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
 
 /**
- * Exercises DescribeCluster (key 60, v0) of KIP-700 against a real Kafka 2.8.2 broker.
+ * Exercises DescribeCluster (key 60, v0) of KIP-700 against the 3.9.2 KRaft node.
  *
  * The api carries nothing a Metadata answer did not already carry - the cluster id, the controller and the
  * brokers - and that is the point of it: until Kafka 2.8 a client that wanted those three had to send a request
@@ -40,9 +40,13 @@ use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
 final class DescribeClusterApiTest extends IntegrationTestCase
 {
     /**
-     * `AclEntry.supportedOperations(CLUSTER)` @ 2.8.2 on a broker that runs without an authorizer: the bits 5, 7,
-     * 8, 9, 10, 11 and 12 of `AclOperation` - CREATE, ALTER, DESCRIBE, CLUSTER_ACTION, DESCRIBE_CONFIGS,
-     * ALTER_CONFIGS and IDEMPOTENT_WRITE
+     * `AclEntry.supportedOperations(CLUSTER)` in full: the bits 5, 7, 8, 9, 10, 11 and 12 of `AclOperation` -
+     * CREATE, ALTER, DESCRIBE, CLUSTER_ACTION, DESCRIBE_CONFIGS, ALTER_CONFIGS and IDEMPOTENT_WRITE.
+     *
+     * The 2.8.2 broker answered it because it ran without an authorizer at all; the node answers the same value
+     * because the principal of a PLAINTEXT connection is `ANONYMOUS`, one of its `super.users`. A principal the
+     * `StandardAuthorizer` has no acl for - the SASL user `acltest` - is answered the code 0, the same broker
+     * list and the bit field **0**, which is what a refusal of this api looks like.
      */
     private const int ALL_CLUSTER_OPERATIONS = 8096;
 
@@ -96,7 +100,7 @@ final class DescribeClusterApiTest extends IntegrationTestCase
         self::assertSame(
             self::ALL_CLUSTER_OPERATIONS,
             $asking->authorizedOperations,
-            'a broker without an authorizer allows every operation AclEntry.supportedOperations(CLUSTER) names'
+            'a super user may perform every operation AclEntry.supportedOperations(CLUSTER) names'
         );
     }
 

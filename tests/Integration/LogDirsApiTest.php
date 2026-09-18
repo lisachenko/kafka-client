@@ -46,11 +46,17 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 
 /**
- * Exercises the two JBOD apis of KIP-113 against a real Kafka 1.1.1 broker with **two** log directories.
+ * Exercises the two JBOD apis of KIP-113 against the 3.9.2 KRaft node with **two** log directories.
  *
  * The container of `docker-compose.yml` runs with `log.dirs=/tmp/kafka-logs,/tmp/kafka-logs-2`, which is what makes
  * this suite possible at all: a broker with one directory can only ever answer "the replica is already there".
  * Every test moves replicas of a topic it created itself, because the broker is shared with the other suites.
+ *
+ * Two things about the node are not visible in this api and were measured next to it: each directory carries a
+ * `directory.id` of KIP-858 in its `meta.properties`, and the directory a replica really lives in is reported to
+ * the controller with `AssignReplicasToDirs` (key 73, controller listener) - a move therefore writes a
+ * `PARTITION_CHANGE_RECORD` into the metadata log about 90 ms after the answer of AlterReplicaLogDirs. The raft
+ * log `__cluster_metadata-0` sits in the first directory and is never part of an answer of this api.
  *
  * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v2)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
@@ -217,6 +223,16 @@ final class LogDirsApiTest extends IntegrationTestCase
         self::assertNotContains($absent, $this->admin->listTopics(), 'and the topic was not created');
     }
 
+    /**
+     * The null array is every replica of the broker; a named selection is only what it names.
+     *
+     * A 2.8.2 broker answered both with the same frame - it grouped every log of a directory by topic and only
+     * then applied the partition filter, so the answer carried one entry per topic of the broker. The node drops
+     * the topics that keep nothing of the request (`.filterNot(_.partitions().isEmpty)` of
+     * `ReplicaManager.describeLogDirs` @ 3.9.2, a filter Kafka 3.7 added), which is why the named request below is
+     * one replica and the null one is the whole broker. `__cluster_metadata-0` is in neither: the raft log belongs
+     * to the `KafkaRaftManager`, not to the `LogManager` this api reads.
+     */
     public function testANullSelectionAsksForEveryReplicaOfTheBroker(): void
     {
         $topic = $this->topicWithRecords('all');
@@ -473,7 +489,8 @@ final class LogDirsApiTest extends IntegrationTestCase
             $this->admin->alterConfigs([
                 $resource->key() => [self::MOVER_QUOTA_OPTION => (string) self::MOVER_QUOTA_BYTES_PER_SECOND],
             ]),
-            'the mover quota is a dynamic broker option a 1.1.1 broker accepts through AlterConfigs'
+            'the mover quota is a dynamic broker option every broker of this cascade, the KRaft node included, '
+            . 'accepts through AlterConfigs'
         );
         $this->moverThrottled = true;
     }

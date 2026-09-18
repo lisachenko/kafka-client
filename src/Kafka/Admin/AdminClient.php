@@ -40,6 +40,7 @@ use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\DescribeTransactionsResponseTopic;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
 use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
@@ -77,6 +78,8 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeProducersRequest;
 use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
+use Protocol\Kafka\Protocol\Request\DescribeTransactionsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeTransactionsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsResponse;
 use Protocol\Kafka\Protocol\Request\ElectLeadersRequest;
@@ -90,6 +93,8 @@ use Protocol\Kafka\Protocol\Request\LeaveGroupRequest;
 use Protocol\Kafka\Protocol\Request\LeaveGroupResponse;
 use Protocol\Kafka\Protocol\Request\ListGroupsRequest;
 use Protocol\Kafka\Protocol\Request\ListGroupsResponse;
+use Protocol\Kafka\Protocol\Request\ListTransactionsRequest;
+use Protocol\Kafka\Protocol\Request\ListTransactionsResponse;
 use Protocol\Kafka\Protocol\Request\MetadataRequest;
 use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Protocol\Request\OffsetFetchRequest;
@@ -2725,5 +2730,188 @@ class AdminClient
         }
 
         return $tokens;
+    }
+
+    /**
+     * Describes the transactional ids given, as their transaction coordinators hold them (ApiKey 65, Kafka 3.0)
+     *
+     * The api Kafka 3.0 added next to {@see self::describeProducers()}: where that one reads the producer state a
+     * *log* keeps, this one reads the state the **transaction coordinator** keeps - the state name, the producer
+     * id and epoch it handed out, the transaction timeout of the producer, when the current transaction started
+     * and which partitions it has been told about. Together the two answer the question KIP-664 was written for:
+     * whether a transaction that a partition still holds open is one the coordinator knows about.
+     *
+     * Every id is looked up with a {@see GroupCoordinatorRequest} of the type
+     * {@see GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION} and the ids of one coordinator are asked for in
+     * one frame; the entries come back in the order of the request.
+     *
+     * An id the coordinator has no state for - one that never called `InitProducerId`, or whose metadata has
+     * expired - is **not** an exception of the call but the error code **105** (`TransactionalIdNotFound`) in its
+     * own entry, which this method returns as the exception of that code in the place of the description, exactly
+     * as {@see self::describeProducers()} does with the error of a partition.
+     *
+     * @param list<string> $transactionalIds Transactional ids to describe
+     *
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered the coordinator lookup
+     * @throws \Protocol\Kafka\Common\Errors\GroupCoordinatorNotAvailableException If a coordinator did not become
+     *         available in time
+     *
+     * @return array<string, TransactionDescription|KafkaException> The description or the error of every id, in
+     *         the order of the request
+     */
+    public function describeTransactions(array $transactionalIds): array
+    {
+        $lookup       = new CoordinatorLookup($this->cluster, $this->configuration);
+        $coordinators = [];
+        $idsPerNode   = [];
+        foreach ($transactionalIds as $transactionalId) {
+            $coordinator = $lookup->findCoordinator(
+                $transactionalId,
+                GroupCoordinatorRequest::COORDINATOR_TYPE_TRANSACTION
+            );
+
+            $coordinators[$coordinator->nodeId] = $coordinator;
+            // Indexed by the id itself, so that the same id named twice is asked for once
+            $idsPerNode[$coordinator->nodeId][$transactionalId] = $transactionalId;
+        }
+
+        $described = [];
+        foreach ($idsPerNode as $nodeId => $ids) {
+            $ids = array_values($ids);
+
+            /** @var DescribeTransactionsResponse $response */
+            $response = $this->sendTo(
+                $coordinators[$nodeId]->getConnection($this->configuration),
+                fn(int $correlationId): DescribeTransactionsRequest => new DescribeTransactionsRequest(
+                    $ids,
+                    $this->clientId(),
+                    $correlationId
+                ),
+                DescribeTransactionsResponse::class,
+                ['node' => $nodeId]
+            );
+
+            foreach ($ids as $transactionalId) {
+                $state = $response->transactionStates[$transactionalId] ?? null;
+
+                $described[$transactionalId] = match (true) {
+                    $state === null => new UnknownErrorException([
+                        'transactionalId' => $transactionalId,
+                        'error'           => 'The coordinator sent no entry for this transactional id',
+                    ]),
+                    $state->errorCode !== KafkaException::NO_ERROR => KafkaException::fromCode(
+                        $state->errorCode,
+                        ['transactionalId' => $transactionalId, 'node' => $nodeId]
+                    ),
+                    default => new TransactionDescription(
+                        (int) $nodeId,
+                        TransactionState::fromWire($state->transactionState),
+                        $state->producerId,
+                        $state->producerEpoch,
+                        $state->transactionTimeoutMs,
+                        $state->transactionStartTimeMs === -1 ? null : $state->transactionStartTimeMs,
+                        self::partitionsOfTransaction($state->topics)
+                    ),
+                };
+            }
+        }
+
+        $result = [];
+        foreach ($transactionalIds as $transactionalId) {
+            $result[$transactionalId] = $described[$transactionalId];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Lists the transactions of the whole cluster, optionally bounded by state and by producer id (ApiKey 66)
+     *
+     * Every broker answers for the `__transaction_state` partitions it coordinates, so - like
+     * {@see self::listAllGroups()} - this asks every broker of the cluster and merges the answers. The two filters
+     * are ANDed and an empty one means "everything"; a state that no transaction is in is an empty answer and not
+     * an error.
+     *
+     * A state name the coordinator does not know is reported in `unknown_state_filters` instead of failing the
+     * request, which `$unknownStateFilters` hands to the caller. Because the filter itself stays non-empty, a
+     * request that names **only** unknown states is answered with an empty list - passing
+     * {@see TransactionState} cases instead of strings is what keeps that from happening silently.
+     *
+     * @param list<TransactionState|string> $stateFilters      States to list, empty for every state
+     * @param list<int>                     $producerIdFilters Producer ids to list, empty for every producer id
+     * @param list<string>|null             $unknownStateFilters Filled with the state names no coordinator knew
+     *
+     * @throws KafkaException If a broker refused to list its transactions - 14 while it is still reading a
+     *         `__transaction_state` partition, 15 while its coordinator is not available
+     * @throws AllBrokersNotAvailableException If no broker of the cluster answered the metadata request
+     *
+     * @return array<string, TransactionListing> Every transaction of the cluster, indexed by the transactional id
+     */
+    public function listTransactions(
+        array $stateFilters = [],
+        array $producerIdFilters = [],
+        ?array &$unknownStateFilters = null
+    ): array {
+        $states = array_map(
+            static fn(TransactionState|string $state): string => $state instanceof TransactionState
+                ? $state->value
+                : $state,
+            array_values($stateFilters)
+        );
+
+        $unknownStateFilters = [];
+        $listings            = [];
+        foreach ($this->findAllBrokers() as $node) {
+            /** @var ListTransactionsResponse $response */
+            $response = $this->sendTo(
+                $node->getConnection($this->configuration),
+                fn(int $correlationId): ListTransactionsRequest => new ListTransactionsRequest(
+                    $states,
+                    array_values($producerIdFilters),
+                    $this->clientId(),
+                    $correlationId
+                ),
+                ListTransactionsResponse::class,
+                ['node' => $node->nodeId]
+            );
+
+            if ($response->errorCode !== KafkaException::NO_ERROR) {
+                throw KafkaException::fromCode($response->errorCode, ['node' => $node->nodeId]);
+            }
+
+            foreach ($response->unknownStateFilters as $filter) {
+                if (!in_array($filter, $unknownStateFilters, true)) {
+                    $unknownStateFilters[] = $filter;
+                }
+            }
+            foreach ($response->transactionStates as $transactionalId => $transaction) {
+                $listings[$transactionalId] = new TransactionListing(
+                    $transaction->transactionalId,
+                    $transaction->producerId,
+                    TransactionState::fromWire($transaction->transactionState)
+                );
+            }
+        }
+
+        return $listings;
+    }
+
+    /**
+     * Flattens the topics of a DescribeTransactions entry into the partitions of the transaction
+     *
+     * @param array<string, DescribeTransactionsResponseTopic> $topics
+     *
+     * @return list<TopicPartition>
+     */
+    private static function partitionsOfTransaction(array $topics): array
+    {
+        $partitions = [];
+        foreach ($topics as $topic) {
+            foreach ($topic->partitions as $partition) {
+                $partitions[] = new TopicPartition($topic->topic, $partition);
+            }
+        }
+
+        return $partitions;
     }
 }
