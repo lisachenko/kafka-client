@@ -32,6 +32,7 @@ use Protocol\Kafka\Common\Node;
 use Protocol\Kafka\Common\Security\KafkaPrincipal;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\Consumer\OffsetAndTimestamp;
 use Protocol\Kafka\IO\Stream;
 use Protocol\Kafka\Network\ConnectionFactory;
@@ -2990,6 +2991,50 @@ class AdminClient
                         );
                 }
             }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Returns the metadata of the topics with these **ids**, indexed by the text form of the id (KIP-516)
+     *
+     * This is the `describeTopics(TopicCollection.ofTopicIds(...))` of the Java admin client, and it is served by
+     * **Metadata v12** (Kafka 3.1): the request names every topic by the 16 raw bytes of its id and by a `null`
+     * name, and the broker resolves it - the versions 10 and 11 carry the same field and ignore it, which is what
+     * the specification says in so many words ("Versions 10 and 11 should not use the topicId field or set topic
+     * name to null").
+     *
+     * An id the cluster does not host is **not** an exception: its entry carries the error code **100**
+     * `UnknownTopicId` in {@see TopicMetadata::$topicErrorCode}, a `null` name and no partition. Nothing is ever
+     * auto-created here - a topic can only be created under a name.
+     *
+     * @param list<string> $topicIds The 16 raw bytes of every topic id, {@see Uuid::fromString()} turns the text
+     *        form that `kafka-topics.sh --describe` prints into them
+     *
+     * @return array<string, TopicMetadata> The answer of every id, indexed by {@see Uuid::toString()} of that id
+     *
+     * @see docs/protocol/3.9.md, section "Metadata by topic id (v12, KIP-516)"
+     */
+    public function describeTopicsByIds(array $topicIds): array
+    {
+        if ($topicIds === []) {
+            return [];
+        }
+
+        /** @var MetadataResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): MetadataRequest => MetadataRequest::byTopicIds(
+                $topicIds,
+                $this->clientId(),
+                $correlationId
+            ),
+            MetadataResponse::class
+        );
+
+        $result = [];
+        foreach ($response->topics as $topicMetadata) {
+            $result[Uuid::toString($topicMetadata->topicId)] = $topicMetadata;
         }
 
         return $result;

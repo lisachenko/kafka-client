@@ -76,6 +76,7 @@ final class FetchSessionHandlerTest extends TestCase
         // This is what a broker below Kafka 1.1 does, and what a 1.1.1 broker does when its session cache is full
         $handler = new FetchSessionHandler(1);
         $handler->newBuilder()->add(new TopicPartition(self::TOPIC, 0), 0)->build();
+        $handler->rememberTopicIds(self::topicIdsOf([self::TOPIC]));
 
         self::assertTrue($handler->handleResponse(
             self::response([self::TOPIC => [0 => 0]], FetchMetadata::INVALID_SESSION_ID)
@@ -96,6 +97,7 @@ final class FetchSessionHandlerTest extends TestCase
             ->add(new TopicPartition(self::TOPIC, 0), 0)
             ->add(new TopicPartition(self::TOPIC, 1), 10)
             ->build();
+        $handler->rememberTopicIds(self::topicIdsOf([self::TOPIC]));
 
         self::assertTrue($handler->handleResponse(self::response([self::TOPIC => [0 => 0, 1 => 0]])));
         self::assertSame(self::SESSION_ID, $handler->getSessionId());
@@ -317,9 +319,29 @@ final class FetchSessionHandlerTest extends TestCase
             }
         }
         $builder->build();
+        // What the caller does before it sends a version 13 frame: the answer names its topics by id alone
+        // (KIP-516), so the session is told which id belongs to which name, see FetchSessionHandler::rememberTopicIds()
+        $handler->rememberTopicIds(self::topicIdsOf(array_keys($topicPartitions)));
         $handler->handleResponse(self::response($answer));
 
         return $handler;
+    }
+
+    /**
+     * Returns the ids the response fixture gives these topics, as topic name => the 16 raw bytes (KIP-516)
+     *
+     * @param list<string> $topics Names of the topics
+     *
+     * @return array<string, string>
+     */
+    private static function topicIdsOf(array $topics): array
+    {
+        $ids = [];
+        foreach ($topics as $topic) {
+            $ids[$topic] = ResponseFrame::topicIdOf($topic);
+        }
+
+        return $ids;
     }
 
     /**

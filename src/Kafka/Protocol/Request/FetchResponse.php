@@ -17,22 +17,24 @@ use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV11;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopicV12;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
 
 /**
- * Fetch response object (key 1), version 12
+ * Fetch response object (key 1), version 13
  *
  * <pre>
- *   FetchResponse (Version: 12) => ThrottleTimeMs ErrorCode SessionId
- *                                 [TopicName [Partition ErrorCode HighwaterMarkOffset
+ *   FetchResponse (Version: 13) => ThrottleTimeMs ErrorCode SessionId
+ *                                 [TopicId [Partition ErrorCode HighwaterMarkOffset
  *                                             LastStableOffset LogStartOffset
  *                                             [AbortedTransactions] PreferredReadReplica
  *                                             RecordSetSize RecordSet TAG_BUFFER] TAG_BUFFER] TAG_BUFFER
  *     ThrottleTimeMs      => int32
  *     ErrorCode           => int16      -- since version 7
  *     SessionId           => int32      -- since version 7
- *     TopicName           => string
+ *     TopicName           => string    -- versions 0 to 12 only
+ *     TopicId             => uuid      -- since version 13
  *     Partition           => int32
  *     ErrorCode           => int16
  *     HighwaterMarkOffset => int64
@@ -90,25 +92,33 @@ use Protocol\Kafka\Protocol\Data\FetchResponseTopicV5;
  * (KIP-630). A ZooKeeper-backed broker fills none of them in for an ordinary consumer: they carry the answers of
  * the raft replication and of a leader that detected a divergence from the `last_fetched_epoch` of the request.
  *
+ * **Version 13 (Kafka 3.1, KIP-516) replaces the topic name of every topic entry with the `topic_id`** the
+ * request named it by, and nothing else: `FetchResponse.json` @ 3.1.2 declares `Topic` as `versions 0-12` and
+ * `TopicId` as `13+`. The answer therefore never carries a topic name, and the two errors of the ids are the
+ * per-partition **100** `UnknownTopicId` of an id the broker does not host and the top-level **106**
+ * `FetchSessionTopicIdError` of a session that was started with the other kind of name, see {@see self::$errorCode}.
+ * {@see FetchResponseV12} keeps the answer that names its topics.
+ *
  * What the answer of every version has to match is the *version of the request it belongs to*, which is why
- * {@see FetchResponseV11}, {@see FetchResponseV10}, {@see FetchResponseV9}, {@see FetchResponseV8},
+ * {@see FetchResponseV12}, {@see FetchResponseV11}, {@see FetchResponseV10}, {@see FetchResponseV9}, {@see FetchResponseV8},
  * {@see FetchResponseV7}, {@see FetchResponseV6}, {@see FetchResponseV5}, {@see FetchResponseV4},
  * {@see FetchResponseV3}, {@see FetchResponseV2}, {@see FetchResponseV1} and {@see FetchResponseV0} exist - the version constant selects
  * both the fields of the answer and the class of a partition entry.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v12)" and "Fetch sessions (v7, KIP-227)"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v13)", "Fetch sessions (v7, KIP-227)" and
+ *      "The topic ids of the fetch path (v13, KIP-516)"
  */
 class FetchResponse extends AbstractResponse
 {
     /**
      * Version of the Fetch API that this class decodes the answer of
      */
-    public const int VERSION = 12;
+    public const int VERSION = 13;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
      *
-     * `FetchResponse.json` @ 2.8.2 declares `"flexibleVersions": "12+"`: the answer carries the response header
+     * `FetchResponse.json` @ 3.1.2 declares `"flexibleVersions": "12+"`: the answer carries the response header
      * **v1**, compact strings, compact arrays and a **compact record set**, and a tagged-field section at the
      * end of the body, of every topic entry and of every partition entry - the section the three fields of
      * version 12 travel in, see {@see \Protocol\Kafka\Protocol\Data\FetchResponsePartition::$divergingEpoch}.
@@ -126,10 +136,12 @@ class FetchResponse extends AbstractResponse
      * Error code of the fetch **session**, zero when the request had none or the session is intact.
      *
      * This is the only top-level error code the Fetch api has, and it is about the session alone: 70
-     * `FetchSessionIdNotFoundException` for an incremental request whose session id the broker does not know, and
-     * 71 `InvalidFetchSessionEpochException` for one whose epoch does not match the one the broker expects. Both
-     * are retriable and both are answered with an **empty topics array**, so a client that receives one has to
-     * start over with a full fetch, {@see FetchMetadata::nextCloseExisting()}.
+     * `FetchSessionIdNotFoundException` for an incremental request whose session id the broker does not know,
+     * 71 `InvalidFetchSessionEpochException` for one whose epoch does not match the one the broker expects, and,
+     * since Kafka 3.1, **106** `FetchSessionTopicIdError` for a session whose topics are named by id in one
+     * request and by name in another (KIP-516). All three are retriable and all three are answered with an
+     * **empty topics array**, so a client that receives one has to start over with a full fetch,
+     * {@see FetchMetadata::nextCloseExisting()}.
      *
      * An answer below version 7 does not carry the field and leaves the 0, which is also what a version 7 answer
      * to a session-less request reports.
@@ -152,9 +164,13 @@ class FetchResponse extends AbstractResponse
     public int $sessionId = FetchMetadata::INVALID_SESSION_ID;
 
     /**
-     * Fetch result for each of the requested topics, indexed by the topic name
+     * Fetch result of each requested topic, indexed by the topic name below version 13, a plain list above it
      *
-     * @var array<string, FetchResponseTopic>
+     * A version 13 answer names its topics by the 16 raw bytes of their id and by nothing else, which is no
+     * usable array key, so such an answer decodes into a list; the client resolves the ids against the map it
+     * built the request from, see {@see \Protocol\Kafka\Common\Cluster::topicNameById()}.
+     *
+     * @var array<array-key, FetchResponseTopic>
      */
     public array $topics = [];
 
@@ -172,7 +188,10 @@ class FetchResponse extends AbstractResponse
             $body['errorCode'] = BinarySchema::TYPE_INT16;
             $body['sessionId'] = BinarySchema::TYPE_INT32;
         }
-        $body['topics'] = ['topic' => static::topicClass()];
+        // From version 13 the entries carry no name, so there is no field to index the array by
+        $body['topics'] = static::VERSION >= 13
+            ? [static::topicClass()]
+            : ['topic' => static::topicClass()];
 
         return $header + $body;
     }
@@ -185,7 +204,8 @@ class FetchResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 12 => FetchResponseTopic::class,
+            static::VERSION >= 13 => FetchResponseTopic::class,
+            static::VERSION >= 12 => FetchResponseTopicV12::class,
             static::VERSION >= 11 => FetchResponseTopicV11::class,
             static::VERSION >= 5  => FetchResponseTopicV5::class,
             static::VERSION >= 4  => FetchResponseTopicV4::class,

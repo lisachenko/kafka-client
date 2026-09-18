@@ -1,8 +1,8 @@
 {
     "api": "fetch",
     "apiKey": 1,
-    "section": "Fetch API (key 1, v0 to v12)",
-    "description": "Wire vectors of the Fetch API (key 1, v0 to v12), replayed by tests/Compliance.",
+    "section": "Fetch API (key 1, v0 to v13)",
+    "description": "Wire vectors of the Fetch API (key 1, v0 to v13), replayed by tests/Compliance.",
     "vectors": [
         {
             "id": "fetch.request.v4",
@@ -1633,7 +1633,7 @@
         {
             "id": "fetch.request.v12",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV12",
             "version": 12,
             "source": "broker",
             "description": "Fetch request v12 (Kafka 2.7), the first FLEXIBLE version of this api (KIP-482) and the version of the epoch validation of KIP-595: the request header v2 - the client id as a plain int16-prefixed string and a tag buffer of its own - a COMPACT topic array, the topic name as a compact string, a compact partition array whose entry carries the new last_fetched_epoch (-1, \"I have read no record of this partition\") between the fetch offset and the log start offset and ends in a tag buffer of its own, the compact forgotten_topics_data, the compact empty rack id of KIP-392 and the tagged-field section of the body, which is where the cluster_id of the same version would travel.",
@@ -1675,7 +1675,7 @@
         {
             "id": "fetch.response.v12",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV12",
             "version": 12,
             "source": "broker",
             "description": "The answer v12: the response header v1 - the correlation id and a tag buffer - the throttle time, the top-level error code and session id of KIP-227, a compact topic array and a compact partition array whose entry carries the record set as a COMPACT byte array and ends in the tagged-field section that the diverging_epoch (tag 0), the current_leader (tag 1) and the snapshot_id (tag 2) of version 12 travel in - all three left out here, which is what a ZooKeeper-backed broker answers an ordinary consumer.",
@@ -1714,7 +1714,7 @@
         {
             "id": "fetch.request.v12.last-fetched-epoch",
             "kind": "request",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV12",
             "version": 12,
             "source": "broker",
             "description": "The same fetch with the epoch validation of KIP-595 really asked: last_fetched_epoch = 0, the epoch this log was written in, and the fetch offset 5, which lies behind the end of that epoch. This is what a fetcher sends after it read up to an offset - the epoch of the last record it really got - and it is the only difference from fetch.request.v12 above, four bytes inside the partition entry.",
@@ -1756,7 +1756,7 @@
         {
             "id": "fetch.response.v12.diverging-epoch",
             "kind": "response",
-            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV12",
             "version": 12,
             "source": "broker",
             "description": "The answer to that fetch: the leader compares the stated epoch and offset with its own log, finds that the two diverge and answers the TAGGED field 0 diverging_epoch - the largest epoch from which the logs are known to differ (0) and the offset it ends at (1) - with an EMPTY record set, the error code 0 and the real high water mark. The fetcher truncates to that offset and carries on, which is the truncation detection of KIP-320 done inside the fetch itself. It is also the one tagged field of this api that a ZooKeeper-backed broker ever fills in: the tag 0 with its own length, count and structure, and the partition ends without the tags 1 and 2.",
@@ -1793,6 +1793,383 @@
                         ]
                     }
                 }
+            }
+        },
+        {
+            "id": "fetch.request.v13",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 13,
+            "source": "broker",
+            "description": "Fetch request v13 (Kafka 3.1, KIP-516), the version this client sends: the topic entry carries the 16 raw bytes of the topic id where version 12 carries the compact topic name, and the name is nowhere in the frame. Everything else is the version 12 body - the session-less metadata of KIP-227, the last_fetched_epoch of KIP-595 and the empty compact rack of KIP-392.",
+            "hex": "0000006d0001000d0000033f00126b61666b612d636c69656e742d74322d333100ffffffff0000006400000001032000000000000000ffffffff02fc56b939cfc14adabeaeb6ff36fc9af90200000000ffffffff0000000000000000ffffffffffffffffffffffff001000000000010100",
+            "fields": {
+                "messageSize": 109,
+                "apiKey": 1,
+                "apiVersion": 13,
+                "correlationId": 831,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 0,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null
+            }
+        },
+        {
+            "id": "fetch.response.v13",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 13,
+            "source": "broker",
+            "description": "The answer v13: the topic entry is named by the very id the request carried and by nothing else, and the partition holds the record batch of the two records of the topic.",
+            "hex": "000000a60000033f000000000000000000000002fc56b939cfc14adabeaeb6ff36fc9af90200000000000000000000000000020000000000000002000000000000000000ffffffff5f0000000000000000000000520000000002b41de1960000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3331206f6e65002000d00f02011274322d33312074776f00000000",
+            "fields": {
+                "messageSize": 166,
+                "correlationId": 831,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": 2,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "preferredReadReplica": -1,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000520000000002b41de1960000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3331206f6e65002000d00f02011274322d33312074776f00"
+                                },
+                                "divergingEpoch": null,
+                                "currentLeader": null,
+                                "snapshotId": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "fetch.request.v13.unknown-topic-id",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 13,
+            "source": "broker",
+            "description": "The same fetch of a topic id the node does not host, 16 bytes of 0x7f.",
+            "hex": "0000006d0001000d0000034000126b61666b612d636c69656e742d74322d333100ffffffff0000006400000001032000000000000000ffffffff027f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f0200000000ffffffff0000000000000000ffffffffffffffffffffffff001000000000010100",
+            "fields": {
+                "messageSize": 109,
+                "apiKey": 1,
+                "apiVersion": 13,
+                "correlationId": 832,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": -1,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 0,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null
+            }
+        },
+        {
+            "id": "fetch.response.v13.unknown-topic-id",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 13,
+            "source": "broker",
+            "description": "What the node answers it: the top-level error code is 0 and the 100 UnknownTopicId is per PARTITION, next to the -1 of every offset and the null record set. A version 12 fetch of a topic that does not exist is answered 3 UnknownTopicOrPartition in the same place.",
+            "hex": "00000048000003400000000000000000000000027f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f02000000000064ffffffffffffffffffffffffffffffffffffffffffffffff01ffffffff01000000",
+            "fields": {
+                "messageSize": 72,
+                "correlationId": 832,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 0,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 100,
+                                "highWaterMarkOffset": -1,
+                                "lastStableOffset": -1,
+                                "logStartOffset": -1,
+                                "abortedTransactions": [],
+                                "preferredReadReplica": -1,
+                                "messageSet": {
+                                    "$bytes": ""
+                                },
+                                "divergingEpoch": null,
+                                "currentLeader": null,
+                                "snapshotId": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "fetch.request.v13.session",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 13,
+            "source": "broker",
+            "description": "The full fetch that opens an incremental fetch session (KIP-227) with topic ids: the session id 0 with the epoch 0 in front of the topics array, and the topic named by its id.",
+            "hex": "0000006d0001000d0000034100126b61666b612d636c69656e742d74322d333100ffffffff00000064000000010320000000000000000000000002fc56b939cfc14adabeaeb6ff36fc9af90200000000ffffffff0000000000000000ffffffffffffffffffffffff001000000000010100",
+            "fields": {
+                "messageSize": 109,
+                "apiKey": 1,
+                "apiVersion": 13,
+                "correlationId": 833,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 0,
+                "epoch": 0,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 0,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null
+            }
+        },
+        {
+            "id": "fetch.response.v13.session",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 13,
+            "source": "broker",
+            "description": "The answer that carries the id of the session the node opened for it, next to the topic id of the request.",
+            "hex": "000000a600000341000000000000007690999402fc56b939cfc14adabeaeb6ff36fc9af90200000000000000000000000000020000000000000002000000000000000000ffffffff5f0000000000000000000000520000000002b41de1960000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3331206f6e65002000d00f02011274322d33312074776f00000000",
+            "fields": {
+                "messageSize": 166,
+                "correlationId": 833,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 0,
+                "sessionId": 1989187988,
+                "topics": [
+                    {
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "errorCode": 0,
+                                "highWaterMarkOffset": 2,
+                                "lastStableOffset": 2,
+                                "logStartOffset": 0,
+                                "abortedTransactions": null,
+                                "preferredReadReplica": -1,
+                                "messageSet": {
+                                    "$bytes": "0000000000000000000000520000000002b41de1960000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3331206f6e65002000d00f02011274322d33312074776f00"
+                                },
+                                "divergingEpoch": null,
+                                "currentLeader": null,
+                                "snapshotId": null
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "id": "fetch.request.v12.session-topic-id-error",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequestV12",
+            "version": 12,
+            "source": "broker",
+            "description": "The incremental fetch of that same session, sent as a version 12 request that names the topic by its NAME: the session id and the epoch 1 of the answer above, and a topic entry with a compact string.",
+            "hex": "0000006b0001000c0000034200126b61666b612d636c69656e742d74322d333100ffffffff000000640000000103200000007690999400000001020e74322d33312d766563746f72730200000000ffffffff0000000000000001ffffffffffffffffffffffff001000000000010100",
+            "fields": {
+                "messageSize": 107,
+                "apiKey": 1,
+                "apiVersion": 12,
+                "correlationId": 834,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 1989187988,
+                "epoch": 1,
+                "topicPartitions": {
+                    "t2-31-vectors": {
+                        "topic": "t2-31-vectors",
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 1,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                },
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null
+            }
+        },
+        {
+            "id": "fetch.response.v12.session-topic-id-error",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponseV12",
+            "version": 12,
+            "source": "broker",
+            "description": "The 106 FetchSessionTopicIdError of Kafka 3.1, the one error code the release adds: the session was opened with topic ids and this request names the topic by name. It is a TOP-LEVEL error, the topics array is empty and the session id is 0 - the client starts over with a full fetch.",
+            "hex": "00000011000003420000000000006a000000000100",
+            "fields": {
+                "messageSize": 17,
+                "correlationId": 834,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 106,
+                "sessionId": 0,
+                "topics": []
+            }
+        },
+        {
+            "id": "fetch.request.v13.session-topic-id-error",
+            "kind": "request",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchRequest",
+            "version": 13,
+            "source": "broker",
+            "description": "The mirror image: a session that was opened by a version 12 full fetch naming the topic by NAME, continued by this version 13 incremental that names it by its ID.",
+            "hex": "0000006d0001000d0000034400126b61666b612d636c69656e742d74322d333100ffffffff000000640000000103200000000a35689e0000000102fc56b939cfc14adabeaeb6ff36fc9af90200000000ffffffff0000000000000001ffffffffffffffffffffffff001000000000010100",
+            "fields": {
+                "messageSize": 109,
+                "apiKey": 1,
+                "apiVersion": 13,
+                "correlationId": 836,
+                "clientId": "kafka-client-t2-31",
+                "headerTaggedFields": [],
+                "replicaId": -1,
+                "maxWaitTime": 100,
+                "minBytes": 1,
+                "maxBytes": 52428800,
+                "isolationLevel": 0,
+                "sessionId": 171272350,
+                "epoch": 1,
+                "topicPartitions": [
+                    {
+                        "topicId": {
+                            "$bytes": "fc56b939cfc14adabeaeb6ff36fc9af9"
+                        },
+                        "partitions": [
+                            {
+                                "partition": 0,
+                                "currentLeaderEpoch": -1,
+                                "fetchOffset": 1,
+                                "lastFetchedEpoch": -1,
+                                "logStartOffset": -1,
+                                "maxBytes": 1048576
+                            }
+                        ]
+                    }
+                ],
+                "forgottenTopics": [],
+                "rackId": "",
+                "clusterId": null
+            }
+        },
+        {
+            "id": "fetch.response.v13.session-topic-id-error",
+            "kind": "response",
+            "class": "Protocol\\Kafka\\Protocol\\Request\\FetchResponse",
+            "version": 13,
+            "source": "broker",
+            "description": "The same 106: the node refuses both directions of the mix, and answers it with the session id 0 and an empty topics array whatever version asked.",
+            "hex": "00000011000003440000000000006a000000000100",
+            "fields": {
+                "messageSize": 17,
+                "correlationId": 836,
+                "headerTaggedFields": [],
+                "throttleTimeMs": 0,
+                "errorCode": 106,
+                "sessionId": 0,
+                "topics": []
             }
         }
     ]

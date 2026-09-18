@@ -70,7 +70,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * container: the value the broker reports, the fencing of an epoch the leader is not on, and the fields the lower
  * version of each api does not have.
  *
- * @see docs/protocol/3.9.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v11)" and
+ * @see docs/protocol/3.9.md, sections "The leader epoch (KIP-320)", "Metadata API (key 3, v0 to v12)" and
  *      "Offsets API (key 2, v0 to v7), a.k.a. ListOffset"
  */
 #[CoversClass(FetchRequest::class)]
@@ -357,9 +357,10 @@ final class LeaderEpochApiTest extends IntegrationTestCase
                 FetchRequest::READ_UNCOMMITTED,
                 null,
                 [],
-                $rack
+                $rack,
+                topicIds: [$this->topic => self::topicIdOf($this->topic)]
             )->writeTo($stream);
-            $partition = FetchResponse::unpack($stream)->topics[$this->topic]->partitions[0];
+            $partition = self::fetchedTopic(FetchResponse::unpack($stream), $this->topic)->partitions[0];
 
             self::assertSame(KafkaException::NO_ERROR, $partition->errorCode, "a fetch with {$label} is served");
             self::assertSame(
@@ -381,7 +382,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             $flexible,
             'the empty compact rack, and the tag buffer of the body behind it'
         );
-        self::assertSame(12, FetchRequest::VERSION);
+        self::assertSame(13, FetchRequest::VERSION, 'the version the topic ids of KIP-516 reached');
         self::assertSame(11, FetchRequestV11::VERSION, 'the version the Kafka 2.3 part of this line sent');
         self::assertSame(10, FetchRequestV10::VERSION, 'and the version the Kafka 2.1 part sent');
     }
@@ -503,7 +504,9 @@ final class LeaderEpochApiTest extends IntegrationTestCase
             65536,
             -1,
             self::CLIENT_ID,
-            $correlationId
+            $correlationId,
+            // Version 13 names the topic by its id (KIP-516); every lower version ignores the map
+            topicIds: [$this->topic => self::topicIdOf($this->topic)]
         );
     }
 
@@ -520,7 +523,7 @@ final class LeaderEpochApiTest extends IntegrationTestCase
         $stream = $this->connect();
         $this->fetchRequest($requestClass, $correlationId, $epoch)->writeTo($stream);
 
-        return $responseClass::unpack($stream)->topics[$this->topic]->partitions[0];
+        return self::fetchedTopic($responseClass::unpack($stream), $this->topic)->partitions[0];
     }
 
     /**

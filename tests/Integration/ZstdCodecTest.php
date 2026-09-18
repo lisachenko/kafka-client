@@ -267,10 +267,12 @@ final class ZstdCodecTest extends IntegrationTestCase
             65536,
             -1,
             self::CLIENT_ID,
-            $correlationId
+            $correlationId,
+            // Version 13 names the topic by its id (KIP-516); every lower version ignores the map
+            topicIds: [$topic => self::topicIdOf($topic)]
         )->writeTo($stream);
 
-        return $responseClass::unpack($stream)->topics[$topic]->partitions[0];
+        return self::fetchedTopic($responseClass::unpack($stream), $topic)->partitions[0];
     }
 
 

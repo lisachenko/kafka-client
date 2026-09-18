@@ -177,9 +177,10 @@ final class ResponseFrame
         $body .= self::compactArrayLength(count($topics));
         foreach ($topics as $topic => $partitions) {
             $body .= pack('n', $topicErrorCodes[$topic] ?? 0) . self::compactString((string) $topic);
-            // The topic id of KIP-516: the zero uuid unless the caller named one, which is what a broker
-            // answers for a topic it has no id for
-            $body .= str_pad($topicIds[$topic] ?? '', 16 /* Uuid::SIZE */, "\x00", STR_PAD_LEFT);
+            // The topic id of KIP-516. Every topic of a broker from Kafka 2.8 on has one, so a caller that
+            // names none gets a stable id derived from the topic name - the fetch path of Fetch v13 (Kafka 3.1)
+            // can not name a topic without it. A caller that wants the zero id passes it explicitly.
+            $body .= str_pad($topicIds[$topic] ?? self::topicIdOf((string) $topic), 16 /* Uuid::SIZE */, "\x00", STR_PAD_LEFT);
             $body .= pack('C', in_array((string) $topic, $internalTopics, true) ? 1 : 0);
             $body .= self::compactArrayLength(count($partitions));
             foreach ($partitions as $partitionId => $leader) {
@@ -439,13 +440,16 @@ final class ResponseFrame
     ): string {
         // Version 12 (Kafka 2.7) is the first FLEXIBLE version of this api (KIP-482): compact strings, compact
         // arrays, a COMPACT record set and a tagged-field section at the end of every structure - which is also
-        // where the three fields of version 12 would travel, none of which a ZooKeeper-backed broker sends
+        // where the three fields of version 12 would travel, none of which a ZooKeeper-backed broker sends.
+        // Version 13 (Kafka 3.1, KIP-516) replaced the topic NAME of every entry with the 16 raw bytes of its
+        // id, so this fixture answers with the id {@see self::topicIdOf()} derives from the name - the very one
+        // {@see self::metadata()} reports for it, which is how the client resolves it back.
         $body = pack('N', $throttleTimeMs)
             . pack('n', $sessionErrorCode)
             . pack('N', $sessionId)
             . self::compactCount(count($topics));
         foreach ($topics as $topic => $partitions) {
-            $body .= self::compactString((string) $topic) . self::compactCount(count($partitions));
+            $body .= self::topicIdOf((string) $topic) . self::compactCount(count($partitions));
             foreach ($partitions as $partitionId => [$errorCode, $highWaterMark, $messageSet]) {
                 [$lastStableOffset, $logStartOffset, $aborted] =
                     $transactionState[$topic][$partitionId] ?? [$highWaterMark, 0, null];
@@ -467,6 +471,18 @@ final class ResponseFrame
         }
         // The `forgotten_topics_data` of a request has no counterpart here; what closes the body is its section
         return self::flexible($correlationId, $body);
+    }
+
+    /**
+     * Returns the topic id this fixture gives a topic: 16 stable bytes derived from its name (KIP-516)
+     *
+     * A broker from Kafka 2.8 on has a real id for every topic, and from **Fetch v13** (Kafka 3.1) an api may
+     * name a topic by nothing else, so the metadata answer and the fetch answer of this fixture have to agree on
+     * one - this is it.
+     */
+    public static function topicIdOf(string $topic): string
+    {
+        return substr(md5($topic, true), 0, 16);
     }
 
     /**

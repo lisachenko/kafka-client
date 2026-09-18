@@ -15,20 +15,24 @@ namespace Protocol\Kafka\Tests\Unit\Protocol\Request;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Protocol\Kafka\Common\Errors\UnknownTopicIdException;
 use Protocol\Kafka\Common\Record\Header;
 use Protocol\Kafka\Common\Record\Message;
 use Protocol\Kafka\Common\Record\Record;
 use Protocol\Kafka\Common\Record\RecordBatch;
 use Protocol\Kafka\Common\TopicPartition;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\IO\StringStream;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopic;
+use Protocol\Kafka\Protocol\Data\FetchRequestForgottenTopicV7;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopic;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartition;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV0;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV5;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicPartitionV9;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV0;
+use Protocol\Kafka\Protocol\Data\FetchRequestTopicV12;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV5;
 use Protocol\Kafka\Protocol\Data\FetchRequestTopicV9;
 use Protocol\Kafka\Protocol\Data\FetchResponseAbortedTransaction;
@@ -43,6 +47,7 @@ use Protocol\Kafka\Protocol\Data\FetchResponseSnapshotId;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV0;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV11;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopicV12;
 use Protocol\Kafka\Protocol\Data\FetchResponseTopicV4;
 use Protocol\Kafka\Protocol\Request\FetchMetadata;
 use Protocol\Kafka\Protocol\Request\FetchRequest;
@@ -50,6 +55,7 @@ use Protocol\Kafka\Protocol\Request\FetchRequestV0;
 use Protocol\Kafka\Protocol\Request\FetchRequestV1;
 use Protocol\Kafka\Protocol\Request\FetchRequestV10;
 use Protocol\Kafka\Protocol\Request\FetchRequestV11;
+use Protocol\Kafka\Protocol\Request\FetchRequestV12;
 use Protocol\Kafka\Protocol\Request\FetchRequestV2;
 use Protocol\Kafka\Protocol\Request\FetchRequestV3;
 use Protocol\Kafka\Protocol\Request\FetchRequestV4;
@@ -63,6 +69,7 @@ use Protocol\Kafka\Protocol\Request\FetchResponseV0;
 use Protocol\Kafka\Protocol\Request\FetchResponseV1;
 use Protocol\Kafka\Protocol\Request\FetchResponseV10;
 use Protocol\Kafka\Protocol\Request\FetchResponseV11;
+use Protocol\Kafka\Protocol\Request\FetchResponseV12;
 use Protocol\Kafka\Protocol\Request\FetchResponseV2;
 use Protocol\Kafka\Protocol\Request\FetchResponseV3;
 use Protocol\Kafka\Protocol\Request\FetchResponseV4;
@@ -92,10 +99,11 @@ use Protocol\Kafka\Protocol\TaggedField;
  *   FetchResponse v7        => ThrottleTimeMs ErrorCode SessionId [TopicName [...]]
  * </pre>
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v12)", "Fetch sessions (v7, KIP-227)" and
- *      "MessageSet and Message"
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v13)", "Fetch sessions (v7, KIP-227)",
+ *      "The topic ids of the fetch path (v13, KIP-516)" and "MessageSet and Message"
  */
 #[CoversClass(FetchRequest::class)]
+#[CoversClass(FetchRequestV12::class)]
 #[CoversClass(FetchRequestV6::class)]
 #[CoversClass(FetchRequestV5::class)]
 #[CoversClass(FetchRequestV4::class)]
@@ -104,6 +112,7 @@ use Protocol\Kafka\Protocol\TaggedField;
 #[CoversClass(FetchRequestV1::class)]
 #[CoversClass(FetchRequestV0::class)]
 #[CoversClass(FetchResponse::class)]
+#[CoversClass(FetchResponseV12::class)]
 #[CoversClass(FetchResponseV6::class)]
 #[CoversClass(FetchResponseV5::class)]
 #[CoversClass(FetchResponseV4::class)]
@@ -123,6 +132,7 @@ use Protocol\Kafka\Protocol\TaggedField;
 #[CoversClass(FetchResponsePartitionV0::class)]
 #[CoversClass(FetchResponseAbortedTransaction::class)]
 #[CoversClass(FetchRequestForgottenTopic::class)]
+#[CoversClass(FetchRequestForgottenTopicV7::class)]
 #[CoversClass(FetchMetadata::class)]
 final class FetchApiTest extends TestCase
 {
@@ -393,7 +403,9 @@ final class FetchApiTest extends TestCase
 
     public function testRequestIsPackedAccordingToTheSpec(): void
     {
-        $request = new FetchRequest(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+        // Version 12, the last one that names its topics by name; the version 13 frame of the same fetch is in
+        // {@see self::testVersionThirteenNamesEveryTopicByItsTopicId()}
+        $request = new FetchRequestV12(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
 
         self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(
@@ -554,7 +566,7 @@ final class FetchApiTest extends TestCase
     {
         // KIP-482 (Kafka 2.7): the same question as version 11, written with a request header v2, compact strings
         // and compact arrays, and a tagged-field section behind every structure
-        $request = new FetchRequest(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
+        $request = new FetchRequestV12(['topic' => [0 => 0, 1 => 42]], 100, 1, 1024, -1, 'test', 1, 1048576);
 
         self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(12, $request->getApiVersion());
@@ -573,7 +585,7 @@ final class FetchApiTest extends TestCase
     {
         // `FetchRequest.json` @ 2.8.2 declares the `cluster_id` as the tag 0 with the default null: a request that
         // does not name one writes nothing at all, which is what every request of this client does
-        $named = new FetchRequest(
+        $named = new FetchRequestV12(
             ['topic' => [0 => 0, 1 => 42]],
             100,
             1,
@@ -597,9 +609,9 @@ final class FetchApiTest extends TestCase
             bin2hex((string) $named),
             'the named cluster is the only difference from the frame that leaves the tag out, twelve bytes longer'
         );
-        self::assertInstanceOf(TaggedField::class, FetchRequest::getScheme()['clusterId']);
-        self::assertSame(0, FetchRequest::getScheme()['clusterId']->tag);
-        self::assertNull(FetchRequest::getScheme()['clusterId']->default);
+        self::assertInstanceOf(TaggedField::class, FetchRequestV12::getScheme()['clusterId']);
+        self::assertSame(0, FetchRequestV12::getScheme()['clusterId']->tag);
+        self::assertNull(FetchRequestV12::getScheme()['clusterId']->default);
         self::assertArrayNotHasKey('clusterId', FetchRequestV11::getScheme());
     }
 
@@ -607,7 +619,7 @@ final class FetchApiTest extends TestCase
     {
         // The client-facing shape of the field: the third element of the triple, next to the plain offset and the
         // `[offset, currentLeaderEpoch]` pair of version 9
-        $request = new FetchRequest(['topic' => [0 => [0, 3, 7]]], 100, 1, 1024, -1, 'test', 1, 1048576);
+        $request = new FetchRequestV12(['topic' => [0 => [0, 3, 7]]], 100, 1, 1024, -1, 'test', 1, 1048576);
 
         self::assertSame(
             '00000055' . '0001' . '000c' . '00000001' . '0004' . '74657374' . '00'
@@ -637,7 +649,7 @@ final class FetchApiTest extends TestCase
             . '01' . '00' . '0d' . '00000000' . '0000000000000001' . '00'
             . '00' . '00';
 
-        $response  = FetchResponse::unpack(new StringStream((string) hex2bin($frame)));
+        $response  = FetchResponseV12::unpack(new StringStream((string) hex2bin($frame)));
         $partition = $response->topics['t2-27-vectors']->partitions[0];
 
         self::assertSame(0, $partition->errorCode);
@@ -713,8 +725,10 @@ final class FetchApiTest extends TestCase
         self::assertSame(-1, FetchResponsePartition::NO_PREFERRED_READ_REPLICA);
         self::assertSame(11, FetchRequestV11::VERSION);
         self::assertSame(11, FetchResponseV11::VERSION);
-        self::assertSame(12, FetchRequest::VERSION, 'the client sends the flexible version of Kafka 2.7');
-        self::assertSame(12, FetchResponse::VERSION);
+        self::assertSame(12, FetchRequestV12::VERSION);
+        self::assertSame(12, FetchResponseV12::VERSION);
+        self::assertSame(13, FetchRequest::VERSION, 'the client sends the topic ids of Kafka 3.1');
+        self::assertSame(13, FetchResponse::VERSION);
     }
 
     public function testTheIsolationLevelOfVersionFourIsWrittenBehindTheRequestLevelMaxBytes(): void
@@ -836,7 +850,7 @@ final class FetchApiTest extends TestCase
 
     public function testRequestAcceptsStructuredTopicPartitions(): void
     {
-        $request = FetchRequest::fromTopicPartitions(
+        $request = FetchRequestV12::fromTopicPartitions(
             [
                 [new TopicPartition('topic', 0), 0],
                 [new TopicPartition('topic', 1), 42],
@@ -851,6 +865,87 @@ final class FetchApiTest extends TestCase
         );
 
         self::assertSame(self::FETCH_REQUEST_HEX, bin2hex((string) $request));
+    }
+
+    public function testVersionThirteenNamesEveryTopicByItsTopicId(): void
+    {
+        // KIP-516 (Kafka 3.1): `FetchRequest.json` @ 3.1.2 declares the `Topic` of a topic entry and of a
+        // forgotten-topic entry as `versions 0-12` and their `TopicId` as `13+`, so the same fetch as
+        // {@see self::FETCH_REQUEST_HEX} carries the 16 raw bytes of the id where version 12 carries the compact
+        // string `topic` - four bytes more, and no name anywhere in the frame
+        $topicId = Uuid::fromString('mFOvIsGGQEaKUqOJUiHGrw');
+        $request = new FetchRequest(
+            ['topic' => [0 => 0, 1 => 42]],
+            100,
+            1,
+            1024,
+            -1,
+            'test',
+            1,
+            1048576,
+            FetchRequest::READ_UNCOMMITTED,
+            null,
+            [],
+            FetchRequest::NO_RACK,
+            null,
+            ['topic' => $topicId]
+        );
+
+        self::assertSame(13, $request->getApiVersion());
+        self::assertSame(['topic' => $topicId], $request->getTopicIds());
+        // The version 12 frame with the api version raised, the ten bytes the id costs added to the Size and the
+        // compact name `topic` (06 74 6f 70 69 63) replaced by the 16 raw bytes of the id
+        $expected = str_replace('06' . '746f706963', bin2hex($topicId), self::FETCH_REQUEST_HEX);
+        $expected = substr_replace($expected, '000d', 12, 4);
+        $expected = substr_replace($expected, sprintf('%08x', (strlen($expected) - 8) / 2), 0, 8);
+
+        self::assertSame($expected, bin2hex((string) $request));
+        self::assertStringNotContainsString(
+            bin2hex('topic'),
+            bin2hex((string) $request),
+            'the name of a topic is nowhere in a version 13 frame'
+        );
+        self::assertSame(
+            strlen((string) hex2bin(self::FETCH_REQUEST_HEX)) + 10,
+            strlen((string) $request),
+            'a uuid is 16 raw bytes, the compact name of this topic was six'
+        );
+    }
+
+    public function testAVersionThirteenFetchOfATopicWithoutAnIdIsRefused(): void
+    {
+        // The whole point of KIP-516: there is no way to name a topic in a version 13 frame but its id, so a
+        // client that does not know it refreshes its metadata instead of falling back to the name
+        $this->expectException(UnknownTopicIdException::class);
+
+        new FetchRequest(['topic' => [0 => 0]], 100, 1, 1024, -1, 'test', 1);
+    }
+
+    public function testTheTopicEntriesOfTheVersions12And13AreTheSameEntryWithAnotherName(): void
+    {
+        self::assertSame(
+            ['topicId' => BinarySchema::TYPE_UUID, 'partitions' => ['partition' => FetchRequestTopicPartition::class]],
+            FetchRequestTopic::getScheme()
+        );
+        self::assertSame(
+            ['topic' => BinarySchema::TYPE_STRING, 'partitions' => ['partition' => FetchRequestTopicPartition::class]],
+            FetchRequestTopicV12::getScheme(),
+            'version 12 names the topic and picks the very same partition entry'
+        );
+        self::assertSame(
+            ['topicId' => BinarySchema::TYPE_UUID, 'partitions' => ['partition' => FetchResponsePartition::class]],
+            FetchResponseTopic::getScheme()
+        );
+        self::assertSame(
+            ['topic' => BinarySchema::TYPE_STRING, 'partitions' => ['partition' => FetchResponsePartition::class]],
+            FetchResponseTopicV12::getScheme()
+        );
+        self::assertSame(13, FetchRequestTopic::VERSION);
+        self::assertSame(12, FetchRequestTopicV12::VERSION);
+        self::assertSame(13, FetchResponseTopic::VERSION);
+        self::assertSame(12, FetchResponseTopicV12::VERSION);
+        self::assertSame(13, FetchRequestForgottenTopic::VERSION);
+        self::assertSame(7, FetchRequestForgottenTopicV7::VERSION);
     }
 
     public function testVersion0RequestOnlyLowersTheApiVersionOfTheHeader(): void
@@ -962,10 +1057,24 @@ final class FetchApiTest extends TestCase
         self::assertSame(BinarySchema::TYPE_INT32, $scheme['epoch']);
         self::assertSame([FetchRequestForgottenTopic::class], $scheme['forgottenTopics']);
         self::assertSame(
-            ['topic' => BinarySchema::TYPE_STRING, 'partitions' => [BinarySchema::TYPE_INT32]],
-            FetchRequestForgottenTopic::getScheme()
+            ['topicId' => BinarySchema::TYPE_UUID, 'partitions' => [BinarySchema::TYPE_INT32]],
+            FetchRequestForgottenTopic::getScheme(),
+            'version 13 forgets a partition under the id of its topic (KIP-516)'
         );
-        self::assertSame(['topic' => FetchRequestTopic::class], $scheme['topicPartitions']);
+        self::assertSame(
+            ['topic' => BinarySchema::TYPE_STRING, 'partitions' => [BinarySchema::TYPE_INT32]],
+            FetchRequestForgottenTopicV7::getScheme()
+        );
+        self::assertSame(
+            [FetchRequestForgottenTopicV7::class],
+            FetchRequestV12::getScheme()['forgottenTopics']
+        );
+        self::assertSame(
+            [FetchRequestTopic::class],
+            $scheme['topicPartitions'],
+            'a version 13 entry has no name to index the array by'
+        );
+        self::assertSame(['topic' => FetchRequestTopicV12::class], FetchRequestV12::getScheme()['topicPartitions']);
         self::assertSame(
             ['topic' => FetchRequestTopicV9::class],
             FetchRequestV11::getScheme()['topicPartitions'],
@@ -1274,6 +1383,11 @@ final class FetchApiTest extends TestCase
             'a version 12 answer comes in a response header v1, whose tagged-field section follows the correlation id'
         );
         self::assertSame(
+            array_keys(FetchResponse::getScheme()),
+            array_keys(FetchResponseV12::getScheme()),
+            'version 13 changed the topic entry alone, not a field of the body'
+        );
+        self::assertSame(
             ['messageSize', 'correlationId', 'throttleTimeMs', 'errorCode', 'sessionId', 'topics'],
             array_keys(FetchResponseV11::getScheme())
         );
@@ -1314,7 +1428,12 @@ final class FetchApiTest extends TestCase
             FetchResponsePartition::getScheme()['abortedTransactions'],
             'the aborted transactions are a nullable array of structures, not a keyed one'
         );
-        self::assertSame(['topic' => FetchResponseTopic::class], FetchResponse::getScheme()['topics']);
+        self::assertSame(
+            [FetchResponseTopic::class],
+            FetchResponse::getScheme()['topics'],
+            'a version 13 entry is named by its topic id alone, so nothing indexes the array (KIP-516)'
+        );
+        self::assertSame(['topic' => FetchResponseTopicV12::class], FetchResponseV12::getScheme()['topics']);
         self::assertSame(['topic' => FetchResponseTopicV11::class], FetchResponseV11::getScheme()['topics']);
         self::assertSame(['topic' => FetchResponseTopicV4::class], FetchResponseV4::getScheme()['topics']);
         self::assertSame(['topic' => FetchResponseTopicV0::class], FetchResponseV3::getScheme()['topics']);

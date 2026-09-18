@@ -15,9 +15,14 @@ namespace Protocol\Kafka\Tests\Integration;
 
 use PHPUnit\Framework\TestCase;
 use Protocol\Kafka\Common\ClientConfig;
+use Protocol\Kafka\Common\Uuid;
 use Protocol\Kafka\IO\SocketStream;
+use Protocol\Kafka\Protocol\Data\FetchResponseTopic;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsRequest;
 use Protocol\Kafka\Protocol\Request\DeleteTopicsResponse;
+use Protocol\Kafka\Protocol\Request\FetchResponse;
+use Protocol\Kafka\Protocol\Request\MetadataRequest;
+use Protocol\Kafka\Protocol\Request\MetadataResponse;
 use Protocol\Kafka\Tests\Fixture\BrokerRecord;
 use Protocol\Kafka\Tests\Fixture\ClusterReadinessProbe;
 
@@ -89,6 +94,13 @@ abstract class IntegrationTestCase extends TestCase
      * @var list<string>
      */
     private static array $topicsOfTheClass = [];
+
+    /**
+     * Id of every topic {@see self::topicIdOf()} has resolved, as topic name => the 16 raw bytes of its uuid
+     *
+     * @var array<string, string>
+     */
+    private static array $topicIds = [];
 
     public static function setUpBeforeClass(): void
     {
@@ -250,6 +262,70 @@ abstract class IntegrationTestCase extends TestCase
     final protected static function brokerCertificateFile(): string
     {
         return dirname(__DIR__, 2) . '/docker/kafka-3.9.2/ssl/broker.crt';
+    }
+
+    /**
+     * Returns the id the node gave a topic, the 16 raw bytes of its `uuid` (KIP-516)
+     *
+     * **Fetch v13** (Kafka 3.1) names every topic of a request by that id and by nothing else, so a test that
+     * builds a `FetchRequest` by hand needs it - `Client` and `KafkaConsumer` read it off the `Cluster` map
+     * themselves. The metadata is asked for until the fresh topic has an id, because a topic the node has just
+     * created answers the error code 3 for a moment.
+     *
+     * @throws \RuntimeException If the node had no id for that topic within the timeout
+     *
+     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     */
+    final protected static function topicIdOf(string $topic, float $timeout = 30.0): string
+    {
+        // The id of a topic never changes while the topic lives, so it is asked for once per name and kept; a
+        // test that deletes a topic and creates it again under the same name asks the node itself
+        if (isset(self::$topicIds[$topic])) {
+            return self::$topicIds[$topic];
+        }
+
+        $deadline = microtime(true) + $timeout;
+        do {
+            $stream = new SocketStream(
+                'tcp://' . self::firstBootstrapServer(),
+                [ClientConfig::REQUEST_TIMEOUT_MS => 10000],
+                5.0
+            );
+            new MetadataRequest([$topic], false, 'kafka-client-topic-id')->writeTo($stream);
+            $answer  = MetadataResponse::unpack($stream);
+            $topicId = $answer->topics[$topic]->topicId ?? Uuid::ZERO;
+            if (!Uuid::isZero($topicId)) {
+                return self::$topicIds[$topic] = $topicId;
+            }
+            usleep(100000);
+        } while (microtime(true) < $deadline);
+
+        throw new \RuntimeException("The node has no topic id for {$topic}");
+    }
+
+    /**
+     * Returns the entry of a topic in a Fetch answer, whatever version of the api named it
+     *
+     * A **Fetch v13** answer (Kafka 3.1, KIP-516) names its topics by the 16 raw bytes of their id and by
+     * nothing else, so its entries are a plain list; every version below it is indexed by the topic name.
+     *
+     * @throws \RuntimeException If the answer holds no entry that can be this topic
+     *
+     * @see docs/protocol/3.9.md, section "The topic ids of the fetch path (v13, KIP-516)"
+     */
+    final protected static function fetchedTopic(FetchResponse $answer, string $topic): FetchResponseTopic
+    {
+        foreach ($answer->topics as $entry) {
+            if ($entry->topic === $topic) {
+                return $entry;
+            }
+        }
+        // A version 13 answer of ONE topic is unambiguous: it is the topic that was asked for
+        if (count($answer->topics) === 1) {
+            return reset($answer->topics);
+        }
+
+        throw new \RuntimeException("The answer holds no entry for the topic {$topic}");
     }
 
     /**

@@ -31,7 +31,7 @@ use Protocol\Kafka\Protocol\Request\OffsetsRequest;
  * client listener and closes the connection for every version of it - see the "(3.x)" note of the section below.
  *
  * @see docs/protocol/3.9.md, section "ControlledShutdown API (key 7, v0 to v3)"
- * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v11)"
+ * @see docs/protocol/3.9.md, section "Metadata API (key 3, v0 to v12)"
  */
 #[CoversClass(AdminClient::class)]
 final class AdminApiTest extends IntegrationTestCase

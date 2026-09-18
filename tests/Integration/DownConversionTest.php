@@ -45,7 +45,7 @@ use Protocol\Kafka\Tests\Fixture\TopicMetadataProbe;
  * This class measures both halves against the container: what the conversion does to a magic 2 log, and what a
  * topic with the switch off answers instead.
  *
- * @see docs/protocol/3.9.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v12)"
+ * @see docs/protocol/3.9.md, sections "What the broker converts, and when" and "Fetch API (key 1, v0 to v13)"
  */
 #[CoversClass(FetchRequest::class)]
 #[CoversClass(FetchResponse::class)]
@@ -272,12 +272,14 @@ final class DownConversionTest extends IntegrationTestCase
             65536,
             -1,
             self::CLIENT_ID,
-            $correlationId
+            $correlationId,
+            // Version 13 names the topic by its id (KIP-516); every lower version ignores the map
+            topicIds: [$topic => self::topicIdOf($topic)]
         )->writeTo($stream);
 
         $response = $responseClass::unpack($stream);
         self::assertSame($correlationId, $response->getCorrelationId());
 
-        return $response->topics[$topic]->partitions[0];
+        return self::fetchedTopic($response, $topic)->partitions[0];
     }
 }

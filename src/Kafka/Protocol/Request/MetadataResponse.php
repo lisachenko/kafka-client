@@ -24,6 +24,7 @@ use Protocol\Kafka\Common\RestorableTrait;
 use Protocol\Kafka\Common\TopicMetadata;
 use Protocol\Kafka\Common\TopicMetadataV0;
 use Protocol\Kafka\Common\TopicMetadataV1;
+use Protocol\Kafka\Common\TopicMetadataV10;
 use Protocol\Kafka\Common\TopicMetadataV5;
 use Protocol\Kafka\Common\TopicMetadataV7;
 use Protocol\Kafka\Common\TopicMetadataV8;
@@ -79,8 +80,16 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * the first flexible answer** (KIP-482), **version 10 (Kafka 2.8, KIP-516) put the `topic_id` of every topic
  * between its name and its `is_internal` flag**, see {@see \Protocol\Kafka\Common\TopicMetadata::$topicId},
  * and **version 11 (Kafka 2.8, KIP-700) dropped `cluster_authorized_operations`** from the end of the frame -
- * the cluster-wide question is the DescribeCluster api (key 60) now. This class is version 11;
- * {@see MetadataResponseV10} and {@see MetadataResponseV9} decode the two answers below it.
+ * the cluster-wide question is the DescribeCluster api (key 60) now. {@see MetadataResponseV11},
+ * {@see MetadataResponseV10} and {@see MetadataResponseV9} decode the three answers below this one.
+ *
+ * **Version 12 (Kafka 3.1, KIP-516) changed exactly one thing: the topic NAME became nullable.**
+ * `MetadataResponse.json` @ 3.1.2 adds no field with version 12 and declares `"nullableVersions": "12+"` on the
+ * `Name` of a topic entry, because from that version a request may name a topic by its `topic_id` alone
+ * ({@see MetadataRequest::byTopicIds()}) and an id the cluster does not host has no name to answer with. Such an
+ * entry carries the error code **100** `UnknownTopicId`, the id that was asked for and no partition, so a
+ * version 12 answer may hold entries that no topic name indexes - they are appended to {@see self::$topics} with
+ * an integer key, see {@see \Protocol\Kafka\Common\TopicMetadata::$topic}. This class is version 12.
  *
  * `ControllerId` is the broker id of the active controller, or `-1` (`MetadataResponse.NO_CONTROLLER_ID` @
  * 1.1.1) while the cluster is electing one; it is what {@see \Protocol\Kafka\Admin\AdminClient::findController()}
@@ -91,7 +100,8 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * A broker that has just booted answers with an EMPTY broker array while its metadata cache has not been filled by
  * the controller yet - that is "not ready, retry", never "the cluster has no brokers".
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v11)" and "Cluster readiness"
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)", "Metadata by topic id (v12, KIP-516)"
+ *      and "Cluster readiness"
  */
 class MetadataResponse extends AbstractResponse
 {
@@ -100,12 +110,12 @@ class MetadataResponse extends AbstractResponse
     /**
      * Version of the Metadata API that this class unpacks
      */
-    public const int VERSION = 11;
+    public const int VERSION = 12;
 
     /**
      * First version of this api whose frame is written with the compact types and the tagged fields of KIP-482
      *
-     * `MetadataResponse.json` @ 2.8.2 declares `"flexibleVersions": "9+"`: a version 9 answer carries the
+     * `MetadataResponse.json` @ 3.1.2 declares `"flexibleVersions": "9+"`: a version 9 answer carries the
      * response header **v1** - a tag buffer behind the correlation id - compact strings and arrays, and a
      * tagged-field section at the end of the body, of every broker entry, of every topic entry and of every
      * partition entry. The fields themselves are the ones of version 8.
@@ -148,9 +158,13 @@ class MetadataResponse extends AbstractResponse
     public ?int $controllerId = null;
 
     /**
-     * List of topics, indexed by the topic name
+     * List of topics, indexed by the topic name; an entry without a name is appended with an integer key
      *
-     * @var array<string, TopicMetadata>
+     * A version 12 answer (KIP-516) names a topic whose **id** the broker could not resolve with a `null` name,
+     * which is no array key at all - such an entry keeps the id it was asked for and lands at the end of this
+     * array, see {@see TopicMetadata::$topic}.
+     *
+     * @var array<array-key, TopicMetadata>
      */
     public array $topics = [];
 
@@ -215,7 +229,8 @@ class MetadataResponse extends AbstractResponse
     protected static function topicClass(): string
     {
         return match (true) {
-            static::VERSION >= 10 => TopicMetadata::class,
+            static::VERSION >= 12 => TopicMetadata::class,
+            static::VERSION >= 10 => TopicMetadataV10::class,
             static::VERSION >= 8 => TopicMetadataV8::class,
             static::VERSION >= 7 => TopicMetadataV7::class,
             static::VERSION >= 5 => TopicMetadataV5::class,

@@ -25,7 +25,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * moved the cluster-wide bitfield to the DescribeCluster api, so a caller that wants it from the Metadata api
  * asks with this class.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v11)" and "Topic ids (v10, KIP-516)"
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Topic ids (v10, KIP-516)"
  */
 final class MetadataRequestV10 extends MetadataRequest
 {

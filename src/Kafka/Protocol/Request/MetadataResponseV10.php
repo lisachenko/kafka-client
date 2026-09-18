@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * last answer that carries the `cluster_authorized_operations` bitfield of KIP-430, which version 11 (KIP-700)
  * moved to the DescribeCluster api, see {@see MetadataResponse}.
  *
- * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v11)" and "Topic ids (v10, KIP-516)"
+ * @see docs/protocol/3.9.md, sections "Metadata API (key 3, v0 to v12)" and "Topic ids (v10, KIP-516)"
  */
 final class MetadataResponseV10 extends MetadataResponse
 {
