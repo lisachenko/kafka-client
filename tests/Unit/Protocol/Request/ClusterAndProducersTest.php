@@ -25,8 +25,8 @@ use Protocol\Kafka\Protocol\Data\DescribeProducersRequestTopic;
 use Protocol\Kafka\Protocol\Data\DescribeProducersResponsePartition;
 use Protocol\Kafka\Protocol\Data\DescribeProducersResponseTopic;
 use Protocol\Kafka\Protocol\Data\ProducerState as ProducerStateData;
-use Protocol\Kafka\Protocol\Request\DescribeClusterRequest;
-use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClusterRequestV0;
+use Protocol\Kafka\Protocol\Request\DescribeClusterResponseV0;
 use Protocol\Kafka\Protocol\Request\DescribeProducersRequest;
 use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
 
@@ -34,14 +34,17 @@ use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
  * Byte-exact tests for the two apis Kafka 2.8 added to the admin surface: DescribeCluster (key 60, KIP-700) and
  * DescribeProducers (key 61, KIP-664).
  *
- * Both are flexible from their version 0. The first is the **smallest request of this protocol** - a single
- * boolean - and the second is the producer state of a log made visible, which is the only place in this protocol
- * where a producer epoch is an `int32`.
+ * Both are flexible from their version 0. The body of the first is a **single boolean**, which was the shortest
+ * of this protocol until Kafka 3.7 gave ListClientMetricsResources (74) none at all, and the second is the
+ * producer state of a log made visible, which is the only place in this protocol where a producer epoch is an
+ * `int32`. The frames
+ * below are the version 0 ones, i.e. {@see DescribeClusterRequestV0} and {@see DescribeClusterResponseV0}; the
+ * `endpoint_type` that KIP-919 added to the version 1 is {@see ClientMetricsAndEndpointTypeTest}.
  *
- * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0)" and "DescribeProducers API (key 61, v0)"
+ * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0 and v1)" and "DescribeProducers API (key 61, v0)"
  */
-#[CoversClass(DescribeClusterRequest::class)]
-#[CoversClass(DescribeClusterResponse::class)]
+#[CoversClass(DescribeClusterRequestV0::class)]
+#[CoversClass(DescribeClusterResponseV0::class)]
 #[CoversClass(DescribeProducersRequest::class)]
 #[CoversClass(DescribeProducersResponse::class)]
 #[CoversClass(DescribeClusterBroker::class)]
@@ -125,15 +128,15 @@ final class ClusterAndProducersTest extends TestCase
 
     public function testTheClusterRequestIsTheSmallestOfThisProtocol(): void
     {
-        $request = new DescribeClusterRequest(false, 'test', 9);
+        $request = new DescribeClusterRequestV0(false, 'test', 9);
 
         self::assertSame(self::CLUSTER_REQUEST_HEX, bin2hex((string) $request));
         self::assertSame(ApiKeys::DESCRIBE_CLUSTER, $request->getApiKey());
-        self::assertTrue(DescribeClusterRequest::isFlexible());
-        self::assertSame(DescribeClusterRequest::HEADER_V2, $request->getHeaderVersion());
+        self::assertTrue(DescribeClusterRequestV0::isFlexible());
+        self::assertSame(DescribeClusterRequestV0::HEADER_V2, $request->getHeaderVersion());
         self::assertFalse($request->includesClusterAuthorizedOperations());
 
-        $asking = new DescribeClusterRequest(true, 'test', 9);
+        $asking = new DescribeClusterRequestV0(true, 'test', 9);
 
         self::assertTrue($asking->includesClusterAuthorizedOperations());
         self::assertSame(
@@ -146,7 +149,7 @@ final class ClusterAndProducersTest extends TestCase
 
     public function testTheClusterAnswerNamesTheBrokersAndTheController(): void
     {
-        $response = DescribeClusterResponse::unpack(new StringStream((string) hex2bin(self::CLUSTER_RESPONSE_HEX)));
+        $response = DescribeClusterResponseV0::unpack(new StringStream((string) hex2bin(self::CLUSTER_RESPONSE_HEX)));
 
         self::assertSame(KafkaException::NO_ERROR, $response->errorCode);
         self::assertSame('t1-clus', $response->clusterId);
@@ -156,7 +159,7 @@ final class ClusterAndProducersTest extends TestCase
         self::assertSame(9092, $response->brokers[0]->port);
         self::assertNull($response->brokers[0]->rack, 'a broker without a rack sends the compact null');
         self::assertSame(
-            DescribeClusterResponse::OPERATIONS_NOT_REQUESTED,
+            DescribeClusterResponseV0::OPERATIONS_NOT_REQUESTED,
             $response->clusterAuthorizedOperations,
             'Integer.MIN_VALUE is the default of the specification, not an error'
         );

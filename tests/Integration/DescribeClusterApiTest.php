@@ -16,26 +16,37 @@ namespace Protocol\Kafka\Tests\Integration;
 use PHPUnit\Framework\Attributes\CoversClass;
 use Protocol\Kafka\Admin\AdminClient;
 use Protocol\Kafka\Admin\ClusterDescription;
+use Protocol\Kafka\Admin\EndpointType;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
+use Protocol\Kafka\Common\Errors\KafkaException;
+use Protocol\Kafka\Common\Errors\MismatchedEndpointTypeException;
+use Protocol\Kafka\Common\Errors\UnsupportedEndpointTypeException;
 use Protocol\Kafka\Protocol\Request\DescribeClusterRequest;
+use Protocol\Kafka\Protocol\Request\DescribeClusterRequestV0;
 use Protocol\Kafka\Protocol\Request\DescribeClusterResponse;
+use Protocol\Kafka\Protocol\Request\DescribeClusterResponseV0;
 
 /**
- * Exercises DescribeCluster (key 60, v0) of KIP-700 against the 3.9.2 KRaft node.
+ * Exercises DescribeCluster (key 60, v0 and v1) of KIP-700 and KIP-919 against the 3.9.2 KRaft node.
  *
  * The api carries nothing a Metadata answer did not already carry - the cluster id, the controller and the
  * brokers - and that is the point of it: until Kafka 2.8 a client that wanted those three had to send a request
  * about *topics* with an empty topic array. This class asserts that both routes answer the same thing, and
- * measures the one field that is new, the acl bit field of KIP-430.
+ * measures the one field that is new, the acl bit field of KIP-430, and the `endpoint_type` that Kafka 3.7
+ * appended to the version 1 - which half of a KRaft cluster the answer describes, and the two error codes 114 and
+ * 115 that a server answers when the byte is one it will not serve.
  *
  * It creates nothing on the broker and therefore has nothing to clean up.
  *
- * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0)"
+ * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeClusterRequest::class)]
 #[CoversClass(DescribeClusterResponse::class)]
+#[CoversClass(DescribeClusterRequestV0::class)]
+#[CoversClass(DescribeClusterResponseV0::class)]
+#[CoversClass(EndpointType::class)]
 #[CoversClass(ClusterDescription::class)]
 final class DescribeClusterApiTest extends IntegrationTestCase
 {
@@ -105,7 +116,92 @@ final class DescribeClusterApiTest extends IntegrationTestCase
     }
 
     /**
-     * The request is the smallest of this protocol: the two frames differ in exactly one byte
+     * The client sends the version 1, and the node answers which half of the cluster it described
+     */
+    public function testTheClientSendsVersionOneAndIsAnsweredTheBrokerEndpointType(): void
+    {
+        $described = $this->admin->describeCluster();
+
+        self::assertSame(EndpointType::Broker, $described->endpointType);
+        self::assertFalse($described->describesControllers());
+        self::assertArrayHasKey(
+            $described->controllerId,
+            $described->nodes,
+            'a KRaft node names a BROKER as the controller of a DescribeCluster answer, never its real controller'
+        );
+    }
+
+    /**
+     * A broker listener refuses the controller endpoints with the 114 that KIP-919 added for it
+     */
+    public function testAskingABrokerForTheControllersIsRefusedWithTheMismatchedEndpointType(): void
+    {
+        try {
+            $this->admin->describeCluster(false, EndpointType::Controller);
+            self::fail('a broker listener does not describe the controllers of the cluster');
+        } catch (MismatchedEndpointTypeException $exception) {
+            self::assertSame(KafkaException::MISMATCHED_ENDPOINT_TYPE, $exception->getCode());
+            self::assertStringContainsString(
+                'The request was sent to an endpoint of type BROKER, but we wanted an endpoint of type CONTROLLER',
+                $exception->getMessage()
+            );
+        }
+    }
+
+    /**
+     * An endpoint type the api does not define is the 115, and the refusal carries nothing of the cluster
+     */
+    public function testAnEndpointTypeTheApiDoesNotDefineIsRefusedWithTheUnsupportedEndpointType(): void
+    {
+        foreach ([0, 3] as $endpointType) {
+            $stream = $this->connect();
+            new DescribeClusterRequest(false, 'kafka-client-t1-cluster', 60 + $endpointType, $endpointType)
+                ->writeTo($stream);
+            $answer = DescribeClusterResponse::unpack($stream);
+
+            self::assertSame(KafkaException::UNSUPPORTED_ENDPOINT_TYPE, $answer->errorCode);
+            self::assertSame("Unsupported endpoint type {$endpointType}", $answer->errorMessage);
+            self::assertSame('', $answer->clusterId, 'a refusal carries no cluster id');
+            self::assertSame(-1, $answer->controllerId);
+            self::assertSame([], $answer->brokers);
+            self::assertSame(
+                EndpointType::Broker->value,
+                $answer->endpointType,
+                'the schema default, never the type that was asked for'
+            );
+            self::assertInstanceOf(
+                UnsupportedEndpointTypeException::class,
+                KafkaException::fromCode($answer->errorCode, ['error' => (string) $answer->errorMessage])
+            );
+        }
+    }
+
+    /**
+     * The node still serves the version 0, whose answer is the version 1 answer minus the endpoint type
+     */
+    public function testTheVersionBelowIsTheSameAnswerOneByteShorter(): void
+    {
+        $stream = $this->connect();
+        new DescribeClusterRequestV0(false, 'kafka-client-t1-cluster', 61)->writeTo($stream);
+        $below = DescribeClusterResponseV0::unpack($stream);
+
+        $stream = $this->connect();
+        new DescribeClusterRequest(false, 'kafka-client-t1-cluster', 62)->writeTo($stream);
+        $above = DescribeClusterResponse::unpack($stream);
+
+        self::assertSame(KafkaException::NO_ERROR, $below->errorCode);
+        self::assertSame($above->clusterId, $below->clusterId);
+        self::assertSame($above->controllerId, $below->controllerId);
+        self::assertSame(array_keys($above->brokers), array_keys($below->brokers));
+        self::assertSame(
+            $above->getMessageSize() - 1,
+            $below->getMessageSize(),
+            'the endpoint_type of KIP-919 is the only byte the version added'
+        );
+    }
+
+    /**
+     * The acl flag is the only field of the version 0 body: the two frames differ in exactly one byte
      */
     public function testTheTwoRequestsDifferInOneByte(): void
     {

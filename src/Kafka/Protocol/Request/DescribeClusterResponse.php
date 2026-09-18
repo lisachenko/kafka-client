@@ -13,18 +13,21 @@ declare(strict_types=1);
 
 namespace Protocol\Kafka\Protocol\Request;
 
+use Protocol\Kafka\Admin\EndpointType;
 use Protocol\Kafka\Protocol\BinarySchema;
 use Protocol\Kafka\Protocol\Data\DescribeClusterBroker;
 
 /**
- * DescribeCluster response object, version 0 (key 60, Kafka 2.8, KIP-700)
+ * DescribeCluster response object, version 1 (key 60, Kafka 2.8, KIP-700)
  *
  * <pre>
- *   DescribeCluster Response (Version: 0) => throttle_time_ms error_code error_message cluster_id controller_id
- *                                            [brokers] cluster_authorized_operations
+ *   DescribeCluster Response (Version: 0 to 1) => throttle_time_ms error_code error_message endpoint_type
+ *                                                 cluster_id controller_id [brokers]
+ *                                                 cluster_authorized_operations
  *     throttle_time_ms              => INT32
  *     error_code                    => INT16
  *     error_message                 => COMPACT_NULLABLE_STRING
+ *     endpoint_type                 => INT8    -- since version 1, 1 = brokers, 2 = controllers
  *     cluster_id                    => COMPACT_STRING
  *     controller_id                 => INT32   (-1 while the cluster has no controller)
  *     brokers                       => broker_id host port rack
@@ -36,7 +39,16 @@ use Protocol\Kafka\Protocol\Data\DescribeClusterBroker;
  * per `AclOperation` the caller may perform on the cluster. On a broker that runs **without** an authorizer every
  * operation is allowed, so what comes back is the whole set `AclEntry.supportedOperations(CLUSTER)` names.
  *
- * @see docs/protocol/3.9.md, section "DescribeCluster API (key 60, v0)"
+ * **Version 1 (KIP-919, Kafka 3.7) echoes the `endpoint_type`** the server really described - the field sits
+ * between the error message and the cluster id - and "makes MISMATCHED_ENDPOINT_TYPE and UNSUPPORTED_ENDPOINT_TYPE
+ * valid top-level response error codes" (`DescribeClusterResponse.json` @ 3.7.2). Both refusals are answered
+ * **without** a cluster id, a broker list or a type: `AuthHelper.computeDescribeClusterResponse` @ 3.9.2 returns a
+ * bare `DescribeClusterResponseData` with the code and the message, so the `endpoint_type` of such an answer is the
+ * `"default": "1"` of the schema and says nothing. {@see DescribeClusterResponseV0} is the answer one version
+ * lower, which has no type at all.
+ *
+ * @see docs/protocol/3.9.md, sections "DescribeCluster API (key 60, v0 and v1)" and "The endpoint type of KIP-919
+ *      (v1)"
  */
 class DescribeClusterResponse extends AbstractResponse
 {
@@ -48,7 +60,7 @@ class DescribeClusterResponse extends AbstractResponse
     /**
      * @inheritdoc
      */
-    public const int VERSION = 0;
+    public const int VERSION = 1;
 
     /**
      * @inheritdoc
@@ -69,6 +81,13 @@ class DescribeClusterResponse extends AbstractResponse
      * Human readable description of the error, null when there is none
      */
     public ?string $errorMessage = null;
+
+    /**
+     * Which set of nodes the answer describes, as the byte of the wire
+     *
+     * @since Version 1 of protocol (Kafka 3.7, KIP-919)
+     */
+    public int $endpointType = EndpointType::Broker->value;
 
     /**
      * Identifier of the cluster the answering broker belongs to
@@ -99,15 +118,29 @@ class DescribeClusterResponse extends AbstractResponse
     public static function getScheme(): array
     {
         $header = parent::getScheme();
+        $body   = [
+            'throttleTimeMs' => BinarySchema::TYPE_INT32,
+            'errorCode'      => BinarySchema::TYPE_INT16,
+            'errorMessage'   => BinarySchema::TYPE_NULLABLE_STRING,
+        ];
+        if (static::VERSION >= 1) {
+            $body['endpointType'] = BinarySchema::TYPE_INT8;
+        }
 
-        return $header + [
-            'throttleTimeMs'              => BinarySchema::TYPE_INT32,
-            'errorCode'                   => BinarySchema::TYPE_INT16,
-            'errorMessage'                => BinarySchema::TYPE_NULLABLE_STRING,
+        return $header + $body + [
             'clusterId'                   => BinarySchema::TYPE_STRING,
             'controllerId'                => BinarySchema::TYPE_INT32,
             'brokers'                     => ['brokerId' => DescribeClusterBroker::class],
             'clusterAuthorizedOperations' => BinarySchema::TYPE_INT32,
         ];
+    }
+
+    /**
+     * Returns the set of nodes this answer describes, {@see EndpointType::Unknown} for a byte the api does not
+     * define (KIP-919, version 1)
+     */
+    public function getEndpointType(): EndpointType
+    {
+        return EndpointType::fromId($this->endpointType);
     }
 }
