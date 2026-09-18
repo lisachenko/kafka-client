@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Data;
  * current leader and the snapshot id of KIP-630, see {@see FetchResponsePartition}. A version 11 answer is not
  * flexible and has no tagged-field section to carry them in.
  *
- * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v16)"
+ * @see docs/protocol/3.9.md, section "Fetch API (key 1, v0 to v17)"
  */
 final class FetchResponsePartitionV11 extends FetchResponsePartition
 {

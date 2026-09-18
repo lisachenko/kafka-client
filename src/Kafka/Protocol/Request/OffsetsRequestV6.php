@@ -28,7 +28,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * -1, not by closing the connection. The vectors `offsets.request.v6.max-timestamp` and
  * `offsets.response.v6.max-timestamp-unsupported` are that refusal on the node of this line.
  *
- * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v8), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 final class OffsetsRequestV6 extends OffsetsRequest
 {

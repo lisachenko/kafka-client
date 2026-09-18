@@ -29,7 +29,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * `offsets.request.v7.earliest-local` and `offsets.response.v7.earliest-local-unsupported` are that refusal on
  * the node of this line.
  *
- * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v8), a.k.a. ListOffset"
+ * @see docs/protocol/3.9.md, section "Offsets API (key 2, v0 to v9), a.k.a. ListOffset"
  */
 final class OffsetsRequestV7 extends OffsetsRequest
 {

@@ -36,7 +36,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * built the request from, {@see \Protocol\Kafka\Common\Cluster::topicNameById()}. The {@see self::$topic} of a
  * decoded version 13 entry is therefore the empty string.
  *
- * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v16)" and "The topic ids of the fetch path
+ * @see docs/protocol/3.9.md, sections "Fetch API (key 1, v0 to v17)" and "The topic ids of the fetch path
  *      (v13, KIP-516)"
  */
 class FetchResponseTopic implements BinarySchemaInterface

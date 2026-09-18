@@ -3452,9 +3452,10 @@ class AdminClient
      * It is deliberately an **admin** method and has no counterpart on the consumer, exactly as in the Java client:
      * a consumer reads records, and where the records of a partition are stored is an operational question.
      *
-     * The request goes to the leader of each partition, as every request of this api does, and it is sent as
-     * version 8. A broker that only serves version 7 - anything below Kafka 3.5 - answers the partition with the
-     * error code 35, which is thrown as an {@see UnsupportedVersionException}.
+     * The request goes to the leader of each partition, as every request of this api does, and it is sent as the
+     * version this client speaks, **9** since Kafka 3.9. A broker that only serves version 7 - anything below
+     * Kafka 3.5 - answers the partition that asks for the `-4` with the error code 35, which is thrown as an
+     * {@see UnsupportedVersionException}.
      *
      * @param array<string, list<int>>|iterable<TopicPartition> $topicPartitions Partitions to look up
      *
@@ -3566,5 +3567,43 @@ class AdminClient
         return $other !== null
             && $cursor->topicName === $other->topicName
             && $cursor->partitionIndex === $other->partitionIndex;
+    }
+
+    /**
+     * Looks the **last tiered offset** of every one of the given partitions up (KIP-1005)
+     *
+     * This is `OffsetSpec.latestTiered()` of the Java admin client, the question that **Kafka 3.9** added with
+     * **KIP-1005** and that version 9 of the Offsets api carries as the special target time
+     * {@see OffsetsRequest::LATEST_TIERED_TIMESTAMP} (`-5`): "the last offset of this partition that has been
+     * moved to remote storage". It is the upper end of the range whose lower end
+     * {@see self::listEarliestLocalOffsets()} asks for: everything below the local log start offset can only be
+     * read through the remote-storage path, everything up to this offset is in the object store, and the segments
+     * between the two are on both.
+     *
+     * A partition of a topic **without** remote storage - which is every topic of a broker whose
+     * `remote.log.storage.system.enable` is off, and this client speaks to no other - has no tiered offset at all:
+     * `UnifiedLog.fetchOffsetByTimestamp` @ 3.9.2 answers `highestOffsetInRemoteStorage()`, which is **-1**, with
+     * the error code 0. The offset -1 of this method therefore means "nothing of this partition is tiered", and
+     * not that the lookup failed.
+     *
+     * It is deliberately an **admin** method and has no counterpart on the consumer, exactly as in the Java client
+     * and exactly as {@see self::listEarliestLocalOffsets()} is.
+     *
+     * The request goes to the leader of each partition, as every request of this api does, and it is sent as
+     * version 9. A broker that only serves version 8 - anything below Kafka 3.9 - answers the partition with the
+     * error code 35, which is thrown as an {@see UnsupportedVersionException}.
+     *
+     * @param array<string, list<int>>|iterable<TopicPartition> $topicPartitions Partitions to look up
+     *
+     * @throws \Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException If the cluster does not host one of the partitions
+     * @throws \Protocol\Kafka\Common\Errors\NotLeaderForPartitionException If the leader of a partition changed in the meantime
+     * @throws UnsupportedVersionException If the cluster does not know the target time -5, i.e. below Kafka 3.9
+     *
+     * @return array<string, array<int, int>> Last tiered offsets as topic => partition => offset, -1 for a
+     *         partition of which nothing is tiered
+     */
+    public function listLatestTieredOffsets(iterable $topicPartitions): array
+    {
+        return $this->listOffsets($topicPartitions, OffsetsRequest::LATEST_TIERED_TIMESTAMP);
     }
 }
