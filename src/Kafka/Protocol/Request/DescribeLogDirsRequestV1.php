@@ -21,7 +21,7 @@ namespace Protocol\Kafka\Protocol\Request;
  * added for KIP-219 - `DESCRIBE_LOG_DIRS_REQUEST_V1 = DESCRIBE_LOG_DIRS_REQUEST_V0` in `Protocol.java` @ 2.0.1,
  * so {@see DescribeLogDirsRequestV0} is these very bytes with a lower version field.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v3)"
  */
 final class DescribeLogDirsRequestV1 extends DescribeLogDirsRequest
 {

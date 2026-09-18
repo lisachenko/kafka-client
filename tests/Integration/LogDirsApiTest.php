@@ -24,13 +24,17 @@ use Protocol\Kafka\Client;
 use Protocol\Kafka\Common\ClientConfig;
 use Protocol\Kafka\Common\Cluster;
 use Protocol\Kafka\Common\Errors\BrokerNotAvailableException;
+use Protocol\Kafka\Common\Errors\ClusterAuthorizationFailedException;
 use Protocol\Kafka\Common\Errors\KafkaException;
 use Protocol\Kafka\Common\Errors\LogDirNotFoundException;
 use Protocol\Kafka\Common\Errors\TopicPartitionRequestException;
 use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Record\Record;
+use Protocol\Kafka\Common\Security\SaslMechanism;
+use Protocol\Kafka\Common\Security\SecurityProtocol;
 use Protocol\Kafka\Common\TopicPartition;
 use Protocol\Kafka\Consumer\ConsumerConfig;
+use Protocol\Kafka\IO\SocketStream;
 use Protocol\Kafka\Producer\ProducerConfig;
 use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsRequestLogDir;
 use Protocol\Kafka\Protocol\Data\AlterReplicaLogDirsRequestTopic;
@@ -43,7 +47,9 @@ use Protocol\Kafka\Protocol\Data\DescribeLogDirsResponseTopic;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\AlterReplicaLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequestV2;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
+use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponseV2;
 
 /**
  * Exercises the two JBOD apis of KIP-113 against the 3.9.2 KRaft node with **two** log directories.
@@ -58,12 +64,14 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
  * `PARTITION_CHANGE_RECORD` into the metadata log about 90 ms after the answer of AlterReplicaLogDirs. The raft
  * log `__cluster_metadata-0` sits in the first directory and is never part of an answer of this api.
  *
- * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v2)" and
+ * @see docs/protocol/3.9.md, sections "DescribeLogDirs API (key 35, v0 to v3)" and
  *      "AlterReplicaLogDirs API (key 34, v0 to v2)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeLogDirsRequest::class)]
+#[CoversClass(DescribeLogDirsRequestV2::class)]
 #[CoversClass(DescribeLogDirsResponse::class)]
+#[CoversClass(DescribeLogDirsResponseV2::class)]
 #[CoversClass(DescribeLogDirsRequestTopic::class)]
 #[CoversClass(DescribeLogDirsResponseLogDir::class)]
 #[CoversClass(DescribeLogDirsResponseTopic::class)]
@@ -85,6 +93,13 @@ final class LogDirsApiTest extends IntegrationTestCase
     private const string FIRST_DIR = '/tmp/kafka-logs';
 
     private const string SECOND_DIR = '/tmp/kafka-logs-2';
+
+    /**
+     * The one SASL user of the image that is not in `super.users` and that no acl of the node names
+     */
+    private const string UNPRIVILEGED_USER = 'acltest';
+
+    private const string UNPRIVILEGED_PASSWORD = 'acltest-secret';
 
     /**
      * A path that is not in `log.dirs`, which is what the broker answers 57 for
@@ -402,6 +417,65 @@ final class LogDirsApiTest extends IntegrationTestCase
         $this->admin->describeLogDirs([$this->brokerId() + 4242]);
     }
 
+    public function testAnUnauthorizedPrincipalIsRefusedWithTheTopLevelErrorCodeOfVersionThree(): void
+    {
+        $unprivileged = $this->unprivilegedStream();
+
+        new DescribeLogDirsRequest(null, 't5-logdirs', 5160)->writeTo($unprivileged);
+        $refused = DescribeLogDirsResponse::unpack($unprivileged);
+
+        self::assertSame(5160, $refused->getCorrelationId());
+        self::assertSame(
+            KafkaException::CLUSTER_AUTHORIZATION_FAILED,
+            $refused->errorCode,
+            '`KafkaApis.handleDescribeLogDirsRequest` @ 3.9.2 asks the authorizer for DESCRIBE on CLUSTER before'
+            . ' it reads the topics of the request, and `acltest` is the one principal outside `super.users`'
+        );
+        self::assertSame([], $refused->logDirs, 'and not one directory comes with that code');
+    }
+
+    public function testTheSameRefusalBelowVersionThreeIsAnEmptyDirectoryArrayAndNoCode(): void
+    {
+        $unprivileged = $this->unprivilegedStream();
+
+        new DescribeLogDirsRequestV2(null, 't5-logdirs', 5161)->writeTo($unprivileged);
+        $refused = DescribeLogDirsResponseV2::unpack($unprivileged);
+
+        self::assertSame(5161, $refused->getCorrelationId());
+        self::assertSame([], $refused->logDirs);
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $refused->errorCode,
+            'the version 2 has no field for the refusal at all, so the frame of a refused request and the frame of'
+            . ' a broker without a single log directory are the same bytes - which is what the version 3 fixed'
+        );
+    }
+
+    public function testDescribeLogDirsRaisesTheTopLevelErrorCodeOfTheUnauthorizedPrincipal(): void
+    {
+        if (self::saslBootstrapServer() === '') {
+            self::markTestSkipped(self::SASL_BOOTSTRAP_SERVERS_ENV . ' is not set, the refusal needs a principal');
+        }
+
+        $configuration = [
+            ClientConfig::BOOTSTRAP_SERVERS         => ['tcp://' . self::saslBootstrapServer()],
+            ClientConfig::CLIENT_ID                 => 't5-logdirs',
+            ClientConfig::REQUEST_TIMEOUT_MS        => 10000,
+            ClientConfig::METADATA_FETCH_TIMEOUT_MS => 30000,
+            ClientConfig::SECURITY_PROTOCOL         => SecurityProtocol::SASL_PLAINTEXT,
+            ClientConfig::SASL_MECHANISM            => SaslMechanism::PLAIN,
+            ClientConfig::SASL_USERNAME             => self::UNPRIVILEGED_USER,
+            ClientConfig::SASL_PASSWORD             => self::UNPRIVILEGED_PASSWORD,
+        ];
+        $unprivileged = new AdminClient(Cluster::bootstrap($configuration), $configuration);
+
+        // Since the version 3 the refusal is a code and not an empty map, so the client can throw instead of
+        // handing a caller two directories that are simply missing
+        $this->expectException(ClusterAuthorizationFailedException::class);
+
+        $unprivileged->describeLogDirs([$this->brokerId()]);
+    }
+
     public function testTheRawFramesOfBothApisMatchTheDocumentedGrammar(): void
     {
         $topic  = $this->topicWithRecords('raw');
@@ -411,7 +485,12 @@ final class LogDirsApiTest extends IntegrationTestCase
         $described = DescribeLogDirsResponse::unpack($stream);
 
         self::assertSame(5150, $described->getCorrelationId());
-        self::assertSame(0, $described->throttleTimeMs, 'the container sets no quota');
+        self::assertSame(0, $described->throttleTimeMs, 'the node sets no quota');
+        self::assertSame(
+            KafkaException::NO_ERROR,
+            $described->errorCode,
+            'the top-level error code the version 3 of Kafka 3.2 added, 0 for an answer the node really built'
+        );
         self::assertSame([self::FIRST_DIR, self::SECOND_DIR], array_keys($described->logDirs));
 
         new AlterReplicaLogDirsRequest(
@@ -617,6 +696,32 @@ final class LogDirsApiTest extends IntegrationTestCase
                 $this->cluster->reload();
             }
         } while (true);
+    }
+
+    /**
+     * Opens an authenticated stream of the one principal of the node that the `StandardAuthorizer` applies to
+     *
+     * `super.users=User:ANONYMOUS;User:admin;User:kafkatest` covers the PLAINTEXT listener and the two other SASL
+     * users of the image, so `acltest` - which no acl names either - is the only way to measure a refusal here.
+     */
+    private function unprivilegedStream(): SocketStream
+    {
+        if (self::saslBootstrapServer() === '') {
+            self::markTestSkipped(self::SASL_BOOTSTRAP_SERVERS_ENV . ' is not set, the refusal needs a principal');
+        }
+
+        return new SocketStream(
+            'tcp://' . self::saslBootstrapServer(),
+            [
+                ClientConfig::SECURITY_PROTOCOL  => SecurityProtocol::SASL_PLAINTEXT,
+                ClientConfig::SASL_MECHANISM     => SaslMechanism::PLAIN,
+                ClientConfig::SASL_USERNAME      => self::UNPRIVILEGED_USER,
+                ClientConfig::SASL_PASSWORD      => self::UNPRIVILEGED_PASSWORD,
+                ClientConfig::CLIENT_ID          => 't5-logdirs',
+                ClientConfig::REQUEST_TIMEOUT_MS => 10000,
+            ],
+            5.0
+        );
     }
 
     /**

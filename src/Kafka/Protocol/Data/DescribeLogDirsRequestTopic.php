@@ -34,7 +34,7 @@ use Protocol\Kafka\Protocol\BinarySchemaInterface;
  * set with the logs it has (`ReplicaManager.describeLogDirs` filters `logsByDir` by `partitions.contains`), so an
  * unknown topic or partition is neither an error nor an entry.
  *
- * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v2)"
+ * @see docs/protocol/3.9.md, section "DescribeLogDirs API (key 35, v0 to v3)"
  */
 class DescribeLogDirsRequestTopic implements BinarySchemaInterface
 {
