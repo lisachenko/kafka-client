@@ -26,8 +26,12 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * <pre>
  *   ListGroups Request (Version: 0 to 3) =>
  *
- *   ListGroups Request (Version: 4) => [states_filter]
+ *   ListGroups Request (Version: 4)      => [states_filter]
  *     states_filter => STRING     -- since version 4
+ *
+ *   ListGroups Request (Version: 5)      => [states_filter] [types_filter]
+ *     states_filter => COMPACT_STRING
+ *     types_filter  => COMPACT_STRING    -- since version 5
  * </pre>
  *
  * `LIST_GROUPS_REQUEST_V1 = LIST_GROUPS_REQUEST_V0` in `Protocol.java` @ 0.11.0.3 - both versions are an empty
@@ -45,7 +49,16 @@ use Protocol\Kafka\Protocol\BinarySchema;
  * makes the filter case sensitive; the constants of {@see \Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata}
  * are those names.
  *
- * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v4)"
+ * **Version 5 (KIP-848, Kafka 3.8) gave it its second field**, the `types_filter`:
+ * *"Version 5 adds the TypesFilter field (KIP-848)"* (`ListGroupsRequest.json` @ 3.8.1). It bounds the answer to
+ * the groups of one of the named **types** - the `TYPE_*` constants of
+ * {@see \Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol}, which are the `Group.GroupType` of the new
+ * group coordinator - and an empty array is again "every group". Unlike the states filter it is **not** a verbatim
+ * string comparison: `GroupMetadataManager.listGroups` @ 3.9.2 parses every entry with `Group.GroupType.parse()`,
+ * which is case insensitive and maps anything it does not know to `GroupType.UNKNOWN`, a type no group ever has -
+ * so an unknown type is an empty answer and never an error. The two filters are combined with **and**.
+ *
+ * @see docs/protocol/3.9.md, section "ListGroups API (key 16, v0 to v5)"
  */
 class ListGroupsRequest extends AbstractRequest
 {
@@ -57,7 +70,7 @@ class ListGroupsRequest extends AbstractRequest
     /**
      * @inheritdoc
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it
@@ -70,6 +83,8 @@ class ListGroupsRequest extends AbstractRequest
      * @param int          $correlationId A user-supplied value that the broker passes back unmodified
      * @param list<string> $statesFilter  States of the groups to list (KIP-518, version 4); an empty list asks
      *        for every group the broker coordinates, which is what every version below 4 asks for implicitly
+     * @param list<string> $typesFilter   Types of the groups to list (KIP-848, version 5); an empty list asks for
+     *        every type, which is what every version below 5 asks for implicitly
      */
     public function __construct(
         string $clientId = '',
@@ -81,7 +96,15 @@ class ListGroupsRequest extends AbstractRequest
          *
          * @since Version 4 of protocol
          */
-        protected readonly array $statesFilter = []
+        protected readonly array $statesFilter = [],
+        /**
+         * Types of the groups this request asks for, empty for every type.
+         *
+         * @var list<string>
+         *
+         * @since Version 5 of protocol
+         */
+        protected readonly array $typesFilter = []
     ) {
         parent::__construct(self::API_KEY, $clientId, $correlationId);
     }
@@ -96,6 +119,9 @@ class ListGroupsRequest extends AbstractRequest
         if (static::VERSION >= 4) {
             $body['statesFilter'] = [BinarySchema::TYPE_STRING];
         }
+        if (static::VERSION >= 5) {
+            $body['typesFilter'] = [BinarySchema::TYPE_STRING];
+        }
 
         return $header + $body;
     }
@@ -108,5 +134,15 @@ class ListGroupsRequest extends AbstractRequest
     public function getStatesFilter(): array
     {
         return $this->statesFilter;
+    }
+
+    /**
+     * Returns the types this request bounds the answer to, empty for every group
+     *
+     * @return list<string>
+     */
+    public function getTypesFilter(): array
+    {
+        return $this->typesFilter;
     }
 }

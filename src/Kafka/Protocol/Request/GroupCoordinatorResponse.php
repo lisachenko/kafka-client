@@ -21,7 +21,7 @@ use Protocol\Kafka\Protocol\InlineStruct;
 use UnexpectedValueException;
 
 /**
- * GroupCoordinator response, version 4 (key 10, FindCoordinator in the sources since 0.11)
+ * GroupCoordinator response, version 5 (key 10, FindCoordinator in the sources since 0.11)
  *
  * Called ConsumerMetadataResponse in Kafka 0.8.2 (api key 10, v0); the version 0 layout below is unchanged in 0.9
  * and 0.10.
@@ -36,7 +36,7 @@ use UnexpectedValueException;
  *       host    => STRING
  *       port    => INT32
  *
- *   FindCoordinator Response (Version: 4)     => throttle_time_ms [coordinators]
+ *   FindCoordinator Response (Version: 4 to 5) => throttle_time_ms [coordinators]
  *     throttle_time_ms => INT32
  *     coordinators     => key node_id host port error_code error_message   -- since version 4
  * </pre>
@@ -59,18 +59,23 @@ use UnexpectedValueException;
  * {@see self::coordinatorOf()} reads one key out of either shape, and {@see GroupCoordinatorResponseV3} decodes
  * the answer of the versions below.
  *
+ * **Version 5 (KIP-890, Kafka 3.8) changed no field either**: *"Version 5 adds support for new error code
+ * TRANSACTION_ABORTABLE (KIP-890)"* (`FindCoordinatorResponse.json` @ 3.8.1). The number is the client's promise
+ * to understand the code **120**, not a layout - a version 5 answer of this node is the version 4 answer with the
+ * number 5 in the header of the request it belongs to, and {@see GroupCoordinatorResponseV4} decodes that one.
+ *
  * While the broker is still creating the internal topic the lookup needs - `__consumer_offsets` for a group,
  * `__transaction_state` for a transactional id - the answer is the error code 15 (GroupCoordinatorNotAvailable)
  * with the coordinator `-1:"":-1`, so the lookup is worth retrying.
  *
- * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v4)"
+ * @see docs/protocol/3.9.md, section "GroupCoordinator API (key 10, v0 to v5)"
  */
 class GroupCoordinatorResponse extends AbstractResponse
 {
     /**
      * Version of the GroupCoordinator API that this class decodes the answer of
      */
-    public const int VERSION = 4;
+    public const int VERSION = 5;
 
     /**
      * The first flexible version of the api (KIP-482, Kafka 2.4): every string, byte array and array of it

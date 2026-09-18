@@ -40,6 +40,7 @@ use Protocol\Kafka\Common\Errors\UnknownTopicOrPartitionException;
 use Protocol\Kafka\Common\Errors\UnsupportedForMessageFormatException;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
+use Protocol\Kafka\Protocol\Data\ListGroupResponseProtocol;
 use Protocol\Kafka\Protocol\Request\AbstractRequest;
 use Protocol\Kafka\Protocol\Request\CreatePartitionsRequest;
 use Protocol\Kafka\Protocol\Request\CreateTopicsRequest;
@@ -445,6 +446,68 @@ final class AdminClientTest extends TestCase
             self::requestFrame(new ListGroupsRequest('t10', $broker->getReceivedCorrelationIds()[1], ['Empty'])),
             $broker->getReceivedFrames()[1],
             'the states of the filter are the only field the request has ever carried'
+        );
+    }
+
+    /**
+     * KIP-848 (Kafka 3.8): every entry of the answer names the type of its group, and the request may bound the
+     * listing to some of them - the second filter of version 5, behind the states of KIP-518
+     */
+    public function testListGroupsReportsTheTypeOfEveryGroupAndCanBeBoundedToSome(): void
+    {
+        $broker = $this->scriptBroker(
+            self::topicMetadata(),
+            ResponseFrame::listGroups(0, [self::ADMIN_GROUP => ['consumer', 'Stable', 'consumer']])
+        );
+        $admin  = $this->adminClient();
+        $node   = $admin->findAllBrokers()[0];
+
+        $groups = $admin->listGroups($node, [], [ListGroupResponseProtocol::TYPE_CONSUMER]);
+
+        self::assertSame(
+            ListGroupResponseProtocol::TYPE_CONSUMER,
+            $groups[self::ADMIN_GROUP]->groupType,
+            'a group of the KIP-848 protocol, whose protocol type is the same `consumer` as a classic one'
+        );
+        self::assertSame('consumer', $groups[self::ADMIN_GROUP]->protocolType);
+        self::assertSame(
+            self::requestFrame(new ListGroupsRequest(
+                't10',
+                $broker->getReceivedCorrelationIds()[1],
+                [],
+                [ListGroupResponseProtocol::TYPE_CONSUMER]
+            )),
+            $broker->getReceivedFrames()[1],
+            'the empty states filter and the one type travel in the version 5 body'
+        );
+    }
+
+    /**
+     * `listConsumerGroups()` hands the type filter through to the coordinator, as the Java `withTypes()` does
+     */
+    public function testListConsumerGroupsPassesTheTypeFilterOnToTheBroker(): void
+    {
+        $broker = $this->scriptBroker(
+            self::topicMetadata(),
+            ResponseFrame::listGroups(0, [self::ADMIN_GROUP => ['consumer', 'Stable', 'classic']])
+        );
+
+        $groups = $this->adminClient()->listConsumerGroups(
+            [DescribeGroupResponseMetadata::STATE_STABLE],
+            [ListGroupResponseProtocol::TYPE_CLASSIC]
+        );
+
+        self::assertSame([self::ADMIN_GROUP], array_keys($groups));
+        self::assertSame(ListGroupResponseProtocol::TYPE_CLASSIC, $groups[self::ADMIN_GROUP]->groupType);
+        self::assertSame(
+            self::requestFrame(new ListGroupsRequest(
+                't10',
+                $broker->getReceivedCorrelationIds()[1],
+                ['Stable'],
+                ['classic']
+            )),
+            $broker->getReceivedFrames()[1],
+            'both filters of version 5 reach the broker'
         );
     }
 

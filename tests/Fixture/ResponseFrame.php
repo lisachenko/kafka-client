@@ -864,19 +864,44 @@ final class ResponseFrame
     }
 
     /**
-     * Builds a ListGroups response (api key 16, v4 - the version this client sends)
+     * Builds a ListGroups response (api key 16, v5 - the version this client sends)
      *
      * <pre>
-     *   ListGroupsResponse => ThrottleTimeMs ErrorCode [GroupId ProtocolType GroupState]
+     *   ListGroupsResponse => ThrottleTimeMs ErrorCode [GroupId ProtocolType GroupState GroupType]
      * </pre>
      *
-     * Version 4 (KIP-518, Kafka 2.6) appended the state of the group to every entry; a protocol type given as a
-     * plain string is answered with the state `Stable`, and the pair `[protocolType, state]` names both.
+     * Version 4 (KIP-518, Kafka 2.6) appended the state of the group to every entry and version 5 (KIP-848,
+     * Kafka 3.8) its type; a protocol type given as a plain string is answered with the state `Stable` and the
+     * type `classic`, the pair `[protocolType, state]` names the first two and the triple
+     * `[protocolType, state, type]` all three.
+     *
+     * @param array<string, string|array{string, string}|array{string, string, string}> $groups Protocol type -
+     *        or protocol type and state, or all three - of every group the answering broker coordinates, by
+     *        group id
+     */
+    public static function listGroups(int $correlationId, array $groups, int $errorCode = 0): string
+    {
+        $body = pack('N', 0) . pack('n', $errorCode) . self::compactCount(count($groups));
+        foreach ($groups as $groupId => $group) {
+            $entry = is_array($group) ? $group : [$group, 'Stable'];
+            [$protocolType, $groupState] = $entry;
+            $body .= self::compactString((string) $groupId)
+                . self::compactString($protocolType)
+                . self::compactString($groupState)
+                . self::compactString($entry[2] ?? 'classic')
+                . self::tagBuffer();
+        }
+
+        return self::flexible($correlationId, $body);
+    }
+
+    /**
+     * Builds a ListGroups response of version 4, the frame whose entries carry a state and no type (below KIP-848)
      *
      * @param array<string, string|array{string, string}> $groups Protocol type - or protocol type and state - of
      *        every group the answering broker coordinates, by group id
      */
-    public static function listGroups(int $correlationId, array $groups, int $errorCode = 0): string
+    public static function listGroupsV4(int $correlationId, array $groups, int $errorCode = 0): string
     {
         $body = pack('N', 0) . pack('n', $errorCode) . self::compactCount(count($groups));
         foreach ($groups as $groupId => $group) {

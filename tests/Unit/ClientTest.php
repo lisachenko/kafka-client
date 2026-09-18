@@ -819,7 +819,11 @@ final class ClientTest extends TestCase
         $lookupFrame = $lookupNode->getReceivedFrames()[0];
 
         self::assertSame(ApiKeys::GROUP_COORDINATOR, $this->apiKeyOf($lookupFrame));
-        self::assertSame(4, $this->apiVersionOf($lookupFrame), 'the batched FindCoordinator of KIP-699');
+        self::assertSame(
+            5,
+            $this->apiVersionOf($lookupFrame),
+            'the batched FindCoordinator of KIP-699, at the version 5 of KIP-890'
+        );
         // The CoordinatorType 1 of a transactional id and the one-key batch that carries "tx-1"
         self::assertStringEndsWith(
             '01' . '02' . '05' . '74782d31' . '00',
