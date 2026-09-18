@@ -18,7 +18,7 @@ below is verified against a real Apache Kafka **3.9.2** node in **KRaft** mode (
 broker and controller in one process, four client listeners) and documented in
 [docs/protocol/3.9.md](docs/protocol/3.9.md). The plan of the line, and its release record once it is
 complete, is [docs/handoff/main.md](docs/handoff/main.md); the record of the 2.x line moved to
-[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.8** (the foundation, the re-baseline wave T0 and the 3.0 to 3.8 waves are in; Kafka 3.4 added nothing a client sends).
+[docs/handoff/2.x.md](docs/handoff/2.x.md). **Current milestone: Kafka 3.9** (the foundation, the re-baseline wave T0 and the 3.0 to 3.9 waves are in; Kafka 3.4 added nothing a client sends; the KIP-848 consumer wave follows).
 
 ### Added
 
@@ -291,6 +291,75 @@ ACL apis, measured against a real authorizer for the first time.
 - The error codes **107** `IneligibleReplica` and **108** `NewLeaderElected` of Kafka 3.3 belong to AlterPartition
   (56), a broker-to-controller api a client listener does not serve: declared at the foundation, never observed.
   73 wire vectors in all (26 of T1, 47 of T4): 836 in 54 files.
+
+### Kafka 3.9 — Added
+
+The ninth and last minor milestone of the line (PRs #208, #210, #209): the last five version bumps a 3.9.2
+node serves a client, the probes of the apis this line leaves out, and the audit of the api-key table.
+
+- **ApiVersions v4 (KAFKA-17011)** — the version this client sends. The bump declares no field: a supported
+  feature whose `min_version` is 0 is reported only to a v4 request, which on a KRaft node is `kraft.version`
+  (0…1) — a v3 answer of the same node omits the feature entirely, 499 against 518 bytes.
+  `ApiVersionsRequestV3`/`ApiVersionsResponseV3` keep the flexible v3 of KIP-511. ApiVersions is not on the
+  bootstrap or SASL path of this client, so the bump changed nothing there.
+- **DescribeQuorum v2 (KIP-853)** — `AdminClient::describeMetadataQuorum()` sends it: a nullable `error_message`
+  at the top level and per partition, a `replica_directory_id` in front of the log end offset of every replica
+  state, and the top-level `nodes` array of node ids and listener endpoints. New `Admin\QuorumNode` and
+  `Admin\RaftVoterEndpoint` (`QuorumInfo.Node` and `RaftVoterEndpoint` of the Java client), `QuorumInfo::$nodes`
+  and `node()`, `ReplicaState::$replicaDirectoryId` and `replicaDirectoryIdAsString()`; the keep-behinds
+  `DescribeQuorumRequestV1`/`DescribeQuorumResponseV1` and the V1 chain of data classes. Measured on the node:
+  both error messages are the empty string, not null; `nodes` names the CONTROLLER listener of the node
+  (`localhost:9096`), and is empty for a topic the node could not describe; every directory id is the zero uuid
+  because a static voter set has none; the per-partition 3 finally carries words.
+- **`BinarySchema::TYPE_UINT16`** — the `uint16` of the JSON specifications (two big-endian bytes read without
+  the sign), added for the listener port of a DescribeQuorum v2 answer, the first and only field of the
+  client-facing protocol that uses it.
+- **The raft-voter apis 80/81 and the share-group apis 76–79, 83–87 are measured and stay out** (owner
+  decision, no classes): AddRaftVoter and RemoveRaftVoter refuse every frame in three stages — the 104 of a
+  foreign cluster id, the 42 of a voter key the api cannot read and the **35** of a well-formed one, because the
+  node has finalized `kraft.version` at 0 (the static `controller.quorum.voters` of KIP-595); every share-group
+  frame closes the connection. The codes 121–127 are therefore declared and unreachable on this node.
+- **The final table audit of the line** — the rows of 1, 2, 10, 18, 55, 80–82 and 76–87 in both api-key
+  tables, the "Implemented here" legend, the decision list (55 is implemented, 52–54 are probed), the
+  finalized-features epoch that moves with every write, the error rows 121–127 and both release summaries:
+  every "not yet implemented on this line" left in the tables is now the KIP-848 consumer of 68/69 alone.
+- **Fetch v17 (KIP-853)** — the first version of this api that declares a tagged field inside a **partition** entry
+  of the request: `ReplicaDirectoryId` (tag 0, a uuid), the log directory a **follower** keeps its replica of that
+  partition in, so that the metadata quorum of KIP-853 can identify a voter by more than its node id while its
+  membership changes. `Data\FetchRequestTopicPartition::$replicaDirectoryId` is the field,
+  `FetchRequest::__construct(..., ?string $replicaDirectoryId = null)` the new last argument — one directory for
+  every partition entry of the request — and `FetchRequest::getReplicaDirectoryId()` reads it back. A **consumer
+  writes nothing**: the zero uuid is the default of the field and a tagged field whose value is its default is left
+  off the wire, so the frame of `Client::fetchPartitions()` is the version 16 frame with another number in its
+  header. `FetchResponse.json` @ 3.9.2 declares no field for the version at all. `FetchRequestV16`/`FetchResponseV16`
+  keep the version below, `Data\FetchRequestTopicPartitionV12` and `Data\FetchRequestTopicV13` the entries that have
+  no place for the tag.
+- **ListOffsets v9 (KIP-1005)** — the flexible frame of the versions 6, 7 and 8 a fourth time and a fifth special
+  target time, `OffsetsRequest::LATEST_TIERED_TIMESTAMP` (**-5**): the last offset of a partition that has been
+  moved to remote storage, the upper end of the range whose lower end the `-4` of KIP-405 names.
+  `AdminClient::listLatestTieredOffsets()` is the `OffsetSpec.latestTiered()` of the Java admin client, which has no
+  consumer counterpart there and none here; `Client::fetchTopicPartitionOffsets()` and `AdminClient::listOffsets()`
+  accept the target time as well. `OffsetsRequestV8`/`OffsetsResponseV8` keep the version of the local log start
+  offset.
+- **What the node answers** — the directory id of a Fetch v17 is parsed and **ignored** by every fetch of an
+  ordinary topic (`KafkaRaftClient.handleFetchRequest` @ 3.9.2 is its only reader, for `__cluster_metadata` on the
+  controller listener), so a real directory id, an unknown one and none at all are answered byte for byte the same,
+  and a fetch that claims to be a follower is still the **6** or the **75** of the one-broker cluster with the
+  leader hint of KIP-951; a fetch session opened at v16 is continued at v17 without a word; and the `-5` of
+  KIP-1005 answers the error code **0** with the timestamp, the offset and the leader epoch `-1` on a node without
+  remote storage — on a two-record log as on an empty one — where a `-5` at version 8, and any target time below
+  `-5` at every version, is the per-partition **35**.
+- **FindCoordinator v6** (KIP-932): `GroupCoordinatorRequest`/`GroupCoordinatorResponse` speak the version 6, the
+  keep-behinds `GroupCoordinatorRequestV5`/`GroupCoordinatorResponseV5` the version below it. The version adds no
+  field to either half of the api — it only lets `coordinator_type` say **2**, the share coordinator, which
+  `GroupCoordinatorRequest::COORDINATOR_TYPE_SHARE` and `MIN_SHARE_VERSION` name. Share groups stay out of the
+  line: no method ever sends that type, because a 3.9.2 node answers it the retriable **15**
+  `CoordinatorNotAvailable` out of a branch that carries the KIP-932 to-do comment, where every version below 6
+  answers the **42** `InvalidRequest`. The three coordinator types are authorized against three resources —
+  `DESCRIBE` on the group, `DESCRIBE` on the transactional id and `CLUSTER_ACTION` on the cluster, the **30**,
+  the **53** and the **31** of an unprivileged principal — and the version gate is checked before the acl.
+  14 wire vectors.
+- 42 wire vectors in all (12 of T1, 16 of T2, 14 of T3): 1085 in 58 files.
 
 ### Kafka 3.8 — Added
 
