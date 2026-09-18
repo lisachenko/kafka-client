@@ -79,8 +79,8 @@ use Protocol\Kafka\Protocol\Data\PartitionsForTopic;
  *   PLAINTEXT principal of the container is `ANONYMOUS`, which its `super.users` list makes a super user, so the
  *   node answers it there; the SASL user `acltest`, the one principal of the node that is not a super user, is
  *   refused with the **top-level error code 31** (`ClusterAuthorizationFailed`) and an empty
- *   `results_by_transaction` - 13 bytes. A deployment that grants `CLUSTER_ACTION` to its brokers alone answers
- *   every client the same way.
+ *   `results_by_transaction` - 13 bytes behind the size field. A deployment that grants `CLUSTER_ACTION` to its
+ *   brokers alone answers every client the same way.
  * * A version 4 carries **no authorization of the producer at all**: the versions below it authorize `WRITE` on the
  *   `TRANSACTIONAL_ID` and on every topic of the request, and the version 4 path skips both
  *   (`authorizedTopics = partitionsToAdd.map(_.topic).toSet`), because the broker that sends it has already done
