@@ -60,7 +60,7 @@ use Throwable;
  * in {@see self::tearDownAfterClass()}.
  *
  * @see docs/protocol/3.9.md, sections "DescribeUserScramCredentials API (key 50, v0)",
- *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0)"
+ *      "AlterUserScramCredentials API (key 51, v0)" and "UpdateFeatures API (key 57, v0 and v1)"
  */
 #[CoversClass(AdminClient::class)]
 #[CoversClass(DescribeUserScramCredentialsRequest::class)]

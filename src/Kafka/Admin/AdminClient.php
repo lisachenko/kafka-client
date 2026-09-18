@@ -42,6 +42,7 @@ use Protocol\Kafka\Protocol\Data\AlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\ApiVersionsResponseMetadata;
 use Protocol\Kafka\Protocol\Data\DescribeConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\DescribeGroupResponseMetadata;
+use Protocol\Kafka\Protocol\Data\DescribeQuorumResponseReplicaState;
 use Protocol\Kafka\Protocol\Data\DescribeTransactionsResponseTopic;
 use Protocol\Kafka\Protocol\Data\IncrementalAlterConfigsRequestResource;
 use Protocol\Kafka\Protocol\Data\LeaveGroupRequestMember;
@@ -80,6 +81,8 @@ use Protocol\Kafka\Protocol\Request\DescribeLogDirsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeLogDirsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeProducersRequest;
 use Protocol\Kafka\Protocol\Request\DescribeProducersResponse;
+use Protocol\Kafka\Protocol\Request\DescribeQuorumRequest;
+use Protocol\Kafka\Protocol\Request\DescribeQuorumResponse;
 use Protocol\Kafka\Protocol\Request\DescribeTransactionsRequest;
 use Protocol\Kafka\Protocol\Request\DescribeTransactionsResponse;
 use Protocol\Kafka\Protocol\Request\DescribeUserScramCredentialsRequest;
@@ -2167,20 +2170,31 @@ class AdminClient
      * looked up and the request repeated once when it moved.
      *
      * A `maxVersionLevel` below 1 is not a version but the request to **delete** the finalized feature, and every
-     * lowering - a deletion included - needs `allowDowngrade` ({@see FeatureUpdate::delete()} sets both).
+     * lowering - a deletion included - needs a downgrade to be allowed ({@see FeatureUpdate::delete()} asks for a
+     * safe one).
      *
      * **On a ZooKeeper-backed 2.8.2 cluster there is nothing to update**: the controller finalizes no feature, so
      * every update is answered with the per-feature code 96 (`FeatureUpdateFailed`).
      *
-     * @param list<FeatureUpdate> $updates Changes to ask the controller for; the list may not be empty
+     * **Kafka 3.3 (KIP-778) gave the api the version 1**, which this client sends: the `allow_downgrade` boolean
+     * of an update became the {@see UpgradeType} of {@see FeatureUpdate} - an upgrade, a safe downgrade or an
+     * unsafe one - and `$validateOnly` is the `validate_only` of `UpdateFeaturesOptions.validateOnly()`, with
+     * which the controller answers what it *would* do and writes nothing at all.
+     *
+     * @param list<FeatureUpdate> $updates      Changes to ask the controller for; the list may not be empty
+     * @param int                 $timeoutMs    How long the controller may take over the request
+     * @param bool                $validateOnly Whether the controller validates the updates without writing them
      *
      * @throws KafkaException If the request as a whole was refused, e.g. with 41 (NotController) or 42 for an
      *         empty or duplicated update list
      *
      * @return array<string, KafkaException|null> Error of every feature of the call, null when it was changed
      */
-    public function updateFeatures(array $updates, int $timeoutMs = UpdateFeaturesRequest::DEFAULT_TIMEOUT_MS): array
-    {
+    public function updateFeatures(
+        array $updates,
+        int $timeoutMs = UpdateFeaturesRequest::DEFAULT_TIMEOUT_MS,
+        bool $validateOnly = false
+    ): array {
         $featureUpdates = [];
         foreach ($updates as $update) {
             $featureUpdates[$update->feature] = $update->toData();
@@ -2192,7 +2206,8 @@ class AdminClient
                 $featureUpdates,
                 $timeoutMs,
                 $this->clientId(),
-                $correlationId
+                $correlationId,
+                $validateOnly
             ),
             UpdateFeaturesResponse::class
         );
@@ -3073,5 +3088,86 @@ class AdminClient
         }
 
         return $result;
+    }
+
+    /**
+     * The state of the metadata quorum of a KRaft cluster (ApiKey 55, Kafka 2.8, KIP-595)
+     *
+     * `Admin.describeMetadataQuorum()` of the Java client, which sends exactly this request: the quorum of the
+     * partition 0 of `__cluster_metadata`, the one partition a KRaft cluster replicates with the raft protocol
+     * that KIP-595 put in the place of ZooKeeper. The answer says who leads that quorum, in which epoch, how far
+     * the log is replicated, and what the leader knows about every **voter** and **observer** of it.
+     *
+     * **This client sends the version 1** (KIP-836, Kafka 3.3), whose replica states also carry *when* the leader
+     * last heard from a replica and how far back the data it has reaches - the two fields that tell a follower
+     * that lags from one that is gone. Against a broker that only serves the version 0 the two timestamps are
+     * simply not on the wire, and {@see ReplicaState::$lastFetchTimestamp} and
+     * {@see ReplicaState::$lastCaughtUpTimestamp} are null for every replica.
+     *
+     * A cluster that runs **with ZooKeeper** has no quorum to describe: a 2.8.2 broker does not serve the key 55
+     * on a client listener at all, and every version of it is answered by closing the connection.
+     *
+     * @throws KafkaException If the request as a whole, or the partition of the metadata log, was refused
+     *
+     * @see docs/protocol/3.9.md, section "DescribeQuorum API (key 55, v0 and v1)"
+     */
+    public function describeMetadataQuorum(): QuorumInfo
+    {
+        /** @var DescribeQuorumResponse $response */
+        $response = $this->sendAnyNode(
+            fn(int $correlationId): DescribeQuorumRequest => DescribeQuorumRequest::metadataQuorum(
+                $this->clientId(),
+                $correlationId
+            ),
+            DescribeQuorumResponse::class
+        );
+
+        if ($response->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $response->errorCode,
+                ['error' => 'The broker refused a DescribeQuorum request']
+            );
+        }
+
+        $topic     = $response->topics[DescribeQuorumRequest::CLUSTER_METADATA_TOPIC] ?? null;
+        $partition = $topic?->partitions[DescribeQuorumRequest::CLUSTER_METADATA_PARTITION] ?? null;
+        if ($partition === null) {
+            throw new UnknownErrorException([
+                'error' => 'The answer of DescribeQuorum does not describe the partition of the metadata log',
+            ]);
+        }
+        if ($partition->errorCode !== KafkaException::NO_ERROR) {
+            throw KafkaException::fromCode(
+                $partition->errorCode,
+                ['topic' => DescribeQuorumRequest::CLUSTER_METADATA_TOPIC, 'partition' => $partition->partitionIndex]
+            );
+        }
+
+        return new QuorumInfo(
+            $partition->leaderId,
+            $partition->leaderEpoch,
+            $partition->highWatermark,
+            array_map(self::replicaStateOf(...), array_values($partition->currentVoters)),
+            array_map(self::replicaStateOf(...), array_values($partition->observers))
+        );
+    }
+
+    /**
+     * Turns one replica state of a DescribeQuorum answer into the value object of the admin api
+     *
+     * The -1 of a timestamp is "the leader does not know", which the Java client reports as an empty
+     * `OptionalLong` and this one as null; a version 0 answer leaves both at that value, because it has no field
+     * for either of them.
+     */
+    private static function replicaStateOf(DescribeQuorumResponseReplicaState $replica): ReplicaState
+    {
+        $unknown = DescribeQuorumResponseReplicaState::UNKNOWN_TIMESTAMP;
+
+        return new ReplicaState(
+            $replica->replicaId,
+            $replica->logEndOffset,
+            $replica->lastFetchTimestamp === $unknown ? null : $replica->lastFetchTimestamp,
+            $replica->lastCaughtUpTimestamp === $unknown ? null : $replica->lastCaughtUpTimestamp
+        );
     }
 }
