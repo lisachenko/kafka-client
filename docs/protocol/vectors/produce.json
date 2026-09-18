@@ -1285,7 +1285,7 @@
             "class": "Protocol\\Kafka\\Protocol\\Request\\ProduceRequest",
             "version": 11,
             "source": "broker",
-            "description": "Produce request v11 (Kafka 3.8, KIP-890), the version this client sends: the flexible frame of version 9 an eighth time - ProduceRequest.json @ 3.8.1 declares no field of the version and its whole comment is \"Version 11 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)\". What the version states is that the client understands the error code 120 in a partition of the ANSWER, so this frame and the version 10 frame of the same batch differ in the two bytes of the api version alone.",
+            "description": "Produce request v11 (Kafka 3.8, KIP-890), the version this client sends: the flexible frame of version 9 once more, and the same body an eighth time since version 3 - ProduceRequest.json @ 3.8.1 declares no field of the version and its whole comment is \"Version 11 adds support for new error code TRANSACTION_ABORTABLE (KIP-890)\". What the version states is that the client understands the error code 120 in a partition of the ANSWER, so this frame and the version 10 frame of the same batch differ in the two bytes of the api version alone.",
             "hex": "0000009a0000000b00000ed800126b61666b612d636c69656e742d74322d33380000000100001388020e74322d33382d766563746f727302000000005f000000000000000000000052ffffffff02ee53787b0000000000010000018bcfe568000000018bcfe56be8ffffffffffffffffffffffffffff000000021e000000011274322d3338206f6e65002000d00f02011274322d33382074776f00000000",
             "fields": {
                 "messageSize": 154,
